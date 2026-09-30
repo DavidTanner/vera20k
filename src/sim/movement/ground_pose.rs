@@ -370,11 +370,13 @@ impl Simulation {
     ///   before the transaction marks it again. A paratrooper's landing
     ///   (`0x005F3F7A`) runs it too, but as a no-op: the falling block has just
     ///   re-added it (`0x005F3F58`).
-    /// - Effect: the wreck is not in its cell's lists for its death weapon,
-    ///   explosion or AirDeathFinish.
+    /// - Effect: Update's Mark bracket has already listed a Jumpjet wreck that
+    ///   fell below twice the level height, so it keeps its list position
+    ///   where native moves it to the head and runs the cell's Recalc. A Fly
+    ///   wreck is not in its cell's lists for its death weapon.
     /// - Frequency: every Jumpjet and aircraft crash.
     /// - Risk: list walks and first-object reads in that cell.
-    /// - Blocked by two ports of `FootClass::Mark` that disagree (#922).
+    /// - Tracked by #692.
     ///
     /// [`current_fly_height`]: super::air_movement::current_fly_height
     pub(crate) fn set_object_height(&mut self, id: u64, height: i32) {

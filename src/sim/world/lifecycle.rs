@@ -70,17 +70,6 @@ pub(crate) struct UninitContext<'a> {
 }
 
 impl<'a> UninitContext<'a> {
-    #[cfg(test)]
-    pub(crate) const fn with_terrain(
-        terrain: Option<&'a crate::map::resolved_terrain::ResolvedTerrainGrid>,
-    ) -> Self {
-        Self {
-            terrain,
-            rules: None,
-            registry: None,
-        }
-    }
-
     pub(crate) const fn with_rules(rules: &'a RuleSet) -> Self {
         Self {
             terrain: None,

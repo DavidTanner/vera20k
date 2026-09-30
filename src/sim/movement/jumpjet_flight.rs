@@ -38,6 +38,19 @@
 //! is listed in its cell below twice the level height, yet never lifts its own
 //! cell top. Bridges, building tops and other cell objects are Rust-tested only.
 //!
+//! RESIDUAL: the states' own Mark calls are not ported. Their transitions run
+//! Mark(REMOVE) and then restore +0x74 (`0x0054BB3C`, `0x0054BB73`,
+//! `0x0054BD13`, `0x0054BE19`, `0x0054BE81`, `0x0054BFCB`, `0x0054C2BC`,
+//! `0x0054C36A`, `0x0054C603`, `0x0054C63B`), and the touchdown brackets its
+//! SetLocation with Mark(REMOVE)/Mark(PUT) (`0x0054C820`, `0x0054C8C5`).
+//! Trigger: a state change, or a landing. Effect: an owner still in the
+//! Ground layer (below twice the level height) keeps its list entry and a
+//! Unit's 0x20 until the next Update bracket, where native drops them; a
+//! touchdown relists at Update's last location, which is the destination's
+//! cell but not its snapped XY. Frequency: transitions mostly happen at
+//! cruise height, where nothing is listed; every landing. Risk: a ground
+//! mover sees the owner one frame late or early at the landing cell.
+//!
 //! Numeric model: `WinMain` installs x87 control word `0x0E7F` (53-bit
 //! precision, round toward zero; `_controlfp(0x300, 0x300)` at `0x006BBFC1`),
 //! and every double here is evaluated in native operand order with
