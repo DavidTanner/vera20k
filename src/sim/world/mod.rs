@@ -1128,6 +1128,13 @@ pub struct Simulation {
     /// frame pin its entry view while the sim publishes the next projection.
     #[serde(skip)]
     pub(crate) path_grid: Option<Arc<PathGrid>>,
+    /// Derived cache: the marked-structure movement cells last published into
+    /// `path_grid`. Source of truth is the marked structures themselves
+    /// (`navigation::structure_movement_cells`). A full navigation rebuild
+    /// resets it; frame-end structure publication republishes only the union
+    /// of this set and the current one, skipping cells already current.
+    #[serde(skip)]
+    structure_navigation_cells: BTreeSet<(u16, u16)>,
     #[serde(skip)]
     pub resolved_terrain: Option<ResolvedTerrainGrid>,
     /// Process-global MapClass fallback CellClass identity. Native owns this at
@@ -3030,6 +3037,7 @@ impl Simulation {
             terrain_costs: BTreeMap::new(),
             zone_grid: None,
             path_grid: None,
+            structure_navigation_cells: BTreeSet::new(),
             resolved_terrain: None,
             shared_cell_dummy: SharedCellDummy::fresh(),
             real_cell_bridge_flags_0x1180: RealCellBridgeFlags0x1180::default(),
@@ -4843,7 +4851,7 @@ impl Simulation {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return false;
         };
-        navigation::NavigationCaches {
+        self.structure_navigation_cells = navigation::NavigationCaches {
             terrain_costs: &mut self.terrain_costs,
             zones: &mut self.zone_grid,
             path: &mut self.path_grid,
@@ -4857,6 +4865,21 @@ impl Simulation {
             rules,
         );
         true
+    }
+
+    /// Publish marked-structure footprint changes into the path view only.
+    /// Native cell occupation marks are read live by the pathfinder, and the
+    /// zone map is built from terrain movement classes, which structures do
+    /// not change; costs and zone IDs therefore stay as they are.
+    fn publish_structure_navigation(&mut self, rules: &RuleSet) {
+        let current =
+            navigation::structure_movement_cells(&self.substrate.entities, &self.interner, rules);
+        let candidates: Vec<_> = current
+            .union(&self.structure_navigation_cells)
+            .copied()
+            .collect();
+        self.structure_navigation_cells = current.clone();
+        self.publish_recalculated_cells_with_presence(rules, &candidates, &current);
     }
 
     /// Finalize mutable overlay identity, passability, and canonical navigation
@@ -4873,6 +4896,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         navigation_rebuild_requested: bool,
+        structures_changed: bool,
     ) -> Vec<OverlayEntry> {
         let mut overlay_updates = Vec::new();
         let mut navigation_cells = Vec::new();
@@ -4912,6 +4936,9 @@ impl Simulation {
             if navigation_rebuild_requested {
                 let _ = self.rebuild_dynamic_navigation(rules);
             } else {
+                if structures_changed {
+                    self.publish_structure_navigation(rules);
+                }
                 self.publish_recalculated_cells(rules, &navigation_cells);
             }
         }
@@ -6464,7 +6491,8 @@ impl Simulation {
         self.frame_overlay_updates = self.finalize_frame_overlays_and_navigation(
             rules,
             overlay_registry,
-            destroyed_structure || bridge_state_changed || spawned_entities,
+            bridge_state_changed,
+            destroyed_structure || spawned_entities,
         );
         #[cfg(debug_assertions)]
         self.debug_assert_logic_membership_consistent();
