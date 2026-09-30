@@ -62,7 +62,7 @@ impl Simulation {
         // this startup pass uses.
         self.scenario_normal_lighting = input.normal_lighting;
         // Runtime rebuilds use this same sim-owned publication seam. Crate
-        // placement below pins the newly published path snapshot.
+        // placement below reads the newly published canonical grid.
         let mut navigation_published = self.rebuild_dynamic_navigation(input.rules);
 
         #[cfg(test)]
@@ -70,7 +70,6 @@ impl Simulation {
         let crates = if let Some(descriptor) = input.skirmish_session {
             let session = descriptor.session();
             let player_count = crate::sim::crates::human_player_count(self);
-            let initial_path = self.path_grid_snapshot();
             #[cfg(test)]
             {
                 skirmish_order[0] = Some(ScenarioPostMapStep::StartupCrates);
@@ -79,7 +78,6 @@ impl Simulation {
                 self,
                 input.rules,
                 input.overlay_registry,
-                initial_path.as_deref(),
                 player_count,
                 input.normal_lighting,
             );

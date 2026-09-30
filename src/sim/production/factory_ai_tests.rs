@@ -2,6 +2,7 @@ use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::sim::base_plan::{BasePlanNode, pack_base_plan_cell, unpack_base_plan_cell};
 use crate::sim::house_state::HouseState;
+use crate::sim::pathfinding::PathGrid;
 
 const RULES: &str = "[General]\nPlacementDelay=.05\nAIAlternateProductionCreditCutoff=10\n\
     [AI]\nBuildConst=YARD\n\

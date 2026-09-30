@@ -746,11 +746,18 @@ use crate::sim::world::Simulation;
 // 256 -> 257: bridge cells, anchor spans and endpoint records no longer save
 // unread group ids, per-cell destroyable or span damage copies; paradrop
 // missions no longer save the inert fog latch or LandingState mirror.
-// 257 -> 258: Houses retain the lifecycle-published House4FD150 base radius
-// beside their historical primary cell and ordered building lists. Foot688
-// retains the stopped/cannot-fire scan latch. Unit/Aircraft Mission leaves
-// also retain the inherited raw Foot68D, using the same owner as Infantry.
-const SNAPSHOT_VERSION: u32 = 258;
+// 257 -> 258: a piggyback stash saves the complete suspended locomotor object
+// instead of a separate runtime copy of its fields, and a locomotor no longer
+// saves the installed slot the stash's own kind already records.
+// 258 -> 259: bridge cells no longer save a bridgehead anchor class; the
+// bridgehead branch writes CellClass tiles and the draw reads them.
+// 259 -> 260: an entity no longer saves bridge_occupancy or a ground cell
+// enter order; the enter-order counter serves only the AirTracker.
+// 260 -> 261: an entity no longer saves the ObjectClass falling byte; the
+// parachute descent it saves is IsFallingDown.
+// 261 -> 262: the combined branch retains House4FD150 base radius, Foot688
+// stopped/cannot-fire latch and inherited Unit/Aircraft raw Foot68D.
+const SNAPSHOT_VERSION: u32 = 262;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -894,10 +901,6 @@ pub enum SnapshotRestoreError {
     },
     #[error("next object id {next_id} is not after the highest restored object id {highest_id}")]
     ObjectIdCounterBehind { next_id: u64, highest_id: u64 },
-    #[error(
-        "next occupancy-enter order {next_order} is not after the highest restored order {highest_order}"
-    )]
-    OccupancyOrderCounterBehind { next_order: u64, highest_order: u64 },
     #[error("LogicVector contains duplicate object id {object_id}")]
     DuplicateLogicIdentity { object_id: u64 },
     #[error("LogicVector object id {object_id} has no restored registry identity")]
@@ -3642,8 +3645,12 @@ mod tests {
         // 255 -> 256: no cached GetCurrentSpeed.
         // 256 -> 257: no bridge group/destroyable/span-damage copies or
         // inert paradrop latches.
-        // 257 -> 258: retained House4FD150 radius, Foot688 and inherited Foot68D.
-        assert_eq!(super::SNAPSHOT_VERSION, 258);
+        // 257 -> 258: the stash saves the complete suspended locomotor.
+        // 258 -> 259: no bridgehead anchor class.
+        // 259 -> 260: no bridge_occupancy or ground enter order.
+        // 260 -> 261: no falling byte beside the parachute descent.
+        // 261 -> 262: retained House radius, Foot688 and inherited Foot68D.
+        assert_eq!(super::SNAPSHOT_VERSION, 262);
     }
 
     #[test]
@@ -3962,7 +3969,7 @@ mod tests {
         let drive = locomotor.active_slope_transition_mut().unwrap();
         drive.snap(2, 40);
         drive.sample_process_entry(7, 49);
-        assert!(locomotor.begin_piggyback(LocomotorKind::Ship, MovementLayer::Ground, 50));
+        assert!(locomotor.begin_piggyback(LocomotorKind::Ship, 50));
         let ship = locomotor.active_slope_transition_mut().unwrap();
         ship.snap(4, 40);
         ship.sample_process_entry(9, 49);
@@ -4005,7 +4012,7 @@ mod tests {
             "the saved active timer starts two committed frames before session frame 51"
         );
         assert!(matches!(
-            loaded.piggyback.as_deref().map(|runtime| &runtime.payload),
+            loaded.piggyback.as_deref().map(|stashed| &stashed.runtime_payload),
             Some(LocomotorRuntimePayload::Drive(state))
                 if state.hash_fields() == (2, 7, 49, 3)
         ));
@@ -4041,7 +4048,6 @@ mod tests {
             &mut restored.substrate.occupancy,
             &mut restored.substrate.cell_occupation,
             &mut restored.substrate.raw_cell_occupation,
-            &mut restored.substrate.next_occupancy_enter_order,
             &mut restored.scenario_rng,
             52,
             52,
@@ -7323,7 +7329,7 @@ mod tests {
             } else {
                 TargetKind::Cell(index as u16, (index + 1) as u16)
             });
-            entity.set_object_is_falling_down_for_test(index as u8 + 1);
+            entity.set_falling_down_for_test(index & 1 == 0);
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
             if index == 0 {
                 entity.mission.apply_test_fixture(MissionTestFixture {
@@ -7361,7 +7367,7 @@ mod tests {
                 entity.suspended_attack_target, expected_suspended_target,
                 "suspended TargetKind variant and payload must round-trip"
             );
-            assert_eq!(entity.object_is_falling_down, index as u8 + 1);
+            assert_eq!(entity.is_falling_down(), index & 1 == 0);
         }
 
         let first = loaded.sim.substrate.entities.get(1).unwrap();

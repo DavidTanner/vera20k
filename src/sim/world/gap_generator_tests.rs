@@ -104,7 +104,7 @@ fn damage(sim: &mut Simulation, rules: &RuleSet, id: u64, amount: i32) {
 }
 
 fn refresh(sim: &mut Simulation, rules: &RuleSet) {
-    sim.refresh_fog(None, &vision::VisionConfig::default(), Some(rules));
+    sim.refresh_fog(&vision::VisionConfig::default(), Some(rules));
 }
 
 #[test]
@@ -236,7 +236,7 @@ pub(crate) fn gap_operational_power_loss_views() -> Vec<(
             .unwrap()
             .phase = crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
         live.set_logic_order_for_test(order);
-        live.advance_live_object_pass(Some(&rules), None, None)
+        live.advance_live_object_pass(Some(&rules), None)
             .expect("fixture frame must complete");
         assert_eq!(
             live.substrate
@@ -274,7 +274,7 @@ fn gap_operational_first_visit_creates_viewers_and_house_is_passive() {
     insert(&mut sim, 1, owner, "GAGAP", 12, 12);
     assert!(sim.fog.by_owner.is_empty());
     sim.set_logic_order_for_test(vec![1]);
-    sim.advance_live_object_pass(Some(&rules), None, None)
+    sim.advance_live_object_pass(Some(&rules), None)
         .expect("fixture frame must complete");
     assert!(sim.fog.is_cell_gap_covered(viewer, 12, 12));
     let saved = sim.fog.gap_sources.clone();
@@ -282,7 +282,7 @@ fn gap_operational_first_visit_creates_viewers_and_house_is_passive() {
     refresh(&mut sim, &rules);
     sim.reconcile_active_vision_structures(&rules);
     assert_eq!(sim.fog.gap_sources, saved);
-    sim.advance_live_object_pass(Some(&rules), None, None)
+    sim.advance_live_object_pass(Some(&rules), None)
         .expect("fixture frame must complete");
     assert!(sim.fog.gap_sources[&viewer].is_empty());
 }

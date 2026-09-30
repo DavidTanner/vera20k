@@ -12,7 +12,6 @@ use crate::sim::game_entity::BunkerLink;
 use crate::sim::mission::authority::{EntityReadyInputProvider, LiveReadyInputProvider};
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::ground_pose::object_center_coord_with_foundation;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::radio::{RadioMessage, RadioPayload, transmit};
 use crate::sim::world::{SimSoundEvent, Simulation};
 use crate::util::fixed_math::SIM_ONE;
@@ -133,12 +132,7 @@ pub(crate) fn emit_bunker_wall_sound(sim: &mut Simulation, building_id: u64, up:
 /// assigns a nearby destination and queues Move before clearing the building.
 /// The existing nearest-passable search and wall-animation projection remain
 /// bounded adapters; they are not a native execution comparison.
-pub fn release_normal(
-    sim: &mut Simulation,
-    building_id: u64,
-    rules: &RuleSet,
-    grid: Option<&PathGrid>,
-) {
+pub fn release_normal(sim: &mut Simulation, building_id: u64, rules: &RuleSet) {
     emit_bunker_wall_anim(sim, building_id, false, rules);
     emit_bunker_wall_sound(sim, building_id, false);
     let Some(unit_id) = sim
@@ -161,7 +155,7 @@ pub fn release_normal(
     #[cfg(test)]
     release_tests::record(sim, building_id, unit_id, "unit-link");
     power_and_force_release(sim, building_id, unit_id);
-    let cell = bunker_exit_cell(sim, building_id, grid);
+    let cell = bunker_exit_cell(sim, building_id);
     if let Some(cell) = cell {
         let terrain = sim.resolved_terrain.as_ref();
         if let Some(unit) = sim.substrate.entities.get_mut(unit_id) {
@@ -351,15 +345,11 @@ fn reset_bunker_idle(sim: &mut Simulation, building_id: u64) {
 /// gamemd exit anchor for the normal release: building NW corner + (-1 west,
 /// +1 south), then the nearest passable cell (modulo-spread pick). Falls back to
 /// the anchor cell when no path grid is available (headless tests).
-fn bunker_exit_cell(
-    sim: &Simulation,
-    building_id: u64,
-    grid: Option<&PathGrid>,
-) -> Option<(u16, u16)> {
+fn bunker_exit_cell(sim: &Simulation, building_id: u64) -> Option<(u16, u16)> {
     let b = sim.substrate.entities.get(building_id)?;
     let ax = b.position.rx as i32 - 1;
     let ay = b.position.ry as i32 + 1;
-    match grid {
+    match sim.path_grid() {
         Some(g) => crate::sim::miner::find_nearby_passable_cell_with_index(
             ax,
             ay,
@@ -590,7 +580,7 @@ mod tests {
     #[test]
     fn release_normal_forces_without_teleporting_queues_move_and_plays_down_sound() {
         let mut sim = installed_sim();
-        release_normal(&mut sim, 2, &rules(), None);
+        release_normal(&mut sim, 2, &rules());
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.bunker_link, BunkerLink::None);
         assert!(unit.in_logic_vector, "unit revealed");
@@ -694,7 +684,7 @@ mod tests {
     fn release_normal_emits_one_walls_down_anim_event() {
         let mut sim = installed_sim();
         sim.bunker_wall_events.clear();
-        release_normal(&mut sim, 2, &rules(), None);
+        release_normal(&mut sim, 2, &rules());
         assert_eq!(
             down_anim_events(&sim),
             1,
@@ -733,7 +723,7 @@ mod tests {
         sim.bunker_wall_events.clear();
         // Between native ConditionRed25% and ConditionYellow50%: walls use yellow.
         sim.substrate.entities.get_mut(2).unwrap().health.current = 400;
-        release_normal(&mut sim, 2, &rules(), None);
+        release_normal(&mut sim, 2, &rules());
         let ev = sim.bunker_wall_events.iter().find(|e| !e.up).unwrap();
         assert!(
             ev.damaged,

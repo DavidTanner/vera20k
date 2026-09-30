@@ -10,8 +10,6 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{DeathEffects, UnderAttackEvent};
 use crate::sim::intern::InternedId;
-use crate::sim::pathfinding::PathGrid;
-use std::sync::Arc;
 
 enum DamageDelivery {
     Immediate,
@@ -31,7 +29,6 @@ pub(crate) struct DamageCommitReceipt {
     pub(crate) fatal_ids: Vec<u64>,
     pub(super) structure_destroyed: bool,
     pub(crate) bridge_state_changed: bool,
-    pub(super) path_grid: Option<Arc<PathGrid>>,
 }
 
 impl DamageConsequences {
@@ -158,8 +155,7 @@ impl DamageConsequences {
             );
         }
 
-        let path_grid =
-            world.finish_terrain_navigation_changes(rules, &terrain_navigation_changed_cells);
+        world.finish_terrain_navigation_changes(rules, &terrain_navigation_changed_cells);
         if world.session.game_options.super_weapons && effects.structure_destroyed {
             let mut refreshed = Vec::new();
             for &(owner, category) in &dead_infos {
@@ -218,7 +214,6 @@ impl DamageConsequences {
             fatal_ids: effects.despawned_ids,
             structure_destroyed: effects.structure_destroyed,
             bridge_state_changed,
-            path_grid,
         }
     }
 }

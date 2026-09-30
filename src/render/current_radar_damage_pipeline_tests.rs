@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::map::bridge_facts::{Axis, BRIDGE_FLAG_ANCHOR_SELF, BridgeheadAnchorClass};
+use crate::map::bridge_facts::{Axis, BRIDGE_FLAG_ANCHOR_SELF};
 use crate::map::entities::EntityCategory;
 use crate::map::playfield::PlayfieldBounds;
 use crate::map::resolved_terrain::{RadarColorMetadata, ResolvedTerrainCell};
@@ -64,7 +64,6 @@ fn bridge_cell(role: BridgeCellRole, span: Option<u16>, overlay_byte: u8) -> Bri
         role,
         anchor_span_id: span,
         overlay_byte,
-        bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
     }
 }
 
@@ -334,7 +333,6 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
             target_ry: CENTER.1,
         },
         Some(&rules),
-        None,
     ));
     let mut radar = projection(&sim, &grid);
     let mut last_generation = 0;
@@ -472,7 +470,6 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
             .simulation
             .rebuild_dynamic_navigation(&runtime.resources.rules)
     );
-    let grid = runtime.simulation.path_grid_snapshot();
     assert!(runtime.simulation.apply_command(
         "Americans",
         &Command::CaptureBuilding {
@@ -480,9 +477,7 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
             target_building_id: cabhut,
         },
         Some(&runtime.resources.rules),
-        grid.as_deref(),
     ));
-    drop(grid);
     for _ in 0..100 {
         let _ = runtime
             .advance_frame(&[], 67, TickLane::Ordinary)

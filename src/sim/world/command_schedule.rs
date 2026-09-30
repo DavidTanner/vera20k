@@ -6,7 +6,6 @@
 //! remains on Simulation for persistence and replay.
 
 use super::Simulation;
-use std::sync::Arc;
 
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::LocomotorKind;
@@ -121,17 +120,11 @@ impl Simulation {
         &mut self,
         cmd: &CommandEnvelope,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> (bool, bool, Option<InternedId>) {
         let cmd_owner_str = self.interner.resolve(cmd.owner).to_string();
-        let applied = self.apply_command_with_overlays(
-            &cmd_owner_str,
-            &cmd.payload,
-            rules,
-            path_grid,
-            overlay_registry,
-        );
+        let applied =
+            self.apply_command_with_overlays(&cmd_owner_str, &cmd.payload, rules, overlay_registry);
         let placed_building_owner = self.successful_non_wall_placement_owner(cmd, applied, rules);
         let synchronous_deploy = applied
             && matches!(cmd.payload, Command::DeployMcv { entity_id }
@@ -156,19 +149,6 @@ impl Simulation {
                 .and_then(|rules| rules.object(self.interner.resolve(type_id)))
                 .is_some_and(|object| !object.wall))
         .then_some(command.owner)
-    }
-
-    pub(super) fn is_wall_placement_command(
-        &self,
-        command: &Command,
-        rules: Option<&RuleSet>,
-    ) -> bool {
-        let Command::PlaceReadyBuilding { type_id, .. } = command else {
-            return false;
-        };
-        rules
-            .and_then(|rules| rules.object(self.interner.resolve(*type_id)))
-            .is_some_and(|object| object.wall)
     }
 
     fn command_uses_megamission(command: &Command) -> bool {
@@ -389,12 +369,8 @@ impl Simulation {
 
     /// Adjust consecutive same-target movement runs after their house's
     /// non-megamission scan, immediately before staged command execution.
-    pub(super) fn adjust_staged_megamission_destinations(
-        &self,
-        commands: &mut [CommandEnvelope],
-        path_grid: Option<&PathGrid>,
-    ) {
-        let (Some(grid), Some(zone_grid)) = (path_grid, self.zone_grid.as_ref()) else {
+    pub(super) fn adjust_staged_megamission_destinations(&self, commands: &mut [CommandEnvelope]) {
+        let (Some(grid), Some(zone_grid)) = (self.path_grid(), self.zone_grid.as_ref()) else {
             return;
         };
         let mut run_start = 0;
@@ -550,14 +526,12 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        path_grid: Option<Arc<PathGrid>>,
         execute_tick: u64,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> (usize, bool, Vec<InternedId>) {
         let mut executed_commands = 0usize;
         let mut spawned_entities = false;
         let mut placed_building_owners = Vec::new();
-        let mut tail_path_grid = path_grid.or_else(|| self.path_grid.clone());
 
         for owner in self.due_command_house_order(commands, execute_tick) {
             for command in commands.iter().filter(|command| {
@@ -566,17 +540,8 @@ impl Simulation {
                     && !Self::command_uses_frame_ingress(&command.payload)
                     && !Self::command_uses_megamission(&command.payload)
             }) {
-                let (applied, spawned, placed_owner) = self.apply_one_due_command(
-                    command,
-                    rules,
-                    tail_path_grid.as_deref(),
-                    overlay_registry,
-                );
-                if matches!(command.payload, Command::SellWallAtCell { .. }) {
-                    tail_path_grid = self.path_grid.clone();
-                } else if applied && self.is_wall_placement_command(&command.payload, rules) {
-                    tail_path_grid = self.path_grid.clone().or(tail_path_grid);
-                }
+                let (_, spawned, placed_owner) =
+                    self.apply_one_due_command(command, rules, overlay_registry);
                 spawned_entities |= spawned;
                 placed_building_owners.extend(placed_owner);
                 executed_commands += 1;
@@ -591,14 +556,10 @@ impl Simulation {
                 })
                 .cloned()
                 .collect::<Vec<_>>();
-            self.adjust_staged_megamission_destinations(&mut staged, tail_path_grid.as_deref());
+            self.adjust_staged_megamission_destinations(&mut staged);
             for command in &staged {
-                let (_, spawned, placed_owner) = self.apply_one_due_command(
-                    command,
-                    rules,
-                    tail_path_grid.as_deref(),
-                    overlay_registry,
-                );
+                let (_, spawned, placed_owner) =
+                    self.apply_one_due_command(command, rules, overlay_registry);
                 spawned_entities |= spawned;
                 placed_building_owners.extend(placed_owner);
                 executed_commands += 1;

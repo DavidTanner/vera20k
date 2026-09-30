@@ -215,7 +215,6 @@ pub(crate) fn current_cursor_feedback_kind(state: &AppState) -> Option<CursorFee
             best_id,
             hover,
             state.rules(),
-            sim.path_grid(),
             state.overlay_registry(),
         );
         return Some(kind);
@@ -444,7 +443,6 @@ fn capability_cursor_for_hover(
     best_id: Option<u64>,
     hover: &crate::app::input::entity_pick::HoverTargetKindWithId,
     rules: Option<&crate::rules::ruleset::RuleSet>,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> CursorFeedbackKind {
     use crate::map::entities::EntityCategory;
@@ -602,7 +600,6 @@ fn capability_cursor_for_hover(
                         rules,
                         best_id,
                         hover.stable_id,
-                        path_grid,
                     ) {
                         return CursorFeedbackKind::Enter;
                     }
@@ -1408,7 +1405,6 @@ mod tests {
             &hover,
             Some(&rules),
             None,
-            None,
         );
 
         // 7. Dump the gate inputs so we can see which condition fails
@@ -1462,7 +1458,6 @@ mod tests {
             Some(miner_id),
             &hover,
             Some(&rules),
-            None,
             None,
         );
         assert_eq!(
@@ -1650,7 +1645,6 @@ mod tests {
                     Some(actor_id),
                     &hover,
                     Some(&rules),
-                    None,
                     None,
                 ),
                 CursorFeedbackKind::EnemyUnit,
@@ -2052,7 +2046,7 @@ mod tests {
             kind,
             stable_id: target,
         };
-        capability_cursor_for_hover(sim, &[actor], Some(actor), &hover, Some(rules), None, None)
+        capability_cursor_for_hover(sim, &[actor], Some(actor), &hover, Some(rules), None)
     }
 
     /// `InfantryClass::What_Action_OnObject`: a Crazy Ivan offers IvanBomb on

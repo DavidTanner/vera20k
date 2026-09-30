@@ -368,7 +368,6 @@ fn deploy_then_undeploy_returns_the_mcv_to_its_original_cell() {
             "Americans",
             &Command::UndeployBuilding { entity_id: yard },
             Some(&rules),
-            None,
         ),
         "the yard we just deployed should undeploy"
     );
@@ -901,7 +900,6 @@ fn conyard_redeploy_runtime_rejects_when_mcv_redeploy_disabled() {
         "Americans",
         &Command::UndeployBuilding { entity_id: yard },
         Some(&rules),
-        None,
     );
 
     assert!(!applied);
@@ -928,7 +926,6 @@ fn conyard_redeploy_runtime_rejects_non_human_owner() {
         "Americans",
         &Command::UndeployBuilding { entity_id: yard },
         Some(&rules),
-        None,
     );
 
     assert!(!applied);
@@ -1026,7 +1023,7 @@ fn dispatch(sim: &mut Simulation, _owner: &str, cmd: Command, rules: &RuleSet) {
 /// missing path_grid for Move). For deploy gate tests, the only thing the
 /// gate cares about is that the early-return short-circuits the handler.
 fn apply(sim: &mut Simulation, owner: &str, cmd: &Command, rules: &RuleSet) -> bool {
-    sim.apply_command(owner, cmd, Some(rules), None)
+    sim.apply_command(owner, cmd, Some(rules))
 }
 
 fn tick_n(sim: &mut Simulation, rules: &RuleSet, n: u32) {
@@ -1300,7 +1297,6 @@ fn move_works_after_undeploy_completes() {
             queue: false,
         },
         Some(&rules),
-        None,
     );
     assert!(
         sim.substrate.entities.get(gi).unwrap().dock_state.is_none(),

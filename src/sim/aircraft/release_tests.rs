@@ -104,7 +104,7 @@ fn aircraft_mission_entry_debits_match_original_instructions_and_save_restore() 
         restored.restore_after_snapshot_load().unwrap();
         assert_eq!(sim.state_hash(), restored.state_hash());
         for world in [&mut sim, &mut restored] {
-            tick_aircraft_missions(world, &rules, None);
+            tick_aircraft_missions(world, &rules);
             assert_native(world, row);
         }
         assert_eq!(sim.state_hash(), restored.state_hash());
@@ -161,7 +161,7 @@ fn aircraft_pending_charge_is_hashed_and_init_does_not_clear_it() {
     assert_ne!(before, sim.state_hash());
     sim.substrate.entities.get_mut(1).unwrap().aircraft_mission =
         Some(AircraftMission::Attack { sub_state: 0 });
-    tick_aircraft_missions(&mut sim, &rules, None);
+    tick_aircraft_missions(&mut sim, &rules);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(entity.aircraft_ammo.as_ref().unwrap().release_pending());
     assert_eq!(entity.aircraft_ammo.as_ref().unwrap().current, 2);
@@ -176,7 +176,7 @@ fn aircraft_mission_request_does_not_invent_a_successful_release() {
     entity.aircraft_mission = Some(AircraftMission::Attack { sub_state: 4 });
     entity.attack_target = Some(AttackTarget::for_cell(10, 9));
     for _ in 0..4 {
-        tick_aircraft_missions(&mut sim, &rules, None);
+        tick_aircraft_missions(&mut sim, &rules);
         let entity = sim.substrate.entities.get(1).unwrap();
         assert_eq!(entity.aircraft_ammo.as_ref().unwrap().current, 1);
         assert!(!entity.aircraft_ammo.as_ref().unwrap().release_pending());

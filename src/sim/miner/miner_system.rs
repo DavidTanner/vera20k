@@ -21,7 +21,6 @@ use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerKind, MinerState, Re
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_map::{ZONE_INVALID, ZoneGrid};
 use crate::sim::world::{GroundMove, Simulation};
 use crate::util::fixed_math::SimFixed;
@@ -110,6 +109,7 @@ mod gsi_04_03b_tests {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotor::LocomotorState;
+    use crate::sim::pathfinding::PathGrid;
 
     fn empty_rules() -> RuleSet {
         RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str("")).expect("empty rules")
@@ -295,15 +295,9 @@ mod gsi_04_03b_tests {
         }
 
         let grid = PathGrid::new(5, 5);
+        sim.install_fixture_path_grid(Some(&grid));
         let shared_head = (2, 2);
-        issue_move_if_idle(
-            &mut sim,
-            None,
-            &grid,
-            1,
-            shared_head,
-            SimFixed::from_num(128),
-        );
+        issue_move_if_idle(&mut sim, None, 1, shared_head, SimFixed::from_num(128));
         assert!(
             sim.substrate
                 .entities
@@ -335,14 +329,7 @@ mod gsi_04_03b_tests {
             2,
         ));
 
-        issue_move_if_idle(
-            &mut sim,
-            None,
-            &grid,
-            2,
-            shared_head,
-            SimFixed::from_num(128),
-        );
+        issue_move_if_idle(&mut sim, None, 2, shared_head, SimFixed::from_num(128));
         sim.process_ground_locomotor_for_test(2, None, Some(&grid), None)
             .expect("the second miner Process observes the existing reservation");
 
@@ -545,17 +532,11 @@ pub(crate) fn unit_ai_clear_harvesting(sim: &mut Simulation, id: u64) {
 /// live-object order, with the legacy stable-id fallback for direct-insert
 /// fixtures that never build a LogicVector.
 #[cfg(test)]
-pub(crate) fn tick_miners(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    config: &MinerConfig,
-    path_grid: Option<&PathGrid>,
-) {
+pub(crate) fn tick_miners(sim: &mut Simulation, rules: &RuleSet, config: &MinerConfig) {
     tick_miners_test_walk(
         sim,
         rules,
         config,
-        path_grid,
         Some(crate::sim::tiberium::test_support::overlay_registry()),
     );
 }
@@ -565,7 +546,6 @@ pub(super) fn tick_miners_test_walk(
     sim: &mut Simulation,
     rules: &RuleSet,
     config: &MinerConfig,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) {
     let live_order = sim.live_object_order_snapshot();
@@ -579,7 +559,6 @@ pub(super) fn tick_miners_test_walk(
             sim,
             rules,
             config,
-            path_grid,
             overlay_registry,
             id,
         );
@@ -590,7 +569,6 @@ pub(super) fn process_miner(
     sim: &mut Simulation,
     rules: &RuleSet,
     config: &MinerConfig,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
 ) {
@@ -617,10 +595,8 @@ pub(super) fn process_miner(
 
     let state_before = format!("{:?}", snap.state);
     match snap.state {
-        MinerState::SearchOre => harvest_looking(sim, rules, path_grid, overlay_registry, snap),
-        MinerState::Harvest => {
-            harvest_cutting(sim, rules, config, path_grid, overlay_registry, snap)
-        }
+        MinerState::SearchOre => harvest_looking(sim, rules, overlay_registry, snap),
+        MinerState::Harvest => harvest_cutting(sim, rules, config, overlay_registry, snap),
         // Native return/finding-home state has no per-frame exit: every
         // dispatch leaves through the default Rate epilogue. ForcedReturn is
         // the VERA-internal player-order cursor, outside the native switch,
@@ -631,7 +607,7 @@ pub(super) fn process_miner(
         }
         MinerState::Dock => handle_handoff(sim, snap),
         MinerState::WaitNoOre => {
-            if handle_going_to_idle(sim, rules, path_grid, overlay_registry, snap) {
+            if handle_going_to_idle(sim, rules, overlay_registry, snap) {
                 // Native state 4 has no `return 1` exit: every dispatch falls
                 // into the default Rate epilogue (`0x0073EF97`).
                 arm_rate_epilogue(sim, rules, snap);
@@ -683,7 +659,6 @@ pub(super) fn process_miner(
 fn harvest_looking(
     sim: &mut Simulation,
     rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
 ) {
@@ -698,7 +673,7 @@ fn harvest_looking(
         .get(id)
         .and_then(|entity| entity.archive_target());
     if let Some(archive) = archive {
-        assign_archive_destination(sim, rules, path_grid, id, archive);
+        assign_archive_destination(sim, rules, id, archive);
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.set_archive_target(None);
         }
@@ -715,14 +690,7 @@ fn harvest_looking(
         sim.set_unit_null_destination(id, Some(rules));
     }
     let range = super::ore_scan::scan_cells(rules.general.tiberium_long_scan);
-    if super::ore_scan::search_for_tiberium_and_move(
-        sim,
-        rules,
-        path_grid,
-        overlay_registry,
-        id,
-        range,
-    ) {
+    if super::ore_scan::search_for_tiberium_and_move(sim, rules, overlay_registry, id, range) {
         snap.miner.harvesting = true;
         arm_stage(&mut snap.miner, sim.session.binary_frame, 2);
         snap.state = MinerState::Harvest;
@@ -756,7 +724,7 @@ fn harvest_looking(
             snap.dispatch_delay = NO_ORE_DELAY;
             return;
         };
-        assign_archive_destination(sim, rules, path_grid, id, archive);
+        assign_archive_destination(sim, rules, id, archive);
     }
     arm_rate_epilogue(sim, rules, snap);
 }
@@ -769,12 +737,11 @@ const NO_ORE_DELAY: i32 = 0x69;
 fn assign_archive_destination(
     sim: &mut Simulation,
     rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
     id: u64,
     archive: crate::sim::combat::TargetKind,
 ) {
-    if let (crate::sim::combat::TargetKind::Cell(x, y), Some(grid)) = (archive, path_grid) {
-        let _ = issue_stock_miner_drive_move(sim, rules, grid, id, (x, y));
+    if let crate::sim::combat::TargetKind::Cell(x, y) = archive {
+        let _ = issue_stock_miner_drive_move(sim, rules, id, (x, y));
     }
 }
 
@@ -811,7 +778,6 @@ fn harvest_cutting(
     sim: &mut Simulation,
     rules: &RuleSet,
     config: &MinerConfig,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
 ) {
@@ -837,14 +803,8 @@ fn harvest_cutting(
         }
         return;
     }
-    let found = super::ore_scan::search_for_tiberium_and_move(
-        sim,
-        rules,
-        path_grid,
-        overlay_registry,
-        id,
-        range,
-    );
+    let found =
+        super::ore_scan::search_for_tiberium_and_move(sim, rules, overlay_registry, id, range);
     let driving = sim
         .substrate
         .entities
@@ -1183,7 +1143,6 @@ fn handle_handoff(sim: &mut Simulation, snap: &MinerSnapshot) {
 fn handle_going_to_idle(
     sim: &mut Simulation,
     rules: &RuleSet,
-    path_grid: Option<&PathGrid>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
 ) -> bool {
@@ -1193,14 +1152,13 @@ fn handle_going_to_idle(
         .is_none_or(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero));
     if !human {
         snap.state = MinerState::SearchOre;
-        harvest_looking(sim, rules, path_grid, overlay_registry, snap);
+        harvest_looking(sim, rules, overlay_registry, snap);
         return false;
     }
-    if let Some(grid) = path_grid
-        && let Some(refinery_sid) = refinery_building_in_cell(sim, rules, (snap.rx, snap.ry))
-        && let Some(exit) = building_nearby_passable_cell(sim, rules, refinery_sid, grid)
+    if let Some(refinery_sid) = refinery_building_in_cell(sim, rules, (snap.rx, snap.ry))
+        && let Some(exit) = building_nearby_passable_cell(sim, rules, refinery_sid)
     {
-        issue_move_if_idle(sim, Some(rules), grid, snap.entity_id, exit, snap.speed);
+        issue_move_if_idle(sim, Some(rules), snap.entity_id, exit, snap.speed);
     }
     queue_guard_from_harvest(sim, snap);
     true
@@ -1265,8 +1223,8 @@ fn building_nearby_passable_cell(
     sim: &Simulation,
     rules: &RuleSet,
     building_sid: u64,
-    grid: &PathGrid,
 ) -> Option<(u16, u16)> {
+    let grid = sim.path_grid()?;
     let building = sim.substrate.entities.get(building_sid)?;
     let coord = object_get_coords(
         building,
@@ -1679,10 +1637,12 @@ fn neighbour_reachable(
 pub(crate) fn issue_stock_miner_drive_move(
     sim: &mut Simulation,
     rules: &RuleSet,
-    grid: &PathGrid,
     entity_id: u64,
     target: (u16, u16),
 ) -> bool {
+    let Some(grid) = sim.path_grid() else {
+        return false;
+    };
     if target.0 >= grid.width() || target.1 >= grid.height() {
         return false;
     }
@@ -1700,7 +1660,6 @@ pub(crate) fn issue_stock_miner_drive_move(
     };
 
     let issued = sim.issue_ground_move(
-        grid,
         GroundMove {
             entity_id,
             target,
@@ -1742,11 +1701,13 @@ pub(crate) fn issue_stock_miner_drive_move(
 pub(crate) fn issue_move_if_idle(
     sim: &mut Simulation,
     rules: Option<&RuleSet>,
-    grid: &PathGrid,
     entity_id: u64,
     target: (u16, u16),
     speed: SimFixed,
 ) {
+    let Some(grid) = sim.path_grid() else {
+        return;
+    };
     if target.0 >= grid.width() || target.1 >= grid.height() {
         return;
     }
@@ -1769,7 +1730,6 @@ pub(crate) fn issue_move_if_idle(
     });
     if !already {
         let _ = sim.issue_ground_move(
-            grid,
             GroundMove {
                 entity_id,
                 target,
@@ -1880,6 +1840,7 @@ mod harvest_scan_dispatch_tests {
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::mission::MissionType;
+    use crate::sim::pathfinding::PathGrid;
 
     const MINER_ID: u64 = 1;
 
@@ -2042,11 +2003,12 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         spawn_search_miner(&mut sim, (10, 10));
         seed_ore(&mut sim, (10, 14));
 
         let scenario_before = sim.rng_state().scenario;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(
@@ -2078,11 +2040,12 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         spawn_search_miner(&mut sim, (10, 10));
         seed_ore(&mut sim, (10, 10));
 
         let scenario_before = sim.rng_state().scenario;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert!(entity.movement_target.is_none(), "nothing to drive to");
@@ -2100,6 +2063,7 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(512, 512);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         spawn_search_miner(&mut sim, (10, 10));
         // Well outside TiberiumLongScan — the only ore on the map, and gamemd's
         // bounded scan can never reach it.
@@ -2108,7 +2072,7 @@ mod harvest_scan_dispatch_tests {
         assert!(rules.general.tiberium_long_scan >> 8 < 300);
 
         let scenario_before = sim.rng_state().scenario;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.miner_state(), Some(MinerState::WaitNoOre));
@@ -2134,11 +2098,12 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         spawn_search_miner(&mut sim, (10, 10));
         let owner = sim.interner.intern("Americans");
         assert!(!sim.houses[&owner].harvester_no_ore);
 
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
         {
             let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
             assert_eq!(entity.miner_state(), Some(MinerState::WaitNoOre));
@@ -2155,7 +2120,7 @@ mod harvest_scan_dispatch_tests {
         seed_ore(&mut sim, (10, 14));
         sim.session.binary_frame += 105;
         let scenario_before = sim.rng_state().scenario;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.queued().known(), Some(MissionType::Guard));
@@ -2184,7 +2149,7 @@ mod harvest_scan_dispatch_tests {
         // On Guard the Harvest dispatch declines the miner: the ore stays
         // untouched and no destination appears.
         sim.session.binary_frame += 200;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.current().known(), Some(MissionType::Guard));
         assert_eq!(entity.navigation.nav_com, None);
@@ -2206,6 +2171,7 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         // A computer house, made before the refinery counts into it.
         let owner = sim.interner.intern("Americans");
         sim.houses.insert(
@@ -2215,7 +2181,7 @@ mod harvest_scan_dispatch_tests {
         spawn_search_miner_without_refinery(&mut sim, (10, 10));
         spawn_owned_refinery(&mut sim, REFINERY_NW);
 
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
         {
             let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
             assert_eq!(entity.miner_state(), Some(MinerState::WaitNoOre));
@@ -2226,7 +2192,7 @@ mod harvest_scan_dispatch_tests {
         // Second miss: back through the scan, another 105-frame wait, no
         // Guard queue.
         sim.session.binary_frame += 105;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
         {
             let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
             assert_eq!(entity.mission.queued().known(), None, "no Guard park");
@@ -2237,7 +2203,7 @@ mod harvest_scan_dispatch_tests {
         // Ore appears: the next re-scan finds it.
         seed_ore(&mut sim, (10, 14));
         sim.session.binary_frame += 105;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.queued().known(), None);
         assert_eq!(
@@ -2263,12 +2229,13 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         spawn_search_miner_without_refinery(&mut sim, (10, 10));
         register_house(&mut sim);
         seed_ore(&mut sim, (10, 14));
 
         let scenario_before = sim.rng_state().scenario;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.queued().known(), Some(MissionType::Guard));
@@ -2294,13 +2261,14 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         // Standing on the stock pad cell (NW + (3, 1)) inside the footprint.
         let pad = (REFINERY_NW.0 + 3, REFINERY_NW.1 + 1);
         spawn_search_miner(&mut sim, pad);
 
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
         sim.session.binary_frame += 105;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.queued().known(), Some(MissionType::Guard));
@@ -2330,11 +2298,12 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         spawn_search_miner(&mut sim, (10, 10));
 
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
         sim.session.binary_frame += 105;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
         let now = sim.session.binary_frame;
         sim.mission_host_promote(MINER_ID, now, &rules);
         assert_eq!(
@@ -2357,7 +2326,6 @@ mod harvest_scan_dispatch_tests {
                 target_ry: 14,
             },
             Some(&rules),
-            Some(&grid),
         );
         assert!(applied);
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
@@ -2384,7 +2352,7 @@ mod harvest_scan_dispatch_tests {
 
         // The Harvest handler dispatches again and drives to the ordered cell.
         sim.session.binary_frame += 1;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.current().known(), Some(MissionType::Harvest));
         assert_eq!(
@@ -2426,11 +2394,12 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         // Refinery centre = (3072, 2944) leptons; cell (16, 11) is 1152
         // leptons (4.5 cells) east of it.
         spawn_returning_war_miner(&mut sim, (16, 11));
 
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.miner_state(), Some(MinerState::Dock));
@@ -2506,7 +2475,7 @@ mod harvest_scan_dispatch_tests {
         });
         sim.playfield_size_height = Some(64);
         sim.path_grid = Some(std::sync::Arc::new(grid.clone()));
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.miner_state(), Some(MinerState::ReturnToRefinery));
@@ -2531,11 +2500,12 @@ mod harvest_scan_dispatch_tests {
         let config = MinerConfig::from_rules(&rules);
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         // Cell (14, 11): 640 leptons (2.5 cells) east of the centre.
         spawn_returning_war_miner(&mut sim, (14, 11));
         spawn_slot_holder(&mut sim);
 
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.miner_state(), Some(MinerState::ReturnToRefinery));
@@ -2547,7 +2517,7 @@ mod harvest_scan_dispatch_tests {
         // Slot frees: the next dispatch's HELLO is accepted and hands off.
         crate::sim::miner::miner_dock::break_contact(&mut sim, BLOCKER_ID, REFINERY_ID);
         sim.session.binary_frame += 20;
-        tick_miners(&mut sim, &rules, &config, Some(&grid));
+        tick_miners(&mut sim, &rules, &config);
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.miner_state(), Some(MinerState::Dock));
         assert_eq!(entity.radio_contacts.slot(0), Some(REFINERY_ID));

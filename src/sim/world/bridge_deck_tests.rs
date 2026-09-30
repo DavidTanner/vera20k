@@ -163,7 +163,7 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
     sim.substrate
         .cell_occupation
         .reconcile_entity(sim.substrate.entities.get(newer).unwrap());
-    let next_order = sim.substrate.next_occupancy_enter_order.current();
+    let next_order = sim.substrate.next_air_tracker_order.current();
     let raw_before = sim.substrate.raw_cell_occupation.clone();
     let mut smudge = crate::sim::smudge_grid::SmudgeGrid::new(10, 10);
     let decal = crate::sim::smudge_grid::SmudgeCell {
@@ -183,19 +183,15 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
         assert!(cell.snapshot_layer(MovementLayer::Bridge).is_empty());
         assert_eq!(cell.snapshot_layer(MovementLayer::Ground), expected);
     }
-    for (offset, id) in [newer, older, building].into_iter().enumerate() {
+    for id in [newer, older, building] {
         let object = sim.substrate.entities.get(id).unwrap();
         assert!(!object.on_bridge && object.lifecycle.cell_marked);
         assert_eq!(
             object.position.z, 0,
             "existing represented ground snap retained"
         );
-        assert_eq!(object.occupancy_enter_order, next_order + offset as u64);
     }
-    assert_eq!(
-        sim.substrate.next_occupancy_enter_order.current(),
-        next_order + 3
-    );
+    assert_eq!(sim.substrate.next_air_tracker_order.current(), next_order);
     let twin = sim.substrate.entities.get(unmarked).unwrap();
     assert!(twin.on_bridge && twin.lifecycle.in_limbo && !twin.lifecycle.cell_marked);
     assert_eq!(twin.position.z, 4);
@@ -291,8 +287,9 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
     );
     assert_eq!(restored.substrate.raw_cell_occupation, raw_before);
     assert_eq!(
-        restored.substrate.next_occupancy_enter_order.current(),
-        next_order + 3
+        restored.substrate.next_air_tracker_order.current(),
+        next_order,
+        "ground list entries do not draw AirTracker orders"
     );
     for (x, y, layer) in [
         (4, 4, MovementLayer::Ground),

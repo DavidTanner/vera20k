@@ -29,7 +29,6 @@ use crate::sim::occupancy::{
 };
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
-use crate::sim::world::EnterOrderCounter;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 use crate::util::lepton::{self, CELL_CENTER_LEPTON};
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, sqrt_approx_f32};
@@ -249,7 +248,6 @@ pub(crate) fn tick_active_tube_object(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rules: Option<&RuleSet>,
     interner: &StringInterner,
     rng: &mut SimRng,
@@ -288,7 +286,6 @@ pub(crate) fn tick_active_tube_object(
             occupancy,
             cell_occupation,
             raw_cell_occupation,
-            next_occupancy_enter_order,
             rng,
             native_frame,
             scatters,
@@ -326,7 +323,6 @@ pub(crate) fn tick_active_tube_object(
             occupancy,
             cell_occupation,
             raw_cell_occupation,
-            next_occupancy_enter_order,
             rng,
             native_frame,
             scatters,
@@ -387,7 +383,6 @@ fn finalize_tube_object(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
     rng: &mut SimRng,
     native_frame: u32,
     scatters: &mut ScatterRequests,
@@ -491,7 +486,6 @@ fn finalize_tube_object(
         occupancy,
         cell_occupation,
         raw_cell_occupation,
-        next_occupancy_enter_order,
     );
 
     if category == EntityCategory::Unit {
@@ -506,7 +500,6 @@ fn put_after_tube(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    next_occupancy_enter_order: &mut EnterOrderCounter,
 ) {
     let Some(entity) = entities.get_mut(entity_id) else {
         return;
@@ -537,7 +530,6 @@ fn put_after_tube(
         }
         _ => {}
     }
-    entity.occupancy_enter_order = next_occupancy_enter_order.next();
     entity.lifecycle.cell_marked = true;
 }
 
@@ -915,7 +907,6 @@ mod tests {
                 &mut occupancy,
                 &mut CellOccupationGrid::new(),
                 &mut RawCellOccupationGrid::new(),
-                &mut EnterOrderCounter::new(),
                 &mut SimRng::new(7),
                 21,
                 &mut ScatterRequests::default(),
@@ -1167,7 +1158,6 @@ mod tests {
             &mut OccupancyGrid::new(),
             &mut CellOccupationGrid::new(),
             &mut RawCellOccupationGrid::new(),
-            &mut EnterOrderCounter::new(),
             Some(&rules),
             &crate::sim::intern::test_interner(),
             &mut SimRng::new(7),

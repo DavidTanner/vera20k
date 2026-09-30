@@ -838,10 +838,21 @@ pub(crate) fn commit_entities(
                     .unwrap_or_else(|cause| {
                         panic!("damage Scatter destination for {target_id}: {cause}")
                     });
-                if !walk {
-                    // Residual: non-Walk and JumpJet's class-switching setter
-                    // still use the prior compatibility handoff. This is not
-                    // a second implementation of the migrated Walk branch.
+                // A Teleport man's setter is represented: a false answer is its
+                // Move_To's refusal (`0x0071820F`), which stands.
+                let teleport = world
+                    .substrate
+                    .entities
+                    .get(target_id)
+                    .and_then(|target| target.locomotor.as_ref())
+                    .is_some_and(|locomotor| {
+                        locomotor.active_kind()
+                            == crate::rules::locomotor_type::LocomotorKind::Teleport
+                    });
+                if !walk && !teleport {
+                    // Residual: the Jumpjet class setter still uses the prior
+                    // compatibility handoff. This is not a second
+                    // implementation of the migrated Walk branch.
                     let target = world.substrate.entities.get_mut(target_id).unwrap();
                     crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
                         target,

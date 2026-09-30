@@ -139,7 +139,7 @@ impl Simulation {
             return;
         }
         actor.movement_target = None;
-        self.complete_pending_track_order(id, rules);
+        self.complete_pending_order(id, rules);
     }
 
     /// Rust bookkeeping, no native counterpart: Process_Movement runs through

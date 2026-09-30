@@ -2,7 +2,6 @@
 //! stuck recovery, and infantry sub-cell mechanics using minimal simulation setups.
 
 use super::track_head::committed_track_head;
-use crate::sim::movement::locomotion::LocomotorSlot;
 
 use super::*;
 use crate::map::entities::EntityCategory;
@@ -99,7 +98,6 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
             &mut sim.substrate.occupancy,
             &mut sim.substrate.cell_occupation,
             &mut sim.substrate.raw_cell_occupation,
-            &mut sim.substrate.next_occupancy_enter_order,
             &mut sim.scenario_rng,
             u64::from(frame),
             frame,
@@ -895,9 +893,10 @@ fn gsi_04_05_production_drive_observes_premark_clear_cross_and_finish() {
         crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
         "accepted Drive track must premark its head before moving the list"
     );
+    // The occupancy list generation counts list mutations; one Mark
+    // REMOVE/PUT relink is a remove and an add.
+    let arrival_generation = sim.substrate.occupancy.generation();
 
-    let arrival_order = sim.substrate.next_occupancy_enter_order.current();
-    let initial_order = sim.substrate.entities.get(1).unwrap().occupancy_enter_order;
     let initial_point_index = sim
         .substrate
         .entities
@@ -944,15 +943,12 @@ fn gsi_04_05_production_drive_observes_premark_clear_cross_and_finish() {
             .vehicle_bits(3, 2, MovementLayer::Ground),
         crate::sim::occupancy::VEHICLE_OCCUPATION_BIT
     );
+    assert_eq!(
+        sim.substrate.occupancy.generation(),
+        arrival_generation,
+        "premark and the paid-point clear do not relink the object list"
+    );
 
-    assert_eq!(
-        sim.substrate.next_occupancy_enter_order.current(),
-        arrival_order
-    );
-    assert_eq!(
-        sim.substrate.entities.get(1).unwrap().occupancy_enter_order,
-        initial_order
-    );
     let mut crossed = false;
     for frame in first_unpaid_frame..96 {
         gsi_04_05_tick_production_movement(&mut sim, Some(&grid), frame);
@@ -975,15 +971,12 @@ fn gsi_04_05_production_drive_observes_premark_clear_cross_and_finish() {
         crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
         "AddContent crossing must re-mark the new current cell"
     );
+    assert_eq!(
+        sim.substrate.occupancy.generation(),
+        arrival_generation + 2,
+        "the crossing relinks the object list exactly once"
+    );
 
-    assert_eq!(
-        sim.substrate.entities.get(1).unwrap().occupancy_enter_order,
-        arrival_order
-    );
-    assert_eq!(
-        sim.substrate.next_occupancy_enter_order.current(),
-        arrival_order + 1
-    );
     let mut finished = sim
         .substrate
         .entities
@@ -1111,7 +1104,7 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
     let mut restored: Option<Simulation> = None;
     let mut trace = Vec::new();
     for frame in 0..400 {
-        let next_order = sim.substrate.next_occupancy_enter_order.current();
+        let before_generation = sim.substrate.occupancy.generation();
         let before_path_index = sim
             .substrate
             .entities
@@ -1153,11 +1146,6 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
                 occupants.first_on_layer(MovementLayer::Ground),
                 Some(walker)
             );
-            assert_eq!(entity.occupancy_enter_order, next_order);
-            assert_eq!(
-                sim.substrate.next_occupancy_enter_order.current(),
-                next_order + 1
-            );
             if cell == (2, 0) {
                 crossed_detour_cell = true;
                 let bytes = GameSnapshot::save(&sim, 0, 0, "arrival", 0);
@@ -1195,26 +1183,21 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
                 restored = Some(loaded);
             }
             previous_cell = cell;
-        } else {
-            let after_order = sim.substrate.next_occupancy_enter_order.current();
-            if after_order != next_order {
-                // Walk's completed-head corridor75BD70 performs Mark REMOVE/
-                // PUT even when the polar step already entered this cell.
-                assert_eq!(after_order, next_order + 1);
-                assert_eq!(entity.occupancy_enter_order, next_order);
-                let after_index = entity
-                    .movement_target
-                    .as_ref()
-                    .map(|target| target.next_index);
-                assert!(after_index.is_none() || after_index > before_path_index);
-            }
+        } else if sim.substrate.occupancy.generation() != before_generation {
+            // Walk's completed-head corridor 75BD70 performs Mark REMOVE/PUT
+            // even when the polar step already entered this cell.
+            assert_eq!(sim.substrate.occupancy.generation(), before_generation + 2);
+            let after_index = entity
+                .movement_target
+                .as_ref()
+                .map(|target| target.next_index);
+            assert!(after_index.is_none() || after_index > before_path_index);
         }
         trace.push((
             frame,
             cell,
             crate::sim::movement::ground_pose::position_world_xy(&entity.position),
             entity.sub_cell,
-            entity.occupancy_enter_order,
             sim.scenario_rng.state(),
             entity.locomotor.as_ref().and_then(|l| l.step_head()),
             entity
@@ -2695,7 +2678,6 @@ fn code_two_arms_blockage_path_delay_once_and_never_scatters() {
         // object at a time in its order so the mover's stats stay separate.
         let mut cell_occupation = crate::sim::occupancy::CellOccupationGrid::rebuild(&entities);
         let mut raw_cell_occupation = crate::sim::occupancy::RawCellOccupationGrid::new();
-        let mut enter_order = crate::sim::world::EnterOrderCounter::new();
         for id in [1, 2, 3] {
             let stats = super::movement_tick::tick_movement_object_with_grids(
                 &mut entities,
@@ -2706,7 +2688,6 @@ fn code_two_arms_blockage_path_delay_once_and_never_scatters() {
                 &mut occupancy,
                 &mut cell_occupation,
                 &mut raw_cell_occupation,
-                &mut enter_order,
                 &mut rng,
                 native_frame as u64,
                 native_frame,
@@ -3129,7 +3110,6 @@ fn two_movers_contest_same_cell_in_live_object_order_not_stable_id() {
             &mut stable_order.substrate.occupancy,
             &mut stable_order.substrate.cell_occupation,
             &mut stable_order.substrate.raw_cell_occupation,
-            &mut stable_order.substrate.next_occupancy_enter_order,
             &mut stable_order.scenario_rng,
             u64::from(native_frame),
             native_frame,
@@ -3160,7 +3140,6 @@ fn two_movers_contest_same_cell_in_live_object_order_not_stable_id() {
             &mut live_order.substrate.occupancy,
             &mut live_order.substrate.cell_occupation,
             &mut live_order.substrate.raw_cell_occupation,
-            &mut live_order.substrate.next_occupancy_enter_order,
             &mut live_order.scenario_rng,
             u64::from(native_frame),
             native_frame,
@@ -3238,7 +3217,6 @@ fn lifecycle_authority_empty_logic_order_does_not_fall_back_to_entity_store() {
         &mut sim.substrate.occupancy,
         &mut sim.substrate.cell_occupation,
         &mut sim.substrate.raw_cell_occupation,
-        &mut sim.substrate.next_occupancy_enter_order,
         &mut sim.scenario_rng,
         0,
         0,
@@ -4484,7 +4462,6 @@ fn drive_accelerates_false_tick_stores_modified_fraction_without_mutating_speed(
     let mut rng = SimRng::new(0);
     let mut interner = test_interner();
     let mut sounds = Vec::new();
-    let mut next_occupancy_enter_order = crate::sim::world::EnterOrderCounter::new();
     let terrain_costs: std::collections::BTreeMap<
         crate::rules::locomotor_type::SpeedType,
         crate::sim::pathfinding::terrain_cost::TerrainCostGrid,
@@ -4500,7 +4477,6 @@ fn drive_accelerates_false_tick_stores_modified_fraction_without_mutating_speed(
         &mut occupancy,
         &mut crate::sim::occupancy::CellOccupationGrid::new(),
         &mut crate::sim::occupancy::RawCellOccupationGrid::new(),
-        &mut next_occupancy_enter_order,
         &mut rng,
         0,
         0, // native_frame (test)
@@ -4565,7 +4541,6 @@ fn drive_accelerates_true_tick_ramps_fraction_before_movement_speed() {
     let mut rng = SimRng::new(0);
     let mut interner = test_interner();
     let mut sounds = Vec::new();
-    let mut next_occupancy_enter_order = crate::sim::world::EnterOrderCounter::new();
     let terrain_costs: std::collections::BTreeMap<
         crate::rules::locomotor_type::SpeedType,
         crate::sim::pathfinding::terrain_cost::TerrainCostGrid,
@@ -4581,7 +4556,6 @@ fn drive_accelerates_true_tick_ramps_fraction_before_movement_speed() {
         &mut occupancy,
         &mut crate::sim::occupancy::CellOccupationGrid::new(),
         &mut crate::sim::occupancy::RawCellOccupationGrid::new(),
-        &mut next_occupancy_enter_order,
         &mut rng,
         0,
         0, // native_frame (test)
@@ -4821,12 +4795,11 @@ fn test_segment_exhaustion_repath_avoids_friendly_building_footprint() {
 // ============================================================================
 // Bridge on_bridge timing integration tests (Plan: 2026-05-11 G2 fix).
 // Pin: predicate fires at Ramp→Body exactly, clears at Ramp→Ground exactly,
-// no anticipatory BridgeOccupancy pre-claim.
+// no anticipatory on_bridge pre-claim.
 // ============================================================================
 
 use crate::map::houses::HouseAllianceMap;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-use crate::sim::components::BridgeOccupancy;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::tick_movement_with_grid;
 use crate::sim::pathfinding::{PathGrid, terrain_cost::TerrainCostGrid};
@@ -4841,7 +4814,6 @@ fn make_drive_loco(layer: MovementLayer) -> LocomotorState {
 fn make_ship_loco(layer: MovementLayer) -> LocomotorState {
     let mut loco = make_drive_loco(layer);
     loco.kind = LocomotorKind::Ship;
-    loco.slot = LocomotorSlot::new(LocomotorKind::Ship);
     loco.speed_type = SpeedType::Float;
     loco.movement_zone = MovementZone::Water;
     loco
@@ -4919,7 +4891,6 @@ fn ship_high_bridge_ramp_to_body_relinks_after_on_bridge_update() {
     let mut e = GameEntity::test_default(1, "DEST", "Americans", 1, 1);
     e.position.z = 4;
     e.on_bridge = false;
-    e.bridge_occupancy = None;
     e.locomotor = Some(make_ship_loco(MovementLayer::Bridge));
     e.movement_target = Some(MovementTarget {
         adapter_route: true,
@@ -4972,14 +4943,7 @@ fn ship_high_bridge_ramp_to_body_relinks_after_on_bridge_update() {
     let entity = entities.get(1).expect("entity exists");
     assert_eq!((entity.position.rx, entity.position.ry), (2, 1));
     assert!(entity.on_bridge, "Ship must set OnBridge on Ramp->Body");
-    assert_eq!(
-        entity
-            .bridge_occupancy
-            .as_ref()
-            .expect("BridgeOccupancy set on Ship Enter")
-            .deck_level,
-        4
-    );
+    assert_eq!(entity.position.z, 4);
     assert!(
         occupancy.get(1, 1).is_none_or(|cell| {
             cell.count_on(MovementLayer::Ground) + cell.count_on(MovementLayer::Bridge) == 0
@@ -5070,14 +5034,7 @@ fn on_bridge_fires_at_ramp_to_body_only() {
         entity.on_bridge,
         "on_bridge must fire on Ramp→Body transition"
     );
-    assert_eq!(
-        entity
-            .bridge_occupancy
-            .as_ref()
-            .expect("BridgeOccupancy set on Enter")
-            .deck_level,
-        4
-    );
+    assert_eq!(entity.position.z, 4);
     let cell = occupancy.get(2, 1).expect("destination occupancy");
     assert_eq!(
         cell.count_on(MovementLayer::Bridge),
@@ -5108,7 +5065,6 @@ fn on_bridge_clears_at_ramp_to_ground_only() {
     // Retail [HTNK] Accelerates=false. This transition fixture loads no
     // acceleration rules, including after fresh selection creates its runtime.
     e.drive_accelerates = false;
-    e.bridge_occupancy = Some(BridgeOccupancy { deck_level: 4 });
     e.locomotor = Some(make_drive_loco(MovementLayer::Bridge));
     e.movement_target = Some(MovementTarget {
         adapter_route: true,
@@ -5198,10 +5154,7 @@ fn on_bridge_clears_at_ramp_to_ground_only() {
         "after the next crossing: at ground"
     );
     assert!(!entity.on_bridge, "after Ramp→Ground: on_bridge must clear");
-    assert!(
-        entity.bridge_occupancy.is_none(),
-        "after Exit: BridgeOccupancy must be None"
-    );
+    assert!(!entity.on_bridge, "after Exit: on_bridge must be false");
     let ground_cell = occupancy.get(3, 1).expect("ground occupancy");
     assert_eq!(ground_cell.count_on(MovementLayer::Ground), 1);
     assert_eq!(ground_cell.count_on(MovementLayer::Bridge), 0);
@@ -5210,7 +5163,7 @@ fn on_bridge_clears_at_ramp_to_ground_only() {
 #[test]
 fn no_bridge_lookahead_pre_claim() {
     // Regression: the deleted apply_bridge_lookahead_if_needed must not have crept
-    // back via another path. BridgeOccupancy must NOT be set before the unit
+    // back via another path. on_bridge must NOT be set before the unit
     // physically crosses onto a body cell.
     // ground (1,1) h=4 → ramp (2,1) raw h=4 bridge_walkable+transition → body
     // (3,1) raw h=0 bridge_walkable.
@@ -5223,7 +5176,6 @@ fn no_bridge_lookahead_pre_claim() {
     let mut e = GameEntity::test_default(1, "HTNK", "Americans", 1, 1);
     e.position.z = 4;
     e.on_bridge = false;
-    e.bridge_occupancy = None;
     e.locomotor = Some(make_drive_loco(MovementLayer::Ground));
     e.movement_target = Some(MovementTarget {
         adapter_route: true,
@@ -5268,14 +5220,14 @@ fn no_bridge_lookahead_pre_claim() {
     let mut lifecycle_requests = Vec::new();
 
     assert!(
-        entities.get(1).unwrap().bridge_occupancy.is_none(),
+        !entities.get(1).unwrap().on_bridge,
         "pre-tick: no pre-claim"
     );
 
     // First physical crossing: ground → ramp. Predicate NoChange
     // (src.bridge_walkable=false; entry
     // would need src_h-4 = dst_h: src=4, dst=4 → no. Exit needs src.bridge_walkable;
-    // it's false → no). BridgeOccupancy stays None.
+    // it's false → no). on_bridge stays false.
     tick_bridge_until_cell(
         &mut entities,
         &grid,
@@ -5292,8 +5244,8 @@ fn no_bridge_lookahead_pre_claim() {
         "after the first crossing: at ramp"
     );
     assert!(
-        entity.bridge_occupancy.is_none(),
-        "regression: BridgeOccupancy must NOT be pre-claimed on the ramp"
+        !entity.on_bridge,
+        "regression: on_bridge must NOT be pre-claimed on the ramp"
     );
     let ramp_cell = occupancy.get(2, 1).expect("ramp occupancy");
     assert_eq!(
@@ -5322,14 +5274,7 @@ fn no_bridge_lookahead_pre_claim() {
         "after the next crossing: on body"
     );
     assert!(entity.on_bridge, "after Ramp→Body: on_bridge must be true");
-    assert_eq!(
-        entity
-            .bridge_occupancy
-            .as_ref()
-            .expect("set on Enter")
-            .deck_level,
-        4
-    );
+    assert_eq!(entity.position.z, 4);
     let body_cell = occupancy.get(3, 1).expect("body occupancy");
     assert_eq!(body_cell.count_on(MovementLayer::Bridge), 1);
     assert_eq!(body_cell.count_on(MovementLayer::Ground), 0);
@@ -5407,14 +5352,7 @@ fn multi_crossing_preserves_first_bridge_set_update() {
         entity.on_bridge,
         "first Ramp->Body Set must survive later Unchanged"
     );
-    assert_eq!(
-        entity
-            .bridge_occupancy
-            .as_ref()
-            .expect("BridgeOccupancy set")
-            .deck_level,
-        4
-    );
+    assert_eq!(entity.position.z, 4);
     let cell = occupancy.get(3, 1).expect("final occupancy");
     assert_eq!(cell.count_on(MovementLayer::Bridge), 1);
     assert_eq!(cell.count_on(MovementLayer::Ground), 0);
@@ -5492,7 +5430,6 @@ fn tick_hover_world_on(
     let mut rng = SimRng::new(0);
     let mut interner = test_interner();
     let mut sounds = Vec::new();
-    let mut next_occupancy_enter_order = crate::sim::world::EnterOrderCounter::new();
     let terrain_costs: std::collections::BTreeMap<
         crate::rules::locomotor_type::SpeedType,
         crate::sim::pathfinding::terrain_cost::TerrainCostGrid,
@@ -5506,7 +5443,6 @@ fn tick_hover_world_on(
         occupancy,
         cell_occupation,
         &mut crate::sim::occupancy::RawCellOccupationGrid::new(),
-        &mut next_occupancy_enter_order,
         &mut rng,
         0,
         native_frame,
@@ -6622,7 +6558,6 @@ fn segment_repath_lets_a_crusher_tank_through_a_sandbag_line() {
         let mut occupancy = OccupancyGrid::new();
         let mut cell_occupation = crate::sim::occupancy::CellOccupationGrid::new();
         let mut raw = crate::sim::occupancy::RawCellOccupationGrid::new();
-        let mut enter_order = crate::sim::world::EnterOrderCounter::new();
         let mut interner = test_interner();
         let mut rng = SimRng::new(0);
         for frame in 0..40u32 {
@@ -6635,7 +6570,6 @@ fn segment_repath_lets_a_crusher_tank_through_a_sandbag_line() {
                 &mut occupancy,
                 &mut cell_occupation,
                 &mut raw,
-                &mut enter_order,
                 &mut rng,
                 u64::from(frame),
                 frame,
@@ -6717,7 +6651,6 @@ fn first_process_search_reads_the_crusher_flags_from_the_mover() {
             &mut OccupancyGrid::new(),
             &mut crate::sim::occupancy::CellOccupationGrid::new(),
             &mut crate::sim::occupancy::RawCellOccupationGrid::new(),
-            &mut crate::sim::world::EnterOrderCounter::new(),
             &mut SimRng::new(0),
             0,
             0,
@@ -6797,7 +6730,6 @@ fn process_entry_repath_lets_a_crusher_tank_through_a_sandbag_cell() {
             &mut OccupancyGrid::new(),
             &mut crate::sim::occupancy::CellOccupationGrid::new(),
             &mut crate::sim::occupancy::RawCellOccupationGrid::new(),
-            &mut crate::sim::world::EnterOrderCounter::new(),
             &mut SimRng::new(0),
             0,
             0,
@@ -6968,7 +6900,7 @@ fn cell_scatter_world_reads_live_house_and_veteran_ability() {
             sim.session.binary_frame = frame;
             let timing = super::MovementConfig::from_rules(frame, Some(&rules));
             let stats = sim
-                .process_ground_locomotor_with_config_for_test(1, Some(&rules), None, None, timing)
+                .process_ground_locomotor_with_config_for_test(1, Some(&rules), None, timing)
                 .unwrap();
             scattered |= stats.scatter_requests != 0;
             // The non-centred infantry survives the crush-radius test, so the

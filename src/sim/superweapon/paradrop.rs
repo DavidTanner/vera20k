@@ -17,7 +17,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::aircraft::AircraftMission;
 use crate::sim::intern::InternedId;
 use crate::sim::passenger::PassengerRole;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::edge_cell::{Edge, find_paradrop_edge_cell};
 use crate::sim::world::{PlacementEvidence, SimSoundEvent, Simulation};
 use crate::util::fixed_math::SimFixed;
@@ -43,7 +42,6 @@ pub fn launch(
     target_ry: u16,
     kind: ParaDropKind,
     sw_type: InternedId,
-    _path_grid: Option<&PathGrid>,
 ) -> bool {
     // Bridge rejection deferred — map system does not yet expose is_bridge_cell.
     let (target_rx, target_ry) = (target_rx, target_ry);

@@ -133,19 +133,11 @@ pub(super) fn evaluate_runtime_can_enter_cell_with_transition(
             bridge_traversal_allowed: true,
         };
     };
-    let runtime_policy = super::movement_bridge::evaluate_runtime_bridge_transition(
+    super::movement_bridge::latch_runtime_bridge_mismatch(
         bridge_state,
         candidate.has_structural_bridge(),
         current_on_bridge,
-        || super::movement_bridge::RuntimeBridgePolicyResult::Continue,
     );
-    if runtime_policy == super::movement_bridge::RuntimeBridgePolicyResult::Reject {
-        return RuntimeCanEnterCellEvaluation {
-            args,
-            layers: base,
-            bridge_traversal_allowed: false,
-        };
-    }
     let explicit_parent = args
         .parent_current_cell
         .and_then(|coord| grid.cell(coord.0, coord.1).map(|cell| (cell, coord)));

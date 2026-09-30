@@ -377,7 +377,6 @@ fn a_chrono_miner_ordered_to_a_busy_refinery_warps_in_after_it_frees() {
             target_refinery_id: Some(s.refinery),
         },
         Some(&s.rules),
-        None,
     ));
     let paid_before = credits(&s);
     let mut second_docked = None;

@@ -1069,7 +1069,6 @@ fn gsi_04_07_wall_sell_ordered_cleanup_detach_navigation_and_zero_refund_rng() {
         "Receiver",
         &Command::SellWallAtCell { x: 4, y: 4 },
         Some(&rules),
-        Some(&path),
         Some(&overlays),
     ));
 
@@ -1286,7 +1285,6 @@ fn wall_sale_preserves_the_sold_anchor_retained_count_source() {
         "Receiver",
         &Command::SellWallAtCell { x: 2, y: 2 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
     let grid = sim.overlay_grid.as_ref().expect("overlay authority");
@@ -1362,7 +1360,6 @@ fn wall_sale_cleanup_reaches_fixed_stride_alias_and_reverses_that_source_only() 
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 1 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
     let grid = sim.overlay_grid.as_ref().expect("overlay authority");
@@ -1447,11 +1444,11 @@ fn dynamic_navigation_publication_composes_structures_bibs_and_bridges() {
     );
 
     let bridge_state = sim.bridge_state.as_mut().expect("bridge runtime state");
-    let _ = bridge_state.write_overlay_byte(2, 1, 0xE8);
-    bridge_state
+    let collapsed = bridge_state
         .cell_mut(2, 1)
-        .expect("bridge body runtime cell")
-        .damage_state = crate::sim::bridge_state::DamageState::Destroyed;
+        .expect("bridge body runtime cell");
+    collapsed.overlay_byte = 0xE8;
+    collapsed.damage_state = crate::sim::bridge_state::DamageState::Destroyed;
     assert!(sim.rebuild_dynamic_navigation(&rules));
     let collapsed_grid = sim.path_grid().expect("collapsed navigation publication");
     assert!(
@@ -1475,7 +1472,6 @@ fn gsi_04_07_wall_sell_eligibility_gate_matrix_rejects_without_mutation() {
             "Receiver",
             &Command::SellWallAtCell { x: 1, y: 1 },
             Some(rules),
-            None,
             Some(&overlays),
         )
     };
@@ -1529,7 +1525,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&unsellable_rules),
-        None,
         Some(&overlays),
     ));
     assert_eq!(
@@ -1542,7 +1537,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
     assert!(sim.sound_events.is_empty());
@@ -1556,7 +1550,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
     sim.houses.get_mut(&wall_owner).unwrap().is_human = true;
@@ -1564,14 +1557,12 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
     assert!(!sim.apply_command_with_overlays(
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 0 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
 }
@@ -2476,9 +2467,8 @@ fn gsi_04_10_in_tick_refresh_updates_tail_path_and_cost_before_consumers() {
     }
     sim.path_grid = Some(Arc::new(input_path_grid));
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
-    let phase_six_consumer_grid = sim
-        .finish_terrain_navigation_changes(&rules, &[(0, 0)])
-        .expect("tail grid");
+    sim.finish_terrain_navigation_changes(&rules, &[(0, 0)]);
+    let phase_six_consumer_grid = sim.path_grid_snapshot().expect("tail grid");
 
     assert!(phase_six_consumer_grid.is_walkable(0, 0));
     assert_eq!(phase_six_consumer_grid.terrain_object_cell_bits_at(0, 0), 0);
@@ -2544,9 +2534,8 @@ fn gsi_04_10_zero_occupation_removal_forces_ground_zone_with_same_walkability() 
         unmark_terrain_occupation(production, &tree, terrain.as_mut());
     }
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
-    let tail_path_grid = sim
-        .finish_terrain_navigation_changes(&rules, &[(0, 0)])
-        .expect("tail grid");
+    sim.finish_terrain_navigation_changes(&rules, &[(0, 0)]);
+    let tail_path_grid = sim.path_grid_snapshot().expect("tail grid");
 
     assert_eq!(*tail_path_grid, input_path_grid);
     assert_eq!(
@@ -3353,14 +3342,16 @@ fn short_game_defeat_test_rules() -> RuleSet {
     RuleSet::from_ini(&ini).expect("short game defeat test rules should parse")
 }
 
+/// Water movers on Hover: the retail family whose Process is still the ground
+/// corridor's route (#689). Ships have their own Process and tests below.
 fn naval_bridge_test_rules() -> RuleSet {
     let ini: IniFile = IniFile::from_str(
         "[InfantryTypes]\n\n\
          [VehicleTypes]\n0=BOAT\n1=DRED\n\n\
          [AircraftTypes]\n\n\
          [BuildingTypes]\n\n\
-         [BOAT]\nStrength=300\nArmor=heavy\nSpeed=6\nMovementZone=Water\nSpeedType=Float\nNaval=yes\n\n\
-         [DRED]\nStrength=600\nArmor=heavy\nSpeed=5\nMovementZone=Water\nSpeedType=Float\nNaval=yes\nTooBigToFitUnderBridge=yes\n",
+         [BOAT]\nStrength=300\nArmor=heavy\nSpeed=6\nMovementZone=Water\nSpeedType=Float\nNaval=yes\nLocomotor={4A582742-9839-11d1-B709-00A024DDAFD1}\n\n\
+         [DRED]\nStrength=600\nArmor=heavy\nSpeed=5\nMovementZone=Water\nSpeedType=Float\nNaval=yes\nTooBigToFitUnderBridge=yes\nLocomotor={4A582742-9839-11d1-B709-00A024DDAFD1}\n",
     );
     RuleSet::from_ini(&ini).expect("naval bridge test rules should parse")
 }
@@ -3986,8 +3977,6 @@ fn test_spawn_from_map_high_unit_uses_bridge_layer_and_deck_level() {
     assert_eq!(count, 1);
     let e = sim.substrate.entities.get(1).expect("spawned entity");
     assert_eq!(e.position.z, 3);
-    let bridge = e.bridge_occupancy.as_ref().expect("bridge occupancy");
-    assert_eq!(bridge.deck_level, 3);
     assert!(e.on_bridge);
     let loco = e.locomotor.as_ref().expect("loco");
     assert_eq!(loco.layer, MovementLayer::Bridge);
@@ -4073,7 +4062,6 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
     );
     let e = sim.substrate.entities.get(1).expect("spawned entity");
     assert_eq!(e.position.z, 1);
-    assert!(e.bridge_occupancy.is_none());
     assert!(!e.on_bridge);
     let loco = e.locomotor.as_ref().expect("loco");
     assert_eq!(loco.layer, MovementLayer::Ground);
@@ -4300,7 +4288,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
         .get(1)
         .expect("surviving bridge unit");
     assert_eq!(e.position.z, 1);
-    assert!(e.bridge_occupancy.is_none());
     assert!(!e.on_bridge);
     let loco = e.locomotor.as_ref().expect("locomotor");
     assert_eq!(loco.layer, MovementLayer::Ground);
@@ -4360,7 +4347,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_water_below() {
     );
     assert_eq!(e.position.z, 0, "snapped to ground level");
     assert!(!e.on_bridge);
-    assert!(e.bridge_occupancy.is_none());
     let loco = e.locomotor.as_ref().expect("locomotor");
     assert_eq!(loco.layer, MovementLayer::Ground);
     assert!(e.movement_target.is_none());
@@ -4414,7 +4400,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_overlay_blocked() {
     assert_eq!(e.health.current, 300, "DropIn never harms");
     assert_eq!(e.position.z, 0);
     assert!(!e.on_bridge);
-    assert!(e.bridge_occupancy.is_none());
 }
 
 /// Same DropIn correction over a terrain-object-blocked ground cell.
@@ -4465,7 +4450,6 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_terrain_object_blocked() {
     assert_eq!(e.health.current, 300, "DropIn never harms");
     assert_eq!(e.position.z, 0);
     assert!(!e.on_bridge);
-    assert!(e.bridge_occupancy.is_none());
 }
 
 /// After collapse, the rebuilt path grid reverts the bridge cell to its
@@ -4813,6 +4797,10 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
     mover.cell_y = 0;
     assert_eq!(sim.spawn_from_map(&[building, mover], Some(&rules)), 2);
     sim.resolve_type_handles(&rules);
+    // A Hover mover searches its route when the order is given (#689), and
+    // the resumed order below reads that search.
+    sim.substrate.entities.get_mut(2).unwrap().locomotor =
+        Some(LocomotorState::for_test_kind(LocomotorKind::Hover));
     assert!(sim.rebuild_dynamic_navigation(&rules));
     let before_path = sim.path_grid_snapshot().unwrap();
     for ry in 0..3 {
@@ -4854,9 +4842,8 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
     // The pinned reader predates bridge fallout. Both receipt paths must
     // return and publish the current projection without mutating that Arc.
     for changed_cells in [&[][..], &[(6, 0)][..]] {
-        let tail = sim
-            .finish_terrain_navigation_changes(&rules, changed_cells)
-            .unwrap();
+        sim.finish_terrain_navigation_changes(&rules, changed_cells);
+        let tail = sim.path_grid_snapshot().unwrap();
         assert_eq!(tail.as_ref(), collapsed.as_ref());
         if changed_cells.is_empty() {
             assert!(
@@ -4875,7 +4862,7 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
             goal_rx: 6,
             goal_ry: 3,
         });
-        sim.tick_order_intents_post_combat(Some(&tail), Some(&rules));
+        sim.tick_order_intents_post_combat(Some(&rules));
         let target = sim
             .substrate
             .entities
@@ -5062,7 +5049,7 @@ fn test_bridge_dispatcher_consumes_one_path_gate_draw_per_non_ion_event() {
 }
 
 #[test]
-fn test_water_mover_lookahead_does_not_attach_bridge_occupancy_under_bridge() {
+fn test_water_mover_lookahead_does_not_set_on_bridge_under_bridge() {
     let rules = naval_bridge_test_rules();
     let mut sim = Simulation::new();
     let resolved = bridge_cell_with_ground_block(1, 0, 3, true, 0);
@@ -5100,7 +5087,7 @@ fn test_water_mover_lookahead_does_not_attach_bridge_occupancy_under_bridge() {
         .get(boat_id)
         .expect("boat still exists");
     assert!(
-        boat.bridge_occupancy.is_none(),
+        !boat.on_bridge,
         "Ship under a bridge should stay on the water layer"
     );
     assert_eq!(boat.position.z, 0);
@@ -5148,7 +5135,7 @@ fn test_too_big_ship_can_move_under_bridge_route() {
     // native frames until the one-cell route completes; host milliseconds do
     // not scale locomotor movement.
     let path_grid = PathGrid::new(2, 1);
-    for _ in 0..16 {
+    for _ in 0..256 {
         let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 1);
         if sim
             .substrate
@@ -5204,9 +5191,19 @@ fn test_ship_turn_path_completes_without_drive_track_stall() {
         ..Default::default()
     });
 
+    // Hover accelerates from rest (the ground corridor's Hover lane, #689),
+    // so the turn path takes more than its fixed-speed frames.
     let path_grid = PathGrid::new(3, 3);
-    for _ in 0..10 {
+    for _ in 0..256 {
         let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 100);
+        if sim
+            .substrate
+            .entities
+            .get(boat_id)
+            .is_some_and(|boat| boat.movement_target.is_none())
+        {
+            break;
+        }
     }
 
     let boat = sim
@@ -5817,7 +5814,6 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
             additive: true,
         },
         Some(&rules),
-        None,
     ));
     assert!(sim.substrate.entities.get(tank).unwrap().selected);
     assert!(sim.substrate.entities.get(wingman).unwrap().selected);
@@ -5829,7 +5825,6 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
             additive: false,
         },
         Some(&rules),
-        None,
     ));
     assert!(
         !sim.substrate.entities.get(tank).unwrap().selected,
@@ -5922,6 +5917,7 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
     for accelerates in [false, true] {
         let rules = drive_fraction_writer_rules(accelerates);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         let entity_id = sim
             .spawn_object("DRIVE", "Americans", 2, 3, 64, &rules)
             .expect("spawn Drive vehicle");
@@ -5951,7 +5947,6 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
                 queue: false,
             },
             Some(&rules),
-            Some(&grid),
         ));
 
         let movement_speed = {
@@ -6294,12 +6289,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         Some((8, 4))
     );
 
-    assert!(sim.apply_command(
-        "Americans",
-        &Command::Stop { entity_id: 1 },
-        None,
-        Some(&grid),
-    ));
+    assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, None,));
     let stopped = sim.substrate.entities.get(1).unwrap();
     assert_eq!(stopped.navigation.nav_com, None);
     assert!(stopped.movement_target.is_some());
@@ -6508,12 +6498,7 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
         u16::try_from(committed_head.y.div_euclid(256)).unwrap(),
     );
 
-    assert!(sim.apply_command(
-        "Americans",
-        &Command::Stop { entity_id: 1 },
-        None,
-        Some(&grid),
-    ));
+    assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, None,));
 
     let stopped = sim.substrate.entities.get(1).unwrap();
     let target = stopped
@@ -8877,7 +8862,7 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
     // (a) What the group-destination distributor rewrites each command to.
     // Same &self read the tick performs, run before any tick mutates state.
     let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged, Some(&grid));
+    sim.adjust_staged_megamission_destinations(&mut staged);
     let assigned: Vec<(u64, (u16, u16))> = staged
         .iter()
         .filter_map(|c| match &c.payload {
@@ -9048,7 +9033,7 @@ fn repro_group_move_short_range_traces_every_tick() {
         .collect();
 
     let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged, Some(&grid));
+    sim.adjust_staged_megamission_destinations(&mut staged);
     println!("--- repro_group_move_short_range_traces_every_tick ---");
     println!("(a) distributor assignments:");
     for c in &staged {
@@ -9222,7 +9207,7 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
     // Different targets => different formation keys => runs of length 1 =>
     // the group-destination distributor cannot touch either command.
     let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged, Some(&grid));
+    sim.adjust_staged_megamission_destinations(&mut staged);
     println!("--- repro_two_moving_vehicles_pass_through_each_other ---");
     for c in &staged {
         if let Command::Move {
@@ -10410,7 +10395,8 @@ fn attack_move_resume_lets_a_crusher_tank_through_a_sandbag_cell() {
         sim.substrate.entities.insert(entity);
         // The Process reads type names; snapshot after the entity interned its.
         sim.interner = crate::sim::intern::test_interner();
-        sim.tick_order_intents_post_combat(Some(&path), None);
+        sim.install_fixture_path_grid(Some(&path));
+        sim.tick_order_intents_post_combat(None);
         sim.process_ground_locomotor_for_test(1, None, Some(&path), None)
             .expect("the first Process requests the route");
         sim.substrate

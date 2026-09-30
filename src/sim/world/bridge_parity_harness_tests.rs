@@ -202,6 +202,24 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // draw sites. All 200 per-frame replay hashes, route/height/layer/occupancy gates
 // and absolute RNG pins pass before this Rust regression hash is checked.
 // This is a Rust replay pin, not native whole-world parity evidence.
+// 2026-09-30 one locomotor object (snapshot 258, composition only; #680): the
+// active locomotor and its piggyback stash hash through one fold of every
+// LocomotorState field. The active fold gains BalloonHover, HoverAttack,
+// SpeedType, MovementZone, the sub-cell destination and the Hover speed
+// request and drops the installed slot, which is the stash's own kind; the
+// stash drops its retired separators. Ceremony: the parent commit with only
+// that fold changed printed this exact value, as this change does, with the
+// RNG pins above unchanged (the probe patch was not committed): the only
+// change to this pin is the fold. Old value: the commit that moved it.
+// 2026-09-30 unread movement bookkeeping (snapshot 260, composition only;
+// #685): the fold drops bridge_occupancy and the ground cell enter order;
+// the enter-order counter (and so AirTracker order values) advances only
+// for AirTracker entries; Foot+0x68B is write-1-only. Ceremony: the
+// parent and this change, each with those five inputs removed from the
+// hash, printed the same value, with the RNG pins above unchanged (the
+// probe patch was not committed). Old value: the commit that moved it.
+// The combined merge retains the owned pre-merge pin until its causal replay
+// comparison; the independent main pin cannot certify this combined state.
 const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xDCB5_B510_23C8_0E6B;
 
 fn bridge_ini() -> IniFile {
@@ -471,7 +489,6 @@ struct CrossingFrame {
     cell: (u16, u16),
     z: u8,
     on_bridge: bool,
-    occupancy_deck: Option<u8>,
     terrain_level: i16,
     structural: bool,
 }
@@ -539,7 +556,6 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             cell,
             z: entity.position.z,
             on_bridge: entity.on_bridge,
-            occupancy_deck: entity.bridge_occupancy.map(|occ| occ.deck_level),
             terrain_level: facts.signed_level(),
             structural: facts.has_structural_bridge(),
         });
@@ -569,12 +585,11 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         }
         previous = Some(frame.cell);
         println!(
-            "  tick {:4} cell {:?} z={} on_bridge={} occ_deck={:?} terrain={} deck={} expect_z={}",
+            "  tick {:4} cell {:?} z={} on_bridge={} terrain={} deck={} expect_z={}",
             frame.tick,
             frame.cell,
             frame.z,
             frame.on_bridge,
-            frame.occupancy_deck,
             frame.terrain_level,
             frame.structural,
             frame.expected_z(),
@@ -607,8 +622,8 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         deck_cells.len(),
     );
 
-    // 3. Every deck frame is at deck height, flagged on-bridge, and agrees with
-    //    its own BridgeOccupancy — never dropped to the gorge floor underneath.
+    // 3. Every deck frame is at deck height and flagged on-bridge — never
+    //    dropped to the gorge floor underneath.
     for frame in frames.iter().filter(|f| f.structural) {
         assert!(
             frame.on_bridge,
@@ -625,12 +640,6 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             i16::from(frame.z as i8),
             i16::from(GORGE_LEVEL as i8),
             "the tank dropped to the gorge floor under the span at {:?}: {frame:?}",
-            frame.cell
-        );
-        assert_eq!(
-            frame.occupancy_deck,
-            Some(frame.z),
-            "BridgeOccupancy.deck_level disagrees with position.z at {:?}: {frame:?}",
             frame.cell
         );
     }
@@ -656,10 +665,6 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
     assert!(
         !last.on_bridge,
         "the tank is still flagged on_bridge on the far approach: {last:?}"
-    );
-    assert_eq!(
-        last.occupancy_deck, None,
-        "BridgeOccupancy survived the Exit transition: {last:?}"
     );
 
     let arrived = rec.substrate.entities.get(TANK_ID).unwrap();

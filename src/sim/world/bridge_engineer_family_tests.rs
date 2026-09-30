@@ -65,7 +65,6 @@ fn engineer_family_selector_matches_original_boundary_and_dummy() {
             rules: &rules,
             registry: None,
             collapsed: false,
-            family: Family::High,
         };
         let (argument, family) = engineer_repair_family(&mut live, engineer).unwrap();
         assert_eq!(json!(argument), output["repair_argument"], "{input}");

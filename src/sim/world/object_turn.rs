@@ -11,7 +11,6 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::lifecycle_request::LifecycleRequest;
 use crate::sim::movement::{self, parachute_descent, rocket_movement, teleport_movement};
-use crate::sim::pathfinding::PathGrid;
 
 /// Whether this Unit visit reaches FootClass's SHP body-counter cadence.
 ///
@@ -23,36 +22,58 @@ pub(super) fn shp_vehicle_counter_admitted(tube_active_at_entry: bool) -> bool {
     !tube_active_at_entry
 }
 
-/// The warp's two VocClass::PlayAt calls (`0x0071962C` at the old location,
-/// `0x00719710` at the new): the type's ChronoOutSound/ChronoInSound
-/// (TechnoType+0x578/+0x574), else `[AudioVisual]` (Rules+0x21C/+0x218), else
-/// silence.
-fn teleport_warp_sounds(
-    sim: &mut Simulation,
-    stable_id: u64,
-    departure: Option<(u16, u16)>,
-    rules: &RuleSet,
-) {
+/// The warp's two VocClass::PlayAt calls: ChronoOut (`0x0071962C`, at the old
+/// location) and ChronoIn (`0x00719710`, at the new).
+#[derive(Clone, Copy)]
+enum WarpSound {
+    Out,
+    In,
+}
+
+/// One warp sound at the owner's current cell: the type's
+/// ChronoOutSound/ChronoInSound (TechnoType+0x578/+0x574), else
+/// `[AudioVisual]` (Rules+0x21C/+0x218), else silence.
+fn teleport_warp_sound(sim: &mut Simulation, stable_id: u64, sound: WarpSound, rules: &RuleSet) {
     let Some(entity) = sim.substrate.entities.get(stable_id) else {
         return;
     };
-    let arrival = (entity.position.rx, entity.position.ry);
+    let (rx, ry) = (entity.position.rx, entity.position.ry);
     let object = sim.object_type(entity.type_ref(), rules);
-    let chrono_out = object
-        .and_then(|object| object.chrono_out_sound.clone())
-        .or_else(|| rules.general.chrono_out_sound.clone());
-    let chrono_in = object
-        .and_then(|object| object.chrono_in_sound.clone())
-        .or_else(|| rules.general.chrono_in_sound.clone());
-    for (name, (rx, ry)) in [
-        (chrono_out, departure.unwrap_or(arrival)),
-        (chrono_in, arrival),
-    ] {
-        if let Some(name) = name {
-            let sound_id = sim.interner.intern(&name);
-            sim.sound_events
-                .push(super::SimSoundEvent::ChronoTeleport { sound_id, rx, ry });
-        }
+    let name = match sound {
+        WarpSound::Out => object
+            .and_then(|object| object.chrono_out_sound.clone())
+            .or_else(|| rules.general.chrono_out_sound.clone()),
+        WarpSound::In => object
+            .and_then(|object| object.chrono_in_sound.clone())
+            .or_else(|| rules.general.chrono_in_sound.clone()),
+    };
+    if let Some(name) = name {
+        let sound_id = sim.interner.intern(&name);
+        sim.sound_events
+            .push(super::SimSoundEvent::ChronoTeleport { sound_id, rx, ry });
+    }
+}
+
+/// A Teleport Process `[General] WarpOut=` animation at the owner's cell,
+/// constructed inside the mover's own turn.
+fn teleport_warp_out(sim: &mut Simulation, stable_id: u64, rules: &RuleSet) {
+    let Some(entity) = sim.substrate.entities.get(stable_id) else {
+        return;
+    };
+    let descriptor = teleport_movement::warp_out_anim(
+        sim.interner.intern(&rules.general.warp_out.name),
+        entity.position.rx,
+        entity.position.ry,
+        entity.position.z,
+    );
+    let type_name = descriptor.type_name;
+    if let Err(error) = sim.spawn_anim_object(rules, descriptor) {
+        // An art type that never bound draws nothing natively either; see
+        // `spawn_combat_explosion_anim`.
+        log::debug!(
+            "teleport warp [{}] did not construct: {error}",
+            sim.interner.resolve(type_name)
+        );
     }
 }
 
@@ -96,54 +117,331 @@ impl GroundLocomotorOutcome {
     }
 }
 
-/// Re-enter the pending movement pass for the same mover of this Process (see
-/// `MoverReentry`), with the Simulation's current grids and state.
-fn reenter_pending_pass(
-    sim: &mut Simulation,
-    pending: &mut movement::movement_tick::PendingMovementPass,
-    reentry: movement::movement_tick::MoverReentry,
-    rules: Option<&RuleSet>,
-    path_grid: Option<&PathGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    timing: movement::MovementConfig,
-) {
-    let current_grid = sim.path_grid_snapshot();
-    pending.reenter_mover(
-        reentry,
-        &mut sim.substrate.entities,
-        current_grid.as_deref().or(path_grid),
-        sim.zone_grid.as_ref(),
-        sim.resolved_terrain.as_ref(),
-        &sim.terrain_costs,
-        &sim.house_alliances,
-        &mut sim.substrate.occupancy,
-        &mut sim.substrate.cell_occupation,
-        &mut sim.substrate.raw_cell_occupation,
-        &mut sim.substrate.next_occupancy_enter_order,
-        &mut sim.scenario_rng,
-        sim.session.tick,
-        sim.session.binary_frame,
-        sim.overlay_grid.as_ref(),
-        overlay_registry,
-        sim.playfield_bounds,
-        &sim.terrain_speed_config,
-        timing.close_enough,
-        timing.path_delay_ticks,
-        timing.blockage_path_delay_ticks,
-        &mut sim.interner,
-        rules,
-        Some(&sim.type_handles),
-        &mut sim.movement_pass_cache,
-        &sim.houses,
-    );
-}
-
 #[derive(Default)]
 pub(super) struct ObjectTurnOutcome {
     movement: movement::MovementTickStats,
     destroyed_structure: bool,
     bridge_state_changed: bool,
     tube_owned: bool,
+}
+
+/// What one object's locomotor Process did this turn.
+#[derive(Default)]
+struct LocomotorProcess {
+    /// FootClass::AI admitted the Process (`0x004DA806..0x004DA877`).
+    admitted: bool,
+    movement: movement::MovementTickStats,
+    bridge_state_changed: bool,
+    track_owned: bool,
+    /// The Process ran `Per_Cell_Process(2)`: a Hover, tube-exit, touchdown
+    /// or warp arrival.
+    per_cell_ran: bool,
+    /// The Process UnInit its owner: an aircraft impact or a dead missile.
+    ended: bool,
+}
+
+impl LocomotorProcess {
+    fn from_ground(ground: GroundLocomotorOutcome) -> Self {
+        Self {
+            admitted: true,
+            movement: ground.movement,
+            bridge_state_changed: ground.bridge_state_changed,
+            track_owned: ground.track_owned,
+            per_cell_ran: ground.per_cell_ran,
+            ended: false,
+        }
+    }
+
+    fn admitted() -> Self {
+        Self {
+            admitted: true,
+            ..Self::default()
+        }
+    }
+}
+
+impl Simulation {
+    /// FootClass::AI's one call of the active locomotor's Process
+    /// (`0x004DA877`, `ILocomotion` vtable `+0x40`).
+    ///
+    /// - Admission (`0x004DA806..0x004DA86E`): a locomotor (Foot `+0x674`),
+    ///   not sinking (`+0x3CD`), not falling (`+0x8D`) and not in limbo
+    ///   (`+0x81`). The DirectRocker link test (`+0x2A8` against TechnoType
+    ///   `+0x692`) is dormant: no retail warhead sets `DirectRocker=`, and
+    ///   VERA keeps no link.
+    /// - The active class picks the one Process: the ground corridor for
+    ///   Drive, Ship, Walk and Hover, the air pass for Fly and Jumpjet, and
+    ///   Teleport's and Rocket's own.
+    fn process_active_locomotor(
+        &mut self,
+        stable_id: u64,
+        rules: Option<&RuleSet>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
+        use crate::rules::locomotor_type::LocomotorKind;
+        let (admitted, sinking) =
+            self.substrate
+                .entities
+                .get(stable_id)
+                .map_or((None, false), |entity| {
+                    let sinking = entity.sinking.is_active();
+                    let admitted = entity.locomotor.as_ref().and_then(|locomotor| {
+                        (!sinking && !entity.is_falling_down() && !entity.lifecycle.in_limbo)
+                            .then(|| locomotor.active_kind())
+                    });
+                    (admitted, sinking)
+                });
+        let ground = matches!(
+            admitted,
+            Some(
+                LocomotorKind::Drive
+                    | LocomotorKind::Ship
+                    | LocomotorKind::Walk
+                    | LocomotorKind::Hover
+            )
+        );
+        // The vehicle plane is a projection each object turn reconciles once
+        // at Process entry: the ground corridor in `prepare_movement_pass`,
+        // any other turn here. A sinking object keeps its projection.
+        if !ground
+            && !sinking
+            && let Some(entity) = self.substrate.entities.get(stable_id)
+        {
+            self.substrate.cell_occupation.reconcile_entity(entity);
+        }
+        let Some(kind) = admitted else {
+            return Ok(LocomotorProcess::default());
+        };
+        match kind {
+            LocomotorKind::Drive
+            | LocomotorKind::Ship
+            | LocomotorKind::Walk
+            | LocomotorKind::Hover => self
+                .process_ground_locomotor_one(stable_id, rules, overlay_registry)
+                .map(LocomotorProcess::from_ground),
+            LocomotorKind::Fly | LocomotorKind::Jumpjet => {
+                self.process_air_locomotor(stable_id, rules, overlay_registry)
+            }
+            LocomotorKind::Teleport => {
+                self.process_teleport_locomotor(stable_id, rules, overlay_registry)
+            }
+            LocomotorKind::Rocket => Ok(self.process_rocket_locomotor(stable_id)),
+        }
+    }
+
+    /// Fly and Jumpjet Process: the air pass inside the Fly cell-list
+    /// transaction, then a touchdown's `Per_Cell_Process(2)` or an impact.
+    fn process_air_locomotor(
+        &mut self,
+        stable_id: u64,
+        rules: Option<&RuleSet>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
+        let mut process = LocomotorProcess::admitted();
+        self.complete_pending_order(stable_id, rules);
+        let air = self.tick_air_movement_with_cell_lists_one(stable_id, rules);
+        if air.touched_down {
+            process.bridge_state_changed |= self.per_cell_process(
+                stable_id,
+                movement::PerCellReason::Arrival,
+                rules,
+                overlay_registry,
+            )?;
+            process.per_cell_ran = true;
+        }
+        if !air.impact {
+            return Ok(process);
+        }
+        let Some(entity) = self.substrate.entities.get(stable_id) else {
+            return Ok(process);
+        };
+        if entity.category == EntityCategory::Infantry {
+            // The Infantry notice keeps the infantryman: its class AI runs on
+            // to the sequencer and locomotion actions.
+            if let Some(rules) = rules {
+                self.aircraft_tracker_remove(stable_id);
+                self.infantry_crash_impact(stable_id, rules);
+            }
+            return Ok(process);
+        }
+        // The impact UnInits the object; `FootClass::AI` returns on the
+        // cleared Object+90 (`0x004DA87E`) and the class AI after it
+        // (`AircraftClass::AI 0x00414DAA`).
+        let jumpjet = entity.locomotor.as_ref().is_some_and(|locomotor| {
+            locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
+        });
+        match rules {
+            Some(rules) if jumpjet => {
+                self.jumpjet_crash_impact(stable_id, rules, overlay_registry);
+            }
+            Some(rules) => self.fly_crash_impact(stable_id, rules, overlay_registry),
+            None => self.uninit(stable_id),
+        }
+        process.ended = true;
+        Ok(process)
+    }
+
+    /// Teleport Process (`0x007192F0`): the warp and its arrival.
+    fn process_teleport_locomotor(
+        &mut self,
+        stable_id: u64,
+        rules: Option<&RuleSet>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
+        self.complete_pending_order(stable_id, rules);
+        let sim = self;
+        let mut process = LocomotorProcess::admitted();
+        let teleport_armed = sim
+            .substrate
+            .entities
+            .get(stable_id)
+            .and_then(|entity| entity.teleport_state.as_ref())
+            .is_some_and(|state| state.phase == teleport_movement::TeleportPhase::Relocate);
+        // Teleport Process 0x007197AF: already on the destination, no warp.
+        let teleport_reached = sim.substrate.entities.get(stable_id).is_some_and(|entity| {
+            teleport_movement::warp_destination_reached(entity, sim.resolved_terrain.as_ref())
+        });
+        let teleport_relocating = teleport_armed && !teleport_reached;
+        if teleport_relocating {
+            // 0x007193C7: the Techno detach sweep drops the locks aimed at
+            // the owner; 0x00719442: the departure WarpOut at its Location.
+            teleport_movement::release_incoming_target_locks(
+                &mut sim.substrate.entities,
+                stable_id,
+            );
+            if let Some(rules) = rules {
+                teleport_warp_out(sim, stable_id, rules);
+            }
+            // 0x007195BF..0x007195CF: a parasite is ejected (ExitUnit, no
+            // suppression).
+            if let Some(rules) = rules
+                && let Some(eater) = sim
+                    .substrate
+                    .entities
+                    .get(stable_id)
+                    .and_then(|entity| entity.parasite_eating_me)
+            {
+                sim.parasite_exit_unit(eater, rules);
+            }
+            // `0x007195DB` Mark(UP) and `0x007196BF` Mark(DOWN) bracket the
+            // relocation: the cell lists, the raw occupation and the vehicle
+            // plane leave the old cell and join the new one on its OnBridge
+            // layer. ChronoOut plays at the old Location (`0x0071962C`).
+            sim.foot_mark_remove(stable_id, rules, overlay_registry);
+            if let Some(rules) = rules {
+                teleport_warp_sound(sim, stable_id, WarpSound::Out, rules);
+            }
+        }
+        teleport_movement::process_teleport(
+            &mut sim.substrate.entities,
+            stable_id,
+            sim.session.tick,
+            sim.resolved_terrain.as_ref(),
+        );
+        if teleport_relocating {
+            sim.foot_mark_put(stable_id, rules, overlay_registry);
+        }
+        // Teleport Process's warp step (`0x007192F0`), after the relocation.
+        // Its `vt+0x480(NULL, 1)` is the owner's class setter: the Unit one,
+        // or the represented NavCom clear for an infantryman.
+        let unit_teleport = sim
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category == EntityCategory::Unit);
+        let null_destination = |sim: &mut Simulation| {
+            if unit_teleport {
+                sim.set_unit_null_destination(stable_id, rules);
+            } else {
+                sim.assign_null_destination(stable_id, rules);
+            }
+        };
+        if teleport_reached {
+            // 0x007197B4: vt+0x480(NULL, 1) before Stop_Moving.
+            null_destination(sim);
+        }
+        if teleport_relocating {
+            // 0x00719710: ChronoIn at the new Location.
+            if let Some(rules) = rules {
+                teleport_warp_sound(sim, stable_id, WarpSound::In, rules);
+            }
+            // Relocation 0x0071971C calls vt+0x18C(2), including a same-cell
+            // relocation; ordinary Fly motion has no such call.
+            process.bridge_state_changed |= sim.per_cell_process(
+                stable_id,
+                movement::PerCellReason::Arrival,
+                rules,
+                overlay_registry,
+            )?;
+            process.per_cell_ran = true;
+            // 0x00719725 Stop_Moving: the tick retired the request.
+            // 0x0071972E CellClass::PickupCrate (`0x00481A00`): the crate
+            // receiver every mover still lacks (`movement::track_fresh`
+            // residuals).
+            // 0x0071973C: vt+0x480(NULL, 1). A Teleporter still in radio
+            // contact gets a Drive here, which the FootClass::AI tail ends
+            // again.
+            null_destination(sim);
+            // 0x00719742..0x00719791: the arrival WarpOut at the Location.
+            if let Some(rules) = rules {
+                teleport_warp_out(sim, stable_id, rules);
+            }
+        }
+        Ok(process)
+    }
+
+    /// Rocket Process (`0x006622C0`): the flight step, an arrival's
+    /// detonation request and a dead missile's explosion.
+    fn process_rocket_locomotor(&mut self, stable_id: u64) -> LocomotorProcess {
+        let mut process = LocomotorProcess::admitted();
+        let tick = self.session.tick;
+        let arrived = self
+            .substrate
+            .entities
+            .get_mut(stable_id)
+            .is_some_and(|entity| rocket_movement::process_rocket(entity, tick));
+        if arrived {
+            self.pending_rocket_detonations.push(stable_id);
+        }
+        // `0x00662FA1..0x00662FD0`: after the flight step the Process moves
+        // its owner's AircraftTracker entry (`0x004138C0`) to the new cell.
+        self.sync_air_spatial_membership(stable_id);
+        // `0x00662FD5..0x00662FE1`: a missile left with no Health explodes
+        // where it is and is UnInit, so `FootClass::AI` and
+        // `AircraftClass::AI` stop here.
+        let died = !arrived
+            && self
+                .substrate
+                .entities
+                .get(stable_id)
+                .is_some_and(|entity| entity.health.current <= 0 && entity.rocket_state.is_some());
+        if died {
+            crate::sim::spawn_manager::detonate_dead_missile(self, stable_id);
+            process.ended = true;
+        }
+        process
+    }
+
+    /// ObjectClass::AI's fall step for one object (`0x005F3F11..0x005F3FA4`).
+    /// Answers whether the fall grounded this frame.
+    fn advance_fall_one(&mut self, stable_id: u64, rules: &RuleSet) -> bool {
+        let falling = |sim: &Simulation| {
+            sim.substrate
+                .entities
+                .get(stable_id)
+                .is_some_and(crate::sim::game_entity::GameEntity::is_falling_down)
+        };
+        if !falling(self) {
+            return false;
+        }
+        parachute_descent::tick_parachute_descent_in_order(
+            &mut self.substrate.entities,
+            &[stable_id],
+            rules.general.parachute_max_fall_rate,
+            self.session.tick,
+        );
+        !falling(self)
+    }
 }
 
 impl Simulation {
@@ -154,11 +452,11 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        grid: Option<&PathGrid>,
+        grid: Option<&crate::sim::pathfinding::PathGrid>,
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<movement::MovementTickStats, super::FrameAdvanceError> {
         self.install_fixture_path_grid(grid);
-        self.process_ground_locomotor_one(id, rules, grid, registry)
+        self.process_ground_locomotor_one(id, rules, registry)
             .map(|outcome| outcome.movement)
     }
 
@@ -169,17 +467,10 @@ impl Simulation {
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<GroundLocomotorOutcome, super::FrameAdvanceError> {
         let timing = movement::MovementConfig::from_rules(self.session.binary_frame, rules);
-        self.process_ground_locomotor_with_config(
-            stable_id,
-            rules,
-            path_grid,
-            overlay_registry,
-            timing,
-        )
+        self.process_ground_locomotor_with_config(stable_id, rules, overlay_registry, timing)
     }
 
     #[cfg(test)]
@@ -187,25 +478,17 @@ impl Simulation {
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         timing: movement::MovementConfig,
     ) -> Result<movement::MovementTickStats, super::FrameAdvanceError> {
-        self.process_ground_locomotor_with_config(
-            stable_id,
-            rules,
-            path_grid,
-            overlay_registry,
-            timing,
-        )
-        .map(|outcome| outcome.movement)
+        self.process_ground_locomotor_with_config(stable_id, rules, overlay_registry, timing)
+            .map(|outcome| outcome.movement)
     }
 
     fn process_ground_locomotor_with_config(
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         timing: movement::MovementConfig,
     ) -> Result<GroundLocomotorOutcome, super::FrameAdvanceError> {
@@ -213,9 +496,9 @@ impl Simulation {
         let one = [stable_id];
         let mut outcome = GroundLocomotorOutcome::default();
         // Grid-less component fixtures keep the pass's empty-arrival cleanup;
-        // the pass searches with the Simulation grid or the caller's.
-        if path_grid.is_some() || sim.path_grid.is_some() {
-            sim.complete_pending_track_order(stable_id, rules);
+        // the pass searches with the canonical Simulation grid.
+        if sim.path_grid.is_some() {
+            sim.complete_pending_order(stable_id, rules);
         }
         let movement_before = sim.substrate.entities.get(stable_id).map(|entity| {
             (
@@ -250,13 +533,12 @@ impl Simulation {
             movement::movement_tick::begin_movement_with_grids_scoped(
                 &mut sim.substrate.entities,
                 Some(&one),
-                current_grid.as_deref().or(path_grid),
+                current_grid.as_deref(),
                 &sim.terrain_costs,
                 &sim.house_alliances,
                 &mut sim.substrate.occupancy,
                 &mut sim.substrate.cell_occupation,
                 &mut sim.substrate.raw_cell_occupation,
-                &mut sim.substrate.next_occupancy_enter_order,
                 &mut sim.scenario_rng,
                 sim.session.tick,
                 sim.session.binary_frame,
@@ -310,12 +592,10 @@ impl Simulation {
                     .run_foot_path_request(&request, held, rules, overlay_registry)
                     .map_err(|cause| frame_error(sim, cause))?;
                 if outcome == movement::FootPathOutcome::Resume {
-                    reenter_pending_pass(
+                    pending_movement.reenter_mover(
                         sim,
-                        &mut pending_movement,
                         movement::movement_tick::MoverReentry::FootPath(Box::new(request)),
                         rules,
-                        path_grid,
                         overlay_registry,
                         timing,
                     );
@@ -399,12 +679,10 @@ impl Simulation {
             {
                 break;
             }
-            reenter_pending_pass(
+            pending_movement.reenter_mover(
                 sim,
-                &mut pending_movement,
                 movement::movement_tick::MoverReentry::AfterTrackEnd(invocation.entity_id),
                 rules,
-                path_grid,
                 overlay_registry,
                 timing,
             );
@@ -437,7 +715,7 @@ impl Simulation {
                 &mut sim.substrate.cell_occupation,
                 sim.session.binary_frame,
                 sim.resolved_terrain.as_ref(),
-                sim.path_grid.as_deref().or(path_grid),
+                sim.path_grid.as_deref(),
                 &mut sim.interner,
                 rules,
                 &mut sim.sound_events,
@@ -470,7 +748,6 @@ impl Simulation {
     pub(super) fn advance_live_object_pass(
         &mut self,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<LiveObjectPassOutcome, super::FrameAdvanceError> {
         let miner_config = rules.map(crate::sim::miner::MinerConfig::from_rules);
@@ -481,7 +758,6 @@ impl Simulation {
             .copied()
             .collect::<BTreeSet<_>>();
         let object_ctx = techno_ai::ObjectAiCtx {
-            path_grid,
             overlay_registry,
             terrain_spawner_cells: Some(&terrain_spawner_cells),
             miner_config: miner_config.as_ref(),
@@ -508,7 +784,6 @@ impl Simulation {
         object_ctx: techno_ai::ObjectAiCtx<'_>,
     ) -> Result<ObjectTurnOutcome, super::FrameAdvanceError> {
         let sim = self;
-        let path_grid = object_ctx.path_grid;
         let overlay_registry = object_ctx.overlay_registry;
         let mut outcome = ObjectTurnOutcome::default();
         // UnitClass::AI / InfantryClass::AI give an active TubeMovement
@@ -568,8 +843,32 @@ impl Simulation {
             return Ok(outcome);
         }
 
+        // ObjectClass::AI's fall step (`0x005F3F11..0x005F3FA4`), which the
+        // Foot's TechnoClass::AI call (`0x004DA539`) reaches before Process.
+        //
+        // RESIDUAL: VERA runs it after the whole Techno visit, not at
+        // ObjectClass::AI's start. Trigger: a paradropped object landing.
+        // Effect: that frame's mission dispatch still sees it falling.
+        // Frequency: once per paradrop landing. Risk: the first mission
+        // Commence after landing waits one frame.
+        let mut per_cell_ran = false;
+        if let Some(rules) = rules
+            && sim.advance_fall_one(stable_id, rules)
+        {
+            // Object AI5F3F8D: grounded fall completion calls vt+0x18C(2)
+            // before the parachute animation's wind-down.
+            outcome.bridge_state_changed |= sim.per_cell_process(
+                stable_id,
+                movement::PerCellReason::Arrival,
+                Some(rules),
+                overlay_registry,
+            )?;
+            per_cell_ran = true;
+            sim.wind_down_parachute_anim(rules, stable_id);
+        }
+
         if !tube_active_at_entry {
-            sim.refresh_high_flying_sight_before_process(stable_id, rules, path_grid);
+            sim.refresh_high_flying_sight_before_process(stable_id, rules);
         }
 
         let before_movement = sim.movement_sound_probe(stable_id);
@@ -584,38 +883,38 @@ impl Simulation {
             .get(stable_id)
             .and_then(|e| e.locomotor.as_ref())
             .is_some_and(|l| l.kind == crate::rules::locomotor_type::LocomotorKind::Walk);
-        let one = [stable_id];
-        // Foot4DA81A bypasses Process and its adjacent SHP body cadence for
-        // +3CD. Keep the later Foot sound edge and Unit sinking suffix live.
-        let sinking = sim
-            .substrate
-            .entities
-            .get(stable_id)
-            .is_some_and(|entity| entity.sinking.is_active());
-        let ground = if sinking {
-            GroundLocomotorOutcome::default()
+        // An entry-active TubeMovement leaf runs through the ground corridor
+        // in place of the Foot AI and its Process.
+        let process = if tube_active_at_entry {
+            let ground = sim.process_ground_locomotor_one(stable_id, rules, overlay_registry)?;
+            LocomotorProcess {
+                admitted: false,
+                ..LocomotorProcess::from_ground(ground)
+            }
         } else {
-            sim.process_ground_locomotor_one(stable_id, rules, path_grid, overlay_registry)?
+            sim.process_active_locomotor(stable_id, rules, overlay_registry)?
         };
-        let track_owned = ground.track_owned;
-        let mut per_cell_ran = ground.per_cell_ran;
-        outcome.movement.merge(ground.movement);
-        outcome.bridge_state_changed |= ground.bridge_state_changed;
-        // Synchronous turn/arrival callbacks may convert or remove the owner.
-        if sim
-            .substrate
-            .entities
-            .get(stable_id)
-            .is_none_or(|e| e.dying || !e.lifecycle.object_alive)
+        let track_owned = process.track_owned;
+        per_cell_ran |= process.per_cell_ran;
+        outcome.movement.merge(process.movement);
+        outcome.bridge_state_changed |= process.bridge_state_changed;
+        // `0x004DA87A`: the Process may have converted or removed the owner.
+        if process.ended
+            || sim
+                .substrate
+                .entities
+                .get(stable_id)
+                .is_none_or(|e| e.dying || !e.lifecycle.object_alive)
         {
             return Ok(outcome);
         }
 
         // FootClass advances the SHP Unit body counter immediately after
         // this object's locomotor Process, against the still-current
-        // absolute binary frame. The global frame commits only after the
-        // complete live-object pass.
-        if !sinking && shp_vehicle_counter_admitted(tube_active_at_entry) {
+        // absolute binary frame, inside the Process admission
+        // (`0x004DA81A` bypasses both). The global frame commits only after
+        // the complete live-object pass.
+        if process.admitted && shp_vehicle_counter_admitted(tube_active_at_entry) {
             let shp_vehicle_cadence = sim.substrate.entities.get(stable_id).and_then(|entity| {
                 if entity.category != EntityCategory::Unit || entity.is_voxel {
                     return None;
@@ -661,214 +960,6 @@ impl Simulation {
             return Ok(outcome);
         }
 
-        let air = sim.tick_air_movement_with_cell_lists_one(stable_id, rules);
-        if air.touched_down {
-            outcome.bridge_state_changed |= sim.per_cell_process(
-                stable_id,
-                movement::PerCellReason::Arrival,
-                rules,
-                overlay_registry,
-            )?;
-            per_cell_ran = true;
-        }
-        let infantry = sim
-            .substrate
-            .entities
-            .get(stable_id)
-            .is_some_and(|entity| entity.category == EntityCategory::Infantry);
-        if air.impact && infantry {
-            // The Infantry notice keeps the infantryman: its AI runs on to the
-            // sequencer and locomotion actions below.
-            if let Some(rules) = rules {
-                sim.aircraft_tracker_remove(stable_id);
-                sim.infantry_crash_impact(stable_id, rules);
-            }
-        } else if air.impact {
-            // The impact UnInits the object; `FootClass::AI` returns on the
-            // cleared Object+90 (`0x004DA87E`) and the class AI after it
-            // (`AircraftClass::AI 0x00414DAA`).
-            let jumpjet = sim.substrate.entities.get(stable_id).is_some_and(|entity| {
-                entity.locomotor.as_ref().is_some_and(|locomotor| {
-                    locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
-                })
-            });
-            match rules {
-                Some(rules) if jumpjet => {
-                    sim.jumpjet_crash_impact(stable_id, rules, overlay_registry);
-                }
-                Some(rules) => sim.fly_crash_impact(stable_id, rules, overlay_registry),
-                None => sim.uninit(stable_id),
-            }
-            return Ok(outcome);
-        }
-        // `InfantryClass::AI` ends with its sequencer (`0x0051BF6A`) and the
-        // locomotion actions of 0x00520F40 (`0x0051BF7B`), which read the
-        // fraction and state Process just left.
-        if let Some(rules) = rules
-            && infantry
-            && sim.infantry_action_turn(stable_id, rules)
-        {
-            // Its AirDeathFinish (or WetDie) ended in UnInit.
-            return Ok(outcome);
-        }
-        let teleport_armed = sim
-            .substrate
-            .entities
-            .get(stable_id)
-            .filter(|entity| teleport_movement::teleport_process_active(entity))
-            .and_then(|entity| entity.teleport_state.as_ref())
-            .is_some_and(|state| {
-                state.phase == crate::sim::movement::teleport_movement::TeleportPhase::Relocate
-            });
-        // Teleport Process 0x007197AF: already on the destination, no warp.
-        let teleport_reached = sim.substrate.entities.get(stable_id).is_some_and(|entity| {
-            teleport_movement::warp_destination_reached(entity, sim.resolved_terrain.as_ref())
-        });
-        let teleport_relocating = teleport_armed && !teleport_reached;
-        // Teleport Process 0x007195BF..0x007195CF: the warp step ejects a
-        // parasite (ExitUnit, no suppression) before the relocation.
-        if teleport_relocating
-            && let Some(rules) = rules
-            && let Some(eater) = sim
-                .substrate
-                .entities
-                .get(stable_id)
-                .and_then(|entity| entity.parasite_eating_me)
-        {
-            sim.parasite_exit_unit(eater, rules);
-        }
-        if let Some(rules) = rules {
-            let warp_out_type = sim.interner.intern(&rules.general.warp_out.name);
-            let mut warp_spawns = Vec::new();
-            let mut teleport_visuals = teleport_movement::TeleportVisuals {
-                anim_spawns: &mut warp_spawns,
-                warp_out_type,
-            };
-            teleport_movement::tick_teleport_movement(
-                &mut sim.substrate.entities,
-                &mut sim.substrate.occupancy,
-                &one,
-                sim.session.tick,
-                sim.resolved_terrain.as_ref(),
-                Some(&mut teleport_visuals),
-            );
-            // RESIDUAL: the destination WarpOut is built here with the source
-            // one; native builds it after the arrival's Per_Cell_Process(2),
-            // Stop_Moving, crate pickup and NULL assign (`0x00719742`). Only
-            // an arrival step that draws RNG (a crush's death animation)
-            // could see the order.
-            for descriptor in warp_spawns {
-                let type_name = descriptor.type_name;
-                if let Err(error) = sim.spawn_anim_object(rules, descriptor) {
-                    // An art type that never bound draws nothing natively
-                    // either; see `spawn_combat_explosion_anim`.
-                    log::debug!(
-                        "teleport warp [{}] did not construct: {error}",
-                        sim.interner.resolve(type_name)
-                    );
-                }
-            }
-        } else {
-            teleport_movement::tick_teleport_movement(
-                &mut sim.substrate.entities,
-                &mut sim.substrate.occupancy,
-                &one,
-                sim.session.tick,
-                sim.resolved_terrain.as_ref(),
-                None,
-            );
-        }
-        // Teleport Process's warp step (`0x007192F0`), after the relocation.
-        // Its `vt+0x480(NULL, 1)` is the owner's class setter: the Unit one,
-        // or the represented NavCom clear for an infantryman.
-        let unit_teleport = sim
-            .substrate
-            .entities
-            .get(stable_id)
-            .is_some_and(|entity| entity.category == EntityCategory::Unit);
-        let null_destination = |sim: &mut Simulation| {
-            if unit_teleport {
-                sim.set_unit_null_destination(stable_id, rules);
-            } else {
-                sim.assign_null_destination(stable_id, rules);
-            }
-        };
-        if teleport_reached {
-            // 0x007197B4: vt+0x480(NULL, 1) before Stop_Moving.
-            null_destination(sim);
-        }
-        if teleport_relocating {
-            if let Some(rules) = rules {
-                teleport_warp_sounds(sim, stable_id, cell_before_movement, rules);
-            }
-            // Relocation 0x0071971C calls vt+0x18C(2), including a same-cell
-            // relocation; ordinary Fly motion has no such call.
-            outcome.bridge_state_changed |= sim.per_cell_process(
-                stable_id,
-                movement::PerCellReason::Arrival,
-                rules,
-                overlay_registry,
-            )?;
-            per_cell_ran = true;
-            // 0x00719725 Stop_Moving: the tick retired the request.
-            // 0x0071972E CellClass::PickupCrate (`0x00481A00`): the crate
-            // receiver every mover still lacks (`movement::track_fresh`
-            // residuals).
-            // 0x0071973C: vt+0x480(NULL, 1). A Teleporter still in radio
-            // contact gets a Drive here, which the FootClass::AI tail below
-            // ends again.
-            null_destination(sim);
-        }
-        let rocket_arrivals = rocket_movement::tick_rocket_movement(
-            &mut sim.substrate.entities,
-            &one,
-            sim.session.tick,
-        );
-        let rocket_arrived = !rocket_arrivals.is_empty();
-        sim.pending_rocket_detonations.extend(rocket_arrivals);
-        // `ILoco::Process 0x00662FD5..0x00662FE1`: after its flight step a
-        // missile left with no Health explodes where it is and is UnInit, so
-        // `FootClass::AI` and `AircraftClass::AI` stop here.
-        let rocket_died = !rocket_arrived
-            && sim.substrate.entities.get(stable_id).is_some_and(|entity| {
-                entity.health.current <= 0
-                    && entity.rocket_state.is_some()
-                    && entity.locomotor.as_ref().is_some_and(|locomotor| {
-                        locomotor.active_kind()
-                            == crate::rules::locomotor_type::LocomotorKind::Rocket
-                    })
-            });
-        if rocket_died {
-            crate::sim::spawn_manager::detonate_dead_missile(sim, stable_id);
-            return Ok(outcome);
-        }
-        if let Some(rules) = rules {
-            let falling = |sim: &Simulation| {
-                sim.substrate
-                    .entities
-                    .get(stable_id)
-                    .is_some_and(|entity| entity.parachute_state.is_some())
-            };
-            let was_falling = falling(sim);
-            parachute_descent::tick_parachute_descent_in_order(
-                &mut sim.substrate.entities,
-                &one,
-                rules.general.parachute_max_fall_rate,
-                sim.session.tick,
-            );
-            if was_falling && !falling(sim) {
-                // Object AI5F3F8D: grounded fall completion calls
-                // vt+0x18C(2) before the parachute animation's wind-down.
-                outcome.bridge_state_changed |= sim.per_cell_process(
-                    stable_id,
-                    movement::PerCellReason::Arrival,
-                    Some(rules),
-                    overlay_registry,
-                )?;
-                per_cell_ran = true;
-                sim.wind_down_parachute_anim(rules, stable_id);
-            }
-        }
         movement::tick_locomotor_piggyback_restore_one(&mut sim.substrate.entities, stable_id);
         // FootClass::AI tail 0x004DAEE1..0x004DAEF3, after the piggyback swap:
         // an infected Foot runs its eater's ParasiteClass AI in its own turn.
@@ -927,6 +1018,20 @@ impl Simulation {
             if sim.tick_ship_sinking(stable_id, rules) {
                 return Ok(outcome);
             }
+        }
+        // `InfantryClass::AI` ends, once FootClass::AI has returned, with its
+        // sequencer (`0x0051BF6A`) and the locomotion actions of 0x00520F40
+        // (`0x0051BF7B`), which read the fraction and state Process just left.
+        if let Some(rules) = rules
+            && sim
+                .substrate
+                .entities
+                .get(stable_id)
+                .is_some_and(|entity| entity.category == EntityCategory::Infantry)
+            && sim.infantry_action_turn(stable_id, rules)
+        {
+            // Its AirDeathFinish (or WetDie) ended in UnInit.
+            return Ok(outcome);
         }
         // UnitClass::AI after FootClass::AI, before its second Ready/Commence.
         crate::sim::miner::miner_system::unit_ai_clear_harvesting(sim, stable_id);

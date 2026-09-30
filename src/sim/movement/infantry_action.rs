@@ -214,7 +214,7 @@ impl Simulation {
             .ok_or("Do_Action requires Infantry Doing")?
             .doing();
         let on_bridge = actor.on_bridge;
-        if current == DO_PARADROP && actor.object_is_falling_down != 0 {
+        if current == DO_PARADROP && actor.is_falling_down() {
             return Ok(false);
         }
         if requested == DO_DOWN && !facts.crawls {

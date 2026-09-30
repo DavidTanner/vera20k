@@ -106,8 +106,7 @@ fn slave_master_admission_reaches_head_selection_in_the_same_object_turn() {
                 CellListInsertion::AppendBuilding,
             );
         }
-        let grid = sim.path_grid_snapshot();
-        sim.advance_live_object_pass(Some(&rules), grid.as_deref(), Some(&registry))
+        sim.advance_live_object_pass(Some(&rules), Some(&registry))
             .expect("fixture frame must complete");
         let e = sim.substrate.entities.get(slave).unwrap();
         let head = e.locomotor.as_ref().unwrap().step_head();
@@ -196,7 +195,6 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
         crate::rules::locomotor_type::LocomotorKind::Walk
     );
     broken_strip(&mut sim);
-    let grid = sim.path_grid_snapshot();
     assert!(sim.apply_command(
         "Americans",
         &Command::CaptureBuilding {
@@ -204,7 +202,6 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
             target_building_id: hut
         },
         Some(&rules),
-        grid.as_deref(),
     ));
     assert_eq!(
         sim.substrate
@@ -392,7 +389,6 @@ fn walk_boundary_marks_current_xyz_without_replacing_head_or_consuming_path() {
             queue: false,
         },
         Some(&rules),
-        grid.as_deref(),
     ));
     drop(grid);
     let head = DriveCoord {
@@ -487,7 +483,6 @@ fn diagonal_walk_relinks_the_first_actual_side_cell_before_reaching_its_head() {
             queue: false,
         },
         Some(&rules),
-        grid.as_deref(),
     ));
     drop(grid);
     for _ in 0..100 {
@@ -549,7 +544,6 @@ fn refused_fresh_walk_head_restores_the_current_raw_occupation() {
             queue: false,
         },
         Some(&rules),
-        grid.as_deref(),
     ));
     drop(grid);
     let grid = sim.path_grid_snapshot();
@@ -629,7 +623,6 @@ fn production_fresh_head_and_raw_history_match_original_walk_producer() {
                 queue: false,
             },
             Some(&rules),
-            grid.as_deref(),
         ));
         drop(grid);
         sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
@@ -683,9 +676,7 @@ fn ready_repair_fixture(
     crate::map::overlay_types::OverlayTypeRegistry,
     u64,
 ) {
-    use crate::sim::bridge_state::{
-        Axis, BridgeCellRole, BridgeRuntimeCell, BridgeheadAnchorClass, DamageState,
-    };
+    use crate::sim::bridge_state::{Axis, BridgeCellRole, BridgeRuntimeCell, DamageState};
     let (mut sim, rules, registry) = fixture();
     sim.mapgen_rng = Simulation::with_seed(0).mapgen_rng;
     let owner = sim.interner.intern("Americans");
@@ -723,7 +714,6 @@ fn ready_repair_fixture(
                     role: BridgeCellRole::Body,
                     anchor_span_id: None,
                     overlay_byte: overlay,
-                    bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
                 },
             );
         }
@@ -1151,7 +1141,6 @@ fn engineer_adjacent_to_cabhut_enters_before_repairing_and_dirtying_minimap() {
             target_building_id: hut
         },
         Some(&rules),
-        grid.as_deref(),
     ));
     drop(grid);
     assert!(!repair_frame(&mut sim, &rules, &registry).bridge_state_changed);
@@ -1195,7 +1184,6 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
                 queue: false,
             },
             Some(&rules),
-            grid.as_deref(),
         ));
         drop(grid);
         let mut retained = None;
@@ -1231,7 +1219,7 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
                 queue: false,
             }
         };
-        assert!(sim.apply_command("Americans", &order, Some(&rules), grid.as_deref(),));
+        assert!(sim.apply_command("Americans", &order, Some(&rules),));
         drop(grid);
         let e = sim.substrate.entities.get(id).unwrap();
         assert_eq!(ground_pose::position_world_coord(&e.position), before);
@@ -1588,7 +1576,6 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
                     queue: false,
                 },
                 Some(&rules),
-                grid.as_deref(),
                 Some(&registry)
             ));
             drop(grid);
@@ -1766,7 +1753,6 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
 fn jumpjet_query_fields_hash_and_restore_as_one_suspended_instance() {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::movement::locomotion::piggyback;
-    use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::{components::DriveCoord, snapshot::GameSnapshot};
     let (mut sim, rules, _) = fixture();
     let id = sim
@@ -1832,7 +1818,7 @@ fn jumpjet_query_fields_hash_and_restore_as_one_suspended_instance() {
         .as_mut()
         .unwrap();
     assert_eq!(
-        piggyback::begin(loco, LocomotorKind::Walk, MovementLayer::Ground, 0),
+        piggyback::begin(loco, LocomotorKind::Walk, 0),
         piggyback::BeginOutcome::Installed
     );
     let saved = GameSnapshot::save(&sim, 0, 0, "jumpjet stash", 0);
@@ -1894,12 +1880,10 @@ fn jumpjet_stop_command_keeps_native_moving_and_selected_coordinate() {
         .jumpjet_runtime()
         .unwrap()
         .clone();
-    let grid = sim.path_grid_snapshot();
     assert!(sim.apply_command_with_overlays(
         "Americans",
         &Command::Stop { entity_id: id },
         Some(&rules),
-        grid.as_deref(),
         Some(&registry)
     ));
     let state = sim

@@ -367,7 +367,7 @@ fn nonterminal_limbo_and_falling_do_not_add_an_early_survival_gate() {
             if event == TrackWorldEvent::SetCoords {
                 let entity = sim.substrate.entities.get_mut(id).unwrap();
                 entity.lifecycle.in_limbo = true;
-                entity.object_is_falling_down = 1;
+                entity.set_falling_down_for_test(true);
             }
         });
         let state = progress(sim.substrate.entities.get(1).unwrap(), family).unwrap();

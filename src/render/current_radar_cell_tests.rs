@@ -2,10 +2,10 @@ use super::*;
 
 use crate::map::bridge_facts::{
     Axis, BRIDGE_FLAG_EXTRA_SIDE, BRIDGE_FLAG_STRUCTURAL, BridgeAnchorRelation, BridgeStampFamily,
-    BridgeStampSlot, BridgeheadAnchorClass,
+    BridgeStampSlot,
 };
 use crate::map::playfield::PlayfieldBounds;
-use crate::map::resolved_terrain::{RadarColorMetadata, ResolvedTerrainCell, ResolvedTerrainGrid};
+use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::map::terrain::{TerrainGrid, build_terrain_grid_from_resolved};
 use crate::render::minimap::{MinimapCellRadarSource, MinimapOverlayDatum};
 use crate::render::minimap_helpers::OverlayClassification;
@@ -132,7 +132,6 @@ fn bridge_state_at(cell: (u16, u16), intact: bool) -> BridgeRuntimeState {
             role: BridgeCellRole::Body,
             anchor_span_id: Some(1),
             overlay_byte: if intact { 0xCD } else { 0xE7 },
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
         },
     );
     state
@@ -552,82 +551,6 @@ fn gsi_04_01_snapshot_high_collapse_uses_runtime_overlay_after_structural_flag_c
             "incremental source must share the snapshot-restored high-family authority",
         );
     }
-}
-
-#[test]
-fn gsi_04_01_damaged_tmp_pair_rebuilds_and_repairs_in_full_and_incremental_paths() {
-    const DAMAGED_RAW_LEFT: [u8; 3] = [200, 100, 50];
-    const DAMAGED_RAW_RIGHT: [u8; 3] = [7, 8, 9];
-    const DAMAGED_COLOR: [u8; 3] = [100, 50, 25];
-
-    let (grid, mut resolved) = fixture(None);
-    let cell = central_cell(&grid, expanded_bounds());
-    resolved.cell_mut(cell.0, cell.1).unwrap().has_damaged_data = true;
-    resolved.test_set_damaged_radar_metadata(
-        cell.0,
-        cell.1,
-        RadarColorMetadata {
-            left: DAMAGED_RAW_LEFT,
-            right: DAMAGED_RAW_RIGHT,
-            valid: true,
-        },
-    );
-    resolved.cell_mut(cell.0, cell.1).unwrap().final_tile_index = 42;
-    resolved
-        .cell_mut(cell.0, cell.1)
-        .unwrap()
-        .bridge_facts
-        .raw_flags |= 0x2000;
-    assert_eq!(
-        resolved
-            .current_tile_radar_metadata(cell.0, cell.1)
-            .unwrap()
-            .right,
-        DAMAGED_RAW_RIGHT,
-        "the independent damaged TMP's exact right metadata remains retained",
-    );
-
-    resolved
-        .cell_mut(cell.0, cell.1)
-        .unwrap()
-        .bridge_facts
-        .raw_flags &= !0x2000;
-    let colors = colors();
-    let pristine_state = bridge_state_at(cell, true);
-    let pristine = live_runtime(
-        resolved.clone(),
-        pristine_state.clone(),
-        OverlayGrid::new(SIDE, SIDE),
-    );
-    let pristine_full = projection(&grid, &pristine, &[], expanded_bounds(), &colors);
-    assert_eq!(raw_pair(&pristine_full, cell), [BASE_COLOR; 2]);
-
-    let mut damaged_state = pristine_state;
-    assert_eq!(
-        damaged_state.apply_damaged_variant_flood_fill(cell.0, cell.1, true, &mut resolved),
-        vec![cell],
-    );
-    let damaged = live_runtime(
-        resolved.clone(),
-        damaged_state.clone(),
-        OverlayGrid::new(SIDE, SIDE),
-    );
-    let damaged_full = projection(&grid, &damaged, &[], expanded_bounds(), &colors);
-    assert_eq!(raw_pair(&damaged_full, cell), [DAMAGED_COLOR; 2]);
-
-    let mut incremental = pristine_full;
-    apply_incremental(&mut incremental, &damaged, cell, &colors);
-    assert_eq!(raw_pair(&incremental, cell), [DAMAGED_COLOR; 2]);
-
-    assert_eq!(
-        damaged_state.apply_damaged_variant_flood_fill(cell.0, cell.1, false, &mut resolved),
-        vec![cell],
-    );
-    let repaired = live_runtime(resolved, damaged_state, OverlayGrid::new(SIDE, SIDE));
-    let repaired_full = projection(&grid, &repaired, &[], expanded_bounds(), &colors);
-    assert_eq!(raw_pair(&repaired_full, cell), [BASE_COLOR; 2]);
-    apply_incremental(&mut incremental, &repaired, cell, &colors);
-    assert_eq!(raw_pair(&incremental, cell), [BASE_COLOR; 2]);
 }
 
 #[test]

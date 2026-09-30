@@ -38,7 +38,6 @@ impl Simulation {
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
-        path_grid: Option<&PathGrid>,
     ) {
         let frame = self.session.binary_frame;
         let Some(entity) = self.substrate.entities.get(stable_id) else {
@@ -99,7 +98,7 @@ impl Simulation {
             fog_of_war: self.session.game_options.fog_of_war,
         };
         let height_grid = if config.reveal_by_height {
-            path_grid.map(PathGrid::ground_height_grid)
+            self.path_grid().map(PathGrid::ground_height_grid)
         } else {
             None
         };

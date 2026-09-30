@@ -1124,8 +1124,9 @@ pub struct Simulation {
     /// Built from terrain data; rebuilt when buildings or bridges change.
     #[serde(skip)]
     pub(crate) zone_grid: Option<ZoneGrid>,
-    /// Canonical dynamic navigation projection. Arc snapshots let one master
-    /// frame pin its entry view while the sim publishes the next projection.
+    /// Canonical dynamic navigation projection. Every reader reads it at its
+    /// point of use; a republish replaces the `Arc` without mutating readers'
+    /// shared copies.
     #[serde(skip)]
     pub(crate) path_grid: Option<Arc<PathGrid>>,
     /// Derived cache: the marked-structure movement cells last published into
@@ -2817,31 +2818,6 @@ impl Simulation {
         }
     }
 
-    /// Commit the allocated real-cell half of a runtime setter that already
-    /// executed synchronously through `CellClassBridgeFlagState`. Dummy
-    /// coordinate/flag effects are live at the native call point and must not
-    /// be replayed here.
-    pub(crate) fn apply_planned_bridge_flag_stamp_to_real_cells(
-        &mut self,
-        stamp: crate::map::bridge_facts::BridgeFlagStamp,
-    ) {
-        let Some(terrain) = self.resolved_terrain.as_ref() else {
-            return;
-        };
-        if !terrain.bridge_flag_authority_matches_shape(&self.real_cell_bridge_flags_0x1180) {
-            self.real_cell_bridge_flags_0x1180 = terrain.capture_real_cell_bridge_flags_0x1180();
-        }
-        let updates = self
-            .resolved_terrain
-            .as_mut()
-            .expect("terrain presence checked before planned bridge setter projection")
-            .apply_planned_bridge_flag_stamp_to_real_cells(stamp);
-        for (index, flags) in updates {
-            self.real_cell_bridge_flags_0x1180
-                .set_allocated_cell(index, flags);
-        }
-    }
-
     /// Synthetic fixtures may assign a detached grid directly. Production
     /// construction binds both owners, but gameplay must still read the live
     /// handle attached to the actual CellClass table it queried.
@@ -3384,7 +3360,7 @@ impl Simulation {
         );
         // `0x004DAA38`/`0x004DAA3E`: falling (`+0x8D`) or crashing (`+0x425`).
         // A Jumpjet's ordinary descent is neither: it keeps its move sound.
-        let falling_or_crashing = entity.object_is_falling_down != 0
+        let falling_or_crashing = entity.is_falling_down()
             || entity.crashing
             || entity.parachute_state.is_some();
         let active = entity.move_sound_active;
@@ -4840,7 +4816,9 @@ impl Simulation {
         self.path_grid.as_deref()
     }
 
-    /// Pin the current navigation projection across a mutable simulation frame.
+    /// Clone the current projection's `Arc` only to split borrows at a point
+    /// of use (the grid read alongside a `&mut self` call). Take it where the
+    /// grid is read, never to carry a view across a republish.
     pub fn path_grid_snapshot(&self) -> Option<Arc<PathGrid>> {
         self.path_grid.clone()
     }
@@ -5035,7 +5013,7 @@ impl Simulation {
         &mut self,
         rules: &RuleSet,
         terrain_changed_cells: &[(u16, u16)],
-    ) -> Option<Arc<PathGrid>> {
+    ) {
         let overlay_cells = self
             .overlay_grid
             .as_mut()
@@ -5070,7 +5048,6 @@ impl Simulation {
                 );
             }
         }
-        self.path_grid_snapshot()
     }
 
     /// Apply combat-emitted wall damage events: drives the per-cell damage
@@ -5446,15 +5423,11 @@ impl Simulation {
         }
     }
 
-    fn refresh_fog(
-        &mut self,
-        path_grid: Option<&PathGrid>,
-        config: &vision::VisionConfig,
-        rules: Option<&RuleSet>,
-    ) {
+    fn refresh_fog(&mut self, config: &vision::VisionConfig, rules: Option<&RuleSet>) {
         // Recompute visibility in-place: clears FLAG_VISIBLE on existing grids
         // (preserving FLAG_REVEALED) then re-reveals from entity positions.
         // No allocation or merge_revealed_from pass needed.
+        let path_grid = self.path_grid.as_deref();
         let height_grid = if config.reveal_by_height {
             path_grid.map(PathGrid::ground_height_grid)
         } else {
@@ -5677,7 +5650,6 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        path_grid: Option<Arc<PathGrid>>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
         execute_tick: u64,
@@ -5701,12 +5673,7 @@ impl Simulation {
         // which construction and the frame-end pending-delete drain move: a
         // death reaches the gate on the next frame. Each house's strategy tick
         // (`house_strategy.rs`) and building choice follow its own gate.
-        self.house_rung(
-            rules,
-            path_grid.as_deref(),
-            overlay_registry,
-            self.session.tick > 0,
-        );
+        self.house_rung(rules, overlay_registry, self.session.tick > 0);
         #[cfg(test)]
         if self.session.tick > 0 {
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::DefeatProcessed);
@@ -5726,7 +5693,6 @@ impl Simulation {
                 self,
                 &completed_buildings,
                 rules,
-                path_grid.as_deref(),
                 overlay_registry,
             );
         }
@@ -5734,7 +5700,7 @@ impl Simulation {
         // Logic walk observes frame N's pre-command state, so an accepted
         // command first changes that object's AI behavior on frame N+1.
         let (executed, spawned, placed_owners) =
-            self.apply_due_commands(commands, rules, path_grid, execute_tick, overlay_registry);
+            self.apply_due_commands(commands, rules, execute_tick, overlay_registry);
         *executed_commands += executed;
         *spawned_entities |= spawned;
         placed_building_owners.extend(placed_owners);
@@ -6024,11 +5990,8 @@ impl Simulation {
         let mut spawned_entities = false;
         let mut destroyed_structure = false;
         let mut placed_building_owners = Vec::new();
-        // Frame-start view of the canonical grid; the phases below switch to a
-        // fresh snapshot where a republish must become visible mid-frame.
-        let frame_path_grid = self.path_grid_snapshot();
-        let path_grid = frame_path_grid.as_deref();
-        let mut tail_path_grid: Option<Arc<PathGrid>> = None;
+        // Every phase below reads the canonical `path_grid` at its point of
+        // use, so a mid-frame republish is visible to the next reader.
         // No command-boundary drain: command-applied deaths (sell, MCV/slave
         // deploy-undeploy, engineer capture) now stay in the Dying window like
         // combat deaths, freed only by the single end-of-tick drain — matching
@@ -6101,7 +6064,7 @@ impl Simulation {
         self.trace_master_frame_rung(MasterFrameTestRung::LogicVector);
         // Receipts are frame-local: an aborted earlier frame must not leak one.
         self.fire_requests = Default::default();
-        let object_pass = self.advance_live_object_pass(rules, path_grid, overlay_registry)?;
+        let object_pass = self.advance_live_object_pass(rules, overlay_registry)?;
         spawned_entities |= std::mem::take(&mut self.mission_spawned_entities);
         let movement_stats = object_pass.movement;
         destroyed_structure |= object_pass.destroyed_structure;
@@ -6146,8 +6109,6 @@ impl Simulation {
         // separate from the weapon-damage wall path. No-op when no crusher sits
         // on a wall, so it is hash-neutral for every non-crush scenario.
         self.apply_wall_crush_on_driveover(rules, overlay_registry);
-        let post_crush_path_grid = self.path_grid_snapshot();
-        let active_path_grid = post_crush_path_grid.as_deref().or(path_grid);
         // --- Phase 2.5: body rocking ---
         // Drive/Ship slope sampling now belongs to locomotor Process entry,
         // before movement. Body rocking keeps its established post-movement
@@ -6187,7 +6148,7 @@ impl Simulation {
             reveal_by_height: rules.map_or(true, |r| r.general.reveal_by_height),
             fog_of_war: self.session.game_options.fog_of_war,
         };
-        self.refresh_fog(path_grid, &vision_config, rules);
+        self.refresh_fog(&vision_config, rules);
 
         if let Some(rules) = rules {
             // --- Phase 4: Power ---
@@ -6255,7 +6216,6 @@ impl Simulation {
             // sees the up-to-date movement_target this tick.
             self.tick_attack_pursuit_with_overlay_registry(
                 rules,
-                active_path_grid,
                 overlay_registry,
                 &tube_turn_owned_ids,
             );
@@ -6290,9 +6250,6 @@ impl Simulation {
                 self.admit_projectile(stable_id, projectile);
             }
             bridge_state_changed |= self.visit_combat_tail(first_tail_id, rules, overlay_registry);
-            let post_combat_path_grid = self.path_grid_snapshot();
-            let active_post_combat_path_grid =
-                post_combat_path_grid.as_deref().or(active_path_grid);
             turret::tick_turret_rotation(
                 &mut self.substrate.entities,
                 rules,
@@ -6334,8 +6291,6 @@ impl Simulation {
                 .commit(self, rules, overlay_registry);
             destroyed_structure |= receipt.structure_destroyed;
             bridge_state_changed |= receipt.bridge_state_changed;
-            tail_path_grid = receipt.path_grid;
-            let post_terrain_path_grid = tail_path_grid.as_deref().or(active_post_combat_path_grid);
 
             // No end-of-Phase-5 drain: combat-killed structures/voxels stay in
             // the Dying window through the Phase 5.5-8.5 consumers and are freed
@@ -6347,14 +6302,9 @@ impl Simulation {
             // --- Phase 6: Passengers ---
             // Retaliation is not a phase: every receiver issues its Mission
             // Override inline (`TechnoClass::ReceiveDamage 0x00702A43`).
-            let phase_six_path_grid = post_terrain_path_grid;
             passenger_ownership_changed =
                 passenger::tick_passenger_system(self, rules, overlay_registry);
-            self.tick_order_intents_post_combat_except(
-                phase_six_path_grid,
-                Some(rules),
-                &tube_turn_owned_ids,
-            );
+            self.tick_order_intents_post_combat_except(Some(rules), &tube_turn_owned_ids);
             // `LogicClass__PerTickUpdate @ 0x0055AFB0` calls
             // `MapClass__UpdateCrateRegenTimers @ 0x0056BBE0` at `0x0055B65A`,
             // between `AlphaShapeClass::PurgeDisabled` and the Tactical,
@@ -6372,7 +6322,6 @@ impl Simulation {
                     self,
                     rules,
                     overlay_registry,
-                    phase_six_path_grid,
                     self.scenario_normal_lighting,
                 );
                 if regen.visible != 0 {
@@ -6420,21 +6369,17 @@ impl Simulation {
             // a factory and a depot repair running. Downstream risk: credit
             // trajectory and stall cadence, no lifecycle or RNG effect.
             production::revalidate_and_step_factories(self, rules);
-            spawned_entities |= production::tick_production_with_overlay_registry(
-                self,
-                rules,
-                phase_six_path_grid,
-                overlay_registry,
-            );
+            spawned_entities |=
+                production::tick_production_with_overlay_registry(self, rules, overlay_registry);
             #[cfg(test)]
             self.trace_house_ai_activation_order(
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
             );
-            building_dock::tick_building_docks(self, rules, phase_six_path_grid);
+            building_dock::tick_building_docks(self, rules);
             crate::sim::docking::bunker_install::tick_bunker_install(self, rules, overlay_registry);
             aircraft_dock::tick_aircraft_docks(self, rules);
             if spawned_entities {
-                self.refresh_fog(phase_six_path_grid, &vision_config, Some(rules));
+                self.refresh_fog(&vision_config, Some(rules));
             }
         }
 
@@ -6443,7 +6388,6 @@ impl Simulation {
         // behavior-preserving.) Native-spine note: gamemd runs HouseClass updates
         // (incl. defeat) in the tail and commits the frame counter late; AI
         // placement is project-deferred and kept in its current slot.
-        let late_path_grid = tail_path_grid.clone().or_else(|| frame_path_grid.clone());
         let frame_committed = self.run_late_region(
             if lane == TickLane::Ordinary {
                 commands
@@ -6451,7 +6395,6 @@ impl Simulation {
                 &[]
             },
             rules,
-            late_path_grid,
             overlay_registry,
             tick_ms,
             execute_tick,

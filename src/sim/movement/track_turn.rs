@@ -139,7 +139,7 @@ impl Simulation {
             );
             // Native reloads these three bytes after the synchronous callback.
             if !self.substrate.entities.get(id).is_some_and(|e| {
-                e.lifecycle.object_alive && !e.lifecycle.in_limbo && e.object_is_falling_down == 0
+                e.lifecycle.object_alive && !e.lifecycle.in_limbo && !e.is_falling_down()
             }) {
                 return false;
             }

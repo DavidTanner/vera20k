@@ -64,9 +64,11 @@ fn build_ordinary_c4_sim(
 ) {
     use crate::sim::house_state::HouseState;
 
-    let ini = format!(
-        "{BRIDGE_REPAIR_TEST_INI}\n[GHOST]\n\
-         Locomotor={{4A582744-9839-11d1-B709-00A024DDAFD1}}\n"
+    // The SEAL walks: a second [GHOST] section would not be read, since a
+    // lookup finds the first section of a name.
+    let ini = BRIDGE_REPAIR_TEST_INI.replace(
+        "[GHOST]\n",
+        "[GHOST]\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n",
     );
     let (mut sim, rules, registry) = super::entry_test_fixture::fixture_with_rules(&ini);
     // A raw ordinary three-cell width, with resident TMP/navigation owners.
@@ -220,7 +222,6 @@ fn seed_bridge_with_state(sim: &mut Simulation, state: DamageState) {
                 role,
                 anchor_span_id: Some(1),
                 overlay_byte,
-                bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
             },
         );
     }
@@ -265,7 +266,6 @@ fn seed_hut_fallback_bridgehead_layout(sim: &mut Simulation) {
             role: BridgeCellRole::Bridgehead,
             anchor_span_id: None,
             overlay_byte: 0,
-            bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
         },
     );
     bs.test_seed_cell(
@@ -279,7 +279,6 @@ fn seed_hut_fallback_bridgehead_layout(sim: &mut Simulation) {
             role: BridgeCellRole::Anchor,
             anchor_span_id: Some(1),
             overlay_byte: 0,
-            bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
         },
     );
     sim.bridge_state = Some(bs);
@@ -315,7 +314,6 @@ fn seed_terminal_overlay_with_fallback_trap(sim: &mut Simulation, overlay_byte: 
             role: BridgeCellRole::Body,
             anchor_span_id: None,
             overlay_byte,
-            bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
         },
     );
 }
@@ -389,7 +387,6 @@ fn capture_building_command_accepts_noncapturable_bridge_repair_hut() {
             target_building_id: cabhut,
         },
         Some(&rules),
-        None,
     );
 
     assert!(accepted);
@@ -839,7 +836,6 @@ fn ordinary_engineer_overlay_repair_does_not_clear_neighbor_pavement() {
                 role: BridgeCellRole::Body,
                 anchor_span_id: None,
                 overlay_byte: 0,
-                bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
             },
         );
         for &(rx, ry) in BRIDGE_CELLS {
@@ -866,190 +862,6 @@ fn ordinary_engineer_overlay_repair_does_not_clear_neighbor_pavement() {
     assert!(
         terrain.pavement_damaged_at(10, 14),
         "ordinary overlay repair must not flood-clear off-span pavement"
-    );
-}
-
-/// Build a small NS-axis bridge with a bridgehead at (2, 4) (sub-tile 8)
-/// and an anchor at (2, 2) (sub-tile 4). Used by the bridgehead-direct-damage integration
-/// test. Resolved-terrain dims: 5x5.
-fn build_ns_bridge_with_bridgehead_for_dispatch() -> (
-    crate::map::resolved_terrain::ResolvedTerrainGrid,
-    BridgeRuntimeState,
-) {
-    use crate::map::resolved_terrain::ResolvedTerrainCell;
-    use crate::sim::bridge_state::BridgeheadAnchorClass;
-    let mut cells = Vec::with_capacity(25);
-    for ry in 0..5u16 {
-        for rx in 0..5u16 {
-            let final_sub_tile: u8 = if rx == 2 {
-                match ry {
-                    4 => 8,
-                    3 => 6,
-                    2 => 4,
-                    _ => 0,
-                }
-            } else {
-                0
-            };
-            cells.push(ResolvedTerrainCell {
-                // level must be >= 4 so the HighStateMachine path matches.
-                // Z-gate accepts impact_z within [level-1, level+1].
-                level: 4,
-                final_sub_tile,
-                has_bridge_deck: true,
-                bridge_walkable: true,
-                bridge_deck_level: 4,
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            });
-        }
-    }
-    let mut resolved = crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(5, 5, cells);
-    // The area-damage gate requires the input's Middle tile class; a synthetic
-    // Bridgehead role/overlay18 alone does not establish native admission.
-    resolved.cell_mut(2, 4).unwrap().final_tile_index = 1019;
-    resolved.test_set_high_bridge_rim_tiles(
-        crate::map::bridge_rim_tiles::HighBridgeRimTiles::from_ini(
-            1000,
-            b"[General]\nBridgeMiddle1=20\nBridgeMiddle2=40\n",
-        ),
-    );
-
-    // Build bridge state: bridgehead at (2, 4), anchor at (2, 2), and two
-    // perpendicular Anchor neighbors at (1, 2) / (3, 2). Overlay 0x18 keeps
-    // these cells out of the raw-body HighDirect range and routes the
-    // dispatcher to the HighStateMachine path.
-    //
-    // Initial construction via `from_resolved_terrain` sets the global
-    // `bridge_destroyable_flag = true` (required by the orchestrator's
-    // outer gate); then `test_seed_cell` overrides per-cell state.
-    let mut bs = BridgeRuntimeState::from_resolved_terrain(&resolved, true, 1500);
-    bs.test_seed_cell(
-        2,
-        4,
-        BridgeRuntimeCell {
-            deck_present: true,
-            deck_level: 4,
-            damage_state: DamageState::Healthy { variant: 0 },
-            axis: Some(Axis::NS),
-            role: BridgeCellRole::Bridgehead,
-            anchor_span_id: None,
-            overlay_byte: 0x18,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-        },
-    );
-    bs.test_seed_cell(
-        2,
-        2,
-        BridgeRuntimeCell {
-            deck_present: true,
-            deck_level: 4,
-            damage_state: DamageState::Healthy { variant: 0 },
-            axis: Some(Axis::NS),
-            role: BridgeCellRole::Anchor,
-            anchor_span_id: Some(1),
-            overlay_byte: 0x20,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-        },
-    );
-    bs.test_seed_cell(
-        3,
-        2,
-        BridgeRuntimeCell {
-            deck_present: true,
-            deck_level: 4,
-            damage_state: DamageState::Healthy { variant: 0 },
-            axis: Some(Axis::NS),
-            role: BridgeCellRole::Anchor,
-            anchor_span_id: Some(1),
-            overlay_byte: 0x21,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-        },
-    );
-    bs.test_seed_cell(
-        1,
-        2,
-        BridgeRuntimeCell {
-            deck_present: true,
-            deck_level: 4,
-            damage_state: DamageState::Healthy { variant: 0 },
-            axis: Some(Axis::NS),
-            role: BridgeCellRole::Anchor,
-            anchor_span_id: Some(1),
-            overlay_byte: 0x22,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-        },
-    );
-    (resolved, bs)
-}
-
-/// Integration test: IonCannon damage at a high bridgehead retries the
-/// state-machine path while the first call returns false, so the same event
-/// reaches slot `+3` collapse on the second attempt.
-#[test]
-fn ramp_fire_collapses_high_bridgehead_on_ion_retry() {
-    use crate::sim::bridge_state::{BridgeDamageEvent, BridgeheadAnchorClass};
-    let mut sim = Simulation::new();
-    let (resolved, bs) = build_ns_bridge_with_bridgehead_for_dispatch();
-    sim.resolved_terrain = Some(resolved);
-    sim.bridge_state = Some(bs);
-
-    let rules = bridge_repair_test_rules();
-    sim.resolve_type_handles(&rules);
-
-    let pre_bridgehead = *sim.bridge_state.as_ref().unwrap().cell(2, 4).unwrap();
-
-    for visit in 0..10 {
-        let state_changed = crate::sim::world::bridge_orchestrator::apply_bridge_damage_events(
-            &mut sim,
-            &rules,
-            &[BridgeDamageEvent {
-                rx: 2,
-                ry: 4,
-                damage: 999,
-                warhead_ref: crate::sim::intern::InternedId::default(),
-                is_ion_cannon: true,
-                impact_z_leptons: 416,
-            }],
-        );
-        // Slot +3 collapse signals a path-grid refresh.
-        assert!(
-            state_changed,
-            "high bridgehead direct damage must signal state_changed after slot +3 collapse",
-        );
-        let generation = sim.radar_terrain_dirty_generation;
-        assert_eq!(
-            generation,
-            visit + 1,
-            "each bridge transition after a completed radar update re-arms the same cells",
-        );
-        assert!(!sim.radar_terrain_dirty_cells.is_empty());
-        assert!(sim.acknowledge_radar_terrain_dirty(generation));
-    }
-    assert!(sim.radar_terrain_dirty_cells.is_empty());
-
-    let bs = sim.bridge_state.as_ref().unwrap();
-    // Bridgehead's own damage_state untouched.
-    let post_bridgehead = *bs.cell(2, 4).unwrap();
-    assert_eq!(
-        post_bridgehead.damage_state, pre_bridgehead.damage_state,
-        "bridgehead damage_state must not change on direct fire",
-    );
-    // Anchor's bridgehead_anchor_class stays at the most-damaged variant.
-    assert_eq!(
-        bs.cell(2, 2).unwrap().bridgehead_anchor_class,
-        BridgeheadAnchorClass::AboutToFall,
-        "anchor tile-class remains the most-damaged bridgehead slot",
-    );
-    assert!(
-        matches!(bs.cell(2, 2).unwrap().damage_state, DamageState::Destroyed),
-        "anchor row receives bridgehead slot +3 BlowUpBridge collapse",
-    );
-    assert!(
-        matches!(
-            bs.cell(2, 4).unwrap().damage_state,
-            DamageState::Healthy { .. }
-        ),
-        "hit bridgehead cell itself is not the collapsed row",
     );
 }
 

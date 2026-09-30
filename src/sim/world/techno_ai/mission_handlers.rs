@@ -473,10 +473,7 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
             }) =>
         {
             MissionHandlerEvaluation::cadence(crate::sim::transport_unload::unit_mission_unload(
-                sim,
-                rules,
-                ctx.path_grid,
-                id,
+                sim, rules, id,
             ))
         }
         (EntityCategory::Unit, Some(MissionType::Unload))
@@ -2305,7 +2302,6 @@ mod harvester_guard_override_tests {
             MINER_ID,
             rules,
             super::super::ObjectAiCtx {
-                path_grid: None,
                 overlay_registry: None,
                 terrain_spawner_cells: None,
                 miner_config: None,

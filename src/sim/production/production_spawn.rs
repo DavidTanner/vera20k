@@ -45,18 +45,10 @@ pub fn find_spawn_cell_for_owner(
     rules: &RuleSet,
     owner: &str,
     produced_category: ObjectCategory,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     require_water: bool,
 ) -> Option<(u16, u16)> {
-    find_spawn_selection_for_owner(
-        sim,
-        rules,
-        owner,
-        produced_category,
-        path_grid,
-        require_water,
-    )
-    .map(|selection| selection.cell)
+    find_spawn_selection_for_owner(sim, rules, owner, produced_category, require_water)
+        .map(|selection| selection.cell)
 }
 
 pub fn find_spawn_selection_for_owner(
@@ -64,7 +56,6 @@ pub fn find_spawn_selection_for_owner(
     rules: &RuleSet,
     owner: &str,
     produced_category: ObjectCategory,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     require_water: bool,
 ) -> Option<ProductionSpawnSelection> {
     find_spawn_selection_for_owner_with_type(
@@ -73,7 +64,6 @@ pub fn find_spawn_selection_for_owner(
         owner,
         None,
         produced_category,
-        path_grid,
         require_water,
     )
 }
@@ -84,7 +74,6 @@ pub(super) fn find_spawn_selection_for_owner_with_type(
     owner: &str,
     produced_type_id: Option<&str>,
     produced_category: ObjectCategory,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     require_water: bool,
 ) -> Option<ProductionSpawnSelection> {
     let Some(queue_category) = produced_type_id
@@ -153,7 +142,6 @@ pub(super) fn find_spawn_selection_for_owner_with_type(
             (*producer_id, *bx, *by, structure_id),
             produced_type_id,
             produced_category,
-            path_grid,
             require_water,
         );
     }
@@ -166,7 +154,6 @@ pub(super) fn find_spawn_selection_for_owner_with_type(
                 (*producer_id, *bx, *by, structure_id),
                 produced_type_id,
                 produced_category,
-                path_grid,
                 require_water,
             )
         })
@@ -184,10 +171,10 @@ pub(super) fn spawn_selection_at_producer(
     producer: (u64, u16, u16, &str),
     produced_type_id: Option<&str>,
     produced_category: ObjectCategory,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     require_water: bool,
 ) -> Option<ProductionSpawnSelection> {
     let (producer_id, bx, by, structure_id) = producer;
+    let path_grid = sim.path_grid();
     let resolved_terrain = sim.resolved_terrain.as_ref();
     let overlay_grid = sim.overlay_grid.as_ref();
     let zone_grid = sim.zone_grid.as_ref();

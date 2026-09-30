@@ -22,9 +22,9 @@ use crate::sim::cloak_disguise::{CloakRuntime, DisguiseRuntime};
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::combat::{AttackTarget, TargetKind};
 use crate::sim::components::{
-    BridgeOccupancy, BuildingDown, BuildingUp, C4PlantState, DriveLocomotionRuntime,
-    HarvestOverlay, Health, MovementTarget, NavigationState, OrderIntent, PendingC4Detonation,
-    Position, RockingState, ShipLocomotionRuntime, VoxelAnimation,
+    BuildingDown, BuildingUp, C4PlantState, DriveLocomotionRuntime, HarvestOverlay, Health,
+    MovementTarget, NavigationState, OrderIntent, PendingC4Detonation, Position, RockingState,
+    ShipLocomotionRuntime, VoxelAnimation,
 };
 use crate::sim::debug_event_log::{DebugEventKind, DebugEventLog};
 use crate::sim::deploy::DeployPhase;
@@ -626,11 +626,6 @@ pub struct GameEntity {
     /// stand in for native-alive or `dying`.
     #[serde(default)]
     pub destruction_recorded: bool,
-    /// Monotonic order of the last successful insertion into a CellClass-style
-    /// object list. Serialized because `OccupancyGrid` is a rebuilt cache; this
-    /// is the authoritative fact needed to reconstruct its linked-list order.
-    #[serde(default)]
-    pub occupancy_enter_order: u64,
     /// Bucket membership in gamemd's independent 20 x 20 airborne-object
     /// spatial grid. Air movement updates this only on entry, exit, or a real
     /// bucket crossing; the ordinary cell-list insertion order is separate.
@@ -876,8 +871,6 @@ pub struct GameEntity {
     /// Eight fixed AnimClass ownership slots at Building+0x5C8..+0x5E4.
     #[serde(default)]
     pub damage_fire_anim_ids: [Option<crate::sim::anim_class::AnimId>; 8],
-    /// Bridge deck occupancy marker.
-    pub bridge_occupancy: Option<BridgeOccupancy>,
     /// Persistent bridge layer flag — authoritative source for "is this entity on a bridge?"
     /// Mirrors original engine's FootClass+0x8C. Survives repath operations that reset
     /// locomotor.layer. Set during spawn, updated at cell-crossing bridge transitions.
@@ -942,7 +935,8 @@ pub struct GameEntity {
     pub rocket_state: Option<RocketState>,
     /// Parachute descent state. `Some` while a paradropped unit is descending
     /// under a parachute, `None` otherwise. Set by
-    /// `parachute_descent::begin_parachute_descent`, cleared on landing.
+    /// `parachute_descent::begin_parachute_descent`, cleared on landing. It
+    /// is also the object's IsFallingDown ([`Self::is_falling_down`]).
     #[serde(default)]
     pub parachute_state: Option<crate::sim::movement::parachute_descent::ParachuteDescentState>,
     /// Active IronCurtain or ForceShield invulnerability timer.
@@ -1162,8 +1156,6 @@ pub struct GameEntity {
     /// bytes. Snapshot migration defaults reproduce Techno construction.
     #[serde(default)]
     pub(crate) base_defense_response: BaseDefenseResponseState,
-    /// ObjectClass falling-down byte read by Infantry readiness.
-    pub(crate) object_is_falling_down: u8,
     /// Sim-side model of gamemd's TechnoClass `+0x308` (`DamageSparkSystem`): the
     /// `session.tick` at which the live AI_Update damage-Spark particle system
     /// expires and the object may roll again. `0` = no live system (may roll;
@@ -1697,7 +1689,6 @@ impl GameEntity {
             dirty_rect_eligible: false,
             occupier: false,
             destruction_recorded: false,
-            occupancy_enter_order: stable_id,
             air_spatial_bucket: None,
             air_spatial_enter_order: stable_id,
             locomotor: None,
@@ -1744,7 +1735,6 @@ impl GameEntity {
             building_light: None,
             damage_fire_state_active: false,
             damage_fire_anim_ids: [None; 8],
-            bridge_occupancy: None,
             on_bridge: false,
             runtime_bridge_transition: Default::default(),
             animation: None,
@@ -1827,7 +1817,6 @@ impl GameEntity {
             mission_leaf: MissionLeafState::for_entity_category(category),
             suspended_attack_target: None,
             base_defense_response: BaseDefenseResponseState::default(),
-            object_is_falling_down: 0,
             damage_particle_live_until: 0,
             damage_smoke_system_id: None,
             transport_unload_keep_count: 0,
@@ -1914,9 +1903,24 @@ impl GameEntity {
         )
     }
 
+    /// ObjectClass `+0x8D` IsFallingDown. `ObjectClass::Paradrop`
+    /// (`0x005F5940`) raises it at `0x005F5965`, and `ObjectClass::AI`
+    /// clears it when the fall grounds (`0x005F3F86`). The paradrop descent is
+    /// VERA's only fall, so its state is the one owner.
+    pub(crate) fn is_falling_down(&self) -> bool {
+        self.parachute_state.is_some()
+    }
+
+    /// Put a fixture into a fall at its current height: an object with a
+    /// descent state but no altitude, so nothing else about it moves.
     #[cfg(test)]
-    pub(crate) fn set_object_is_falling_down_for_test(&mut self, raw: u8) {
-        self.object_is_falling_down = raw;
+    pub(crate) fn set_falling_down_for_test(&mut self, falling: bool) {
+        self.parachute_state = falling.then_some(
+            crate::sim::movement::parachute_descent::ParachuteDescentState {
+                rate: 0,
+                altitude: crate::util::fixed_math::SIM_ZERO,
+            },
+        );
     }
 
     /// Record a debug event if the event log is active. No-op when `debug_log` is `None`.

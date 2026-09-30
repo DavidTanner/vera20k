@@ -560,7 +560,6 @@ pub(crate) fn choose_next_production(
     rules: &RuleSet,
     owner: InternedId,
     index: usize,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let Some(choice) = DefenseChoice::of_house(sim, rules, owner, index) else {
@@ -579,7 +578,6 @@ pub(crate) fn choose_next_production(
             grid: &pick.grid,
             argument: pick.argument,
         },
-        path_grid,
         registry,
     );
     if site == (0, 0) {

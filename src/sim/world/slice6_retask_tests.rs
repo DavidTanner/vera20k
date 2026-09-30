@@ -177,6 +177,24 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // in foot_bridge_layer.replay.json localize both changes; all40 original
 // numeric paid-step vectors remain unchanged. Hash the live mission counters,
 // whose native first-visit ordering is asserted below, without inverting them.
+// 2026-09-30 one locomotor object (snapshot 258, composition only; #680): the
+// active locomotor and its piggyback stash hash through one fold of every
+// LocomotorState field. The active fold gains BalloonHover, HoverAttack,
+// SpeedType, MovementZone, the sub-cell destination and the Hover speed
+// request and drops the installed slot, which is the stash's own kind; the
+// stash drops its retired separators. Ceremony: the parent commit with only
+// that fold changed printed this exact value, as this change does, with the
+// RNG pins above unchanged (the probe patch was not committed): the only
+// change to this pin is the fold. Old value: the commit that moved it.
+// 2026-09-30 unread movement bookkeeping (snapshot 260, composition only;
+// #685): the fold drops bridge_occupancy and the ground cell enter order;
+// the enter-order counter (and so AirTracker order values) advances only
+// for AirTracker entries; Foot+0x68B is write-1-only. Ceremony: the
+// parent and this change, each with those five inputs removed from the
+// hash, printed the same value, with the RNG pins above unchanged (the
+// probe patch was not committed). Old value: the commit that moved it.
+// The combined merge retains the owned pre-merge pin until its causal replay
+// comparison; the independent main pin cannot certify this combined state.
 const SLICE6_BASELINE_HASH: u64 = 0xC4FE_1B3B_28C0_1D17;
 
 #[test]
@@ -416,6 +434,7 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
     let rules = slice6_rules();
     let grid = PathGrid::new(64, 64);
     let mut sim = Simulation::new();
+    sim.install_fixture_path_grid(Some(&grid));
     sim.spawn_from_map(
         &[unit("Americans", "MTNK", 3, 3, EntityCategory::Unit)],
         Some(&rules),
@@ -439,7 +458,6 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
             queue: false,
         },
         Some(&rules),
-        Some(&grid),
     );
     assert!(issued, "move command should issue");
 

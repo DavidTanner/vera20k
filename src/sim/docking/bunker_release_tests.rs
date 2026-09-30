@@ -157,7 +157,7 @@ fn sell_release_uses_building_center_preserves_pose_and_orders_links_after_speed
 fn normal_release_clears_unit_first_and_assigns_destination_without_teleport() {
     let mut sim = release_fixture();
     let pose = position_world_coord(&sim.substrate.entities.get(1).unwrap().position);
-    release_normal(&mut sim, 2, &super::tests::rules(), None);
+    release_normal(&mut sim, 2, &super::tests::rules());
     let trace = take_trace();
     assert_eq!(
         trace.iter().map(|b| b.name).collect::<Vec<_>>(),
@@ -290,7 +290,7 @@ fn nonunit_link_does_not_release_or_reset_bunker() {
         let mut sim = release_fixture();
         sim.substrate.entities.get_mut(1).unwrap().category = EntityCategory::Infantry;
         if normal {
-            release_normal(&mut sim, 2, &super::tests::rules(), None);
+            release_normal(&mut sim, 2, &super::tests::rules());
         } else {
             release_sell_destroy(&mut sim, 2);
         }

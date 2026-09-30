@@ -13,8 +13,10 @@
 //! installs a Drive piggyback: every destination except a cell MOVE_HERE
 //! while radio slot 0 is a `DockUnload=` building.
 //!
-//! No pathfinding — the unit is relocated instantly. Occupancy is cleared at the
-//! old position and marked at the new position during the Relocate phase.
+//! No pathfinding — the unit is relocated instantly. The object turn runs the
+//! rest of the warp around the relocation in native order (detach sweep,
+//! departure WarpOut, parasite eject, Mark(UP), then after it Mark(DOWN),
+//! `Per_Cell_Process(2)`, the NULL assign and the arrival WarpOut).
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/game_entity, sim/entity_store, sim/locomotor.
@@ -26,7 +28,6 @@ use crate::sim::components::AnimClassSpawnDescriptor;
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::InternedId;
-use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
 use crate::util::fixed_math::isqrt_i64;
 use crate::util::lepton::CELL_CENTER_LEPTON;
 
@@ -36,39 +37,31 @@ const TELEPORT_WARP_LOOP_COUNT: i32 = 1;
 const TELEPORT_WARP_Z_ADJUST: i32 = 0;
 const TELEPORT_WARP_REVERSE: bool = false;
 
-/// Teleport `AnimClass` constructor rows reached during one Process call.
-///
-/// The row constants are read from the native constructor sites. The
-/// coordinate is not: native passes the owner's exact `+0x9C` coordinate, VERA
-/// the cell centre and height level of the old and new cell.
-///
-/// The teleport tick borrows only the entity store, so it cannot construct the
-/// animation itself. The object turn constructs every collected row through
-/// `Simulation::spawn_anim_object` as soon as the tick returns, inside the same
-/// mover's turn; nothing in between reads the animation registry.
-pub struct TeleportVisuals<'a> {
-    pub anim_spawns: &'a mut Vec<AnimClassSpawnDescriptor>,
-    pub warp_out_type: InternedId,
-}
-
-impl TeleportVisuals<'_> {
-    fn spawn_warp_out(&mut self, rx: u16, ry: u16, z: u8) {
-        let mut anim_spawn = AnimClassSpawnDescriptor::new(
-            self.warp_out_type,
-            rx,
-            ry,
-            CELL_CENTER_LEPTON,
-            CELL_CENTER_LEPTON,
-            z,
-        );
-        anim_spawn.delay = TELEPORT_WARP_DELAY;
-        anim_spawn.loop_count = TELEPORT_WARP_LOOP_COUNT;
-        anim_spawn.draw_flags = TELEPORT_WARP_DRAW_FLAGS;
-        anim_spawn.z_adjust = TELEPORT_WARP_Z_ADJUST;
-        anim_spawn.reverse = TELEPORT_WARP_REVERSE;
-
-        self.anim_spawns.push(anim_spawn);
-    }
+/// The `[General] WarpOut=` `AnimClass` constructor row Teleport Process
+/// builds at the owner's Location: the departure (`0x00719442`) and the
+/// arrival (`0x00719791`). The row constants are read from the native
+/// constructor sites. The coordinate is not: native passes the owner's exact
+/// `+0x9C` coordinate, VERA the cell centre and height level of its cell.
+pub(crate) fn warp_out_anim(
+    warp_out_type: InternedId,
+    rx: u16,
+    ry: u16,
+    z: u8,
+) -> AnimClassSpawnDescriptor {
+    let mut anim_spawn = AnimClassSpawnDescriptor::new(
+        warp_out_type,
+        rx,
+        ry,
+        CELL_CENTER_LEPTON,
+        CELL_CENTER_LEPTON,
+        z,
+    );
+    anim_spawn.delay = TELEPORT_WARP_DELAY;
+    anim_spawn.loop_count = TELEPORT_WARP_LOOP_COUNT;
+    anim_spawn.draw_flags = TELEPORT_WARP_DRAW_FLAGS;
+    anim_spawn.z_adjust = TELEPORT_WARP_Z_ADJUST;
+    anim_spawn.reverse = TELEPORT_WARP_REVERSE;
+    anim_spawn
 }
 
 /// Phase within the teleport state machine.
@@ -77,7 +70,7 @@ impl TeleportVisuals<'_> {
 /// counts down while the unit is semi-transparent at the destination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TeleportPhase {
-    /// Instant relocation: position updated, occupancy swapped. Executes in
+    /// Instant relocation between the owner's Mark(UP) and Mark(DOWN). Executes in
     /// one frame, then transitions to ChronoDelay.
     Relocate,
     /// Post-warp chrono delay: unit sits at destination 50% translucent,
@@ -185,6 +178,20 @@ pub fn compute_chrono_delay(rules: &GeneralRules, distance_leptons: i32) -> u32 
 /// Techno+0x1F8 override up, the destination cell's occupants are scattered)
 /// is not ported; TechnoClass::Unlimbo raises +0x1F8 only around its own
 /// setter call (`0x006F6E1B`/`0x006F6E34`), so no order reaches it.
+///
+/// The resolution's Infantry arm (`0x00718C86..0x0071908D`) is not ported
+/// either: the spot in the cell (`0x00481180` at `0x00718E25`), the
+/// infantryman's Can_Enter_Cell(cell, -1, -1) (`0x00718E8B`), whose refusal
+/// nulls the destination (`0x00718E95..0x00718EAD`) so Move_To takes the NULL
+/// setter (`0x007181F9`), and, for an object NavCom, the
+/// Find_Nearby_Passable_Cell replacement (`0x0071900D`). VERA arms the cell
+/// centre. Trigger: a Chrono Legionnaire, Commando or Ivan ordered onto an
+/// occupied or full cell: several rallying from one barracks, or a pursuit,
+/// whose VERA stand-in names the target's own cell (native's approach
+/// `0x004D5690` picks one in range). Effect: it warps to the centre of that
+/// cell, onto its target or other infantry, where native refuses the cell or
+/// spreads the spots. Frequency: every such rally, and every attack order
+/// beyond range. Risk: shared cells and sub-cells until the next order.
 pub(crate) fn teleport_move_to(
     entity: &mut crate::sim::game_entity::GameEntity,
     target: (u16, u16),
@@ -283,8 +290,8 @@ fn arm_teleport(
     true
 }
 
-/// Drop attack locks that name `teleporting_id` before the relocation tick:
-/// the analogue of the warp's Techno detach sweep (`0x0070D4A0`, called at
+/// Drop attack locks that name `teleporting_id`, the warp's first step: the
+/// analogue of its Techno detach sweep (`0x0070D4A0`, called at
 /// `0x007193C7`). Radio and presentation links remain root-owned integration
 /// work.
 ///
@@ -294,7 +301,7 @@ fn arm_teleport(
 /// on the owner. Trigger: a shot in flight at a Chrono Miner, Legionnaire,
 /// Commando or Ivan the frame it warps. Effect: the shot follows it to the
 /// destination instead of landing on the old cell.
-fn release_incoming_target_locks(entities: &mut EntityStore, teleporting_id: u64) {
+pub(crate) fn release_incoming_target_locks(entities: &mut EntityStore, teleporting_id: u64) {
     for id in entities.keys_sorted() {
         if id == teleporting_id {
             continue;
@@ -310,162 +317,110 @@ fn release_incoming_target_locks(entities: &mut EntityStore, teleporting_id: u64
     }
 }
 
-/// Advance all in-progress teleport state machines.
-///
-/// Called once per admitted simulation frame from `advance_tick()`.
-/// Relocate executes instantly (one frame), then ChronoDelay counts down
-/// `being_warped_ticks` each subsequent frame until the teleport completes.
-pub fn tick_teleport_movement(
+/// Teleport Process (`0x007192F0`)'s own state for one owner, which the
+/// object turn admits with Teleport as its active locomotor: Relocate moves
+/// the owner in one frame (`0x00719631..0x007196B2`); ChronoDelay then counts
+/// `being_warped_ticks` down each frame until the teleport completes. `None`
+/// when the owner has no warp armed or warping in.
+pub fn process_teleport(
     entities: &mut EntityStore,
-    occupancy: &mut OccupancyGrid,
-    live_order: &[u64],
+    id: u64,
     sim_tick: u64,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
-    mut visuals: Option<&mut TeleportVisuals<'_>>,
-) -> Vec<(u64, SpecialMovementOutcome)> {
-    // Collect entity IDs that need cleanup after ticking.
-    let mut finished: Vec<u64> = Vec::new();
+) -> Option<SpecialMovementOutcome> {
+    let reached = entities
+        .get(id)
+        .is_some_and(|entity| warp_destination_reached(entity, terrain));
+    let entity = entities.get_mut(id)?;
+    let teleport = entity.teleport_state.as_mut()?;
+    let mut finished = false;
+    let outcome;
 
-    let sorted_keys;
-    let ordered_ids = if live_order.is_empty() {
-        sorted_keys = entities.keys_sorted();
-        sorted_keys.as_slice()
-    } else {
-        live_order
-    };
+    // Track phase before processing to detect transitions.
+    let phase_before = teleport.phase;
 
-    let mut outcomes = Vec::new();
-    for &id in ordered_ids {
-        if !entities.get(id).is_some_and(teleport_process_active) {
-            continue;
+    match teleport.phase {
+        // 0x007197AF: Stop_Moving only; the caller runs the NULL assign.
+        TeleportPhase::Relocate if reached => {
+            finished = true;
+            outcome = SpecialMovementOutcome::Abort;
         }
-        // Teleport removes incoming target locks before its owner is relocated.
-        // Do this before borrowing the owner mutably for the Process state.
-        let is_relocating = entities
-            .get(id)
-            .and_then(|entity| entity.teleport_state.as_ref())
-            .is_some_and(|state| state.phase == TeleportPhase::Relocate);
-        let reached = entities
-            .get(id)
-            .is_some_and(|entity| warp_destination_reached(entity, terrain));
-        if is_relocating && !reached {
-            release_incoming_target_locks(entities, id);
-        }
-        let Some(entity) = entities.get_mut(id) else {
-            continue;
-        };
-        let Some(ref mut teleport) = entity.teleport_state else {
-            continue;
-        };
-
-        // Track phase before processing to detect transitions.
-        let phase_before = teleport.phase;
-
-        match teleport.phase {
-            // 0x007197AF: Stop_Moving only; the caller runs the NULL assign.
-            TeleportPhase::Relocate if reached => {
-                finished.push(id);
-                outcomes.push((id, SpecialMovementOutcome::Abort));
+        TeleportPhase::Relocate => {
+            // Instant relocation in one frame.
+            entity.position.rx = teleport.target_rx;
+            entity.position.ry = teleport.target_ry;
+            entity.position.sub_x = CELL_CENTER_LEPTON;
+            entity.position.sub_y = CELL_CENTER_LEPTON;
+            // Process719631..7196B2: SetCoords, resolve destination bridge,
+            // then Object+1CC/5F5FA0 SetHeight(0). An old split altitude
+            // must not reappear in the arrival XYZ.
+            if let Some(terrain) = terrain {
+                let cell = terrain
+                    .native_cell_identity((teleport.target_rx as i16, teleport.target_ry as i16));
+                entity.on_bridge = terrain.native_cell_flags(cell) & 0x100 != 0;
             }
-            TeleportPhase::Relocate => {
-                // Instant relocation in one frame.
-                let old_rx = entity.position.rx;
-                let old_ry = entity.position.ry;
-                let old_z = entity.position.z;
-                if let Some(visuals) = visuals.as_deref_mut() {
-                    visuals.spawn_warp_out(old_rx, old_ry, old_z);
-                }
-                entity.position.rx = teleport.target_rx;
-                entity.position.ry = teleport.target_ry;
-                entity.position.sub_x = CELL_CENTER_LEPTON;
-                entity.position.sub_y = CELL_CENTER_LEPTON;
-                // Process719631..7196B2: SetCoords, resolve destination bridge,
-                // then Object+1CC/5F5FA0 SetHeight(0). An old split altitude
-                // must not reappear in the arrival XYZ.
-                if let Some(terrain) = terrain {
-                    let cell = terrain.native_cell_identity((
-                        teleport.target_rx as i16,
-                        teleport.target_ry as i16,
-                    ));
-                    entity.on_bridge = terrain.native_cell_flags(cell) & 0x100 != 0;
-                }
-                if !super::ground_pose::commit_ground_height(
-                    &mut entity.position,
-                    entity.on_bridge,
-                    terrain,
-                    None,
-                ) {
-                    entity.position.exact_z_leptons = Some(
-                        i32::from(entity.position.z as i8)
-                            .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS),
-                    );
-                }
-                if let Some(visuals) = visuals.as_deref_mut() {
-                    visuals.spawn_warp_out(
-                        entity.position.rx,
-                        entity.position.ry,
-                        entity.position.z,
-                    );
-                }
-                let layer = entity.locomotor.as_ref().map_or(
-                    crate::sim::movement::locomotor::MovementLayer::Ground,
-                    |l| l.layer,
+            if !super::ground_pose::commit_ground_height(
+                &mut entity.position,
+                entity.on_bridge,
+                terrain,
+                None,
+            ) {
+                entity.position.exact_z_leptons = Some(
+                    i32::from(entity.position.z as i8)
+                        .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS),
                 );
-                occupancy.move_entity(
-                    old_rx,
-                    old_ry,
-                    teleport.target_rx,
-                    teleport.target_ry,
-                    id,
-                    layer,
-                    entity.sub_cell,
-                    CellListInsertion::from_category(entity.category),
-                );
-                // Harvester instant-warp: when chrono delay is 0, finish in one
-                // frame (cleanup runs at end of this frame) — no post-warp lock.
-                if teleport.being_warped_ticks == 0 {
-                    finished.push(id);
-                    outcomes.push((id, SpecialMovementOutcome::Complete));
-                } else {
-                    teleport.phase = TeleportPhase::ChronoDelay;
-                    outcomes.push((id, SpecialMovementOutcome::Continue));
-                }
             }
-            TeleportPhase::ChronoDelay => {
-                // Count down chrono delay frames. Unit remains 50% translucent until 0.
-                if teleport.being_warped_ticks > 0 {
-                    teleport.being_warped_ticks -= 1;
-                }
-                if teleport.being_warped_ticks == 0 {
-                    finished.push(id);
-                    outcomes.push((id, SpecialMovementOutcome::Complete));
+            // The path layer follows the destination's OnBridge, as an
+            // ordinary crossing commits it (`cell_arrival`). The cell
+            // lists move through the caller's Mark pair around this
+            // relocation (`0x007195D4` UP, `0x007196B8` DOWN).
+            if let Some(locomotor) = entity.locomotor.as_mut() {
+                locomotor.layer = if entity.on_bridge {
+                    crate::sim::movement::locomotor::MovementLayer::Bridge
                 } else {
-                    outcomes.push((id, SpecialMovementOutcome::Continue));
-                }
+                    crate::sim::movement::locomotor::MovementLayer::Ground
+                };
+            }
+            // Harvester instant-warp: when chrono delay is 0, finish in one
+            // frame (cleanup runs at end of this frame) — no post-warp lock.
+            if teleport.being_warped_ticks == 0 {
+                finished = true;
+                outcome = SpecialMovementOutcome::Complete;
+            } else {
+                teleport.phase = TeleportPhase::ChronoDelay;
+                outcome = SpecialMovementOutcome::Continue;
             }
         }
-
-        // Log phase transition if it changed.
-        let phase_after = teleport.phase;
-        if phase_after != phase_before {
-            let phase_name = format!("{:?}", phase_after);
-            // Drop the borrow on teleport before pushing debug event.
-            let _ = teleport;
-            entity.push_debug_event(
-                sim_tick as u32,
-                DebugEventKind::SpecialMovementPhase { phase: phase_name },
-            );
+        TeleportPhase::ChronoDelay => {
+            // Count down chrono delay frames. Unit remains 50% translucent until 0.
+            if teleport.being_warped_ticks > 0 {
+                teleport.being_warped_ticks -= 1;
+            }
+            if teleport.being_warped_ticks == 0 {
+                finished = true;
+                outcome = SpecialMovementOutcome::Complete;
+            } else {
+                outcome = SpecialMovementOutcome::Continue;
+            }
         }
     }
 
-    // Clean up finished teleports.
-    for id in finished {
-        if let Some(entity) = entities.get_mut(id) {
-            entity.teleport_state = None;
-            entity.push_debug_event(sim_tick as u32, DebugEventKind::SpecialMovementEnd);
-        }
+    // Log phase transition if it changed.
+    let phase_after = teleport.phase;
+    if phase_after != phase_before {
+        let phase_name = format!("{:?}", phase_after);
+        // Drop the borrow on teleport before pushing debug event.
+        let _ = teleport;
+        entity.push_debug_event(
+            sim_tick as u32,
+            DebugEventKind::SpecialMovementPhase { phase: phase_name },
+        );
     }
-    outcomes
+    if finished {
+        entity.teleport_state = None;
+        entity.push_debug_event(sim_tick as u32, DebugEventKind::SpecialMovementEnd);
+    }
+    Some(outcome)
 }
 
 #[cfg(test)]
@@ -475,7 +430,7 @@ mod tests {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
-    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+    use crate::sim::movement::locomotor::LocomotorState;
 
     /// An owner whose active locomotor is Teleport.
     fn teleport_owner(id: u64, name: &str, rx: u16, ry: u16) -> GameEntity {
@@ -488,42 +443,6 @@ mod tests {
         GeneralRules::default()
     }
 
-    /// Only the active locomotor's Process runs: a warp the Teleport armed
-    /// before a Drive piggyback stashed it waits until the Teleport is back
-    /// (the Chrono Miner's Drive install, `0x007425E6..0x0074277E`, stashes
-    /// the Teleport without a Stop).
-    #[test]
-    fn an_armed_warp_waits_while_a_drive_piggyback_is_active() {
-        let mut entities = EntityStore::new();
-        entities.insert(teleport_owner(1, "CMIN", 5, 5));
-        let rules = default_rules();
-        assert!(teleport_move_to(
-            entities.get_mut(1).unwrap(),
-            (20, 20),
-            &rules,
-            true,
-            0
-        ));
-        let locomotor = entities.get_mut(1).unwrap().locomotor.as_mut().unwrap();
-        assert!(locomotor.begin_piggyback(LocomotorKind::Drive, MovementLayer::Ground, 0));
-
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
-        let entity = entities.get(1).unwrap();
-        assert_eq!((entity.position.rx, entity.position.ry), (5, 5));
-        assert_eq!(
-            entity.teleport_state.as_ref().map(|state| state.phase),
-            Some(TeleportPhase::Relocate)
-        );
-
-        let locomotor = entities.get_mut(1).unwrap().locomotor.as_mut().unwrap();
-        assert!(locomotor.end_piggyback());
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
-        let entity = entities.get(1).unwrap();
-        assert_eq!((entity.position.rx, entity.position.ry), (20, 20));
-    }
-
-    /// Stop_Moving (`0x00718230`) nulls the armed request; the warp-in is the
-    /// owner's and survives it.
     #[test]
     fn stop_moving_drops_an_armed_warp_but_not_a_warp_in() {
         let mut entities = EntityStore::new();
@@ -535,7 +454,7 @@ mod tests {
         assert!(owner.teleport_state.is_none());
 
         assert!(teleport_move_to(owner, (20, 20), &rules, false, 0));
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        process_teleport(&mut entities, 1, 0, None);
         let owner = entities.get_mut(1).unwrap();
         assert!(owner.is_warping_in());
         teleport_stop_moving(owner);
@@ -569,7 +488,7 @@ mod tests {
         );
 
         // One admitted frame relocates instantly.
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        process_teleport(&mut entities, 1, 0, None);
 
         let entity = entities.get(1).expect("should exist");
         assert_eq!(entity.position.rx, 20, "Should have relocated to target");
@@ -584,7 +503,7 @@ mod tests {
         // Advance through the ChronoDelay countdown.
         let delay = ts.being_warped_ticks;
         for _ in 0..delay + 5 {
-            tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+            process_teleport(&mut entities, 1, 0, None);
         }
 
         // TeleportState should be removed after completion.
@@ -592,166 +511,6 @@ mod tests {
         assert!(
             entity.teleport_state.is_none(),
             "TeleportState should be removed after completion"
-        );
-    }
-
-    #[test]
-    fn relocate_spawns_departure_and_arrival_warpout_rows() {
-        let mut entities = EntityStore::new();
-        let mut e = teleport_owner(1, "CLEG", 5, 5);
-        e.position.z = 2;
-        entities.insert(e);
-        let rules = default_rules();
-
-        assert!(teleport_move_to(
-            entities.get_mut(1).unwrap(),
-            (8, 9),
-            &rules,
-            true,
-            0
-        ));
-
-        let warp_out_type = crate::sim::intern::test_intern("WARPOUT");
-        let mut anim_spawns = Vec::new();
-        {
-            let mut visuals = TeleportVisuals {
-                anim_spawns: &mut anim_spawns,
-                warp_out_type,
-            };
-            tick_teleport_movement(
-                &mut entities,
-                &mut OccupancyGrid::new(),
-                &[],
-                0,
-                None,
-                Some(&mut visuals),
-            );
-        }
-
-        assert_eq!(anim_spawns.len(), 2);
-        for (row, (rx, ry)) in anim_spawns.iter().zip([(5, 5), (8, 9)]) {
-            assert_eq!(row.type_name, warp_out_type);
-            assert_eq!((row.rx, row.ry, row.z), (rx, ry, 2));
-            assert_eq!(row.delay, TELEPORT_WARP_DELAY);
-            assert_eq!(row.loop_count, TELEPORT_WARP_LOOP_COUNT);
-            assert_eq!(row.draw_flags, TELEPORT_WARP_DRAW_FLAGS);
-            assert_eq!(row.z_adjust, TELEPORT_WARP_Z_ADJUST);
-            assert_eq!(row.reverse, TELEPORT_WARP_REVERSE);
-        }
-    }
-
-    #[test]
-    fn chrono_delay_tick_does_not_spawn_extra_warpout_rows() {
-        let mut entities = EntityStore::new();
-        let e = teleport_owner(1, "CLEG", 5, 5);
-        entities.insert(e);
-        let rules = default_rules();
-
-        assert!(teleport_move_to(
-            entities.get_mut(1).unwrap(),
-            (20, 20),
-            &rules,
-            false,
-            0
-        ));
-
-        let warp_out_type = crate::sim::intern::test_intern("WARPOUT");
-        let mut anim_spawns = Vec::new();
-        {
-            let mut visuals = TeleportVisuals {
-                anim_spawns: &mut anim_spawns,
-                warp_out_type,
-            };
-            tick_teleport_movement(
-                &mut entities,
-                &mut OccupancyGrid::new(),
-                &[],
-                0,
-                None,
-                Some(&mut visuals),
-            );
-            tick_teleport_movement(
-                &mut entities,
-                &mut OccupancyGrid::new(),
-                &[],
-                1,
-                None,
-                Some(&mut visuals),
-            );
-        }
-
-        assert_eq!(
-            anim_spawns.len(),
-            2,
-            "only Relocate emits the verified departure and arrival rows"
-        );
-    }
-
-    #[test]
-    fn teleport_movement_uses_live_object_order_not_stable_id_scan() {
-        fn teleporter(id: u64, rx: u16, ry: u16, target_rx: u16) -> GameEntity {
-            let mut entity = teleport_owner(id, "CLEG", rx, ry);
-            entity.teleport_state = Some(TeleportState {
-                phase: TeleportPhase::Relocate,
-                target_rx,
-                target_ry: 20,
-                being_warped_ticks: 0,
-            });
-            entity
-        }
-
-        let mut live_entities = EntityStore::new();
-        live_entities.insert(teleporter(1, 5, 5, 21));
-        live_entities.insert(teleporter(2, 6, 5, 22));
-
-        tick_teleport_movement(
-            &mut live_entities,
-            &mut OccupancyGrid::new(),
-            &[2],
-            0,
-            None,
-            None,
-        );
-
-        let first = live_entities.get(1).expect("id 1");
-        assert_eq!(
-            (first.position.rx, first.position.ry),
-            (5, 5),
-            "non-live-order IDs are not swept by stable-id fallback"
-        );
-        assert!(first.teleport_state.is_some());
-        let second = live_entities.get(2).expect("id 2");
-        assert_eq!((second.position.rx, second.position.ry), (22, 20));
-        assert!(second.teleport_state.is_none());
-
-        let mut fallback_entities = EntityStore::new();
-        fallback_entities.insert(teleporter(1, 5, 5, 21));
-        fallback_entities.insert(teleporter(2, 6, 5, 22));
-
-        tick_teleport_movement(
-            &mut fallback_entities,
-            &mut OccupancyGrid::new(),
-            &[],
-            0,
-            None,
-            None,
-        );
-
-        assert_eq!(
-            fallback_entities.get(1).map(|entity| (
-                entity.position.rx,
-                entity.position.ry,
-                entity.teleport_state.is_none()
-            )),
-            Some((21, 20, true))
-        );
-        assert_eq!(
-            fallback_entities.get(2).map(|entity| (
-                entity.position.rx,
-                entity.position.ry,
-                entity.teleport_state.is_none()
-            )),
-            Some((22, 20, true))
         );
     }
 
@@ -819,7 +578,7 @@ mod tests {
         ));
 
         // Single frame: position snaps, then cleanup runs because being_warped_ticks==0.
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        process_teleport(&mut entities, 1, 0, None);
 
         let entity = entities.get(1).expect("should exist");
         assert_eq!(entity.position.rx, 20);
@@ -857,36 +616,13 @@ mod tests {
         );
 
         // Frame 1: Relocate snaps position and transitions to ChronoDelay (NOT cleanup).
-        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
+        process_teleport(&mut entities, 1, 0, None);
         let ts = entities
             .get(1)
             .and_then(|e| e.teleport_state.as_ref())
             .expect("still warping after Relocate");
         assert_eq!(ts.phase, TeleportPhase::ChronoDelay);
         assert_eq!(ts.being_warped_ticks, initial_ticks);
-    }
-
-    #[test]
-    fn relocation_releases_incoming_attack_locks_before_moving_the_target() {
-        let mut entities = EntityStore::new();
-        let target = teleport_owner(1, "CLEG", 5, 5);
-        let mut attacker = GameEntity::test_default(2, "MTNK", "Russians", 4, 5);
-        attacker.attack_target = Some(crate::sim::combat::AttackTarget::new(1));
-        entities.insert(target);
-        entities.insert(attacker);
-
-        assert!(teleport_move_to(
-            entities.get_mut(1).unwrap(),
-            (20, 20),
-            &default_rules(),
-            false,
-            0,
-        ));
-        let outcomes =
-            tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), &[], 0, None, None);
-
-        assert_eq!(outcomes, vec![(1, SpecialMovementOutcome::Continue)]);
-        assert!(entities.get(2).expect("attacker").attack_target.is_none());
     }
 
     #[test]

@@ -383,6 +383,24 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // retained House radius/Foot688/Infantry68D state, and explicit GI ART inputs.
 // The first Scenario change is localized by foot_bridge_layer.replay.json;
 // this remains a Rust regression pin, not a native whole-skirmish golden.
+// 2026-09-30 one locomotor object (snapshot 258, composition only; #680): the
+// active locomotor and its piggyback stash hash through one fold of every
+// LocomotorState field. The active fold gains BalloonHover, HoverAttack,
+// SpeedType, MovementZone, the sub-cell destination and the Hover speed
+// request and drops the installed slot, which is the stash's own kind; the
+// stash drops its retired separators. Ceremony: the parent commit with only
+// that fold changed printed this exact value, as this change does, with the
+// RNG pins above unchanged (the probe patch was not committed): the only
+// change to this pin is the fold. Old value: the commit that moved it.
+// 2026-09-30 unread movement bookkeeping (snapshot 260, composition only;
+// #685): the fold drops bridge_occupancy and the ground cell enter order;
+// the enter-order counter (and so AirTracker order values) advances only
+// for AirTracker entries; Foot+0x68B is write-1-only. Ceremony: the
+// parent and this change, each with those five inputs removed from the
+// hash, printed the same value, with the RNG pins above unchanged (the
+// probe patch was not committed). Old value: the commit that moved it.
+// The combined merge retains the owned pre-merge pin until its causal replay
+// comparison; the independent main pin cannot certify this combined state.
 const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x18E6_EF2E_72D6_A504;
 
 fn harness_ini() -> IniFile {

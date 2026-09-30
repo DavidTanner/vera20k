@@ -52,6 +52,10 @@ pub(crate) fn try_end_drive_at_foot_idle(entity: &mut GameEntity) -> bool {
     drive_end_admitted(entity) && restore_admitted_primary(entity)
 }
 
+/// IsMoving here is the Drive's own order (+34 and its head), or a Rust
+/// adapter route (`issue_direct_move`: a depot pad move) standing in for it:
+/// natively the Drive drives that order itself and holds +34 until it
+/// arrives. Without it, a Chrono Miner's Drive would end mid-route.
 fn drive_end_admitted(entity: &GameEntity) -> bool {
     entity.locomotor.as_ref().is_some_and(|locomotor| {
         locomotor.active_kind() == LocomotorKind::Drive && locomotor.piggyback.is_some()
@@ -60,6 +64,7 @@ fn drive_end_admitted(entity: &GameEntity) -> bool {
         .as_ref()
         .is_none_or(|drive| drive.end_permitted)
         && !super::drive_locomotion::drive_locomotor_is_moving(entity)
+        && !super::movement_tick::adapter_route_pending(entity)
         && !entity.foot_locomotor_swap_active
 }
 
@@ -71,7 +76,7 @@ pub(crate) fn restore_admitted_primary(entity: &mut GameEntity) -> bool {
         return false;
     };
     let retired_drive = locomotor.active_kind() == LocomotorKind::Drive;
-    let restored = locomotor.restore_primary_from_piggyback();
+    let restored = locomotor.end_piggyback();
     if restored {
         // END transfers the controller without moving Object+9C. Restored
         // altitude is controller state, not an addition to this exact XYZ.

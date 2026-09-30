@@ -112,7 +112,6 @@ fn capture_probe(
 ) -> Value {
     let actor = sim.entities().get(engineer).unwrap();
     let owner = sim.interner.resolve(actor.owner()).to_owned();
-    let grid = sim.path_grid_snapshot();
     assert!(sim.apply_command_with_overlays(
         &owner,
         &Command::CaptureBuilding {
@@ -120,10 +119,8 @@ fn capture_probe(
             target_building_id: hut
         },
         Some(&resources.rules),
-        grid.as_deref(),
         Some(&resources.overlay_registry),
     ));
-    drop(grid);
     let mut snapshot = zone_snapshot(sim, name);
     let actor = sim.entities().get(engineer).unwrap();
     let object = resources

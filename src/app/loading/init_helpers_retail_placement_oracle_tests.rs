@@ -367,7 +367,6 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         !crate::sim::production::tick_production_with_overlay_registry(
             &mut sim,
             &rules,
-            Some(&path_grid),
             Some(&overlay_registry),
         )
     );

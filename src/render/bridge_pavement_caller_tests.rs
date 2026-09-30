@@ -1,145 +1,6 @@
-//! Perpendicular pavement branch is independent of state-byte/role writes.
-use crate::map::bridge_rim_tiles::HighBridgeRimTiles;
-use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
-use crate::sim::bridge_specs::update_ramp_perpendicular;
-use crate::sim::bridge_state::{Axis, BridgeRuntimeState, DamageState, Phase};
-use crate::sim::bridge_state::{BridgeCellRole, BridgeRuntimeCell, BridgeheadAnchorClass};
+//! The tactical terrain draw reads the live pavement bit.
+use crate::map::bridge_pavement::DAMAGED_PAVEMENT;
 
-#[test]
-fn pavement_raw_caller_gate_keeps_plain_and_structural_endpoint_art() {
-    for initial_class in [
-        BridgeheadAnchorClass::Variant0,
-        BridgeheadAnchorClass::Variant1,
-        BridgeheadAnchorClass::Damaged,
-        BridgeheadAnchorClass::AboutToFall,
-    ] {
-        for is_high in [true, false] {
-            for axis in [Axis::NS, Axis::EW] {
-                for phase in [
-                    Phase::DamageA,
-                    Phase::DamageB,
-                    Phase::CollapseA,
-                    Phase::CollapseB,
-                ] {
-                    for role in [
-                        None,
-                        Some(BridgeCellRole::Anchor),
-                        Some(BridgeCellRole::Bridgehead),
-                    ] {
-                        let side_a = matches!(phase, Phase::DamageA | Phase::CollapseA);
-                        let relative = match (axis, side_a) {
-                            (Axis::NS, true) => 3,
-                            (Axis::NS, false) => 1,
-                            (Axis::EW, true) => 7,
-                            (Axis::EW, false) => 5,
-                        };
-                        let tile = if is_high { 100 } else { 200 } + relative - 1;
-                        let mut terrain = endpoint_test_terrain();
-                        terrain.test_set_high_bridge_set_starts(Some(100), Some(200));
-                        terrain.test_set_high_bridge_rim_tiles(HighBridgeRimTiles::from_ini(100,
-                        b"[General]\nBridgeTopLeft1=1\nBridgeTopLeft2=2\nBridgeBottomRight1=3\nBridgeBottomRight2=4\nBridgeTopRight1=5\nBridgeTopRight2=6\nBridgeBottomLeft1=7\nBridgeBottomLeft2=8\nBridgeMiddle1=9\nBridgeMiddle2=14\n"));
-                        for (x, y) in [(4, 4), (4, 3), (5, 3)] {
-                            let cell = terrain.cell_mut(x, y).unwrap();
-                            cell.final_tile_index = tile;
-                            cell.has_damaged_data = true;
-                        }
-                        let mut state = BridgeRuntimeState::default();
-                        if let Some(role) = role {
-                            state.test_seed_cell(
-                                4,
-                                4,
-                                BridgeRuntimeCell {
-                                    deck_present: false,
-                                    deck_level: 0,
-                                    damage_state: DamageState::Damaged,
-                                    axis: Some(axis),
-                                    role,
-                                    anchor_span_id: None,
-                                    overlay_byte: 0xff,
-                                    bridgehead_anchor_class: initial_class,
-                                },
-                            );
-                        }
-                        // Native576BA0 selects E/W for NS and S/N for EW.
-                        let (dx, dy) = match (axis, side_a) {
-                            (Axis::NS, true) => (1, 0),
-                            (Axis::NS, false) => (-1, 0),
-                            (Axis::EW, true) => (0, 1),
-                            (Axis::EW, false) => (0, -1),
-                        };
-                        let outcome = update_ramp_perpendicular(
-                            &mut state,
-                            ((4 - dx) as u16, (4 - dy) as u16),
-                            axis,
-                            phase,
-                            is_high,
-                            &mut terrain,
-                        );
-                        assert_eq!(outcome.damaged_variant_cells, [(4, 4), (4, 3), (5, 3)]);
-                        if role.is_some() {
-                            assert_eq!(
-                                state.cell(4, 4).unwrap().bridgehead_anchor_class,
-                                initial_class,
-                                "endpoint raw tile must not acquire a middle-class override"
-                            );
-                        }
-                        let mut draw_grid = crate::map::terrain::build_terrain_grid_from_resolved(
-                            &terrain, None, None,
-                        );
-                        draw_grid.cells.retain(|cell| (cell.rx, cell.ry) == (4, 4));
-                        draw_grid.anchor_variant_table =
-                            Some(crate::map::theater::BridgeAnchorVariantTable {
-                                ns: [300, 301, 302, 303],
-                                ew: [400, 401, 402, 403],
-                            });
-                        let cell = &draw_grid.cells[0];
-                        let selected = std::cell::RefCell::new(Vec::new());
-                        let uv = |tile, sub, variant| {
-                            selected.borrow_mut().push((tile, sub, variant));
-                            None
-                        };
-                        crate::render::terrain_instances::build_visible_instances(
-                            &draw_grid,
-                            None,
-                            cell.screen_x,
-                            cell.screen_y,
-                            100.,
-                            100.,
-                            Some(&uv),
-                            Some(&state),
-                            Some(&terrain),
-                        );
-                        assert_eq!(
-                            *selected.borrow(),
-                            [(tile as u16, 0, 1)],
-                            "actual sprite selection must keep the endpoint and use its damaged sibling"
-                        );
-                        for (x, y) in [(4, 4), (4, 3), (5, 3)] {
-                            assert!(terrain.pavement_damaged_at(x, y));
-                            assert_eq!(terrain.cell(x, y).unwrap().final_tile_index, tile);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn endpoint_test_terrain() -> ResolvedTerrainGrid {
-    let mut terrain =
-        crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| ResolvedTerrainCell {
-            ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-        });
-    terrain.test_set_high_bridge_rim_tiles(crate::map::bridge_rim_tiles::HighBridgeRimTiles::from_ini(
-        0, b"[General]\nBridgeMiddle1=1\nBridgeMiddle2=1\nBridgeTopLeft1=11\nBridgeTopLeft2=12\nBridgeBottomRight1=13\nBridgeBottomRight2=14\nBridgeTopRight1=15\nBridgeTopRight2=16\nBridgeBottomLeft1=17\nBridgeBottomLeft2=18\n"));
-    terrain
-}
-
-/// Isolated production draw/shader witness with untouched retail map/TMP data.
-/// It does not compare gamemd frame pixels or certify full-scene composition.
-/// Run with RA2_DIR and VERA20K_XMP34U4_MAP; optional VERA20K_PAVEMENT_PROBE_OUTPUT
-/// saves the three readbacks. All native caller/state comparisons live in
-/// tools/spatial_oracle/bridge_pavement.{py,json} and the live publisher test.
 #[test]
 #[ignore = "requires retail assets, VERA20K_XMP34U4_MAP and a GPU"]
 fn retail_pavement_live_damage_changes_actual_terrain_pixels() {
@@ -217,7 +78,7 @@ fn retail_pavement_live_damage_changes_actual_terrain_pixels() {
         origin_x: 0.0,
         origin_y: 0.0,
         local_bounds: None,
-        anchor_variant_table: None,
+        bridge_middle_tiles: None,
     };
     let draw = |sim: &crate::sim::world::Simulation, expected: TileKey| {
         let selected = std::cell::RefCell::new(Vec::new());
@@ -243,7 +104,6 @@ fn retail_pavement_live_damage_changes_actual_terrain_pixels() {
             tile.width as f32,
             tile.height as f32,
             Some(&uv),
-            sim.bridge_state.as_ref(),
             sim.resolved_terrain.as_ref(),
         );
         assert_eq!(*selected.borrow(), [expected]);
@@ -255,17 +115,15 @@ fn retail_pavement_live_damage_changes_actual_terrain_pixels() {
     };
     let before = draw(scenario.sim(), pristine);
     let sim = &mut scenario.runtime.simulation;
-    // The normal perpendicular caller reaches plain pavement without a
-    // structural runtime entry. Native572330 uses this stock entry/coordinate.
-    let outcome = update_ramp_perpendicular(
-        sim.bridge_state.as_mut().unwrap(),
-        (67, 102),
-        Axis::NS,
-        Phase::DamageB,
-        true,
-        sim.resolved_terrain.as_mut().unwrap(),
-    );
-    assert_eq!(outcome.damaged_variant_cells.len(), 15);
+    // The live pavement bit (56E990's +140 bit13) on this plain pavement
+    // cell, which has no structural runtime entry.
+    let set_pavement = |sim: &mut crate::sim::world::Simulation, damaged: bool| {
+        let terrain = sim.resolved_terrain.as_mut().unwrap();
+        let native = terrain.native_cell_identity((rx as i16, ry as i16));
+        let flags = terrain.native_cell_flags(native) & !DAMAGED_PAVEMENT;
+        terrain.write_pavement_flags(native, flags | if damaged { DAMAGED_PAVEMENT } else { 0 });
+    };
+    set_pavement(sim, true);
     let after = draw(sim, damaged);
     assert_eq!(before.len(), after.len());
     let changed = before.iter().zip(&after).filter(|(a, b)| a != b).count();
@@ -276,20 +134,11 @@ fn retail_pavement_live_damage_changes_actual_terrain_pixels() {
             "nonblank output"
         );
     }
-    // Explicit scalar clear tests the consumer in both directions. It does
-    // not substitute for the separate, still-open engineer repair caller.
-    assert_eq!(
-        sim.resolved_terrain
-            .as_mut()
-            .unwrap()
-            .apply_native_pavement((rx as i16, ry as i16), false)
-            .len(),
-        15
-    );
+    set_pavement(sim, false);
     let restored = draw(sim, pristine);
     assert_eq!(restored, before);
     eprintln!(
-        "retail pavement {tile_id}/{sub_tile}: GPU changed {changed}/{} pixels; explicit clear restores original pixels",
+        "retail pavement {tile_id}/{sub_tile}: GPU changed {changed}/{} pixels; clearing restores original pixels",
         before.len()
     );
     if let Some(out) = std::env::var_os("VERA20K_PAVEMENT_PROBE_OUTPUT") {

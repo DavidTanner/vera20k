@@ -66,7 +66,7 @@ fn playfield_projection_grid(side: u16) -> TerrainGrid {
         origin_x: 0.0,
         origin_y: 0.0,
         local_bounds: None,
-        anchor_variant_table: None,
+        bridge_middle_tiles: None,
     }
 }
 
