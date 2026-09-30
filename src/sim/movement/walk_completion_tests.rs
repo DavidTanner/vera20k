@@ -153,7 +153,7 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
         actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
         actor.lifecycle.object_alive = input["alive"] == 1;
         actor.lifecycle.in_limbo = input["limbo"] == 1;
-        actor.object_is_falling_down = input["falling"].as_u64().unwrap() as u8;
+        actor.set_falling_down_for_test(input["falling"].as_u64().unwrap() != 0);
         // Keep signed/aliased full XYZ in the existing physical coordinate owner.
         // The query must compare the native truncated low16 cell words.
         let current = coord(&input["current"]);
@@ -320,7 +320,7 @@ fn paid_walk_world_scold_tails_match_original_boundaries() {
             .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
         actor.lifecycle.object_alive = case != "dead_post_percell";
         actor.lifecycle.in_limbo = case == "limbo_post_percell";
-        actor.object_is_falling_down = u8::from(case == "falling_post_percell");
+        actor.set_falling_down_for_test(case == "falling_post_percell");
         let head = DriveCoord::cell(10, 10, 0);
         actor.locomotor.as_mut().unwrap().set_step_head(Some(head));
         sim.substrate.entities.insert(actor);

@@ -10,7 +10,6 @@ use std::collections::BTreeSet;
 
 use super::ground_move::GroundMove;
 use super::{SimSoundEvent, Simulation, SimulationWallRuntimeHost};
-use crate::map::entities::EntityCategory;
 use crate::map::houses::are_houses_friendly;
 #[cfg(test)]
 use crate::rules::locomotor_type::MovementZone;
@@ -55,7 +54,6 @@ pub(crate) struct MoveInfo {
     pub(crate) loco_layer: MovementLayer,
     pub(crate) speed_type: SpeedType,
     pub(crate) hover_attack: bool,
-    pub(crate) is_teleporter: bool,
     pub(crate) is_harvester: bool,
     pub(crate) is_infantry: bool,
     pub(crate) accel_factor: SimFixed,
@@ -534,52 +532,6 @@ impl Simulation {
         true
     }
 
-    /// The class setter a Move or AttackMove order reaches for a non-harvester
-    /// Teleport owner, or `None` when the order is an ordinary move.
-    /// - Infantry on a Teleport locomotor: the Infantry setter (`0x0051AA40`),
-    ///   whose Foot tail reaches Teleport Move_To (`0x00718100`). The setter
-    ///   never reads `Teleporter=`, so a `Teleporter=` infantryman on another
-    ///   locomotor moves as any other.
-    /// - A `Teleporter=` Unit: the Unit setter (`0x741970`), whose Teleporter
-    ///   arm drives it except onto a dock.
-    ///
-    /// RESIDUAL: a Unit on a Teleport locomotor without `Teleporter=` reaches
-    /// Move_To without the Unit setter, which does not represent it. No
-    /// retail type is one (CMON and SMON are harvesters). Effect: the
-    /// setter's same-NavCom return and its NavCom write are skipped.
-    fn teleport_move_order(
-        &mut self,
-        id: u64,
-        cell: (u16, u16),
-        info: &MoveInfo,
-        rules: Option<&RuleSet>,
-    ) -> Option<bool> {
-        if info.is_harvester {
-            return None;
-        }
-        let teleport_primary = info.loco_kind == Some(LocomotorKind::Teleport);
-        match self.substrate.entities.get(id)?.category {
-            EntityCategory::Infantry if teleport_primary => Some(rules.is_some_and(|rules| {
-                self.set_infantry_cell_destination(id, cell, rules, None)
-                    .unwrap_or_else(|error| {
-                        log::debug!("Teleport infantry order {id} refused: {error}");
-                        false
-                    })
-            })),
-            EntityCategory::Unit if info.is_teleporter => {
-                Some(rules.is_some_and(|rules| self.set_unit_cell_destination(id, cell, rules)))
-            }
-            EntityCategory::Unit if teleport_primary => {
-                let rules = rules?;
-                let frame = self.session.binary_frame;
-                Some(self.substrate.entities.get_mut(id).is_some_and(|entity| {
-                    teleport_movement::teleport_move_to(entity, cell, &rules.general, false, frame)
-                }))
-            }
-            _ => None,
-        }
-    }
-
     /// Snapshot entity + rules data needed for movement dispatch in one lookup.
     pub(crate) fn resolve_move_info(
         &self,
@@ -604,7 +556,6 @@ impl Simulation {
             loco_layer,
             speed_type,
             hover_attack,
-            is_teleporter: obj.map_or(false, |o| o.teleporter),
             is_harvester: obj.map_or(false, |o| o.harvester),
             is_infantry: obj.map_or(false, |o| o.category == ObjectCategory::Infantry),
             accel_factor: obj.map_or(SIM_ZERO, |o| o.accel_factor),
@@ -688,16 +639,9 @@ impl Simulation {
                 let Some(info) = self.resolve_move_info(*entity_id, rules) else {
                     return false;
                 };
-                // Chrono Miners (Teleporter=yes + Harvester=yes) drive for player
-                // commands; they warp only onto a refinery pad, through the Unit
-                // setter's Teleporter arm (`set_unit_cell_destination`). RESIDUAL:
-                // this Move does not run that setter (no arm, no +0x1F8 clear).
-                let teleport_order =
-                    self.teleport_move_order(*entity_id, (*target_rx, *target_ry), &info, rules);
-
-                let result = if let Some(accepted) = teleport_order {
-                    accepted
-                } else if info.loco_layer == MovementLayer::Air {
+                // A Teleport mover takes its class setter inside
+                // `issue_ground_move` (`teleport_destination`).
+                let result = if info.loco_layer == MovementLayer::Air {
                     // Jumpjet infantry walk fallback: ≤3 cells + !HoverAttack → ground walk.
                     if info.loco_kind == Some(LocomotorKind::Jumpjet) && info.is_infantry {
                         let dx = (*target_rx as i32 - info.position.0 as i32).unsigned_abs();
@@ -1108,13 +1052,7 @@ impl Simulation {
                 let Some(info) = self.resolve_move_info(*entity_id, rules) else {
                     return false;
                 };
-                // Chrono Miners drive normally for player commands.
-                let teleport_order =
-                    self.teleport_move_order(*entity_id, (*target_rx, *target_ry), &info, rules);
-
-                let issued = if let Some(accepted) = teleport_order {
-                    accepted
-                } else if info.loco_layer == MovementLayer::Air {
+                let issued = if info.loco_layer == MovementLayer::Air {
                     // Air units fly in straight lines.
                     let ok = self.issue_air_cell_destination(
                         *entity_id,

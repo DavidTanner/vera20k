@@ -321,7 +321,7 @@ fn deferred_restore_completes_toward_navcom_over_a_stale_destination() {
     e.navigation.nav_com = Some(NavTargetRef::cell(10, 13));
     e.navigation.pending_arrival_clear = true;
     sim.session.binary_frame = 101;
-    sim.complete_pending_track_order(id, Some(&rules));
+    sim.complete_pending_order(id, Some(&rules));
     let e = sim.substrate.entities.get(id).unwrap();
     let destination = e.drive_locomotion.as_ref().unwrap().destination.unwrap();
     assert_eq!((destination.x / 256, destination.y / 256), (10, 13));
@@ -348,7 +348,7 @@ fn deferred_order_with_a_retained_destination_reschedules_without_a_setter() {
     e.navigation.pending_arrival_clear = true;
     e.navigation.path_runtime.start_movement(100, 9);
     sim.session.binary_frame = 101;
-    sim.complete_pending_track_order(id, Some(&rules));
+    sim.complete_pending_order(id, Some(&rules));
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(
         e.movement_target.as_ref().unwrap().final_goal,
@@ -469,6 +469,74 @@ fn depot_repair_order_reaches_the_pad_through_find_path() {
         e.navigation.nav_com,
         e.mission.current(),
         e.mission.queued()
+    );
+}
+
+/// A `Teleporter=` unit on Teleport (the Chrono Miner) repaired at a depot:
+/// each pad move runs the Unit setter's Teleporter arm, which installs a
+/// Drive (`0x007425E6..0x0074277E`; a depot is no `DockUnload=` contact), and
+/// the Drive keeps running until the unit stops on or off the pad. The
+/// Teleport alone runs no Process for a route, which left the unit beside
+/// the pad.
+#[test]
+fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
+    // One [VehicleTypes] section: a second one would not be read.
+    let depot_rules = format!(
+        "{}[TLP]\nStrength=300\nSpeed=6\nSpeedType=Track\nMovementZone=Normal\n\
+         Teleporter=yes\nLocomotor={{4A582747-9839-11d1-B709-00A024DDAFD1}}\n\
+         [BuildingTypes]\n1=DEPOT\n\
+         [DEPOT]\nStrength=800\nFoundation=3x3\nUnitRepair=yes\n",
+        UNITS.replace("1=SHP\n", "1=SHP\n2=TLP\n")
+    );
+    let (mut sim, rules, registry) = fixture_with_rules(&depot_rules);
+    let owner = sim.interner.intern("Americans");
+    let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 5000, 0);
+    house.player_control = true;
+    sim.houses.insert(owner, house);
+    let depot = sim
+        .spawn_object("DEPOT", "Americans", 16, 9, 0, &rules)
+        .unwrap();
+    let miner = sim
+        .spawn_object("TLP", "Americans", 10, 10, 0, &rules)
+        .unwrap();
+    sim.substrate
+        .entities
+        .get_mut(miner)
+        .unwrap()
+        .health
+        .current = 150;
+    assert!(sim.apply_command(
+        "Americans",
+        &crate::sim::command::Command::RepairAtDepot {
+            entity_id: miner,
+            depot_id: depot,
+        },
+        Some(&rules),
+    ));
+    let mut serviced = false;
+    let mut left = false;
+    for _ in 0..1200 {
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
+        let e = sim.substrate.entities.get(miner).unwrap();
+        let phase = e.dock_state.as_ref().map(|state| state.phase);
+        serviced |= phase == Some(crate::sim::docking::building_dock::DockPhase::Servicing);
+        let on_footprint = (16..19).contains(&e.position.rx) && (9..12).contains(&e.position.ry);
+        let teleport = e.locomotor.as_ref().is_some_and(|loco| {
+            loco.active_kind() == crate::rules::locomotor_type::LocomotorKind::Teleport
+        });
+        if serviced && phase.is_none() && !on_footprint && teleport {
+            left = true;
+            break;
+        }
+    }
+    let e = sim.substrate.entities.get(miner).unwrap();
+    assert!(
+        serviced && left,
+        "serviced {serviced}: cell {:?} dock {:?} nav {:?} loco {:?}",
+        (e.position.rx, e.position.ry),
+        e.dock_state.as_ref().map(|state| state.phase),
+        e.navigation.nav_com,
+        e.locomotor.as_ref().map(|loco| loco.active_kind()),
     );
 }
 

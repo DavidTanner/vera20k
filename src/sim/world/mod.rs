@@ -3359,7 +3359,7 @@ impl Simulation {
         );
         // `0x004DAA38`/`0x004DAA3E`: falling (`+0x8D`) or crashing (`+0x425`).
         // A Jumpjet's ordinary descent is neither: it keeps its move sound.
-        let falling_or_crashing = entity.object_is_falling_down != 0
+        let falling_or_crashing = entity.is_falling_down()
             || entity.crashing
             || entity.parachute_state.is_some();
         let active = entity.move_sound_active;
