@@ -195,10 +195,7 @@ mod tests {
     #[test]
     fn begin_rejects_null_and_nested_object_without_mutation() {
         let mut state = teleporter();
-        assert_eq!(
-            begin_with(&mut state, None),
-            BeginOutcome::RefusedNull
-        );
+        assert_eq!(begin_with(&mut state, None), BeginOutcome::RefusedNull);
         let before = state.clone();
 
         assert_eq!(
@@ -263,7 +260,10 @@ mod tests {
             LocomotorRuntimePayload::for_kind(LocomotorKind::Drive, 0)
         );
         assert_eq!(
-            state.piggyback.as_deref().map(|stashed| &stashed.runtime_payload),
+            state
+                .piggyback
+                .as_deref()
+                .map(|stashed| &stashed.runtime_payload),
             Some(&LocomotorRuntimePayload::Hover(Some(head)))
         );
 
@@ -289,7 +289,10 @@ mod tests {
 
         assert_eq!(loaded.runtime_payload, LocomotorRuntimePayload::Rocket);
         assert_eq!(
-            loaded.piggyback.as_deref().map(|stashed| &stashed.runtime_payload),
+            loaded
+                .piggyback
+                .as_deref()
+                .map(|stashed| &stashed.runtime_payload),
             Some(&LocomotorRuntimePayload::Hover(Some(head)))
         );
     }
