@@ -985,38 +985,15 @@ pub(super) fn unlimbo_held_naval_unit(
         overlay_registry,
     )?;
     let admitted_layer = entry.exact_zero_layer();
-    let z = match admitted_layer {
-        Some(layer) => {
-            let terrain_cell = sim
-                .resolved_terrain
-                .as_ref()
-                .and_then(|terrain| terrain.cell(resolved_cell.0, resolved_cell.1))
-                .expect("exact-zero production admission retains its resolved CellClass");
-            let z = match layer {
-                MovementLayer::Bridge => terrain_cell.bridge_deck_level,
-                MovementLayer::Ground => terrain_cell.level,
-                MovementLayer::Air | MovementLayer::Underground => {
-                    unreachable!("production Unit admission selects only ground or bridge")
-                }
-            };
-            if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
-                // `CheckBridgeTraversal @ 0x004D9C60` establishes the selected
-                // CellClass plane and its Level+4 deck height before mode-one
-                // Mark. Mark then consumes OnBridge for E4/E8 list selection
-                // and the committed Z for the +0x124/+0x128 raw plane.
-                entity.on_bridge = layer == MovementLayer::Bridge;
-            }
-            z
-        }
-        None => sim
-            .terrain_cell_level(resolved_cell.0, resolved_cell.1)
-            .unwrap_or(0),
-    };
     let placement = admitted_layer.map_or(
         crate::sim::world::PlacementEvidence::RejectedEarly,
         |layer| crate::sim::world::PlacementEvidence::UnitCanEnterExactZero { layer },
     );
-    let result = sim.unlimbo_held_production_object(
+    // Reveal commits the admitted plane: OnBridge and, on a bridge, the deck.
+    let z = sim
+        .terrain_cell_level(resolved_cell.0, resolved_cell.1)
+        .unwrap_or(0);
+    let result = sim.reveal_constructed_object_at_height(
         stable_id,
         resolved_cell.0,
         resolved_cell.1,
