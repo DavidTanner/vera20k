@@ -601,8 +601,7 @@ fn fresh_heading_gate_and_facing_setter_match_original_native_rows() {
         let initial = input["initial"].as_u64().unwrap() as u16;
         let direction = input["direction"].as_u64().unwrap() as usize;
         let call = &row["calls"][0];
-        let decision =
-            plan_drive_track_from_path(initial, OCTANT_CELL_DELTA[direction], None, false);
+        let decision = plan_drive_track_from_path(initial, OCTANT_CELL_DELTA[direction], None);
         let refused = matches!(decision, DriveTrackDecision::TurnFirst { .. });
         assert_eq!(refused, call["boundary"] == "turn_then_return", "{input}");
         if refused && initial >> 8 == (direction as u16) << 5 {
@@ -630,7 +629,7 @@ fn fresh_heading_gate_and_facing_setter_match_original_native_rows() {
 }
 
 fn expect_plan(body_facing: u8, from: (i32, i32), to: Option<(i32, i32)>) -> DriveTrackPlan {
-    match plan_drive_track_from_path(u16::from(body_facing) << 8, from, to, false) {
+    match plan_drive_track_from_path(u16::from(body_facing) << 8, from, to) {
         DriveTrackDecision::Select(plan) => plan,
         other => panic!("expected a curve, got {other:?}"),
     }
@@ -704,7 +703,7 @@ fn gsi_06_13_last_step_normalises_to_the_straight_entry() {
 /// turn and returns without selecting a curve or consuming a node.
 #[test]
 fn gsi_06_13_body_off_the_head_octant_turns_before_any_selection() {
-    match plan_drive_track_from_path(u16::from(FACE_W) << 8, (1, 0), Some((0, 1)), false) {
+    match plan_drive_track_from_path(u16::from(FACE_W) << 8, (1, 0), Some((0, 1))) {
         DriveTrackDecision::TurnFirst { desired_facing } => {
             assert_eq!(desired_facing, FACE_E, "turn onto the head node's octant");
         }
@@ -712,7 +711,7 @@ fn gsi_06_13_body_off_the_head_octant_turns_before_any_selection() {
     }
     // One facing unit off is still off — the comparison has no tolerance.
     assert!(matches!(
-        plan_drive_track_from_path((u16::from(FACE_E) << 8) + 1, (1, 0), Some((0, 1)), false),
+        plan_drive_track_from_path((u16::from(FACE_E) << 8) + 1, (1, 0), Some((0, 1))),
         DriveTrackDecision::TurnFirst { .. }
     ));
 }

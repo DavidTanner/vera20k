@@ -194,7 +194,6 @@ fn retained_cursor_and_paid_samples_match_original_drive_and_ship() {
                 residual: 123,
             };
             assert!(progress.select_fresh(
-                family,
                 integer(&input["first"]) as u8,
                 integer(&input["second"]) as u8
             ));
