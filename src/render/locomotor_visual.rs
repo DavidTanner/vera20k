@@ -104,6 +104,23 @@ pub fn screen_position(entity: &GameEntity) -> (f32, f32) {
     (sx, sy - height_lift_px(entity))
 }
 
+/// The whole upward lift [`screen_position`] draws `entity` with, in pixels:
+/// `AdjustForZ` of its exact Location Z, or of its stored level plus
+/// [`height_lift_px`]. A draw that cancels its lift for depth or per-pixel Z
+/// cancels this, as the building draw's `NormalZAdjust - AdjustForZ(Z)` seed
+/// does (`BuildingClass_DrawBody`).
+pub fn screen_lift_px(entity: &GameEntity) -> i32 {
+    match entity.position.exact_z_leptons {
+        Some(z) => crate::util::native_x87::adjust_for_z_standard(z),
+        None => {
+            crate::util::native_x87::adjust_for_z_standard(
+                i32::from(entity.position.z as i8)
+                    * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
+            ) + height_lift_px(entity) as i32
+        }
+    }
+}
+
 /// How far up a building's art sits from the entity anchor, in screen pixels.
 ///
 /// gamemd gives buildings their own answer to "where do I draw": of every
@@ -566,5 +583,28 @@ mod tests {
         let (sx, sy) = screen_position(&e);
         assert!((sx - (-300.0)).abs() < 0.1);
         assert!((sy - 1080.0).abs() < 0.1);
+    }
+
+    /// A draw that cancels its lift cancels what [`screen_position`] applied:
+    /// the drawn row plus [`screen_lift_px`] is the Z-free row, for a building
+    /// on a ramp (exact Location Z 52) and for one at a stored level.
+    #[test]
+    fn the_cancelled_lift_is_the_drawn_lift() {
+        let building = |exact_z: Option<i32>, level: u8| {
+            let mut entity = GameEntity::test_default(1, "GAPOWR", "Americans", 5, 5);
+            entity.category = EntityCategory::Structure;
+            entity.position.exact_z_leptons = exact_z;
+            entity.position.z = level;
+            entity
+        };
+        for entity in [building(Some(52), 0), building(None, 2)] {
+            let (_, drawn) = screen_position(&entity);
+            let (_, z_free) = z_free_screen_position(&entity.position);
+            assert_eq!(drawn + screen_lift_px(&entity) as f32, z_free);
+        }
+        assert_eq!(
+            screen_lift_px(&building(Some(52), 0)),
+            crate::util::native_x87::adjust_for_z_standard(52)
+        );
     }
 }

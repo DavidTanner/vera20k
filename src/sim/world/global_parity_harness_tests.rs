@@ -391,7 +391,14 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // parent and this change, each with those five inputs removed from the
 // hash, printed the same value, with the RNG pins above unchanged (the
 // probe patch was not committed). Old value: the commit that moved it.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xC688_AB2A_C675_D7D8;
+// 2026-09-30 a revealed building's Location Z (composition only; #692):
+// Reveal gives each building the exact Z BuildingType +0x6C (0x00464A70)
+// takes, the floor at its XY, and the object fold hashes an exact Z when one
+// is present. Ceremony: this change with only the Structure exact Z left out
+// of the fold printed the old value 0xC688_AB2A_C675_D7D8, with the RNG
+// pins above unchanged (the probe patch was not committed): the only change
+// to this pin is the fold.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x9486_A86E_F1F3_67DE;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
