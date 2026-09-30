@@ -27,7 +27,6 @@ use crate::sim::game_entity::{
     GameEntity, GeneratedTechnoInit, StructureUpgradeLink, TechnoConstructorInit,
 };
 use crate::sim::intern::InternedId;
-use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::production::{self, ProductionCategory, foundation_dimensions};
 use crate::sim::vision::MAX_SIGHT_RANGE;
 
@@ -1581,10 +1580,13 @@ impl Simulation {
         destination.selected = was_selected;
         // Begin_Mode(0) at its Unlimbo, the Construction mission queued
         // (0x007396D5) and its ready byte set (0x0073984E).
-        destination.building_up = Some(BuildingUp::deployed(
-            rules.buildup_control(&yard_type),
+        destination.install_building_up(
+            BuildingUp::deployed(
+                rules.buildup_control(&yard_type),
+                self.session.binary_frame as i32,
+            ),
             self.session.binary_frame as i32,
-        ));
+        );
         let (new_sid, outcome) =
             self.unlimbo_after_constructor_managers(destination, Some(rules), registry);
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
@@ -1667,7 +1669,7 @@ impl Simulation {
                 .houses
                 .get_mut(&owner_id)
                 .expect("qualifying deploy owner remains registered");
-            house.base_center = Some((rx, ry));
+            house.set_base_center((rx, ry));
             if house.base_plan.nodes.is_empty() {
                 recalc_base_plan(
                     &mut house.base_plan,
@@ -1717,7 +1719,7 @@ impl Simulation {
             && production::sell_back(self, rules, stable_id, production::SellOrder::Undeploy)
     }
 
-    /// `BuildingClass::Sell`'s UndeploysInto conversion (`0x00449CEA`), on
+    /// `BuildingClass::Mission_Selling`'s UndeploysInto conversion (`0x00449CEA`), on
     /// the Selling mission's completing visit
     /// (`production::production_sell::sell_complete`). The unit is
     /// constructed at the building's undeploy cell with its
@@ -1838,7 +1840,11 @@ impl Simulation {
         // rally-line factories), only the relocation reaches an
         // UndeploysInto building: no retail rally-line type undeploys.
         if let Some(TargetKind::Cell(x, y)) = archive {
-            if !self.set_unit_cell_destination(new_sid, (x, y), rules) {
+            if !self.set_unit_destination(
+                new_sid,
+                crate::sim::components::NavTargetRef::cell(x, y),
+                rules,
+            ) {
                 log::debug!("undeployed unit {new_sid} refused its archive ({x}, {y})");
             }
             if let Some(unit) = self.substrate.entities.get_mut(new_sid) {

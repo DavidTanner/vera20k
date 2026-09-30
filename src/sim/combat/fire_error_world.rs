@@ -543,6 +543,29 @@ impl FireQuery for WorldQuery<'_, '_> {
             return flat(range);
         }
         match subject.terrain() {
+            // GetFireError6FCCEE calls InRange with its original target. A Cell
+            // retains its Cell+48/+50 geometry through the existing range
+            // owner; it must not acquire Techno low-flying source semantics.
+            Some(terrain) if matches!(target, TargetKind::Cell(..)) => {
+                let Some(cell) = subject.cell_target_identity() else {
+                    return false;
+                };
+                in_range::cell_target_in_range(
+                    firer,
+                    cell,
+                    weapon,
+                    subject.rules,
+                    &subject.world.interner,
+                    &subject.world.substrate.entities,
+                    terrain,
+                    &line_of_fire::LineOfFireInputs {
+                        overlay_grid: subject.world.overlay_grid.as_ref(),
+                        overlay_registry: subject.overlay_registry,
+                        alliances: subject.fog.map(|fog| &fog.alliances),
+                    },
+                )
+                .unwrap_or(false)
+            }
             Some(terrain) => in_range::fire_source_coords(
                 firer,
                 &target,

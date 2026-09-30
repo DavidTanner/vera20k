@@ -200,7 +200,7 @@ fn retail_inactive_high_record_restamp_inventory() {
 ///
 /// **Two facts decide whether a player sees it, and they point opposite ways.**
 ///
-/// - `TechnoClass::SetSpeedFraction 0x004D3710` clamps the owner's `+0x578` at
+/// - `FootClass::SetSpeedFraction 0x004D3710` clamps the owner's `+0x578` at
 ///   1.0 (`FCOMP [0x007E1718]`, `TEST AH,1`). `drive+0x50` holds only the
 ///   *target*; `+0x578` is the accumulator, and both the accelerate and
 ///   decelerate arms of `Process_Drive_Track` write it through vtable `+0x544`.

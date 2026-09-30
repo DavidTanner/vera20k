@@ -1082,12 +1082,7 @@ impl Simulation {
     /// visit would read the Foot as a Rust route adapter.
     fn clear_path_head(&mut self, id: u64) {
         if let Some(actor) = self.substrate.entities.get_mut(id) {
-            actor.navigation.path_replay.clear_live_head();
-            if let Some(target) = actor.movement_target.as_mut() {
-                target.path.clear();
-                target.path_layers.clear();
-                target.next_index = 0;
-            }
+            actor.clear_live_path_head();
         }
     }
 

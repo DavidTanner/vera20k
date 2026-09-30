@@ -357,8 +357,9 @@ pub struct GeneralRules {
     /// read at `0x0066EF94`. Stock `2`, which is exactly the elite threshold,
     /// so elite is terminal.
     pub veteran_cap: f64,
-    /// `[General] ComputerBaseDefenseResponse=`. The active House responder
-    /// forms its signed/wrapping budget as `attacker Cost * this value`.
+    /// `[AI] ComputerBaseDefenseResponse=` (ReadAI673E41..673E61).
+    /// The active House responder forms its signed/wrapping budget as
+    /// `attacker ThreatPosed * this value` (7080BA..7080C4).
     pub computer_base_defense_response: i32,
     /// Signed `[General] MaximumBuildingPlacementFailures=` at `Rules+0xE48`.
     /// Native constructor default is `5`; both active retail rules files
@@ -622,15 +623,12 @@ pub struct GeneralRules {
     /// `TechnoClass+0xF0` on an elite promotion (`0x006FA0D6..0x006FA0DC`),
     /// whatever house owns the object. Constructor default UNCHECKED.
     pub elite_flash_timer: i32,
-    /// `IdleActionFrequency=` from `[AudioVisual]`, pre-scaled to integer ×1000.
-    ///
-    /// Scales how long an idle infantryman waits between fidgets: the wait is
-    /// drawn from `frequency * 450` to `frequency * 1800` frames, so stock
-    /// `.15` gives 67 to 270 frames. Stored ×1000 because the sim may only do
-    /// integer arithmetic with it. gamemd's own constructor default (what it
-    /// would use if the key were missing) is UNCHECKED; stock `rulesmd.ini`
-    /// always supplies the key, so the fallback below only ever serves fixtures.
-    pub idle_action_frequency_x1000: i64,
+    /// Exact `[AudioVisual] IdleActionFrequency=` double, `Rules+0x1710`.
+    /// Original constructor667574/66757E stores0x3FB53F7CED916873;
+    /// AudioVisual66B3EA reads over its current value. Infantry51CDB0 uses
+    /// this value to arm its idle timer before subsequent idle/RNG decisions.
+    /// Preserve the native double; milliunit quantization changes its timer.
+    pub idle_action_frequency: f64,
     /// `ConditionRedSparkingProbability=` ([General]) — per-tick probability that
     /// the `AI_Update` damage-Spark particle system spawns while health is below
     /// ConditionRed. Default **0.02** (verified `RulesClass__Constructor`; stock INI
@@ -1178,6 +1176,14 @@ pub struct GeneralRules {
     /// team on script action 53 or 54. `ReadRange` at `0x00670EB2` over the
     /// constructor's `0x200` (`0x0066759C`). Retail `RelaxedStray=3.0` is 768.
     pub relaxed_stray: i32,
+    /// `Rules+0x1724`, exact `[General] GuardModeStray=` in leptons.
+    /// `ReadGeneral 0x00670EBD..0x00670EDD` uses `ReadRange 0x00474620`
+    /// over the current value. Native construction does not write this field;
+    /// Rust initializes the otherwise unspecified storage deterministically to0.
+    /// Active retail's base General layer supplies2.0 (512 leptons).
+    /// AreaGuard uses it only when its archived post is a Foot object
+    /// (`0x004D6E74..0x004D6E89`), replacing the ordinary range-based leash.
+    pub guard_mode_stray: i32,
 
     // -- Service depot / unit repair --
     /// Ticks between applying RepairStep HP when a unit is on a repair depot.
@@ -1403,13 +1409,6 @@ fn minutes_to_ticks(minutes: f64) -> u32 {
         .round()
         .max(1.0) as u32
 }
-
-/// Stand-in for `[AudioVisual] IdleActionFrequency=` when the key is absent.
-///
-/// Stock `rulesmd.ini` sets `.15`, so this only serves fixtures that build a
-/// RuleSet without an `[AudioVisual]` section. gamemd's own constructor default
-/// is UNCHECKED.
-const STOCK_IDLE_ACTION_FREQUENCY_X1000: i64 = 150;
 
 /// Zip a parallel pair of paradrop INI keys (`Inf` + `Num`) into `(type, count)` pairs.
 ///
@@ -1694,7 +1693,7 @@ impl Default for GeneralRules {
             upgrade_elite_sound: None,
             slaves_free_sound: None,
             elite_flash_timer: 0,
-            idle_action_frequency_x1000: STOCK_IDLE_ACTION_FREQUENCY_X1000,
+            idle_action_frequency: f64::from_bits(0x3fb5_3f7c_ed91_6873),
             condition_red_sparking_probability: 0.02,
             condition_yellow_sparking_probability: 0.01,
             condition_red_spark_threshold: damage_spark_spawn_threshold(0.02),
@@ -1810,6 +1809,7 @@ impl Default for GeneralRules {
             close_enough: 0x280,
             stray: 0x200,
             relaxed_stray: 0x200,
+            guard_mode_stray: 0,
             // URepairRate=.016 min = 0.96 sec ≈ 14 ticks at 15 Hz.
             unit_repair_rate_ticks: minutes_to_ticks(U_REPAIR_RATE_MINUTES),
             repair_step: 5,
@@ -2308,7 +2308,7 @@ impl GeneralRules {
             repair_rate_minutes: general.read_double("RepairRate", defaults.repair_rate_minutes),
             veteran_ratio: general.read_double("VeteranRatio", VETERAN_RATIO_DEFAULT),
             veteran_cap: general.read_double("VeteranCap", VETERAN_CAP_DEFAULT),
-            computer_base_defense_response: general.read_int(
+            computer_base_defense_response: ai.read_int(
                 "ComputerBaseDefenseResponse",
                 defaults.computer_base_defense_response,
             ),
@@ -2478,10 +2478,8 @@ impl GeneralRules {
                 .read_name("SlavesFreeSound", 0x80)
                 .map(str::to_owned),
             elite_flash_timer: audio_visual.read_int("EliteFlashTimer", defaults.elite_flash_timer),
-            idle_action_frequency_x1000: (audio_visual.read_double(
-                "IdleActionFrequency",
-                STOCK_IDLE_ACTION_FREQUENCY_X1000 as f64 / 1000.0,
-            ) * 1000.0) as i64,
+            idle_action_frequency: audio_visual
+                .read_double("IdleActionFrequency", defaults.idle_action_frequency),
             building_garrisoned_sound: audio_visual
                 .read_name("BuildingGarrisonedSound", 0x80)
                 .map(str::to_owned),
@@ -2735,6 +2733,7 @@ impl GeneralRules {
             close_enough: general.read_range("CloseEnough", defaults.close_enough),
             stray: general.read_range("Stray", defaults.stray),
             relaxed_stray: general.read_range("RelaxedStray", defaults.relaxed_stray),
+            guard_mode_stray: general.read_range("GuardModeStray", defaults.guard_mode_stray),
             // URepairRate= is in minutes. Convert to ticks: minutes * 60 * 15 ticks/sec.
             unit_repair_rate_ticks: minutes_to_ticks(
                 general.read_double("URepairRate", U_REPAIR_RATE_MINUTES),
@@ -3197,11 +3196,11 @@ impl RuleSet {
         Ok(rules)
     }
 
-    /// Resolve the three sinking sound readers against the startup-selected
+    /// Resolve type sound readers against the startup-selected
     /// SOUNDMD registry. The processed projection retains only passes where
     /// each type existed, including the native current-ID retention order.
     /// Type defaults and Rules+208 start at -1; [AudioVisual] owns the latter.
-    pub(crate) fn bind_sinking_sounds(
+    pub(crate) fn bind_type_sound_references(
         &mut self,
         ini: &IniFile,
         sounds: &crate::rules::sound_ini::SoundRegistry,
@@ -3215,6 +3214,14 @@ impl RuleSet {
                 section.and_then(|section| sounds.read_rules_reference(section, "SinkingSound"));
             object.voice_sinking =
                 section.and_then(|section| sounds.read_rules_reference(section, "VoiceSinking"));
+            if object.category == crate::rules::object_type::ObjectCategory::Infantry {
+                // Infantry52440B then524447: missing/empty/unregistered names
+                // keep the prior signed ID across the existing processed passes.
+                object.enter_water_sound = section
+                    .and_then(|section| sounds.read_rules_reference(section, "EnterWaterSound"));
+                object.leave_water_sound = section
+                    .and_then(|section| sounds.read_rules_reference(section, "LeaveWaterSound"));
+            }
         }
     }
 
@@ -4619,6 +4626,8 @@ impl RuleSet {
                 infantry_checked += 1;
                 if let Some(entry) = entry {
                     obj.crawls = entry.crawls;
+                    // Original ART5246BE..52473A owns four independent signed
+                    // fields; project them without narrowing or fallback.
                     obj.fire_up_frame = entry.fire_up;
                     obj.fire_prone_frame = entry.fire_prone;
                     obj.secondary_fire_frame = entry.secondary_fire;
@@ -5886,15 +5895,54 @@ CellSpread=0
 
         let parsed = GeneralRules::from_ini(&IniFile::from_str(
             "[General]\n\
-             ComputerBaseDefenseResponse=-4\n\
              BaseDefenseDelay=.125\n\
              SuspendPriority=-2\n\
-             SuspendDelay=1.5\n",
+             SuspendDelay=1.5\n\
+             [AI]\nComputerBaseDefenseResponse=-4\n",
         ));
         assert_eq!(parsed.computer_base_defense_response, -4);
         assert_eq!(parsed.base_defense_delay_minutes, 0.125_f32 as f64);
         assert_eq!(parsed.suspend_priority, -2);
         assert_eq!(parsed.suspend_delay_minutes, 1.5_f32 as f64);
+    }
+
+    /// Original Rules ReadAI673E41..673E61 uses the AI section pointer;
+    /// a later General-only pass cannot overwrite the retained AI value.
+    /// Executable controls are saved by foot_navigation_coordinate --base-response.
+    #[test]
+    fn native_base_response_reads_ai_section_across_rules_passes() {
+        let mut layers = RulesLayerStack::new(IniFile::from_str(
+            "[General]\nComputerBaseDefenseResponse=17\n\
+             [AI]\nComputerBaseDefenseResponse=5\n",
+        ));
+        layers.push(
+            crate::rules::native_processing::RulesLayerKind::Scenario,
+            IniFile::from_str("[General]\nComputerBaseDefenseResponse=19\n"),
+        );
+        let rules = RuleSet::from_rules_layers(&layers).unwrap();
+        assert_eq!(rules.general.computer_base_defense_response, 5);
+    }
+
+    /// Original TechnoType ReadINI71464A..71469F retains the current speed
+    /// when a later rules pass reads -1. The constructor starts it at zero.
+    /// Executed reader history: spatial_oracle/base_defense_response.json.
+    #[test]
+    fn native_base_response_type_speed_retains_minus_one_across_rules_passes() {
+        let mut layers = RulesLayerStack::new(IniFile::from_str(
+            "[VehicleTypes]\n0=V\n[V]\nStrength=100\nSpeed=7\n",
+        ));
+        layers.push(
+            crate::rules::native_processing::RulesLayerKind::Scenario,
+            IniFile::from_str("[V]\nSpeed=-1\n"),
+        );
+        let rules = RuleSet::from_rules_layers(&layers).unwrap();
+        assert_eq!(rules.object("V").unwrap().speed, 7);
+        assert_eq!(
+            crate::util::fixed_math::ra2_speed_to_leptons_per_frame(
+                rules.object("V").unwrap().speed,
+            ),
+            17,
+        );
     }
 
     #[test]
@@ -7503,6 +7551,79 @@ Projectile=Invisible
         assert_eq!(obj.hidden_occupancy.occupy_height, 4);
         assert!(!rules.art_registry.can_hide_things("GAREFN"));
         assert_eq!(rules.art_registry.occupy_height("GAREFN"), 4);
+    }
+
+    #[test]
+    fn native_discharge_retail_gi_binding_retains_independent_zero_defaults() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/infantry_discharge_rules.json"
+        ))
+        .unwrap();
+        let physical = corpus["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["case"] == "physical_GI")
+            .unwrap();
+        let expected: [i32; 4] = serde_json::from_value(physical["after"].clone()).unwrap();
+        let Some((retail_rules, retail_art)) =
+            crate::rules::retail_ini_fixture::retail_rules_and_art()
+        else {
+            return;
+        };
+        let mut rules = RuleSet::from_ini(&retail_rules).expect("retail rules parse");
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&retail_art));
+        let infantry = rules.object("E1").expect("retail E1");
+        assert_eq!(infantry.image, "GI");
+        assert_eq!(
+            [
+                infantry.fire_up_frame,
+                infantry.fire_prone_frame,
+                infantry.secondary_fire_frame,
+                infantry.secondary_prone_frame,
+            ],
+            expected,
+            "original5246BE..52473A on physical ARTMD.INI[GI]"
+        );
+    }
+
+    #[test]
+    fn native_discharge_signed_art_fields_reach_infantry_type() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/infantry_discharge_rules.json"
+        ))
+        .unwrap();
+        let row = corpus["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["case"] == "all_independent")
+            .unwrap();
+        let expected: [i32; 4] = serde_json::from_value(row["after"].clone()).unwrap();
+        let mut layers = RulesLayerStack::new(IniFile::from_str(&make_test_rules()));
+        layers.push(
+            crate::rules::native_processing::RulesLayerKind::Scenario,
+            IniFile::from_str("[E1]\nImage=GI\n"),
+        );
+        let mut rules = RuleSet::from_rules_layers(&layers).expect("rules parse");
+        let mut art_text = "[GI]\nFixtureOnly=1\n".to_owned();
+        for (key, raw) in row["layers"][0].as_object().unwrap() {
+            art_text.push_str(&format!("{key}={}\n", raw.as_str().unwrap()));
+        }
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(
+            &IniFile::from_str(&art_text),
+        ));
+        let infantry = rules.object("E1").expect("E1");
+        assert_eq!(
+            [
+                infantry.fire_up_frame,
+                infantry.fire_prone_frame,
+                infantry.secondary_fire_frame,
+                infantry.secondary_prone_frame,
+            ],
+            expected,
+            "original independent signed DWORDs survive ART projection"
+        );
     }
 
     #[test]

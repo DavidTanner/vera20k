@@ -37,7 +37,7 @@
 //!   inside die with it.
 //! - Deploying a Slave Miner hands its manager to the refinery (SetOwner
 //!   `0x006AF580`, with the hand-off `0x006B0D10`); undeploying hands it back
-//!   at the conversion (`BuildingClass::Sell @ 0x0044A047`,
+//!   at the conversion (`BuildingClass::Mission_Selling @ 0x0044A047`,
 //!   `Simulation::finish_undeploy`). A refinery placed from production takes the same
 //!   hand-off (`0x006B0D60`) once its Unlimbo succeeds.
 //! - A Slave Miner hunts for a field: it sets out as it leaves its war
@@ -93,12 +93,8 @@
 //!   `UnitClass::What_Action` gives the Harvest action to a
 //!   ResourceGatherer/ResourceDestination type. The dispatch treats it as
 //!   the plain Unit it is natively (`techno_ai/mission_handlers.rs`).
-//! - Of `InfantryClass::DoType_Sequencer` (`0x00520AE0`) VERA runs only the
-//!   Cheer's end (`Simulation::infantry_action_completed`). A digging slave
-//!   keeps Doing 38 once its mission leaves Harvest, where retail's case 0x26
-//!   forces Ready after the Shovel sequence has played, and it walks home
-//!   without the Carry action (39, Do_Action's remap of Walk for a loaded
-//!   slave, `0x0051D739..0x0051D773`). Trigger: every slave carrying a load
+//! - A loaded slave walks home without Carry (39, Do_Action's remap of Walk
+//!   for a full slave load, `0x0051D739..0x0051D773`). Trigger: every slave carrying a load
 //!   home. Effect: the Doing value and the walk sequence shown; 0, 3, 38 and
 //!   39 are all interruptible, so readiness, Scatter and the fire error
 //!   answer alike. Frequency: every trip. Downstream: none beyond the Doing
@@ -853,7 +849,7 @@ impl Simulation {
     /// own cell (`vt+0x1BC`, the CellClass at its Location) and queues
     /// Selling (`0x006B01E8`), which the building's ready check commences in
     /// the same Update (`0x0043FF91`: the idle control holds `+0x6DD`).
-    /// Selling's UndeploysInto arm (`BuildingClass::Sell @ 0x00449C30`)
+    /// Selling's UndeploysInto arm (`BuildingClass::Mission_Selling @ 0x00449C30`)
     /// packs it up into the Slave Miner that its manager, now in state 6,
     /// sends hunting: the conversion at its end
     /// ([`Simulation::finish_undeploy`]) hands the manager over and sends the
@@ -876,7 +872,11 @@ impl Simulation {
     /// The Slave Miner's class setter (`vt+0x480(cell, 1)`, the Unit setter
     /// `0x00741970`) then `Queue_Mission(Move, 0)`.
     fn send_slave_master(&mut self, master: u64, cell: (u16, u16), rules: &RuleSet) {
-        if !self.set_unit_cell_destination(master, cell, rules) {
+        if !self.set_unit_destination(
+            master,
+            crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+            rules,
+        ) {
             log::debug!("slave master {master} has no Unit setter for {cell:?}");
         }
         self.queue_slave_mission(master, MissionType::Move);
@@ -1188,7 +1188,12 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
     ) {
-        match self.set_infantry_cell_destination(slave, cell, rules, registry) {
+        match self.set_infantry_destination(
+            slave,
+            crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+            rules,
+            registry,
+        ) {
             Ok(true) => {}
             Ok(false) => log::debug!("slave {slave} has no Walk setter for {cell:?}"),
             Err(cause) => log::debug!("slave {slave} could not be sent to {cell:?}: {cause}"),
@@ -1647,28 +1652,7 @@ impl Simulation {
 
     /// `InfantryClass vt+0x388(1)` (`0x00522C00`): Do_Action(0x20), the cheer.
     fn slave_cheers(&mut self, slave: u64, rules: &RuleSet) {
-        let before = self
-            .substrate
-            .entities
-            .get(slave)
-            .and_then(|entity| entity.mission_leaf.as_infantry().map(|leaf| leaf.doing()));
         self.slave_do_action(slave, DO_CHEER, rules);
-        let after = self
-            .substrate
-            .entities
-            .get(slave)
-            .and_then(|entity| entity.mission_leaf.as_infantry().map(|leaf| leaf.doing()));
-        // Do_Action restarts the sequence it installs.
-        if before != after
-            && after == Some(DO_CHEER)
-            && let Some(animation) = self
-                .substrate
-                .entities
-                .get_mut(slave)
-                .and_then(|entity| entity.animation.as_mut())
-        {
-            animation.switch_to(crate::sim::animation::SequenceKind::Cheer);
-        }
     }
 
     /// The hand-off (`0x006B0D10`, and `0x006B0D60`, the same body): an idle

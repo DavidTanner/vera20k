@@ -363,6 +363,8 @@ pub struct HouseState {
     pub(crate) tracking: crate::sim::house_tracking::HouseTracking,
     /// Historical House4FD150 primary base cell; updates at native building
     /// lifecycle boundaries rather than when a consumer requests a destination.
+    /// The existing House base owner publishes this with its private radius;
+    /// launch/deploy's explicit House50E000 writes retain that radius.
     pub base_center: Option<(u16, u16)>,
     #[serde(default)]
     pub(crate) base_projection: crate::sim::world::HouseBaseState,

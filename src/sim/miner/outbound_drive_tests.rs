@@ -395,11 +395,10 @@ fn arm_search(sim: &mut Simulation, entity_id: u64) {
         .entities
         .get_mut(entity_id)
         .expect("miner entity");
-    let miner = entity.miner.as_mut().expect("miner component");
     entity
         .mission
         .set_handler_state(MinerState::SearchOre.cursor());
-    miner.stage_rate = 0;
+    entity.restart_native_stage(0, 0, 0);
 }
 
 fn advance(sim: &mut Simulation, oracle: &OutboundContractOracle, grid: &PathGrid) {
@@ -1034,7 +1033,7 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
                 .expect("Drive runtime")
                 .clone(),
             miner.cargo.clone(),
-            (miner.stage_value, miner.stage_timer, miner.stage_rate),
+            *entity.native_stage(),
             entity.radio_contacts.clone(),
             entity.dock_entered_with,
         )
@@ -1058,7 +1057,7 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
 
     let entity = sim.substrate.entities.get(entity_id).expect("HARV");
     let miner = entity.miner.as_ref().expect("miner");
-    let timers_after = (miner.stage_value, miner.stage_timer, miner.stage_rate);
+    let timers_after = *entity.native_stage();
     assert_eq!(entity.miner_state().unwrap(), MinerState::ReturnToRefinery);
     assert_eq!(miner.reserved_refinery, None);
     assert_eq!(entity.navigation.nav_com, nav_before);

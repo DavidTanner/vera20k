@@ -34,10 +34,16 @@ fn engineer_at(sim: &mut Simulation, rules: &RuleSet, cell: (u16, u16)) -> u64 {
 /// Infantry 0x51AA40(cell, true) through the shared Walk setter owner.
 fn order_walk(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, u16)) {
     let speed = sim.resolve_move_info(id, Some(rules)).unwrap().speed;
-    assert!(crate::sim::movement::prepare_walk_cell_destination(
+    let coord =
+        crate::sim::movement::target_cell_coord(target.0, target.1, sim.resolved_terrain.as_ref());
+    crate::sim::movement::clear_destination_path_head(sim.substrate.entities.get_mut(id).unwrap());
+    assert!(crate::sim::movement::prepare_walk_destination(
         &mut sim.substrate.entities,
         id,
-        target,
+        (
+            crate::sim::components::NavTargetRef::cell(target.0, target.1),
+            coord
+        ),
         speed,
         sim.resolved_terrain.as_ref(),
         crate::sim::movement::DestinationTiming::new(
@@ -333,9 +339,18 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     use crate::sim::components::NavTargetRef;
     use crate::sim::movement::ground_pose::position_world_coord;
     let (mut sim, rules, registry) = super::tests::fixture_with_rules(
-        "[ENGINEER]\nFraidycat=yes\n[Guard]\nScatter=yes\n[CombatDamage]\nPlayerScatter=yes\n",
+        "[General]\nFixtureOnly=1\n[ENGINEER]\nFraidycat=yes\n[Guard]\nScatter=yes\n[CombatDamage]\nPlayerScatter=yes\n",
     );
     assert!(rules.object("ENGINEER").unwrap().fraidycat);
+    assert!(
+        rules.general.player_scatter,
+        "human Scatter input was parsed"
+    );
+    let owner = sim.interner.intern("Americans");
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+    );
     let victim = engineer_at(&mut sim, &rules, (10, 10));
     let attacker = engineer_at(&mut sim, &rules, (8, 10));
     sim.mission_assign_exact(
@@ -380,6 +395,18 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     );
     assert_eq!(e.locomotor.as_ref().unwrap().step_head(), None);
     assert_eq!(e.mission.queued(), MissionId::from_known(MissionType::Move));
+    assert_eq!(e.infantry.as_ref().unwrap().fear_level, 300);
+    // Isolate the damage-created destination's ordinary Walk continuation.
+    // The independently native-compared5200B0 panic tail can issue another
+    // NULL Scatter immediately on arrival while this Fraidycat's fear>50.
+    sim.substrate
+        .entities
+        .get_mut(victim)
+        .unwrap()
+        .infantry
+        .as_mut()
+        .unwrap()
+        .fear_level = 0;
     // The same production tick host that handles normal orders must consume
     // the damage-created request. The native corpus proves the first FindPath
     // boundary; this regression continues through our real search/head/step.

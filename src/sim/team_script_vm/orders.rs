@@ -6,12 +6,6 @@
 //! `Enter_Idle_Mode` (`vt+0x484`) and `Set_ArchiveTarget` (`0x0070C610`).
 //!
 //! RESIDUALS:
-//! - `Set_Destination` to an object: the class setters here take a cell or
-//!   NULL, so a team that sends a member to an object (its centre `+0x34`
-//!   when that is a member, `Calc_Center`'s fallback) sends it to the cell
-//!   the object stands in when the order is given. Trigger: a member outside
-//!   `Stray=` of a centre that fell back to a member. Effect: the member
-//!   walks to where that member stood rather than following it.
 //! - `Set_Destination` for an aircraft (`0x0041AA80`), a Walk unit, a
 //!   Hover or Jumpjet unit, or a Jumpjet infantryman is not given. VERA has
 //!   no class setter for the aircraft, Walk-unit and Jumpjet-infantry
@@ -109,8 +103,11 @@ impl Simulation {
             self.assign_null_destination(id, Some(rules));
             return;
         };
-        let Some(cell) = self.team_target_cell(target) else {
-            return;
+        let requested = match target {
+            TeamTarget::Cell { x, y } => {
+                crate::sim::components::NavTargetRef::cell(x as u16, y as u16)
+            }
+            TeamTarget::Object(id) => crate::sim::components::NavTargetRef::object(id),
         };
         let Some(category) = self
             .substrate
@@ -122,25 +119,12 @@ impl Simulation {
         };
         match category {
             EntityCategory::Infantry => {
-                let _ = self.set_infantry_cell_destination(id, cell, rules, registry);
+                let _ = self.set_infantry_destination(id, requested, rules, registry);
             }
             EntityCategory::Unit if self.unit_setter_receiver(id, Some(rules)) => {
-                self.set_unit_cell_destination(id, cell, rules);
+                self.set_unit_destination(id, requested, rules);
             }
             _ => {}
-        }
-    }
-
-    /// The cell a destination order names: a cell target's own cell, or the
-    /// cell an object target stands in (module residual).
-    pub(super) fn team_target_cell(&self, target: TeamTarget) -> Option<(u16, u16)> {
-        match target {
-            TeamTarget::Cell { x, y } => Some((x as u16, y as u16)),
-            TeamTarget::Object(id) => self
-                .substrate
-                .entities
-                .get(id)
-                .map(|entity| (entity.position.rx, entity.position.ry)),
         }
     }
 

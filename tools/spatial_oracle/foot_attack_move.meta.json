@@ -153,5 +153,8 @@
       "048": "005F65A0"
     }
   },
+  "source_normalized_lf_sha256": {
+    "tools/spatial_oracle/foot_attack_move.py": "bb87b4f437314f84c20e71c84118b04b62eef3f3f0f4b41732a2c3b70651edf1"
+  },
   "payload_sha256": "5d43c68a8d4c9d2a09bf0498d8dd5086f29ab35d0c0860b4d8470bcf4b22ce95"
 }

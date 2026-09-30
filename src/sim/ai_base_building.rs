@@ -660,7 +660,7 @@ fn place_building(
     let control = rules.buildup_control(&ty.id);
     let now = sim.session.binary_frame as i32;
     if let Some(building) = sim.substrate.entities.get_mut(product) {
-        building.building_up = Some(BuildingUp::placed_by_computer(control, now));
+        building.install_building_up(BuildingUp::placed_by_computer(control, now), now);
     }
     true
 }

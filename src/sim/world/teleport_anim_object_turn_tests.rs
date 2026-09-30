@@ -43,13 +43,30 @@ fn relocating_owner(category: EntityCategory, type_name: &str, target: (u16, u16
     let mut sim = Simulation::with_seed(0);
     sim.fog.width = 32;
     sim.fog.height = 32;
-    let mut entity = GameEntity::test_default(1, type_name, "Americans", 5, 5);
-    entity.category = category;
-    entity.mission_leaf =
-        crate::sim::mission::leaf::MissionLeafState::for_entity_category(category);
-    entity.owner = sim.intern("Americans");
-    entity.type_ref = sim.intern(type_name);
-    entity.position.z = 2;
+    // Construct the actual class. Reclassifying a Unit test default leaves
+    // Infantry's required fear/action runtime absent from its real AI turn.
+    let mut entity = GameEntity::new_at_frame_zero_for_test(
+        1,
+        5,
+        5,
+        2,
+        0,
+        sim.intern("Americans"),
+        crate::sim::components::Health { current: 100 },
+        sim.intern(type_name),
+        category,
+        0,
+        5,
+        category == EntityCategory::Unit,
+    );
+    // Preserve this fixture's original centre pose: the target coordinate is
+    // also the centre. An Infantry constructor starts in slot2, so name the
+    // supplied centre premise rather than accidentally changing the old test.
+    if category == EntityCategory::Infantry {
+        entity.position.sub_x = crate::util::lepton::CELL_CENTER_LEPTON;
+        entity.position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
+        entity.sub_cell = Some(0);
+    }
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
     entity.teleport_state = Some(TeleportState {
         phase: TeleportPhase::Relocate,

@@ -6,7 +6,7 @@
 //! a Slave Miner refinery's relocation queues the mission itself,
 //! [`begin_selling`]): the building takes the Selling mission, and each
 //! later frame the building's LogicVector visit
-//! (`Simulation::visit_building_down`) runs `BuildingClass::Sell @
+//! (`Simulation::visit_building_down`) runs `BuildingClass::Mission_Selling @
 //! 0x00449C30` ([`BuildingDown`], `sim::building_construction`):
 //! - stage 0 ([`sell_stage_zero`]): an undeploy's `DeploySound=`, the bunker
 //!   release, RUN_AWAY to every contact and the damage fires put out;
@@ -224,8 +224,7 @@ pub(crate) fn begin_selling(sim: &mut Simulation, rules: &RuleSet, id: u64, unde
     if entity.mission.current() != selling || entity.building_down.is_some() {
         return;
     }
-    entity.building_up = None;
-    entity.building_down = Some(BuildingDown::commenced(control, now as i32, undeploy_order));
+    entity.install_building_down(BuildingDown::commenced(control, now as i32, undeploy_order));
 }
 
 /// `BuildingClass::CanSell @ 0x004494C0` (vt+0x98), which the sell cursor
@@ -384,8 +383,8 @@ pub(crate) fn sell_stage_one(
     let now = sim.session.binary_frame as i32;
     if let Some(building) = sim.substrate.entities.get_mut(id) {
         let mut status = building.mission.handler_state();
-        if let Some(down) = building.building_down.as_mut() {
-            down.begin_stage_two(&mut status, now);
+        if building.building_down.is_some() {
+            building.begin_building_pack_up_stage_two(&mut status, now);
         }
         building.mission.set_handler_state(status);
     }
@@ -1650,7 +1649,7 @@ mod tests {
             .count()
     }
 
-    /// `BuildingClass::Sell 0x00449CD1 MOV ECX,[EAX+0x408] ; TEST ; JNZ skip`:
+    /// `BuildingClass::Mission_Selling 0x00449CD1 MOV ECX,[EAX+0x408] ; TEST ; JNZ skip`:
     /// a type with `UndeploysInto=` never speaks.
     #[test]
     fn selling_announces_structure_sold_unless_the_type_undeploys() {

@@ -381,7 +381,7 @@ fn parse_facing_hint(s: &str) -> Option<FacingHint> {
     }
 }
 
-fn completion_facing(hint: Option<FacingHint>) -> Option<u8> {
+pub(crate) fn completion_facing(hint: Option<FacingHint>) -> Option<u8> {
     match hint {
         Some(FacingHint::N) => Some(0),
         Some(FacingHint::NE) => Some(32),
@@ -680,7 +680,8 @@ pub fn build_sequence_set(def: &InfantrySequenceDef) -> SequenceSet {
         // Multiplier>0 → directional with 8 infantry facings.
         // The existing generic SHP interface represents u16 asset indices.
         // It must never narrow the signed bank used by gameplay. Wider/negative
-        // native draw selection remains a separate presentation migration.
+        // native drawing reads the signed bank directly through the shared
+        // frame resolver; this generic map is only a compatibility projection.
         let (Ok(start_frame), Ok(frame_count), Ok(stride)) = (
             u16::try_from(entry.start_frame),
             u16::try_from(entry.frames_per_facing),

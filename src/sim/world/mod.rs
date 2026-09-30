@@ -326,7 +326,7 @@ pub enum SimSoundEvent {
     GattlingLoopRelease { owner: u64 },
     /// `SoundEvent::Release @ 0x00406060` on an object's own sound handle
     /// (`FootClass+0x544` or `AnimClass+0x1A0`, keyed by object id). A one-shot
-    /// plays out; an uncounted loop stops repeating. Anim Destroy4255D5 and
+    /// plays out; an uncounted loop stops repeating. Anim UnInit4255D5 and
     /// scalar destructor4228E0 share this operation with Foot4D3677.
     ObjectSoundReleased { owner: u64 },
     /// Native Fly AuxSound1/AuxSound2 at the phase callback world coordinate.
@@ -508,7 +508,7 @@ pub enum SimSoundEvent {
         owner: InternedId,
         event: &'static str,
     },
-    /// `BuildingClass::Sell @ 0x00449C30`'s completing stage-2 visit
+    /// `BuildingClass::Mission_Selling @ 0x00449C30`'s completing stage-2 visit
     /// (`0x00449CC1..0x00449CE5`, once the pack-up animation has set
     /// `+0x6DD`): `TechnoClass+0x41A` (owner is the local player) and no
     /// `UndeploysInto=` (`Type+0x408`) — an undeploying building stays
@@ -1863,6 +1863,47 @@ impl Simulation {
         );
         result.consequences.finish_navigation(run.finish());
         result
+    }
+
+    ///51BF59's FireAt and consuming receiver delivery finish before this
+    /// Infantry's sequencer and before the next dynamic Logic object slot.
+    pub(crate) fn commit_fire_visit(
+        &mut self,
+        visit: crate::sim::combat::world_receiver::FireVisit,
+        rules: &RuleSet,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> bool {
+        #[cfg(test)]
+        let observed_direct = match &visit {
+            crate::sim::combat::world_receiver::FireVisit::Direct { id, .. } => Some(*id),
+            _ => None,
+        };
+        #[cfg(test)]
+        if let Some(id) = observed_direct {
+            crate::sim::combat::receiver_fixture::observe_fire_visit(self, id, "entry");
+        }
+        let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
+        let mut result = crate::sim::combat::world_receiver::visit_fire(
+            self,
+            &mut run,
+            visit,
+            rules,
+            overlay_registry,
+        );
+        result.consequences.finish_navigation(run.finish());
+        for projectile in result.projectile_spawns {
+            let stable_id = self.allocate_stable_id();
+            self.admit_projectile(stable_id, projectile);
+        }
+        let bridge_changed = result
+            .consequences
+            .commit(self, rules, overlay_registry)
+            .bridge_state_changed;
+        #[cfg(test)]
+        if let Some(id) = observed_direct {
+            crate::sim::combat::receiver_fixture::observe_fire_visit(self, id, "return");
+        }
+        bridge_changed
     }
 
     /// Commit a completed Bullet's detonation while its current Logic slot and
@@ -3360,9 +3401,8 @@ impl Simulation {
         );
         // `0x004DAA38`/`0x004DAA3E`: falling (`+0x8D`) or crashing (`+0x425`).
         // A Jumpjet's ordinary descent is neither: it keeps its move sound.
-        let falling_or_crashing = entity.is_falling_down()
-            || entity.crashing
-            || entity.parachute_state.is_some();
+        let falling_or_crashing =
+            entity.is_falling_down() || entity.crashing || entity.parachute_state.is_some();
         let active = entity.move_sound_active;
         let countdown = entity.move_sound_countdown;
         let type_ref = entity.type_ref();
@@ -3811,7 +3851,7 @@ impl Simulation {
 
     /// Shared identity source for every modeled runtime `AbstractClass` analogue.
     ///
-    /// `AbstractClass::AssignUniqueID @ 0x00410230` delegates to
+    /// `AbstractClass::Create_ID @ 0x00410230` delegates to
     /// `ScenarioClass::NextUniqueID @ 0x0068BCB0`; individual stores therefore
     /// must not own independent counters.
     pub(crate) fn allocate_stable_id(&mut self) -> u64 {
@@ -4189,7 +4229,7 @@ impl Simulation {
     /// Admit the `VoxelAnimClass` debris a death threw.
     ///
     /// gamemd-derived: `VoxelAnimClass::Constructor @ 0x007493B0` assigns the
-    /// shared unique id (`AbstractClass::AssignUniqueID`), appends to the
+    /// shared unique id (`AbstractClass::Create_ID`), appends to the
     /// VoxelAnim registry, then `ObjectClass::Unlimbo` reveals the piece into
     /// the LogicClass vector. The launch velocity and the physics body were
     /// already built inside the combat transaction, which consumed the draws in
@@ -4374,20 +4414,6 @@ impl Simulation {
         // to TechnoClass::ChangeOwner (0x007014A0), which moves the house
         // counts (`house_tracking`) below.
 
-        // `TechnoClass::ChangeOwner` calls `SpawnManagerClass::Kill_All_Spawns`
-        // before the house swap: a mind-controlled V3/Dreadnought/Boomer loses
-        // the pool it built for its old owner, and a Carrier's airborne
-        // Hornets crash. Run first so the children are destroyed while still
-        // attributed to the previous house. The owner is still alive here, so
-        // the slots re-arm with a zero regen wait and the new owner's pool is
-        // rebuilt on the next manager pass.
-        if has_spawn_manager {
-            crate::sim::spawn_manager::kill_all_spawns_with_context(
-                self,
-                stable_id,
-                rules.map_or_else(UninitContext::default, UninitContext::with_rules),
-            );
-        }
         // `BuildingClass::ChangeOwner @ 0x004482AA..0x004482F9`, still on the
         // OLD owner: a `MultiplayPassive` old owner and a non-zero
         // `ProduceCashStartup` credit the NEW owner and arm the ProduceCash
@@ -4414,6 +4440,64 @@ impl Simulation {
         }
         if category == EntityCategory::Structure {
             self.leave_house_base_lists(stable_id, old_owner);
+        }
+        // Original7014DB/7014E9 dispatch the class target and destination
+        // setters, then70151A clears Archive and70156E queues Guard. All run
+        // on the OLD house, before SpawnManager and the701735 owner swap.
+        // The late70182F/70183B setters remain below on the new house.
+        if let Some(rules) = rules {
+            use crate::sim::mission::{MissionId, MissionType};
+            let entity = self.substrate.entities.get(stable_id).unwrap();
+            let current = entity.mission.current().known();
+            let unit_deploying = category == EntityCategory::Unit
+                && entity.mission_leaf.as_unit().is_some_and(|leaf| {
+                    leaf.deploy_begin_active() != 0 || leaf.deploy_reverse_active() != 0
+                });
+            let simple_deployer_unloading = category == EntityCategory::Unit
+                && current == Some(MissionType::Unload)
+                && self
+                    .object_type(entity.type_ref(), rules)
+                    .is_some_and(|object| object.is_simple_deployer);
+            let now = self.session.binary_frame;
+            let _ = self.assign_target_represented(stable_id, None, Some(rules));
+            self.assign_null_destination(stable_id, Some(rules));
+            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                entity.movement_target = None;
+                entity.order_intent = None;
+                if !unit_deploying {
+                    entity.set_archive_target(None);
+                }
+            }
+            if current != Some(MissionType::Selling) && !simple_deployer_unloading {
+                // `Queue_Mission(Guard, 1)`: the queue write, then Ready_To_Commence
+                // (`+0x200`) and Commence (`+0x1EC`). The immediate promotion runs
+                // through the host's promotion step so the recorded readiness
+                // degradation (absent locomotor producers read as "not moving")
+                // applies here exactly as it does at the per-tick AI position.
+                let _ = self.mission_queue_exact(
+                    stable_id,
+                    MissionId::from_known(MissionType::Guard),
+                    0,
+                    now,
+                    &crate::sim::mission::authority::LiveReadyInputProvider { rules },
+                );
+                self.mission_host_promote(stable_id, now, rules);
+            }
+        }
+
+        // `TechnoClass::ChangeOwner` calls `SpawnManagerClass::Kill_All_Spawns`
+        // before the house swap: a mind-controlled V3/Dreadnought/Boomer loses
+        // the pool it built for its old owner, and a Carrier's airborne
+        // Hornets crash. The children are destroyed while still
+        // attributed to the previous house. The owner is still alive here, so
+        // the slots re-arm with a zero regen wait and the new owner's pool is
+        // rebuilt on the next manager pass.
+        if has_spawn_manager {
+            crate::sim::spawn_manager::kill_all_spawns_with_context(
+                self,
+                stable_id,
+                rules.map_or_else(UninitContext::default, UninitContext::with_rules),
+            );
         }
         // Techno70158A..7015E6: Removed_From_Game on the old house (not in
         // limbo), then Remove_Tracking from it and Add_Tracking to the new.
@@ -4469,7 +4553,7 @@ impl Simulation {
             house.build_const_order.push(stable_id);
         }
         if category == EntityCategory::Structure {
-            self.join_house_base_lists(stable_id, new_owner);
+            self.join_house_base_lists(stable_id, old_owner, new_owner, rules);
         }
         // `TechnoClass::ChangeOwner` closes with the mission half (the
         // `+0x484` call at 0x00701849 reads the NEW owner's
@@ -4497,7 +4581,8 @@ impl Simulation {
     }
 
     /// The mission half of `TechnoClass::ChangeOwner @ 0x007014A0`, every
-    /// class (read 2026-09-23):
+    /// class. The early setters/Guard queue are inline before the house swap
+    /// in `change_owner_impl`; this consumer handles only the new-house tail:
     /// - `0x007014D5..0x0070151A`: `Assign_Target(0)` (`+0x3C8`),
     ///   `Assign_Destination(0, 1)` (`+0x480` at `0x007014E9`; a Drive/Ship
     ///   Unit's is the Unit setter, [`Self::assign_null_destination`]), and
@@ -4580,13 +4665,6 @@ impl Simulation {
         let category = entity.category;
         let current = entity.mission.current().known();
         let object = self.object_type(entity.type_ref(), rules);
-        let unit_deploying = category == EntityCategory::Unit
-            && entity.mission_leaf.as_unit().is_some_and(|leaf| {
-                leaf.deploy_begin_active() != 0 || leaf.deploy_reverse_active() != 0
-            });
-        let simple_deployer_unloading = category == EntityCategory::Unit
-            && current == Some(MissionType::Unload)
-            && object.is_some_and(|object| object.is_simple_deployer);
         let factory_unloading = category == EntityCategory::Structure
             && current == Some(MissionType::Unload)
             && object.is_some_and(|object| object.weapons_factory);
@@ -4597,33 +4675,7 @@ impl Simulation {
                 .as_ref()
                 .is_some_and(|m| m.kind != crate::sim::miner::MinerKind::Slave);
         let now = self.session.binary_frame;
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
-        }
-        self.assign_null_destination(stable_id, Some(rules));
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.movement_target = None;
-            entity.order_intent = None;
-            if !unit_deploying {
-                entity.set_archive_target(None);
-            }
-        }
         let readiness = crate::sim::mission::authority::LiveReadyInputProvider { rules };
-        if current != Some(MissionType::Selling) && !simple_deployer_unloading {
-            // `Queue_Mission(Guard, 1)`: the queue write, then Ready_To_Commence
-            // (`+0x200`) and Commence (`+0x1EC`). The immediate promotion runs
-            // through the host's promotion step so the recorded readiness
-            // degradation (absent locomotor producers read as "not moving")
-            // applies here exactly as it does at the per-tick AI position.
-            let _ = self.mission_queue_exact(
-                stable_id,
-                MissionId::from_known(MissionType::Guard),
-                0,
-                now,
-                &readiness,
-            );
-            self.mission_host_promote(stable_id, now, rules);
-        }
         let rescue = self.substrate.entities.get(stable_id).is_some_and(|e| {
             e.mission.current().known() == Some(MissionType::Rescue)
                 || e.mission.queued().known() == Some(MissionType::Rescue)
@@ -4653,8 +4705,8 @@ impl Simulation {
         self.assign_null_destination(stable_id, Some(rules));
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             entity.movement_target = None;
-            crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
         }
+        let _ = self.assign_target_represented(stable_id, None, Some(rules));
         match category {
             EntityCategory::Unit if is_dispatchable_miner => {
                 if let Some(selector) =
@@ -5530,22 +5582,17 @@ impl Simulation {
         for &sid in &keys {
             // Construction and deconstruction are the building's missions,
             // which hold while it is warped (`GameEntity::ai_frozen`).
-            if let Some(bu) = self
-                .substrate
-                .entities
-                .get_mut_if(sid, |entity| {
-                    entity.building_up.is_some() && !entity.ai_frozen()
-                })
-                .and_then(|entity| entity.building_up.as_mut())
-                && bu.frame(now, options)
-                    == crate::sim::building_construction::ConstructionFrame::Complete
+            if let Some(entity) = self.substrate.entities.get_mut_if(sid, |entity| {
+                entity.building_up.is_some() && !entity.ai_frozen()
+            }) && entity.advance_building_up(now, options)
+                == crate::sim::building_construction::ConstructionFrame::Complete
             {
                 finished.push(sid);
             }
         }
         for &sid in &finished {
             if let Some(entity) = self.substrate.entities.get_mut(sid) {
-                entity.building_up = None;
+                entity.finish_building_up(now);
                 // Mission_Construction's completing visit queues Guard
                 // (`0x00449AE2`) and the ready check after the Techno AI
                 // commences it on the `+0x6DD` the build-up's last frame set
@@ -5607,10 +5654,7 @@ impl Simulation {
                 return;
             };
             let mut status = entity.mission.handler_state();
-            let Some(down) = entity.building_down.as_mut() else {
-                return;
-            };
-            let visit = down.frame(&mut status, now, archive_less_sale, options);
+            let visit = entity.advance_building_down(&mut status, now, archive_less_sale, options);
             if visit != PackUpFrame::NoVisit {
                 entity.mission.set_handler_state(status);
                 entity.mission.write_dispatch_epilogue(now, 1);
@@ -6174,39 +6218,6 @@ impl Simulation {
             //   that combat (Phase 5) and animation (post-tick) read this tick.
             crate::sim::deploy::tick_deploy_state(&mut self.substrate.entities);
 
-            // Infantry fear decay and runtime prone transitions happen after
-            // deploy state and before combat consumes the prone bit.
-            crate::sim::infantry::tick_fear_for_entities(
-                &mut self.substrate.entities,
-                &self.houses,
-                rules,
-                &self.interner,
-            );
-
-            // Idle fidgets, immediately after the stance pass so a man who just
-            // stood back up is not eligible on the same tick he was prone.
-            // Driven from the logic vector, not the entity store: limboed
-            // objects never reach this in the original.
-            // DEPENDS ON: prone bit, deploy phase, attack target, mission.
-            // PRODUCES: Idle1/Idle2 sequence switches (Do_Action for an
-            //   infantryman whose Doing owns its sequence), idle facing
-            //   changes, and scenario-RNG draws — the one idle path that moves
-            //   the cursor.
-            let fidgets = crate::sim::infantry::tick_idle_actions(
-                &mut self.substrate.entities,
-                self.substrate.logic.as_slice(),
-                &self.houses,
-                rules,
-                &self.interner,
-                &mut self.scenario_rng,
-                self.session.binary_frame,
-            );
-            for (id, action) in fidgets {
-                if let Err(cause) = self.infantry_do_action(id, action, false, rules) {
-                    log::debug!("infantry {id} idle action {action}: {cause}");
-                }
-            }
-
             // --- Phase 5: Combat + Turret rotation ---
             // DEPENDS ON: vision/fog (targeting uses fog state), power (cloaking).
             // Combat reads barrel.current(binary_frame) at the START of the tick
@@ -6443,7 +6454,7 @@ impl Simulation {
         if frame_committed && let Some(animation_sequences) = animation_sequences {
             let game_options = self.session.game_options.clone();
             let binary_frame = self.session.binary_frame;
-            let completed_actions = {
+            {
                 let (entities, interner) = self.entities_mut_and_interner();
                 animation::tick_non_dying_animations(
                     entities,
@@ -6454,11 +6465,6 @@ impl Simulation {
                     binary_frame,
                 )
             };
-            if let Some(rules) = rules {
-                for (id, action) in completed_actions {
-                    self.infantry_action_completed(id, action, rules);
-                }
-            }
             animation::tick_voxel_animations(self.entities_mut());
             animation::tick_harvest_overlays(self.entities_mut());
         }

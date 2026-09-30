@@ -5,7 +5,7 @@
 //!   switches the byte: the player's REPAIR event toggles it
 //!   (`EventClass::Execute 0x004C6EFD`), the computer's auto-repair start
 //!   starts it (`0x00450708`) and each Selling visit stops it
-//!   (`BuildingClass::Sell 0x00449C41`).
+//!   (`BuildingClass::Mission_Selling 0x00449C41`).
 //! - [`update_repair_and_power`] (`BuildingClass::UpdateRepairAndPower @
 //!   0x00450630`) runs in each building's LogicVector visit, from
 //!   `BuildingClass::Update` (`0x004401B6`) after its Techno AI: a building a
@@ -223,9 +223,10 @@ pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id:
 /// reads Guard ([`BuildingUp::completes_at`](crate::sim::components::BuildingUp)).
 /// A sale commences Selling (`production_sell::begin_selling`).
 pub(super) fn constructing_or_selling(sim: &Simulation, entity: &GameEntity) -> bool {
-    entity.building_up.is_some_and(|build_up| {
-        !build_up.completes_at(sim.session.binary_frame as i32, &sim.session.game_options)
-    }) || entity.mission.effective().known() == Some(MissionType::Selling)
+    (entity.building_up.is_some()
+        && !entity
+            .construction_completes_at(sim.session.binary_frame as i32, &sim.session.game_options))
+        || entity.mission.effective().known() == Some(MissionType::Selling)
 }
 
 /// The computer's low-credit sale (`0x00450781..0x0045080D`): a campaign

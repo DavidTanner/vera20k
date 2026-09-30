@@ -210,9 +210,12 @@ impl Simulation {
                     .get_mut(id)
                     .ok_or("retired Walk stop owner")?;
                 actor.foot_speed.set_speed_fraction(SIM_ZERO);
-                if let Some(loco) = actor.locomotor.as_mut() {
-                    loco.stop_walk();
-                }
+                self.walk_stop_moving(id, Some(rules))?;
+                let actor = self
+                    .substrate
+                    .entities
+                    .get_mut(id)
+                    .ok_or("Walk stop owner retired during its callback")?;
                 //75BB84/75BB90: both override/Stop exits clear the byte.
                 actor.navigation.path_runtime.clear_scold_latch();
                 super::retain_committed_movement(actor);
@@ -296,14 +299,7 @@ impl Simulation {
             .entities
             .get_mut(id)
             .ok_or("retired Walk path owner")?;
-        actor.navigation.path_replay.clear_live_head();
-        //The route adapter caches the live Foot words, not an independent
-        //request; retain its destination while invalidating those cells.
-        if let Some(target) = actor.movement_target.as_mut() {
-            target.path.clear();
-            target.path_layers.clear();
-            target.next_index = 0;
-        }
+        actor.clear_live_path_head();
         Ok(())
     }
 
@@ -444,9 +440,14 @@ impl Simulation {
                 .ok_or("retired Walk code6 owner")?;
             if let Some(loco) = actor.locomotor.as_mut() {
                 loco.set_step_head(None);
-                loco.stop_walk();
             }
-            actor.foot_speed.set_speed_fraction(SIM_ZERO);
+            self.walk_stop_moving(id, Some(rules))?;
+            self.substrate
+                .entities
+                .get_mut(id)
+                .ok_or("Walk code6 owner retired during its callback")?
+                .foot_speed
+                .set_speed_fraction(SIM_ZERO);
             self.set_walk_class_null_destination(id, rules);
             self.clear_walk_admission_path(id)?;
             if let Some(actor) = self.substrate.entities.get_mut(id) {

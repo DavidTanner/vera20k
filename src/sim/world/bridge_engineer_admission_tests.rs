@@ -62,7 +62,6 @@ fn fixture(input: &Value, other_flags: &str) -> (Simulation, RuleSet) {
     infantry.navigation.nav_com = identity(&input["nav_com"]).map(NavTargetRef::building);
     infantry.attack_target = identity(&input["attack_target"]).map(|id| AttackTarget {
         target: TargetKind::Entity(id),
-        pending_infantry_fire: None,
     });
     let ground = input["ground_list"]
         .as_array()

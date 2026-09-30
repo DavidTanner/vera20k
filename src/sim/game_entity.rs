@@ -415,6 +415,9 @@ pub struct GameEntity {
     /// Later report-selection consumers read this persistent value; placement
     /// failure never refunds the draw.
     pub techno_ctor_random_word: u16,
+    /// One native Techno stage clock. Class receivers mutate through this
+    /// owner; animation, miner and buildup components carry no competing copy.
+    stage: crate::sim::stage::StageClass,
     pub discovery: TechnoDiscoveryHistory,
     /// Authored structure-upgrade identity. `None` for ordinary Technos.
     pub structure_upgrade_link: Option<StructureUpgradeLink>,
@@ -794,9 +797,9 @@ pub struct GameEntity {
     /// RESIDUAL:
     /// - `AircraftClass::Mission_Guard` falls into the same Foot body
     ///   (`0x0041A92B`), but VERA's aircraft Guard is not a port of it.
-    /// - `CanDeploySlashUnload @ 0x00700D50` refuses a deployed infantryman's
-    ///   undeploy while it runs (`0x00700E02`; see
-    ///   `Command::ToggleInfantryDeploy`).
+    /// - `CanDeploySlashUnload @ 0x00700D50` reads it only for a type with
+    ///   `UndeployDelay > -1` (`0x00700DF9..0x00700E23`); that type refuses
+    ///   deployment while it runs. Stock GI/GGI keep the reader default-1.
     /// - The charge-turret frame (`IsChargeTurret=`, the Prism Tank) reads it
     ///   with the `+0x2F8` ROF copy (`0x006FA540`), which VERA does not keep
     ///   or draw.
@@ -984,6 +987,11 @@ pub struct GameEntity {
     /// Defaults true; `DeployedCrushable=no` low-silhouette infantry blocks regular crush.
     #[serde(default = "default_true")]
     pub deployed_crushable: bool,
+    /// Techno+2A4, cleared by construction and retained independently of
+    /// Doing. Infantry520B4E/520BAD update it after their Do_Action request
+    /// even when the requested Deployed/Ready sequence refuses.
+    #[serde(default)]
+    native_crush_immunity: u8,
     /// Whether this entity can crush non-Crushable targets (OmniCrusher= in rules.ini).
     /// Only Battle Fortress has this in YR.
     pub omni_crusher: bool,
@@ -1102,11 +1110,9 @@ pub struct GameEntity {
     /// bunker. Drives entry admission → install.
     #[serde(default)]
     pub bunker_runtime: Option<crate::sim::docking::bunker_install::BunkerRuntime>,
-    /// Active deploy-fire phase. `None` = upright (default). `Some(Deploying)` /
-    /// `Some(Deployed)` / `Some(Undeploying)` for the three machine states.
-    /// Hashed for lockstep determinism. Set by `Command::ToggleInfantryDeploy`,
-    /// advanced by `tick_deploy_state`. Animation reflects this; combat does not
-    /// read it (weapon pick is target-driven).
+    /// Distinct Unit deployment controller, advanced by tick_deploy_state.
+    /// Infantry deployment is its private MissionLeaf Doing and native Stage;
+    /// neither the Infantry command nor its AI writes this controller.
     #[serde(default)]
     pub deploy_state: Option<DeployPhase>,
     /// Unit+0x68C: runtime Deploy continuation, not the type's DeployToFire.
@@ -1143,6 +1149,11 @@ pub struct GameEntity {
     /// approach (`0x0074162D`, VERA's pursuit skip).
     #[serde(default)]
     pub passively_acquired_target: bool,
+    /// Foot+688, initialized false at4D33A8. A stopped object unable to fire
+    /// narrows its next scans through Foot::Greatest_Threat4D9920. This is
+    /// independent of Techno's passive-target byte+50C.
+    #[serde(default)]
+    foot_retarget_after_stop: bool,
     /// Category-specific bytes read by Mission readiness and Aircraft policy.
     pub(crate) mission_leaf: MissionLeafState,
     /// Target identity archived by the Techno Override wrapper.
@@ -1228,7 +1239,56 @@ pub struct GameEntity {
     pub debug_log: Option<DebugEventLog>,
 }
 
+mod construction_stage;
+
 impl GameEntity {
+    pub(crate) fn native_stage(&self) -> &crate::sim::stage::StageClass {
+        &self.stage
+    }
+
+    /// Read native Doing and shared +F8 for SHP drawing, including actions
+    /// absent from the generic sequence vocabulary. Presentation never advances
+    /// this clock or owns a writable copy of its progress. Doing-1 is retained;
+    /// the frame-selector caller owns its native default-action selection.
+    pub fn infantry_sprite_pose(&self) -> Option<(i32, i32)> {
+        if !crate::sim::movement::infantry_action::doing_owns_sequence(self) {
+            return None;
+        }
+        Some((self.mission_leaf.as_infantry()?.doing(), self.stage.value()))
+    }
+
+    /// Advance the common clock at this class's native scheduling point.
+    pub(crate) fn tick_native_stage(&mut self, now: i32) -> bool {
+        self.stage.advance(now)
+    }
+
+    /// Start a class action/control without altering independent FC/110 state.
+    pub(crate) fn restart_native_stage(&mut self, value: i32, now: i32, rate: i32) {
+        self.stage.restart(value, now, rate);
+    }
+
+    pub(crate) fn set_native_stage_value(&mut self, value: i32) {
+        self.stage.set_value(value);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn install_native_stage_fixture(&mut self, stage: crate::sim::stage::StageClass) {
+        self.stage = stage;
+    }
+
+    /// Invalidate the one live Foot path head and its Rust route cache.
+    /// Native callers write Foot+5E0=-1; retained suffix/reference words and
+    /// the destination remain intact. The adapter cannot keep consuming cells
+    /// after the authoritative head is gone.
+    pub(crate) fn clear_live_path_head(&mut self) {
+        self.navigation.path_replay.clear_live_head();
+        if let Some(target) = self.movement_target.as_mut() {
+            target.path.clear();
+            target.path_layers.clear();
+            target.next_index = 0;
+        }
+    }
+
     /// `TechnoClass::ArchiveTarget` (`Techno+0x218`): the base-defence
     /// responder's post, a harvester's archived ore cell and a factory's
     /// rally point share this one field, stored in
@@ -1298,6 +1358,39 @@ impl GameEntity {
     /// Immutable indexed type identity, established by construction/decoding.
     pub fn type_ref(&self) -> InternedId {
         self.type_ref
+    }
+
+    pub(crate) const fn foot_retarget_after_stop(&self) -> bool {
+        self.foot_retarget_after_stop
+    }
+
+    /// Drive4B2E9F / Ship6A24F2 / Hover51684D: the held target cannot
+    /// be fired at after stopping. Set before the team Scan_Limit/target clear;
+    /// Team6EC3BD also sets it after each member's class target clear.
+    pub(crate) fn mark_stopped_cannot_fire(&mut self) {
+        self.foot_retarget_after_stop = true;
+    }
+
+    /// FootGreatestThreat4D9951..55 clears only an empty completed base scan.
+    /// Class overrides which return before Foot leave the byte untouched.
+    pub(crate) fn finish_foot_threat_scan(&mut self, found: bool) {
+        if !found {
+            self.foot_retarget_after_stop = false;
+        }
+    }
+
+    /// Mission_Rescue4DE03E resets the latch before its direct mask0 scan.
+    pub(crate) fn clear_rescue_retarget_latch(&mut self) {
+        self.foot_retarget_after_stop = false;
+    }
+
+    /// Foot4D9931..33 changes AL only; all upper mask bits survive.
+    pub(crate) const fn coerce_foot_threat_mask(&self, mask: u32) -> u32 {
+        if self.foot_retarget_after_stop {
+            (mask & !2) | 1
+        } else {
+            mask
+        }
     }
 
     /// The body heading at `frame`: `FacingClass::Current @ 0x004C93D0` on
@@ -1465,7 +1558,7 @@ impl GameEntity {
             // through BOTH scanners on the same cadence.
             Some(MissionType::AreaGuard) => MissionType::AreaGuard,
             // A sale runs until the building converts or leaves
-            // (`BuildingClass::Sell`, `building_down`); Selling is one of the
+            // (`BuildingClass::Mission_Selling`, `building_down`); Selling is one of the
             // twelve missions that strip a scanner target, and the passive
             // block never admits it.
             Some(MissionType::Selling) => MissionType::Selling,
@@ -1588,6 +1681,7 @@ impl GameEntity {
             stable_id,
             native_unique_id,
             techno_ctor_random_word,
+            stage: crate::sim::stage::StageClass::constructed(construction_frame as i32),
             discovery: TechnoDiscoveryHistory::default(),
             structure_upgrade_link: None,
             position: Position {
@@ -1722,6 +1816,7 @@ impl GameEntity {
             },
             crushable: false,
             deployed_crushable: true,
+            native_crush_immunity: 0,
             omni_crusher: false,
             regular_crusher: false,
             drive_accelerates: true,
@@ -1762,6 +1857,7 @@ impl GameEntity {
             // `TechnoClass::Constructor 0x006F3106`: `+0x4FC = Frame`.
             last_target_scan_frame: construction_frame,
             passively_acquired_target: false,
+            foot_retarget_after_stop: false,
             mission_leaf: MissionLeafState::for_entity_category(category),
             suspended_attack_target: None,
             base_defense_response: BaseDefenseResponseState::default(),
@@ -1992,16 +2088,45 @@ impl GameEntity {
         self.is_active() && (self.health.current > 0 || self.crashing)
     }
 
-    /// Whether this entity is in any deploy phase (Deploying, Deployed, or Undeploying).
-    /// Used by the 7 movement-command handlers to silently ignore movement orders.
+    /// Infantry522510's Doing27..30 deployment predicate. Undeploy31 already
+    /// accepts destinations; Units retain their distinct deployment controller.
     pub fn is_deployed(&self) -> bool {
-        self.deploy_state.is_some()
+        if self.category == EntityCategory::Infantry {
+            self.infantry_deploy_doing()
+        } else {
+            self.deploy_state.is_some()
+        }
     }
 
     /// Whether this entity has finished deploying and is in the stationary
     /// Deployed phase (not transitioning).
     pub fn is_fully_deployed(&self) -> bool {
-        matches!(self.deploy_state, Some(DeployPhase::Deployed))
+        if self.category == EntityCategory::Infantry {
+            self.mission_leaf
+                .as_infantry()
+                .is_some_and(|leaf| (28..=30).contains(&leaf.doing()))
+        } else {
+            matches!(self.deploy_state, Some(DeployPhase::Deployed))
+        }
+    }
+
+    /// Infantry522510's deployment family, used by its weapon/mission and
+    /// destination consumers. Undeploy31 is outside this native predicate.
+    pub(crate) fn infantry_deploy_doing(&self) -> bool {
+        self.category == EntityCategory::Infantry
+            && self
+                .mission_leaf
+                .as_infantry()
+                .is_some_and(|leaf| (27..=30).contains(&leaf.doing()))
+    }
+
+    pub(crate) const fn native_crush_immunity(&self) -> u8 {
+        self.native_crush_immunity
+    }
+
+    pub(crate) fn set_infantry_deploy_crush_immunity(&mut self, raw: u8) {
+        assert_eq!(self.category, EntityCategory::Infantry);
+        self.native_crush_immunity = raw;
     }
 
     /// A building's current mission is Construction (0x12) or Selling
@@ -2320,7 +2445,6 @@ mod mission_shadow_tests {
         let mut e = GameEntity::test_default(1, "E1", "Americans", 3, 3);
         e.attack_target = Some(AttackTarget {
             target: TargetKind::Entity(2),
-            pending_infantry_fire: None,
         });
         assert_eq!(e.derived_mission().0, MissionType::Attack);
     }

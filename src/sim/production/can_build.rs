@@ -1,5 +1,5 @@
 //! `HouseClass::CanBuild @ 0x004F7870` as the computer asks it, and
-//! `TechnoTypeClass::FindFactory @ 0x005F7900` (vtable `+0x94` of every
+//! `ObjectTypeClass::FindFactory @ 0x005F7900` (vtable `+0x94` of every
 //! TechnoType class).
 //!
 //! The computer's unit choosers (`sim::ai_unit_choice`) ask CanBuild with
@@ -202,7 +202,7 @@ fn build_limit(
     }
 }
 
-/// Whether `TechnoTypeClass::FindFactory @ 0x005F7900` finds a factory for
+/// Whether `ObjectTypeClass::FindFactory @ 0x005F7900` finds a factory for
 /// `obj` among `owner`'s buildings (`HouseClass+0x6C`), with its first
 /// argument set (no aircraft dock test): a building out of limbo whose
 /// `Factory=` makes the type's class, online (`+0x660`) when

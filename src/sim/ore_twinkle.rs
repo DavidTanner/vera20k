@@ -91,7 +91,7 @@ impl Simulation {
     /// gamemd-derived: `FUN_00684C30 @ 0x00684FF0..0x006850F3`. After the
     /// zone rebuilds it constructs the global GasCloudSys
     /// `ParticleSystemClass @ 0x0062DC50` whenever `DAT_00A8ED78` is null,
-    /// which spends one native ID through `AbstractClass::AssignUniqueID @
+    /// which spends one native ID through `AbstractClass::Create_ID @
     /// 0x00410230`; `Clear_Scene @ 0x006851F0` deletes that object and nulls
     /// the pointer (`0x0068562E`) inside every `Full_Init`, so every fresh
     /// load reconstructs it. Retail `[ParticleSystems]` already registers

@@ -362,6 +362,8 @@ pub(crate) fn mission_epilogue(
     mission: crate::sim::mission::MissionType,
     rng: &mut crate::sim::rng::SimRng,
 ) -> i32 {
-    (rules.mission_control.rate_frames(mission) as i32)
+    rules
+        .mission_control
+        .rate_frames(mission)
         .wrapping_add(rng.next_range_i32_inclusive(0, 2))
 }

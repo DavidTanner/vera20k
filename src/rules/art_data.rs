@@ -122,18 +122,19 @@ pub struct ArtEntry {
     pub standing_frames: Option<u16>,
     /// SHP vehicle: number of facing directions (from `Facings=`, default 8).
     pub shp_facings: u8,
-    /// Weapon discharge delay in animation frames (from `FireUp=`, default 0).
+    /// InfantryType+E40 signed standing discharge frame (`FireUp=`).
+    /// ReadInt5246D6 retains this field; constructor5236D7 writes0.
     /// Distinct from the `FireUp` sequence action in infantry sequences.
-    pub fire_up: u8,
-    /// Infantry primary prone discharge frame (`FireProne=`). Falls back to
-    /// `FireUp` where gamemd reads over 0 (residual at the read).
-    pub fire_prone: u8,
-    /// Infantry secondary standing discharge frame (`SecondaryFire=`). Falls
-    /// back to `FireUp` where gamemd reads over 0 (residual at the read).
-    pub secondary_fire: u8,
-    /// Infantry secondary prone discharge frame (`SecondaryProne=`). Falls
-    /// back to `SecondaryFire` where gamemd reads over 0 (residual at the read).
-    pub secondary_prone: u8,
+    pub fire_up: i32,
+    /// InfantryType+E44 signed prone discharge frame (`FireProne=`).
+    /// ReadInt5246F3 retains this field; constructor5236E3 writes0.
+    pub fire_prone: i32,
+    /// InfantryType+E48 signed secondary standing frame (`SecondaryFire=`).
+    /// ReadInt524710 retains this field; constructor5236EA writes0.
+    pub secondary_fire: i32,
+    /// InfantryType+E4C signed secondary prone frame (`SecondaryProne=`).
+    /// ReadInt52472D retains this field; constructor5236F3 writes0.
+    pub secondary_prone: i32,
     /// Animation `Report=` sound ID. Used as a fallback when `StartSound=`
     /// is absent.
     pub report: Option<String>,
@@ -1073,6 +1074,16 @@ const THEATER_LETTERS: &[(&str, char)] = &[
 /// `repo-derived`: generic fallback letter used by original-style building art.
 const NEW_THEATER_GENERIC_LETTER: char = 'G';
 
+/// InfantryType ART prefix5246BE..52473A: four independent signed DWORDs.
+/// Each ReadInt5276D0 receives its own current field, with no clamp or cast.
+/// Original execution: tools/spatial_oracle/infantry_discharge_rules.json.
+fn read_infantry_discharge_frames(section: &IniSection, frames: &mut [i32; 4]) {
+    frames[0] = section.read_int("FireUp", frames[0]);
+    frames[1] = section.read_int("FireProne", frames[1]);
+    frames[2] = section.read_int("SecondaryFire", frames[2]);
+    frames[3] = section.read_int("SecondaryProne", frames[3]);
+}
+
 impl ArtRegistry {
     /// Parse all sections from an art.ini IniFile into the registry.
     pub fn from_ini(ini: &IniFile) -> Self {
@@ -1193,26 +1204,10 @@ impl ArtRegistry {
             let firing_frames: Option<u16> = present_frames("FiringFrames");
             let standing_frames: Option<u16> = present_frames("StandingFrames");
             let shp_facings: u8 = section.read_int("Facings", 8).clamp(1, 32) as u8;
-            // RESIDUAL: InfantryType art (`0x005246D6..0x0052472D`) reads each
-            // key over its constructor 0 (`0x005236D7..0x005236F3`). VERA falls
-            // back to the earlier key because its fire action
-            // (`sim::combat::infantry_fire_sequence`, `infantry_fire_frame`)
-            // compares frames where `InfantryClass::Fire_At_Target` checks the
-            // sequence's SecondaryProne/SecondaryFire frame counts
-            // (`0x0052088A..0x005208D4`, `0x0052096C..0x0052099A`) and the
-            // prone byte, which Deploy clears (`0x0051DAB6`). Trigger: a prone
-            // infantryman whose art sets a nonzero FireUp and no FireProne, the
-            // GI among them. Effect: he fires on the FireUp frame, not frame
-            // 0; secondary sequence and frame picks can differ too. Frequency:
-            // every such prone shot. Changing only these defaults would flip
-            // VERA's secondary sequence picks; the fire action is its own chain.
-            let fire_up = section.read_int("FireUp", 0);
-            let fire_prone = section.read_int("FireProne", fire_up);
-            let secondary_fire = section.read_int("SecondaryFire", fire_up);
-            let secondary_prone = section.read_int("SecondaryProne", secondary_fire);
-            let [fire_up, fire_prone, secondary_fire, secondary_prone] =
-                [fire_up, fire_prone, secondary_fire, secondary_prone]
-                    .map(|frame| frame.max(0) as u8);
+            // Fresh ART types use constructor5236D7..5236F9's four zeros.
+            let mut discharge_frames = [0; 4];
+            read_infantry_discharge_frames(section, &mut discharge_frames);
+            let [fire_up, fire_prone, secondary_fire, secondary_prone] = discharge_frames;
             let report = section.read_name("Report", 0x80).map(str::to_owned);
             let start_sound = section.read_name("StartSound", 0x80).map(str::to_owned);
             let rate = read_anim_rate(section);

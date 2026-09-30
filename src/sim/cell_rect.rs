@@ -1096,6 +1096,86 @@ pub(crate) fn cell_is_in_playfield_height_aware_in_query(
     bounds.contains_height_aware_packed(x, y, level, slope)
 }
 
+/// `MapClass::Clamp_To_Playfield @ 0x00586E50`, used by House501AC0 before
+/// Find_Nearby_Cell. Correct the two side edges once, then move both components
+/// inward until the original height-aware membership query accepts them.
+///
+/// Side correction retains full wrapping i32 coordinates; each Cell lookup,
+/// membership call and the result use packed signed i16 components. Every miss
+/// stamps the same live Dummy. Bounds must describe a nonempty native playfield:
+/// the original loop supplies no fallback for an impossible diamond.
+/// Native comparisons: `tools/spatial_oracle/house_cell_clamp.{py,json}` (75
+/// sparse-map rows, including signed levels/slopes and final Dummy coordinates).
+pub(crate) fn clamp_cell_to_playfield<'a>(
+    cell: (i32, i32),
+    bounds: PlayfieldBounds,
+    terrain: Option<&'a ResolvedTerrainGrid>,
+    query: Option<&crate::map::resolved_terrain::NativeCellQuery<'a>>,
+) -> (i32, i32) {
+    let (mut x, mut y) = packed_cell_coord(cell.0, cell.1);
+    let right = bounds
+        .off_104
+        .wrapping_add(bounds.off_fc)
+        .wrapping_mul(2)
+        .wrapping_sub(bounds.base);
+    if x.wrapping_sub(y) >= right {
+        let correction = 1_i32
+            .wrapping_sub(bounds.off_fc)
+            .wrapping_sub(bounds.off_104)
+            .wrapping_mul(2)
+            .wrapping_sub(y)
+            .wrapping_add(bounds.base)
+            .wrapping_add(x)
+            / 2;
+        x = x.wrapping_sub(correction);
+        y = y.wrapping_add(correction);
+    } else if y.wrapping_sub(x) >= bounds.base.wrapping_sub(bounds.off_fc.wrapping_mul(2)) {
+        let correction = bounds
+            .off_fc
+            .wrapping_mul(2)
+            .wrapping_add(2)
+            .wrapping_sub(bounds.base)
+            .wrapping_sub(x)
+            .wrapping_add(y)
+            / 2;
+        y = y.wrapping_sub(correction);
+        x = x.wrapping_add(correction);
+    }
+
+    let (level, slope) = match get_cellclass_in_query(terrain, x, y, query) {
+        CellRef::Real(cell) => (cell.level as i8, cell.slope_type),
+        CellRef::Dummy { cell } => {
+            let snapshot = cell.snapshot();
+            (snapshot.level, snapshot.slope_type)
+        }
+    };
+    let sum = x.wrapping_add(y);
+    let height = bounds.slope_adjusted_height(sum, level, slope);
+    let low = bounds
+        .base
+        .wrapping_add(bounds.off_100.wrapping_mul(2))
+        .wrapping_add(height);
+    let high = bounds
+        .base
+        .wrapping_add(2)
+        .wrapping_add(bounds.off_108.wrapping_add(bounds.off_100).wrapping_mul(2))
+        .wrapping_add(height);
+    let step = if sum <= low {
+        1
+    } else if sum > high {
+        -1
+    } else {
+        return packed_cell_coord(x, y);
+    };
+    loop {
+        x = x.wrapping_add(step);
+        y = y.wrapping_add(step);
+        if cell_is_in_playfield_height_aware_in_query((x, y), Some(bounds), terrain, query) {
+            return packed_cell_coord(x, y);
+        }
+    }
+}
+
 /// Forced-mode-one signed-lepton wrapper from
 /// `MapClass::IsCoordInPlayfield @ 0x005785F0`. Division by 256 truncates
 /// toward zero, the quotients truncate to signed i16, and z is ignored.
@@ -1125,6 +1205,10 @@ fn checked_u16_cell_coord(x: i32, y: i32) -> Option<(u16, u16)> {
     }
     Some((x as u16, y as u16))
 }
+
+#[cfg(test)]
+#[path = "cell_rect_clamp_tests.rs"]
+mod clamp_tests;
 
 #[cfg(test)]
 mod tests {

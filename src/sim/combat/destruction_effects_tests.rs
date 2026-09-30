@@ -221,6 +221,7 @@ fn a_destroyed_building_explodes_per_foundation_cell_then_plays_its_destroy_anim
                 i32::from(rx) * 256 + 0x80,
                 i32::from(ry) * 256 + 0x80,
                 0x40,
+                super::super::inviso_scatter::RandomDirectionSnap::Preserve,
             );
             let delay = replay.next_range_u32_inclusive(0, 3) as u16;
             let anim = pick(&mut replay, &["EXPA", "EXPB"]);
@@ -445,6 +446,7 @@ fn a_killed_building_draws_its_death_anims_before_its_survivors() {
                 i32::from(rx) * 256 + 0x80,
                 i32::from(ry) * 256 + 0x80,
                 0x40,
+                super::super::inviso_scatter::RandomDirectionSnap::Preserve,
             );
             let delay = replay.next_range_u32_inclusive(0, 3) as u16;
             let anim = pick(&mut replay, &["EXPA", "EXPB"]);

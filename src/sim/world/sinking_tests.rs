@@ -227,7 +227,7 @@ fn native_sinking_sound_readers_and_reachable_edges_match() {
         }
         let processed = layers.process().unwrap();
         let mut rules = RuleSet::from_processed_rules(&processed).unwrap();
-        rules.bind_sinking_sounds(processed.ini(), &sounds);
+        rules.bind_type_sound_references(processed.ini(), &sounds);
         let object = rules.object("AEGIS").unwrap();
         for (field, actual) in [
             ("type_sinking", object.sinking_sound.as_deref()),
@@ -266,7 +266,7 @@ fn native_sinking_sound_readers_and_reachable_edges_match() {
             },
             if quiet { "unknown" } else { sound_name },
         ));
-        rules.bind_sinking_sounds(&reader_input, &sounds);
+        rules.bind_type_sound_references(&reader_input, &sounds);
         let hull = sim.substrate.entities.get_mut(id).unwrap();
         hull.sinking.active = input["sinking"].as_u64().unwrap() != 0;
         hull.sinking.sound_edge_seen = input["seen"].as_u64().unwrap() != 0;
@@ -352,7 +352,7 @@ fn load_preserves_sinking_edge_and_resets_shared_foot_sound_bytes() {
         let (mut sim, mut rules, id) = fixture(-30);
         let sounds =
             SoundRegistry::from_ini(&IniFile::from_str("[SoundList]\n0=GenLargeWaterDie\n"));
-        rules.bind_sinking_sounds(
+        rules.bind_type_sound_references(
             &IniFile::from_str("[TEST]\nSinkingSound=GenLargeWaterDie\n"),
             &sounds,
         );

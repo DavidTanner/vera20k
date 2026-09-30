@@ -180,6 +180,33 @@ pub(crate) fn building_dock_cell(
     Some((cell(coord.x)?, cell(coord.y)?))
 }
 
+/// Native pointer-comparison gates use the receiver identity. The stored tag
+/// is retained; it does not make a different entity receiver. Valid Cells
+/// retain the existing coordinate identity; dummy/aliased Cell pointer
+/// retention is outside this ordinary object-reference slice.
+pub(crate) fn nav_targets_same_receiver(left: Option<NavTargetRef>, right: NavTargetRef) -> bool {
+    match (left, right) {
+        (
+            Some(NavTargetRef::Cell {
+                rx: left_x,
+                ry: left_y,
+            }),
+            NavTargetRef::Cell { rx, ry },
+        ) => (left_x, left_y) == (rx, ry),
+        (
+            Some(
+                NavTargetRef::Entity { id: left }
+                | NavTargetRef::Object { id: left }
+                | NavTargetRef::Building { id: left },
+            ),
+            NavTargetRef::Entity { id: right }
+            | NavTargetRef::Object { id: right }
+            | NavTargetRef::Building { id: right },
+        ) => left == right,
+        _ => false,
+    }
+}
+
 /// Resolve the live receiver behind a non-null NavCom. The Rust reference tag
 /// does not change the native virtual receiver, and a dangling ID is not NULL.
 pub(crate) fn nav_target_coordinate(
@@ -225,7 +252,8 @@ pub(crate) fn nav_target_coordinate(
     super::foot_coordinate::navigation_coordinate(entity, terrain)
 }
 
-/// Owner non-null destination path for the Phase 1 normal cell-target slice.
+/// Cell callers of the shared non-null destination owner. Object callers
+/// capture their receiver's +4C through `nav_target_coordinate` instead.
 pub(crate) fn set_destination_internal_cell(
     entity: &mut GameEntity,
     target: (u16, u16),
@@ -268,11 +296,17 @@ pub(super) fn publish_nav_com(entity: &mut GameEntity, target: NavTargetRef) {
     entity.navigation.pending_arrival_clear = false;
 }
 
-/// Owner null destination path. Clears the owner and active Drive/Ship destination.
-pub(super) fn set_destination_internal_null(entity: &mut GameEntity) {
+/// Foot4D94C7/4D9510 NULL reference publication, before locomotor Stop.
+pub(super) fn publish_null_nav_com(entity: &mut GameEntity) {
     entity.navigation.nav_com_aux = None;
     entity.navigation.nav_com = None;
     entity.navigation.pending_arrival_clear = false;
+}
+
+/// Entity-local Drive/Ship destination path. World Walk receivers dispatch
+/// Stop75ADA0 and its concrete +54C callback through Simulation::walk_stop_moving.
+pub(super) fn set_destination_internal_null(entity: &mut GameEntity) {
+    publish_null_nav_com(entity);
 
     if is_drive_locomotor(entity) {
         drive_stop_moving(entity);

@@ -266,6 +266,14 @@ impl SequenceSet {
             .get(usize::try_from(action).ok()?)
     }
 
+    /// Read the retained native bank for atlas preparation. Rules binding owns
+    /// construction, rereads and invalidation; consumers cannot mutate it.
+    pub(crate) fn infantry_actions(
+        &self,
+    ) -> Option<&[crate::rules::infantry_sequence::InfantrySequenceEntry]> {
+        self.infantry_actions.as_deref()
+    }
+
     /// Mark this as a UnitClass SHP frame layout and attach its rules-owned
     /// cadence. The frame blocks themselves remain art-owned `SequenceDef`s.
     pub fn set_shp_vehicle_cadence(&mut self, cadence: ShpVehicleCadence) {

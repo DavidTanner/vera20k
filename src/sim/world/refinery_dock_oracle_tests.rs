@@ -386,19 +386,25 @@ fn dress(mut s: Scene, input: &Value) -> Scene {
         let mut body = FacingClass::new(raw, 5);
         body.set(raw, frame);
         entity.body_facing = body;
+        // refinery_dock.py supplies this paused state when `stage` is absent;
+        // it is declared corpus input, separate from the native constructor.
+        let raw_stage = input["stage"].as_array().map_or([0, -1, 0, 0], |stage| {
+            [
+                stage[0].as_i64().unwrap() as i32,
+                stage[2].as_i64().unwrap() as i32,
+                stage[3].as_i64().unwrap() as i32,
+                stage[4].as_i64().unwrap() as i32,
+            ]
+        });
+        entity.install_native_stage_fixture(crate::sim::stage::StageClass::from_native_fixture(
+            raw_stage[0],
+            0,
+            crate::sim::timer::CdTimer::from_raw(raw_stage[1], raw_stage[2]),
+            raw_stage[3],
+            1,
+        ));
         if let Some(miner_state) = entity.miner.as_mut() {
             miner_state.unload_active = input["unloading"] == true;
-            if let Some(stage) = input["stage"].as_array() {
-                miner_state.stage_value = stage[0].as_i64().unwrap() as i32;
-                let start = stage[2].as_i64().unwrap();
-                let left = stage[3].as_u64().unwrap() as u32;
-                miner_state.stage_rate = stage[4].as_u64().unwrap() as u32;
-                if start >= 0 {
-                    miner_state.stage_timer.arm(start as u32, left);
-                } else {
-                    miner_state.stage_timer.clear();
-                }
-            }
             if let Some(storage) = input["storage"].as_array() {
                 let ore = storage[0].as_f64().unwrap() as usize;
                 let gems = storage[1].as_f64().unwrap() as usize;
@@ -422,7 +428,11 @@ fn dress(mut s: Scene, input: &Value) -> Scene {
     }
     if let Some(nav) = input.get("nav").filter(|n| !n.is_null()) {
         let nav = cell(nav);
-        assert!(s.sim.set_unit_cell_destination(miner, nav, &s.rules));
+        assert!(s.sim.set_unit_destination(
+            miner,
+            crate::sim::components::NavTargetRef::cell(nav.0, nav.1),
+            &s.rules
+        ));
         if input["moving"] != true {
             let entity = s.sim.substrate.entities.get_mut(miner).unwrap();
             crate::sim::movement::track_stop_moving(entity);
@@ -547,7 +557,7 @@ fn compare_unload(s: &Scene, row: &Value, context: &str) {
         "{context}: +0x6D1"
     );
     assert_eq!(
-        i64::from(state.stage_value),
+        i64::from(miner.native_stage().value()),
         expected["stage"][0].as_i64().unwrap(),
         "{context}: stage value"
     );
@@ -643,7 +653,7 @@ pub(super) fn compare_delay(
                     .current();
                 s.rules
                     .mission_control
-                    .rate_frames(current.known().unwrap()) as i32
+                    .rate_frames(current.known().unwrap())
             } else {
                 native - draw[3].as_i64().unwrap() as i32
             };
@@ -896,17 +906,20 @@ fn stage_tick_matches_the_original_stageclass_step() {
         let mut s = scene(input);
         for sample in row["values"].as_array().unwrap() {
             s.sim.session.binary_frame = sample[0].as_u64().unwrap() as u32;
-            crate::sim::miner::tick_stage(&mut s.sim, s.miner);
+            s.sim
+                .substrate
+                .entities
+                .get_mut(s.miner)
+                .unwrap()
+                .tick_native_stage(s.sim.session.binary_frame as i32);
             let value = s
                 .sim
                 .substrate
                 .entities
                 .get(s.miner)
                 .unwrap()
-                .miner
-                .as_ref()
-                .unwrap()
-                .stage_value;
+                .native_stage()
+                .value();
             assert_eq!(
                 i64::from(value),
                 sample[1].as_i64().unwrap(),

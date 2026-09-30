@@ -198,8 +198,11 @@ fn gsi_04_18_first_warping_candidate_blocks_later_uplink_but_selling_is_skipped(
     let (mut sim, rules, owner) = fixture();
     insert_structure(&mut sim, 1, owner, "GASPYSAT", 6);
     insert_structure(&mut sim, 2, owner, "GASPYSAT", 8);
-    sim.substrate.entities.get_mut(2).unwrap().building_up =
-        Some(BuildingUp::completing_in_ticks(20, 0));
+    sim.substrate
+        .entities
+        .get_mut(2)
+        .unwrap()
+        .install_building_up(BuildingUp::completing_in_ticks(20, 0), 0);
 
     sim.reconcile_active_vision_structures(&rules);
     assert!(sim.houses[&owner].spy_sat_active);

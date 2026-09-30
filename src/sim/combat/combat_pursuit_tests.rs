@@ -185,7 +185,10 @@ fn deployed_infantry_skipped_by_pursuit() {
     // Deploy-fire infantry (e.g., GI in deployed state) cannot move.
     let mut gi = make_unit(1, "ENGI", "Americans", 5, 5, 75);
     gi.category = crate::map::entities::EntityCategory::Infantry;
-    gi.deploy_state = Some(crate::sim::deploy::DeployPhase::Deployed);
+    gi.mission_leaf = crate::sim::mission::MissionLeafState::for_entity_category(
+        crate::map::entities::EntityCategory::Infantry,
+    );
+    gi.mission_leaf.set_infantry_doing_verified(28).unwrap();
     gi.attack_target = Some(AttackTarget::new(2));
     let rhino = make_unit(2, "HTNK", "Soviet", 30, 5, 400);
     let mut sim = make_sim(vec![gi, rhino]);
@@ -696,10 +699,15 @@ fn walk_destination_search_observes_route_opened_before_process() {
     // Scatter's prepublished setter must also leave an execution request,
     // even though its caller ignores the helper's return value.
     let (mut sim, _rules, actor, _) = walk_pursuit_scene();
-    assert!(crate::sim::movement::prepare_walk_cell_destination(
+    let destination_coord =
+        crate::sim::movement::target_cell_coord(14, 10, sim.resolved_terrain.as_ref());
+    assert!(crate::sim::movement::prepare_walk_destination(
         &mut sim.substrate.entities,
         actor,
-        (14, 10),
+        (
+            crate::sim::components::NavTargetRef::cell(14, 10),
+            destination_coord
+        ),
         crate::util::fixed_math::SimFixed::from_num(4),
         sim.resolved_terrain.as_ref(),
         crate::sim::movement::DestinationTiming::new(0, 60),

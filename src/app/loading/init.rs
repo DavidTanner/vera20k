@@ -1170,7 +1170,7 @@ mod map_wall_owner_candidate_tests {
         lamp.lifecycle.object_alive = true;
         lamp.lifecycle.in_limbo = false;
         lamp.lifecycle.cell_marked = false;
-        lamp.building_up = Some(BuildingUp::completing_in_ticks(9, 0));
+        lamp.install_building_up(BuildingUp::completing_in_ticks(9, 0), 0);
         sim.entities_mut().insert(lamp);
         sim.add_entity_occupancy(41);
         sim.allocate_building_light(41, rules);
