@@ -8,13 +8,12 @@ use crate::map::bridge_rim_tiles::HighBridgeRimTiles;
 use crate::sim::bridge_state::rim::{self, HighBridgeRimHost, RimBounds, RimCell, RimCoord};
 
 /// UpdateAdjacentBridges_High 576770 or, for the wooden family, 571050.
-pub(super) fn update(publication: &mut LivePublication<'_>, input: RimCoord) {
-    let Some(tiles) = super::super::family_rim_tiles(publication.terrain(), publication.family)
-    else {
+pub(super) fn update(publication: &mut LivePublication<'_>, input: RimCoord, family: Family) {
+    let Some(tiles) = super::super::family_rim_tiles(publication.terrain(), family) else {
         // Synthetic grids without an active theater have no native tile keys.
         return;
     };
-    let bounds = match publication.family {
+    let bounds = match family {
         Family::High => {
             let size = publication
                 .sim

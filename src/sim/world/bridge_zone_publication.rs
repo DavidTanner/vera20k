@@ -223,7 +223,6 @@ mod tests {
             rules: &rules,
             registry: None,
             collapsed: false,
-            family: Family::High,
         };
         assert!(!host.validate_bridge_zones((5, 5)).unwrap());
         assert!(sim.bridge_state.as_ref().unwrap().endpoint_records()[0].active);
@@ -236,7 +235,6 @@ mod tests {
             rules: &rules,
             registry: None,
             collapsed: false,
-            family: Family::High,
         };
         assert!(!host.validate_bridge_zones((5, 5)).unwrap());
         assert_eq!(edge_state(&sim), after);
@@ -252,7 +250,6 @@ mod tests {
             rules: &rules,
             registry: None,
             collapsed: false,
-            family: Family::High,
         };
         host.rebuild_bridge_connectivity().unwrap();
         assert_eq!(

@@ -203,7 +203,6 @@ fn repaired_overlay_is_walkable_even_with_stale_destroyed_state() {
             role: BridgeCellRole::Body,
             anchor_span_id: Some(1),
             overlay_byte: 0xCD,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
         },
     );
 
@@ -680,7 +679,6 @@ fn test_seed_cell_grows_grid_to_fit() {
         role: BridgeCellRole::Anchor,
         anchor_span_id: Some(1),
         overlay_byte: 0x18,
-        bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
     };
     state.test_seed_cell(5, 5, cell);
     let read = state.cell(5, 5).expect("seeded cell present");
@@ -699,7 +697,6 @@ fn cell_mut_writes_visible_through_cell_read() {
         role: BridgeCellRole::Anchor,
         anchor_span_id: Some(1),
         overlay_byte: 0x18,
-        bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
     };
     state.test_seed_cell(2, 2, cell);
     state.cell_mut(2, 2).unwrap().overlay_byte = 0xD2;
@@ -904,7 +901,6 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
             role: BridgeCellRole::Bridgehead,
             anchor_span_id: None,
             overlay_byte: 0x18,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
         },
     );
     // Anchor at (2, 2).
@@ -919,7 +915,6 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
             role: BridgeCellRole::Anchor,
             anchor_span_id: Some(1),
             overlay_byte: 0x20,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
         },
     );
     // DamageA neighbor (east of anchor) at (3, 2).
@@ -934,7 +929,6 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
             role: BridgeCellRole::Anchor,
             anchor_span_id: Some(1),
             overlay_byte: 0x21,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
         },
     );
     // DamageB neighbor (west of anchor) at (1, 2).
@@ -949,7 +943,6 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
             role: BridgeCellRole::Anchor,
             anchor_span_id: Some(1),
             overlay_byte: 0x22,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
         },
     );
     // Sentinel to grow state to 5x5 (matches terrain dimensions).
@@ -964,232 +957,9 @@ fn make_bridgehead_state_ns() -> BridgeRuntimeState {
             role: BridgeCellRole::Body,
             anchor_span_id: None,
             overlay_byte: 0,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
         },
     );
     state
-}
-
-#[test]
-fn bridgehead_advance_first_hit_writes_anchor_damaged() {
-    let mut state = make_bridgehead_state_ns();
-    let mut terrain = make_bridgehead_terrain_ns();
-    let pre_hit_bridgehead = *state.cell(2, 4).unwrap();
-    assert_eq!(
-        state.cell(2, 2).unwrap().bridgehead_anchor_class,
-        BridgeheadAnchorClass::Variant0
-    );
-
-    let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
-    assert!(matches!(outcome, StateOutcome::Absorbed { .. }));
-
-    // Bridgehead's own damage_state is NOT modified.
-    let post_bridgehead = *state.cell(2, 4).unwrap();
-    assert_eq!(
-        post_bridgehead.damage_state,
-        pre_hit_bridgehead.damage_state
-    );
-
-    // Anchor's bridgehead_anchor_class becomes AboutToFall (4th slot —
-    // first-hit writes the most-damaged variant directly, skipping
-    // intermediate slots).
-    assert_eq!(
-        state.cell(2, 2).unwrap().bridgehead_anchor_class,
-        BridgeheadAnchorClass::AboutToFall
-    );
-
-    // East perpendicular partner (DamageA) — state byte 0 → 4 → Healthy{4}.
-    assert_eq!(
-        state.cell(3, 2).unwrap().damage_state,
-        DamageState::Healthy { variant: 4 }
-    );
-    // West perpendicular partner (DamageB) — state byte 0 → 5 → Healthy{5}.
-    assert_eq!(
-        state.cell(1, 2).unwrap().damage_state,
-        DamageState::Healthy { variant: 5 }
-    );
-}
-
-#[test]
-fn bridgehead_advance_repeat_high_hit_collapses_about_to_fall_slot() {
-    let mut state = make_bridgehead_state_ns();
-    let mut terrain = make_bridgehead_terrain_ns();
-    let first = state.bridgehead_advance_state(2, 4, true, &mut terrain);
-    assert!(matches!(first, StateOutcome::Absorbed { .. }));
-
-    let second = state.bridgehead_advance_state(2, 4, true, &mut terrain);
-    match second {
-        StateOutcome::Collapsed {
-            binary_success,
-            destroyed_cells,
-            set_bridge_direction,
-            adjacent_bridges_dirty,
-            zone_query,
-            radar_cells,
-            ..
-        } => {
-            assert!(binary_success);
-            assert_eq!(destroyed_cells, vec![(2, 1), (2, 2), (2, 3)]);
-            // BR-16: the collapsed BlowUpBridge triple is minimap-dirty.
-            assert_eq!(radar_cells, vec![(2, 1), (2, 2), (2, 3)]);
-            assert_eq!(set_bridge_direction.actions.len(), 3);
-            assert!(
-                set_bridge_direction
-                    .actions
-                    .iter()
-                    .all(|(_, _, action)| matches!(
-                        action,
-                        crate::sim::bridge_specs::CellAction::BlowUpBridge
-                    ))
-            );
-            // The NS ramp pair runs W then E (0x0057754F, 0x0057757B).
-            assert_eq!(adjacent_bridges_dirty, vec![(1, 2), (3, 2)]);
-            assert_eq!(zone_query, (2, 2), "blow-up row center");
-        }
-        other => panic!("expected high bridgehead collapse, got {other:?}"),
-    }
-
-    assert_eq!(
-        state.cell(2, 2).unwrap().bridgehead_anchor_class,
-        BridgeheadAnchorClass::AboutToFall
-    );
-    assert!(matches!(
-        state.cell(2, 2).unwrap().damage_state,
-        DamageState::Destroyed
-    ));
-    assert!(matches!(
-        state.cell(2, 4).unwrap().damage_state,
-        DamageState::Healthy { .. }
-    ));
-}
-
-#[test]
-fn bridgehead_advance_repeat_low_hit_collapses_but_returns_false() {
-    let mut state = make_bridgehead_state_ns();
-    let mut terrain = make_bridgehead_terrain_ns();
-    assert!(matches!(
-        state.bridgehead_advance_state(2, 4, false, &mut terrain),
-        StateOutcome::Absorbed { .. }
-    ));
-
-    let second = state.bridgehead_advance_state(2, 4, false, &mut terrain);
-    match second {
-        StateOutcome::Collapsed {
-            binary_success,
-            destroyed_cells,
-            zone_query,
-            ..
-        } => {
-            assert!(
-                !binary_success,
-                "low bridgehead slot +3 collapses but gamemd returns false"
-            );
-            assert_eq!(destroyed_cells, vec![(2, 1), (2, 2), (2, 3)]);
-            assert_eq!(zone_query, (2, 2), "blow-up row center");
-        }
-        other => panic!("expected low bridgehead collapse side effects, got {other:?}"),
-    }
-}
-
-#[test]
-fn bridgehead_advance_odd_h_ns_absorbs_with_no_change() {
-    // Bridgehead at sub-tile 5 (odd NS ramp): parity gate fires.
-    let mut state = make_bridgehead_state_ns();
-    let mut terrain = make_bridgehead_terrain_ns();
-    // Override (2, 4) sub-tile to 5 — odd, parity-gated.
-    if let Some(cell) = terrain.cells.get_mut(4 * 5 + 2) {
-        cell.final_sub_tile = 5;
-    }
-    let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
-    assert_eq!(outcome, StateOutcome::NoChange);
-    // Anchor's tile class unchanged.
-    assert_eq!(
-        state.cell(2, 2).unwrap().bridgehead_anchor_class,
-        BridgeheadAnchorClass::Variant0
-    );
-}
-
-#[test]
-fn bridgehead_advance_h_gt_4_ew_absorbs_with_no_change() {
-    // Bridgehead at h=0xC (EW high-ramp peak): upper-bound gate fires.
-    // Use a fresh setup since the shared fixture is NS-axis.
-    let mut state = BridgeRuntimeState::default();
-    state.test_seed_cell(
-        2,
-        2,
-        BridgeRuntimeCell {
-            deck_present: true,
-            deck_level: 0,
-            damage_state: DamageState::Healthy { variant: 0 },
-            axis: Some(Axis::EW),
-            role: BridgeCellRole::Bridgehead,
-            anchor_span_id: None,
-            overlay_byte: 0x18,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-        },
-    );
-    // 3x3 terrain with cell (2,2) at sub-tile 0xC.
-    let mut terrain = crate::map::resolved_terrain::test_grid(3, 3, |rx, ry| ResolvedTerrainCell {
-        final_sub_tile: if rx == 2 && ry == 2 { 0x0C } else { 0 },
-        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-    });
-    let outcome = state.bridgehead_advance_state(2, 2, true, &mut terrain);
-    assert_eq!(outcome, StateOutcome::NoChange);
-}
-
-#[test]
-fn bridgehead_advance_walks_through_odd_intermediate() {
-    // Mid-walk parity tolerance: walk passes through an odd h=5
-    // intermediate between h=8 start and h=4 anchor.
-    let mut state = make_bridgehead_state_ns();
-    let mut terrain = make_bridgehead_terrain_ns();
-    // Patch the walk path's sub-tiles: (2,4)=8, (2,3)=5 (odd!), (2,2)=4.
-    if let Some(c) = terrain.cells.get_mut(3 * 5 + 2) {
-        c.final_sub_tile = 5;
-    }
-    let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
-    assert!(matches!(outcome, StateOutcome::Absorbed { .. }));
-    assert_eq!(
-        state.cell(2, 2).unwrap().bridgehead_anchor_class,
-        BridgeheadAnchorClass::AboutToFall,
-        "walk must pass through odd-h intermediate and damage the anchor",
-    );
-}
-
-#[test]
-fn bridgehead_advance_non_bridgehead_role_no_change() {
-    let mut state = make_bridgehead_state_ns();
-    state.cell_mut(2, 4).unwrap().role = BridgeCellRole::Body;
-    let mut terrain = make_bridgehead_terrain_ns();
-    let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
-    assert_eq!(outcome, StateOutcome::NoChange);
-}
-
-#[test]
-fn bridgehead_advance_anchor_walk_failure_no_change() {
-    // All sub-tiles = 10: start cell is even (passes parity gate) but walk
-    // never converges to h=4 within the 16-iter cap (sub-tiles stay 10
-    // along the column / walking off-map).
-    let mut state = make_bridgehead_state_ns();
-    let mut terrain = make_bridgehead_terrain_ns();
-    for c in terrain.cells.iter_mut() {
-        c.final_sub_tile = 10;
-    }
-    let outcome = state.bridgehead_advance_state(2, 4, true, &mut terrain);
-    assert_eq!(outcome, StateOutcome::NoChange);
-    // Anchor's tile class unchanged.
-    assert_eq!(
-        state.cell(2, 2).unwrap().bridgehead_anchor_class,
-        BridgeheadAnchorClass::Variant0
-    );
-}
-
-#[test]
-fn bridgehead_advance_off_map_no_change() {
-    let mut state = make_bridgehead_state_ns();
-    let mut terrain = make_bridgehead_terrain_ns();
-    let outcome = state.bridgehead_advance_state(99, 99, true, &mut terrain);
-    assert_eq!(outcome, StateOutcome::NoChange);
 }
 
 // Admission and callback order compare original instructions in damage_dispatch_tests.
@@ -1248,7 +1018,6 @@ fn flood_fill_bridge_state(coords: &[(u16, u16)]) -> BridgeRuntimeState {
                 role: BridgeCellRole::Body,
                 anchor_span_id: Some(1),
                 overlay_byte: 0,
-                bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
             },
         );
     }
@@ -1261,189 +1030,6 @@ fn pavement_test_terrain(coords: &[(u16, u16)]) -> ResolvedTerrainGrid {
         terrain.cell_mut(rx, ry).unwrap().final_tile_index = 42;
     }
     terrain
-}
-
-#[test]
-fn flood_fill_kickoff_skips_when_no_damaged_data() {
-    let mut bs = flood_fill_bridge_state(&[(5, 5), (5, 6)]);
-    let mut terrain = pavement_test_terrain(&[(5, 5), (5, 6), (5, 7)]);
-    if let Some(c) = terrain.cell_mut(5, 5) {
-        c.has_damaged_data = false;
-    }
-    let changed = bs.apply_damaged_variant_flood_fill(5, 5, true, &mut terrain);
-    assert!(changed.is_empty());
-    assert!(!terrain.pavement_damaged_at(5, 5));
-    assert!(!terrain.pavement_damaged_at(5, 6));
-}
-
-#[test]
-fn flood_fill_propagates_to_same_tile_id_neighbors() {
-    let coords = [
-        (4, 4),
-        (5, 4),
-        (6, 4),
-        (4, 5),
-        (5, 5),
-        (6, 5),
-        (4, 6),
-        (5, 6),
-        (6, 6),
-    ];
-    let mut bs = flood_fill_bridge_state(&coords);
-    let mut terrain = pavement_test_terrain(&coords);
-    let changed = bs.apply_damaged_variant_flood_fill(5, 5, true, &mut terrain);
-    assert_eq!(
-        changed,
-        vec![
-            (5, 5),
-            (5, 4),
-            (6, 4),
-            (6, 5),
-            (6, 6),
-            (5, 6),
-            (4, 6),
-            (4, 5),
-            (4, 4),
-        ],
-        "0x0056E990 marks before direction-0..7 recursive descent",
-    );
-    for &(rx, ry) in &coords {
-        assert!(
-            terrain.pavement_damaged_at(rx, ry),
-            "cell ({},{}) should be damaged",
-            rx,
-            ry
-        );
-    }
-}
-
-#[test]
-fn flood_fill_stops_at_different_tile_id_boundary() {
-    let mut bs = flood_fill_bridge_state(&[(5, 5), (5, 6), (5, 7)]);
-    let mut terrain = pavement_test_terrain(&[(5, 5), (5, 6), (5, 7)]);
-    if let Some(c) = terrain.cell_mut(5, 6) {
-        c.final_tile_index = 99;
-    }
-    let _ = bs.apply_damaged_variant_flood_fill(5, 5, true, &mut terrain);
-    assert!(terrain.pavement_damaged_at(5, 5));
-    assert!(
-        !terrain.pavement_damaged_at(5, 6),
-        "boundary cell stays pristine"
-    );
-    assert!(
-        !terrain.pavement_damaged_at(5, 7),
-        "downstream cell stays pristine"
-    );
-}
-
-#[test]
-fn flood_fill_idempotent_when_already_in_target_state() {
-    let mut bs = flood_fill_bridge_state(&[(5, 5)]);
-    let mut terrain = pavement_test_terrain(&[(5, 5), (5, 6), (5, 7)]);
-    terrain.cell_mut(5, 5).unwrap().bridge_facts.raw_flags |= 0x2000;
-    let changed = bs.apply_damaged_variant_flood_fill(5, 5, true, &mut terrain);
-    assert!(
-        changed.is_empty(),
-        "no mutation when already in target state"
-    );
-}
-
-#[test]
-fn flood_fill_eight_directions_includes_diagonals() {
-    let coords = [
-        (4, 4),
-        (5, 4),
-        (6, 4),
-        (4, 5),
-        (5, 5),
-        (6, 5),
-        (4, 6),
-        (5, 6),
-        (6, 6),
-    ];
-    let mut bs = flood_fill_bridge_state(&coords);
-    let mut terrain = pavement_test_terrain(&coords);
-    let changed = bs.apply_damaged_variant_flood_fill(5, 5, true, &mut terrain);
-    assert_eq!(changed.len(), 9);
-    assert!(terrain.pavement_damaged_at(4, 4), "NW diagonal hit");
-    assert!(terrain.pavement_damaged_at(6, 4), "NE diagonal hit");
-    assert!(terrain.pavement_damaged_at(4, 6), "SW diagonal hit");
-    assert!(terrain.pavement_damaged_at(6, 6), "SE diagonal hit");
-}
-
-#[test]
-fn flood_fill_clear_propagates_state_false() {
-    let coords = [(5u16, 5u16), (5, 6), (5, 7)];
-    let mut bs = flood_fill_bridge_state(&coords);
-    let mut terrain = pavement_test_terrain(&coords);
-    for &(rx, ry) in &coords {
-        terrain.cell_mut(rx, ry).unwrap().bridge_facts.raw_flags |= 0x2000;
-    }
-    let changed = bs.apply_damaged_variant_flood_fill(5, 5, false, &mut terrain);
-    assert_eq!(changed, vec![(5, 5), (5, 6), (5, 7)]);
-    for &(rx, ry) in &coords {
-        assert!(!terrain.pavement_damaged_at(rx, ry));
-    }
-}
-
-#[test]
-fn flood_fill_off_map_returns_zero() {
-    let mut bs = flood_fill_bridge_state(&[(5, 5)]);
-    let mut terrain = pavement_test_terrain(&[(5, 5), (5, 6), (5, 7)]);
-    let changed = bs.apply_damaged_variant_flood_fill(99, 99, true, &mut terrain);
-    assert!(changed.is_empty());
-}
-
-#[test]
-fn flood_fill_sentinel_tile_id_returns_zero() {
-    let mut bs = flood_fill_bridge_state(&[(5, 5)]);
-    let mut terrain = pavement_test_terrain(&[(5, 5), (5, 6), (5, 7)]);
-    if let Some(c) = terrain.cell_mut(5, 5) {
-        c.final_tile_index = 0xFFFF;
-    }
-    let changed = bs.apply_damaged_variant_flood_fill(5, 5, true, &mut terrain);
-    assert!(changed.is_empty());
-}
-
-/// Synthetic 3x3 grid with a single bridge anchor cell at (1,1).
-/// `pre_class` is written to that cell's bridgehead_anchor_class_at_load.
-fn make_pre_class_terrain(pre_class: Option<BridgeheadAnchorClass>) -> ResolvedTerrainGrid {
-    let mut cells = Vec::with_capacity(9);
-    for ry in 0..3u16 {
-        for rx in 0..3u16 {
-            let is_anchor = rx == 1 && ry == 1;
-            cells.push(ResolvedTerrainCell {
-                tileset_index: None,
-                has_bridge_deck: is_anchor,
-                bridge_walkable: is_anchor,
-                bridgehead_anchor_class_at_load: if is_anchor { pre_class } else { None },
-                ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-            });
-        }
-    }
-    ResolvedTerrainGrid::from_cells(3, 3, cells)
-}
-
-#[test]
-fn from_resolved_terrain_copies_pre_damaged_anchor_class() {
-    let terrain = make_pre_class_terrain(Some(BridgeheadAnchorClass::AboutToFall));
-    let state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 1500);
-    let cell = state.cell(1, 1).expect("bridge cell exists");
-    assert_eq!(
-        cell.bridgehead_anchor_class,
-        BridgeheadAnchorClass::AboutToFall
-    );
-}
-
-#[test]
-fn from_resolved_terrain_defaults_to_variant0_when_pre_class_is_none() {
-    let terrain = make_pre_class_terrain(None);
-    let state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 1500);
-    let cell = state.cell(1, 1).expect("bridge cell exists");
-    assert_eq!(
-        cell.bridgehead_anchor_class,
-        BridgeheadAnchorClass::Variant0
-    );
 }
 
 // Native repair coverage follows the production owners: ordinary_repair_tests
@@ -1474,7 +1060,6 @@ fn seed_overlay_row(state: &mut BridgeRuntimeState, y: u16, xs: std::ops::Range<
                 role: BridgeCellRole::Body,
                 anchor_span_id: Some(1),
                 overlay_byte: overlay,
-                bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
             },
         );
     }

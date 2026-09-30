@@ -45,7 +45,6 @@ pub fn build_visible_instances(
     screen_width: f32,
     screen_height: f32,
     uv_fn: UvLookupFn<'_>,
-    bridge_state: Option<&crate::sim::bridge_state::BridgeRuntimeState>,
     live_terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> TerrainInstances {
     let view_left: f32 = camera_x - CULL_MARGIN;
@@ -93,48 +92,45 @@ pub fn build_visible_instances(
                 - ((native_z::TILE_HEIGHT_ROWS * i32::from(cell.z as i8)) / 2) as f32
         };
 
-        // Native480350 uses current terrain flags for every pavement cell,
-        // even when the cell has no structural bridge-runtime entry. The
-        // resident file-count check precedes the pristine damaged-data gate.
-        let damaged_variant_swap = live_terrain
-            .and_then(|terrain| terrain.pavement_draw_variant(cell.rx, cell.ry))
-            .unwrap_or(cell.variant);
-
-        // Bridge anchor tile_id override. Fires when sim reports a
-        // non-Variant0 bridgehead_anchor_class AND the theater carries
-        // the variant table. Swaps the cell's tile_id for the variant's
-        // tile_id; sub_tile is preserved (the reference engine only
-        // rewrites the tile-class field). When the override fires, the
-        // FA2 sibling-TMP slot is reset to 0 — the variant tile_ids ARE
-        // the damage progression, no further a/b/c/d swap.
-        let anchor_override = grid.anchor_variant_table.and_then(|table| {
-            let bc = bridge_state?.cell(cell.rx, cell.ry)?;
-            let axis = bc.axis?;
-            if live_terrain.is_some_and(|terrain| {
-                !terrain.is_current_bridge_middle(
-                    cell.rx,
-                    cell.ry,
-                    usize::from(axis == crate::sim::bridge_state::Axis::EW),
-                )
-            }) {
-                return None;
-            }
-            table.tile_id_for(axis, bc.bridgehead_anchor_class)
+        // Native480350 draws the cell's current tile. Bridge publication
+        // (56EB80 floods and the ramp helpers under 576BA0/571490) rewrites
+        // tile ids after load, so the live terrain wins over the load-time
+        // grid; a rewritten tile missing from the atlas keeps the grid tile.
+        // The pavement file choice uses current terrain flags for every cell,
+        // checking the resident file count before the pristine damaged-data
+        // gate. A rewritten tile without that answer draws its first file
+        // (residual: the coordinate-selected file is chosen for the load-time
+        // tile only).
+        let live = live_terrain.and_then(|terrain| {
+            let (tile_id, sub_tile) = terrain.presentation_tile(terrain.cell(cell.rx, cell.ry)?);
+            Some((
+                tile_id,
+                sub_tile,
+                terrain.pavement_draw_variant(cell.rx, cell.ry),
+            ))
         });
-
-        let (effective_tile_id, effective_variant) = match anchor_override {
-            Some(tid) => (tid, 0u8),
-            None => (cell.tile_id, damaged_variant_swap),
-        };
-
-        let placement: Option<TilePlacement> = match &uv_fn {
-            Some(f) => f(effective_tile_id, cell.sub_tile, effective_variant),
+        let place = |tile_id: u16, sub_tile: u8, variant: u8| match &uv_fn {
+            Some(f) => f(tile_id, sub_tile, variant),
             None => Some(TilePlacement {
                 uv_origin: [0.0, 0.0],
                 uv_size: [1.0, 1.0],
                 pixel_size: [TILE_WIDTH, TILE_HEIGHT],
                 draw_offset: [0.0, 0.0],
             }),
+        };
+        let placement: Option<TilePlacement> = match live {
+            Some((tile_id, sub_tile, variant))
+                if (tile_id, sub_tile) != (cell.tile_id, cell.sub_tile) =>
+            {
+                place(tile_id, sub_tile, variant.unwrap_or(0))
+                    .or_else(|| place(cell.tile_id, cell.sub_tile, cell.variant))
+            }
+            live => place(
+                cell.tile_id,
+                cell.sub_tile,
+                live.and_then(|(_, _, variant)| variant)
+                    .unwrap_or(cell.variant),
+            ),
         };
 
         if let Some(p) = placement {

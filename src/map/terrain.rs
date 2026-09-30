@@ -304,10 +304,9 @@ pub struct TerrainGrid {
     pub origin_y: f32,
     /// Playable area bounds (from LocalSize). Used to clip overlays/entities too.
     pub local_bounds: Option<LocalBounds>,
-    /// Theater-derived bridge anchor variant tile_ids, threaded from
-    /// TheaterData at map-load. None when theater lacks BridgeMiddle1/2
-    /// keys — renderer override is then bypassed.
-    pub anchor_variant_table: Option<crate::map::theater::BridgeAnchorVariantTable>,
+    /// Bridge middle tiles a live publication can write, for the atlas
+    /// pre-load. None when the theater lacks BridgeMiddle1/2 or both sets.
+    pub bridge_middle_tiles: Option<crate::map::theater::BridgeMiddleTiles>,
 }
 
 /// Convert isometric cell coordinates to screen-space pixel position — **the
@@ -714,7 +713,7 @@ pub fn build_terrain_grid(map: &MapFile, local_bounds: Option<LocalBounds>) -> T
         origin_x: min_x,
         origin_y: min_y,
         local_bounds,
-        anchor_variant_table: None,
+        bridge_middle_tiles: None,
     }
 }
 
@@ -725,7 +724,7 @@ pub fn build_terrain_grid(map: &MapFile, local_bounds: Option<LocalBounds>) -> T
 pub fn build_terrain_grid_from_resolved(
     resolved: &ResolvedTerrainGrid,
     local_bounds: Option<LocalBounds>,
-    anchor_variant_table: Option<crate::map::theater::BridgeAnchorVariantTable>,
+    bridge_middle_tiles: Option<crate::map::theater::BridgeMiddleTiles>,
 ) -> TerrainGrid {
     let mut cells: Vec<TerrainCell> = Vec::with_capacity(resolved.cells().len());
     let mut min_x: f32 = f32::MAX;
@@ -772,7 +771,7 @@ pub fn build_terrain_grid_from_resolved(
         origin_x: min_x,
         origin_y: min_y,
         local_bounds,
-        anchor_variant_table,
+        bridge_middle_tiles,
     }
 }
 
@@ -1193,13 +1192,13 @@ mod tests {
             origin_x: 0.0,
             origin_y: 0.0,
             local_bounds: None,
-            anchor_variant_table: None,
+            bridge_middle_tiles: None,
         };
 
         // Camera at origin, 1024x768 viewport — only first cell should be visible.
         let result: crate::render::terrain_instances::TerrainInstances =
             crate::render::terrain_instances::build_visible_instances(
-                &grid, None, 0.0, 0.0, 1024.0, 768.0, None, None, None,
+                &grid, None, 0.0, 0.0, 1024.0, 768.0, None, None,
             );
         assert_eq!(result.normal.len(), 1);
     }
@@ -1244,7 +1243,7 @@ mod tests {
             origin_x: 0.0,
             origin_y: 0.0,
             local_bounds: None,
-            anchor_variant_table: None,
+            bridge_middle_tiles: None,
         };
         let lights = crate::map::lighting::build_cell_light_grid_from_heights(
             [((1, 0), 0), ((2, 0), 4)],
@@ -1260,7 +1259,6 @@ mod tests {
             768.0,
             None,
             None,
-            None,
         );
 
         assert_eq!(result.normal.len(), 2);
@@ -1268,20 +1266,18 @@ mod tests {
         assert!((result.normal[1].tint[0] - 0.982).abs() < 0.001);
     }
 
-    fn override_test_grid(
-        anchor_variant_table: Option<crate::map::theater::BridgeAnchorVariantTable>,
-    ) -> TerrainGrid {
+    fn live_tile_grid() -> TerrainGrid {
         TerrainGrid {
             cells: vec![TerrainCell {
                 screen_x: 0.0,
                 screen_y: 0.0,
                 tile_id: 100,
-                sub_tile: 0,
+                sub_tile: 3,
                 z: 0,
                 rx: 0,
                 ry: 0,
                 is_water: false,
-                variant: 0,
+                variant: 2,
                 tint: [1.0; 3],
                 radar_left: [0; 3],
                 radar_right: [0; 3],
@@ -1292,152 +1288,59 @@ mod tests {
             origin_x: 0.0,
             origin_y: 0.0,
             local_bounds: None,
-            anchor_variant_table,
+            bridge_middle_tiles: None,
         }
     }
 
-    fn override_test_bridge_state(
-        axis: Option<crate::sim::bridge_state::Axis>,
-        class: crate::sim::bridge_state::BridgeheadAnchorClass,
-    ) -> crate::sim::bridge_state::BridgeRuntimeState {
-        use crate::sim::bridge_state::{
-            BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState,
-        };
-        let mut bs = BridgeRuntimeState::default();
-        bs.test_seed_cell(
-            0,
-            0,
-            BridgeRuntimeCell {
-                deck_present: true,
-                deck_level: 0,
-                damage_state: DamageState::Healthy { variant: 0 },
-                axis,
-                role: BridgeCellRole::Anchor,
-                anchor_span_id: Some(1),
-                overlay_byte: 0,
-                bridgehead_anchor_class: class,
-            },
-        );
-        bs
-    }
-
-    #[test]
-    fn override_fires_when_class_is_aboutto_fall_with_table() {
-        use crate::map::theater::BridgeAnchorVariantTable;
-        use crate::sim::bridge_state::{Axis, BridgeheadAnchorClass};
-
-        let table = BridgeAnchorVariantTable {
-            ns: [200, 201, 202, 203],
-            ew: [300, 301, 302, 303],
-        };
-        let grid = override_test_grid(Some(table));
-        let bs = override_test_bridge_state(Some(Axis::NS), BridgeheadAnchorClass::AboutToFall);
-
-        let captured: std::cell::RefCell<Option<(u16, u8, u8)>> = std::cell::RefCell::new(None);
+    /// Draws the single cell against a live terrain whose tile is `live`,
+    /// with an atlas holding `resident` tiles. Returns every lookup.
+    fn draw_live_tile(live: (i32, u8), resident: &[u16]) -> (usize, Vec<(u16, u8, u8)>) {
+        let mut cell = crate::map::resolved_terrain::test_flat_cell(0, 0);
+        (cell.final_tile_index, cell.final_sub_tile) = live;
+        let terrain =
+            crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(1, 1, vec![cell]);
+        let calls = std::cell::RefCell::new(Vec::new());
         let lookup = |tid: u16, sub: u8, var: u8| -> Option<TilePlacement> {
-            *captured.borrow_mut() = Some((tid, sub, var));
-            Some(TilePlacement {
+            calls.borrow_mut().push((tid, sub, var));
+            resident.contains(&tid).then_some(TilePlacement {
                 uv_origin: [0.0, 0.0],
                 uv_size: [1.0, 1.0],
                 pixel_size: [TILE_WIDTH, TILE_HEIGHT],
                 draw_offset: [0.0, 0.0],
             })
         };
-        let uv_fn: UvLookupFn = Some(&lookup);
-
-        let _ = crate::render::terrain_instances::build_visible_instances(
-            &grid,
+        let drawn = crate::render::terrain_instances::build_visible_instances(
+            &live_tile_grid(),
             None,
             0.0,
             0.0,
             1024.0,
             768.0,
-            uv_fn,
-            Some(&bs),
-            None,
-        );
-        let (tid, sub, var) = captured.borrow().expect("uv_fn was called");
-        // Override fired: tile_id = NS AboutToFall slot = 203.
-        assert_eq!(tid, 203);
-        // Sub-tile preserved.
-        assert_eq!(sub, 0);
-        // FA2 sibling-TMP slot reset to 0 on variant tiles.
-        assert_eq!(var, 0);
+            Some(&lookup),
+            Some(&terrain),
+        )
+        .normal
+        .len();
+        (drawn, calls.into_inner())
     }
 
     #[test]
-    fn override_bypassed_when_class_is_variant0() {
-        use crate::map::theater::BridgeAnchorVariantTable;
-        use crate::sim::bridge_state::{Axis, BridgeheadAnchorClass};
-
-        let table = BridgeAnchorVariantTable {
-            ns: [200, 201, 202, 203],
-            ew: [300, 301, 302, 303],
-        };
-        let grid = override_test_grid(Some(table));
-        let bs = override_test_bridge_state(Some(Axis::NS), BridgeheadAnchorClass::Variant0);
-
-        let captured: std::cell::RefCell<Option<(u16, u8, u8)>> = std::cell::RefCell::new(None);
-        let lookup = |tid: u16, sub: u8, var: u8| -> Option<TilePlacement> {
-            *captured.borrow_mut() = Some((tid, sub, var));
-            Some(TilePlacement {
-                uv_origin: [0.0, 0.0],
-                uv_size: [1.0, 1.0],
-                pixel_size: [TILE_WIDTH, TILE_HEIGHT],
-                draw_offset: [0.0, 0.0],
-            })
-        };
-        let uv_fn: UvLookupFn = Some(&lookup);
-
-        let _ = crate::render::terrain_instances::build_visible_instances(
-            &grid,
-            None,
-            0.0,
-            0.0,
-            1024.0,
-            768.0,
-            uv_fn,
-            Some(&bs),
-            None,
+    fn draw_reads_the_live_tile_a_bridge_publication_wrote() {
+        // Unchanged tile: the load-time file choice stands.
+        assert_eq!(draw_live_tile((100, 3), &[100]), (1, vec![(100, 3, 2)]));
+        // Rewritten tile (a flood keeps the subtile): drawn from its first file.
+        assert_eq!(
+            draw_live_tile((203, 3), &[100, 203]),
+            (1, vec![(203, 3, 0)])
         );
-        let (tid, _sub, _var) = captured.borrow().expect("uv_fn was called");
-        // Override bypassed: native tile_id retained.
-        assert_eq!(tid, 100);
     }
 
     #[test]
-    fn override_bypassed_when_table_is_none() {
-        use crate::sim::bridge_state::{Axis, BridgeheadAnchorClass};
-
-        let grid = override_test_grid(None);
-        let bs = override_test_bridge_state(Some(Axis::NS), BridgeheadAnchorClass::AboutToFall);
-
-        let captured: std::cell::RefCell<Option<(u16, u8, u8)>> = std::cell::RefCell::new(None);
-        let lookup = |tid: u16, sub: u8, var: u8| -> Option<TilePlacement> {
-            *captured.borrow_mut() = Some((tid, sub, var));
-            Some(TilePlacement {
-                uv_origin: [0.0, 0.0],
-                uv_size: [1.0, 1.0],
-                pixel_size: [TILE_WIDTH, TILE_HEIGHT],
-                draw_offset: [0.0, 0.0],
-            })
-        };
-        let uv_fn: UvLookupFn = Some(&lookup);
-
-        let _ = crate::render::terrain_instances::build_visible_instances(
-            &grid,
-            None,
-            0.0,
-            0.0,
-            1024.0,
-            768.0,
-            uv_fn,
-            Some(&bs),
-            None,
+    fn draw_keeps_the_grid_tile_when_the_live_tile_is_not_resident() {
+        assert_eq!(
+            draw_live_tile((203, 3), &[100]),
+            (1, vec![(203, 3, 0), (100, 3, 2)])
         );
-        let (tid, _sub, _var) = captured.borrow().expect("uv_fn was called");
-        // Override bypassed (no table): native tile_id retained.
-        assert_eq!(tid, 100);
     }
 
     #[test]

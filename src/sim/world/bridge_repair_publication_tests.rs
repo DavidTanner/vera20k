@@ -683,9 +683,7 @@ fn ready_repair_fixture(
     crate::map::overlay_types::OverlayTypeRegistry,
     u64,
 ) {
-    use crate::sim::bridge_state::{
-        Axis, BridgeCellRole, BridgeRuntimeCell, BridgeheadAnchorClass, DamageState,
-    };
+    use crate::sim::bridge_state::{Axis, BridgeCellRole, BridgeRuntimeCell, DamageState};
     let (mut sim, rules, registry) = fixture();
     sim.mapgen_rng = Simulation::with_seed(0).mapgen_rng;
     let owner = sim.interner.intern("Americans");
@@ -723,7 +721,6 @@ fn ready_repair_fixture(
                     role: BridgeCellRole::Body,
                     anchor_span_id: None,
                     overlay_byte: overlay,
-                    bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
                 },
             );
         }

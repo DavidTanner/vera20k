@@ -660,8 +660,7 @@ mod tests {
         use crate::render::bridge_atlas::BridgeAtlasLookup;
         use crate::render::overlay_atlas::OverlaySpriteEntry;
         use crate::sim::bridge_state::{
-            Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, BridgeheadAnchorClass,
-            DamageState,
+            Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState,
         };
         use std::collections::BTreeMap;
 
@@ -707,7 +706,6 @@ mod tests {
                     role: BridgeCellRole::Body,
                     anchor_span_id: Some(1),
                     overlay_byte: 0xDC,
-                    bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
                 },
             );
         }
@@ -800,7 +798,7 @@ mod tests {
     fn startup_numeric_high_identity_emits_custom_named_body_and_shadow() {
         use crate::map::lighting::CellLightGrid;
         use crate::render::overlay_atlas::OverlaySpriteEntry;
-        use crate::sim::bridge_state::{BridgeCellRole, BridgeheadAnchorClass};
+        use crate::sim::bridge_state::BridgeCellRole;
 
         struct MockAtlas {
             entry: OverlaySpriteEntry,
@@ -835,7 +833,6 @@ mod tests {
                 role: BridgeCellRole::Body,
                 anchor_span_id: Some(1),
                 overlay_byte: 0x18,
-                bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
             },
         );
         let atlas = MockAtlas {

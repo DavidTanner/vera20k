@@ -158,11 +158,6 @@ pub(super) fn build_world_instances(state: &mut AppState, sw: f32, sh: f32) -> W
         // Terrain draws regardless of shroud — the native tile walk has no
         // explored gate (`CellOverlay_TileDraw @ 0x00480350`); the flat shroud
         // curtain blacks out unexplored ground in the multiply pass.
-        let bridge_state = state
-            .match_state
-            .sim_runtime
-            .as_ref()
-            .and_then(|rt| rt.view().bridge_state());
         crate::render::terrain_instances::build_visible_instances(
             grid,
             Some(state.match_state.match_presentation.lighting.grid()),
@@ -171,7 +166,6 @@ pub(super) fn build_world_instances(state: &mut AppState, sw: f32, sh: f32) -> W
             sw,
             sh,
             uv_fn,
-            bridge_state,
             state
                 .match_state
                 .sim_runtime

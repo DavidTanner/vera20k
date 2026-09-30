@@ -35,7 +35,6 @@
 //!   `sim::movement::movement_bridge`; this one cannot be bound without a
 //!   reference.
 pub(crate) mod damage_dispatch;
-mod damaged_variant;
 pub(crate) mod gap_restamp;
 pub(crate) mod occupants;
 pub(crate) mod ordinary;
@@ -48,7 +47,6 @@ pub(crate) mod rim;
 mod zone_activation;
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
-use damaged_variant::extend_unique_cells;
 use std::collections::{BTreeMap, VecDeque};
 
 /// Sentinel `overlay_byte` value meaning "no bridge overlay" (the original
@@ -65,7 +63,7 @@ const HIGH_BRIDGE_WALK_DIRECTION: [i32; 16] = [2, 2, -1, 4, 4, -1, 2, 2, 2, 2, 2
 const HIGH_BRIDGE_END_SUBTILE: [i32; 16] = [-1, -1, 4, -1, -1, 2, 4, 4, 4, 4, 4, 2, 2, 2, 2, 2];
 // Static bridge axis/anchor vocabulary is map-owned (map::bridge_facts, F05);
 // sim re-exports so runtime and serialized consumers keep their paths.
-pub use crate::map::bridge_facts::{Axis, BridgeheadAnchorClass};
+pub use crate::map::bridge_facts::Axis;
 
 /// Per-cell damage state encoding all 18 state-byte values.
 ///
@@ -334,111 +332,6 @@ impl DispatchPath {
     }
 }
 
-/// Outcome of one `body_cell_advance_state` invocation. Mirrors the return
-/// codes of binary `ProcessBridgeDamageStateMachine_High @ 0x576BA0` body
-/// branch (0 = absorbed, 1 = collapse), with structured fallout for the
-/// orchestrator to dispatch.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StateOutcome {
-    /// Damage absorbed — anchor advanced from `Healthy` to `Damaged`. Bridge
-    /// still passable. Renderer should redraw.
-    Absorbed {
-        /// Cells whose `ToggleBridgePavement @ 0x0056E990` equivalent changed
-        /// the current TMP damage selector. Native marks each cell before its
-        /// direction-0..7 recursion, so order is presentation-significant.
-        damaged_variant_cells: Vec<(u16, u16)>,
-    },
-    /// Anchor collapsed — `damage_state` became `Destroyed`. Cascade actions
-    /// for orchestrator follow.
-    Collapsed {
-        /// Boolean returned by the underlying gamemd bridge damage helper.
-        /// Usually true for collapse, except low bridgehead slot `+3`: that
-        /// branch performs collapse side effects but returns false.
-        binary_success: bool,
-        /// Cells whose `damage_state` was set to `Destroyed` in this call
-        /// (typically just the anchor; perpendicular targets that hit
-        /// collapse-final via `update_ramp_perpendicular` also appear here).
-        destroyed_cells: Vec<(u16, u16)>,
-        /// `BlowUpBridge` cascade actions emitted by `set_bridge_direction`.
-        /// Orchestrator dispatches these (kill ground occupants, Limbo
-        /// bridge-deck, spawn debris).
-        set_bridge_direction: crate::sim::bridge_specs::SetBridgeDirectionResult,
-        /// Exact native setter call order for the represented 0x1180 subset.
-        /// Perpendicular ramp-helper setters precede the parent span setter;
-        /// bridgehead collapse can carry a helper setter even when the legacy
-        /// action result above has no setter header. Execution-only: snapshot
-        /// persistence stores final real-cell values, never this transcript.
-        setter_transcript: Vec<crate::map::bridge_facts::BridgeFlagStamp>,
-        /// Cells where `UpdateAdjacentBridges_High` should run for rim
-        /// re-evaluation. Orchestrator (Phase F Task 27) runs the actual
-        /// rim helper.
-        adjacent_bridges_dirty: Vec<(u16, u16)>,
-        /// The cell both machines pass to `MapClass::InvalidateBridgeZones`
-        /// (`0x0056DAE0`) after the rim update: the anchor for a body collapse
-        /// (High `0x005778CE`, Low `0x005721D1`), the blow-up row center for a
-        /// bridgehead collapse. Orchestrator dispatches.
-        zone_query: (i16, i16),
-        /// Cells whose visible terrain changed and must be marked dirty on the
-        /// minimap. On a collapse this is the collapsed triple PLUS every
-        /// cascade-leaf cell touched — including intermediate `Damaged`
-        /// perpendicular neighbors, not only the finals — so a partially-
-        /// damaged neighbor's minimap variant does not go stale. The
-        /// orchestrator feeds these into `mark_radar_terrain_dirty_cells`,
-        /// the same channel the engineer-repair path uses.
-        radar_cells: Vec<(u16, u16)>,
-        /// Ordered cells changed by the ramp helpers' nested
-        /// `ToggleBridgePavement @ 0x0056E990` calls. Kept separate so the
-        /// existing collapse dirty-set ordering remains unchanged.
-        damaged_variant_cells: Vec<(u16, u16)>,
-    },
-    /// Cell is not a body-bridge cell, anchor span lookup failed, or anchor
-    /// is already `Destroyed`. No-op.
-    NoChange,
-}
-
-impl StateOutcome {
-    /// Whether this invocation produced any local state/cascade side effect.
-    pub fn has_effect(&self) -> bool {
-        !matches!(self, StateOutcome::NoChange)
-    }
-
-    /// Boolean success value returned by gamemd's bridge damage helper.
-    ///
-    /// This is separate from `has_effect`: low bridgehead slot `+3` performs
-    /// collapse side effects while returning false.
-    pub fn apply_damage_success(&self) -> bool {
-        matches!(
-            self,
-            StateOutcome::Collapsed {
-                binary_success: true,
-                ..
-            }
-        )
-    }
-
-    pub fn damaged_variant_cells(&self) -> &[(u16, u16)] {
-        match self {
-            StateOutcome::Absorbed {
-                damaged_variant_cells,
-            }
-            | StateOutcome::Collapsed {
-                damaged_variant_cells,
-                ..
-            } => damaged_variant_cells,
-            StateOutcome::NoChange => &[],
-        }
-    }
-
-    pub fn setter_transcript(&self) -> &[crate::map::bridge_facts::BridgeFlagStamp] {
-        match self {
-            StateOutcome::Collapsed {
-                setter_transcript, ..
-            } => setter_transcript,
-            StateOutcome::Absorbed { .. } | StateOutcome::NoChange => &[],
-        }
-    }
-}
-
 /// One ordered CellClass bridge-overlay projection operation.
 ///
 /// Native low-bridge walkers write a complete three-cell identity strip before
@@ -477,15 +370,6 @@ pub struct BridgeRuntimeCell {
     /// mutated at runtime by the body-cell state machine and (future) perpendicular
     /// overlay-write branch. Renderer queries this to pick the visible tile.
     pub overlay_byte: u8,
-
-    /// Anchor tile-class mirror written by the bridgehead state machine when
-    /// damage lands on a bridgehead-class cell. Carries the visual variant
-    /// of the anchor (or neighbor bridgehead progressed via `DamageB`).
-    /// Defaults to `Variant0` at map load. The renderer follow-up will read
-    /// this to pick the anchor's TMP tile variant; G3 lands the sim-side
-    /// write only.
-    #[serde(default)]
-    pub bridgehead_anchor_class: BridgeheadAnchorClass,
 }
 
 /// Binary bridge record kind (`BridgeRecord+0x0C`).
@@ -549,11 +433,6 @@ pub struct BridgeRuntimeState {
     /// Active `SpecialFlags::DestroyableBridges` bit. Read by the weapon AoE
     /// bridge-damage outer gate.
     bridge_destroyable_flag: bool,
-    /// Ordered bridge-overlay identity writes waiting for the world-owned
-    /// CellClass/terrain projection. Runtime cache only: snapshots serialize
-    /// the resulting bridge and OverlayGrid identities, never this queue.
-    #[serde(skip, default)]
-    overlay_projection_ops: Vec<BridgeOverlayProjectionOp>,
 }
 
 impl BridgeRuntimeState {
@@ -630,9 +509,6 @@ impl BridgeRuntimeState {
                         .overlay_id
                         .or_else(|| resolved.bridge_layer.as_ref().map(|bl| bl.overlay_id))
                         .unwrap_or(0),
-                    bridgehead_anchor_class: resolved
-                        .bridgehead_anchor_class_at_load
-                        .unwrap_or(BridgeheadAnchorClass::Variant0),
                 });
                 for (nx, ny) in cardinal_neighbors(rx, ry, width, height) {
                     if let Some(neighbor) = terrain.cell(nx, ny) {
@@ -760,7 +636,6 @@ impl BridgeRuntimeState {
                 role: BridgeCellRole::Bridgehead,
                 anchor_span_id: None,
                 overlay_byte: 0,
-                bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
             });
         }
 
@@ -775,7 +650,6 @@ impl BridgeRuntimeState {
             native_zone_source_size: size,
             anchor_spans,
             bridge_destroyable_flag: destroyable,
-            overlay_projection_ops: Vec::new(),
         }
     }
 
@@ -803,51 +677,6 @@ impl BridgeRuntimeState {
             .and_then(|cell| cell.as_mut())
     }
 
-    /// Write one live bridge-overlay byte as a complete one-cell native
-    /// transaction. Multi-cell walkers use the deferred form below so they can
-    /// place every identity before queueing their ordered recalculations.
-    pub(crate) fn write_overlay_byte(&mut self, rx: u16, ry: u16, overlay_byte: u8) -> bool {
-        let changed = self.write_overlay_byte_deferred_recalc(rx, ry, overlay_byte);
-        if self.cell(rx, ry).is_some() {
-            self.queue_overlay_recalc(rx, ry);
-        }
-        changed
-    }
-
-    pub(crate) fn write_overlay_byte_deferred_recalc(
-        &mut self,
-        rx: u16,
-        ry: u16,
-        overlay_byte: u8,
-    ) -> bool {
-        let changed = match self.cell_mut(rx, ry) {
-            Some(cell) => {
-                let changed = cell.overlay_byte != overlay_byte;
-                cell.overlay_byte = overlay_byte;
-                changed
-            }
-            None => return false,
-        };
-        self.overlay_projection_ops
-            .push(BridgeOverlayProjectionOp::Write {
-                rx,
-                ry,
-                overlay_byte,
-            });
-        changed
-    }
-
-    pub(crate) fn queue_overlay_recalc(&mut self, rx: u16, ry: u16) {
-        if self.cell(rx, ry).is_some() {
-            self.overlay_projection_ops
-                .push(BridgeOverlayProjectionOp::Recalc { rx, ry });
-        }
-    }
-
-    pub(crate) fn take_overlay_projection_ops(&mut self) -> Vec<BridgeOverlayProjectionOp> {
-        std::mem::take(&mut self.overlay_projection_ops)
-    }
-
     /// Map width in cells. Needed by walker code in the `walker` submodule
     /// (Rust privacy: child modules can't read parent's private fields
     /// without a getter or `pub(super)`).
@@ -870,24 +699,6 @@ impl BridgeRuntimeState {
     /// gate of the bridge-damage dispatcher; if false, bridges are immune.
     pub fn is_destroyable(&self) -> bool {
         self.bridge_destroyable_flag
-    }
-
-    /// Unmigrated bridgehead continuation. The shared damage dispatcher owns
-    /// 587180's overlay-first selection, and the live publication host owns
-    /// the structural body switch, before this continuation is called.
-    pub(crate) fn advance_damage_state(
-        &mut self,
-        rx: u16,
-        ry: u16,
-        is_high: bool,
-        terrain: &mut crate::map::resolved_terrain::ResolvedTerrainGrid,
-    ) -> StateOutcome {
-        match self.cell(rx, ry).map(|c| c.role) {
-            Some(BridgeCellRole::Bridgehead) => {
-                self.bridgehead_advance_state(rx, ry, is_high, terrain)
-            }
-            _ => StateOutcome::NoChange,
-        }
     }
 
     /// Test-only: insert a `BridgeRuntimeCell` at `(rx, ry)`, growing the
@@ -967,229 +778,6 @@ impl BridgeRuntimeState {
     pub fn is_bridge_walkable(&self, rx: u16, ry: u16) -> bool {
         self.cell(rx, ry)
             .is_some_and(|cell| cell.deck_present && Self::effective_render_state(cell).is_some())
-    }
-
-    /// Bridgehead-cell state-machine driver.
-    ///
-    /// Sparse-by-design: most bridgehead cells absorb damage via the per-axis
-    /// start-cell gate inside `bridgehead_walk_to_anchor` (NS rejects odd
-    /// sub-tiles; EW rejects sub-tiles > 4). Only the small subset that passes
-    /// the gate reaches the anchor-write path.
-    ///
-    /// On a successful walk:
-    /// - Writes `bridgehead_anchor_class = AboutToFall` on the anchor cell.
-    ///   This is the **most-damaged variant** (4th slot in the enum, matching
-    ///   the reference engine's anchor-tile write target). A later hit that
-    ///   resolves this slot enters the collapse path below.
-    /// - Fires `update_ramp_perpendicular(DamageA)` and `DamageB` on the
-    ///   anchor's perpendicular neighbors. These do both the existing
-    ///   state-byte bump (on Anchor targets) AND the asymmetric A/B
-    ///   tile-class progression (on Anchor and Bridgehead targets) —
-    ///   `Variant0 → Variant1 → Damaged` via DamageB; DamageA preserves.
-    /// - The hit bridgehead cell's own `damage_state` is NEVER modified.
-    ///
-    /// Returns:
-    /// - `StateOutcome::Absorbed` on a successful walk + anchor write.
-    /// - `StateOutcome::NoChange` on role mismatch, missing axis, gated
-    ///   start cell, or walk-off-map.
-    /// - `StateOutcome::Collapsed` when the resolved bridgehead/anchor class
-    ///   is already `AboutToFall` (binary slot `+3`).
-    ///
-    /// `is_high_bridge` selects the slot `+3` binary return value
-    /// (high true; low false after collapse side effects).
-    ///
-    /// Both walks read `CellClass+0x11A`, the iso sub-tile (`0x00576C5F`,
-    /// `0x0057722E`, `0x0057727C`), through the live cell lookup.
-    pub fn bridgehead_advance_state(
-        &mut self,
-        rx: u16,
-        ry: u16,
-        is_high_bridge: bool,
-        terrain: &mut crate::map::resolved_terrain::ResolvedTerrainGrid,
-    ) -> StateOutcome {
-        let live_flags = &mut terrain.bridge_flag_execution_state();
-        // 1. Resolve input cell.
-        let Some(input_cell) = self.cell(rx, ry).copied() else {
-            return StateOutcome::NoChange;
-        };
-
-        // 2. Filter: must be a Bridgehead. Body / Anchor / Tail route to the
-        //    body driver.
-        if !matches!(input_cell.role, BridgeCellRole::Bridgehead) {
-            return StateOutcome::NoChange;
-        }
-        let Some(axis) = input_cell.axis else {
-            return StateOutcome::NoChange;
-        };
-
-        // 3. Walk to anchor via the sub-tile predicate. The helper
-        //    computes walk direction internally per the start cell's sub-tile
-        //    and applies the per-axis start-cell gate. Failures (odd NS,
-        //    above 4 EW, off-map) yield None — the damage is absorbed without
-        //    state change.
-        let map_w = self.width;
-        let map_h = self.height;
-        let sub_tile = |pos: (u16, u16)| {
-            terrain.native_cell_sub_tile(terrain.native_cell_identity((pos.0 as i16, pos.1 as i16)))
-        };
-        let Some(anchor_pos) = crate::sim::bridge_specs::bridgehead_walk_to_anchor(
-            (rx, ry),
-            axis,
-            |pos| Some(sub_tile(pos)),
-            map_w,
-            map_h,
-        ) else {
-            return StateOutcome::NoChange;
-        };
-
-        let Some(anchor_snapshot) = self.cell(anchor_pos.0, anchor_pos.1).copied() else {
-            return StateOutcome::NoChange;
-        };
-        let input_is_final = matches!(
-            input_cell.bridgehead_anchor_class,
-            BridgeheadAnchorClass::AboutToFall
-        );
-        let anchor_is_final = matches!(
-            anchor_snapshot.bridgehead_anchor_class,
-            BridgeheadAnchorClass::AboutToFall
-        );
-
-        if input_is_final || anchor_is_final {
-            use crate::sim::bridge_specs::{CellAction, SetBridgeDirectionResult};
-
-            if let Some(anchor_cell) = self.cell_mut(anchor_pos.0, anchor_pos.1) {
-                anchor_cell.bridgehead_anchor_class = BridgeheadAnchorClass::AboutToFall;
-            }
-
-            let center = crate::sim::bridge_specs::bridgehead_row_center(
-                anchor_pos,
-                axis,
-                sub_tile(anchor_pos),
-            );
-            let zone_query = (center.0 as i16, center.1 as i16);
-            let mut destroyed = Vec::new();
-            let mut actions = Vec::new();
-            for (slot, pos) in crate::sim::bridge_specs::bridgehead_blow_up_row(
-                anchor_pos,
-                axis,
-                sub_tile(anchor_pos),
-                map_w,
-                map_h,
-            )
-            .into_iter()
-            .enumerate()
-            .filter_map(|(slot, pos)| pos.map(|pos| (slot, pos)))
-            {
-                if !destroyed.contains(&pos) {
-                    destroyed.push(pos);
-                }
-                actions.push((pos, slot, CellAction::BlowUpBridge));
-                if self.cell(pos.0, pos.1).is_some() {
-                    let _ = self.write_overlay_byte(pos.0, pos.1, OVERLAY_BYTE_NONE);
-                    let c = self
-                        .cell_mut(pos.0, pos.1)
-                        .expect("bridge cell existed before overlay write");
-                    c.damage_state = DamageState::Destroyed;
-                    if matches!(c.role, BridgeCellRole::Anchor | BridgeCellRole::Bridgehead) {
-                        c.bridgehead_anchor_class = BridgeheadAnchorClass::AboutToFall;
-                    }
-                }
-            }
-
-            let ramp_a = crate::sim::bridge_specs::update_ramp_perpendicular_with_flags(
-                self,
-                anchor_pos,
-                axis,
-                Phase::CollapseA,
-                is_high_bridge,
-                terrain,
-                live_flags,
-            );
-            let ramp_b = crate::sim::bridge_specs::update_ramp_perpendicular_with_flags(
-                self,
-                anchor_pos,
-                axis,
-                Phase::CollapseB,
-                is_high_bridge,
-                terrain,
-                live_flags,
-            );
-            let mut damaged_variant_cells = ramp_a.damaged_variant_cells;
-            let mut setter_transcript = ramp_a.setter_transcript;
-            extend_unique_cells(&mut damaged_variant_cells, ramp_b.damaged_variant_cells);
-            setter_transcript.extend(ramp_b.setter_transcript);
-            for &perp_dir in &[Direction::E, Direction::W, Direction::N, Direction::S] {
-                let (dx, dy) = perp_dir.offset();
-                let nx = anchor_pos.0 as i32 + dx;
-                let ny = anchor_pos.1 as i32 + dy;
-                if nx < 0 || ny < 0 {
-                    continue;
-                }
-                let pos = (nx as u16, ny as u16);
-                if self
-                    .cell(pos.0, pos.1)
-                    .is_some_and(|c| matches!(c.damage_state, DamageState::Destroyed))
-                    && !destroyed.contains(&pos)
-                {
-                    destroyed.push(pos);
-                }
-            }
-
-            let adj = compute_adjacent_bridges_dirty(anchor_pos.0, anchor_pos.1, axis);
-            return StateOutcome::Collapsed {
-                binary_success: is_high_bridge,
-                // Cloned before the move below; the BlowUpBridge triple + any
-                // perpendicular finals are the minimap-dirty set (BR-16).
-                radar_cells: destroyed.clone(),
-                destroyed_cells: destroyed,
-                set_bridge_direction: SetBridgeDirectionResult {
-                    actions,
-                    flag_stamp: None,
-                },
-                setter_transcript,
-                adjacent_bridges_dirty: adj,
-                zone_query,
-                damaged_variant_cells,
-            };
-        }
-
-        // 4. Write the anchor's bridgehead_anchor_class to AboutToFall
-        //    (the most-damaged variant, 4th enum slot). Matches the
-        //    reference engine's first-hit write to the anchor's tile-class
-        //    field. A later hit that resolves AboutToFall enters the
-        //    collapse path above. The hit bridgehead cell's own
-        //    damage_state is never touched.
-        if let Some(anchor_cell) = self.cell_mut(anchor_pos.0, anchor_pos.1) {
-            anchor_cell.bridgehead_anchor_class = BridgeheadAnchorClass::AboutToFall;
-        }
-
-        // 5. Fire the perpendicular DamageA + DamageB writes. These do the
-        //    state-byte bump on Anchor targets and the asymmetric A/B
-        //    tile-class progression on both Anchor and Bridgehead targets.
-        let ramp_a = crate::sim::bridge_specs::update_ramp_perpendicular_with_flags(
-            self,
-            anchor_pos,
-            axis,
-            Phase::DamageA,
-            is_high_bridge,
-            terrain,
-            live_flags,
-        );
-        let ramp_b = crate::sim::bridge_specs::update_ramp_perpendicular_with_flags(
-            self,
-            anchor_pos,
-            axis,
-            Phase::DamageB,
-            is_high_bridge,
-            terrain,
-            live_flags,
-        );
-        let mut damaged_variant_cells = ramp_a.damaged_variant_cells;
-        extend_unique_cells(&mut damaged_variant_cells, ramp_b.damaged_variant_cells);
-
-        StateOutcome::Absorbed {
-            damaged_variant_cells,
-        }
     }
 
     /// Bridge endpoint records for zone connectivity.
@@ -1392,27 +980,6 @@ fn walk_anchor_pattern(
         axis,
         direction,
     }
-}
-
-/// The two cells the High machine's ramp branch hands to
-/// `UpdateAdjacentBridges_High`, around the ramp's canonical sub-tile cell:
-/// N then S on an EW ramp (`0x00576FFB..0x00577065`), W then E on an NS ramp
-/// (`0x0057752F..0x0057757B`).
-fn compute_adjacent_bridges_dirty(rx: u16, ry: u16, axis: Axis) -> Vec<(u16, u16)> {
-    let mut out = Vec::with_capacity(2);
-    let perpendiculars: [Direction; 2] = match axis {
-        Axis::NS => [Direction::W, Direction::E],
-        Axis::EW => [Direction::N, Direction::S],
-    };
-    for d in perpendiculars {
-        let (dx, dy) = d.offset();
-        let nx = rx as i32 + dx;
-        let ny = ry as i32 + dy;
-        if nx >= 0 && ny >= 0 {
-            out.push((nx as u16, ny as u16));
-        }
-    }
-    out
 }
 
 #[cfg(test)]

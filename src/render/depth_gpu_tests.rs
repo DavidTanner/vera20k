@@ -913,7 +913,7 @@ fn stock_cliff_decoder_and_terrain_instances_occlude_shp_and_indexed_voxels() {
         origin_x: 0.0,
         origin_y: -100.0,
         local_bounds: None,
-        anchor_variant_table: None,
+        bridge_middle_tiles: None,
     };
     let lookup = |id, sub, variant| {
         assert_eq!((id, sub, variant), (tile_id, 2, 0));
@@ -927,7 +927,6 @@ fn stock_cliff_decoder_and_terrain_instances_occlude_shp_and_indexed_voxels() {
         60.0,
         60.0,
         Some(&lookup),
-        None,
         None,
     )
     .normal;

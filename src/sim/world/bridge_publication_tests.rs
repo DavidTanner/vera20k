@@ -263,7 +263,6 @@ fn host<'a>(sim: &'a mut Simulation, rules: &'a RuleSet) -> LivePublication<'a> 
         rules,
         registry: None,
         collapsed: false,
-        family: Family::High,
     }
 }
 
@@ -426,14 +425,32 @@ impl BridgePublicationHost for ReenteringHost<'_> {
     fn radar(&mut self, c: Cell) {
         self.live.radar(c);
     }
-    fn perpendicular(&mut self, p: CellCoord, a: Axis, f: Phase, d: u8) {
-        self.live.perpendicular(p, a, f, d);
+    fn perpendicular(&mut self, p: CellCoord, a: Axis, f: Phase, d: u8, family: Family) {
+        self.live.perpendicular(p, a, f, d, family);
     }
-    fn rim(&mut self, p: CellCoord) {
-        self.live.rim(p);
+    fn rim(&mut self, p: CellCoord, family: Family) {
+        self.live.rim(p, family);
     }
-    fn zones(&mut self, c: Cell) {
-        self.live.zones(c);
+    fn zones(&mut self, q: CellCoord) {
+        self.live.zones(q);
+    }
+    fn tile(&self, c: Cell) -> i32 {
+        BridgePublicationHost::tile(&self.live, c)
+    }
+    fn subtile(&self, c: Cell) -> u8 {
+        BridgePublicationHost::subtile(&self.live, c)
+    }
+    fn level(&self, c: Cell) -> i8 {
+        BridgePublicationHost::level(&self.live, c)
+    }
+    fn flood(&mut self, p: CellCoord, tile: i32, level: i32) {
+        self.live.flood(p, tile, level);
+    }
+    fn recalc_zones(&mut self, cells: &[CellCoord]) {
+        self.live.recalc_zones(cells);
+    }
+    fn middles(&self, family: Family) -> Option<(i32, [i32; 2])> {
+        self.live.middles(family)
     }
     fn fallout(&mut self, c: Cell) {
         self.live.fallout(c);
@@ -522,28 +539,8 @@ fn bridge_publication_perpendicular_uses_raw_tile_instead_of_runtime_class() {
         .unwrap()
         .final_tile_index;
     let mut host = host(&mut sim, &rules);
-    host.perpendicular((4, 4), Axis::EW, Phase::DamageB, 0);
-    assert_eq!(
-        host.sim
-            .bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(4, 3)
-            .unwrap()
-            .bridgehead_anchor_class,
-        crate::sim::bridge_state::BridgeheadAnchorClass::Variant0
-    );
-    host.perpendicular((4, 4), Axis::EW, Phase::DamageB, 0);
-    assert_eq!(
-        host.sim
-            .bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(4, 3)
-            .unwrap()
-            .bridgehead_anchor_class,
-        crate::sim::bridge_state::BridgeheadAnchorClass::Variant0
-    );
+    host.perpendicular((4, 4), Axis::EW, Phase::DamageB, 0, Family::High);
+    host.perpendicular((4, 4), Axis::EW, Phase::DamageB, 0, Family::High);
     assert_eq!(
         host.terrain().cell(4, 3).unwrap().final_tile_index,
         original_tile

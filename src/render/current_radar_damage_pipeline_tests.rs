@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::map::bridge_facts::{Axis, BRIDGE_FLAG_ANCHOR_SELF, BridgeheadAnchorClass};
+use crate::map::bridge_facts::{Axis, BRIDGE_FLAG_ANCHOR_SELF};
 use crate::map::entities::EntityCategory;
 use crate::map::playfield::PlayfieldBounds;
 use crate::map::resolved_terrain::{RadarColorMetadata, ResolvedTerrainCell};
@@ -64,7 +64,6 @@ fn bridge_cell(role: BridgeCellRole, span: Option<u16>, overlay_byte: u8) -> Bri
         role,
         anchor_span_id: span,
         overlay_byte,
-        bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
     }
 }
 
