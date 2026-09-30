@@ -84,8 +84,53 @@ The manifest identifies source and executable bytes; it is **not** a hermetic
 reproducibility claim. Ignored/local retail inputs, external dependencies, Cargo
 user configuration and arbitrary build-script environment inputs are not sealed.
 Capture and native-oracle tools retain responsibility for their own input evidence.
-Debug-symbol sidecars are not copied. Keep the source checkout and its cache when
-debugging a preserved binary; the executable alone suffices for ordinary A/B runs.
+Debug-symbol sidecars are not copied. Retention preserves required debug objects
+and sidecars; keep the source checkout when debugging a preserved binary.
+
+Cargo runs automatically check retention before and after compiling (also after
+failed builds), under the same build lock. Defaults are **32 GiB total compiler
+cache**, **4 GiB incremental cache**, and **16 GiB minimum free space** per cache
+volume. Set `VERA20K_CACHE_GIB`, `VERA20K_INCREMENTAL_GIB`, and
+`VERA20K_MIN_FREE_GIB`, or pass `--cache-gib`, `--incremental-gib`, and
+`--min-free-gib` before `--`. Sizes accept finite nonnegative decimal GiB.
+Limits are soft when protected files prevent reclaiming enough space.
+
+Preview or trim without starting Cargo:
+
+```sh
+python -m tools.cargo_run --trim-cache --dry-run
+python -m tools.cargo_run --trim-cache
+```
+
+The owner records every new target (including failed, unlabelled, check and custom
+target invocations) in `owned-builds/cache-roots.json`. Historical labelled roots
+are adopted only when their live checkout/common Git directory and namespace
+prove ownership. Unregistered, abandoned or unverifiable caches stay untouched.
+Only orphaned `deps/*.rcgu.o` and complete cold incremental sessions are eligible;
+paths must belong to exact Cargo profile directories. Cross-target profiles require
+an executable path reported by Cargo or retained in a preserved build manifest.
+The newest session for each crate remains cached. Links, shared hardlinks and
+sessions containing unknown files stay protected. Source, assets, native evidence,
+executables, libraries, labels and debug sidecars are never deletion candidates.
+Every preserved label, including library-test binaries, is treated as active.
+
+Before any deletion, the owner checks all preserved artifact hashes, live cache
+binaries and debugging dependencies. Missing/malformed inputs, tool warnings,
+unsupported formats and changed dependencies stop deletion and leave a receipt.
+Automatic cleanup failure reports the reason and permits the Cargo invocation;
+explicit trimming returns nonzero. Mach-O inspection streams `dsymutil` debug maps
+and retains referenced objects/archives. ELF embedded DWARF uses GNU `readelf`;
+external/split debug information, thin archives and PE/PDB dependency closure are
+currently unsupported and stop trimming. This keeps builds portable while avoiding
+unproven deletion on those formats. See [retention validation](cargo_cache_validation.md)
+for evidence and the known older-label dependency failure on this machine.
+
+Each attempt writes `owned-builds/retention/<timestamp>-<id>.json`: selected and
+removed files, allocated/logical bytes removed, observed free-space change, errors
+and unmet targets. Dry runs never remove files; their projected space is an estimate.
+APFS clones/snapshots and unrelated volume activity can make observed reclamation
+differ from file allocation; applying a plan rechecks real free space and tries
+additional eligible cold entries when necessary. Plans are never reused for deletion.
 
 `--resolve <BIN> --profile release|debug --from-label <LABEL>` selects a
 preserved executable from that label. It verifies the recorded artifact path,
