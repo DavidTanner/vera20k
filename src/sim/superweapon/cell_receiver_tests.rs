@@ -930,8 +930,8 @@ fn command_uses_packed_aliases_and_stamps_missing_cells(name: &str, object_type:
 #[test]
 fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in() {
     use crate::sim::bridge_state::{
-        AnchorSpan, Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState,
-        BridgeheadAnchorClass, DamageState, Direction,
+        AnchorSpan, Axis, BridgeCellRole, BridgeRuntimeCell, BridgeRuntimeState, DamageState,
+        Direction,
     };
     use crate::sim::movement::locomotor::MovementLayer;
     let (mut sim, rules) = fixture_with_extra("[DeathWH]\nWall=yes\n[DeathBoom]\nDamage=2000\n");
@@ -985,7 +985,6 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
             role: BridgeCellRole::Anchor,
             anchor_span_id: Some(1),
             overlay_byte: 24,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
         },
     );
     state.test_seed_anchor_span(AnchorSpan {

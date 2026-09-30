@@ -196,15 +196,14 @@ pub(crate) fn build_tile_atlas(
         sub_tile: 0,
         variant: 0,
     });
-    // Inject the 8 bridge anchor variant tile_ids × all sub_tiles so the
-    // atlas has them loaded before any damage hits at runtime. Without
-    // this, the first weapon hit on a bridge ramp would be an atlas miss
-    // on the variant cell, producing a blank sprite on the same tick.
-    if let Some(table) = grid.anchor_variant_table {
+    // Inject every bridge middle variant × all sub_tiles so the atlas holds
+    // them before a live bridge publication rewrites a cell's tile; the
+    // tactical draw keeps the load-time tile for anything not resident.
+    if let Some(table) = &grid.bridge_middle_tiles {
         let before = needed.len();
-        theater::inject_bridge_anchor_variant_tiles(&mut needed, &table, lookup, asset_manager);
+        theater::inject_bridge_middle_tiles(&mut needed, table, lookup, asset_manager);
         log::info!(
-            "Atlas pre-load: injected {} bridge anchor variant TileKeys",
+            "Atlas pre-load: injected {} bridge middle TileKeys",
             needed.len() - before,
         );
     }

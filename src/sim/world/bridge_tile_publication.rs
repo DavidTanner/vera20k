@@ -98,8 +98,9 @@ impl LivePublication<'_> {
         axis: Axis,
         phase: Phase,
         direction: u8,
+        family: Family,
     ) -> Result<(), String> {
-        let Some(keys) = super::super::family_rim_tiles(self.terrain(), self.family) else {
+        let Some(keys) = super::super::family_rim_tiles(self.terrain(), family) else {
             return Ok(());
         };
         let relative = self.tile(retained).wrapping_sub(keys.base).wrapping_add(1);
@@ -133,7 +134,7 @@ impl LivePublication<'_> {
             return Ok(());
         }
 
-        self.perpendicular(requested, axis, phase, direction);
+        self.perpendicular(requested, axis, phase, direction, family);
         // Native rereads the retained receiver's +11A after recursion. Fallout
         // uses the stack coordinate, with the half-footprint adjustment below.
         let sub = self.subtile(retained);

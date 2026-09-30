@@ -45,7 +45,6 @@ pub fn build_visible_instances(
     screen_width: f32,
     screen_height: f32,
     uv_fn: UvLookupFn<'_>,
-    bridge_state: Option<&crate::sim::bridge_state::BridgeRuntimeState>,
     live_terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> TerrainInstances {
     let view_left: f32 = camera_x - CULL_MARGIN;
@@ -76,6 +75,38 @@ pub fn build_visible_instances(
         // feather could not darken — hard south-facing shroud edges wherever
         // the feather extended past the last drawn tile.
 
+        // Native480350 draws the cell's current tile at its current level.
+        // Bridge publication (56EB80 floods and the ramp helpers under
+        // 576BA0/571490) and cliff collapse rewrite tiles and levels after
+        // load, so the live terrain wins over the load-time grid. The file
+        // choice checks current pavement flags (resident file count before
+        // the pristine damaged-data gate), else the live Recalc variant. A
+        // live tile missing from the atlas keeps the grid tile and level.
+        // Culling still uses the grid position; CULL_MARGIN covers 8 levels.
+        let place = |tile_id: u16, sub_tile: u8, variant: u8| match &uv_fn {
+            Some(f) => f(tile_id, sub_tile, variant),
+            None => Some(TilePlacement {
+                uv_origin: [0.0, 0.0],
+                uv_size: [1.0, 1.0],
+                pixel_size: [TILE_WIDTH, TILE_HEIGHT],
+                draw_offset: [0.0, 0.0],
+            }),
+        };
+        let live = live_terrain.and_then(|terrain| {
+            let live = terrain.cell(cell.rx, cell.ry)?;
+            let (tile_id, sub_tile) = terrain.presentation_tile(live);
+            let variant = terrain
+                .pavement_draw_variant(cell.rx, cell.ry)
+                .unwrap_or(live.variant);
+            Some((place(tile_id, sub_tile, variant)?, live.level))
+        });
+        let Some((p, level)) =
+            live.or_else(|| Some((place(cell.tile_id, cell.sub_tile, cell.variant)?, cell.z)))
+        else {
+            continue;
+        };
+        let level = i32::from(level as i8);
+
         // Sort depth: the elevation-free iso row of the diamond top. The
         // zdepth pipeline ignores it and derives each pixel's depth from the
         // native tile Z (`TMP_TileBlitter @ 0x00547CF0`):
@@ -84,91 +115,43 @@ pub fn build_visible_instances(
         // `z_adjust` is that base relative to the instance's canvas top
         // (extra-data tiles start above the diamond by `draw_offset.y`), and
         // `fx_params.w = +1` tells the shader the Z-data byte is added.
-        let signed_z = f32::from(cell.z as i8);
-        let iso_row: f32 = cell.screen_y + signed_z * HEIGHT_STEP;
+        let iso_row: f32 = cell.screen_y + f32::from(cell.z as i8) * HEIGHT_STEP;
+        let screen_y = iso_row - level as f32 * HEIGHT_STEP;
         let depth: f32 = native_z::depth_for_row(iso_row, grid.origin_y, grid.world_height);
-        let tile_z_adjust = |draw_offset_y: f32| -> f32 {
-            draw_offset_y
-                - (native_z::TILE_HEIGHT_ROWS as f32)
-                - ((native_z::TILE_HEIGHT_ROWS * i32::from(cell.z as i8)) / 2) as f32
+        let z_adjust = p.draw_offset[1]
+            - (native_z::TILE_HEIGHT_ROWS as f32)
+            - ((native_z::TILE_HEIGHT_ROWS * level) / 2) as f32;
+
+        let tint = lighting_grid
+            .map(|lights| lights.terrain_tile_tint_at((cell.rx, cell.ry)))
+            .unwrap_or(cell.tint);
+        let mut draw_state = DrawState::default();
+        draw_state.fx_params[3] = 1.0;
+        let inst = SpriteInstance {
+            position: [
+                cell.screen_x + p.draw_offset[0],
+                screen_y + p.draw_offset[1],
+            ],
+            size: p.pixel_size,
+            uv_origin: p.uv_origin,
+            uv_size: p.uv_size,
+            depth,
+            tint,
+            palette_light: lighting_grid
+                .map(|lights| {
+                    crate::render::palette_light::PaletteLight::cell(
+                        lights,
+                        (cell.rx, cell.ry),
+                        false,
+                    )
+                })
+                .unwrap_or_default(),
+            alpha: 1.0,
+            draw_state,
+            z_adjust,
+            ..Default::default()
         };
-
-        // Native480350 uses current terrain flags for every pavement cell,
-        // even when the cell has no structural bridge-runtime entry. The
-        // resident file-count check precedes the pristine damaged-data gate.
-        let damaged_variant_swap = live_terrain
-            .and_then(|terrain| terrain.pavement_draw_variant(cell.rx, cell.ry))
-            .unwrap_or(cell.variant);
-
-        // Bridge anchor tile_id override. Fires when sim reports a
-        // non-Variant0 bridgehead_anchor_class AND the theater carries
-        // the variant table. Swaps the cell's tile_id for the variant's
-        // tile_id; sub_tile is preserved (the reference engine only
-        // rewrites the tile-class field). When the override fires, the
-        // FA2 sibling-TMP slot is reset to 0 — the variant tile_ids ARE
-        // the damage progression, no further a/b/c/d swap.
-        let anchor_override = grid.anchor_variant_table.and_then(|table| {
-            let bc = bridge_state?.cell(cell.rx, cell.ry)?;
-            let axis = bc.axis?;
-            if live_terrain.is_some_and(|terrain| {
-                !terrain.is_current_bridge_middle(
-                    cell.rx,
-                    cell.ry,
-                    usize::from(axis == crate::sim::bridge_state::Axis::EW),
-                )
-            }) {
-                return None;
-            }
-            table.tile_id_for(axis, bc.bridgehead_anchor_class)
-        });
-
-        let (effective_tile_id, effective_variant) = match anchor_override {
-            Some(tid) => (tid, 0u8),
-            None => (cell.tile_id, damaged_variant_swap),
-        };
-
-        let placement: Option<TilePlacement> = match &uv_fn {
-            Some(f) => f(effective_tile_id, cell.sub_tile, effective_variant),
-            None => Some(TilePlacement {
-                uv_origin: [0.0, 0.0],
-                uv_size: [1.0, 1.0],
-                pixel_size: [TILE_WIDTH, TILE_HEIGHT],
-                draw_offset: [0.0, 0.0],
-            }),
-        };
-
-        if let Some(p) = placement {
-            let tint = lighting_grid
-                .map(|lights| lights.terrain_tile_tint_at((cell.rx, cell.ry)))
-                .unwrap_or(cell.tint);
-            let mut draw_state = DrawState::default();
-            draw_state.fx_params[3] = 1.0;
-            let inst = SpriteInstance {
-                position: [
-                    cell.screen_x + p.draw_offset[0],
-                    cell.screen_y + p.draw_offset[1],
-                ],
-                size: p.pixel_size,
-                uv_origin: p.uv_origin,
-                uv_size: p.uv_size,
-                depth,
-                tint,
-                palette_light: lighting_grid
-                    .map(|lights| {
-                        crate::render::palette_light::PaletteLight::cell(
-                            lights,
-                            (cell.rx, cell.ry),
-                            false,
-                        )
-                    })
-                    .unwrap_or_default(),
-                alpha: 1.0,
-                draw_state,
-                z_adjust: tile_z_adjust(p.draw_offset[1]),
-                ..Default::default()
-            };
-            instances.normal.push(inst);
-        }
+        instances.normal.push(inst);
     }
 
     instances

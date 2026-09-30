@@ -1058,7 +1058,6 @@ where
         }
     }
     sim.authored_tiberium_value_total = Some(tiberium_value_total);
-    terrain.rebuild_bridgehead_anchor_classes_from_final_tiles(theater_data);
     let bridge_destroyable = map_data
         .special_flags
         .effective_destroyable_bridges(bridge_destroyability_mode);

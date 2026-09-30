@@ -112,48 +112,28 @@ impl CellReader for LiveCells<'_> {
     }
 }
 
-/// A structural driver's outcome and the state machine that produced it.
-pub(super) struct DriverOutcome {
-    pub(super) outcome: StateOutcome,
-    /// Selects the ramp-pair rim: the High machine (`0x00576BA0`) calls
-    /// `0x00576770`, the Low one (`0x00571490`) its wooden twin `0x00571050`.
-    pub(super) high: bool,
-}
-
 /// The bridge drivers that ApplyDamageToCell and the direct overlay blocks
-/// call, with the structural outcomes the collapse cascade consumes.
+/// call. Every driver publishes synchronously through the live host.
 pub(super) struct BridgeDamageDrivers<'a> {
     pub(super) sim: &'a mut Simulation,
-    publication: Option<(
-        &'a RuleSet,
-        Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
-    )>,
-    pub(super) outcomes: Vec<DriverOutcome>,
-    /// An ordinary or body publication collapsed a span synchronously.
+    pub(super) rules: &'a RuleSet,
+    registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    /// A driver collapsed a span.
     pub(super) collapsed: bool,
 }
 
 impl<'a> BridgeDamageDrivers<'a> {
     pub(super) fn new(
         sim: &'a mut Simulation,
-        publication: Option<(
-            &'a RuleSet,
-            Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
-        )>,
+        rules: &'a RuleSet,
+        registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Self {
         Self {
             sim,
-            publication,
-            outcomes: Vec::new(),
+            rules,
+            registry,
             collapsed: false,
         }
-    }
-
-    /// The rules of a publishing caller (every production caller is one).
-    pub(super) fn rules(&self) -> &'a RuleSet {
-        self.publication
-            .expect("bridge drivers need the live rules/publication context")
-            .0
     }
 
     /// ApplyDamageToCell `0x00587180`: the driver is chosen again from live
@@ -173,63 +153,24 @@ impl<'a> BridgeDamageDrivers<'a> {
     }
 
     /// One driver at `input`: DamageOrdinaryWoodBridge (`0x0057BAA0`) or
-    /// DestroyBridge_High (`0x0057CCF0`) for a direct path, the structural
-    /// state machines otherwise. Structural outcomes publish their flag
-    /// transcript at once, so the next call reads the flags they set.
+    /// DestroyBridge_High (`0x0057CCF0`) for a direct path, the family's
+    /// state machine (`0x00576BA0`, `0x00571490`) otherwise. Each publishes
+    /// synchronously, so the next call reads the flags it set.
     pub(super) fn run(&mut self, input: (i16, i16), path: DispatchPath) -> bool {
-        if matches!(path, DispatchPath::LowDirect | DispatchPath::HighDirect)
-            && let Some((rules, registry)) = self.publication
-        {
-            let family = if path == DispatchPath::LowDirect {
-                Family::Low
-            } else {
-                Family::High
-            };
-            let result =
-                live_publication::damage_ordinary(self.sim, rules, registry, input, family)
-                    .unwrap_or_else(|error| {
-                        panic!("ordinary {family:?} bridge publication at {input:?}: {error}")
-                    });
-            self.collapsed |= result.collapsed;
-            return result.returned;
-        }
-        let family = if path == DispatchPath::HighStateMachine {
-            Family::High
+        let family = match path {
+            DispatchPath::LowDirect | DispatchPath::LowStateMachine => Family::Low,
+            DispatchPath::HighDirect | DispatchPath::HighStateMachine => Family::High,
+        };
+        let result = if path.is_state_machine() {
+            live_publication::run_state_machine(self.sim, self.rules, self.registry, input, family)
         } else {
-            Family::Low
+            live_publication::damage_ordinary(self.sim, self.rules, self.registry, input, family)
+                .unwrap_or_else(|error| {
+                    panic!("ordinary {family:?} bridge publication at {input:?}: {error}")
+                })
         };
-        if let Some((rules, registry)) = self.publication
-            && let Some(result) =
-                live_publication::try_body(self.sim, rules, registry, input, family)
-        {
-            self.collapsed |= result.collapsed;
-            return result.returned;
-        }
-        let (rx, ry) = (input.0 as u16, input.1 as u16);
-        let outcome = {
-            let terrain = self
-                .sim
-                .resolved_terrain
-                .as_mut()
-                .expect("bridge damage terrain");
-            let state = self.sim.bridge_state.as_mut().expect("bridge damage state");
-            match path {
-                DispatchPath::HighStateMachine => state.advance_damage_state(rx, ry, true, terrain),
-                DispatchPath::LowStateMachine => state.advance_damage_state(rx, ry, false, terrain),
-                DispatchPath::LowDirect | DispatchPath::HighDirect => {
-                    panic!("ordinary bridge damage requires the live rules/publication context")
-                }
-            }
-        };
-        let success = outcome.apply_damage_success();
-        if outcome.has_effect() {
-            apply_runtime_bridge_flag_transcript_from_outcome(self.sim, &outcome);
-            self.outcomes.push(DriverOutcome {
-                outcome,
-                high: path == DispatchPath::HighStateMachine,
-            });
-        }
-        success
+        self.collapsed |= result.collapsed;
+        result.returned
     }
 }
 
@@ -288,10 +229,10 @@ impl DamageHost for LiveDamage<'_> {
             return;
         };
         let (rx, ry) = self.cells().terrain().native_cell_coord(cell);
-        let rules = self.drivers.publication.map(|(rules, _)| rules);
+        let rules = self.drivers.rules;
         self.drivers
             .sim
-            .stop_all_targeting_cell(rx as u16, ry as u16, rules);
+            .stop_all_targeting_cell(rx as u16, ry as u16, Some(rules));
     }
 
     fn dirty(&mut self, _path: DispatchPath) {
@@ -304,19 +245,17 @@ impl DamageHost for LiveDamage<'_> {
     }
 }
 
+/// Returns whether a driver collapsed a span.
 pub(super) fn run(
     sim: &mut Simulation,
     events: &[BridgeDamageEvent],
     strength: i32,
-    publication: Option<(
-        &RuleSet,
-        Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    )>,
-) -> (Vec<DriverOutcome>, bool) {
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> bool {
     if sim.resolved_terrain.is_none() || sim.bridge_state.is_none() {
-        return (Vec::new(), false);
+        return false;
     }
-    let mut outcomes = Vec::new();
     let mut collapsed = false;
     for event in events {
         let cell = sim
@@ -325,7 +264,7 @@ pub(super) fn run(
             .unwrap()
             .native_cell_identity((event.rx as i16, event.ry as i16));
         let mut host = LiveDamage {
-            drivers: BridgeDamageDrivers::new(sim, publication),
+            drivers: BridgeDamageDrivers::new(sim, rules, registry),
             event,
             strength,
         };
@@ -337,7 +276,6 @@ pub(super) fn run(
             event.is_ion_cannon,
         );
         collapsed |= host.drivers.collapsed;
-        outcomes.extend(host.drivers.outcomes);
     }
-    (outcomes, collapsed)
+    collapsed
 }

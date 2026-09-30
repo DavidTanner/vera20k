@@ -489,7 +489,6 @@ fn retail_wood_occupants_match_native_list_lifetime_detach_and_rng() {
                 rules: &runtime.resources.rules,
                 registry: Some(&runtime.resources.overlay_registry),
                 collapsed: false,
-                family: Family::High,
             };
             let mut host = Observed {
                 inner: LiveOrdinary {
