@@ -362,7 +362,7 @@ pub(crate) fn issue_move_command_with_destination(
     if entity.locomotor.as_ref().is_some_and(|loco| {
         matches!(
             loco.active_kind(),
-            LocomotorKind::Drive | LocomotorKind::Ship
+            LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Hover
         )
     }) {
         prepare_track_destination(
@@ -446,12 +446,14 @@ pub(crate) fn issue_move_command_with_destination(
                 reference,
                 coord,
                 resolved_terrain,
+                timing.binary_frame,
             );
         } else {
             super::navcom::set_destination_internal_cell(
                 entity,
                 effective_target,
                 resolved_terrain,
+                timing.binary_frame,
             );
         }
         entity.navigation.path_replay.clear_live_head();
@@ -736,12 +738,14 @@ pub(crate) fn issue_move_command_with_destination(
                 reference,
                 coord,
                 resolved_terrain,
+                timing.binary_frame,
             );
         } else if locomotor_kind == Some(LocomotorKind::Walk) {
             super::navcom::set_destination_internal_cell(
                 entity_mut,
                 effective_target,
                 resolved_terrain,
+                timing.binary_frame,
             );
         }
         if locomotor_kind == Some(LocomotorKind::Walk) {
@@ -787,9 +791,20 @@ pub(crate) fn prepare_track_destination(
     clear_destination_path_head(entity);
     entity.navigation.nav_queue.clear();
     if let Some((reference, coord)) = object_destination {
-        super::navcom::set_destination_internal_coord(entity, reference, coord, resolved_terrain);
+        super::navcom::set_destination_internal_coord(
+            entity,
+            reference,
+            coord,
+            resolved_terrain,
+            timing.binary_frame,
+        );
     } else {
-        super::navcom::set_destination_internal_cell(entity, target, resolved_terrain);
+        super::navcom::set_destination_internal_cell(
+            entity,
+            target,
+            resolved_terrain,
+            timing.binary_frame,
+        );
     }
     timing.accept(entity);
     prepare_destination_execution(entity, target, speed);
@@ -822,7 +837,13 @@ pub(crate) fn prepare_walk_destination(
         return false;
     }
     let (reference, coord) = destination;
-    super::navcom::set_destination_internal_coord(entity, reference, coord, resolved_terrain);
+    super::navcom::set_destination_internal_coord(
+        entity,
+        reference,
+        coord,
+        resolved_terrain,
+        timing.binary_frame,
+    );
     timing.accept(entity);
     prepare_destination_execution(
         entity,

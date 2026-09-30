@@ -620,7 +620,6 @@ pub(super) fn handle_deferred_occupancy(
     interner: &crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     deferred_marker: Option<crate::sim::movement::path_markers::DeferredBridgeMarker<'_>>,
-    houses: &BTreeMap<crate::sim::intern::InternedId, crate::sim::house_state::HouseState>,
 ) -> (Vec<(u32, DebugEventKind)>, bool) {
     let mut debug_events: Vec<(u32, DebugEventKind)> = Vec::new();
     let (nx, ny, layer_context) = match check {
@@ -744,11 +743,9 @@ pub(super) fn handle_deferred_occupancy(
             // Locomotor override (JumpJet) can clear a lower native code before
             // we reach this branch.
             if let Some(entity) = entities.get_mut(entity_id) {
+                // Walk75BE11/75BFD1 preserves +668.
                 if mover_loco_kind != LocomotorKind::Walk {
                     snap_motion_to_cell_center(&mut entity.position);
-                }
-                // Walk75BE11/75BFD1 and Hover514528/5147DF preserve +668.
-                if !matches!(mover_loco_kind, LocomotorKind::Walk | LocomotorKind::Hover) {
                     entity
                         .navigation
                         .path_runtime
@@ -808,11 +805,6 @@ pub(super) fn handle_deferred_occupancy(
         CellEntryResult::Crushable { victims } => {
             let crusher_cell = (i32::from(nx), i32::from(ny));
             let crusher_lepton = (i32::from(nx) * 256 + 128, i32::from(ny) * 256 + 128);
-            // The entering-cell scatter walks the whole selected cell list, not
-            // just the crushable subset, and it runs before any kill filter.
-            let cell_occupants = occupancy
-                .get(nx, ny)
-                .map_or_else(Vec::new, |occ| occ.snapshot_layer(object_list_layer));
             let victims = bump_crush::select_crush_victims(
                 &victims,
                 entities,
@@ -823,36 +815,11 @@ pub(super) fn handle_deferred_occupancy(
                 crush_capability,
                 mcfg.binary_frame,
             );
-            let kill_set: BTreeSet<u64> = victims.iter().copied().collect();
-            // A crusher's entering cell takes the unforced
-            // `Scatter_Objects(null, 1, 0, deck)` (`0x0074177A`): each occupant
-            // its dispatch gate admits is asked `Scatter(null, 1, 0)`.
-            //
-            // RESIDUAL: the queued calls run after this arm removes its crush
-            // victims below; native pre-scatters when entering the cell and
-            // crushes afterwards. Trigger: one pass that both crushes some
-            // occupants of the cell and scatters others. Effect: a survivor's
-            // FNPC sees the crushed occupants gone and may keep a cell native
-            // would leave. Frequency: tanks rolling through infantry groups
-            // where the crush spares an occupant.
-            if crush_capability.can_crush_units() {
-                for blocker_id in super::scatter::scatter_objects_admitted(
-                    &cell_occupants,
-                    Some(entity_id),
-                    false,
-                    rules,
-                    entities,
-                    houses,
-                    interner,
-                ) {
-                    if kill_set.contains(&blocker_id) {
-                        continue;
-                    }
-                    if scatters.request(blocker_id, super::ScatterFlags::new(true, false)) {
-                        stats.scatter_requests = stats.scatter_requests.saturating_add(1);
-                    }
-                }
-            }
+            // No pre-scatter: Unit `Crush_Cell` (vt+0x534, 0x007416A0) in
+            // scatter mode is called only from the Drive and Ship
+            // Process_Movement accept arms (0x004B3E65, 0x006A34B4), which
+            // `track_fresh` ports; its third caller is the crush-mode
+            // Per_Cell_Process (0x0073B089).
             // Remove crush victims from occupancy immediately (matches gamemd's
             // PerCellProcess which calls RemoveFromGame before continuing).
             for &vid in &victims {
@@ -883,11 +850,9 @@ pub(super) fn handle_deferred_occupancy(
                 crush_coord: crusher_cell,
             }));
             if let Some(entity) = entities.get_mut(entity_id) {
+                // Walk75BE11/75BFD1 preserves +668.
                 if mover_loco_kind != LocomotorKind::Walk {
                     snap_motion_to_cell_center(&mut entity.position);
-                }
-                // Walk75BE11/75BFD1 and Hover514528/5147DF preserve +668.
-                if !matches!(mover_loco_kind, LocomotorKind::Walk | LocomotorKind::Hover) {
                     entity
                         .navigation
                         .path_runtime
@@ -1007,14 +972,10 @@ pub(super) fn handle_deferred_occupancy(
             // two (0x00515C2C, 0x00515C9C), Drive one (0x004B3BE9), Ship one
             // (0x006A3238), plus SpyPlane 0x00417499, ReceiveDamage 0x00702B41
             // and two inside FUN_005B01C0 — 2+2+1+1+1+1+2 = 10.
-            // Hover's movement processor `FUN_00514F70` — reached from
-            // `HoverLocomotionClass__Move` 0x00514499/0x00514636 and
-            // `__SpeedUpdate` 0x00516309 — has its own `case 4: case 5:` pair:
-            // the object arm runs `CellClass__Find_Blocking_Object` 0x00515BB8
-            // -> `HouseClass__Is_Ally_ByObject` 0x00515BEF -> the Override at
-            // 0x00515C2C, and the wall arm sits at 0x00515C9C. Walk's run the
-            // same way: object at 0x0075BAEB, wall at 0x0075BB49 — both
-            // locomotors are object-first in address order. The claim that Drive
+            // Hover's pair runs in its own ProcessMovement
+            // (`hover_process`, through the shared blocker override). Walk's
+            // runs object-first: object at 0x0075BAEB, wall at 0x0075BB49. The
+            // claim that Drive
             // and ship "have no blocking-object arm at all, so a blocked tank
             // still repaths rather than overriding" was false and is corrected
             // here (2026-09-16, from the binary): `0x004B3A97` splits codes 4/5
@@ -1035,37 +996,8 @@ pub(super) fn handle_deferred_occupancy(
             // to a repath — that is the unported half of ledger row I9b, a
             // recorded gap rather than native behaviour.
             //
-            // Hover is live stock, not dead data. `Locomotor={4A582742-…}` has
-            // exactly four uncommented users in rulesmd.ini: [ROBO] the Robot
-            // Tank, and three transports — [LCRF] Landing Craft, [SAPC] Armored
-            // Transport, [YHVR] Hover Transport Yuri. (The Floating Disc is
-            // [DISK] and uses the Jumpjet locomotor, so it never reaches this
-            // arm.) Gating on Walk alone left all four repathing where retail
-            // stops them, fights the blocker, and Restores the order afterwards
-            // — losing the whole Suspend/Restore pair this row owns.
-            //
             // The Mech locomotor `FUN_005B01C0` has the arm too and is
             // deliberately excluded: no CLSID installs it, so it is dormant.
-            //
-            // The two arms are NOT step-for-step identical, and the tail below
-            // describes Walk only. DRIFT, recorded not fixed: both Hover
-            // Override sites return straight to the function epilogue —
-            // 0x00515C32 and the epilogue after 0x00515C9C — with no
-            // path clear, no speed zero and no `Stop_Moving`. Hover reaches an
-            // equivalent stop by another route: every live caller passes
-            // `param_2 = 1`, so `case 4/5` first zeroes the speed fraction, sets
-            // `+0x5E0 = 0xFFFFFFFF`, calls the repath helper `FUN_005164D0`
-            // (which runs `FootClass__Find_Path`), and only then recurses with
-            // `param_2 = 0` to reach the Override. So a hovering mover ends the
-            // tick with a freshly computed path where a walking one ends with
-            // none, and VERA gives Hover the walk tail — a VERA-internal stop
-            // for that locomotor. Trigger: a Robot Tank or one of the three
-            // hover transports blocked by an enemy. Player effect: it re-paths a
-            // tick later than retail once the fight resolves. Frequency: only
-            // those four types, so occasional rather than constant — Robot Tanks
-            // are the one combat user. Downstream risk: none — the once-per-block
-            // Override is identical on both, and both end with no committed
-            // destination.
             //
             // After the body, the original falls straight into its "not class 1,
             // not class 7" tail and RETURNS: it clears the stored path array,
@@ -1092,15 +1024,10 @@ pub(super) fn handle_deferred_occupancy(
             // where native answers 4 or 5. So this site is the body arm and only
             // the body arm. A future wall-overlay producer must NOT route into
             // this arm without a Restore path for cell targets.
-            if matches!(mover_loco_kind, LocomotorKind::Walk | LocomotorKind::Hover) {
+            if mover_loco_kind == LocomotorKind::Walk {
                 crate::sim::mission::authority::override_mission_on_blocked_step(
                     entities, alliances, interner, entity_id, blocker_id,
                 );
-                if let Some(entity) = entities.get_mut(entity_id) {
-                    if mover_loco_kind != LocomotorKind::Walk {
-                        snap_motion_to_cell_center(&mut entity.position);
-                    }
-                }
                 // The tail. `finalize_finished_entities` is VERA's single stop
                 // path: it drops the path executor (the stored path array), puts
                 // the locomotor back in its idle phase and returns the drive

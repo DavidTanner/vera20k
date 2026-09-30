@@ -170,6 +170,22 @@ pub(crate) fn file_offset_of(image: &[u8], va: u32) -> Result<usize, TrigTableEr
 }
 
 impl TrigTable {
+    /// The repository's checked copy of the retail table
+    /// (`util::native_trig`, verified by `walk_direction_table.py --check`),
+    /// for simulation readers that must not depend on an installed game.
+    /// Hover's altitude bob (0x00513E4F) reads `Math__SinFromTable` here.
+    pub(crate) fn embedded() -> &'static Self {
+        static TABLE: OnceLock<TrigTable> = OnceLock::new();
+        TABLE.get_or_init(|| Self {
+            entries: crate::util::native_trig::RETAIL_SINE_TABLE
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|&c| f32::from_le_bytes(c))
+                .collect(),
+        })
+    }
+
     /// Read the table out of a retail `gamemd.exe` image.
     pub fn from_executable(image: &[u8]) -> Result<Self, TrigTableError> {
         let start = file_offset_of(image, TABLE_VA)?;

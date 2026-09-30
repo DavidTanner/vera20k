@@ -52,7 +52,7 @@ use super::path_markers::{DeferredBridgeMarker, bridge_marker_peer};
 use super::tube_movement;
 use super::{
     MIN_BRAKE_FRACTION, MovementConfig, MovementTickStats, MoverSnapshot, PATH_STUCK_INIT,
-    PathfindingContext, PendingCrushKill, facing_from_delta, walking_to_subcell_dest,
+    PathfindingContext, PendingCrushKill, walking_to_subcell_dest,
 };
 use crate::sim::occupancy::{CellOccupationGrid, OccupancyGrid, RawCellOccupationGrid};
 
@@ -568,7 +568,12 @@ fn process_pending_drive_arrivals(
             continue;
         };
         super::navcom::foot_stop_moving(entity);
-        super::navcom::set_destination_internal_cell(entity, (rx, ry), ctx.resolved_terrain);
+        super::navcom::set_destination_internal_cell(
+            entity,
+            (rx, ry),
+            ctx.resolved_terrain,
+            timing.binary_frame,
+        );
         timing.accept(entity);
 
         let current = (entity.position.rx, entity.position.ry);
@@ -1059,7 +1064,6 @@ fn advance_ordinary_mover(
     effects: &mut MovementPassEffects,
     block_index: &mut OwnerBlockIndex,
     entry: VisitEntry,
-    houses: &BTreeMap<crate::sim::intern::InternedId, crate::sim::house_state::HouseState>,
 ) {
     let path_grid = ctx.path_grid;
     let resolved_terrain = ctx.resolved_terrain;
@@ -1297,26 +1301,9 @@ fn advance_ordinary_mover(
             // `Move` before this loop clears the target on arrival.
             active_layer = entity.movement_layer_or_ground();
             let active_retained_track = super::track_head::active_track_family(entity).is_some();
-            // Hover514372/5144A3 asks the live Foot getter each visit. Its
-            // retained throttle must not retain an order-time crate factor.
-            let live_hover_speed = entity
-                .locomotor
-                .as_ref()
-                .filter(|loco| loco.kind == LocomotorKind::Hover)
-                .and_then(|_| rules.and_then(|r| r.object(interner.resolve(entity.type_ref()))))
-                .map(|object| {
-                    super::foot_speed::adjusted_speed(
-                        entity,
-                        Some(object),
-                        rules.map_or(1.0, |r| r.general.veteran_speed),
-                    )
-                });
             let Some(ref mut target) = entity.movement_target else {
                 return;
             };
-            if let Some(speed) = live_hover_speed {
-                target.speed = speed;
-            }
 
             let committed_walk = entity.locomotor.as_ref().is_some_and(|l| {
                 l.kind == crate::rules::locomotor_type::LocomotorKind::Walk
@@ -1533,7 +1520,6 @@ fn advance_ordinary_mover(
                 interner,
                 rules,
                 admission_marker,
-                houses,
             );
             debug_events.extend(events);
             if !accepted {
@@ -1580,34 +1566,16 @@ fn advance_ordinary_mover(
             let marker_context =
                 deferred_marker.map(|marker| marker.reading(others, raw_cell_occupation));
 
-            // Steering / rotation. Hover steers continuously toward the current
-            // waypoint (facing-lagged curves, turn-stall braking) and never
-            // stop-rotates; everything else keeps the rotate-in-place-then-move
-            // behavior. ROT=0 means instant turn in both models.
-            let uses_hover_locomotor = snap.locomotor.as_ref().is_some_and(|loco| {
-                matches!(
-                    loco.kind,
-                    crate::rules::locomotor_type::LocomotorKind::Hover
-                )
-            });
-            let mut hover_stall = false;
+            // Steering / rotation: rotate in place, then move. ROT=0 means an
+            // instant turn.
             if snap.category != EntityCategory::Infantry {
-                if uses_hover_locomotor {
-                    hover_stall = movement_step::hover_steer(
-                        &mut entity.body_facing,
-                        &entity.position,
-                        target,
-                        native_frame,
-                    );
-                } else {
-                    match movement_step::handle_vehicle_rotation(
-                        &mut entity.body_facing,
-                        None,
-                        native_frame,
-                    ) {
-                        movement_step::RotationResult::StillRotating => return,
-                        movement_step::RotationResult::ReadyToMove => {}
-                    }
+                match movement_step::handle_vehicle_rotation(
+                    &mut entity.body_facing,
+                    None,
+                    native_frame,
+                ) {
+                    movement_step::RotationResult::StillRotating => return,
+                    movement_step::RotationResult::ReadyToMove => {}
                 }
             }
 
@@ -1631,71 +1599,6 @@ fn advance_ordinary_mover(
                 // A Unit's Drive/Ship leaves through `prepare_native_track`
                 // below; its track step queries GetCurrentSpeed live and
                 // writes nothing here.
-            } else if uses_hover_locomotor {
-                // Hover throttle (the hover locomotor's SpeedUpdate model, see
-                // sim/movement/hover.rs): a [0,1] fraction of base Speed ramped
-                // at the HoverAcceleration/HoverBrake minute rates. Request: 0
-                // while turning hard (steering above), 0.5 on arrival slow-in /
-                // departure slow-out (~1 cell of goal / path start), else 1.0.
-                // HoverBoost multiplies the request when the next two queued
-                // steps share a direction; the post-boost clamp to 1.0 makes it
-                // a cruise no-op. Throttle persists on the locomotor across
-                // repaths.
-                let goal = target.final_goal.unwrap_or_else(|| {
-                    target
-                        .path
-                        .last()
-                        .copied()
-                        .unwrap_or((entity.position.rx, entity.position.ry))
-                });
-                let dist_goal = distance_to_goal_leptons(&entity.position, goal);
-                let start = target.path.first().copied().unwrap_or(goal);
-                let dist_start = distance_to_goal_leptons(&entity.position, start);
-                // Straightaway when the step INTO the current waypoint and the
-                // step OUT of it share a direction (the two queued same-facing
-                // path entries of the boost condition).
-                let straightaway = if target.next_index + 1 < target.path.len() {
-                    let a = target.path[target.next_index];
-                    let b = target.path[target.next_index + 1];
-                    let dir_in = facing_from_delta(
-                        a.0 as i32 - entity.position.rx as i32,
-                        a.1 as i32 - entity.position.ry as i32,
-                    );
-                    let dir_out =
-                        facing_from_delta(b.0 as i32 - a.0 as i32, b.1 as i32 - a.1 as i32);
-                    dir_in == dir_out
-                } else {
-                    false
-                };
-                let (accel_min, brake_min, boost) = rules
-                    .map(|r| {
-                        (
-                            r.general.hover_acceleration,
-                            r.general.hover_brake,
-                            r.general.hover_boost,
-                        )
-                    })
-                    .unwrap_or((
-                        super::hover::HOVER_ACCELERATION_DEFAULT_MINUTES,
-                        super::hover::HOVER_BRAKE_DEFAULT_MINUTES,
-                        SimFixed::lit("1.5"),
-                    ));
-                let request = super::hover::hover_speed_request(hover_stall, dist_goal, dist_start);
-                let boost_mult = if straightaway { boost } else { SIM_ONE };
-                let throttle = snap
-                    .locomotor
-                    .as_ref()
-                    .map(|l| l.hover_throttle)
-                    .unwrap_or(SIM_ONE);
-                let new_throttle = super::hover::hover_tick_throttle(
-                    throttle, request, boost_mult, accel_min, brake_min,
-                );
-                if let Some(ref mut loco) = entity.locomotor {
-                    loco.hover_throttle = new_throttle;
-                    // The readiness producer reads the request, not the ramp.
-                    loco.hover_speed_request = request;
-                }
-                target.current_speed = target.speed * new_throttle;
             } else if target.accel_factor > SIM_ZERO || target.decel_factor > SIM_ZERO {
                 let goal = target.final_goal.unwrap_or_else(|| {
                     target
@@ -1747,17 +1650,11 @@ fn advance_ordinary_mover(
             // Drive/Ship never move by this value: a Unit's leaves through
             // `prepare_native_track` below, and no step writes `current_speed`
             // for another class's Drive/Ship (#689).
-            let mut effective_speed: SimFixed = if uses_drive_locomotor || uses_ship_locomotor {
+            let effective_speed: SimFixed = if uses_drive_locomotor || uses_ship_locomotor {
                 target.current_speed
             } else {
                 target.current_speed * cell_speed_mod
             };
-            // Hover turn-stall: hold position while the body swings through a
-            // >45° turn (the throttle keeps braking above). See hover_steer's
-            // doc for why translation is suppressed rather than decayed.
-            if hover_stall {
-                effective_speed = SIM_ZERO;
-            }
 
             // Advance sub_x/sub_y toward the next cell — either via drive track
             // (smooth curve) or straight-line lepton vector.
@@ -1767,39 +1664,6 @@ fn advance_ordinary_mover(
             } else {
                 MovementLayer::Ground
             };
-            // `HoverLocomotionClass::Move 0x00514746..7DF`: a frame that will
-            // translate (speed > 0) while the Foot occupation enable is still
-            // set and a head exists releases the owner's current-cell claim
-            // (`+0xF4` = `UnitClass 0x00744210`, the raw 0x20 bit) and zeroes
-            // `+0x6B6`/`+0x6B7`. `CellClass::AddContent 0x0047E8A0` then
-            // leaves every crossing unmarked until the arrival arm at
-            // 0x0051451E restores the enable, so followers meet a moving hover
-            // through the in-transit arm of `Can_Enter_Cell` (`0x0073FA2C`),
-            // not as a blocker. VERA releases the owner plane
-            // (`CellOccupationGrid`), which is what its admission reads; the
-            // raw 0x20 plane is not moved by hover crossings at all (a
-            // pre-existing residual of the ordinary mover step, whose readers
-            // are the raw-occupation rect checks and the 5x5 marker scan).
-            // Native gates on `ftol(speed) > 0` and moves the body by that
-            // integer; VERA's hover integrator also translates on sub-lepton
-            // speeds (a recorded divergence of the integrator, not of this
-            // gate), so the gate here is "will translate" to keep the enable
-            // false whenever the body is off its rest position. The native
-            // paid step5147DF clears only +6B7; +668 remains anchored.
-            if uses_hover_locomotor
-                && effective_speed > SIM_ZERO
-                && entity.foot_occupation_enabled
-                && target.next_index < target.path.len()
-            {
-                cell_occupation.clear_vehicle_on_layer(
-                    entity.position.rx,
-                    entity.position.ry,
-                    entity_id,
-                    current_occupation_layer,
-                );
-                entity.foot_occupation_enabled = false;
-                entity.navigation.path_runtime.path_blocked = false;
-            }
             let prior_path_index = target.next_index;
             let native_preparation = movement_step::prepare_native_track(
                 &mut entity.foot_occupation_enabled,
@@ -2152,13 +2016,6 @@ fn advance_ordinary_mover(
         let rejected_xy = entities
             .get(entity_id)
             .map(|entity| super::ground_pose::position_world_xy(&entity.position));
-        // The refused mover may overhang its boundary (sub-cell >= 256), so the
-        // cell it still occupies is its committed cell, not its world XY. The
-        // equality check below is defensive: it skips the restore only if the
-        // deferred response relocated the mover to another cell.
-        let rejected_cell = entities
-            .get(entity_id)
-            .map(|entity| (entity.position.rx, entity.position.ry));
         // The generic crossing loop already advanced subcell coordinates.
         // Restore Walk before the blocked response/repath observes the mover.
         if let Some(position) = walk_position_before_step.as_ref()
@@ -2191,46 +2048,8 @@ fn advance_ordinary_mover(
             interner,
             rules,
             deferred_marker,
-            houses,
         );
         debug_events.extend(occ_evts);
-        // `HoverLocomotionClass::Move`: the arrival arm sets `+0x6B6 = 1` at
-        // every reached head (0x0051451E) and re-clears it in the same call
-        // only when the next step is accepted (0x00514746). Every next-step
-        // call (`FUN_00514F70`, prologue 0x00514F70..0x00514FB2) first
-        // releases the reached cell's raw claim through `+0xF4` and
-        // invalidates Head_To; a refused step then returns with the enable
-        // still set (code 7 at 0x00514711, `+0x684` bit 7 clear), so the
-        // waiting hover is an occupant to its allies through the enable
-        // alone. VERA restores the enable and its owner-plane claim together
-        // (the claim is VERA's representation; consumers read the enable),
-        // holds the refused hover at the cell boundary rather than the
-        // centre, and restores after the deferred response where native sets
-        // the enable before the next-step admission and any scatter it
-        // triggers (no reader of the flag or plane sits in that window today:
-        // the Scatter calls the response queues run after this restore). The
-        // next translating frame clears it again.
-        if let Some(entity) = entities.get_mut(entity_id)
-            && entity.category == EntityCategory::Unit
-            && !entity.foot_occupation_enabled
-            && entity.lifecycle.cell_marked
-            && !entity.passenger_role.is_inside_transport()
-            && rejected_cell == Some((entity.position.rx, entity.position.ry))
-            && entity
-                .locomotor
-                .as_ref()
-                .is_some_and(|l| l.kind == crate::rules::locomotor_type::LocomotorKind::Hover)
-        {
-            entity.foot_occupation_enabled = true;
-            if let Some(layer) = entity.occupancy_list_layer() {
-                cell_occupation.mark_vehicle_on_layer(
-                    entity.position.rx,
-                    entity.position.ry,
-                    entity_id,
-                    layer,
-                );
-            }
-        }
         // VERA-internal recovery: deferred refusals may snap the mover to
         // its old cell centre. This is not the rejected prospective step,
         // but it is a committed coordinate and must not retain stale Z.
@@ -2524,28 +2343,6 @@ struct PreparedMovementPass {
     block_set_built_at_gen: BTreeMap<crate::sim::intern::InternedId, u64>,
 }
 
-/// `HoverLocomotionClass::Move 0x00514310` restores the Foot occupation enable
-/// (`+0x6B6`) only in its arrival arm (0x0051451E), and every hover reaches that
-/// arm because Head_To survives a stop and the body glides to that cell centre
-/// first. VERA's hover step drops `movement_target` at once on a stop, so a
-/// hover left in transit re-enables on its next own turn instead, just before
-/// the pass reconciles its footprint. VERA-internal timing; the value restored
-/// is the native idle one (constructor 0x004D344A).
-fn restore_stopped_hover_occupation_enable(entity: &mut crate::sim::game_entity::GameEntity) {
-    if entity.movement_target.is_none()
-        && !entity.foot_occupation_enabled
-        && entity.category == EntityCategory::Unit
-        && entity.lifecycle.cell_marked
-        && !entity.passenger_role.is_inside_transport()
-        && entity
-            .locomotor
-            .as_ref()
-            .is_some_and(|loco| loco.kind == LocomotorKind::Hover)
-    {
-        entity.foot_occupation_enabled = true;
-    }
-}
-
 /// Perform the entry work once, before ordinary movers advance. In particular,
 /// resuming a point after a world callback must not call this again: it reaims
 /// destinations and runs Tube movement and pending arrivals.
@@ -2571,7 +2368,6 @@ fn prepare_movement_pass(
     let resolved_terrain = ctx.resolved_terrain;
     for &entity_id in entity_order {
         if let Some(entity) = entities.get_mut(entity_id) {
-            restore_stopped_hover_occupation_enable(entity);
             cell_occupation.reconcile_entity(entity);
         }
     }
@@ -2900,7 +2696,6 @@ fn tick_movement_with_grids_scoped(
 pub(crate) struct PendingMovementPass {
     effects: MovementPassEffects,
     prepared: PreparedMovementPass,
-    entity_order: Vec<u64>,
 }
 
 /// Where the Process host re-enters the pending pass for the same mover.
@@ -2985,7 +2780,6 @@ impl PendingMovementPass {
         } = timing;
         let interner = &mut sim.interner;
         let type_handles = Some(&sim.type_handles);
-        let houses = &sim.houses;
         let MovementPassCache {
             blocker: blocker_cache,
             block_index,
@@ -3060,7 +2854,6 @@ impl PendingMovementPass {
             &mut self.effects,
             block_index,
             entry,
-            houses,
         );
     }
 
@@ -3155,7 +2948,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
     rules: Option<&crate::rules::ruleset::RuleSet>,
     type_handles: Option<&TypeHandleTable>,
     caches: &mut MovementPassCache,
-    houses: &BTreeMap<crate::sim::intern::InternedId, crate::sim::house_state::HouseState>,
 ) -> Result<PendingMovementPass, String> {
     let mut stats = MovementTickStats::default();
     if live_order.is_some_and(|order| order.is_empty()) {
@@ -3164,7 +2956,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
         return Ok(PendingMovementPass {
             effects: MovementPassEffects::default(),
             prepared: PreparedMovementPass::default(),
-            entity_order: Vec::new(),
         });
     }
     let fallback_order;
@@ -3268,14 +3059,9 @@ pub(crate) fn begin_movement_with_grids_scoped(
             &mut effects,
             block_index,
             VisitEntry::Process,
-            houses,
         );
     }
-    Ok(PendingMovementPass {
-        effects,
-        prepared,
-        entity_order: entity_order.to_vec(),
-    })
+    Ok(PendingMovementPass { effects, prepared })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3297,7 +3083,6 @@ pub(crate) fn finish_movement_pass(
     let PendingMovementPass {
         effects,
         mut prepared,
-        entity_order,
     } = pending;
     for (owner, lent) in std::mem::take(&mut prepared.held_block_sets) {
         caches.block_index.give_back(owner, lent);
@@ -3308,7 +3093,6 @@ pub(crate) fn finish_movement_pass(
         mut crush_kills,
         ..
     } = effects;
-    let tube_processed = prepared.tube_processed;
 
     // Apply the immediate crush effects, then hand teardown to the lifecycle
     // authority. Occupancy entries were already removed in
@@ -3369,99 +3153,8 @@ pub(crate) fn finish_movement_pass(
         resolved_terrain,
         cell_occupation,
         path_grid,
+        native_frame,
     );
-    let ordinary_tail_order: Vec<u64> = entity_order
-        .iter()
-        .copied()
-        .filter(|entity_id| !tube_processed.contains(entity_id))
-        .collect();
-
-    // Hover vertical controller — every hover unit, moving OR parked (idle
-    // units still float at cruise height and bob). Runs after the XY stage so
-    // the per-tick order matches the original locomotor (step, then vertical).
-    let (vh_height, vh_bob, vh_dampen, vh_gravity) = rules
-        .map(|r| {
-            (
-                r.general.hover_height,
-                r.general.hover_bob,
-                r.general.hover_dampen,
-                r.general.gravity,
-            )
-        })
-        .unwrap_or((
-            120,
-            SimFixed::from_num(0.04),
-            SimFixed::from_num(0.4),
-            3, // engine code default; stock [AudioVisual] overrides to 6
-        ));
-    for &entity_id in &ordinary_tail_order {
-        if contains_crush_victim(&crush_kills, entity_id) {
-            continue;
-        }
-        let Some(entity) = entities.get_mut(entity_id) else {
-            continue;
-        };
-        let is_hover = entity
-            .locomotor
-            .as_ref()
-            .is_some_and(|l| matches!(l.kind, crate::rules::locomotor_type::LocomotorKind::Hover));
-        if !is_hover || !entity.is_active() {
-            continue;
-        }
-        let moving = entity.movement_target.is_some();
-        // Climbing: the next path cell's ground is higher than the current
-        // cell's — the height deficit is measured against the uphill slope.
-        let climbing = moving
-            && path_grid.is_some_and(|pg| {
-                entity.movement_target.as_ref().is_some_and(|t| {
-                    t.path.get(t.next_index).is_some_and(|&(nx, ny)| {
-                        match (
-                            pg.cell(nx, ny),
-                            pg.cell(entity.position.rx, entity.position.ry),
-                        ) {
-                            (Some(next), Some(cur)) => next.ground_level > cur.ground_level,
-                            _ => false,
-                        }
-                    })
-                })
-            });
-        if let Some(ref mut loco) = entity.locomotor {
-            // Hover is the one family with an observable response to power:
-            // unpowered, it stops producing lift and sinks.
-            let powered = loco.powered;
-            let (new_height, new_offset) = super::hover::hover_vertical_tick(
-                loco.altitude,
-                loco.hover_bob_offset,
-                native_frame,
-                moving,
-                climbing,
-                powered,
-                vh_height,
-                vh_bob,
-                vh_dampen,
-                vh_gravity,
-            );
-            let surface = super::ground_pose::ground_surface_z_at(
-                super::ground_pose::position_world_xy(&entity.position),
-                entity.on_bridge,
-                resolved_terrain,
-                path_grid,
-            );
-            if let Some(surface) = surface {
-                entity.position.exact_z_leptons =
-                    Some(surface.wrapping_add(new_height.to_num::<i32>()));
-            } else {
-                super::foot_coordinate::publish_altitude_change(
-                    &mut entity.position,
-                    loco.altitude,
-                    new_height,
-                );
-            }
-            loco.altitude = new_height;
-            loco.hover_bob_offset = new_offset;
-        }
-    }
-
     stats
 }
 
@@ -3485,6 +3178,7 @@ fn finalize_finished_entities(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     cell_occupation: &mut CellOccupationGrid,
     path_grid: Option<&PathGrid>,
+    binary_frame: u32,
 ) {
     for &entity_id in finished {
         if contains_crush_victim(crush_kills, entity_id) {
@@ -3504,26 +3198,6 @@ fn finalize_finished_entities(
                     cell_occupation,
                     entity_id,
                     current_cell,
-                    current_layer,
-                );
-            }
-            // `HoverLocomotionClass::Move` arrival arm 0x0051451E..2F: the Foot
-            // occupation enable is restored before the terminal coordinate snap
-            // and Mark(PUT), so the arrival cell carries the raw bit again.
-            if entity.category == EntityCategory::Unit
-                && !entity.foot_occupation_enabled
-                && entity.lifecycle.cell_marked
-                && !entity.passenger_role.is_inside_transport()
-                && entity
-                    .locomotor
-                    .as_ref()
-                    .is_some_and(|l| l.kind == LocomotorKind::Hover)
-            {
-                entity.foot_occupation_enabled = true;
-                cell_occupation.mark_vehicle_on_layer(
-                    current_cell.0,
-                    current_cell.1,
-                    entity_id,
                     current_layer,
                 );
             }
@@ -3560,15 +3234,12 @@ fn finalize_finished_entities(
                     path_grid,
                 );
             }
-            super::navcom::finish_drive_navigation(entity, resolved_terrain);
+            super::navcom::finish_drive_navigation(entity, resolved_terrain, binary_frame);
             // The body's +388 survives arrival: a turn still running ends on
             // the frame clock.
             entity.movement_target = None;
             if let Some(ref mut loco) = entity.locomotor {
                 loco.subcell_dest = None;
-                // Full stop zeroes the hover throttle (the hover locomotor's
-                // arrival cleanup) so the next order spins up from rest.
-                loco.hover_throttle = crate::util::fixed_math::SIM_ZERO;
             }
         }
     }

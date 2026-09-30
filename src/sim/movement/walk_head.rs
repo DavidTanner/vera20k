@@ -718,9 +718,7 @@ pub(super) fn prepare_step_head(
     let Some(loco) = entity.locomotor.as_ref() else {
         return true;
     };
-    if !matches!(loco.kind, LocomotorKind::Walk | LocomotorKind::Hover)
-        || loco.step_head().is_some()
-    {
+    if loco.kind != LocomotorKind::Walk || loco.step_head().is_some() {
         return true;
     }
     let Some(next) = entity
@@ -768,9 +766,7 @@ pub(super) fn prepare_step_head_at(
     let Some(loco) = entity.locomotor.as_ref() else {
         return true;
     };
-    if !matches!(loco.kind, LocomotorKind::Walk | LocomotorKind::Hover)
-        || loco.step_head().is_some()
-    {
+    if loco.kind != LocomotorKind::Walk || loco.step_head().is_some() {
         return true;
     }
     let is_walk = loco.kind == LocomotorKind::Walk;

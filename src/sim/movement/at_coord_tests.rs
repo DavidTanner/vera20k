@@ -12,7 +12,7 @@ fn active_walk_and_hover_queries_retain_committed_xyz_after_other_coordinate_wri
             y: 5 * 256 + 128,
             z: 416,
         };
-        loco.set_step_head(Some(head));
+        set_head(&mut loco, Some(head));
         e.locomotor = Some(loco);
         e.position.exact_z_leptons = Some(0);
         assert!(AtCoordQuery::from_entity(&e).unwrap().matches(head));
@@ -27,8 +27,16 @@ fn active_walk_and_hover_queries_retain_committed_xyz_after_other_coordinate_wri
             AtCoordQuery::from_entity(&e).unwrap().matches(head),
             "Stop/path retirement must not reconstruct Head_To"
         );
-        e.locomotor.as_mut().unwrap().set_step_head(None);
+        set_head(e.locomotor.as_mut().unwrap(), None);
         assert_eq!(AtCoordQuery::from_entity(&e).unwrap().head.z, 832);
+    }
+}
+
+/// Walk's head, or the Hover object's (whose writer is its ProcessMovement).
+fn set_head(loco: &mut crate::sim::movement::locomotor::LocomotorState, head: Option<DriveCoord>) {
+    match loco.hover_runtime_mut() {
+        Some(hover) => hover.set_head(head),
+        None => loco.set_step_head(head),
     }
 }
 

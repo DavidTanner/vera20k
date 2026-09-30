@@ -12,7 +12,7 @@
 // Original 0084F084 table, extracted and checked by walk_direction_table.py.
 // The small FLH arrays below are derived lookups for its different, f32-narrowed
 // angle input. Walk uses a full signed direction and must not quantize to 32 steps.
-const RETAIL_SINE_TABLE: &[u8; 10241 * 4] = include_bytes!("native_trig_table.bin");
+pub(crate) const RETAIL_SINE_TABLE: &[u8; 10241 * 4] = include_bytes!("native_trig_table.bin");
 
 fn sine_table_bits(index: usize) -> u32 {
     let offset = index * 4;
@@ -56,7 +56,8 @@ fn advance_integer_coordinate(origin: i32, speed: i32, coefficient: u32) -> i32 
 }
 
 /// Walk75C067..75C0CB and Fly4CDA84..4CDAE5 use this same full-direction math.
-/// The caller chooses the direction (Walk's request, Fly's Primary.Current).
+/// The caller chooses the direction (Walk's request, Fly's Primary.Current,
+/// Hover's steering facing at 0x00514803..0x00514860).
 /// Inputs/outputs are whole world leptons, with Z
 /// and subsequent placement owned by the caller. Table products remain exact
 /// at the simulation's bounded integer movement speeds; final truncation is

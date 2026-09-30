@@ -407,7 +407,12 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // composition change establishes a Rust regression pin, not native world parity.
 // v25 integration: native own-slot Fire, literal passive mission and Stop
 // retention change behavior; see the complete causal account above.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xC9C5_B19A_6873_6EA8;
+// Native Hover host (snapshot 269): the locomotor fold drops the three
+// SimFixed Hover copies and hashes the whole HoverLocomotionClass object in
+// place of its head. Ceremony: this change with the old composition (three
+// zero words, head only; probe not committed) printed the previous pin, so
+// no hashed state moved. Previous: 0xC9C5_B19A_6873_6EA8.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x64B4_3781_2052_4AF1;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

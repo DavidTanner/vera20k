@@ -3142,9 +3142,10 @@ struct FireAtLaunchAim {
 /// `0x0054C814`, `0x0054D1AE`), so a moving Kirov, Floating Disc, Siege
 /// Chopper or Rocketeer is led.
 ///
-/// RESIDUAL (lead inputs): `Is_Moving` has no VERA answer for a Hover target
-/// (`motion_query::is_moving`). Trigger: shots at a moving hover unit.
-/// Effect: the shot is not led. A garrison shot's GetCurrentWeapon would be
+/// A Hover target answers `Is_Moving` 0x00514C30 and its speed fraction
+/// from its own Process (`hover_process`).
+///
+/// RESIDUAL (lead inputs): a garrison shot's GetCurrentWeapon would be
 /// the occupant's (`BuildingClass::GetWeapon 0x004526F0`), not the building
 /// type's slot; every retail occupant weapon is Inviso, which never reaches
 /// the lead, so it is dormant.
@@ -4068,10 +4069,6 @@ fn fireat_tarcom(world: &Simulation, snap: &AttackerSnapshot) -> Option<TargetKi
 /// its retained estimate (`+0x70`). The weapon is the one FireAt just
 /// installed on the bullet (`SetWeaponType 0x0046B260`); a shot with no
 /// BulletType fires the default Inviso type, which is not Inaccurate.
-/// RESIDUAL: `motion_query::is_moving` has no answer for a Hover firer and
-/// reads as not moving, so such a firer debits while moving. Trigger: a hover
-/// unit firing on the move. Effect: its target's estimate runs lower than
-/// native's until the next recovery.
 fn fireat_estimate_debit(
     world: &mut Simulation,
     rules: &RuleSet,

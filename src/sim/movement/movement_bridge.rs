@@ -70,8 +70,9 @@ pub(crate) struct RuntimeBridgeTransitionState {
 /// shared helper: `DriveLocomotionClass` @ `0x004B3376`-`0x004B339D`
 /// (`EDX = (cell->Flags >> 8) & 1`; `AL = [foot+0x8C]`; `XOR EDX,EAX; JZ`;
 /// `MOV byte [ECX+0x68B],1`; `CALL [vtable+0x29C]`), with twins at
-/// `0x0075B662` (Walk), `0x00515513` (Hover) and `0x006A29E0` (Ship) — four
-/// sites carrying the whole sequence. `0x006A3C19` and `0x00736038` are bare
+/// `0x0075B662` (Walk) and `0x006A29E0` (Ship) — three sites carrying the
+/// whole sequence. Hover's (`0x00515501..0x00515513`) stores the byte without
+/// the call. `0x006A3C19` and `0x00736038` are bare
 /// `[+0x68B] = 1` stores in unrelated branches, not twins of this comparison.
 ///
 /// `[foot+0x68B]` is write-1-only: zeroed once in `FootClass::Constructor` @

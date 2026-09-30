@@ -6637,12 +6637,12 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
         e.movement_target = Some(MovementTarget::default());
         e.drive_locomotion = Some(DriveLocomotionRuntime::default());
         // Out of limbo, where `FootClass::AI` admits a Process (`0x004DA86E`).
-        // Hover's Process is the ground corridor's route (#689), which retires
-        // the empty target on the first Process.
+        // The ground corridor's Walk Process retires the empty target on the
+        // first Process.
         e.lifecycle.in_limbo = false;
         e.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(
-                crate::rules::locomotor_type::LocomotorKind::Hover,
+                crate::rules::locomotor_type::LocomotorKind::Walk,
             ),
         );
         sim.substrate.entities.insert(e);
