@@ -818,8 +818,8 @@ pub(crate) struct FootPathRequest {
 }
 
 /// Whether a Rust route adapter, not the retained locomotor state, owns this
-/// visit: `issue_direct_move` (docking pads, grid-less scatter) and component
-/// fixtures mark their MovementTarget ([`MovementTarget::adapter_route`]);
+/// visit: `issue_direct_move` (C4 building entry, a Jumpjet infantryman's
+/// damage scatter) and component fixtures mark their MovementTarget ([`MovementTarget::adapter_route`]);
 /// the pass finalizer retires it, including an exhausted route. Native routes
 /// keep their cells in both Foot+5E0 and the adapter cache (Find_Path 4D3E98
 /// copy and `install_route`); the NavCom trim and Find_Path's head clear empty
