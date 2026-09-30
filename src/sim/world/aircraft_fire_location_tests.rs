@@ -428,10 +428,10 @@ fn aircraft_reengagement_matches_original_through_production_dispatch() {
         restored.scenario_rng = sim.scenario_rng.clone();
         assert_eq!(sim.state_hash(), restored.state_hash());
         for world in [&mut sim, &mut restored] {
-            crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+            crate::sim::aircraft::tick_aircraft_missions(world, &rules);
             let hash = world.state_hash();
             // A second same-frame call must respect the native returned delay.
-            crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+            crate::sim::aircraft::tick_aircraft_missions(world, &rules);
             assert_eq!(world.state_hash(), hash);
             assert_reengagement(world, &row);
         }
@@ -455,7 +455,7 @@ fn aircraft_reengagement_reserves_in_logic_order_and_ignores_inactive_objects() 
         }
         sim.substrate.next_stable_object_id = 10;
         sim.set_logic_order_for_test(order.clone());
-        crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
         let first = sim.substrate.entities.get(order[0]).unwrap();
         assert_eq!(selected(first.navigation.nav_com), base["nav"]);
         assert_eq!(

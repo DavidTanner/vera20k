@@ -405,15 +405,9 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
                 sim.substrate.raw_cell_occupation.ground_bits(10, 9) & 0x20,
                 0
             );
-            sim.advance_live_object_turn(
-                1,
-                Some(&rules),
-                techno_ai::ObjectAiCtx {
-                    path_grid: Some(&grid),
-                    ..Default::default()
-                },
-            )
-            .expect("fixture object turn must complete");
+            sim.install_fixture_path_grid(Some(&grid));
+            sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+                .expect("fixture object turn must complete");
             let entity = sim.substrate.entities.get(1).unwrap();
             if kind == LocomotorKind::Drive {
                 let drive = entity.drive_locomotion.as_ref().unwrap();
@@ -429,15 +423,9 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
                 0x20
             );
             sim.substrate.raw_cell_occupation.clear_ground(10, 9, 0x20);
-            sim.advance_live_object_turn(
-                1,
-                Some(&rules),
-                techno_ai::ObjectAiCtx {
-                    path_grid: Some(&grid),
-                    ..Default::default()
-                },
-            )
-            .expect("fixture object turn must complete");
+            sim.install_fixture_path_grid(Some(&grid));
+            sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+                .expect("fixture object turn must complete");
             assert_eq!(
                 sim.substrate.raw_cell_occupation.ground_bits(10, 9) & 0x20,
                 0,
@@ -485,15 +473,9 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
     entity.drive_accelerates = true;
     entity.movement_target.as_mut().unwrap().accel_factor = SimFixed::from_num(0.03);
     // The first Process after the order requests the route from the grid.
-    sim.advance_live_object_turn(
-        1,
-        Some(&rules),
-        techno_ai::ObjectAiCtx {
-            path_grid: Some(&grid),
-            ..Default::default()
-        },
-    )
-    .expect("fixture object turn must complete");
+    sim.install_fixture_path_grid(Some(&grid));
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .expect("fixture object turn must complete");
     assert_eq!(
         sim.substrate
             .entities
@@ -527,10 +509,8 @@ fn ship_fresh_claim_survives_next_object_visit_and_snapshot_rebuild() {
         None,
         crate::sim::movement::DestinationTiming::new(0, 60),
     ));
-    let ctx = || techno_ai::ObjectAiCtx {
-        path_grid: Some(&grid),
-        ..Default::default()
-    };
+    sim.install_fixture_path_grid(Some(&grid));
+    let ctx = techno_ai::ObjectAiCtx::default;
     sim.advance_live_object_turn(1, Some(&rules), ctx())
         .expect("fixture object turn must complete");
     let mark = sim

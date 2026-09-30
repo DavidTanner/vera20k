@@ -57,7 +57,6 @@ use crate::sim::mission::timer::MissionTimer;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding::PathGrid;
 #[cfg(test)]
 use crate::sim::radio::RadioResponse;
 use crate::sim::radio::{self, RadioMessage, RadioPayload};
@@ -265,7 +264,6 @@ fn ring_exit_list(w: i32, h: i32) -> Vec<(i32, i32)> {
 /// (infantry-only occupants are not rejected — UNCHECKED against native).
 pub fn depot_exit_cell(
     sim: &Simulation,
-    path_grid: Option<&PathGrid>,
     building_rx: u16,
     building_ry: u16,
     foundation: &str,
@@ -277,10 +275,10 @@ pub fn depot_exit_cell(
             continue;
         }
         let (x, y) = (x as u16, y as u16);
-        if let Some(grid) = path_grid {
-            if x >= grid.width() || y >= grid.height() || !grid.is_walkable(x, y) {
-                continue;
-            }
+        if let Some(grid) = sim.path_grid()
+            && (x >= grid.width() || y >= grid.height() || !grid.is_walkable(x, y))
+        {
+            continue;
         }
         let blocked = sim
             .substrate
@@ -498,7 +496,7 @@ pub(crate) fn mission_enter_dispatch(sim: &mut Simulation, rules: &RuleSet, id: 
 /// waiter's `0x0E` probe and its epilogue draw are NOT here — they run in the
 /// unit's own dispatch slot ([`mission_enter_dispatch`]); this pass only
 /// consumes the resulting link state and owns the pad-side service/release.
-pub fn tick_building_docks(sim: &mut Simulation, rules: &RuleSet, path_grid: Option<&PathGrid>) {
+pub fn tick_building_docks(sim: &mut Simulation, rules: &RuleSet) {
     struct DockSnapshot {
         id: u64,
         owner: InternedId,
@@ -730,14 +728,11 @@ pub fn tick_building_docks(sim: &mut Simulation, rules: &RuleSet, path_grid: Opt
                 // Set_Destination(GetDockCellForObject) + BREAK, only when an
                 // exit cell exists (0x0044C48E: an invalid cell leaves the unit
                 // linked on the pad and the building retries).
-                match depot_exit_cell(sim, path_grid, depot_rx, depot_ry, &foundation) {
-                    Some(exit) => {
-                        queue_mission(sim, snap.id, MissionType::Move);
-                        issue_pad_move(sim, rules, snap.id, exit);
-                        break_depot_contact(sim, snap.id, snap.dock_building_id);
-                        m.clear_dock = true;
-                    }
-                    None => {}
+                if let Some(exit) = depot_exit_cell(sim, depot_rx, depot_ry, &foundation) {
+                    queue_mission(sim, snap.id, MissionType::Move);
+                    issue_pad_move(sim, rules, snap.id, exit);
+                    break_depot_contact(sim, snap.id, snap.dock_building_id);
+                    m.clear_dock = true;
                 }
             }
         }
@@ -818,6 +813,7 @@ mod tests {
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::occupancy::CellListInsertion;
+    use crate::sim::pathfinding::PathGrid;
 
     #[test]
     fn dock_cell_for_3x3_foundation() {
@@ -1085,7 +1081,7 @@ mod tests {
         spawn_entity(sim, sid, "MTNK", EntityCategory::Unit, rx, ry, 100);
     }
 
-    fn setup(tank_count: u64) -> (Simulation, RuleSet, PathGrid) {
+    fn setup(tank_count: u64) -> (Simulation, RuleSet) {
         let rules = depot_rules();
         let mut sim = Simulation::new();
         {
@@ -1099,7 +1095,8 @@ mod tests {
         for i in 0..tank_count {
             spawn_tank(&mut sim, 1 + i, 14 + i as u16, 11);
         }
-        (sim, rules, PathGrid::new(64, 64))
+        sim.install_fixture_path_grid(Some(&PathGrid::new(64, 64)));
+        (sim, rules)
     }
 
     #[test]
@@ -1130,7 +1127,7 @@ mod tests {
 
     #[test]
     fn depot_service_wraps_both_independent_signed_health_values() {
-        let (mut sim, _, grid) = setup(1);
+        let (mut sim, _) = setup(1);
         let rules = depot_rules_with_strength(i32::MAX);
         let unit = sim.substrate.entities.get_mut(1).unwrap();
         unit.health.current = i32::MAX - 1;
@@ -1139,7 +1136,7 @@ mod tests {
         let mut dock = DockState::approach(DEPOT);
         dock.phase = DockPhase::Servicing;
         unit.dock_state = Some(dock);
-        tick_building_docks(&mut sim, &rules, Some(&grid));
+        tick_building_docks(&mut sim, &rules);
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.health.current, i32::MIN + 6);
         assert_eq!(unit.estimated_health.get(), i32::MIN + 5);
@@ -1151,14 +1148,14 @@ mod tests {
 
     #[test]
     fn depot_service_adds_reservations_and_resets_them_on_completion() {
-        let (mut sim, rules, grid) = setup(1);
+        let (mut sim, rules) = setup(1);
         let unit = sim.substrate.entities.get_mut(1).unwrap();
         let mut dock = DockState::approach(DEPOT);
         dock.phase = DockPhase::Servicing;
         unit.dock_state = Some(dock);
         unit.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-20);
 
-        tick_building_docks(&mut sim, &rules, Some(&grid));
+        tick_building_docks(&mut sim, &rules);
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.health.current, 108);
         assert_eq!(unit.estimated_health.get(), -12);
@@ -1171,7 +1168,7 @@ mod tests {
         unit.health.current = 299;
         unit.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-20);
         unit.dock_state.as_mut().unwrap().service_timer = 0;
-        tick_building_docks(&mut sim, &rules, Some(&grid));
+        tick_building_docks(&mut sim, &rules);
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.health.current, 300);
         assert_eq!(unit.estimated_health.get(), 300);
@@ -1181,7 +1178,7 @@ mod tests {
         let unit = sim.substrate.entities.get_mut(1).unwrap();
         unit.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-20);
         unit.dock_state.as_mut().unwrap().phase = DockPhase::Servicing;
-        tick_building_docks(&mut sim, &rules, Some(&grid));
+        tick_building_docks(&mut sim, &rules);
         assert_eq!(
             sim.substrate
                 .entities
@@ -1193,7 +1190,7 @@ mod tests {
         );
     }
 
-    fn order_repair(sim: &mut Simulation, rules: &RuleSet, grid: &PathGrid, tank: u64) -> bool {
+    fn order_repair(sim: &mut Simulation, rules: &RuleSet, tank: u64) -> bool {
         sim.apply_command(
             "Americans",
             &Command::RepairAtDepot {
@@ -1201,17 +1198,16 @@ mod tests {
                 depot_id: DEPOT,
             },
             Some(rules),
-            Some(grid),
         )
     }
 
     /// One frame in production order: every unit's own object-AI visit (the
     /// Enter dispatch with its probe and draw), then the dock pass, then
     /// movement.
-    fn tick(sim: &mut Simulation, rules: &RuleSet, grid: &PathGrid) {
+    fn tick(sim: &mut Simulation, rules: &RuleSet) {
         sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
         visit_units(sim, rules);
-        tick_building_docks(sim, rules, Some(grid));
+        tick_building_docks(sim, rules);
         crate::sim::movement::tick_movement(
             &mut sim.substrate.entities,
             &mut sim.interner,
@@ -1269,9 +1265,9 @@ mod tests {
     /// unlinked with an armed Enter-cadence timer and no stored queue.
     #[test]
     fn depot_order_installs_enter_and_first_probe_links_one_unit() {
-        let (mut sim, rules, grid) = setup(3);
+        let (mut sim, rules) = setup(3);
         for tank in 1..=3 {
-            assert!(order_repair(&mut sim, &rules, &grid, tank));
+            assert!(order_repair(&mut sim, &rules, tank));
             let e = sim.substrate.entities.get(tank).unwrap();
             assert_eq!(e.dock_state.as_ref().unwrap().phase, DockPhase::Approach);
             assert_eq!(
@@ -1281,7 +1277,7 @@ mod tests {
             );
             assert_eq!(e.derived_mission().0, MissionType::Enter);
         }
-        tick(&mut sim, &rules, &grid);
+        tick(&mut sim, &rules);
         assert!(linked(&sim, 1));
         assert!(!linked(&sim, 2));
         assert!(!linked(&sim, 3));
@@ -1310,13 +1306,13 @@ mod tests {
     /// stream (the Mission_Enter epilogue), none between probes.
     #[test]
     fn waiter_probe_draws_one_scenario_random_per_dispatch() {
-        let (mut sim, rules, grid) = setup(2);
+        let (mut sim, rules) = setup(2);
         for tank in 1..=2 {
-            assert!(order_repair(&mut sim, &rules, &grid, tank));
+            assert!(order_repair(&mut sim, &rules, tank));
         }
         // Frame 1: both units probe (two draws).
         let mut shadow = sim.clone_scenario_rng();
-        tick(&mut sim, &rules, &grid);
+        tick(&mut sim, &rules);
         shadow.next_range_u32_inclusive(0, 2);
         shadow.next_range_u32_inclusive(0, 2);
         assert_eq!(
@@ -1338,7 +1334,7 @@ mod tests {
             ds.enter_retry.start_frame + ds.enter_retry.duration
         };
         while sim.session.binary_frame + 1 < waiter_due {
-            tick(&mut sim, &rules, &grid);
+            tick(&mut sim, &rules);
         }
         assert_eq!(
             sim.scenario_rng.next_range_u32_inclusive(0, 1000),
@@ -1355,9 +1351,9 @@ mod tests {
     /// post-production dock pass draws nothing at all.
     #[test]
     fn waiter_probe_draw_sits_in_the_units_own_ai_slot_in_object_order() {
-        let (mut sim, rules, grid) = setup(3);
-        assert!(order_repair(&mut sim, &rules, &grid, 1));
-        assert!(order_repair(&mut sim, &rules, &grid, 3));
+        let (mut sim, rules) = setup(3);
+        assert!(order_repair(&mut sim, &rules, 1));
+        assert!(order_repair(&mut sim, &rules, 3));
         // Tank 2 idles on Guard with a due dispatch timer.
         let now = sim.session.binary_frame;
         sim.mission_assign_exact(2, MissionId::from_known(MissionType::Guard), now)
@@ -1392,7 +1388,7 @@ mod tests {
         );
 
         let after_ai = sim.scenario_rng.state();
-        tick_building_docks(&mut sim, &rules, Some(&grid));
+        tick_building_docks(&mut sim, &rules);
         assert_eq!(
             sim.scenario_rng.state(),
             after_ai,
@@ -1407,14 +1403,14 @@ mod tests {
     /// unit 2's, so 3 docks next.
     #[test]
     fn freed_pad_goes_to_the_first_reprobe_not_the_first_arrival() {
-        let (mut sim, rules, grid) = setup(3);
+        let (mut sim, rules) = setup(3);
         for tank in 1..=3 {
-            assert!(order_repair(&mut sim, &rules, &grid, tank));
+            assert!(order_repair(&mut sim, &rules, tank));
         }
         // Run until unit 1 is repaired and released.
         let mut released_at = None;
         for _ in 0..2000 {
-            tick(&mut sim, &rules, &grid);
+            tick(&mut sim, &rules);
             if phase(&sim, 1).is_none() {
                 released_at = Some(sim.session.binary_frame);
                 break;
@@ -1433,7 +1429,7 @@ mod tests {
             e3.mission.write_dispatch_epilogue(released_at as i32, 3);
         }
         for _ in 0..5 {
-            tick(&mut sim, &rules, &grid);
+            tick(&mut sim, &rules);
         }
         assert!(linked(&sim, 3), "the first re-prober wins the freed slot");
         assert!(!linked(&sim, 2), "the earlier arrival is not promoted");
@@ -1445,13 +1441,13 @@ mod tests {
     /// with BREAK on both ends and a queued Move mission.
     #[test]
     fn repaired_unit_is_released_to_the_native_exit_cell_and_pad_is_vacated() {
-        let (mut sim, rules, grid) = setup(1);
-        assert!(order_repair(&mut sim, &rules, &grid, 1));
+        let (mut sim, rules) = setup(1);
+        assert!(order_repair(&mut sim, &rules, 1));
         let pad = depot_dock_cell(DEPOT_RX, DEPOT_RY, "3x3");
         let mut reached_pad = false;
         let mut released = false;
         for _ in 0..2000 {
-            tick(&mut sim, &rules, &grid);
+            tick(&mut sim, &rules);
             if phase(&sim, 1) == Some(DockPhase::Servicing) {
                 reached_pad = true;
                 assert_eq!(pos(&sim, 1), pad);
@@ -1472,7 +1468,7 @@ mod tests {
             Some(exit)
         );
         for _ in 0..200 {
-            tick(&mut sim, &rules, &grid);
+            tick(&mut sim, &rules);
         }
         assert_eq!(
             pos(&sim, 1),
@@ -1494,9 +1490,9 @@ mod tests {
     /// BREAKs and goes idle on its next probe.
     #[test]
     fn a_warped_depot_turns_its_waiters_away() {
-        let (mut sim, rules, grid) = setup(1);
-        assert!(order_repair(&mut sim, &rules, &grid, 1));
-        tick(&mut sim, &rules, &grid);
+        let (mut sim, rules) = setup(1);
+        assert!(order_repair(&mut sim, &rules, 1));
+        tick(&mut sim, &rules);
         assert!(linked(&sim, 1));
         sim.substrate.entities.get_mut(DEPOT).unwrap().temporal =
             crate::sim::temporal::TemporalState::warped_by_for_test(999);
@@ -1512,7 +1508,7 @@ mod tests {
             ds.enter_retry.start_frame + ds.enter_retry.duration
         };
         while sim.session.binary_frame < due {
-            tick(&mut sim, &rules, &grid);
+            tick(&mut sim, &rules);
         }
         assert!(!linked(&sim, 1));
         assert!(phase(&sim, 1).is_none());
@@ -1532,11 +1528,11 @@ mod tests {
     /// its own probe returns 10: BREAK + Enter_Idle_Mode (Guard), no scatter.
     #[test]
     fn linked_full_health_waiter_breaks_and_goes_idle_on_its_next_probe() {
-        let (mut sim, rules, grid) = setup(2);
+        let (mut sim, rules) = setup(2);
         for tank in 1..=2 {
-            assert!(order_repair(&mut sim, &rules, &grid, tank));
+            assert!(order_repair(&mut sim, &rules, tank));
         }
-        tick(&mut sim, &rules, &grid);
+        tick(&mut sim, &rules);
         assert!(linked(&sim, 1));
         sim.substrate.entities.get_mut(1).unwrap().health.current = 300;
         let due = {
@@ -1551,7 +1547,7 @@ mod tests {
             ds.enter_retry.start_frame + ds.enter_retry.duration
         };
         while sim.session.binary_frame < due {
-            tick(&mut sim, &rules, &grid);
+            tick(&mut sim, &rules);
         }
         assert!(!linked(&sim, 1));
         assert!(phase(&sim, 1).is_none());
@@ -1578,7 +1574,7 @@ mod tests {
             ds.enter_retry.start_frame + ds.enter_retry.duration
         };
         while sim.session.binary_frame < due2 {
-            tick(&mut sim, &rules, &grid);
+            tick(&mut sim, &rules);
         }
         assert!(linked(&sim, 2));
     }
@@ -1626,7 +1622,6 @@ mod tests {
                 id,
                 Some(rules),
                 crate::sim::world::ObjectAiCtx {
-                    path_grid: None,
                     overlay_registry: None,
                     terrain_spawner_cells: None,
                     miner_config: Some(&cfg),
@@ -1663,10 +1658,10 @@ mod tests {
     /// the Harvest handler's per-frame `1`.
     #[test]
     fn damaged_miner_at_depot_probes_links_is_serviced_and_released() {
-        let (mut sim, rules, grid) = setup(0);
+        let (mut sim, rules) = setup(0);
         const MINER: u64 = 7;
         spawn_damaged_miner(&mut sim, MINER, 14, 11);
-        assert!(order_repair(&mut sim, &rules, &grid, MINER));
+        assert!(order_repair(&mut sim, &rules, MINER));
         let cursor_at_order = harvest_cursor(&sim, MINER);
 
         let mut reached_pad = false;
@@ -1706,7 +1701,7 @@ mod tests {
                 assert_eq!(harvest_cursor(&sim, MINER), cursor_at_order);
             }
             prev_timer = timer;
-            tick_building_docks(&mut sim, &rules, Some(&grid));
+            tick_building_docks(&mut sim, &rules);
             crate::sim::movement::tick_movement(
                 &mut sim.substrate.entities,
                 &mut sim.interner,
@@ -1739,10 +1734,10 @@ mod tests {
     /// Enter epilogue.
     #[test]
     fn harvest_handler_declines_miner_on_enter_with_depot_dock_state() {
-        let (mut sim, rules, grid) = setup(0);
+        let (mut sim, rules) = setup(0);
         const MINER: u64 = 7;
         spawn_damaged_miner(&mut sim, MINER, 14, 11);
-        assert!(order_repair(&mut sim, &rules, &grid, MINER));
+        assert!(order_repair(&mut sim, &rules, MINER));
         sim.session.binary_frame += 1;
         visit_units_with_harvest(&mut sim, &rules);
         assert!(linked(&sim, MINER));
@@ -1765,7 +1760,7 @@ mod tests {
         let cursor = harvest_cursor(&sim, MINER);
         let rng_before = sim.scenario_rng.state();
         let cfg = miner_cfg();
-        crate::sim::miner::dispatch_harvest_for_object(&mut sim, &rules, &cfg, None, None, MINER);
+        crate::sim::miner::dispatch_harvest_for_object(&mut sim, &rules, &cfg, None, MINER);
         assert_eq!(
             dispatch_timer(&sim, MINER),
             before,
@@ -1789,9 +1784,9 @@ mod tests {
     /// Exit-cell selection skips foundation/vehicle-blocked cells in list order.
     #[test]
     fn exit_cell_skips_blocked_cells_in_list_order() {
-        let (mut sim, _rules, grid) = setup(0);
+        let (mut sim, _rules) = setup(0);
         assert_eq!(
-            depot_exit_cell(&sim, Some(&grid), DEPOT_RX, DEPOT_RY, "3x3"),
+            depot_exit_cell(&sim, DEPOT_RX, DEPOT_RY, "3x3"),
             Some((DEPOT_RX, DEPOT_RY + 3))
         );
         spawn_tank(&mut sim, 7, DEPOT_RX, DEPOT_RY + 3);
@@ -1804,7 +1799,7 @@ mod tests {
             CellListInsertion::AppendBuilding,
         );
         assert_eq!(
-            depot_exit_cell(&sim, Some(&grid), DEPOT_RX, DEPOT_RY, "3x3"),
+            depot_exit_cell(&sim, DEPOT_RX, DEPOT_RY, "3x3"),
             Some((DEPOT_RX + 1, DEPOT_RY + 3))
         );
     }
@@ -1820,7 +1815,7 @@ mod tests {
         use crate::sim::mission::MissionId;
 
         fn build(human: bool) -> (Simulation, RuleSet) {
-            let (mut sim, rules, _grid) = setup(0);
+            let (mut sim, rules) = setup(0);
             if human {
                 let owner_id = sim.interner.intern("Americans");
                 sim.houses.get_mut(&owner_id).unwrap().is_human = true;

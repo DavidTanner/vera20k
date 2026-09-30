@@ -333,7 +333,6 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
             target_ry: CENTER.1,
         },
         Some(&rules),
-        None,
     ));
     let mut radar = projection(&sim, &grid);
     let mut last_generation = 0;
@@ -471,7 +470,6 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
             .simulation
             .rebuild_dynamic_navigation(&runtime.resources.rules)
     );
-    let grid = runtime.simulation.path_grid_snapshot();
     assert!(runtime.simulation.apply_command(
         "Americans",
         &Command::CaptureBuilding {
@@ -479,9 +477,7 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
             target_building_id: cabhut,
         },
         Some(&runtime.resources.rules),
-        grid.as_deref(),
     ));
-    drop(grid);
     for _ in 0..100 {
         let _ = runtime
             .advance_frame(&[], 67, TickLane::Ordinary)

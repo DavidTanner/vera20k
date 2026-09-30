@@ -1069,7 +1069,6 @@ fn gsi_04_07_wall_sell_ordered_cleanup_detach_navigation_and_zero_refund_rng() {
         "Receiver",
         &Command::SellWallAtCell { x: 4, y: 4 },
         Some(&rules),
-        Some(&path),
         Some(&overlays),
     ));
 
@@ -1286,7 +1285,6 @@ fn wall_sale_preserves_the_sold_anchor_retained_count_source() {
         "Receiver",
         &Command::SellWallAtCell { x: 2, y: 2 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
     let grid = sim.overlay_grid.as_ref().expect("overlay authority");
@@ -1362,7 +1360,6 @@ fn wall_sale_cleanup_reaches_fixed_stride_alias_and_reverses_that_source_only() 
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 1 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
     let grid = sim.overlay_grid.as_ref().expect("overlay authority");
@@ -1475,7 +1472,6 @@ fn gsi_04_07_wall_sell_eligibility_gate_matrix_rejects_without_mutation() {
             "Receiver",
             &Command::SellWallAtCell { x: 1, y: 1 },
             Some(rules),
-            None,
             Some(&overlays),
         )
     };
@@ -1529,7 +1525,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&unsellable_rules),
-        None,
         Some(&overlays),
     ));
     assert_eq!(
@@ -1542,7 +1537,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
     assert!(sim.sound_events.is_empty());
@@ -1556,7 +1550,6 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
     sim.houses.get_mut(&wall_owner).unwrap().is_human = true;
@@ -1564,14 +1557,12 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
     assert!(!sim.apply_command_with_overlays(
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 0 },
         Some(&rules),
-        None,
         Some(&overlays),
     ));
 }
@@ -2476,9 +2467,8 @@ fn gsi_04_10_in_tick_refresh_updates_tail_path_and_cost_before_consumers() {
     }
     sim.path_grid = Some(Arc::new(input_path_grid));
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
-    let phase_six_consumer_grid = sim
-        .finish_terrain_navigation_changes(&rules, &[(0, 0)])
-        .expect("tail grid");
+    sim.finish_terrain_navigation_changes(&rules, &[(0, 0)]);
+    let phase_six_consumer_grid = sim.path_grid_snapshot().expect("tail grid");
 
     assert!(phase_six_consumer_grid.is_walkable(0, 0));
     assert_eq!(phase_six_consumer_grid.terrain_object_cell_bits_at(0, 0), 0);
@@ -2544,9 +2534,8 @@ fn gsi_04_10_zero_occupation_removal_forces_ground_zone_with_same_walkability() 
         unmark_terrain_occupation(production, &tree, terrain.as_mut());
     }
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
-    let tail_path_grid = sim
-        .finish_terrain_navigation_changes(&rules, &[(0, 0)])
-        .expect("tail grid");
+    sim.finish_terrain_navigation_changes(&rules, &[(0, 0)]);
+    let tail_path_grid = sim.path_grid_snapshot().expect("tail grid");
 
     assert_eq!(*tail_path_grid, input_path_grid);
     assert_eq!(
@@ -4847,9 +4836,8 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
     // The pinned reader predates bridge fallout. Both receipt paths must
     // return and publish the current projection without mutating that Arc.
     for changed_cells in [&[][..], &[(6, 0)][..]] {
-        let tail = sim
-            .finish_terrain_navigation_changes(&rules, changed_cells)
-            .unwrap();
+        sim.finish_terrain_navigation_changes(&rules, changed_cells);
+        let tail = sim.path_grid_snapshot().unwrap();
         assert_eq!(tail.as_ref(), collapsed.as_ref());
         if changed_cells.is_empty() {
             assert!(
@@ -4868,7 +4856,7 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
             goal_rx: 6,
             goal_ry: 3,
         });
-        sim.tick_order_intents_post_combat(Some(&tail), Some(&rules));
+        sim.tick_order_intents_post_combat(Some(&rules));
         let target = sim
             .substrate
             .entities
@@ -5810,7 +5798,6 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
             additive: true,
         },
         Some(&rules),
-        None,
     ));
     assert!(sim.substrate.entities.get(tank).unwrap().selected);
     assert!(sim.substrate.entities.get(wingman).unwrap().selected);
@@ -5822,7 +5809,6 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
             additive: false,
         },
         Some(&rules),
-        None,
     ));
     assert!(
         !sim.substrate.entities.get(tank).unwrap().selected,
@@ -5915,6 +5901,7 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
     for accelerates in [false, true] {
         let rules = drive_fraction_writer_rules(accelerates);
         let mut sim = Simulation::new();
+        sim.install_fixture_path_grid(Some(&grid));
         let entity_id = sim
             .spawn_object("DRIVE", "Americans", 2, 3, 64, &rules)
             .expect("spawn Drive vehicle");
@@ -5944,7 +5931,6 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
                 queue: false,
             },
             Some(&rules),
-            Some(&grid),
         ));
 
         let movement_speed = {
@@ -6287,12 +6273,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         Some((8, 4))
     );
 
-    assert!(sim.apply_command(
-        "Americans",
-        &Command::Stop { entity_id: 1 },
-        None,
-        Some(&grid),
-    ));
+    assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, None,));
     let stopped = sim.substrate.entities.get(1).unwrap();
     assert_eq!(stopped.navigation.nav_com, None);
     assert!(stopped.movement_target.is_some());
@@ -6501,12 +6482,7 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
         u16::try_from(committed_head.y.div_euclid(256)).unwrap(),
     );
 
-    assert!(sim.apply_command(
-        "Americans",
-        &Command::Stop { entity_id: 1 },
-        None,
-        Some(&grid),
-    ));
+    assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, None,));
 
     let stopped = sim.substrate.entities.get(1).unwrap();
     let target = stopped
@@ -8865,7 +8841,7 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
     // (a) What the group-destination distributor rewrites each command to.
     // Same &self read the tick performs, run before any tick mutates state.
     let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged, Some(&grid));
+    sim.adjust_staged_megamission_destinations(&mut staged);
     let assigned: Vec<(u64, (u16, u16))> = staged
         .iter()
         .filter_map(|c| match &c.payload {
@@ -9036,7 +9012,7 @@ fn repro_group_move_short_range_traces_every_tick() {
         .collect();
 
     let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged, Some(&grid));
+    sim.adjust_staged_megamission_destinations(&mut staged);
     println!("--- repro_group_move_short_range_traces_every_tick ---");
     println!("(a) distributor assignments:");
     for c in &staged {
@@ -9210,7 +9186,7 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
     // Different targets => different formation keys => runs of length 1 =>
     // the group-destination distributor cannot touch either command.
     let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged, Some(&grid));
+    sim.adjust_staged_megamission_destinations(&mut staged);
     println!("--- repro_two_moving_vehicles_pass_through_each_other ---");
     for c in &staged {
         if let Command::Move {
@@ -10398,7 +10374,8 @@ fn attack_move_resume_lets_a_crusher_tank_through_a_sandbag_cell() {
         sim.substrate.entities.insert(entity);
         // The Process reads type names; snapshot after the entity interned its.
         sim.interner = crate::sim::intern::test_interner();
-        sim.tick_order_intents_post_combat(Some(&path), None);
+        sim.install_fixture_path_grid(Some(&path));
+        sim.tick_order_intents_post_combat(None);
         sim.process_ground_locomotor_for_test(1, None, Some(&path), None)
             .expect("the first Process requests the route");
         sim.substrate

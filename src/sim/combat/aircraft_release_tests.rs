@@ -61,7 +61,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
 
 fn dispatch(sim: &mut Simulation, rules: &RuleSet) -> CombatTickResult {
     let requests = crate::sim::combat::FireRequests {
-        aircraft: crate::sim::aircraft::tick_aircraft_missions(sim, rules, None),
+        aircraft: crate::sim::aircraft::tick_aircraft_missions(sim, rules),
         ..Default::default()
     };
     let mut run = ReceiverRun::default();
@@ -181,7 +181,7 @@ fn aircraft_release_uses_raw_burst_above_byte_width_and_one_ammo_charge() {
     assert_eq!(entity.weapon_burst.index(), 0);
     // The Mission return owns cadence, independent of the final rearm jitter.
     sim.session.binary_frame = 19;
-    assert!(crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None).is_empty());
+    assert!(crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules).is_empty());
     assert_eq!(
         sim.substrate
             .entities
@@ -194,7 +194,7 @@ fn aircraft_release_uses_raw_burst_above_byte_width_and_one_ammo_charge() {
         2
     );
     sim.session.binary_frame = 20;
-    crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules, None);
+    crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(entity.aircraft_ammo.as_ref().unwrap().current, 1);
     assert!(!entity.aircraft_ammo.as_ref().unwrap().release_pending());
@@ -229,7 +229,7 @@ fn aircraft_release_snapshot_retains_burst_pending_and_mission_delay() {
     assert_eq!(restored.state_hash(), sim.state_hash());
     for world in [&mut sim, &mut restored] {
         world.session.binary_frame = 20;
-        crate::sim::aircraft::tick_aircraft_missions(world, &rules, None);
+        crate::sim::aircraft::tick_aircraft_missions(world, &rules);
         let entity = world.substrate.entities.get(1).unwrap();
         assert_eq!(entity.weapon_burst.index(), 1);
         assert_eq!(entity.aircraft_ammo.as_ref().unwrap().current, 1);

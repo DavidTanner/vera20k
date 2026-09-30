@@ -2881,14 +2881,8 @@ fn tick_movement_with_grids_scoped(
             continue;
         }
         stats.merge(
-            sim.process_ground_locomotor_with_config_for_test(
-                id,
-                rules,
-                path_grid,
-                overlay_registry,
-                timing,
-            )
-            .expect("fixture reached an unsupported production movement receiver"),
+            sim.process_ground_locomotor_with_config_for_test(id, rules, overlay_registry, timing)
+                .expect("fixture reached an unsupported production movement receiver"),
         );
     }
     *entities = sim.substrate.entities;
@@ -2957,39 +2951,44 @@ impl PendingMovementPass {
         self.effects.native_track = Some(invocation);
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// Re-enter this pass for the same mover of its Process (see
+    /// `MoverReentry`), reading the Simulation's current grids and state.
     pub(crate) fn reenter_mover(
         &mut self,
+        sim: &mut crate::sim::world::Simulation,
         reentry: MoverReentry,
-        entities: &mut EntityStore,
-        path_grid: Option<&PathGrid>,
-        zone_grid: Option<&ZoneGrid>,
-        terrain: Option<&ResolvedTerrainGrid>,
-        terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
-        alliances: &HouseAllianceMap,
-        occupancy: &mut OccupancyGrid,
-        cell_occupation: &mut CellOccupationGrid,
-        raw_cell_occupation: &mut RawCellOccupationGrid,
-        rng: &mut SimRng,
-        sim_tick: u64,
-        native_frame: u32,
-        overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-        playfield_bounds: Option<PlayfieldBounds>,
-        terrain_speed_config: &TerrainSpeedConfig,
-        close_enough: SimFixed,
-        path_delay_ticks: i32,
-        blockage_path_delay_ticks: i32,
-        interner: &mut crate::sim::intern::StringInterner,
         rules: Option<&crate::rules::ruleset::RuleSet>,
-        type_handles: Option<&TypeHandleTable>,
-        caches: &mut MovementPassCache,
-        houses: &BTreeMap<crate::sim::intern::InternedId, crate::sim::house_state::HouseState>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        timing: MovementConfig,
     ) {
+        let path_grid = sim.path_grid.as_deref();
+        let zone_grid = sim.zone_grid.as_ref();
+        let terrain = sim.resolved_terrain.as_ref();
+        let terrain_costs = &sim.terrain_costs;
+        let alliances = &sim.house_alliances;
+        let entities = &mut sim.substrate.entities;
+        let occupancy = &mut sim.substrate.occupancy;
+        let cell_occupation = &mut sim.substrate.cell_occupation;
+        let raw_cell_occupation = &mut sim.substrate.raw_cell_occupation;
+        let rng = &mut sim.scenario_rng;
+        let sim_tick = sim.session.tick;
+        let native_frame = sim.session.binary_frame;
+        let overlay_grid = sim.overlay_grid.as_ref();
+        let playfield_bounds = sim.playfield_bounds;
+        let terrain_speed_config = &sim.terrain_speed_config;
+        let MovementConfig {
+            close_enough,
+            path_delay_ticks,
+            blockage_path_delay_ticks,
+            ..
+        } = timing;
+        let interner = &mut sim.interner;
+        let type_handles = Some(&sim.type_handles);
+        let houses = &sim.houses;
         let MovementPassCache {
             blocker: blocker_cache,
             block_index,
-        } = caches;
+        } = &mut sim.movement_pass_cache;
         // The search between Mark0 and Mark1, or the ended track, moved the
         // actor's own occupancy; the kept plane follows it through the touch
         // log.

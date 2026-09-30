@@ -69,7 +69,6 @@ fn launch_command(sim: &mut Simulation, rules: &RuleSet, name: &str, rx: u16, ry
             target_ry: ry,
         },
         Some(rules),
-        None,
         None
     ));
     assert!(
@@ -328,7 +327,7 @@ fn infantry_terminal_custom_fly_missions_retire_without_death_announcement() {
         } else {
             AircraftMission::Idle
         });
-        tick_aircraft_missions(&mut sim, &rules, None);
+        tick_aircraft_missions(&mut sim, &rules);
         let entity = sim.substrate.entities.get(victim).unwrap();
         assert_eq!(
             entity.infantry_terminal,

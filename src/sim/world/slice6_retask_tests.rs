@@ -457,6 +457,7 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
     let rules = slice6_rules();
     let grid = PathGrid::new(64, 64);
     let mut sim = Simulation::new();
+    sim.install_fixture_path_grid(Some(&grid));
     sim.spawn_from_map(
         &[unit("Americans", "MTNK", 3, 3, EntityCategory::Unit)],
         Some(&rules),
@@ -480,7 +481,6 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
             queue: false,
         },
         Some(&rules),
-        Some(&grid),
     );
     assert!(issued, "move command should issue");
 

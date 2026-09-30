@@ -385,7 +385,6 @@ fn capture_building_command_accepts_noncapturable_bridge_repair_hut() {
             target_building_id: cabhut,
         },
         Some(&rules),
-        None,
     );
 
     assert!(accepted);

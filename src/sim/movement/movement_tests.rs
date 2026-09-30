@@ -6900,7 +6900,7 @@ fn cell_scatter_world_reads_live_house_and_veteran_ability() {
             sim.session.binary_frame = frame;
             let timing = super::MovementConfig::from_rules(frame, Some(&rules));
             let stats = sim
-                .process_ground_locomotor_with_config_for_test(1, Some(&rules), None, None, timing)
+                .process_ground_locomotor_with_config_for_test(1, Some(&rules), None, timing)
                 .unwrap();
             scattered |= stats.scatter_requests != 0;
             // The non-centred infantry survives the crush-radius test, so the

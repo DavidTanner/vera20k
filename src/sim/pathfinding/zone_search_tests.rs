@@ -927,8 +927,9 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
             .test_arm_ready(owner, ProductionCategory::Vehicle)
     );
 
+    sim.install_fixture_path_grid(Some(&path_grid));
     assert!(
-        tick_production(&mut sim, &rules, Some(&path_grid)),
+        tick_production(&mut sim, &rules),
         "ready ground-unit production should deliver through the real completion entry"
     );
 
@@ -1050,6 +1051,7 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
     sim.spawn_object("BLOCK", "Russians", 0, 2, 0, &rules)
         .expect("dynamic blocker should spawn");
 
+    sim.install_fixture_path_grid(Some(&path_grid));
     assert!(sim.apply_command(
         "Americans",
         &crate::sim::command::Command::CaptureBuilding {
@@ -1057,7 +1059,6 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
             target_building_id: target_id,
         },
         Some(&rules),
-        Some(&path_grid),
     ));
 
     let engineer = sim.substrate.entities.get(engineer_id).unwrap();
@@ -1254,7 +1255,8 @@ fn gsi_04_12_attack_pursuit_entry_threads_exact_blocker_counts() {
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
 
-    sim.tick_attack_pursuit(&rules, Some(&path_grid));
+    sim.install_fixture_path_grid(Some(&path_grid));
+    sim.tick_attack_pursuit(&rules);
 
     let movement = first_track_process_route(&mut sim, 1, Some(&rules), &path_grid)
         .expect("real out-of-range pursuit should reach the projected hierarchy route");
@@ -1327,7 +1329,8 @@ fn gsi_04_12_phase_six_order_resume_threads_exact_blocker_counts() {
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
 
-    sim.tick_order_intents_post_combat(Some(&path_grid), Some(&rules));
+    sim.install_fixture_path_grid(Some(&path_grid));
+    sim.tick_order_intents_post_combat(Some(&rules));
 
     let movement = first_track_process_route(&mut sim, 1, Some(&rules), &path_grid)
         .expect("real Phase-6 resume should reach the projected hierarchy route");
@@ -1513,6 +1516,7 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
         sim.substrate.entities.insert(blocker);
         sim.resolved_terrain = Some(terrain);
         sim.zone_grid = Some(zone_grid);
+        sim.install_fixture_path_grid(Some(&path_grid));
         sim
     };
 
@@ -1520,7 +1524,6 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     assert!(issue_stock_miner_drive_move(
         &mut ore_trip,
         &rules,
-        &path_grid,
         1,
         (3, 0),
     ));
@@ -1534,7 +1537,6 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     issue_move_if_idle(
         &mut refinery_return,
         Some(&rules),
-        &path_grid,
         1,
         (3, 0),
         SimFixed::from_num(128),
