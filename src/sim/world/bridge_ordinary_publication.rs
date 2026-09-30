@@ -24,6 +24,7 @@ pub(crate) fn damage_ordinary(
         rules,
         registry,
         collapsed: false,
+        family,
     };
     let returned = ordinary_damage::damage(
         &mut LiveOrdinary {
@@ -51,6 +52,8 @@ pub(crate) fn repair_from_engineer(
         rules,
         registry,
         collapsed: false,
+        // Repair runs no rim or ramp-tile helper through this host.
+        family: Family::High,
     };
     let (input, family) = engineer_repair_family(&mut live, engineer)?;
     let mut host = LiveOrdinary {

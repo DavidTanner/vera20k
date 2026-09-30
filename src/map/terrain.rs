@@ -1199,8 +1199,7 @@ mod tests {
         // Camera at origin, 1024x768 viewport — only first cell should be visible.
         let result: crate::render::terrain_instances::TerrainInstances =
             crate::render::terrain_instances::build_visible_instances(
-                &grid, None, 0.0, 0.0, 1024.0, 768.0, None, None,
-                None,
+                &grid, None, 0.0, 0.0, 1024.0, 768.0, None, None, None,
             );
         assert_eq!(result.normal.len(), 1);
     }
@@ -1310,9 +1309,7 @@ mod tests {
             0,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 0,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis,
                 role: BridgeCellRole::Anchor,

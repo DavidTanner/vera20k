@@ -99,7 +99,7 @@ impl LivePublication<'_> {
         phase: Phase,
         direction: u8,
     ) -> Result<(), String> {
-        let Some(keys) = self.terrain().high_bridge_rim_tiles() else {
+        let Some(keys) = super::super::family_rim_tiles(self.terrain(), self.family) else {
             return Ok(());
         };
         let relative = self.tile(retained).wrapping_sub(keys.base).wrapping_add(1);

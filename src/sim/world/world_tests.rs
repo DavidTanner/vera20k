@@ -1154,7 +1154,7 @@ fn gsi_04_07_wall_sell_ordered_cleanup_detach_navigation_and_zero_refund_rng() {
         )
     };
     assert!(
-        sim.finalize_frame_overlays_and_navigation(Some(&rules), Some(&overlays), false)
+        sim.finalize_frame_overlays_and_navigation(Some(&rules), Some(&overlays), false, false)
             .is_empty(),
         "the sold and cleanup cells are cleared, so no occupied render update remains"
     );

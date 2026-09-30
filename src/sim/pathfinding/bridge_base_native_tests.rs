@@ -21,7 +21,6 @@ fn native_bridge_base_edges_match_original_executable() {
                 BridgeEndpointRecord {
                     endpoint_a: coord("a"),
                     endpoint_b: coord("b"),
-                    group_id: 0,
                     active: r["active"].as_bool().unwrap(),
                     bridge_kind: if r["kind"].as_u64().unwrap() == 0 {
                         BridgeRecordKind::High

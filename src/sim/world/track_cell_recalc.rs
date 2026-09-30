@@ -3,7 +3,10 @@
 //! cells in bridge theaters. Unsupported constructors remain an explicit
 //! runtime Recalc gap; the caller retains the preceding list/raw writes.
 
-use super::{Simulation, navigation::NavigationCaches};
+use super::{
+    Simulation,
+    navigation::{self, NavigationCaches},
+};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 
@@ -37,24 +40,12 @@ impl Simulation {
                 .get(coord.0, coord.1)
                 .is_some_and(|list| {
                     list.iter_layer(crate::sim::movement::locomotor::MovementLayer::Ground)
-                        .any(|entry| {
-                            let Some(entity) = self.substrate.entities.get(entry.entity_id) else {
-                                return false;
-                            };
-                            if entity.category != crate::map::entities::EntityCategory::Structure
-                                || !entity.lifecycle.cell_marked
-                            {
-                                return false;
-                            }
-                            let object = rules.object(self.interner.resolve(entity.type_ref()));
-                            let foundation = crate::sim::production::building_base_foundation_cells(
-                                entity.position.rx,
-                                entity.position.ry,
-                                object.map_or("1x1", |object| object.foundation.as_str()),
-                            );
-                            crate::sim::production::building_movement_blocking_cells(
-                                &foundation,
-                                object.is_some_and(|object| object.bib),
+                        .filter_map(|entry| self.substrate.entities.get(entry.entity_id))
+                        .any(|entity| {
+                            navigation::marked_structure_movement_cells(
+                                entity,
+                                &self.interner,
+                                rules,
                             )
                             .contains(&coord)
                         })

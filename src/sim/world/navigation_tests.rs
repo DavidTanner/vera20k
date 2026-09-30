@@ -50,7 +50,6 @@ fn native_bridge_record_geometry_changes_rebuild_and_restore_navigation() {
     let record = BridgeEndpointRecord {
         endpoint_a: (5, 5),
         endpoint_b: (26, 0),
-        group_id: 0,
         active: true,
         bridge_kind: BridgeRecordKind::Low,
     };
@@ -383,4 +382,59 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
     );
     assert!(restored.rebuild_dynamic_navigation(&rules));
     assert!(restored.path_grid_snapshot().unwrap().is_walkable(6, 6));
+}
+
+#[test]
+fn structure_changes_publish_footprint_cells_without_rebuilding_zones() {
+    use crate::rules::locomotor_type::MovementZone;
+    let (rules, overlays) = rules_and_overlays();
+    let mut sim = Simulation::with_seed(0x442048);
+    sim.install_resolved_terrain_for_new_map(gsi_04_10_clear_terrain(16, 16));
+    sim.overlay_grid = Some(OverlayGrid::new(16, 16));
+    assert!(sim.rebuild_dynamic_navigation(&rules));
+    let open = sim.path_grid_snapshot().unwrap();
+    let zone_storage = |sim: &Simulation| {
+        sim.zone_grid
+            .as_ref()
+            .and_then(|zones| zones.map_for(MovementZone::Normal))
+            .unwrap()
+            .zone_ids_slice()
+            .as_ptr() as usize
+    };
+    let zones_before = zone_storage(&sim);
+
+    let mut structure =
+        crate::sim::game_entity::GameEntity::test_default(9, "YARD", "Americans", 6, 6);
+    structure.category = EntityCategory::Structure;
+    structure.type_ref = sim.interner.intern("YARD");
+    structure.lifecycle.cell_marked = true;
+    sim.substrate.entities.insert(structure);
+    assert!(
+        sim.finalize_frame_overlays_and_navigation(Some(&rules), Some(&overlays), false, true)
+            .is_empty()
+    );
+    let placed = sim.path_grid_snapshot().unwrap();
+    assert_only_marked_foundation(&sim);
+    assert_eq!(
+        zone_storage(&sim),
+        zones_before,
+        "structures do not change the terrain-class zone map"
+    );
+    assert!(sim.rebuild_dynamic_navigation(&rules));
+    assert_eq!(
+        *sim.path_grid_snapshot().unwrap(),
+        *placed,
+        "the footprint publication equals a full rebuild"
+    );
+
+    sim.substrate
+        .entities
+        .get_mut(9)
+        .unwrap()
+        .lifecycle
+        .cell_marked = false;
+    let zones_before = zone_storage(&sim);
+    sim.finalize_frame_overlays_and_navigation(Some(&rules), Some(&overlays), false, true);
+    assert_eq!(*sim.path_grid_snapshot().unwrap(), *open);
+    assert_eq!(zone_storage(&sim), zones_before);
 }

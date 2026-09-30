@@ -192,10 +192,8 @@ mod tests {
         }
         let mut bridges =
             BridgeRuntimeState::from_resolved_terrain_with_map_size(&terrain, true, 1, (8, 8));
-        // A bridge loaded already broken has no runtime damage group; native
-        // kind0/active remains independent of the Rust group sentinel.
+        // A bridge loaded already broken keeps its native kind0 record inactive.
         assert_eq!(bridges.endpoint_records().len(), 1);
-        assert_eq!(bridges.endpoint_records()[0].group_id, 0);
         assert!(!bridges.endpoint_records()[0].active);
         bridges.test_set_endpoint_records(Vec::new());
         let mut path = PathGrid::from_resolved_terrain_with_bridges(&terrain, Some(&bridges));
@@ -225,6 +223,7 @@ mod tests {
             rules: &rules,
             registry: None,
             collapsed: false,
+            family: Family::High,
         };
         assert!(!host.validate_bridge_zones((5, 5)).unwrap());
         assert!(sim.bridge_state.as_ref().unwrap().endpoint_records()[0].active);
@@ -237,6 +236,7 @@ mod tests {
             rules: &rules,
             registry: None,
             collapsed: false,
+            family: Family::High,
         };
         assert!(!host.validate_bridge_zones((5, 5)).unwrap());
         assert_eq!(edge_state(&sim), after);
@@ -252,6 +252,7 @@ mod tests {
             rules: &rules,
             registry: None,
             collapsed: false,
+            family: Family::High,
         };
         host.rebuild_bridge_connectivity().unwrap();
         assert_eq!(

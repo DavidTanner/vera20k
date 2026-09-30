@@ -58,9 +58,7 @@ fn cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
 fn bridge_cell(role: BridgeCellRole, span: Option<u16>, overlay_byte: u8) -> BridgeRuntimeCell {
     BridgeRuntimeCell {
         deck_present: true,
-        destroyable: true,
         deck_level: 4,
-        bridge_group_id: Some(1),
         damage_state: DamageState::Healthy { variant: 0 },
         axis: Some(Axis::NS),
         role,
@@ -146,8 +144,6 @@ fn simulation_fixture() -> (Simulation, crate::map::terrain::TerrainGrid) {
         ],
         axis: Axis::NS,
         direction: Direction::N,
-        damage_state: DamageState::Healthy { variant: 0 },
-        bridge_group_id: 1,
     });
 
     let mut sim = Simulation::new();

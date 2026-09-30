@@ -2728,7 +2728,6 @@ fn place_ready_building_rejects_native_gap_restamp_cells() {
     let records = [crate::sim::bridge_state::BridgeEndpointRecord {
         endpoint_a: (11, 12),
         endpoint_b: (15, 12),
-        group_id: 0,
         active: false,
         bridge_kind: crate::sim::bridge_state::BridgeRecordKind::High,
     }];

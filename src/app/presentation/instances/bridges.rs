@@ -701,9 +701,7 @@ mod tests {
                 5,
                 BridgeRuntimeCell {
                     deck_present: true,
-                    destroyable: true,
                     deck_level: 4,
-                    bridge_group_id: Some(1),
                     damage_state,
                     axis: Some(Axis::EW),
                     role: BridgeCellRole::Body,
@@ -831,9 +829,7 @@ mod tests {
             5,
             BridgeRuntimeCell {
                 deck_present: true,
-                destroyable: true,
                 deck_level: 4,
-                bridge_group_id: Some(1),
                 damage_state: DamageState::Healthy { variant: 1 },
                 axis: Some(Axis::NS),
                 role: BridgeCellRole::Body,
