@@ -876,7 +876,11 @@ impl Simulation {
     /// The Slave Miner's class setter (`vt+0x480(cell, 1)`, the Unit setter
     /// `0x00741970`) then `Queue_Mission(Move, 0)`.
     fn send_slave_master(&mut self, master: u64, cell: (u16, u16), rules: &RuleSet) {
-        if !self.set_unit_cell_destination(master, cell, rules) {
+        if !self.set_unit_destination(
+            master,
+            crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+            rules,
+        ) {
             log::debug!("slave master {master} has no Unit setter for {cell:?}");
         }
         self.queue_slave_mission(master, MissionType::Move);
@@ -1189,7 +1193,12 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
     ) {
-        match self.set_infantry_cell_destination(slave, cell, rules, registry) {
+        match self.set_infantry_destination(
+            slave,
+            crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+            rules,
+            registry,
+        ) {
             Ok(true) => {}
             Ok(false) => log::debug!("slave {slave} has no Walk setter for {cell:?}"),
             Err(cause) => log::debug!("slave {slave} could not be sent to {cell:?}: {cause}"),

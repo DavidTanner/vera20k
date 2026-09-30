@@ -189,6 +189,33 @@ pub(crate) fn building_dock_cell(
     Some((cell(coord.x)?, cell(coord.y)?))
 }
 
+/// Native pointer-comparison gates use the receiver identity. The stored tag
+/// is retained; it does not make a different entity receiver. Valid Cells
+/// retain the existing coordinate identity; dummy/aliased Cell pointer
+/// retention is outside this ordinary object-reference slice.
+pub(super) fn nav_targets_same_receiver(left: Option<NavTargetRef>, right: NavTargetRef) -> bool {
+    match (left, right) {
+        (
+            Some(NavTargetRef::Cell {
+                rx: left_x,
+                ry: left_y,
+            }),
+            NavTargetRef::Cell { rx, ry },
+        ) => (left_x, left_y) == (rx, ry),
+        (
+            Some(
+                NavTargetRef::Entity { id: left }
+                | NavTargetRef::Object { id: left }
+                | NavTargetRef::Building { id: left },
+            ),
+            NavTargetRef::Entity { id: right }
+            | NavTargetRef::Object { id: right }
+            | NavTargetRef::Building { id: right },
+        ) => left == right,
+        _ => false,
+    }
+}
+
 /// Resolve the live receiver behind a non-null NavCom. The Rust reference tag
 /// does not change the native virtual receiver, and a dangling ID is not NULL.
 pub(crate) fn nav_target_coordinate(
@@ -244,7 +271,8 @@ pub(crate) fn nav_target_coordinate(
     super::foot_coordinate::navigation_coordinate(entity, terrain)
 }
 
-/// Owner non-null destination path for the Phase 1 normal cell-target slice.
+/// Cell callers of the shared non-null destination owner. Object callers
+/// capture their receiver's +4C through `nav_target_coordinate` instead.
 pub(crate) fn set_destination_internal_cell(
     entity: &mut GameEntity,
     target: (u16, u16),

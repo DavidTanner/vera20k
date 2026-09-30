@@ -777,7 +777,7 @@ pub(crate) fn issue_move_command_with_destination(
 /// destination: the first no-queue Process owns the request (Drive 4B28A3,
 /// Ship 6A1EF3). Native evidence: track_destination unit rows and
 /// track_order_path. The class preprocessing (the Teleporter arm, +1F8 and
-/// the Foot+0x6AC skip) belongs to `Simulation::set_unit_cell_destination`;
+/// the Foot+0x6AC skip) belongs to `Simulation::set_unit_destination`;
 /// this command-path adapter has none of it, nor the radio-building and
 /// deploy-byte arms.
 pub(crate) fn prepare_track_destination(
@@ -802,15 +802,18 @@ pub(crate) fn prepare_track_destination(
     prepare_destination_execution(entity, target, speed);
 }
 
-/// Accepted Cell destination -> Walk75ACB0, without searching or advancing
-/// Process. The class caller owns preceding admission; this accepted Cell
-/// path preserves Enter-without-contact's skipped path-head write.
+/// Accepted destination -> Walk75ACB0, without searching or advancing
+/// Process. The class caller owns preceding admission and its path-head
+/// write; the captured coordinate comes from the shared target +4C owner.
 /// No PathGrid is needed until the next ordinary Process (or the immediate
 /// Process specifically required by NULL-source Scatter51D478).
-pub(crate) fn prepare_walk_cell_destination(
+pub(crate) fn prepare_walk_destination(
     entities: &mut EntityStore,
     entity_id: u64,
-    target: (u16, u16),
+    destination: (
+        crate::sim::components::NavTargetRef,
+        crate::sim::components::DriveCoord,
+    ),
     speed: SimFixed,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     timing: crate::sim::movement::DestinationTiming,
@@ -825,10 +828,14 @@ pub(crate) fn prepare_walk_cell_destination(
     {
         return false;
     }
-    clear_destination_path_head(entity);
-    super::navcom::set_destination_internal_cell(entity, target, resolved_terrain);
+    let (reference, coord) = destination;
+    super::navcom::set_destination_internal_coord(entity, reference, coord, resolved_terrain);
     timing.accept(entity);
-    prepare_destination_execution(entity, target, speed);
+    prepare_destination_execution(
+        entity,
+        ((coord.x / 256) as u16, (coord.y / 256) as u16),
+        speed,
+    );
     true
 }
 
@@ -836,7 +843,7 @@ pub(crate) fn prepare_walk_cell_destination(
 /// without a radio contact skips: Infantry 51AC25..51AD17, Unit
 /// 741C4F..741C78 -> 741E88 (both the NULL and the non-NULL destination).
 /// NavQueue, suffix and reference survive.
-pub(super) fn clear_destination_path_head(entity: &mut GameEntity) {
+pub(crate) fn clear_destination_path_head(entity: &mut GameEntity) {
     if (entity.mission.effective().raw() != 7 && entity.mission.queued().raw() != 7)
         || !entity.radio_contacts.is_empty()
     {

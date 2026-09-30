@@ -1,4 +1,4 @@
-//! Evidence-backed Foot/Unit mission-handler cadence evaluation.
+//! Foot/Unit mission handlers and their ordered target/navigation effects.
 //!
 //! The object-AI host and its ordering remain in the parent module; this module
 //! owns only handler inputs, results, and the single timer epilogue.
@@ -10,16 +10,20 @@ use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 
+#[cfg(test)]
+#[path = "foot_mission_oracle_tests.rs"]
+mod foot_mission_oracle_tests;
+
 /// Re-arm the evidence-backed Foot/Unit handler subset without duplicating the
 /// legacy movement, combat, or target-selection systems.
 ///
 /// YR `MissionClass::AI` at `0x005B3060` gates the current handler on the
 /// dispatch timer and writes `(current frame, handler return)` afterward. The
 /// existing movement/combat phases remain the sole owners of their path and
-/// target side effects; this absorbs only proven handler-return cadence. Harvest
-/// has its own full handler and epilogue, so miners are excluded to avoid a
-/// second write. Target acquisition and approach-result producers are still
-/// absent; their native routes remain explicit no-ops rather than guessed AI.
+/// target side effects. Represented handler branches call those owners before
+/// computing cadence. Harvest has its own handler and epilogue, so its miners
+/// are excluded here. Approach_Target4D5690 remains a required separate port;
+/// its target-present branches are not covered by the empty/pick receipts.
 pub(super) fn dispatch_supported_foot_mission_cadence(
     sim: &mut Simulation,
     id: u64,
@@ -316,14 +320,12 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         //   grounded Siege Chopper on Attack. Player effect: retail nudges them
         //   off the spot; VERA's stay put. Frequency: routine in Allied and
         //   Soviet mid-game. The key IS parsed, for locomotor selection only.
-        // - Step 2, the `[this+0x68E]` re-acquire, which runs
-        //   `Greatest_Threat` once and clears the flag. Frequency: ZERO today —
-        //   its only producers are the tank-bunker adjacency scans in
-        //   `Mission_Guard @ 0x004D51C5` and `Mission_AreaGuard @ 0x004D7018`,
-        //   both already recorded as residuals on their own arms. Downstream
-        //   risk is the reason it is written down: the consumer must land in
-        //   the same slice as the bunker scan, or a bunker-acquired unit keeps
-        //   the bunker as its target instead of re-picking one dispatch later.
+        // - Step 2, Foot+68E re-acquisition. Guard4D51C5 and AreaGuard4D7018
+        //   produce it for a secondary ElectricAssault warhead and an allied
+        //   Overpowerable building (stock SHK/TESLA). Attack4D4E0D clears it
+        //   after a non-null pick. The producer, consumer and team-coordinate
+        //   reader remain one required Tesla charging chain; none has a Rust
+        //   latch owner yet. This is unrelated to tank-bunker containment.
         // Deployed infantry never reach the Foot body — `InfantryClass`'s
         // Attack slot `+0x210` is a real override at `0x0051F3E0` whose
         // deployed arm runs the in-place re-acquire and returns the PLAIN
@@ -589,6 +591,9 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         (EntityCategory::Unit | EntityCategory::Infantry, Some(MissionType::Hunt)) => {
             evaluate_foot_hunt(sim, id, rules, ctx)
         }
+        (EntityCategory::Unit | EntityCategory::Infantry, Some(MissionType::Rescue)) => {
+            evaluate_foot_rescue(sim, id, rules, ctx)
+        }
         // SKIP/PROVE (GSI-07.09) — Mission 4 Retreat is a dead slot for foot
         // objects, and pass 1's reason was wrong. `FootClass::Mission_Retreat @
         // 0x004DA2C0` (slot `+0x230`, proven from the dispatch jump table at
@@ -616,12 +621,12 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
     };
 
     if evaluation.clear_stale_attack_target || evaluation.clear_attack_target {
-        if let Some(entity) = sim.substrate.entities.get_mut(id) {
-            if evaluation.clear_attack_target {
-                // Unit EnterIdle738AF5/738C75 dispatches the real target setter.
-                // Keep the same burst owner as the locomotor arrival receiver.
-                crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
-            } else {
+        if evaluation.clear_attack_target {
+            // EnterIdle738AF5/738C75 and the Foot arrival hook dispatch the
+            // receiver's class target setter before any mission queue call.
+            let _ = sim.assign_target_represented(id, None, Some(rules));
+        } else {
+            if let Some(entity) = sim.substrate.entities.get_mut(id) {
                 // A missing handle is expiry cleanup, not Assign_Target(NULL).
                 entity.attack_target = None;
             }
@@ -1202,9 +1207,8 @@ fn foot_enter_idle_mode_selection(
 /// gated on `!HouseClass::IsControlledByHuman(this->Owner)` and
 /// `g_GameMode (0x00A8B238) == 0`, a campaign computer house; skirmish runs
 /// with a nonzero game mode, so it is dormant there. The human arm's
-/// `UpdateIdleAction` is already covered — `sim::infantry::tick_idle_actions`
-/// admits Hunt and gates on "no target", the same condition — from a different
-/// position in the tick, which is that function's own recorded residual.
+/// `UpdateIdleAction` now uses its one Infantry receiver synchronously, before
+/// the cadence draw in that human no-target arm.
 ///
 /// RESIDUAL — **`InfantryClass::Mission_Hunt @ 0x0051F540`** (slot `+0x228`,
 /// single DATA xref `0x007EB280`; `0x007EB280 - 0x007EB058 = 0x228`), the
@@ -1253,9 +1257,234 @@ fn evaluate_foot_hunt(
             // the scanner.
             crate::sim::combat::ScanMission::Hunt,
             ctx,
+            None,
         );
     }
+    //4D54EE..4D5576: the human no-target arm invokes the class idle
+    //receiver before the mission-rate jitter. Campaign AI return-to-base
+    //still belongs to its documented House/mission continuation below.
+    if sim
+        .substrate
+        .entities
+        .get(id)
+        .is_some_and(|entity| entity.attack_target.is_none() && sim.owner_is_human(entity.owner()))
+    {
+        let _ = sim.infantry_idle_action(id, rules);
+    }
     MissionHandlerEvaluation::cadence(jittered_mission_cadence(sim, rules, MissionType::Hunt))
+}
+
+/// Archive the raw physical Map565730 Cell receiver, never Foot's HeadTo.
+/// Real map cells retain their canonical coordinates. The tagged Cell adapter
+/// does not yet preserve a retained Dummy pointer across subsequent stamps.
+fn foot_physical_cell_target(sim: &Simulation, id: u64) -> Option<crate::sim::combat::TargetKind> {
+    let actor = sim.substrate.entities.get(id)?;
+    let coord = crate::sim::movement::ground_pose::position_world_coord(&actor.position);
+    let cell = sim.resolved_terrain.as_ref().map_or(
+        ((coord.x / 256) as i16, (coord.y / 256) as i16),
+        |terrain| {
+            let query = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+            terrain.native_cell_coord(query.lookup_world(coord.x, coord.y))
+        },
+    );
+    Some(crate::sim::combat::TargetKind::Cell(
+        cell.0 as u16,
+        cell.1 as u16,
+    ))
+}
+
+fn foot_threat_range(sim: &Simulation, id: u64, rules: &RuleSet) -> i32 {
+    let Some(actor) = sim.substrate.entities.get(id) else {
+        return 0;
+    };
+    let Some(object) = sim.object_type(actor.type_ref(), rules) else {
+        return 0;
+    };
+    let ranges = if object.guard_range.is_none_or(|range| range.to_bits() == 0) {
+        std::array::from_fn(|index| {
+            crate::sim::combat::combat_weapon::weapon_range(
+                actor,
+                object,
+                index as i32,
+                &sim.substrate.entities,
+                rules,
+                &sim.interner,
+            )
+        })
+    } else {
+        [0, 0]
+    };
+    crate::sim::combat::threat_range::threat_range_leptons(object, 1, ranges)
+}
+
+fn scaled_area_guard_leash(range: i32) -> i32 {
+    use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
+    //4D6E55..4D6E5F multiplies whole leptons by double7E9258 (1.1),
+    //then signed ftol. Native boundary vectors pin the resulting move order.
+    X87::ftol_i32_low_masked(X87::mul(
+        X87::load_i32(range),
+        X87::load_f64(NativeF64Bits::from_bits(0x3ff1_9999_9999_999a)),
+    ))
+}
+
+fn foot_distance_to_target(
+    sim: &Simulation,
+    id: u64,
+    target: crate::sim::combat::TargetKind,
+    rules: &RuleSet,
+) -> Option<i32> {
+    let coords = |target| {
+        crate::sim::movement::ground_pose::target_get_coords(
+            target,
+            &sim.substrate.entities,
+            sim.resolved_terrain.as_ref(),
+            rules,
+            &sim.interner,
+        )
+    };
+    let from = coords(crate::sim::combat::TargetKind::Entity(id))?;
+    let to = coords(target)?;
+    let foundation = match target {
+        crate::sim::combat::TargetKind::Entity(id) => sim
+            .substrate
+            .entities
+            .get(id)
+            .filter(|entity| entity.category == EntityCategory::Structure)
+            .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+            .map(|object| {
+                let (width, height) =
+                    crate::rules::foundation::foundation_dimensions(&object.foundation);
+                (i32::from(width), i32::from(height))
+            }),
+        crate::sim::combat::TargetKind::Cell(..) => None,
+    };
+    Some(crate::util::native_x87::object_distance(
+        [from.x, from.y, from.z],
+        [to.x, to.y, to.z],
+        foundation,
+    ))
+}
+
+/// `FootClass::Mission_Rescue @ 0x004DDF90`, ordinary Unit/Infantry.
+/// Its direct Greatest_Threat uses the archive's+48 XYZ, no passive timer or
+/// health debit. Admission is strict distance < mode1 range*1.5. Empty results
+/// clear688, set status1, use the House500200 home owner, assign a destination,
+/// then clear the archive before the current-mission cadence draw. Status1
+/// without NavCom queues AreaGuard and calls Commence directly.
+/// Native execution: foot_missions Rescue rows and house_base_return.
+/// The target-present Approach_Target4D5690 dependency is still required;
+/// its sole existing Rust port belongs to PR#798 and must be integrated there.
+fn evaluate_foot_rescue(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    ctx: super::ObjectAiCtx<'_>,
+) -> MissionHandlerEvaluation {
+    let Some(actor) = sim.substrate.entities.get(id) else {
+        return MissionHandlerEvaluation::cadence(1);
+    };
+    let state = actor.mission.handler_state();
+    if state == 1 && actor.navigation.nav_com.is_none() {
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .expect("Rescue receiver")
+            .set_archive_target(None);
+        let _ = sim.mission_queue_exact(
+            id,
+            MissionId::from_known(MissionType::AreaGuard),
+            0,
+            sim.session.binary_frame,
+            &EntityReadyInputProvider,
+        );
+        let _ = sim.mission_commence_exact(id, sim.session.binary_frame);
+    } else if state == 0 && actor.attack_target.is_none() {
+        if actor.archive_target().is_none() {
+            let post = foot_physical_cell_target(sim, id);
+            sim.substrate
+                .entities
+                .get_mut(id)
+                .expect("Rescue receiver")
+                .set_archive_target(post);
+        }
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .expect("Rescue receiver")
+            .clear_rescue_retarget_latch();
+        let archive = sim
+            .substrate
+            .entities
+            .get(id)
+            .and_then(|actor| actor.archive_target());
+        let coords = |sim: &Simulation, target| {
+            crate::sim::movement::ground_pose::target_get_coords(
+                target,
+                &sim.substrate.entities,
+                sim.resolved_terrain.as_ref(),
+                rules,
+                &sim.interner,
+            )
+            .map(|coord| [coord.x, coord.y, coord.z])
+        };
+        let point = archive.and_then(|post| coords(sim, post));
+        let pick = point.and_then(|point| {
+            sim.greatest_threat_represented(
+                rules,
+                ctx.overlay_registry,
+                id,
+                crate::sim::combat::ScanMission::Hunt,
+                Some(point),
+                crate::sim::combat::combat_targeting::greatest_threat_for_entity,
+            )
+        });
+        if let (Some(point), Some(pick)) = (point, pick)
+            && let Some(target) = coords(sim, crate::sim::combat::TargetKind::Entity(pick))
+        {
+            //1.5 is exact for the native integer range, so this signed
+            //scaled comparison preserves its strict FCOMP result without
+            //rounding a fractional threshold or discounting foundations.
+            let distance = crate::util::native_x87::object_distance(point, target, None);
+            if i64::from(distance) * 2 < i64::from(foot_threat_range(sim, id, rules)) * 3 {
+                let _ = sim.assign_target_represented(
+                    id,
+                    Some(crate::sim::combat::TargetKind::Entity(pick)),
+                    Some(rules),
+                );
+            }
+        }
+        if sim
+            .substrate
+            .entities
+            .get(id)
+            .is_some_and(|actor| actor.attack_target.is_some())
+        {
+            return MissionHandlerEvaluation::cadence(1);
+        }
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .expect("Rescue receiver")
+            .mission
+            .set_handler_state(1);
+        let destination = sim
+            .house_return_cell(id)
+            .map(|(rx, ry)| crate::sim::components::NavTargetRef::cell(rx, ry));
+        let _ =
+            sim.assign_destination_represented(id, destination, Some(rules), ctx.overlay_registry);
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .expect("Rescue receiver")
+            .set_archive_target(None);
+    }
+    let mission = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|actor| actor.mission.current().known())
+        .unwrap_or(MissionType::Rescue);
+    MissionHandlerEvaluation::cadence(jittered_mission_cadence(sim, rules, mission))
 }
 
 /// Smallest value of the Area Guard cadence jitter draw (`RandomRanged(1, 5)`).
@@ -1264,100 +1493,119 @@ const AREA_GUARD_CADENCE_JITTER_MIN: u32 = 1;
 /// Largest value of the Area Guard cadence jitter draw (`RandomRanged(1, 5)`).
 const AREA_GUARD_CADENCE_JITTER_MAX: u32 = 5;
 
-/// `FootClass::Mission_AreaGuard` 0x004D6AA0 — "hold this spot and cover it".
+/// `FootClass::Mission_AreaGuard @ 0x004D6AA0`, ordinary MTNK/E1 path.
+/// The archive owns the guard post. Cell+48 uses ground height even for a
+/// deck-standing actor; an archived Foot instead supplies its live world XYZ
+/// and selects General.GuardModeStray. A crossed leash clears Target before
+/// assigning that SAME archive through the concrete destination owner.
+/// Retaliate_And_Scan receives the post XYZ, and synchronous Infantry idle
+/// work precedes the cadence draw. Native execution: foot_missions ordinary
+/// post/leash, scan-point and retail idle controls.
 ///
-/// With no target installed and the base can-acquire predicate satisfied
-/// (`TechnoClass::CanAcquireTarget` 0x007091D0 at 0x004D6EDB), the handler runs
-/// the SAME shared target scanner the common AI body runs for
-/// Move/Guard/Harvest — slot `+0x39C`, 0x00709820, called at 0x004D6F06 — but
-/// with the Area Guard threat mask (which is what widens the acquisition radius
-/// — see `combat::threat_range`). If that installs a target the handler returns
-/// one frame. Otherwise the cadence is the object's own `[Area Guard] Rate`
-/// plus a `RandomRanged(1, 5)` draw (0x004D7059).
-///
-/// Deliberately NOT represented, recorded:
-/// - **the head hand-off arm.** Before anything else, `if ([this+0x2E4]) {
-///   Queue_Mission(Guard, commence=1); return 1; }` (0x004D6AAB). VERA has no
-///   field for `+0x2E4` and its identity is UNCHECKED. Trigger: whatever sets
-///   that dword. Player effect: retail drops such an object straight back onto
-///   plain Guard on its next dispatch; VERA keeps it area-guarding. Frequency:
-///   unknown pending the field's identity. Downstream risk: none — it is one
-///   queue call away once the field is named.
-/// - **the three containment latches** the head shares verbatim with
-///   `Mission_Guard` (0x004D6ACC-0x004D6B22) — same residual as recorded on
-///   [`evaluate_foot_guard_cadence`].
-/// - **the harvester-resume arm** (0x004D6D1A-0x004D6D69): for a `UnitClass`
-///   (`What_Am_I()` 1) whose type carries byte `+0xE0E`, the handler runs
-///   `Queue_Mission(Harvest, 0)`, calls `[vtable+0x1EC]` (Commence) and returns
-///   `RandomRanged(1, 10) + 1` — a different cadence AND a different draw from
-///   the `(1, 5)` above. Trigger: a miner on Area Guard. Player effect: retail
-///   puts it straight back to work; VERA's keeps area-guarding. Frequency:
-///   invisible today — the miner exclusion at the head of
-///   [`dispatch_supported_foot_mission_cadence`] keeps any miner not on Guard
-///   out of the handler, and the only route onto Area Guard is the Move-arrival
-///   promotion that is itself a recorded residual. Downstream risk is why it is
-///   written down: the `(1, 10) + 1` return is an RNG-consumption difference
-///   that lands the moment either of those two closes. `+0xE0E` is UNCHECKED.
-/// - **the tank-bunker adjacency scan** at 0x004D6F44, byte-for-byte the block
-///   recorded on [`evaluate_foot_guard_cadence`].
-/// - **the infantry idle action's call POSITION.** With still no target the
-///   handler calls `[vtable+0x478]` at 0x004D6F25 = `InfantryClass::UpdateIdleAction`
-///   0x0051CDB0, which fidgets the facing, can play an idle `VocClass` line, and
-///   draws its wait re-arm plus up to two more values. `Mission_Guard` calls it
-///   from the same no-target position. **VERA does have that system** —
-///   `sim::infantry::tick_idle_actions`, which admits Guard, Area Guard and
-///   Hunt and gates on "no target", the same condition — but it runs as its own
-///   per-tick pass rather than from inside the handler. Trigger: any idle
-///   infantryman on Guard, Sticky or Area Guard. Player effect: none visible;
-///   the wait timer is the real gate in both. Frequency: continuous.
-///   Downstream risk: the draws land a few ticks earlier than the handler's own
-///   cadence would take them, which that function already records.
-/// - **the guard post.** The original anchors the scan on a stored guard-post
-///   target, defaulting it to the object's own cell the first time the handler
-///   runs with none. VERA has no such field, so the scan is always anchored on
-///   the object — identical while the object is standing on its post, which is
-///   the state Area Guard exists to hold.
-/// - **the post leash.** When the object drifts further from its post than its
-///   own area-guard range, the original drops the target and sends it home.
-///   Nothing in VERA moves an Area Guard object off its post today.
-/// - **the `What_Am_I() == 2` cadence doubling** at 0x004D7048. The RTTI id is
-///   UNCHECKED and no object of that kind reaches this arm; the doubling sits
-///   between the `ftol` and the `(1, 5)` draw, so adding it later moves the
-///   delay without moving the stream.
-/// - one further per-object predicate the original checks between can-acquire
-///   and the scan, whose identity is UNKNOWN.
+/// Required larger chains: target-present Approach_Target4D5690 (sole port in
+/// PR#798), Tesla ElectricAssault adjacency4D6F44 (+68E, Overpowerable), the
+/// AI C4/Sabotage arm4D6DDA and the early containment/waypoint/harvester arms.
+/// They retain their existing boundaries; these controls do not certify them.
 fn evaluate_foot_area_guard(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
     ctx: super::ObjectAiCtx<'_>,
 ) -> MissionHandlerEvaluation {
+    let needs_post = sim.substrate.entities.get(id).is_some_and(|entity| {
+        entity.archive_target().is_none() && entity.mission.queued() == MissionId::NONE
+    });
+    if needs_post {
+        let post = foot_physical_cell_target(sim, id);
+        if let Some(entity) = sim.substrate.entities.get_mut(id) {
+            entity.set_archive_target(post);
+        }
+    }
+    let archive = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| entity.archive_target());
+    let mut leash = scaled_area_guard_leash(foot_threat_range(sim, id, rules));
+    if let Some(crate::sim::combat::TargetKind::Entity(post)) = archive
+        && sim.substrate.entities.get(post).is_some_and(|entity| {
+            matches!(
+                entity.category,
+                EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
+            )
+        })
+    {
+        //4D6E74 tests AbstractFlags bit2, not the target's display layer.
+        leash = rules.general.guard_mode_stray;
+    }
+    let may_return = sim.substrate.entities.get(id).is_some_and(|entity| {
+        entity.navigation.nav_com.is_none() && entity.mission_leaf.foot_firing_sequence_latch() == 0
+    });
+    if let Some(post) = archive
+        && may_return
+        && foot_distance_to_target(sim, id, post, rules).is_some_and(|distance| distance > leash)
+    {
+        //4D6EB8 precedes4D6ECB, even when the class target setter refuses.
+        let _ = sim.assign_target_represented(id, None, Some(rules));
+        let destination = match post {
+            crate::sim::combat::TargetKind::Cell(rx, ry) => {
+                crate::sim::components::NavTargetRef::cell(rx, ry)
+            }
+            crate::sim::combat::TargetKind::Entity(id) => {
+                crate::sim::components::NavTargetRef::Entity { id }
+            }
+        };
+        let _ = sim.assign_destination_represented(
+            id,
+            Some(destination),
+            Some(rules),
+            ctx.overlay_registry,
+        );
+    }
     let needs_target = sim
         .substrate
         .entities
         .get(id)
         .is_some_and(|entity| entity.attack_target.is_none());
-    // `0x004D6EDB..0x004D6F06`: no target, CanAcquireTarget, and the
-    // targeting timer run out (`0x0070F7E0`), then the scan with mask 2.
     let timer_due = sim
         .substrate
         .entities
         .get(id)
         .is_some_and(|entity| entity.passive_scan_timer.due(sim.session.binary_frame));
     if needs_target && can_acquire_target(sim, id, rules) && timer_due {
-        let acquired = super::target_scan::scan(
-            sim,
-            id,
-            rules,
-            crate::sim::combat::ScanMission::AreaGuard,
-            ctx,
-        );
-        if acquired {
-            // The original returns one frame the moment the scan installs a
-            // target, ahead of the cadence tail — so this path draws the
-            // scanner's jitter and NOT the `(1, 5)` cadence jitter.
+        let point = archive
+            .and_then(|post| {
+                crate::sim::movement::ground_pose::target_get_coords(
+                    post,
+                    &sim.substrate.entities,
+                    sim.resolved_terrain.as_ref(),
+                    rules,
+                    &sim.interner,
+                )
+            })
+            .map(|coord| [coord.x, coord.y, coord.z]);
+        //4D6EF5..4D6F06 uses archive+48. A queued mission can leave no
+        // archive; that invalid native pointer is outside this ordinary lane.
+        if point.is_some()
+            && super::target_scan::scan(
+                sim,
+                id,
+                rules,
+                crate::sim::combat::ScanMission::AreaGuard,
+                ctx,
+                point,
+            )
+        {
             return MissionHandlerEvaluation::cadence(1);
         }
+    }
+    if sim
+        .substrate
+        .entities
+        .get(id)
+        .is_some_and(|entity| entity.attack_target.is_none())
+    {
+        let _ = sim.infantry_idle_action(id, rules);
     }
     let base = mission_cadence(rules, MissionType::AreaGuard);
     let jitter = sim
@@ -1372,10 +1620,8 @@ fn evaluate_foot_area_guard(
     // `0x004D714A` is a signed divide by 6). The draw is never skipped — the
     // band only scales what it produced.
     //
-    // The `if (What_Am_I() == 2) EBP += EBP` doubling at `0x004D7048` sits
-    // between the ftol and the draw and is deliberately absent: RTTI 2 is an
-    // object kind that does not reach this arm in VERA, and its identity is
-    // UNCHECKED.
+    // Aircraft doubles this before the draw, but this dispatcher admits
+    // Unit/Infantry only. Target-present Approach_Target remains required.
     let delay = if foot_dispatch_in_cadence_band(sim, rules, id) {
         jittered / 6
     } else {
@@ -1441,9 +1687,8 @@ fn evaluate_foot_area_guard(
 ///   timing detail. Trigger: every Guard dispatch of a grounded object that
 ///   already holds a target and whose type carries `+0x390`. Player effect:
 ///   retail shuffles such a guard onto a nearby passable cell while it engages;
-///   VERA's stands still. Frequency: the arm itself is entered continuously
-///   during any firefight, so until `+0x390` is named — its identity is
-///   UNCHECKED — the frequency cannot honestly be called low. Downstream risk:
+///   VERA's stands still. `+0x390` is HoverAttack: stock Rocketeer and Siege
+///   Chopper use it. Frequency: grounded engagement on those types. Downstream risk:
 ///   a destination write from the mission handler crosses into movement's
 ///   ownership, so closing it needs the movement owner in the loop.
 /// - **the AI-only Sabotage queue** (0x004D523A-0x004D52A9): for an
@@ -1470,20 +1715,13 @@ fn evaluate_foot_area_guard(
 ///   of rate-plus-jitter. Frequency: unknown until the bytes are identified,
 ///   which is why this cannot be closed by guessing. Downstream risk: one
 ///   scenario-RNG draw per dispatch on those paths.
-/// - **the tank-bunker adjacency scan** (0x004D5116-0x004D51D2, repeated
-///   verbatim in Mission_AreaGuard at 0x004D6F44). Behind
-///   `TechnoClass::GetWeapon(1)` 0x0070E140 returning a live weapon whose
-///   warhead byte `+0x158` is set, the handler walks the eight-neighbour offset
-///   table at 0x0089F688 for a building whose type byte `+0x1575` is set and
-///   whose owner matches its own, then `Assign_Target` (`[+0x3C8]`), sets
-///   `+0x68E` and `Queue_Mission(1, 0)`. Trigger: a unit sitting on Guard in a
-///   cell orthogonally or diagonally adjacent to a tank bunker its own house
-///   owns. Player effect: retail garrisons the bunker by itself; VERA's unit
-///   stays outside. Frequency: near zero in ordinary skirmish — tank bunkers
-///   are pre-placed map objects on a minority of stock maps and are rarely
-///   captured. Downstream risk: none; `bunker_link` already exists, but the two
-///   gating flags (`+0x158` on the warhead, `+0x1575` on the building type) are
-///   UNCHECKED and would have to be resolved to INI keys first.
+/// - **Tesla charging adjacency** (0x004D5116-0x004D51D2; AreaGuard4D6F44).
+///   A secondary weapon's ElectricAssault warhead (`+0x158`)
+///   admits an adjacent allied Overpowerable building (`+0x1575`, reader460029).
+///   The handler assigns that building, sets Foot+68E, then queues Attack.
+///   Stock SHK/TESLA exercise this when a trooper stands beside its coil.
+///   Charging and the Attack/team consumers of +68E remain required; using
+///   bunker_link here would introduce the wrong state owner and effect.
 /// - **the second cadence-tail short-circuit ahead of the jitter draw**
 ///   (past the rearm return). `GetTechnoType()->[+0x6B0]` — the **`DistributedFire`**
 ///   bool, key string 0x00843A64, read by `TechnoTypeClass::ReadINI` at
@@ -1504,6 +1742,16 @@ fn evaluate_foot_guard_cadence(
 ) -> MissionHandlerEvaluation {
     if bunker_delegate {
         return MissionHandlerEvaluation::cadence(mission_cadence(rules, mission));
+    }
+    //4D51A6 /4D51D8 precede even the rearm-timer early return. Unit's
+    //receiver is a false stub; Infantry's owner decides actual admission.
+    if sim
+        .substrate
+        .entities
+        .get(id)
+        .is_some_and(|entity| entity.attack_target.is_none())
+    {
+        let _ = sim.infantry_idle_action(id, rules);
     }
     let rearm = sim.substrate.entities.get(id).map_or(0, |entity| {
         entity
@@ -1885,30 +2133,13 @@ fn infantry_deployed_attack_reacquire(
     // scan frame and re-arms the acquisition cadence with its own
     // `RandomRanged(0, 2)` draw, and `0x0051F330` calls `Greatest_Threat`
     // directly through `[vtable+0x3C4]` without either.
-    let pick = crate::sim::combat::acquire_best_target_for_entity(
-        &sim.substrate.entities,
-        &sim.substrate.occupancy,
+    let pick = sim.greatest_threat_represented(
         rules,
-        &sim.interner,
+        ctx.overlay_registry,
         id,
-        Some(&sim.fog),
-        sim.resolved_terrain.as_ref(),
-        sim.playfield_bounds.is_some(),
-        // `vt+0x3C4(1, ...)` — `0x0051F330` pushes the literal `1`, the narrow
-        // (plain-Guard) mask, EVEN WHEN the infantryman it is re-acquiring for
-        // is committed to Area Guard. This is the callsite-vs-mission
-        // distinction in its most visible form: reading the mask off the
-        // entity's mission would hand a deployed Guardian GI on Area Guard the
-        // doubled radius that native reserves for the Area Guard handler's own
-        // literal `2`.
         crate::sim::combat::ScanMission::Guard,
-        sim.zone_grid.as_ref(),
-        crate::sim::combat::line_of_fire::LineOfFireInputs {
-            overlay_grid: sim.overlay_grid.as_ref(),
-            overlay_registry: ctx.overlay_registry,
-            alliances: Some(&sim.fog.alliances),
-        },
-        Some(&*sim),
+        None,
+        crate::sim::combat::combat_targeting::greatest_threat_for_entity,
     );
     // `0x0051F38A..0x0051F39D`: Assign_Target(pick) when a target is held or
     // one was found. It writes no `+0x50C`, so the setter leaves the flag

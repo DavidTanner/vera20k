@@ -292,10 +292,24 @@ impl Simulation {
         let grid = grid
             .as_deref()
             .ok_or_else(|| String::from("Scatter Process requires navigation"))?;
-        movement::prepare_walk_cell_destination(
+        let coord = movement::target_cell_coord(
+            destination.0,
+            destination.1,
+            self.resolved_terrain.as_ref(),
+        );
+        movement::clear_destination_path_head(
+            self.substrate
+                .entities
+                .get_mut(id)
+                .expect("selected scatter actor"),
+        );
+        movement::prepare_walk_destination(
             &mut self.substrate.entities,
             id,
-            destination,
+            (
+                crate::sim::components::NavTargetRef::cell(destination.0, destination.1),
+                coord,
+            ),
             move_info.speed,
             self.resolved_terrain.as_ref(),
             crate::sim::movement::DestinationTiming::new(
@@ -343,7 +357,16 @@ impl Simulation {
                 crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Move),
             );
         }
-        self.assign_infantry_walk_cell_destination(id, scatter, rules, registry)
+        self.assign_infantry_walk_destination(
+            id,
+            crate::sim::components::NavTargetRef::cell(
+                scatter.destination.0,
+                scatter.destination.1,
+            ),
+            scatter.speed,
+            rules,
+            registry,
+        )
     }
 
     /// The head of `InfantryClass::Scatter` with `forced` and the third

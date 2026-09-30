@@ -671,6 +671,7 @@ pub fn projectile_next_cluster_coord(
         impact.x,
         impact.y,
         distance,
+        crate::sim::combat::inviso_scatter::RandomDirectionSnap::Preserve,
     );
     ProjectileCoord::new(x, y, impact.z)
 }
@@ -2933,6 +2934,7 @@ mod tests {
                             impact.x,
                             impact.y,
                             distance.as_i64().unwrap() as i32,
+                            crate::sim::combat::inviso_scatter::RandomDirectionSnap::Preserve,
                         );
                     ProjectileCoord::new(x, y, impact.z)
                 }))

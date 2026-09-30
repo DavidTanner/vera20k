@@ -3138,12 +3138,12 @@ fn sonic_fire_registers_immediately_but_later_techno_fires_before_wave_tail_ai()
     let later_target_id = sim
         .spawn_object("TARGET", "Russians", 2, 2, 0, &rules)
         .expect("later shooter's target");
-    assert!(crate::sim::combat::issue_attack_command(
+    assert!(crate::sim::combat::install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         dolphin_id,
         sonic_endpoint_id
     ));
-    assert!(crate::sim::combat::issue_attack_command(
+    assert!(crate::sim::combat::install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         later_id,
         later_target_id
@@ -3281,7 +3281,7 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
             .on_bridge = true;
         sim.add_entity_occupancy(id);
     }
-    assert!(crate::sim::combat::issue_attack_cell_command(
+    assert!(crate::sim::combat::install_cell_attack_target_for_test(
         &mut sim.substrate.entities,
         dolphin_id,
         6,
@@ -6766,7 +6766,12 @@ fn the_infantry_setter_moves_a_teleport_infantryman() {
         .spawn_object("CLEG", "Americans", 2, 2, 64, &rules)
         .expect("spawn legionnaire");
     assert_eq!(
-        sim.set_infantry_cell_destination(id, (8, 2), &rules, None),
+        sim.set_infantry_destination(
+            id,
+            crate::sim::components::NavTargetRef::cell(8, 2),
+            &rules,
+            None
+        ),
         Ok(true)
     );
     let entity = sim.substrate.entities.get(id).unwrap();

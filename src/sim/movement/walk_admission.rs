@@ -301,14 +301,7 @@ impl Simulation {
             .entities
             .get_mut(id)
             .ok_or("retired Walk path owner")?;
-        actor.navigation.path_replay.clear_live_head();
-        //The route adapter caches the live Foot words, not an independent
-        //request; retain its destination while invalidating those cells.
-        if let Some(target) = actor.movement_target.as_mut() {
-            target.path.clear();
-            target.path_layers.clear();
-            target.next_index = 0;
-        }
+        actor.clear_live_path_head();
         Ok(())
     }
 

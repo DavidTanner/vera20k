@@ -150,7 +150,7 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
     let victim = saved
         .spawn_object_at_height("E1", "Russians", 2, 1, 0, 0, &rules)
         .unwrap();
-    assert!(crate::sim::combat::issue_attack_command(
+    assert!(crate::sim::combat::install_entity_attack_target_for_test(
         &mut saved.substrate.entities,
         shooter,
         victim

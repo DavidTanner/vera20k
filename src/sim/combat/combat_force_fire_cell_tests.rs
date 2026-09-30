@@ -1,9 +1,9 @@
-//! Force-fire-on-cell unit tests for `issue_attack_cell_command`.
+//! Force-fire-on-cell unit tests for `install_cell_attack_target_for_test`.
 //!
 //! Verifies the sim-side entry point for `Command::ForceAttackCell` —
 //! Ctrl + left-click on empty terrain.
 
-use super::{AttackTarget, TargetKind, issue_attack_cell_command};
+use super::{AttackTarget, TargetKind, install_cell_attack_target_for_test};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{Health, MovementTarget};
@@ -41,11 +41,11 @@ fn issue_attack_cell_sets_cell_target_for_armed_unit() {
     let interner = test_interner();
     let rules = ff_rules();
 
-    let ok = issue_attack_cell_command(&mut store, 1, 50, 50, Some(&rules), &interner);
+    let ok = install_cell_attack_target_for_test(&mut store, 1, 50, 50, Some(&rules), &interner);
 
     assert!(
         ok,
-        "issue_attack_cell_command should succeed for armed unit"
+        "install_cell_attack_target_for_test should succeed for armed unit"
     );
     let attack = store.get(1).unwrap().attack_target.as_ref().unwrap();
     assert!(matches!(attack.target, TargetKind::Cell(50, 50)));
@@ -64,7 +64,7 @@ fn issue_attack_cell_rejects_unarmed_attacker() {
     let interner = test_interner();
     let rules = ff_rules();
 
-    let ok = issue_attack_cell_command(&mut store, 1, 50, 50, Some(&rules), &interner);
+    let ok = install_cell_attack_target_for_test(&mut store, 1, 50, 50, Some(&rules), &interner);
 
     assert!(!ok, "ForceAttackCell on unarmed unit must return false");
     assert!(store.get(1).unwrap().attack_target.is_none());
@@ -78,7 +78,7 @@ fn issue_attack_cell_clears_movement_target() {
     let interner = test_interner();
     let rules = ff_rules();
 
-    let ok = issue_attack_cell_command(&mut store, 1, 50, 50, Some(&rules), &interner);
+    let ok = install_cell_attack_target_for_test(&mut store, 1, 50, 50, Some(&rules), &interner);
 
     assert!(ok);
     assert!(store.get(1).unwrap().movement_target.is_none());
@@ -90,7 +90,7 @@ fn issue_attack_cell_returns_false_for_missing_attacker() {
     let interner = test_interner();
     let rules = ff_rules();
 
-    let ok = issue_attack_cell_command(&mut store, 999, 50, 50, Some(&rules), &interner);
+    let ok = install_cell_attack_target_for_test(&mut store, 999, 50, 50, Some(&rules), &interner);
 
     assert!(
         !ok,

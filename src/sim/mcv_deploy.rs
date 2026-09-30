@@ -227,7 +227,11 @@ pub(crate) fn try_to_deploy(
         {
             // An admitted origin lies on the map, and the site is inside
             // its foundation or one cell past it, so it is too.
-            sim.set_unit_cell_destination(id, (site.0 as u16, site.1 as u16), rules);
+            sim.set_unit_destination(
+                id,
+                crate::sim::components::NavTargetRef::cell(site.0 as u16, site.1 as u16),
+                rules,
+            );
         }
     }
     sim.foot_mark_put(id, Some(rules), None, registry);

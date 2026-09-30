@@ -1153,6 +1153,11 @@ pub struct GameEntity {
     /// approach (`0x0074162D`, VERA's pursuit skip).
     #[serde(default)]
     pub passively_acquired_target: bool,
+    /// Foot+688, initialized false at4D33A8. A stopped object unable to fire
+    /// narrows its next scans through Foot::Greatest_Threat4D9920. This is
+    /// independent of Techno's passive-target byte+50C.
+    #[serde(default)]
+    foot_retarget_after_stop: bool,
     /// Category-specific bytes read by Mission readiness and Aircraft policy.
     pub(crate) mission_leaf: MissionLeafState,
     /// Target identity archived by the Techno Override wrapper.
@@ -1241,6 +1246,19 @@ pub struct GameEntity {
 }
 
 impl GameEntity {
+    /// Invalidate the one live Foot path head and its Rust route cache.
+    /// Native callers write Foot+5E0=-1; retained suffix/reference words and
+    /// the destination remain intact. The adapter cannot keep consuming cells
+    /// after the authoritative head is gone.
+    pub(crate) fn clear_live_path_head(&mut self) {
+        self.navigation.path_replay.clear_live_head();
+        if let Some(target) = self.movement_target.as_mut() {
+            target.path.clear();
+            target.path_layers.clear();
+            target.next_index = 0;
+        }
+    }
+
     /// `TechnoClass::ArchiveTarget` (`Techno+0x218`): the base-defence
     /// responder's post, a harvester's archived ore cell and a factory's
     /// rally point share this one field, stored in
@@ -1310,6 +1328,39 @@ impl GameEntity {
     /// Immutable indexed type identity, established by construction/decoding.
     pub fn type_ref(&self) -> InternedId {
         self.type_ref
+    }
+
+    pub(crate) const fn foot_retarget_after_stop(&self) -> bool {
+        self.foot_retarget_after_stop
+    }
+
+    /// Drive4B2E9F / Ship6A24F2 / Hover51684D: the held target cannot
+    /// be fired at after stopping. Set before the team Scan_Limit/target clear;
+    /// Team6EC3BD also sets it after each member's class target clear.
+    pub(crate) fn mark_stopped_cannot_fire(&mut self) {
+        self.foot_retarget_after_stop = true;
+    }
+
+    /// FootGreatestThreat4D9951..55 clears only an empty completed base scan.
+    /// Class overrides which return before Foot leave the byte untouched.
+    pub(crate) fn finish_foot_threat_scan(&mut self, found: bool) {
+        if !found {
+            self.foot_retarget_after_stop = false;
+        }
+    }
+
+    /// Mission_Rescue4DE03E resets the latch before its direct mask0 scan.
+    pub(crate) fn clear_rescue_retarget_latch(&mut self) {
+        self.foot_retarget_after_stop = false;
+    }
+
+    /// Foot4D9931..33 changes AL only; all upper mask bits survive.
+    pub(crate) const fn coerce_foot_threat_mask(&self, mask: u32) -> u32 {
+        if self.foot_retarget_after_stop {
+            (mask & !2) | 1
+        } else {
+            mask
+        }
     }
 
     /// The body heading at `frame`: `FacingClass::Current @ 0x004C93D0` on
@@ -1778,6 +1829,7 @@ impl GameEntity {
             // `TechnoClass::Constructor 0x006F3106`: `+0x4FC = Frame`.
             last_target_scan_frame: construction_frame,
             passively_acquired_target: false,
+            foot_retarget_after_stop: false,
             mission_leaf: MissionLeafState::for_entity_category(category),
             suspended_attack_target: None,
             base_defense_response: BaseDefenseResponseState::default(),

@@ -333,7 +333,9 @@ pub struct ObjectType {
     /// Armor type name (e.g., "heavy", "light", "wood"). Determines damage
     /// multipliers from warhead Verses= values.
     pub armor: String,
-    /// Movement speed (0 = immobile, e.g., buildings).
+    /// Canonical Speed percent,0..100 (0 is immobile). TechnoType
+    /// ReadINI71464A retains the prior value for -1 across rules passes.
+    /// Whole-lepton Type+678 conversion belongs to util::fixed_math.
     pub speed: i32,
     /// `WalkRate=` — signed native-frame divisor for Foot body animation.
     /// TechnoTypeClass owns this value; art.ini owns only the frame layout.
@@ -1980,7 +1982,7 @@ impl ObjectType {
             target_strength_coefficient: present_double("TargetStrengthCoefficient"),
             target_distance_coefficient: present_double("TargetDistanceCoefficient"),
             armor: section.read_string("Armor", "none", 0x80),
-            speed: section.read_int("Speed", 0),
+            speed: section.read_techno_speed("Speed", 0),
             // TechnoTypeClass ctor/read contract: raw signed ints, with no
             // clamp or conversion. A zero WalkRate is invalid content natively
             // (the live consumer executes IDIV without a zero guard).

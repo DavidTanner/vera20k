@@ -84,7 +84,7 @@ fn gsi_05_10_tesla_arms_without_emission_and_fires_on_visit_28() {
     let mut sim = Simulation::new();
     let tower = spawn(&mut sim, &rules, "TESLA", "Soviet", 5, 5);
     let target = spawn(&mut sim, &rules, "GROUND", "Allies", 7, 5);
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         tower,
         target
@@ -161,7 +161,7 @@ fn gsi_05_10_expiry_reads_live_target_but_keeps_saved_weapon_slot() {
         .altitude = crate::util::fixed_math::SimFixed::from_num(
         crate::util::lepton::HIGH_FLIGHT_THRESHOLD_LEPTONS,
     );
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         tower,
         air
@@ -208,7 +208,7 @@ fn gsi_05_10_expiry_error_clears_without_retarget_or_shot() {
     let tower = spawn(&mut sim, &rules, "TESLA", "Soviet", 5, 5);
     let target = spawn(&mut sim, &rules, "GROUND", "Allies", 7, 5);
     let alternative = spawn(&mut sim, &rules, "GROUND", "Allies", 6, 5);
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         tower,
         target
@@ -260,12 +260,12 @@ fn gsi_05_10_non_delayed_fires_at_once_and_a_lone_prism_arms_its_own_shot() {
     let prism = spawn(&mut sim, &rules, "ATESLA", "Allies", 5, 8);
     let ordinary_target = spawn(&mut sim, &rules, "GROUND", "Allies", 7, 5);
     let prism_target = spawn(&mut sim, &rules, "GROUND", "Soviet", 7, 8);
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         ordinary,
         ordinary_target
     ));
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         prism,
         prism_target
@@ -304,7 +304,7 @@ fn gsi_05_10_delays_at_or_below_one_expire_on_the_arming_visit() {
         let mut sim = Simulation::new();
         let tower = spawn(&mut sim, &rules, "TESLA", "Soviet", 5, 5);
         let target = spawn(&mut sim, &rules, "GROUND", "Allies", 7, 5);
-        assert!(issue_attack_command(
+        assert!(install_entity_attack_target_for_test(
             &mut sim.substrate.entities,
             tower,
             target

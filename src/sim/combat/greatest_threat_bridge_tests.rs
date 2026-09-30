@@ -184,7 +184,9 @@ fn pick(
         None,
         super::super::line_of_fire::LineOfFireInputs::default(),
         None,
+        None,
     )
+    .target()
 }
 
 #[test]
@@ -332,6 +334,7 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
         coefficients: ThreatCoefficients::resolve(&rules, obj, true),
         zone_grid: None,
         mask: 1,
+        scan_coord: [0, 0, 0],
         standing: ScannerStanding::resolve(Some(&world), &snapshot),
         attacks_allies: false,
         scans_allies: false,

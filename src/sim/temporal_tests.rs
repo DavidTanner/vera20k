@@ -1225,7 +1225,9 @@ fn only_a_temporal_scanner_acquires_a_warped_enemy() {
             None,
             crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
             Some(sim),
+            None,
         )
+        .target()
     };
     assert_eq!(acquire(&sim, gi), Some(tank), "the control");
     sim.temporal_initiate_warp(cleg, Some(tank), &rules);

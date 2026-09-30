@@ -14,6 +14,13 @@ const LEPTONS_PER_CELL: i32 = crate::util::lepton::LEPTONS_PER_CELL_I32;
 const MAP_CELL_LIMIT: u32 = 512;
 const INVISO_ANIM_RADIUS: i32 = 0x20;
 
+/// The final byte argument of the one shared Coord49F420 owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RandomDirectionSnap {
+    Preserve,
+    CellCenter,
+}
+
 // Binary-derived samples reached by the 256 possible low bytes at
 // 0x004CACB0. Source table: gamemd.exe 0x0084F084.
 // SHA-256 over these little-endian u32 values:
@@ -101,7 +108,13 @@ pub(crate) fn scatter_inviso_effect_coord(
 ) -> (u16, u16, SimFixed, SimFixed) {
     let base_x = i32::from(rx) * LEPTONS_PER_CELL + sub_x.to_num::<i32>();
     let base_y = i32::from(ry) * LEPTONS_PER_CELL + sub_y.to_num::<i32>();
-    let (x, y) = random_direction_coord(rng, base_x, base_y, INVISO_ANIM_RADIUS);
+    let (x, y) = random_direction_coord(
+        rng,
+        base_x,
+        base_y,
+        INVISO_ANIM_RADIUS,
+        RandomDirectionSnap::Preserve,
+    );
     split_valid_coord(x, y)
 }
 
@@ -115,7 +128,13 @@ fn scatter_effect_coord_for_byte(
 ) -> (u16, u16, SimFixed, SimFixed) {
     let base_x = i32::from(rx) * LEPTONS_PER_CELL + sub_x.to_num::<i32>();
     let base_y = i32::from(ry) * LEPTONS_PER_CELL + sub_y.to_num::<i32>();
-    let (x, y) = random_direction_coord_for_byte(byte, base_x, base_y, INVISO_ANIM_RADIUS);
+    let (x, y) = random_direction_coord_for_byte(
+        byte,
+        base_x,
+        base_y,
+        INVISO_ANIM_RADIUS,
+        RandomDirectionSnap::Preserve,
+    );
     split_valid_coord(x, y)
 }
 
@@ -124,14 +143,17 @@ fn scatter_effect_coord_for_byte(
 ///
 /// The returned coordinate falls back as a whole to `(base_x, base_y)` when
 /// either native signed cell conversion lands outside the 512-cell domain.
+/// Cell-center snapping runs AFTER this fallback, using low-byte masking (not
+/// signed division); House501AC0 passes snap1 while the impact callers pass0.
 pub(crate) fn random_direction_coord(
     rng: &mut SimRng,
     base_x: i32,
     base_y: i32,
     magnitude_leptons: i32,
+    snap: RandomDirectionSnap,
 ) -> (i32, i32) {
     let byte = (rng.next_u32() & 0xff) as u8;
-    random_direction_coord_for_byte(byte, base_x, base_y, magnitude_leptons)
+    random_direction_coord_for_byte(byte, base_x, base_y, magnitude_leptons, snap)
 }
 
 pub(crate) fn random_direction_coord_for_byte(
@@ -139,6 +161,7 @@ pub(crate) fn random_direction_coord_for_byte(
     base_x: i32,
     base_y: i32,
     magnitude_leptons: i32,
+    snap: RandomDirectionSnap,
 ) -> (i32, i32) {
     let radius = X87Chop53::load_i32(magnitude_leptons);
     let cosine = X87Chop53::load_f32(NativeF32Bits::from_bits(COSINE_BITS[usize::from(byte)]))
@@ -159,11 +182,18 @@ pub(crate) fn random_direction_coord_for_byte(
 
     let x_cell = crate::util::lepton::lepton_to_cell(x);
     let y_cell = crate::util::lepton::lepton_to_cell(y);
-    if (x_cell as u32) >= MAP_CELL_LIMIT || (y_cell as u32) >= MAP_CELL_LIMIT {
-        return (base_x, base_y);
+    let (x, y) = if (x_cell as u32) >= MAP_CELL_LIMIT || (y_cell as u32) >= MAP_CELL_LIMIT {
+        (base_x, base_y)
+    } else {
+        (x, y)
+    };
+    match snap {
+        RandomDirectionSnap::Preserve => (x, y),
+        RandomDirectionSnap::CellCenter => (
+            (x & !0xff).wrapping_add(0x80),
+            (y & !0xff).wrapping_add(0x80),
+        ),
     }
-
-    (x, y)
 }
 
 fn split_valid_coord(x: i32, y: i32) -> (u16, u16, SimFixed, SimFixed) {
@@ -466,6 +496,7 @@ mod tests {
                 base(0),
                 base(1),
                 input["distance"].as_i64().unwrap() as i32,
+                RandomDirectionSnap::Preserve,
             );
             let native = |axis: usize| row["result"][axis].as_i64().unwrap() as i32;
             assert_eq!(
@@ -473,6 +504,52 @@ mod tests {
                 (native(0), native(1), native(2)),
                 "row {index}"
             );
+        }
+    }
+
+    #[test]
+    fn native_house_return_direction_snap_matches_all_28_original_calls() {
+        let metadata: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/house_base_return.meta.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            metadata["native_sha256"],
+            "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
+        );
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/house_base_return.json"
+        ))
+        .unwrap();
+        let rows = corpus["home_return"].as_array().unwrap();
+        assert_eq!(rows.len(), 28);
+        for row in rows {
+            let name = row["input"]["name"].as_str().unwrap();
+            let event = row["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|event| event["entry"] == "0x0049F420")
+                .unwrap();
+            assert_eq!(event["arguments"][1], 1, "{name}");
+            let raws = row["raw_draws"].as_array().unwrap();
+            let mut rng = SimRng::new(row["input"]["seed"].as_u64().unwrap());
+            assert_eq!(rng.native_state_hex(), row["rng_before"], "{name}");
+            // Prior radius draws are declared native inputs to this component
+            // comparison. The full House owner compares their producer too.
+            for raw in &raws[..raws.len() - 1] {
+                assert_eq!(u64::from(rng.next_u32()), raw.as_u64().unwrap(), "{name}");
+            }
+            let axis = |field: &str, index: usize| event[field][index].as_i64().unwrap() as i32;
+            let actual = random_direction_coord(
+                &mut rng,
+                axis("current", 0),
+                axis("current", 1),
+                axis("arguments", 0),
+                RandomDirectionSnap::CellCenter,
+            );
+            assert_eq!(actual, (axis("output", 0), axis("output", 1)), "{name}");
+            assert_eq!(rng.native_state_hex(), row["rng_after"], "{name}");
         }
     }
 
@@ -550,20 +627,38 @@ mod tests {
             (192, (-128, -1)),
         ];
         for (byte, expected) in offsets {
-            let got = random_direction_coord_for_byte(byte, base, base, 0x80);
+            let got = random_direction_coord_for_byte(
+                byte,
+                base,
+                base,
+                0x80,
+                RandomDirectionSnap::Preserve,
+            );
             assert_eq!((got.0 - base, got.1 - base), expected, "byte {byte}");
         }
 
         let edge = (511 * LEPTONS_PER_CELL + 250, 7 * LEPTONS_PER_CELL + 19);
         assert_eq!(
-            random_direction_coord_for_byte(64, edge.0, edge.1, 0x80),
+            random_direction_coord_for_byte(
+                64,
+                edge.0,
+                edge.1,
+                0x80,
+                RandomDirectionSnap::Preserve,
+            ),
             edge,
             "one out-of-domain axis falls the whole coordinate back"
         );
 
         let mut actual_rng = SimRng::new(42);
         let mut reference_rng = actual_rng.clone();
-        let _ = random_direction_coord(&mut actual_rng, base, base, 0x80);
+        let _ = random_direction_coord(
+            &mut actual_rng,
+            base,
+            base,
+            0x80,
+            RandomDirectionSnap::Preserve,
+        );
         let _ = reference_rng.next_u32();
         assert_eq!(actual_rng.logical_state(), reference_rng.logical_state());
     }

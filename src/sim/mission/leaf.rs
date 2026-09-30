@@ -16,9 +16,12 @@ pub(crate) enum MissionLeafState {
     Building(BuildingMissionLeaf),
 }
 
-/// Unit readiness bytes, stored independently in native declaration order.
+/// Unit readiness bytes and its inherited Foot firing byte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct UnitMissionLeaf {
+    /// Foot+68D: ctor4D33C6 clears it; Unit736DF0 only clears it, while raw
+    /// Object5F5E80/Abstract410380 load retains the full Unit8E8 record.
+    firing_sequence_latch: u8,
     deploy_begin_active: u8,
     deploy_reverse_active: u8,
     tracker_byte_18: u8,
@@ -35,6 +38,8 @@ pub(crate) struct InfantryMissionLeaf {
 /// Aircraft policy and readiness bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct AircraftMissionLeaf {
+    /// The same inherited Foot+68D, retained by the raw Aircraft6D8 load.
+    firing_sequence_latch: u8,
     /// Aircraft+6D2: shared by Mission_Attack, Fly and ReadyToCommence41B5E0.
     action_latch: u8,
     /// Aircraft+6D4, independent of the pending-ammunition byte+6C8.
@@ -116,8 +121,30 @@ impl MissionLeafState {
         self.expect_unit_mut().tracker_byte_19 = raw;
     }
 
-    pub(crate) fn set_infantry_firing_sequence(&mut self, raw: u8) {
-        self.expect_infantry_mut().firing_sequence_latch = raw;
+    /// The one inherited Foot+68D view used by Foot handlers. Infantry's
+    /// concrete readiness view reads that same variant field. Buildings do
+    /// not inherit this byte.
+    pub(crate) const fn foot_firing_sequence_latch(&self) -> u8 {
+        match self {
+            Self::Unit(leaf) => leaf.firing_sequence_latch,
+            Self::Infantry(leaf) => leaf.firing_sequence_latch,
+            Self::Aircraft(leaf) => leaf.firing_sequence_latch,
+            Self::Building(_) => 0,
+        }
+    }
+
+    /// Raw Foot+68D state. Its active nonzero producer is Infantry5206B0's
+    /// store520912; class target-change51B20E and Unit736DF0 clear it.
+    /// No ordinary Unit/Aircraft nonzero producer is claimed here. Native
+    /// load retains this byte; do not infer it from a pending shot or Doing.
+    #[track_caller]
+    pub(crate) fn set_foot_firing_sequence(&mut self, raw: u8) {
+        match self {
+            Self::Unit(leaf) => leaf.firing_sequence_latch = raw,
+            Self::Infantry(leaf) => leaf.firing_sequence_latch = raw,
+            Self::Aircraft(leaf) => leaf.firing_sequence_latch = raw,
+            Self::Building(_) => panic!("Foot firing writer used for a Building"),
+        }
     }
 
     /// Write only values accepted by the verified 42-entry Doing table.
@@ -195,6 +222,7 @@ impl MissionLeafState {
         tracker_byte_19: u8,
     ) -> Self {
         Self::Unit(UnitMissionLeaf {
+            firing_sequence_latch: 0,
             deploy_begin_active,
             deploy_reverse_active,
             tracker_byte_18,
@@ -217,6 +245,7 @@ impl MissionLeafState {
         airstrike_manager_present: bool,
     ) -> Self {
         Self::Aircraft(AircraftMissionLeaf {
+            firing_sequence_latch: 0,
             action_latch,
             transition_ready_latch,
             airstrike_manager_present,
@@ -232,6 +261,7 @@ impl MissionLeafState {
 impl UnitMissionLeaf {
     const fn initial() -> Self {
         Self {
+            firing_sequence_latch: 0,
             deploy_begin_active: 0,
             deploy_reverse_active: 0,
             tracker_byte_18: 0,
@@ -276,6 +306,7 @@ impl InfantryMissionLeaf {
 impl AircraftMissionLeaf {
     const fn initial() -> Self {
         Self {
+            firing_sequence_latch: 0,
             action_latch: 0,
             transition_ready_latch: 1,
             airstrike_manager_present: false,
@@ -380,7 +411,7 @@ mod tests {
         assert_eq!(unit_view.tracker_byte_19(), 8);
 
         let mut infantry = MissionLeafState::infantry_raw_for_test(9, 10);
-        infantry.set_infantry_firing_sequence(11);
+        infantry.set_foot_firing_sequence(11);
         infantry
             .set_infantry_doing_verified(41)
             .expect("verified Doing");

@@ -304,6 +304,13 @@ fn hash_mission_leaf(leaf: &crate::sim::mission::MissionLeafState, hasher: &mut 
         3u8.hash(hasher);
         building.ready_latch().hash(hasher);
     }
+    // Infantry already folds the same owned byte above. Native default0
+    // retains the prior Unit/Aircraft hash stream; loaded nonzero Foot68D
+    // can change a Foot handler and must contribute independently.
+    if leaf.as_infantry().is_none() && leaf.foot_firing_sequence_latch() != 0 {
+        b"foot-firing-sequence-v1".hash(hasher);
+        leaf.foot_firing_sequence_latch().hash(hasher);
+    }
 }
 
 impl Simulation {
@@ -666,6 +673,10 @@ impl Simulation {
                 ry.hash(hasher);
             } else {
                 0u8.hash(hasher);
+            }
+            if house.base_radius() != 0 {
+                b"house-base-radius-v1".hash(hasher);
+                house.base_radius().hash(hasher);
             }
             house.alternate_base_center.hash(hasher);
             if !house.build_const_order.is_empty() {
@@ -1721,6 +1732,13 @@ impl Simulation {
             // rides along in the same block.
             entity.last_target_scan_frame.hash(hasher);
             entity.passively_acquired_target.hash(hasher);
+            // Foot688 changes the next scan's topology/radius. Constructor
+            // false preserves earlier streams; the retained true state is an
+            // independent schema255 contribution, never inferred from TarCom.
+            if entity.foot_retarget_after_stop() {
+                0x004D_9920_u32.hash(hasher);
+                true.hash(hasher);
+            }
             match entity.suspended_attack_target {
                 Some(target) => {
                     1u8.hash(hasher);
@@ -3621,6 +3639,132 @@ mod infantry_hash_tests {
         let actor = loaded.entities().get(1).unwrap();
         assert!(actor.movement_target.is_none());
         assert_eq!(actor.navigation.path_runtime, retained);
+    }
+
+    #[test]
+    fn foot_retarget_snapshot_retains_native_next_scan_mask_and_empty_clear() {
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/anytown_damage/foot_missions.json"
+        ))
+        .unwrap();
+        let row = native["greatest_threat_rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["input"]["name"] == "MTNK_concrete_mask0_latch1_MTNK_live0")
+            .unwrap();
+        let input_mask = row["greatest_threat_masks"]["foot_greatest"][0]
+            .as_u64()
+            .unwrap() as u32;
+        let effective_mask = row["greatest_threat_masks"]["greatest"][0]
+            .as_u64()
+            .unwrap() as u32;
+        assert_eq!(row["before"]["scan"], 1);
+        assert_eq!(row["returned_eax"], 0);
+        assert_eq!(row["after"]["scan"], 0);
+
+        let mut sim = Simulation::new();
+        // Native Scenario load reseeds its stream to zero. Isolate this
+        // retained Foot state from that established load-time RNG change.
+        sim.scenario_rng = crate::sim::rng::SimRng::new(0);
+        let actor = infantry_entity(&mut sim);
+        sim.substrate.entities.insert(actor);
+        let clear_hash = sim.state_hash();
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .mark_stopped_cannot_fire();
+        let retained_hash = sim.state_hash();
+        assert_ne!(retained_hash, clear_hash);
+        let bytes = crate::sim::snapshot::GameSnapshot::save(&sim, 0, 0, "foot-retarget", 0);
+        let mut loaded = crate::sim::snapshot::GameSnapshot::load(&bytes)
+            .unwrap()
+            .sim;
+        assert_eq!(loaded.state_hash(), retained_hash);
+        let actor = loaded.substrate.entities.get_mut(1).unwrap();
+        assert!(actor.foot_retarget_after_stop());
+        assert_eq!(actor.coerce_foot_threat_mask(input_mask), effective_mask);
+        actor.finish_foot_threat_scan(false);
+        assert!(!actor.foot_retarget_after_stop());
+        assert_eq!(actor.coerce_foot_threat_mask(input_mask), input_mask);
+        assert_eq!(loaded.state_hash(), clear_hash);
+    }
+
+    #[test]
+    fn inherited_foot_firing_state_survives_snapshot_and_changes_noninfantry_hash() {
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/anytown_damage/foot_missions.json"
+        ))
+        .unwrap();
+        let raw = native["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["input"]["name"] == "MTNK_area_guard_leash_firing_bypass")
+            .unwrap()["before"]["firing"]
+            .as_u64()
+            .unwrap() as u8;
+        // The Unit handler control supplies this byte. Aircraft also inherits
+        // the raw persisted Foot field; its save/load assertion is a Rust
+        // storage regression, not an Aircraft firing-producer parity claim.
+        for (category, type_name) in [
+            (EntityCategory::Unit, "MTNK"),
+            (EntityCategory::Aircraft, "ORCA"),
+        ] {
+            let mut sim = Simulation::new();
+            sim.scenario_rng = crate::sim::rng::SimRng::new(0);
+            let owner = sim.interner.intern("Allies");
+            let type_ref = sim.interner.intern(type_name);
+            sim.substrate
+                .entities
+                .insert(GameEntity::new_at_frame_zero_for_test(
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    owner,
+                    Health { current: 100 },
+                    type_ref,
+                    category,
+                    0,
+                    5,
+                    false,
+                ));
+            let clear_hash = sim.state_hash();
+            sim.substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .mission_leaf
+                .set_foot_firing_sequence(raw);
+            let retained_hash = sim.state_hash();
+            assert_ne!(retained_hash, clear_hash, "{type_name}");
+            let bytes = crate::sim::snapshot::GameSnapshot::save(&sim, 0, 0, type_name, 0);
+            let mut loaded = crate::sim::snapshot::GameSnapshot::load(&bytes)
+                .unwrap()
+                .sim;
+            assert_eq!(loaded.state_hash(), retained_hash, "{type_name}");
+            assert_eq!(
+                loaded
+                    .entities()
+                    .get(1)
+                    .unwrap()
+                    .mission_leaf
+                    .foot_firing_sequence_latch(),
+                raw,
+                "{type_name}"
+            );
+            loaded
+                .substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .mission_leaf
+                .set_foot_firing_sequence(0);
+            assert_eq!(loaded.state_hash(), clear_hash, "{type_name}");
+        }
     }
 
     #[test]

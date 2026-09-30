@@ -33,8 +33,8 @@ fn infantry_orders_leave_facing_to_fire_start() {
         let mut store = pair();
         let interner = test_interner();
         match order {
-            0 => assert!(issue_attack_command(&mut store, 1, 2)),
-            _ => assert!(issue_attack_cell_command(
+            0 => assert!(install_entity_attack_target_for_test(&mut store, 1, 2)),
+            _ => assert!(install_cell_attack_target_for_test(
                 &mut store,
                 1,
                 8,
@@ -347,7 +347,7 @@ fn production_pair(rules: &RuleSet) -> (Simulation, u64, u64) {
     sim.install_resolved_terrain_for_new_map(flat_level_zero_terrain(16, 16));
     let firer = sim.spawn_object("E1", "Americans", 5, 5, 0, rules).unwrap();
     let target = sim.spawn_object("E2", "Russians", 8, 5, 0, rules).unwrap();
-    assert!(issue_attack_command(
+    assert!(install_entity_attack_target_for_test(
         &mut sim.substrate.entities,
         firer,
         target

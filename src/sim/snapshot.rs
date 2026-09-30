@@ -739,7 +739,11 @@ use crate::sim::world::Simulation;
 // entity's teleport or rocket state.
 // 253 -> 254: an order intent can no longer be the garrison Unloading flag;
 // a garrison unloads through its Unload mission.
-const SNAPSHOT_VERSION: u32 = 254;
+// 254 -> 255: Houses retain the lifecycle-published House4FD150 base radius
+// beside their historical primary cell and ordered building lists. Foot688
+// retains the stopped/cannot-fire scan latch. Unit/Aircraft Mission leaves
+// also retain the inherited raw Foot68D, using the same owner as Infantry.
+const SNAPSHOT_VERSION: u32 = 255;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3233,13 +3237,13 @@ mod tests {
         let mut bytes = GameSnapshot::save(&sim, 0, 0, "test_map", 0);
 
         // Product magic and public envelope version occupy the first 12 bytes.
-        bytes[12] = 255;
+        bytes[12..16].copy_from_slice(&u32::MAX.to_le_bytes());
 
         assert!(matches!(
             GameSnapshot::load(&bytes),
             Err(SnapshotError::VersionMismatch {
                 expected: SNAPSHOT_VERSION,
-                found: 255,
+                found: u32::MAX,
             })
         ));
     }
@@ -3626,7 +3630,8 @@ mod tests {
         // 251 -> 252: no entity homing state.
         // 252 -> 253: no Teleport/Rocket payload copies.
         // 253 -> 254: no garrison Unloading order intent.
-        assert_eq!(super::SNAPSHOT_VERSION, 254);
+        // 254 -> 255: retained House4FD150 base radius and Foot688 scan latch.
+        assert_eq!(super::SNAPSHOT_VERSION, 255);
     }
 
     #[test]

@@ -9,7 +9,13 @@ receivers; explicitly named mutation cases supply those virtual callbacks.
 No original instruction or original vtable is patched; hooks only observe.
 
     python -m tools.spatial_oracle.foot_attack_move --check
+
+The optional --archive-expiry mode executes a separate complete native expiry
+hierarchy with original vtables and no callback substitutions. Its22-row corpus
+and bounds are documented in foot_archive_expiry.md. The default corpus stays
+byte-identical.
 """
+import argparse
 from itertools import product
 from pathlib import Path
 import hashlib
@@ -130,12 +136,17 @@ def receiver_body(base, counter, actions):
     return bytes(code)
 
 
-def execute(row):
+def native_machine():
     u = Uc(UC_ARCH_X86, UC_MODE_32)
     load_image(u)
     u.mem_map(STACK_BASE, STACK_SIZE)
     u.mem_map(SCRATCH, 0x10000)
     u.mem_map(RET_MAGIC, 0x1000)
+    return u
+
+
+def execute(row):
+    u = native_machine()
     originals = [bytes(u.mem_read(a, b-a)) for a, b in CODE_RANGES]
     original_vtables = {name: bytes(u.mem_read(address, 0x600))
                         for name, address in FAMILIES.items()}
@@ -585,5 +596,214 @@ def metadata():
     return result
 
 
+# Complete expiry uses the original class tables, independently of the default
+# attack-move mode's declared callback fixtures.
+ARCHIVE_FAMILIES = {'unit': (0x7F5C70, 0x7446E0, 0x38),
+                    'infantry': (0x7EB058, 0x51AA10, 0x3A),
+                    'aircraft': (0x7E22A4, 0x41B660, 0x38)}
+ARCHIVE_EXPIRED, ARCHIVE_HOUSE, ARCHIVE_OTHER_HOUSE = (SCRATCH + n for n in (0x4000, 0x6000, 0x7000))
+ARCHIVE_CELL, ARCHIVE_TYPE = SCRATCH + 0x8000, SCRATCH + 0x9000
+ARCHIVE_TABLE = 0xC00000
+ARCHIVE_SPANS = {'foot_pointer_expired': (0x4D9960, 0x295),
+                 'techno_pointer_expired': (0x7077C0, 0x4EE),
+                 'radio_pointer_expired': (0x65AAC0, 0x4B),
+                 'object_pointer_expired': (0x5F5230, 0x4D),
+                 'archive_setter': (0x70C610, 0xD),
+                 'map_coordinate_cell': (0x565730, 0x68),
+                 'sensor_for_house': (0x4870D0, 0x11),
+                 'expired_owner': (0x6F9DC0, 0x7),
+                 'techno_assign_target': (0x6FCDB0, 0x1E5),
+                 'infantry_assign_target': (0x51B1F0, 0x15B),
+                 'is_mission_suspended': (0x5B3A10, 0xF),
+                 'empty_vector_find': (0x4E0550, 0x26),
+                 'tag_pointer_expired': (0x4734B0, 0x4A),
+                 'empty_vector_constructor_fields': (0x6F304C, 0x84),
+                 **{family + '_pointer_expired': (entry, size)
+                    for family, (_vtable, entry, size) in ARCHIVE_FAMILIES.items()}}
+ARCHIVE_OBSERVED = {0x4D9960: 'foot_entry', 0x7077C0: 'techno_entry',
+                    0x65AAC0: 'radio_entry', 0x5F5230: 'object_entry',
+                    0x707B03: 'techno_archive_clear', 0x4D99F1: 'foot_archive_compare',
+                    0x70C610: 'archive_setter', 0x565730: 'map_cell',
+                    0x4870D0: 'sensor', 0x6F9DC0: 'expired_owner',
+                    0x6FCDB0: 'assign_target', 0x51B1F0: 'infantry_assign_target',
+                    0x5B3A10: 'is_mission_suspended', 0x65C7E0: 'scenario_range'}
+
+
+def archive_expiry_fixture():
+    return dict(
+        pointers=dict(receiver=OWNER, expired=ARCHIVE_EXPIRED,
+                      unmatched_archive=ARCHIVE_EXPIRED + 0x800,
+                      house=ARCHIVE_HOUSE, other_house=ARCHIVE_OTHER_HOUSE,
+                      cell=ARCHIVE_CELL, type=ARCHIVE_TYPE, map=MAP,
+                      cell_table=ARCHIVE_TABLE, shared_dummy=DUMMY),
+        receiver=dict(zeroed_bytes=0x800, flags=7, alive=True, health=100,
+                      current=[0, 0, 0], mission=21, suspended_mission=-1,
+                      queued_mission=-1, passive_scan_duration=0,
+                      owner=ARCHIVE_HOUSE, type=ARCHIVE_TYPE,
+                      infantry_do_type=0, tube_index=255,
+                      empty_vectors={'0x458': 0x7E91EC, '0x470': 0x7E91EC}),
+        expired=dict(zeroed_bytes=0x800, vtable=FAMILIES['unit'], alive=True,
+                     health=100, current=[1408, 1408, 416]),
+        houses=dict(zeroed_bytes_each=0x1000, receiver_house_index=0),
+        type=dict(zeroed_bytes=0x1000),
+        map_state=dict(capacity=0x40000, stride=512, zeroed_table_bytes=0x100000,
+                       cell_xy=[5, 5], cell_vtable=0x7E4EEC, cell_zeroed_bytes=0x200,
+                       sensor_offset=0x7C, sensor_signed_word=True,
+                       dummy_xy=[1234, -2345], dummy_level=127, dummy_slope=0),
+        globals={'0x00A8ED84': 1000, '0x00A8E7AC': 0},
+        concrete_vtables={family: vtable for family, (vtable, _entry, _size) in ARCHIVE_FAMILIES.items()},
+    )
+
+
+def archive_expiry_cases():
+    cases = [dict(family=family, control=control, expired_flags=0, sensor=0,
+                  archive_match=matching, target_match=False, same_owner=False)
+             for family, control, matching in product(ARCHIVE_FAMILIES, [0, 1], [False, True])]
+    for family in ARCHIVE_FAMILIES:
+        for sensor, same_owner in [(0, True), (1, False)]:
+            cases.append(dict(family=family, control=0, expired_flags=7, sensor=sensor,
+                              archive_match=True, target_match=True, same_owner=same_owner))
+    for family in ('unit', 'aircraft'):
+        for control in (0, 1):
+            cases.append(dict(family=family, control=control, expired_flags=7, sensor=0,
+                              archive_match=True, target_match=True, same_owner=False))
+    return cases
+
+
+def execute_archive_expiry(row):
+    u = native_machine()
+    vtable, entry, _size = ARCHIVE_FAMILIES[row['family']]
+    originals = {name: bytes(u.mem_read(address, size))
+                 for name, (address, size) in ARCHIVE_SPANS.items()}
+    vtables = {name: bytes(u.mem_read(address, 0x600))
+               for name, (address, _entry, _size) in ARCHIVE_FAMILIES.items()}
+    assert read_u32(u, vtable + 0x28) == entry
+    assert read_u32(u, 0x7E91EC + 0x10) == 0x4E0550
+    u.mem_write(OWNER, bytes(0x800))
+    for address, value in {
+        OWNER: vtable, OWNER + 0x14: 7, OWNER + 0x6C: 100,
+        OWNER + 0xAC: 21, OWNER + 0xB0: -1, OWNER + 0xB4: -1,
+        OWNER + 0x21C: ARCHIVE_HOUSE, OWNER + 0x470: 0x7E91EC,
+        OWNER + 0x458: 0x7E91EC,
+        OWNER + 0x218: ARCHIVE_EXPIRED if row['archive_match'] else ARCHIVE_EXPIRED + 0x800,
+        OWNER + 0x2B4: ARCHIVE_EXPIRED if row['target_match'] else 0,
+        OWNER + 0x6C0: ARCHIVE_TYPE,
+        OWNER + 0x6C4: 0 if row['family'] == 'infantry' else ARCHIVE_TYPE,
+    }.items():
+        u.mem_write(address, dwords(value))
+    u.mem_write(OWNER + 0x90, b'\x01')
+    u.mem_write(OWNER + 0x684, b'\xff')
+    u.mem_write(ARCHIVE_EXPIRED, bytes(0x800))
+    for address, value in {
+        ARCHIVE_EXPIRED: FAMILIES['unit'], ARCHIVE_EXPIRED + 0x14: row['expired_flags'],
+        ARCHIVE_EXPIRED + 0x21C: ARCHIVE_HOUSE if row['same_owner'] else ARCHIVE_OTHER_HOUSE,
+        ARCHIVE_EXPIRED + 0x6C: 100,
+    }.items():
+        u.mem_write(address, dwords(value))
+    u.mem_write(ARCHIVE_EXPIRED + 0x9C, dwords(1408, 1408, 416))
+    u.mem_write(ARCHIVE_EXPIRED + 0x90, b'\x01')
+    for pointer in (ARCHIVE_HOUSE, ARCHIVE_OTHER_HOUSE, ARCHIVE_TYPE):
+        u.mem_write(pointer, bytes(0x1000))
+    u.mem_write(ARCHIVE_HOUSE + 0x30, dwords(0))
+    u.mem_write(ARCHIVE_TABLE, bytes(0x100000))
+    u.mem_write(MAP + 0x13C, dwords(ARCHIVE_TABLE, 0x40000))
+    u.mem_write(ARCHIVE_TABLE + (5 * 512 + 5) * 4, dwords(ARCHIVE_CELL))
+    u.mem_write(ARCHIVE_CELL, bytes(0x200))
+    u.mem_write(ARCHIVE_CELL, dwords(0x7E4EEC))
+    u.mem_write(ARCHIVE_CELL + 0x24, struct.pack('<hh', 5, 5))
+    u.mem_write(ARCHIVE_CELL + 0x7C, struct.pack('<h', row['sensor']))
+    u.mem_write(DUMMY + 0x24, struct.pack('<hh', 1234, -2345))
+    u.mem_write(DUMMY + 0x11B, b'\x7f\0')
+    u.mem_write(0xA8ED84, dwords(1000))
+    u.mem_write(0xA8E7AC, dwords(0))
+    events, writes = [], []
+
+    def observe(uc, address, _size, _data):
+        if address == entry:
+            events.append(dict(pc=hex(address), event=row['family'] + '_entry'))
+        elif address in ARCHIVE_OBSERVED:
+            event = dict(pc=hex(address), event=ARCHIVE_OBSERVED[address],
+                         archive=read_u32(uc, OWNER + 0x218), target=read_u32(uc, OWNER + 0x2B4))
+            sp = uc.reg_read(UC_X86_REG_ESP)
+            if address == 0x70C610:
+                event['arg'] = read_u32(uc, sp + 4)
+            if address == 0x65C7E0:
+                event['args'] = [read_u32(uc, sp + 4 + i * 4) for i in range(2)]
+            events.append(event)
+
+    def observe_write(uc, _access, address, _size, value, _data):
+        if address in (OWNER + 0x218, OWNER + 0x2B4):
+            writes.append(dict(pc=hex(uc.reg_read(UC_X86_REG_EIP)),
+                               field='archive' if address == OWNER + 0x218 else 'target',
+                               before=read_u32(uc, address), after=value & 0xFFFFFFFF))
+
+    u.hook_add(UC_HOOK_CODE, observe)
+    u.hook_add(UC_HOOK_MEM_WRITE, observe_write)
+    u.mem_write(SP, dwords(RET_MAGIC, ARCHIVE_EXPIRED, row['control']))
+    u.reg_write(UC_X86_REG_ESP, SP)
+    u.reg_write(UC_X86_REG_ECX, OWNER)
+    for register, value in SAVED_REGISTERS:
+        u.reg_write(register, value)
+    run_checked(u, entry, RET_MAGIC, count=50000,
+                required_addresses=[entry, 0x4D9960, 0x7077C0, 0x65AAC0, 0x5F5230, 0x4E0550])
+    assert u.reg_read(UC_X86_REG_ESP) == SP + 12
+    for register, value in SAVED_REGISTERS:
+        assert u.reg_read(register) == value
+    for name, (address, size) in ARCHIVE_SPANS.items():
+        assert bytes(u.mem_read(address, size)) == originals[name]
+    for name, (address, _entry, _size) in ARCHIVE_FAMILIES.items():
+        assert bytes(u.mem_read(address, 0x600)) == vtables[name]
+    return dict(input=row, archive=read_u32(u, OWNER + 0x218),
+                target=read_u32(u, OWNER + 0x2B4), events=events, writes=writes)
+
+
+def generate_archive_expiry():
+    rows = [execute_archive_expiry(row) for row in archive_expiry_cases()]
+    return dict(schema_version=1, row_count=len(rows),
+                fixture=archive_expiry_fixture(), rows=rows)
+
+
+def archive_expiry_metadata():
+    u = native_machine()
+    result = provenance(
+        scope='Original complete Unit7446E0, Infantry51AA10 and Aircraft41B660 PointerExpired hierarchy through Foot4D9960, Techno7077C0, Radio65AAC0, Object5F5230 and conditional ArchiveTarget70C610; original live-victim sensor and target-clear controls.',
+        assumptions=[
+            'Each of22 rows enters a complete original concrete receiver with ECX=owner, (nonnull expired pointer,control0 or1) stack arguments and an original RET8. ESP and callee-saved registers are checked; all measured instruction spans and all3 original vtables remain byte-identical.',
+            'Zeroed supplied object fields, original concrete vtables, health100/alive1, Rescue21, no suspended/queued mission and empty unrelated links/vectors. Unit/Infantry/Aircraft constructors, fullworld detach traversal and membership registration are excluded.',
+            'The empty native vector table7E91EC is supplied from Techno ctor6F304C/6F3099(+458)/6F30C4(+470); its original find4E0550 executes. Empty Cargo+114, radio+E8, target lists and navigation queues are fixture inputs. No original callable or vtable is replaced.',
+            'The12 flags0 rows probe archive-only exact-pointer comparison for everyclass/control with matching/unmatched archive. Flags0 is not a valid constructed retail Unit and not proof of a native Ghost class. The declared pointer payload is sufficient because original expiry skips its Techno/sensor and matching-target consumers.',
+            'Six flags7 live Unit-victim controls retain TarCom under control0 through same-owner exemption(sensor0) or SensorCountForHouse(sensor1); the physical victim+48, real Map565730 and Cell4870D0 execute. Matching ArchiveTarget remains independent of those exemptions.',
+            'Four flags7 enemy sensor0 target-clear controls execute actual TechnoAssignTargetNULL and IsMissionSuspended for Unit/Aircraft, then return through original expiry. Infantry target-clear DoAction/sequence effects are excluded; its archive-only and target-retain paths do execute complete Infantry expiry.',
+            'Passive timer duration0 skips the conditional ScenarioRandomRanged(4,8) rearm; RNG order/timer rearming on a live timer remains outside this corpus. Object UnInit, cloak/dive trigger, manager forwarding, nonempty queue compaction, RestoreMission, snapshot/hash and complete Rescue/AreaGuard continuation are excluded.',
+            'Ordered events and actual memory writes expose Techno707B03 direct archive clear on control1, followed by Foot4D99F1 comparison; control0 match survives Techno until Foot4D99FC calls original70C610, writing+218 at70C614. Native control flow alone establishes this order; expected decisions are never supplied.',
+            'Shared supplied fixture fields and every variable case input are stored in the separate JSON. PointerExpired has no Boolean return contract; raw EAX/AL is deliberately not interpreted as a verdict.',
+        ], substitutions=[],
+        entry_points={name: address for name, (address, _size) in ARCHIVE_SPANS.items()}
+                     | {'foot_archive_compare': 0x4D99F1, 'foot_archive_setter_call': 0x4D99FC,
+                        'techno_archive_direct_write': 0x707B03},
+    )
+    result['original_code'] = {name: dict(address=f'0x{address:08X}', bytes=size,
+                                         hex=bytes(u.mem_read(address, size)).hex(),
+                                         sha256=hashlib.sha256(bytes(u.mem_read(address, size))).hexdigest())
+                               for name, (address, size) in ARCHIVE_SPANS.items()}
+    result['original_vtables'] = {name: dict(address=f'0x{address:08X}',
+                                            pointer_expired=f'0x{read_u32(u, address + 0x28):08X}',
+                                            sha256=hashlib.sha256(bytes(u.mem_read(address, 0x600))).hexdigest())
+                                  for name, (address, _entry, _size) in ARCHIVE_FAMILIES.items()}
+    return result
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--archive-expiry', action='store_true')
+    args, remaining = parser.parse_known_args(argv)
+    archive = args.archive_expiry
+    finish_vectors(generate_archive_expiry if archive else generate,
+                   Path(__file__).with_name('foot_archive_expiry.json') if archive else Path(__file__).with_suffix('.json'),
+                   provenance=archive_expiry_metadata if archive else metadata,
+                   argv=remaining,
+                   source_paths={'tools/spatial_oracle/foot_attack_move.py': Path(__file__)})
+
+
 if __name__ == '__main__':
-    finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=metadata)
+    main()

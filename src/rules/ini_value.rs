@@ -482,6 +482,23 @@ impl IniSection {
         })
     }
 
+    /// TechnoType ReadINI71464A..71469F reads Speed through ReadInt(-1).
+    /// Each -1 keeps the prior rules-pass value; other values are signed
+    /// clamped to0..100. Retain that canonical percent representation here;
+    /// util::fixed_math::ra2_speed_to_leptons_per_frame owns conversion to the
+    /// native Type+678 whole leptons. This is distinct from ReadSpeed474810.
+    /// Native execution: spatial_oracle/base_defense_response speed_history.
+    pub fn read_techno_speed(&self, key: &str, default: i32) -> i32 {
+        self.fold_rules_values(key, default, |current, raw| {
+            let parsed = parse_read_int(-1, raw);
+            if parsed == -1 {
+                current
+            } else {
+                parsed.clamp(0, 100)
+            }
+        })
+    }
+
     /// `CCINIClass__ReadRange @ 0x00474620`: read the key through
     /// `ReadDouble` with a hardcoded `-1.0` default (`0x00474628`), compare
     /// against `0x007E4900` (= `-1.0`) and return the CALLER's default
@@ -894,7 +911,7 @@ fn leading_float_token(s: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{crt_atoi, parse_leading_f32, strtok, truncate_native_bytes};
-    use crate::rules::ini_parser::IniFile;
+    use crate::rules::ini_parser::{IniFile, IniSection};
 
     fn sec(body: &str) -> IniFile {
         IniFile::from_str(body)
@@ -1175,6 +1192,31 @@ mod tests {
         assert_eq!(s.read_speed("D", -1), 0);
         assert_eq!(s.read_speed("E", 42), 0); // negative non-sentinel clamps to zero
         assert_eq!(s.read_speed("MISSING", 42), 42); // absent -> default (sentinel -1)
+    }
+
+    /// A supplied existing native cache entry differs from a physical empty
+    /// INI line, which both lexical loaders omit. Replay the scalar control.
+    #[test]
+    fn native_base_response_type_speed_reads_an_empty_supplied_cache_entry() {
+        let native: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tools/spatial_oracle/base_defense_response.json",
+        )))
+        .unwrap();
+        let row = native["speed_history"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["raw"] == "")
+            .unwrap();
+        let mut section = IniSection::new("MTNK".to_owned());
+        section.entries.insert("Speed".to_owned(), String::new());
+        assert_eq!(
+            crate::util::fixed_math::ra2_speed_to_leptons_per_frame(
+                section.read_techno_speed("Speed", 7),
+            ),
+            row["output"]["types"]["MTNK"]["speed"].as_i64().unwrap() as i32,
+        );
     }
 
     #[test] // P20 truncate toward zero (ledger #18)

@@ -43,8 +43,9 @@ use super::substrate::ObjectKind;
 /// `allowClear` sensor test (`0x00707994 CALL 0x004870D0`,
 /// `CellClass::SensorCountForHouse`), it exempts a receiver whose own house
 /// owns the expiring object from the Target clear (`0x007079B7..0x007079CB`),
-/// and it skips the `+0x500` / `+0x218` / CaptureManager block opened at
-/// `0x00707AE7`.
+/// and it skips the Techno `+0x500` / `+0x218` / CaptureManager block opened
+/// at `0x00707AE7`. After that body returns, Foot's override independently
+/// clears an exact ArchiveTarget match on BOTH controls (`4D99F1..4D99FC`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PointerExpiryControl {
     /// `Detach_All(false)` — the expiring object survives.
@@ -1050,6 +1051,18 @@ impl Simulation {
         }
         if !attached_upgrade {
             self.mark_ai_repairable_at_unlimbo(stable_id);
+            // Building440D07: recompute from the PRE-append House+68. Failed
+            // Mark and the earlier dead/attached-upgrade arms never reach it.
+            if let Some(rules) = context.rules
+                && let Some(owner) = self
+                    .substrate
+                    .entities
+                    .get(stable_id)
+                    .filter(|entity| entity.category == EntityCategory::Structure)
+                    .map(|entity| entity.owner())
+            {
+                self.recalculate_house_base_geometry(owner, rules);
+            }
             self.append_live_build_const(stable_id);
             self.append_house_base_building(stable_id);
             self.refresh_waypoint_edge_from_committed_structure(stable_id);
@@ -2690,6 +2703,21 @@ impl Simulation {
         if !self.substrate.entities.contains(stable_id) {
             return ConcealOutcome::MissingOrDead;
         }
+        // Building445DA6 precedes Techno Limbo445DDA, including its pointer
+        // expiry and InLimbo write. Building4458CE skips it on repeated Limbo;
+        // UnInit's earlier expiry may already have removed this list entry.
+        if let Some(rules) = context.rules()
+            && let Some(owner) = self
+                .substrate
+                .entities
+                .get(stable_id)
+                .filter(|entity| {
+                    entity.category == EntityCategory::Structure && !entity.lifecycle.in_limbo
+                })
+                .map(|entity| entity.owner())
+        {
+            self.recalculate_house_base_geometry(owner, rules);
+        }
         // `InfantryClass::Limbo @ 0x0051DF10`, before FootClass::Limbo and
         // whether or not the man is already in limbo: its locomotor's
         // Stop_Movement_Animation (ILocomotion `+0xAC`; Walk's `0x0075CBC0`
@@ -3666,9 +3694,16 @@ impl Simulation {
                 listener.suspended_attack_target,
                 Some(TargetKind::Entity(id)) if id == expired_id
             );
-        // `0x00707AE7..0x00707B03`: on a nonzero control the ArchiveTarget
-        // (`+0x218`) that names the expiring object is cleared too.
-        let clear_archive_target = control == PointerExpiryControl::Uninit
+        // Techno707AE7..707B03 clears ArchiveTarget+218 on control1. The
+        // later Foot4D99F1..4D99FC clears a still-matching archive on both
+        // controls, independent of sensors and same-owner target exemptions.
+        // Only Unit/Infantry/Aircraft inherit that additional Foot clear.
+        // Native execution: spatial_oracle/foot_archive_expiry.{json,md}.
+        let foot_receiver = matches!(
+            listener.category,
+            EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
+        );
+        let clear_archive_target = (control == PointerExpiryControl::Uninit || foot_receiver)
             && listener.archive_target() == Some(TargetKind::Entity(expired_id));
 
         // FootClass clears SuspendedNavCom first, then its current/aux target,
@@ -4365,6 +4400,10 @@ impl Simulation {
         self.process_pending_delete();
     }
 }
+
+#[cfg(test)]
+#[path = "foot_archive_expiry_tests.rs"]
+mod foot_archive_expiry_tests;
 
 #[cfg(test)]
 mod base_plan_lifecycle_tests {

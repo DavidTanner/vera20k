@@ -514,7 +514,11 @@ fn foot_move_here(
     // 0x004D91E1..0x004D91EB: the class setter vt+0x480(*P, 1).
     match payload.cell {
         Some(cell) => {
-            sim.set_unit_cell_destination(foot, cell, rules);
+            sim.set_unit_destination(
+                foot,
+                crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+                rules,
+            );
         }
         None => {
             sim.assign_null_destination(foot, Some(rules));

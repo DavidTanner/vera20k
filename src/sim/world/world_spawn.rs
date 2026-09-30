@@ -1732,7 +1732,7 @@ impl Simulation {
                 .houses
                 .get_mut(&owner_id)
                 .expect("qualifying deploy owner remains registered");
-            house.base_center = Some((rx, ry));
+            house.set_base_center((rx, ry));
             if house.base_plan.nodes.is_empty() {
                 recalc_base_plan(
                     &mut house.base_plan,
@@ -1903,7 +1903,11 @@ impl Simulation {
         // rally-line factories), only the relocation reaches an
         // UndeploysInto building: no retail rally-line type undeploys.
         if let Some(TargetKind::Cell(x, y)) = archive {
-            if !self.set_unit_cell_destination(new_sid, (x, y), rules) {
+            if !self.set_unit_destination(
+                new_sid,
+                crate::sim::components::NavTargetRef::cell(x, y),
+                rules,
+            ) {
                 log::debug!("undeployed unit {new_sid} refused its archive ({x}, {y})");
             }
             if let Some(unit) = self.substrate.entities.get_mut(new_sid) {

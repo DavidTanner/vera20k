@@ -902,10 +902,16 @@ impl Simulation {
             );
             return Ok(());
         }
-        if !super::prepare_walk_cell_destination(
+        super::movement_commands::clear_destination_path_head(actor);
+        let coord =
+            super::navcom::target_cell_coord(target.0, target.1, self.resolved_terrain.as_ref());
+        if !super::prepare_walk_destination(
             &mut self.substrate.entities,
             id,
-            target,
+            (
+                crate::sim::components::NavTargetRef::cell(target.0, target.1),
+                coord,
+            ),
             move_info.speed,
             self.resolved_terrain.as_ref(),
             timing,

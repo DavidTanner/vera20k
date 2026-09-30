@@ -54,7 +54,7 @@ wrapper reports denied variables and does not silently change the environment.
 After sourcing the native development environment, explicitly remove `RA2_DIR`
 for this command as above; asset loading uses the working directory's config.
 
-A new wrapper v3 bundle contains sealed `profile.json`, `config.toml` and
+A new wrapper v4 bundle contains sealed `profile.json`, `config.toml` and
 `contract.json` copies, plus `stdout.log`, `stderr.log`, `run.json` and the child's
 atomically published `child-output/{capture.json,frame.bgra}`. Runtime still reads
 the supplied original paths; retaining copies does not redirect the game loader.
@@ -62,7 +62,7 @@ Original files and retained copies must remain unchanged during capture.
 `run.json` records exact input hashes, command, child PID/status, timeout, receipt
 validation and capture artifact identities. A valid observation requires unchanged
 profile/config/executable/contract files, matching profile and contract receipts,
-a v3 child manifest with resident UnitAtlas statistics, a checked presentation-clock
+a v4 child manifest with resident UnitAtlas statistics, a checked presentation-clock
 transcript and neutral-input evidence, zero initial tick/frame/time,
 the requested final tick/frame and endpoint step
 receipts, a loaded loose/MIX map digest, hidden unfocused rendering without input
@@ -72,7 +72,7 @@ retain the initial fingerprint. Map hashes attest the bytes reported consumed by
 the loader; this wrapper does not independently extract MIX entries or reimplement
 the loader. Compare deterministic fingerprints separately from presentation pixels.
 
-The v3 `render.presentation_clock` records actual consumed presentation times:
+The v4 `render.presentation_clock` records actual consumed presentation times:
 
 ```json
 {
@@ -94,7 +94,7 @@ rows, reordered/repeated steps, wrong integer types and any time discrepancy fai
 validation. The wrapper retains the validated transcript as
 `capture.presentation_clock`; it does not reconstruct a missing transcript.
 
-The required v3 `render.neutral_input` has exactly
+The required v4 `render.neutral_input` has exactly
 `{"static_default_cursor":true,"camera_input_idle":true}`. Rust verifies these
 prerequisites and render readiness on every draw before publishing the final
 receipt; the wrapper checks their declared types/values and retains them as
@@ -107,6 +107,97 @@ clocks. The clock does not change simulation scheduling or provide evidence for
 native pixels, audio playback, menus or outcome timing. Full-frame comparison
 remains exact: no radar masks, channel tolerances or skipped pixels are applied.
 
+## Ordinary scheduled commands and actor trajectories
+
+Profile v1 remains accepted and retains its original JSON projection. It cannot
+declare the following extension fields, even as empty arrays. Profile v2 adds
+optional `commands`, `observe_owners`, `camera_cell` and `terrain_cells`; omitted
+fields stay omitted in the sealed request, and explicit null is rejected.
+The existing v1 example is unchanged. Start retail bridge discovery with
+[`map_observation.bridge-response.example.json`](map_observation.bridge-response.example.json):
+an accepted Battle launch on stock AnyTown (`XMP03T4.MAP`), with ordinary starting
+forces, an allied Computer1 and hostile Computer2. It requests zero steps, observes
+both AI Houses and centers the camera on the NS wooden bridge near (87,53).
+Its disabled shroud is an explicit launch option for this diagnostic observation.
+No actor IDs or gameplay state are granted by the profile.
+
+First retain L0 to discover the actual generated AMCV, MTNK and E1 stable IDs and
+positions. A short ordinary deployment probe then discovers the actual GACNST
+created by the AI MCV. Seal the final profile with those IDs and observed timings:
+
+```json
+{
+  "commands": [
+    {"issue_after_step": 0, "owner": "Computer1",
+     "payload": {"DeployMcv": {"entity_id": 120}}},
+    {"issue_after_step": 40, "owner": "Computer1",
+     "payload": {"Move": {"entity_id": 121, "target_rx": 87, "target_ry": 53, "queue": false}}},
+    {"issue_after_step": 200, "owner": "Computer2",
+     "payload": {"Attack": {"attacker_id": 130, "target_id": 140}}}
+  ],
+  "observe_owners": ["Computer1", "Computer2"],
+  "camera_cell": [87, 53],
+  "terrain_cells": [[87, 53]]
+}
+```
+
+These IDs and timings illustrate syntax; obtain actual values from the production
+probes. Command payloads are the existing Rust serde `Command`, with no separate
+order translator. Supported orders are Move, Stop, Attack, ForceAttack, Guard,
+DeployMcv and ForceAttackCell. Rust rejects ignored payload fields or argument
+types. Python checks diagnostic structure and the exact typed request/receipt;
+it does not duplicate the gameplay command parser or admissions.
+
+Rows must be nondecreasing by `issue_after_step`, retaining input order for ties,
+and occur before the final step. An issue at step N calls the ordinary
+`try_schedule_command` producer at simulation tick N, before advancing frame N+1.
+The producer owns encoding and queuing; the diagnostic adds no input-delay offset.
+Move carries an already resolved semantic destination, as synchronized/replay
+orders do; it does not claim to reproduce the preceding cell-click resolver.
+The receipt records enqueue success, not gameplay admission or completion.
+Ordinary actor/House checks remain in the command drain; verify their actual effects
+in the trajectory. Nonlocal-House envelopes are explicit diagnostic commands,
+not authority for the local player's UI to control an AI opponent.
+
+`observations.frames` contains L0 and every committed simulation frame. Each
+requested House contributes all its represented entities, including inactive
+objects. Rows retain stable IDs through capture and record disappeared IDs instead
+of silently rebinding them. Actor rows contain physical lepton XYZ, cell, bridge
+layer, health/lifecycle, raw Mission current/queued/suspended/effective/handler and
+timer state, exact tagged target/ArchiveTarget/NavCom, Foot +688/+68D, Infantry
+Doing and the existing virtual +4C coordinate owner's result. An unavailable
+coordinate is explicit; observation does not invent one or initialize gameplay.
+Foot fields are null for structures. Terrain rows read only allocated real cells,
+report current tile/subtile, presentation tile, level/slope and bridge fields, and
+report unallocated cells explicitly without stamping the shared Dummy.
+
+The camera calls the existing presentation centering/clamp owner once at L0.
+`render.camera` records its requested cell and actual final top-left/zoom. The
+existing neutral-input and exact draw requirements remain in force. A terrain
+receipt establishes CPU state; the separate retained BGRA frame establishes the
+production rendered output. Neither is a native comparison.
+
+Profiles are bounded to 1024 commands, 30 observed House names and 256 terrain
+cells. Captures retain at most 100000 combined actor, missing-ID and terrain
+samples. Child/run/report JSON is limited to 128 MiB on read and publication;
+the shared JSON owner keeps its 16 MiB default for other tools. Observe only the
+Houses needed by the experiment and choose a bounded step budget. Comparison checks
+the complete command/actor/terrain trajectory and camera as well as fingerprints
+and pixels; large transcripts remain referenced in their sealed source bundles
+rather than being copied twice into the comparison report.
+
+For the response chain, attack Computer1's **deployed GACNST** with Computer2's
+ordinary MTNK; stock AMCV has no `ToProtect=yes`. Computer1's own E1/MTNK defenders
+are the response candidates; an allied local House does not substitute for that
+ownership gate. Verify an actual deck defender and a ground control, yard damage,
+Rescue/AreaGuard dispatch, archived victim, movement and cleanup. Do not presume
+deployment clearance, bridge arrival or random mission selection from this example.
+The runtime profile establishes production integration, not native whole-world
+equivalence. Visible reproduction uses the normal release shell and the same
+Battle choices; this capture route remains hidden. `RA2_QUICKPLAY` has no ordinary
+AI starting forces and is unsuitable for this response fixture. Campaign-map
+sandboxes remain separate from campaign startup validation.
+
 The shared `tools.child_process` owner bounds spawn/wait/cleanup and collects
 finite output snapshots. On timeout it kills only its exact child. Existing
 outputs are never overwritten. A failed child, failed manifest, missing artifact,
@@ -117,7 +208,7 @@ possible. Exit codes: `0` valid observation, `1` retained invalid observation,
 Portable validation:
 
 ```sh
-python -m unittest tools.tests.test_map_observation tools.tests.test_child_process
+python -m unittest tools.tests.test_map_observation tools.tactical_certification.tests.test_core tools.tests.test_child_process
 ```
 
 The saved [validation receipt](map_observation.validation.json) records the checked
@@ -150,7 +241,7 @@ a labeled preserved build makes that requirement durable. The report marks this
 as `EXTERNALLY_REVALIDATED`. It cannot validate a deleted or replaced executable
 from its old receipt alone.
 
-A new wrapper v3 run validates its `SEALED_COPY` inputs without requiring the
+A new wrapper v4 run validates its `SEALED_COPY` inputs without requiring the
 original profile, config or contract files to remain available. It validates the
 retained contract's v2 rules without requiring today's checkout to have identical
 contract bytes. Offline checking does not apply the current process environment
@@ -166,6 +257,8 @@ legacy wall-clock observation and a diagnostic-clock observation are `INVALID`
 together even when their pixels match.
 Differences name precise field paths and before/after values. There are no pixel
 tolerances or omitted atlas fields.
+Current v4 pairs also compare the complete command and actor/terrain transcript
+and camera. Historical v3 pairs retain their original comparison fields.
 
 `MATCH` means these checked observations are exactly equal for the compared
 fields; it neither establishes independent execution nor certifies native parity.
@@ -187,8 +280,12 @@ Offline `validate` and `compare` reject old wall-clock observations by default.
 `--allow-legacy-clock` permits child v2 with sealed wrapper v2, preserving its
 original `run.capture` projection. Validation identifies its clock separately as
 `legacy-wall-clock`; it does not invent a diagnostic transcript or neutral-input
-guarantee. Live capture accepts only child v3 and never offers this override.
-Wrapper and child generations must correspond: v3/v3, v2/v2, or v1/v2.
+guarantee. Live capture accepts only child v4 and never offers this override.
+Wrapper and child generations must correspond: v4/v4, v3/v3, v2/v2, or v1/v2.
+Sealed wrapper/child v3 remains readable without a clock override, with profile
+v1 only and its original projection. It cannot declare v4 actor/command/camera
+receipts. Comparisons between v3 and v4 are invalid because their observation
+policies differ; no missing trajectory is reconstructed.
 
 Wrapper v1 also retained only `profile.json`. It additionally requires
 `--allow-legacy-inputs` to reread the original config and contract paths and check
@@ -208,7 +305,7 @@ python -m tools.map_observation compare \
 ```
 
 Same-policy legacy runs may compare when their actual input bytes match. A
-legacy/v3 comparison remains `INVALID` with both flags, including when frame
+legacy/v3 or legacy/v4 comparison remains `INVALID` with both flags, including when frame
 bytes are equal. Child v1 remains unsupported historical evidence: it lacks atlas
 statistics. No command rewrites historical receipts or adds evidence they did not
 record.
@@ -260,7 +357,7 @@ and native/GPU checks do not replace that production coverage.
 
 ## Resident unit-atlas measurement
 
-The final rendered frame records `render.unit_atlas` in the v3 child manifest;
+The final rendered frame records `render.unit_atlas` in the v4 child manifest;
 the validated wrapper retains it as `capture.unit_atlas` in `run.json`. The
 `UnitAtlas` owner reads actual wgpu texture descriptors and resident entries.
 It reports resident sprite count, the last actual build's rasterized sprite count,

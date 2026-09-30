@@ -567,7 +567,9 @@ fn a_natural_scanner_passes_over_an_unnatural_candidate() {
             None,
             crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
             Some(&sim),
+            None,
         )
+        .target()
     };
     assert_eq!(scan("TANK"), Some(2));
     assert_eq!(scan("HOUND"), None);

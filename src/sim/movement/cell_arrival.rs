@@ -278,7 +278,9 @@ mod tests {
                 None,
                 crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
                 Some(sim),
+                None,
             )
+            .target()
         };
         assert_eq!(list(&sim, (6, 5)), vec![2, 3]);
         assert_eq!(acquire(&sim, &sim.substrate.occupancy), Some(2));

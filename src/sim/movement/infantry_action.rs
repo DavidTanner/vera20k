@@ -15,8 +15,10 @@
 //! natively, the stage steps in its own Techno AI (`world::techno_ai`), and the
 //! sequencer and locomotion actions follow its `Process` (`world::object_turn`).
 //! Every other infantryman keeps the animation cascade (`sim::animation`),
-//! clocked at frame end, with its Doing written only by the receivers that
-//! request one (the failed path, the slave's dig, the Cheer's end).
+//! clocked at frame end. Explicit class Do_Action receivers also write Doing
+//! and restart that animation, including ordinary target assignment. Ground
+//! movement/firing scheduling has not yet migrated wholly to the native Doing
+//! sequence; the target setter must still preserve its current action admission.
 //!
 //! RESIDUAL (in-flight FireFly): VERA fires in the combat pass that follows
 //! every object's turn, while native fires in the object's own AI before its
@@ -173,9 +175,10 @@ impl Simulation {
     ///   native corpora's restarted stages show it for the other callers VERA
     ///   ports.
     ///
-    /// Stage and timer: for an infantryman whose Doing owns its sequence
-    /// ([`doing_owns_sequence`]), the stage and timer the action arms are its
-    /// animation's restart. Every other keeps its animation cascade.
+    /// Every accepted action restarts the represented animation's stage and
+    /// timer. For an infantryman whose Doing owns its sequence
+    /// ([`doing_owns_sequence`]), subsequent scheduling uses the native action;
+    /// other Infantry still use the animation cascade at frame end.
     pub(super) fn apply_infantry_do_action(
         &mut self,
         id: u64,
@@ -257,7 +260,6 @@ impl Simulation {
         if !do_action_admits(current, requested, force) {
             return Ok(false);
         }
-        let owns_sequence = doing_owns_sequence(actor);
         let actor = self
             .substrate
             .entities
@@ -267,7 +269,10 @@ impl Simulation {
             .mission_leaf
             .set_infantry_doing_verified(requested)
             .map_err(|error| format!("Do_Action wrote an invalid Doing: {error:?}"))?;
-        if owns_sequence && let Some(kind) = action_kind(requested) {
+        //51D9D2..51DA44: every accepted class action writes Doing and
+        // restarts its stage. Ground Infantry's animation cascade remains a
+        // separate scheduling residual, not a reason to omit this write.
+        if let Some(kind) = action_kind(requested) {
             actor.animation = Some(Animation::new(kind));
         }
         // `0x0051DA96..0x0051DAA1`: an accepted action at Health exactly 0
@@ -372,14 +377,22 @@ impl Simulation {
     }
 
     /// What `InfantryClass::AI` does with an infantryman's action after its
-    /// `Process`, for one whose Doing owns its sequence: the sequencer
+    /// `Process`: the first Doing=-1 dispatch also reaches this owner for an
+    /// ordinary walker, so construction/Unlimbo keeps the native -1 and the
+    /// first stationary AI selects Ready through the actual default arm.
+    /// For one whose Doing owns its sequence, the sequencer
     /// (`0x0051BF6A`), then the locomotion actions (`0x0051BF7B`). Answers
     /// true when the sequencer UnInit the infantryman, whose turn then ends.
     pub(crate) fn infantry_action_turn(&mut self, id: u64, rules: &RuleSet) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
-        if !doing_owns_sequence(actor) || actor.dying || !actor.is_ai_alive() {
+        let first_action = actor
+            .mission_leaf
+            .as_infantry()
+            .is_some_and(|leaf| leaf.doing() == -1)
+            && super::motion_query::is_moving(actor) == Some(false);
+        if (!doing_owns_sequence(actor) && !first_action) || actor.dying || !actor.is_ai_alive() {
             return false;
         }
         if self.infantry_sequencer(id, rules) {
@@ -592,14 +605,14 @@ impl Simulation {
     /// the firing latch drops (`0x0051B20E`, VERA's leaf copy) and the
     /// infantryman returns to an idle action, unforced: Deployed after a
     /// deploy action, else Prone when prone, else Ready (`0x0051B214..
-    /// 0x0051B24F`). Run for an infantryman whose Doing owns its sequence;
-    /// every other keeps the entity-local clear of
-    /// `concrete_effects::represented_assign_target_admitted`.
+    /// 0x0051B24F`). The class setter calls this before its DeployFire gate
+    /// and before the Techno base target write. All Infantry families take
+    /// the same action admission; a refused action retains Doing and stage.
     pub(crate) fn infantry_target_change_action(&mut self, id: u64, rules: &RuleSet) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
         };
-        if !doing_owns_sequence(actor) || actor.health.current <= 0 {
+        if actor.category != EntityCategory::Infantry || actor.health.current <= 0 {
             return;
         }
         let Some(doing) = actor.mission_leaf.as_infantry().map(|leaf| leaf.doing()) else {
@@ -612,6 +625,12 @@ impl Simulation {
         } else {
             DO_READY
         };
+        self.substrate
+            .entities
+            .get_mut(id)
+            .expect("target-change receiver was borrowed above")
+            .mission_leaf
+            .set_foot_firing_sequence(0);
         if let Err(cause) = self.infantry_do_action(id, requested, false, rules) {
             log::debug!("infantry {id} target change action: {cause}");
         }
@@ -647,8 +666,9 @@ impl Simulation {
     /// `InfantryClass::DoType_Sequencer @ 0x00520AE0` for a walker whose
     /// Doing `action` has played its sequence to the end: VERA's frame-end
     /// animation clock (`sim::animation`) stands for the stage (`+0xF8`,
-    /// `+0x100..`) that Do_Action arms, and reports the end. Only the Cheer
-    /// (32) takes its default arm here. The other actions a walker installs
+    /// `+0x100..`) that Do_Action arms, and reports the end. Cheer32 and
+    /// Idle1/Idle2 use the one native default-action owner here, so completing
+    /// a fidget releases its Doing before a later idle receiver. Other actions
     /// either hold (Ready, Prone, Deployed), end in their own owners (the death
     /// sequences), or stay a residual (Shovel, `sim::slave_manager`).
     ///
@@ -661,7 +681,7 @@ impl Simulation {
         if actor.mission_leaf.as_infantry().map(|leaf| leaf.doing()) != Some(action) {
             return;
         }
-        if !doing_owns_sequence(actor) && action == DO_CHEER {
+        if !doing_owns_sequence(actor) && matches!(action, DO_CHEER | DO_IDLE1 | DO_IDLE2) {
             self.infantry_default_action(id, action, rules);
         }
     }
@@ -683,8 +703,8 @@ impl Simulation {
     /// (`0x00520CEB..0x00520D16`) first: the sequencer for an infantryman
     /// whose Doing owns its sequence, the animation cascade for a walker. The
     /// secondary-fire repeat (`0x00520D7E..0x00520E00`) is not reached: no
-    /// Jumpjet infantryman has a secondary fire action, and the walker arm runs
-    /// for the Cheer alone.
+    /// Jumpjet infantryman has a secondary fire action, and the walker completion
+    /// callback runs for Cheer and the two fidgets.
     fn infantry_default_action(&mut self, id: u64, action: i32, rules: &RuleSet) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;

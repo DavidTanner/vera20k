@@ -91,9 +91,7 @@ mod movement_path;
 mod movement_step;
 pub(crate) mod movement_tick;
 mod navcom;
-pub(crate) use navcom::{
-    building_dock_cell, nav_target_coordinate, set_walk_destination_coord, target_cell_coord,
-};
+pub(crate) use navcom::{building_dock_cell, nav_target_coordinate, set_walk_destination_coord};
 #[cfg(test)]
 pub(crate) mod fresh_oracle_seam;
 mod path_markers;
@@ -140,9 +138,9 @@ pub mod turret;
 
 pub use facing_class::FacingClass;
 
-pub(crate) use foot_speed::{order_speed, owner_current_speed};
 #[cfg(test)]
 pub(crate) use foot_speed::owner_current_speed_from_fraction;
+pub(crate) use foot_speed::{order_speed, owner_current_speed};
 // NOT test-gated: `techno_common_pre`'s DisguiseWhenStill check
 // (sim/world/techno_ai.rs) consumes this in every build; a 2026-08-14
 // warning-cleanup gate on it broke release-only compilation.
@@ -156,14 +154,16 @@ pub use movement_commands::{
     stop_navigation_at_committed_head,
 };
 pub(crate) use movement_commands::{
-    can_accept_destination, issue_move_command_with_destination, prepare_walk_cell_destination,
-    retain_committed_movement,
+    can_accept_destination, clear_destination_path_head, issue_move_command_with_destination,
+    prepare_walk_destination, retain_committed_movement,
 };
 #[cfg(test)]
 pub(crate) use movement_path::{
     path_search_used_zone_grid_marker, reset_path_search_used_zone_grid_marker,
 };
-pub(crate) use navcom::{foot_stop_moving, set_destination_internal_cell, track_stop_moving};
+pub(crate) use navcom::{
+    foot_stop_moving, set_destination_internal_cell, target_cell_coord, track_stop_moving,
+};
 // Legacy batch tick used by focused movement fixtures.
 #[cfg(test)]
 pub(crate) use movement_tick::tick_movement_with_grids;

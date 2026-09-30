@@ -81,7 +81,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
         target_cell[0].as_u64().unwrap() as u16,
         target_cell[1].as_u64().unwrap() as u16,
     );
-    assert!(super::issue_attack_cell_command(
+    assert!(super::install_cell_attack_target_for_test(
         &mut world.substrate.entities,
         firer_id,
         target_cell[0].as_u64().unwrap() as u16,

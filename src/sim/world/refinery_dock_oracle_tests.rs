@@ -422,7 +422,11 @@ fn dress(mut s: Scene, input: &Value) -> Scene {
     }
     if let Some(nav) = input.get("nav").filter(|n| !n.is_null()) {
         let nav = cell(nav);
-        assert!(s.sim.set_unit_cell_destination(miner, nav, &s.rules));
+        assert!(s.sim.set_unit_destination(
+            miner,
+            crate::sim::components::NavTargetRef::cell(nav.0, nav.1),
+            &s.rules
+        ));
         if input["moving"] != true {
             let entity = s.sim.substrate.entities.get_mut(miner).unwrap();
             crate::sim::movement::track_stop_moving(entity);

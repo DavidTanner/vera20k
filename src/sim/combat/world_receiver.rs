@@ -825,9 +825,13 @@ pub(crate) fn commit_entities(
                     queue_entity_mission_deferred(target, MissionId::from_known(MissionType::Move));
                 }
                 let walk = world
-                    .assign_infantry_walk_cell_destination(
+                    .assign_infantry_walk_destination(
                         target_id,
-                        scatter,
+                        crate::sim::components::NavTargetRef::cell(
+                            scatter.destination.0,
+                            scatter.destination.1,
+                        ),
+                        scatter.speed,
                         rules,
                         overlay_registry,
                     )

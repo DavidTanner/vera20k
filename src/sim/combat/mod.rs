@@ -49,6 +49,7 @@ pub(crate) mod parasite;
 pub(crate) mod rof;
 pub mod smudge_dispatch;
 mod threat_mask;
+mod threat_posed;
 pub(crate) mod threat_range;
 pub(crate) mod veterancy;
 pub(crate) mod world_receiver;
@@ -694,8 +695,8 @@ pub struct PendingInfantryFire {
 
 /// Component: this entity is attacking a specific target.
 ///
-/// Attached by `issue_attack_command()` (entity targets) or
-/// `issue_attack_cell_command()` (cell targets). The combat system fires the
+/// Installed by the concrete target authority for entity or cell targets.
+/// The combat system fires the
 /// attacker's weapon at the resolved target each tick. The reload between
 /// shots is the object's own `GameEntity::rearm_timer`, not the target's.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1095,11 +1096,15 @@ pub(crate) fn pursuit_in_range(
     PursuitRangeVerdict::CloseIn
 }
 
-/// Issue an attack command: make `attacker` fire at `target`.
-///
-/// Replaces any existing AttackTarget. Infantry and vehicles turn through their
-/// firing/movement owners, not through target assignment.
-pub fn issue_attack_command(entities: &mut EntityStore, attacker_id: u64, target_id: u64) -> bool {
+/// Install a bare combat fixture's entity target. Production commands use
+/// `Simulation::assign_target_represented`, including concrete class effects.
+/// This adapter stages the admitted Techno base state without running an event.
+#[cfg(test)]
+pub(crate) fn install_entity_attack_target_for_test(
+    entities: &mut EntityStore,
+    attacker_id: u64,
+    target_id: u64,
+) -> bool {
     if entities.get(target_id).is_none() {
         return false;
     }
@@ -1108,19 +1113,8 @@ pub fn issue_attack_command(entities: &mut EntityStore, attacker_id: u64, target
         None => return false,
     };
 
-    // gamemd-derived: a target assignment writes the target pointer and nothing
-    // else — no facing, for any class. A TURRETLESS VEHICLE therefore gets no
-    // instant snap here: `UnitClass::Fire_At_Target @ 0x00736DF0` case 2 turns
-    // its hull at `ROT=` (`FacingClass::Set(+0x388)` at `0x00737004`) only once
-    // the fire gate refuses the shot for facing, and only while it is
-    // stationary. Infantry snap only when their fire action starts (00520925,
-    // world_receiver::resolve_attacker_fire), an aircraft turns through its
-    // Mission_Attack and Fly owners, and a building's order takes
-    // BuildingClass::SetTarget (`world_commands`), which writes no facing.
-
-    // Walk's physical head survives a null destination. The synchronized
-    // command owner applies that setter after TarCom assignment; the shared
-    // target helper must not destroy the adapter needed to finish the head.
+    // Preserve historical fixture setup: discard a non-Walk movement adapter
+    // before installing the initial target. This is not a native setter effect.
     if !attacker
         .locomotor
         .as_ref()
@@ -1129,11 +1123,11 @@ pub fn issue_attack_command(entities: &mut EntityStore, attacker_id: u64, target
         attacker.movement_target = None;
     }
 
-    // Attach the attack target using stable ID (fire immediately).
-    attacker.attack_target = Some(AttackTarget::new(target_id));
-    // An ordered target was not picked up by the passive scanner, so it is not
-    // subject to the scanner's stale-target drop or the off-mission clear.
-    attacker.passively_acquired_target = false;
+    crate::sim::mission::concrete_effects::represented_assign_target_admitted(
+        attacker,
+        Some(TargetKind::Entity(target_id)),
+        true,
+    );
 
     true
 }
@@ -1209,22 +1203,11 @@ pub(crate) fn estimated_damage_on(
     })
 }
 
-/// Issue a force-fire-on-cell command: make `attacker` fire at a ground cell.
-///
-/// Used by `Command::ForceAttackCell` (Ctrl + left-click on empty terrain).
-/// Aborts (returns `false`) if the attacker has no weapon — caller filters
-/// unarmed units client-side, but this defensive check keeps a stray command
-/// from corrupting state.
-///
-/// gamemd-derived: `TechnoClass::What_Action_OnCell @ 0x00700600` inlines
-/// `TechnoClass::Is_Armed` at `0x007008BD..0x007008CE` —
-/// `CALL [EDX+0x3F4]` (`GetCurrentWeapon`), `TEST EAX,EAX`,
-/// `CMP dword [EAX],0x0`, both misses jumping to `0x00700AB7` past every arm
-/// that can return 5 (ACTION_ATTACK). That is the gate, and it is a single
-/// weapon slot — not `Primary=` plus `Secondary=`. Reading the INI keys
-/// refused force-fire for `[SREF]` and `[YAGGUN]`, whose weapons live only in
-/// `Weapon1..N`.
-pub fn issue_attack_cell_command(
+/// Install a bare combat fixture's cell target. Keep its current-weapon gate
+/// through the shared weapon reader; production ForceAttackCell uses the
+/// concrete class authority in `world_commands`, not this setup adapter.
+#[cfg(test)]
+pub(crate) fn install_cell_attack_target_for_test(
     entities: &mut EntityStore,
     attacker_id: u64,
     target_rx: u16,
@@ -1257,8 +1240,6 @@ pub fn issue_attack_cell_command(
         None => return false,
     };
 
-    // As with entity targets, the assignment writes no facing.
-
     if !attacker
         .locomotor
         .as_ref()
@@ -1266,8 +1247,10 @@ pub fn issue_attack_cell_command(
     {
         attacker.movement_target = None;
     }
-    attacker.attack_target = Some(AttackTarget::for_cell(target_rx, target_ry));
-    attacker.passively_acquired_target = false;
+    crate::sim::mission::concrete_effects::represented_assign_target(
+        attacker,
+        Some(TargetKind::Cell(target_rx, target_ry)),
+    );
     true
 }
 
@@ -3391,7 +3374,7 @@ mod impact_height_tests {
         store.insert(firer);
         let mut interner = test_interner();
         assert!(
-            issue_attack_cell_command(&mut store, 1, 5, 6, Some(&rules), &interner),
+            install_cell_attack_target_for_test(&mut store, 1, 5, 6, Some(&rules), &interner),
             "armed tank should accept a force-fire order on an adjacent cell"
         );
 

@@ -405,7 +405,7 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
         // landed first, its removal would shift the Tesla's into its Logic
         // slot and skip it until the next frame.
         for (source, target) in [(infantry, tesla), (tesla, infantry)] {
-            assert!(crate::sim::combat::issue_attack_command(
+            assert!(crate::sim::combat::install_entity_attack_target_for_test(
                 &mut sim.substrate.entities,
                 source,
                 target

@@ -131,35 +131,21 @@ impl Simulation {
             else {
                 continue;
             };
-            let Some(target_sid) = combat::acquire_best_target_for_entity(
-                &self.substrate.entities,
-                &self.substrate.occupancy,
+            let Some(target_sid) = self.greatest_threat_represented(
                 rules,
-                &self.interner,
+                overlay_registry,
                 attacker_id,
-                Some(&self.fog),
-                self.resolved_terrain.as_ref(),
-                self.playfield_bounds.is_some(),
-                // VERA-internal entry with no single native counterpart, so it
-                // keeps the passive block's mask — `1`, or `2` for a player
-                // "guard this spot" order. gamemd equivalent UNCHECKED. An
-                // aircraft finds nothing with either: it has no `+0x3C4` class
-                // override (`0x004D9920`), so its flags word is 0 and the class
-                // gate (`0x006F821A`) rejects every candidate, as it does for
-                // native aircraft Patrol's mask 2 (`0x00417481`).
                 scan_mask,
-                self.zone_grid.as_ref(),
-                combat::line_of_fire::LineOfFireInputs {
-                    overlay_grid: self.overlay_grid.as_ref(),
-                    overlay_registry,
-                    alliances: Some(&self.fog.alliances),
-                },
-                Some(&*self),
+                None,
+                combat::acquire_best_target_for_entity,
             ) else {
                 continue;
             };
-            let _ =
-                combat::issue_attack_command(&mut self.substrate.entities, attacker_id, target_sid);
+            let _ = self.assign_target_represented(
+                attacker_id,
+                Some(combat::TargetKind::Entity(target_sid)),
+                Some(rules),
+            );
         }
     }
 
@@ -1346,9 +1332,9 @@ impl Simulation {
                     }
                 }
                 PursuitAction::DropTargetAndMovement { entity_id } => {
+                    // Foot4D5730 dispatches virtual+3C8 on Sticky refusal.
+                    let _ = self.assign_target_represented(entity_id, None, Some(rules));
                     if let Some(e) = self.substrate.entities.get_mut(entity_id) {
-                        // Foot4D5730 calls Assign_Target(NULL) on Sticky refusal.
-                        crate::sim::mission::concrete_effects::represented_assign_target(e, None);
                         e.movement_target = None;
                         e.navigation.nav_com = None;
                     }

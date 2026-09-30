@@ -4455,7 +4455,7 @@ impl Simulation {
             house.build_const_order.push(stable_id);
         }
         if category == EntityCategory::Structure {
-            self.join_house_base_lists(stable_id, new_owner);
+            self.join_house_base_lists(stable_id, old_owner, new_owner, rules);
         }
         // `TechnoClass::ChangeOwner` closes with the mission half (the
         // `+0x484` call at 0x00701849 reads the NEW owner's
@@ -6120,30 +6120,6 @@ impl Simulation {
                 rules,
                 &self.interner,
             );
-
-            // Idle fidgets, immediately after the stance pass so a man who just
-            // stood back up is not eligible on the same tick he was prone.
-            // Driven from the logic vector, not the entity store: limboed
-            // objects never reach this in the original.
-            // DEPENDS ON: prone bit, deploy phase, attack target, mission.
-            // PRODUCES: Idle1/Idle2 sequence switches (Do_Action for an
-            //   infantryman whose Doing owns its sequence), idle facing
-            //   changes, and scenario-RNG draws — the one idle path that moves
-            //   the cursor.
-            let fidgets = crate::sim::infantry::tick_idle_actions(
-                &mut self.substrate.entities,
-                self.substrate.logic.as_slice(),
-                &self.houses,
-                rules,
-                &self.interner,
-                &mut self.scenario_rng,
-                self.session.binary_frame,
-            );
-            for (id, action) in fidgets {
-                if let Err(cause) = self.infantry_do_action(id, action, false, rules) {
-                    log::debug!("infantry {id} idle action {action}: {cause}");
-                }
-            }
 
             // --- Phase 5: Combat + Turret rotation ---
             // DEPENDS ON: vision/fog (targeting uses fog state), power (cloaking).

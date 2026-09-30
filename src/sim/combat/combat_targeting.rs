@@ -113,7 +113,7 @@ pub(crate) struct AttackerSnapshot {
 }
 
 /// Acquire the best currently valid target for one attacker entity.
-/// Returns the target's stable entity ID.
+/// Reports the target and whether the concrete dispatch reached Foot.
 ///
 /// `terrain` is threaded through for the 3D InRange check; when `None`
 /// (headless tests, no map loaded), the range check falls back to the
@@ -131,8 +131,9 @@ pub(crate) struct AttackerSnapshot {
 /// What the literal is NOT is what `TechnoClass::Greatest_Threat` finally sees:
 /// the scanner's `+0x3C4` override rewrites it first, which
 /// [`super::greatest_threat::greatest_threat`] applies ([`super::threat_mask`]);
-/// `FootClass+0x688`'s coercion to `(mask & ~2) | 1` (`0x004D9931`) remains
-/// its residual.
+/// including Foot+688's coercion to `(mask & ~2) | 1` (`0x004D9931`).
+/// The world dispatch commits Foot's empty-result latch write before any
+/// subsequent class target assignment.
 ///
 /// `zone_grid` is `MapClass`'s per-movement-zone connectivity, which mask 0 uses
 /// to refuse candidates its own movement zone cannot reach.
@@ -150,15 +151,20 @@ pub(crate) fn acquire_best_target_for_entity(
     zone_grid: Option<&crate::sim::pathfinding::zone_map::ZoneGrid>,
     los: super::line_of_fire::LineOfFireInputs<'_>,
     fire_world: Option<&crate::sim::world::Simulation>,
-) -> Option<u64> {
-    let entity = entities.get(attacker_id)?;
+    scan_coord: Option<[i32; 3]>,
+) -> super::greatest_threat::ThreatScanOutcome {
+    let Some(entity) = entities.get(attacker_id) else {
+        return super::greatest_threat::ThreatScanOutcome::default();
+    };
     // Aircraft with 0 ammo should not acquire new targets — need to reload.
     if let Some(ref ammo) = entity.aircraft_ammo {
         if ammo.current == 0 {
-            return None;
+            return super::greatest_threat::ThreatScanOutcome::default();
         }
     }
-    let obj = rules.object(interner.resolve(entity.type_ref()))?;
+    let Some(obj) = rules.object(interner.resolve(entity.type_ref())) else {
+        return super::greatest_threat::ThreatScanOutcome::default();
+    };
     // Native `TechnoClass::Greatest_Threat @ 0x006F8DF0` has no weapon
     // early-out of its own; the armed requirement sits upstream in
     // `TechnoClass::CanAcquireTarget @ 0x007091D0`, whose last term is
@@ -168,7 +174,7 @@ pub(crate) fn acquire_best_target_for_entity(
     // type never parses that key (`TechnoTypeClass::ReadINI @ 0x007128B2`), so
     // `[SREF]` and `[YAGGUN]` were classified unarmed and could never acquire.
     if !super::combat_weapon::is_armed(entity, obj) {
-        return None;
+        return super::greatest_threat::ThreatScanOutcome::default();
     }
     greatest_threat_for_entity(
         entities,
@@ -183,6 +189,7 @@ pub(crate) fn acquire_best_target_for_entity(
         zone_grid,
         los,
         fire_world,
+        scan_coord,
     )
 }
 
@@ -203,9 +210,14 @@ pub(crate) fn greatest_threat_for_entity(
     zone_grid: Option<&crate::sim::pathfinding::zone_map::ZoneGrid>,
     los: super::line_of_fire::LineOfFireInputs<'_>,
     fire_world: Option<&crate::sim::world::Simulation>,
-) -> Option<u64> {
-    let entity = entities.get(attacker_id)?;
-    let obj = rules.object(interner.resolve(entity.type_ref()))?;
+    scan_coord: Option<[i32; 3]>,
+) -> super::greatest_threat::ThreatScanOutcome {
+    let Some(entity) = entities.get(attacker_id) else {
+        return super::greatest_threat::ThreatScanOutcome::default();
+    };
+    let Some(obj) = rules.object(interner.resolve(entity.type_ref())) else {
+        return super::greatest_threat::ThreatScanOutcome::default();
+    };
     // Dummy target: no current target when acquiring fresh.
     let snapshot = AttackerSnapshot {
         scan_mission: mask,
@@ -225,6 +237,7 @@ pub(crate) fn greatest_threat_for_entity(
         zone_grid,
         los,
         fire_world,
+        scan_coord,
     )
 }
 
@@ -263,7 +276,8 @@ pub(crate) fn acquire_best_target(
     zone_grid: Option<&crate::sim::pathfinding::zone_map::ZoneGrid>,
     los: super::line_of_fire::LineOfFireInputs<'_>,
     fire_world: Option<&crate::sim::world::Simulation>,
-) -> Option<u64> {
+    scan_coord: Option<[i32; 3]>,
+) -> super::greatest_threat::ThreatScanOutcome {
     super::greatest_threat::greatest_threat(
         entities,
         occupancy,
@@ -278,6 +292,7 @@ pub(crate) fn acquire_best_target(
         zone_grid,
         los,
         fire_world,
+        scan_coord,
     )
 }
 
@@ -685,7 +700,9 @@ mod tests {
                 None,
                 crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
                 None,
-            ),
+                None,
+            )
+            .target(),
             Some(2)
         );
     }

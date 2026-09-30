@@ -43,6 +43,8 @@ class MapObservationTests(unittest.TestCase):
             'total_texel_payload_bytes': 16,
         }
         self.frame = bytes(range(16))
+        self.actor_frames = {}
+        self.terrain_frames = {}
         self.change = lambda manifest: None
         self.result = ChildResult(42, 0, False, b'child output\n', b'', ())
         environment = patch.dict('os.environ', {}, clear=True)
@@ -85,11 +87,33 @@ class MapObservationTests(unittest.TestCase):
                        'surface_extent': [2, 2], 'internal_extent': [2, 2],
                        'unit_atlas': deepcopy(self.unit_atlas),
                        'presentation_clock': self.clock(ticks),
+                       'camera': {'requested_cell': self.profile.get('camera_cell'),
+                                  'top_left': [0.0, 0.0], 'zoom': 1.0},
                        'neutral_input': {'static_default_cursor': True, 'camera_input_idle': True}},
             'frame': {'file_name': 'frame.bgra', 'width': 2, 'height': 2, 'row_stride': 8,
                       'byte_length': 16, 'sha256': sha256_bytes(frame),
                       'pixel_layout': 'BGRA8', 'surface_format': 'Bgra8UnormSrgb'},
             'native_comparator': 'NONE', 'parity_certification': 'NONE',
+        }
+        seen = set()
+        frames = []
+        for step in range(ticks + 1):
+            actors = deepcopy(self.actor_frames.get(step, []))
+            current_ids = {actor['stable_id'] for actor in actors}
+            seen.update(current_ids)
+            terrain = self.terrain_frames.get(step, [self.unallocated_cell(cell)
+                                                     for cell in self.profile.get('terrain_cells', [])])
+            frames.append({'completed_steps': step, 'simulation_tick': step, 'binary_frame': step,
+                           'total_simulation_ms': step * 22, 'actors': actors,
+                           'missing_actor_ids': sorted(seen - current_ids), 'terrain': deepcopy(terrain)})
+        manifest['observations'] = {
+            'policy': observation.OBSERVATION_POLICY, 'owners': self.profile.get('observe_owners', []),
+            'commands': [{'ordinal': index, 'issue_after_step': request['issue_after_step'],
+                          'issued_simulation_tick': request['issue_after_step'],
+                          'envelope_execute_tick': request['issue_after_step'],
+                          'owner': request['owner'], 'payload': deepcopy(request['payload'])}
+                         for index, request in enumerate(self.profile.get('commands', []))],
+            'frames': frames,
         }
         self.change(manifest)
         (directory / 'capture.json').write_text(json.dumps(manifest))
@@ -100,6 +124,180 @@ class MapObservationTests(unittest.TestCase):
             return observation.capture(profile_path=self.profile_path, contract_path=self.contract,
                                        output=self.output, working_directory=self.root,
                                        executable=self.executable)
+
+    @staticmethod
+    def actor(identity=1, owner='Computer1', category='Infantry'):
+        return {
+            'stable_id': identity, 'owner': owner, 'type_id': 'E1' if category == 'Infantry' else 'MTNK',
+            'category': category, 'cell': [87, 53], 'physical_leptons': [22400, 13696, 416],
+            'on_bridge': True, 'health': 125, 'active': True, 'in_limbo': False, 'dying': False,
+            'mission': {'current': 5, 'queued': -1, 'suspended': -1, 'effective': 5,
+                        'handler_state': 0, 'start_frame': 0, 'ai_counter': 0,
+                        'dispatch_timer': {'start_frame': 0, 'delay': 15}},
+            'target': {'Entity': 8}, 'archive': {'Cell': [87, 53]},
+            'nav': {'Object': {'id': 9}},
+            'foot': {'retarget_after_stop_688': False, 'firing_sequence_latch_68d': 0,
+                     'infantry_doing': 0 if category == 'Infantry' else None,
+                     'navigation_leptons': [22400, 13696, 416], 'navigation_unavailable': None},
+        }
+
+    @staticmethod
+    def unallocated_cell(coordinate):
+        return {'cell': list(coordinate), 'allocated': False,
+                **{key: None for key in ('final_tile_index', 'final_sub_tile', 'presentation_tile',
+                                        'level', 'slope', 'raw_bridge_flags', 'bridge_state',
+                                        'has_deck', 'deck_level', 'walkable', 'transition')}}
+
+    def scripted_profile(self):
+        self.profile.update(
+            schema_version=observation.PROFILE_V2, observe_owners=['Computer1'],
+            camera_cell=[87, 53], terrain_cells=[[87, 53]],
+            commands=[{'issue_after_step': 0, 'owner': 'Computer1', 'payload': {'Stop': {'entity_id': 1}}},
+                      {'issue_after_step': 0, 'owner': 'Computer1',
+                       'payload': {'Guard': {'entity_id': 1, 'target_id': None}}},
+                      {'issue_after_step': 2, 'owner': 'Computer1',
+                       'payload': {'ForceAttackCell': {'attacker_id': 1, 'target_rx': 87, 'target_ry': 53}}}])
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.actor_frames = {step: [self.actor()] for step in range(4)}
+
+    def test_v2_records_exact_issue_order_without_input_delay_and_every_actor_frame(self):
+        self.scripted_profile()
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        transcript = report['capture']['observations']
+        self.assertEqual([row['ordinal'] for row in transcript['commands']], [0, 1, 2])
+        self.assertEqual([row['envelope_execute_tick'] for row in transcript['commands']], [0, 0, 2])
+        self.assertEqual([row['completed_steps'] for row in transcript['frames']], [0, 1, 2, 3])
+        self.assertEqual(transcript['frames'][0]['actors'][0]['nav'], {'Object': {'id': 9}})
+        self.assertEqual(report['capture']['camera']['requested_cell'], [87, 53])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_profile_version_order_field_types_and_budgets_are_checked_before_spawn(self):
+        profile = deepcopy(self.profile)
+        cases = [dict(profile, commands=[]), dict(profile, observe_owners=[]),
+                 dict(profile, camera_cell=[87, 53]), dict(profile, terrain_cells=[]),
+                 dict(profile, schema_version='unknown'), dict(profile, extra=True)]
+        modern = dict(profile, schema_version=observation.PROFILE_V2)
+        cases.extend(dict(modern, **extension) for extension in (
+            {'commands': None}, {'observe_owners': None}, {'camera_cell': None}, {'terrain_cells': None},
+            {'observe_owners': ['Computer1', 'Computer1']}, {'observe_owners': ['']},
+            {'observe_owners': [1]}, {'observe_owners': [str(index) for index in range(31)]},
+            {'terrain_cells': [[87, 53], [87, 53]]}, {'camera_cell': [True, 53]},
+            {'camera_cell': [-1, 53]}, {'camera_cell': [65536, 53]},
+            {'terrain_cells': [[index, 0] for index in range(257)]}))
+        valid_command = {'issue_after_step': 0, 'owner': 'Computer1', 'payload': {'Stop': {'entity_id': 1}}}
+        for key, value in (('issue_after_step', True), ('issue_after_step', 3),
+                           ('issue_after_step', -1), ('issue_after_step', 0.0), ('owner', ''),
+                           ('owner', 1), ('extra', True), ('payload', {}),
+                           ('payload', {'Select': {'entity_ids': [1], 'additive': False}})):
+            cases.append(dict(modern, commands=[dict(valid_command, **{key: value})]))
+        cases.append(dict(modern, commands=[dict(valid_command, issue_after_step=2), valid_command]))
+        cases.append(dict(modern, commands=[valid_command] * 1025))
+        for index, candidate in enumerate(cases):
+            with self.subTest(case=index), patch.object(observation, 'run_child') as child:
+                self.profile_path.write_text(json.dumps(candidate))
+                with self.assertRaises(ValidationError):
+                    self.run_capture()
+                child.assert_not_called()
+                self.assertFalse(self.output.exists())
+
+    def test_command_receipts_cannot_reorder_retime_omit_or_change_payload(self):
+        self.scripted_profile()
+        changes = [lambda rows: rows.pop(), lambda rows: rows.reverse(),
+                   lambda rows: rows[0].update(extra=True),
+                   lambda rows: rows[0]['payload']['Stop'].update(entity_id=2),
+                   lambda rows: rows[2].update(issue_after_step=1),
+                   lambda rows: rows[2].update(issued_simulation_tick=3),
+                   lambda rows: rows[2].update(envelope_execute_tick=4),
+                   lambda rows: rows[0].update(owner='Computer2')]
+        for key in ('ordinal', 'issue_after_step', 'issued_simulation_tick', 'envelope_execute_tick'):
+            changes.append(lambda rows, key=key: rows[0].update({key: True}))
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'command-receipt-{index}'
+                self.change = lambda manifest, change=change: change(manifest['observations']['commands'])
+                report = self.run_capture()
+                self.assertEqual(report['status'], 'INVALID', report)
+                self.assertTrue(any('observations.commands' in error for error in report['errors']))
+
+    def test_actor_history_retains_capture_and_disappearance_without_rebinding(self):
+        self.scripted_profile()
+        self.actor_frames[1][0]['owner'] = 'Computer2'
+        self.actor_frames[2] = []
+        self.actor_frames[3] = [self.actor(identity=2)]
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        rows = report['capture']['observations']['frames']
+        self.assertEqual(rows[1]['actors'][0]['owner'], 'Computer2')
+        self.assertEqual(rows[2]['missing_actor_ids'], [1])
+        self.assertEqual(rows[3]['missing_actor_ids'], [1])
+        self.assertEqual(rows[3]['actors'][0]['stable_id'], 2)
+
+    def test_actor_and_frame_transcripts_fail_closed_on_missing_order_or_bad_state(self):
+        self.scripted_profile()
+        changes = [lambda rows: rows.pop(), lambda rows: rows.reverse(),
+                   lambda rows: rows[1].update(simulation_tick=2),
+                   lambda rows: rows[1].update(total_simulation_ms=0),
+                   lambda rows: rows[1].update(actors=[], missing_actor_ids=[]),
+                   lambda rows: rows[1].update(missing_actor_ids=[1]),
+                   lambda rows: rows[0]['actors'][0].update(owner='Computer2'),
+                   lambda rows: rows[1]['actors'].append(deepcopy(rows[1]['actors'][0])),
+                   lambda rows: rows[1]['actors'][0]['mission'].update(queued=True),
+                   lambda rows: rows[1]['actors'][0]['foot'].update(firing_sequence_latch_68d=256),
+                   lambda rows: rows[1]['actors'][0]['foot'].update(retarget_after_stop_688=1),
+                   lambda rows: rows[1]['actors'][0]['foot'].update(infantry_doing=None),
+                   lambda rows: rows[1]['actors'][0].update(nav={'Unknown': {'id': 9}}),
+                   lambda rows: rows[1]['actors'][0].update(archive={'Cell': [True, 53]}),
+                   lambda rows: rows[1]['actors'][0]['foot'].update(navigation_leptons=None),
+                   lambda rows: rows[1]['actors'][0].update(physical_leptons=[1, 2]),
+                   lambda rows: rows[1]['actors'][0].update(extra='unknown')]
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'actor-receipt-{index}'
+                self.change = lambda manifest, change=change: change(manifest['observations']['frames'])
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_allocated_terrain_and_explicit_unavailable_navigation_are_retained(self):
+        self.scripted_profile()
+        allocated = {'cell': [87, 53], 'allocated': True, 'final_tile_index': 700,
+                     'final_sub_tile': 2, 'presentation_tile': [700, 2], 'level': 4, 'slope': 0,
+                     'raw_bridge_flags': 256, 'bridge_state': 0, 'has_deck': True, 'deck_level': 8,
+                     'walkable': True, 'transition': False}
+        self.terrain_frames[1] = [allocated]
+        self.actor_frames[1][0]['foot'].update(navigation_leptons=None,
+                                              navigation_unavailable='active locomotor unavailable')
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['observations']['frames'][1]['terrain'], [allocated])
+        changes = [lambda m: m['observations']['frames'][1]['terrain'][0].update(level=True),
+                   lambda m: m['observations']['frames'][1]['terrain'][0].update(cell=[88, 53]),
+                   lambda m: m['observations']['frames'][1]['terrain'][0].update(allocated=False),
+                   lambda m: m['observations']['frames'][0]['terrain'][0].update(level=0),
+                   lambda m: m['render']['camera'].update(requested_cell=[88, 53]),
+                   lambda m: m['render']['camera'].update(zoom=0),
+                   lambda m: m['render']['camera'].update(zoom=1 << 2048),
+                   lambda m: m['render']['camera'].update(top_left=[True, 0]),
+                   lambda m: m['render']['camera'].update(extra=True)]
+        for index, change in enumerate(changes):
+            self.output = self.root / f'terrain-camera-{index}'
+            self.change = change
+            self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_sample_budget_is_checked_and_comparison_includes_actor_trajectory(self):
+        self.scripted_profile()
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 7):
+            report = self.run_capture()
+            self.assertEqual(report['status'], 'INVALID')
+            self.assertTrue(any('sample budget' in error for error in report['errors']))
+        before = self.valid_capture('trajectory-before')
+        self.change = lambda m: m['observations']['frames'][1]['actors'][0]['mission'].update(handler_state=1)
+        after = self.valid_capture('trajectory-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual([row['field'] for row in report['differences']],
+                         ['observations.frames[1].actors[0].mission.handler_state'])
+        self.assertNotIn('observations', report['before']['capture'])
+        self.assertEqual(report['before']['observation_transcript']['frame_count'], 4)
 
     def test_complete_receipt_and_logs_are_bound_to_inputs(self):
         report = self.run_capture()
@@ -374,11 +572,15 @@ class MapObservationTests(unittest.TestCase):
             document['schema_version'] = observation.LEGACY_CHILD_SCHEMA
             document['render'].pop('presentation_clock')
             document['render'].pop('neutral_input')
+            document['render'].pop('camera')
+            document.pop('observations')
         self.edit_json(manifest, convert_child)
         def convert_wrapper(document):
             document['schema_version'] = observation.LEGACY_CLOCK_RUN_SCHEMA
             document['capture'].pop('presentation_clock')
             document['capture'].pop('neutral_input')
+            document['capture'].pop('camera')
+            document['capture'].pop('observations')
             document['capture']['manifest'].update(byte_length=manifest.stat().st_size,
                                                     sha256=sha256_bytes(manifest.read_bytes()))
         self.edit_json(run / 'run.json', convert_wrapper)
@@ -389,6 +591,45 @@ class MapObservationTests(unittest.TestCase):
                        lambda report: report.update(schema_version=observation.LEGACY_RUN_SCHEMA))
         (run / 'config.toml').unlink()
         (run / 'contract.json').unlink()
+
+    def test_historical_v3_is_explicitly_readable_without_clock_override(self):
+        run = self.valid_capture('historical-v3')
+        manifest = run / 'child-output/capture.json'
+        def convert_child(document):
+            document['schema_version'] = observation.PRIOR_CHILD_SCHEMA
+            document.pop('observations')
+            document['render'].pop('camera')
+        self.edit_json(manifest, convert_child)
+        def convert_wrapper(document):
+            document['schema_version'] = observation.PRIOR_RUN_SCHEMA
+            document['capture'].pop('observations')
+            document['capture'].pop('camera')
+            document['capture']['manifest'].update(byte_length=manifest.stat().st_size,
+                                                    sha256=sha256_bytes(manifest.read_bytes()))
+        self.edit_json(run / 'run.json', convert_wrapper)
+        original = (run / 'run.json').read_bytes()
+        report = observation.validate_run(run)
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['presentation_clock']['policy'], observation.CLOCK_POLICY)
+        self.assertNotIn('observations', report['capture'])
+        self.assertEqual((run / 'run.json').read_bytes(), original)
+        current = self.valid_capture('current-v4')
+        report = observation.compare_runs(run, current)
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertIn('observation policies differ', report['errors'][0])
+        self.edit_json(manifest, lambda value: value.update(observations={'policy': observation.OBSERVATION_POLICY}))
+        self.assertEqual(observation.validate_run(run)['status'], 'INVALID')
+
+    def test_map_receipt_read_and_write_limits_are_explicit(self):
+        # Small overrides exercise both bounded paths without allocating 128 MiB.
+        with patch.object(observation, 'MAX_RECEIPT_BYTES', 1):
+            with self.assertRaisesRegex(ValidationError, 'exceeds'):
+                self.run_capture()
+        run = self.valid_capture('bounded-receipt')
+        with patch.object(observation, 'MAX_RECEIPT_BYTES', 1):
+            report = observation.validate_run(run)
+            self.assertEqual(report['status'], 'INVALID')
+            self.assertIn('too large', report['errors'][0])
 
     def test_sealed_run_revalidates_without_original_profile_config_or_contract(self):
         original_contract = self.root / 'original-contract.json'
