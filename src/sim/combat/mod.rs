@@ -822,12 +822,11 @@ pub(crate) fn resolve_target_coords(
 /// Reuse the coordinate projection and deterministic native sqrt owner: exact
 /// integer sqrt changes observable lepton ties (1281 becomes1280 natively).
 /// Native comparisons: tools/spatial_oracle/aircraft_approach_range.{py,json}.
+/// The discount reads the same stamped foundation as the target's GetCoords.
 pub(crate) fn object_distance_to(
     source: &GameEntity,
     target: &TargetKind,
     entities: &EntityStore,
-    rules: &RuleSet,
-    interner: &StringInterner,
 ) -> Option<i32> {
     let planar = |(rx, ry, sx, sy): (u16, u16, SimFixed, SimFixed)| {
         [
@@ -843,8 +842,7 @@ pub(crate) fn object_distance_to(
         && let Some(building) = entities.get(id)
         && building.category == EntityCategory::Structure
     {
-        let object = rules.object(interner.resolve(building.type_ref()))?;
-        let (width, height) = foundation_dimensions(&object.foundation);
+        let (width, height) = foundation_dimensions(&building.foundation);
         // Height query45ECA0 receives false: Bib never adds to this discount.
         return Some(
             distance

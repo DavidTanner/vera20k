@@ -1076,63 +1076,26 @@ where
     })
 }
 
-/// BuildingClass::GetCoords projects the stored north-west anchor to the
-/// foundation centre before distance consumers receive it.
-fn project_building_get_coords_xy(
-    northwest_x: i32,
-    northwest_y: i32,
-    foundation_width: u16,
-    foundation_height: u16,
-) -> (i32, i32) {
-    let x_offset = i32::from(foundation_width)
-        .wrapping_sub(1)
-        .wrapping_mul(128);
-    let y_offset = i32::from(foundation_height)
-        .wrapping_sub(1)
-        .wrapping_mul(128);
-    (
-        northwest_x.wrapping_add(x_offset),
-        northwest_y.wrapping_add(y_offset),
-    )
-}
-
+/// A building as the map-wall owner search measures it: its GetCoords
+/// (vt+0x48, [`object_get_coords`]) and the foundation of its distance
+/// discount.
+///
+/// [`object_get_coords`]: crate::sim::movement::ground_pose::object_get_coords
 pub(crate) fn map_wall_owner_candidate_from_building(
     entity: &crate::sim::game_entity::GameEntity,
     resolved_terrain: &crate::map::resolved_terrain::ResolvedTerrainGrid,
     house_wall_owner: bool,
 ) -> crate::sim::overlay_grid::MapWallOwnerCandidate {
-    let northwest_x = i32::from(entity.position.rx)
-        .wrapping_mul(256)
-        .wrapping_add(entity.position.sub_x.to_num::<i32>());
-    let northwest_y = i32::from(entity.position.ry)
-        .wrapping_mul(256)
-        .wrapping_add(entity.position.sub_y.to_num::<i32>());
-    let world_z = resolved_terrain
-        .cell(entity.position.rx, entity.position.ry)
-        .and_then(|cell| {
-            crate::util::lepton::ground_height_leptons(
-                cell.level,
-                cell.slope_type,
-                northwest_x,
-                northwest_y,
-            )
-            .ok()
-        })
-        .unwrap_or(i32::from(entity.position.z) * crate::util::lepton::LEPTONS_PER_LEVEL as i32);
+    let coords =
+        crate::sim::movement::ground_pose::object_get_coords(entity, Some(resolved_terrain));
     let (foundation_width, foundation_height) =
         crate::sim::production::foundation_dimensions(&entity.foundation);
-    let (world_x, world_y) = project_building_get_coords_xy(
-        northwest_x,
-        northwest_y,
-        foundation_width,
-        foundation_height,
-    );
 
     crate::sim::overlay_grid::MapWallOwnerCandidate {
         owner: entity.owner(),
-        world_x,
-        world_y,
-        world_z,
+        world_x: coords.x,
+        world_y: coords.y,
+        world_z: coords.z,
         foundation_width,
         foundation_height,
         object_alive: entity.lifecycle.object_alive,

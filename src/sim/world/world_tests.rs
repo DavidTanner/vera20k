@@ -2880,6 +2880,48 @@ fn sonic_constructor_dead_pointer_link_lives_until_deferred_delete_at_239() {
     assert!(sim.waves.get(wave_id).is_none());
 }
 
+/// FireAt aims a Sonic wave at the target's vt+0xA4 (`0x006FE1EE`) and the
+/// wave's AI keeps reading its vt+0x58 (`0x00762D2C`). Both are the target's
+/// GetCoords, which for a building is its foundation centre, not the centre
+/// of its north-west cell.
+#[test]
+fn a_sonic_wave_aims_at_a_buildings_foundation_centre() {
+    let rules = sonic_wave_test_rules();
+    let mut sim = Simulation::new();
+    let firer_id = sim.allocate_stable_id();
+    let target_id = sim.allocate_stable_id();
+    let mut firer = GameEntity::test_default(firer_id, "DLPH", "Americans", 2, 2);
+    firer.owner = sim.interner.intern("Americans");
+    firer.type_ref = sim.interner.intern("DLPH");
+    let mut target = GameEntity::test_default(target_id, "TARGET", "Russians", 10, 10);
+    target.type_ref = sim.interner.intern("TARGET");
+    target.category = EntityCategory::Structure;
+    target.foundation = "3x3".to_string();
+    sim.substrate.entities.insert(firer);
+    sim.substrate.entities.insert(target);
+    let event = sonic_fire_event(&mut sim, firer_id, target_id);
+    let centre = 10 * 256 + 128 + 256;
+
+    let wave = sim
+        .prepare_fired_wave(
+            &rules,
+            &event,
+            &sim.substrate.entities,
+            &sim.interner,
+            sim.resolved_terrain.as_ref(),
+        )
+        .expect("a Sonic weapon");
+    assert_eq!((wave.target.x, wave.target.y), (centre, centre));
+
+    admit_test_wave(&mut sim, &rules, &event);
+    let wave_id = sim.active_wave_links[&firer_id];
+    let tracked = sim
+        .wave_update_context(wave_id)
+        .target_position
+        .expect("the target lives");
+    assert_eq!((tracked.x, tracked.y), (centre, centre));
+}
+
 #[test]
 fn sonic_constructor_at_240_registers_then_runs_at_same_pass_tail() {
     let rules = sonic_wave_test_rules();

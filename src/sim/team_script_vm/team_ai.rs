@@ -784,12 +784,9 @@ mod tests {
         member.locomotor = Some(locomotor);
         sim.substrate.entities.insert(member);
         let member = sim.substrate.entities.get(1).expect("member");
-        // The cell target is (4, 4)'s centre at its floor, straight below.
+        // The cell target is (4, 4)'s centre at its floor, straight below, so
+        // the whole distance is the height.
         let distance = sim.team_member_distance(member, Some(TeamTarget::Cell { x: 4, y: 4 }));
-        assert_eq!(
-            distance,
-            crate::util::native_x87::object_distance([1152, 1152, 120], [1152, 1152, 0], None)
-        );
-        assert_ne!(distance, 0);
+        assert_eq!(distance, 120);
     }
 }

@@ -181,9 +181,8 @@ pub(crate) fn building_render_order_parts(
 /// `BuildingClass::GetCoords @ 0x00447AC0`'s XY: a building's Location plus
 /// `(dimension - 1) * 128` leptons along each axis of its foundation. The
 /// Location is its north-west cell's centre, so the result is the
-/// foundation's geometric centre. Callers placing a building that does not
-/// exist yet start from that cell's centre.
-pub(crate) fn foundation_center_xy(location: [i32; 2], foundation: &str) -> [i32; 2] {
+/// foundation's geometric centre.
+fn foundation_center_xy(location: [i32; 2], foundation: &str) -> [i32; 2] {
     let (width, height) = crate::rules::foundation::foundation_dimensions(foundation);
     [
         location[0].wrapping_add(i32::from(width).wrapping_mul(128).wrapping_sub(128)),
