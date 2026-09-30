@@ -1947,28 +1947,28 @@ impl Simulation {
             return None;
         };
         let target = match event.target {
+            // FireAt aims at the target's vt+0xA4 (`0x006FE1EE`): its GetCoords
+            // (`0x0041BDD0`), which is a Building's foundation centre.
+            // RESIDUAL: a Building's vt+0xA4 (`0x004500A0`) adds its type's
+            // unparsed `TargetCoordOffset=`, set on the three stock shipyards.
             crate::sim::combat::TargetKind::Entity(id) => {
                 let Some(entity) = entities.get(id) else {
                     return None;
                 };
-                ProjectileCoord::new(
-                    i32::from(entity.position.rx) * 256 + entity.position.sub_x.to_num::<i32>(),
-                    i32::from(entity.position.ry) * 256 + entity.position.sub_y.to_num::<i32>(),
-                    crate::sim::movement::ground_pose::object_world_z_leptons(entity, terrain),
-                )
+                let coords = crate::sim::movement::ground_pose::object_get_coords(entity, terrain);
+                ProjectileCoord::new(coords.x, coords.y, coords.z)
             }
             crate::sim::combat::TargetKind::Cell(rx, ry) => {
                 self.wave_cell_target_position_in(terrain, rx, ry)
             }
         };
+        // RESIDUAL: native passes the firer's FLH (vt+0xB0, `0x006FE268`), not
+        // its Location, as the wave's other end.
         let source = entities
             .get(event.attacker_id)
             .map(|entity| {
-                ProjectileCoord::new(
-                    i32::from(entity.position.rx) * 256 + entity.position.sub_x.to_num::<i32>(),
-                    i32::from(entity.position.ry) * 256 + entity.position.sub_y.to_num::<i32>(),
-                    crate::sim::movement::ground_pose::object_world_z_leptons(entity, terrain),
-                )
+                let location = crate::sim::movement::ground_pose::object_location(entity, terrain);
+                ProjectileCoord::new(location.x, location.y, location.z)
             })
             .unwrap_or_else(|| {
                 ProjectileCoord::new(

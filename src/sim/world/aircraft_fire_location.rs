@@ -31,11 +31,7 @@ struct FireCellClaims {
 impl Simulation {
     /// Target+48 is its physical center, independently of the destination
     /// receiver+4C. In particular, do not read a Building's helipad offset here.
-    pub(super) fn fire_location_center(
-        &self,
-        target: NavTargetRef,
-        rules: &RuleSet,
-    ) -> Option<DriveCoord> {
+    pub(super) fn fire_location_center(&self, target: NavTargetRef) -> Option<DriveCoord> {
         let id = match target {
             NavTargetRef::Cell { rx, ry } => {
                 return Some(target_cell_coord(rx, ry, self.resolved_terrain.as_ref()));
@@ -45,8 +41,10 @@ impl Simulation {
             | NavTargetRef::Building { id } => id,
         };
         let entity = self.substrate.entities.get(id)?;
-        let object = rules.object(self.interner.resolve(entity.type_ref()))?;
-        Some(ground_pose::object_center_coord(entity, object))
+        Some(ground_pose::object_get_coords(
+            entity,
+            self.resolved_terrain.as_ref(),
+        ))
     }
 
     pub(crate) fn aircraft_find_fire_location(
@@ -69,7 +67,7 @@ impl Simulation {
             rules,
             &self.interner,
         );
-        let center = self.fire_location_center(target, rules)?;
+        let center = self.fire_location_center(target)?;
         let destination = match target {
             NavTargetRef::Cell { .. } => None,
             NavTargetRef::Entity { id }
@@ -87,9 +85,11 @@ impl Simulation {
                 .and_then(|e| e.navigation.nav_com),
         };
         let reference = destination
-            .and_then(|d| self.fire_location_center(d, rules))
+            .and_then(|d| self.fire_location_center(d))
             .filter(|c| *c != (DriveCoord { x: 0, y: 0, z: 0 }))
-            .unwrap_or_else(|| ground_pose::object_center_coord(entity, object));
+            .unwrap_or_else(|| {
+                ground_pose::object_get_coords(entity, self.resolved_terrain.as_ref())
+            });
         let check_shroud = !self.session.game_mode_nonzero && !entity.is_mission_only();
         let mut claims = None;
         let mut radius = range.wrapping_sub(256);

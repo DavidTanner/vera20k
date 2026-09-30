@@ -91,7 +91,7 @@ fn tracker_object_signed_cell(
     // `RadarClass::GetObjectAtRadarPixel @ 0x00656750` returns the tracker
     // object, then its caller dispatches ObjectClass vtable +0x48. Buildings
     // therefore center through `BuildingClass::GetCoords @ 0x00447AC0`.
-    let (x, y) = super::radar_visibility::radar_object_get_coords_leptons(entity);
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
     Some((
         crate::util::lepton::lepton_to_cell_packed(x),
         crate::util::lepton::lepton_to_cell_packed(y),

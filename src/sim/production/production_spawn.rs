@@ -224,10 +224,8 @@ pub(super) fn spawn_selection_at_producer(
                     producer_id,
                     bx,
                     by,
-                    structure_id,
                     producer_rally,
                     movement_profile,
-                    rules,
                     path_grid,
                     &sim.substrate.occupancy,
                     &sim.substrate.entities,
@@ -262,8 +260,13 @@ pub(super) fn spawn_selection_at_producer(
             // adapter.
             near_structure().map(standard)
         }
+        // Infantry spawn in the producing barracks' foundation-centre cell,
+        // the engine's alt-path Unlimbo at its centre coordinate: `ExitCoord`
+        // is ignored, no passability check runs and there is no fallback.
+        // The infantry then walk out of the foundation once the rally MoveTo
+        // is issued; its cells are passable to infantry.
         ObjectCategory::Infantry => {
-            find_infantry_spawn_cell_near_structure(rules, bx, by, structure_id).map(standard)
+            producer_get_coords_cell(&sim.substrate.entities, producer_id).map(standard)
         }
         _ => near_structure().map(standard),
     }
@@ -336,10 +339,8 @@ fn find_naval_unit_delivery_cell(
     producer_id: u64,
     base_rx: u16,
     base_ry: u16,
-    structure_id: &str,
     producer_rally: Option<(u16, u16)>,
     movement_profile: SpawnMovementProfile,
-    rules: &RuleSet,
     path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     occupancy: &OccupancyGrid,
     entities: &EntityStore,
@@ -350,7 +351,7 @@ fn find_naval_unit_delivery_cell(
     playfield_bounds: Option<crate::sim::cell_rect::PlayfieldBounds>,
     map_size: Option<(i32, i32)>,
 ) -> ((u16, u16), bool) {
-    let Some(origin) = building_get_coords_cell(rules, structure_id, base_rx, base_ry) else {
+    let Some(origin) = producer_get_coords_cell(entities, producer_id) else {
         return ((0, 0), false);
     };
 
@@ -394,26 +395,12 @@ fn find_naval_unit_delivery_cell(
     )
 }
 
-/// BuildingClass::GetCoords @ 0x00447AC0 followed by
-/// ObjectClass::Get_Cell_Packed @ 0x0041BEA0. Location starts at the NW cell
-/// centre; `(foundation_dim - 1) * 128` is added before signed `/ 256`.
-fn building_get_coords_cell(
-    rules: &RuleSet,
-    structure_id: &str,
-    base_rx: u16,
-    base_ry: u16,
-) -> Option<(u16, u16)> {
-    fn axis(base: u16, span: u16) -> Option<u16> {
-        let location = i32::from(base) * crate::sim::cell_kernel::LEPTONS_PER_CELL
-            + crate::sim::cell_kernel::CELL_CENTER_LEPTONS;
-        let centre =
-            location + (i32::from(span) - 1) * crate::sim::cell_kernel::CELL_CENTER_LEPTONS;
-        u16::try_from(centre / crate::sim::cell_kernel::LEPTONS_PER_CELL).ok()
-    }
-
-    let object = rules.object(structure_id)?;
-    let (width, height) = super::production_tech::foundation_dimensions(&object.foundation);
-    axis(base_rx, width).zip(axis(base_ry, height))
+/// The producing building's GetCoords (`BuildingClass::GetCoords @
+/// 0x00447AC0`) as a cell (`ObjectClass::Get_Cell_Packed @ 0x0041BEA0`).
+fn producer_get_coords_cell(entities: &EntityStore, producer_id: u64) -> Option<(u16, u16)> {
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entities.get(producer_id)?);
+    let cell = |value: i32| u16::try_from(crate::util::lepton::lepton_to_cell_packed(value)).ok();
+    cell(x).zip(cell(y))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1251,25 +1238,6 @@ fn find_exact_exitcoord_spawn_cell(
     .then_some(cand)
 }
 
-/// Infantry-specific spawn cell: the foundation-center cell of the producing
-/// barracks. Matches the original engine's alt-path Unlimbo at the building's
-/// center lepton coord; `ExitCoord` is intentionally ignored, no passability
-/// check is performed, and there is no fallback to a nearby cell.
-///
-/// The infantry then walks out of the foundation via the existing pathfinder
-/// once the rally MoveTo is issued; the foundation cells are passable to
-/// infantry (only vehicles are hard-blocked).
-fn find_infantry_spawn_cell_near_structure(
-    rules: &RuleSet,
-    base_rx: u16,
-    base_ry: u16,
-    structure_id: &str,
-) -> Option<(u16, u16)> {
-    let obj = rules.object(structure_id)?;
-    let (w, h) = super::production_tech::foundation_dimensions(&obj.foundation);
-    Some((base_rx.saturating_add(w / 2), base_ry.saturating_add(h / 2)))
-}
-
 /// Retired ad-hoc box-ring nearest-cell search. The authoritative spawn/exit
 /// fallback now routes through the engine's diamond-ring FNPC
 /// (`find_nearby_cell::find_nearby_passable_cell`); this is kept ONLY as the legacy
@@ -1674,8 +1642,8 @@ pub(super) fn free_helipad_cell(
     {
         return None;
     }
-    let (fw, fh) = crate::sim::production::foundation_dimensions(&obj.foundation);
-    Some((entity.position.rx + fw / 2, entity.position.ry + fh / 2))
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
+    Some((u16::try_from(x / 256).ok()?, u16::try_from(y / 256).ok()?))
 }
 
 #[cfg(test)]
@@ -1883,14 +1851,27 @@ mod tests {
         entity
     }
 
+    /// Producer 10: the `naval_delivery_rules` GAYARD at NW cell (10,10),
+    /// with the `Foundation=4x4` construction stamps on it.
+    fn gayard_producer() -> crate::sim::game_entity::GameEntity {
+        let mut producer =
+            crate::sim::game_entity::GameEntity::test_default(10, "GAYARD", "Americans", 10, 10);
+        producer.category = crate::map::entities::EntityCategory::Structure;
+        producer.foundation = "4x4".to_string();
+        producer
+    }
+
     #[test]
     fn naval_dispatch_uses_direct_four_flag_predicate_and_getcoords_center() {
         let rules = naval_delivery_rules();
         let yard = rules.object("GAYARD").unwrap();
         assert!(!yard.refinery && !yard.weeder && yard.weapons_factory && yard.naval);
         assert!(exact_naval_vehicle_exit_factory(&rules, "GAYARD"));
+        assert_eq!(yard.foundation, "4x4");
+        let mut entities = EntityStore::new();
+        entities.insert(gayard_producer());
         assert_eq!(
-            building_get_coords_cell(&rules, "GAYARD", 10, 10),
+            producer_get_coords_cell(&entities, 10),
             Some((12, 12)),
             "4x4 NW (10,10) GetCoords adds 384 leptons then truncates to (12,12)"
         );
@@ -3003,11 +2984,7 @@ mod tests {
         occupancy.add(12, 12, 10, MovementLayer::Ground, None, append);
         occupancy.add(13, 12, 10, MovementLayer::Ground, None, append);
         let mut entities = EntityStore::new();
-        entities.insert(test_entity(
-            10,
-            crate::map::entities::EntityCategory::Structure,
-            (10, 10),
-        ));
+        entities.insert(gayard_producer());
 
         assert_eq!(
             naval_rally_fast_path_cell(
@@ -3084,20 +3061,17 @@ mod tests {
             "missing/failed mode-one playfield authority must fall back"
         );
 
-        let rules = naval_delivery_rules();
         let grid = PathGrid::from_resolved_terrain(&land_failure);
         assert_eq!(
             find_naval_unit_delivery_cell(
                 10,
                 10,
                 10,
-                "GAYARD",
                 Some((20, 10)),
                 SpawnMovementProfile {
                     speed_type: SpeedType::Float,
                     movement_zone: MovementZone::Water,
                 },
-                &rules,
                 Some(&grid),
                 &occupancy,
                 &entities,

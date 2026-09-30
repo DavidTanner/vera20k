@@ -26,7 +26,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::weapon_type::WeaponType;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::ground_pose::{
-    object_center_coord, position_world_coord, query_object_cell,
+    object_center_xy, position_world_coord, query_object_cell,
 };
 use crate::sim::vision::FogState;
 use crate::sim::world::Simulation;
@@ -402,9 +402,7 @@ impl FireSubject<'_> {
         crate::util::fixed_math::SimFixed,
     )> {
         match self.target? {
-            TargetKind::Entity(_) => self
-                .target_entity()
-                .map(|target| super::target_coords(target, Some(self.rules), &self.world.interner)),
+            TargetKind::Entity(_) => self.target_entity().map(super::target_coords),
             TargetKind::Cell(rx, ry) => Some(super::cell_center_coords(rx, ry)),
         }
     }
@@ -484,13 +482,11 @@ impl FireQuery for WorldQuery<'_, '_> {
         };
         let xy = match self.subject.target {
             Some(TargetKind::Entity(_)) => {
-                let Some((target, object)) =
-                    self.subject.target_entity().zip(self.subject.target_obj())
-                else {
+                let Some(target) = self.subject.target_entity() else {
                     return;
                 };
-                let point = object_center_coord(target, object);
-                (point.x, point.y)
+                let [x, y] = object_center_xy(target);
+                (x, y)
             }
             Some(TargetKind::Cell(..)) => {
                 let Some(cell) = self.subject.cell_target_identity() else {

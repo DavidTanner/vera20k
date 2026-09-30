@@ -1150,3 +1150,77 @@ fn destination_cell_height_keeps_receiver_before_structural_lookup() {
     );
     assert_eq!(terrain.shared_cell_dummy().snapshot().coord, (-1, -1));
 }
+
+/// GetCoords' XY: a mobile's Location (`0x005F65A0`); a building's Location
+/// plus `(dimension - 1) * 128` on each axis (`0x00447AC0`: `SHL 7; SUB
+/// 0x80`), from the foundation its type stamped on it. A name the foundation
+/// table lacks reads as its default 1x1.
+#[test]
+fn getcoords_xy_is_the_location_or_a_buildings_foundation_centre() {
+    let mut entity = GameEntity::test_default(1, "BLDG", "Enemy", 10, 20);
+    entity.position.sub_x = SimFixed::from_num(200);
+    entity.position.sub_y = SimFixed::from_num(33);
+    let raw = [10 * 256 + 200, 20 * 256 + 33];
+    assert_eq!(
+        ground_pose::object_center_xy(&entity),
+        raw,
+        "mobile GetCoords is raw"
+    );
+    entity.category = crate::map::entities::EntityCategory::Structure;
+    for (foundation, expected) in [
+        ("1x1", raw),
+        ("2x2", [raw[0] + 128, raw[1] + 128]),
+        ("4x3", [raw[0] + 384, raw[1] + 256]),
+        ("", raw),
+        ("not-a-native-foundation", raw),
+    ] {
+        entity.foundation = foundation.to_string();
+        assert_eq!(
+            ground_pose::object_center_xy(&entity),
+            expected,
+            "foundation {foundation:?}"
+        );
+    }
+}
+
+/// A building's GetCoords keeps its Location's Z (`0x00447B04`), which its
+/// Unlimbo wrote as the floor there: `BuildingTypeClass` virtual +0x6C
+/// (`0x00464A70`) replaces the coordinate's Z with `0x00578080`'s ground
+/// height. An order to a plain building (`0x00447E90` returns +0x48) targets
+/// that floor, not the cell's flat level.
+#[test]
+fn a_building_on_a_ramp_is_targeted_at_its_floor() {
+    let mut sim = Simulation::new();
+    let mut terrain = terrain();
+    // Native `signed_level_5_bridge_0` (tools/ramp_height_vectors.json):
+    // `0x00578080` at (640, 640) on a level-5 ramp-1 cell answers 572.
+    let cell = terrain.cell_mut(2, 2).unwrap();
+    cell.level = 5;
+    cell.slope_type = 1;
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[BuildingTypes]\n0=TEST\n[TEST]\nFoundation=1x1\n",
+    ))
+    .unwrap();
+    let mut building = GameEntity::test_default(1, "TEST", "Americans", 2, 2);
+    building.owner = sim.intern("Americans");
+    building.type_ref = sim.intern("TEST");
+    building.category = crate::map::entities::EntityCategory::Structure;
+    building.position.z = 5;
+    sim.substrate.entities.insert(building);
+    let coord = super::navcom::nav_target_coordinate(
+        crate::sim::components::NavTargetRef::Building { id: 1 },
+        None,
+        &sim.substrate.entities,
+        Some(&terrain),
+        Some((&rules, &sim.interner)),
+    )
+    .unwrap();
+    assert_eq!(
+        coord,
+        DriveCoord {
+            x: 640,
+            y: 640,
+            z: 572
+        }
+    );
+}

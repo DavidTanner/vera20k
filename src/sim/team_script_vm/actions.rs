@@ -1022,7 +1022,7 @@ impl Simulation {
                 .and_then(|leader| self.substrate.entities.get(leader))
                 .is_some_and(|entity| entity.category != EntityCategory::Aircraft)
             && let Some(BlockingObject::Entity(object)) =
-                self.find_blocking_object((x as u16, y as u16), rules)
+                self.find_blocking_object((x as u16, y as u16))
             && let Some(team) = self.team_script_vm.teams.get_mut(&team_id)
         {
             focus = Some(TeamTarget::Object(object));
