@@ -605,7 +605,7 @@ fn building_light_allocates_only_after_authored_or_held_placement_succeeds() {
     assert!(held.lighting_sources.pending.is_empty());
     let rng_after_constructor = held.scenario_rng.logical_state();
     assert_eq!(
-        held.unlimbo_held_production_object(
+        held.reveal_constructed_object_at_height(
             held_id,
             6,
             5,
@@ -1261,7 +1261,7 @@ fn techno_constructor_manager_pools_survive_delivery_without_reconstruction() {
         let after_constructor = sim.scenario_rng.logical_state();
 
         assert_eq!(
-            sim.unlimbo_held_production_object(
+            sim.reveal_constructed_object_at_height(
                 parent_id,
                 6,
                 5,

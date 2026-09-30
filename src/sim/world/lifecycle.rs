@@ -878,14 +878,33 @@ impl Simulation {
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::RevealLimboCleared);
 
-        let exact_z = self.grounded_reveal_z(stable_id, request.position, context);
+        // `CheckBridgeTraversal @ 0x004D9C60`: the plane a Unit's exact-zero
+        // Can_Enter_Cell admitted sets OnBridge and, on a bridge, the Level+4
+        // deck height before mode-one Mark. Mark then reads OnBridge for its
+        // E4/E8 list and the committed Z for the +0x124/+0x128 raw plane.
+        let mut position = request.position;
+        if let PlacementEvidence::UnitCanEnterExactZero { layer } = request.placement {
+            let on_bridge = layer == crate::sim::movement::locomotor::MovementLayer::Bridge;
+            if on_bridge
+                && let Some(cell) = context
+                    .terrain()
+                    .or(self.resolved_terrain.as_ref())
+                    .and_then(|terrain| terrain.cell(position.rx, position.ry))
+            {
+                position.z = cell.bridge_deck_level;
+            }
+            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                entity.on_bridge = on_bridge;
+            }
+        }
+        let exact_z = self.grounded_reveal_z(stable_id, position, context);
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.position.rx = request.position.rx;
-            entity.position.ry = request.position.ry;
-            entity.position.z = request.position.z;
+            entity.position.rx = position.rx;
+            entity.position.ry = position.ry;
+            entity.position.z = position.z;
             entity.position.exact_z_leptons = exact_z;
-            entity.position.sub_x = request.position.sub_x;
-            entity.position.sub_y = request.position.sub_y;
+            entity.position.sub_x = position.sub_x;
+            entity.position.sub_y = position.sub_y;
         }
         if let Some(rules) = context.rules {
             self.reposition_building_anim_slots(stable_id, rules);
