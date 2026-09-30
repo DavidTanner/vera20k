@@ -620,11 +620,7 @@ fn queried_flight_height(
             .ok()
         })
         .unwrap_or(0);
-    z.wrapping_sub(ground).wrapping_sub(if entity.on_bridge {
-        crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
-    } else {
-        0
-    })
+    super::ground_pose::height_at_z(z, ground, entity.on_bridge)
 }
 
 /// Object virtual+50 /5F6B60. A marked grounded object is low; an unmarked

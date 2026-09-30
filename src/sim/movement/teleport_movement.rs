@@ -359,17 +359,13 @@ pub fn process_teleport(
                     .native_cell_identity((teleport.target_rx as i16, teleport.target_ry as i16));
                 entity.on_bridge = terrain.native_cell_flags(cell) & 0x100 != 0;
             }
-            if !super::ground_pose::commit_ground_height(
+            super::ground_pose::set_height(
                 &mut entity.position,
                 entity.on_bridge,
+                0,
                 terrain,
                 None,
-            ) {
-                entity.position.exact_z_leptons = Some(
-                    i32::from(entity.position.z as i8)
-                        .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS),
-                );
-            }
+            );
             // The path layer follows the destination's OnBridge, as an
             // ordinary crossing commits it (`cell_arrival`). The cell
             // lists move through the caller's Mark pair around this

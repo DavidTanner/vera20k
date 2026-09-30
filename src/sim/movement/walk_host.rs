@@ -186,9 +186,10 @@ impl Simulation {
             active_layer,
             update,
         );
-        ground_pose::commit_ground_height(
+        ground_pose::set_height(
             &mut e.position,
             e.on_bridge,
+            0,
             self.resolved_terrain.as_ref(),
             self.path_grid.as_deref(),
         );
@@ -239,9 +240,10 @@ impl Simulation {
         }
         //Infantry+1CC=5F5FA0; marked is already false, so the SetHeight0
         //receiver samples current ground+OnBridge without nested Mark calls.
-        ground_pose::commit_ground_height(
+        ground_pose::set_height(
             &mut e.position,
             e.on_bridge,
+            0,
             self.resolved_terrain.as_ref(),
             self.path_grid.as_deref(),
         );

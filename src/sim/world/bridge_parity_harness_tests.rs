@@ -17,7 +17,7 @@
 //!
 //! The height invariant asserted on every deck frame is the one recorded on
 //! `resolve_cell_transition_bridge_state` in `sim::movement::movement_bridge`
-//! (`FootClass::Set_Height_On_Bridge` @ `0x005F5FA0`, read back by
+//! (`ObjectClass::SetHeight` @ `0x005F5FA0`, read back by
 //! `ObjectClass::GetHeight` @ `0x005F5F30`):
 //!
 //! ```text
@@ -50,7 +50,7 @@ const APPROACH_LEVEL: u8 = 4;
 /// Terrain level of the gorge the span crosses — the riverbed the tank must
 /// never sit on while it is flagged on-bridge.
 const GORGE_LEVEL: u8 = 0;
-/// `FootClass::Set_Height_On_Bridge`'s deck term, in levels. Same number as
+/// `ObjectClass::SetHeight`'s deck term, in levels. Same number as
 /// `sim::movement::movement_occupancy::crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16`, which is
 /// `pub(super)` to the movement module and therefore not nameable from here.
 

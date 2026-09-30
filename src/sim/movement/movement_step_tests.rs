@@ -213,9 +213,11 @@ fn fresh_retry_terminal_retains_raw_head_for_both_track_families() {
         }
         assert_eq!(sim.run_track_points(invocation, budget, None, None), 1);
         let entity = sim.substrate.entities.get(1).unwrap();
+        // The terminal SetHeight(0) grounds the retained head XY. The fixture
+        // has no map, so that ground is the Dummy cell's level 0.
         assert_eq!(
             super::super::ground_pose::position_world_coord(&entity.position),
-            head
+            DriveCoord { z: 0, ..head }
         );
         assert_eq!(retained_track(entity, kind).turn_index, -1);
         assert_eq!(retained_track(entity, kind).cursor, 0);

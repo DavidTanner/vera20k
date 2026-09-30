@@ -8,7 +8,7 @@ use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::movement::{
     DestinationTiming, air_movement, ground_pose, locomotor::MovementLayer,
 };
-use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+use crate::util::fixed_math::SIM_ZERO;
 
 impl Simulation {
     /// BeginTakeoff4CF9B9 adds only when no existing bucket is retained.
@@ -66,29 +66,6 @@ impl Simulation {
             let sound_id = self.interner.intern(sound);
             self.sound_events
                 .push(super::SimSoundEvent::AircraftPhase { sound_id, world });
-        }
-    }
-
-    /// `ObjectClass::SetHeight` (vtable `+0x1CC`): the Location's Z at
-    /// `height` above the floor, or above the deck for an object on a bridge.
-    pub(crate) fn set_object_height(&mut self, id: u64, height: i32) {
-        let Some(entity) = self.substrate.entities.get(id) else {
-            return;
-        };
-        let xy = ground_pose::position_world_xy(&entity.position);
-        let ground =
-            ground_pose::ground_surface_z_at(xy, false, self.resolved_terrain.as_ref(), None)
-                .unwrap_or(0);
-        let entity = self.substrate.entities.get_mut(id).unwrap();
-        entity.position.exact_z_leptons = Some(ground.wrapping_add(height).wrapping_add(
-            if entity.on_bridge {
-                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
-            } else {
-                0
-            },
-        ));
-        if let Some(loco) = entity.locomotor.as_mut() {
-            loco.altitude = SimFixed::from_num(height.clamp(-32768, 32767));
         }
     }
 
@@ -596,6 +573,7 @@ mod tests {
     };
     use crate::sim::snapshot::GameSnapshot;
     use crate::sim::world::lifecycle_tests::{insert_entity, install_common_raw_terrain};
+    use crate::util::fixed_math::SimFixed;
 
     fn fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
         let input = &row["input"];

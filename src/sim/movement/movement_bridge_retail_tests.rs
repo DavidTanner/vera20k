@@ -8,7 +8,7 @@
 //! dropping to the riverbed underneath?
 //!
 //! The invariant asserted after every committed frame is the algebraic inverse
-//! of `FootClass::Set_Height_On_Bridge` @ `0x005F5FA0` recorded by
+//! of `ObjectClass::SetHeight` @ `0x005F5FA0` recorded by
 //! `ObjectClass::GetHeight` @ `0x005F5F30`:
 //!
 //! ```text
@@ -1474,7 +1474,7 @@ fn print_low_inventory(terrain: &ResolvedTerrainGrid, grid: &PathGrid, span: &Lo
 /// ```
 ///
 /// The `OnBridge == false` half is load-bearing, not decoration: were a low deck
-/// to set it, `Set_Height_On_Bridge` would add four levels of nothing and float
+/// to set it, SetHeight would add four levels of nothing and float
 /// the mover over a flat span. Asserting only "z == ground" would pass a
 /// hypothetical implementation that sets `on_bridge` and then re-derives z from
 /// it, so both halves are checked.
@@ -1492,7 +1492,7 @@ fn assert_low_span_invariant(rows: &[TickRow], deck_frames: &[&TickRow]) {
         assert!(
             !row.on_bridge,
             "a LOW deck cell {:?} set on_bridge; there is no deck plane over a low span, so \
-             Set_Height_On_Bridge would lift the mover four levels above flat ground: {row:?}",
+             SetHeight would lift the mover four levels above flat ground: {row:?}",
             row.cell
         );
         assert!(

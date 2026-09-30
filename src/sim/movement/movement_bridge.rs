@@ -29,7 +29,7 @@ use crate::sim::pathfinding::PathGrid;
 pub(super) enum BridgeTransition {
     /// Unit just entered the bridge body deck. Sets on_bridge=true. Z is
     /// recomputed from the terrain level plus the post-transition flag, per
-    /// `FootClass::Set_Height_On_Bridge` 0x005F5FA0.
+    /// `ObjectClass::SetHeight` 0x005F5FA0.
     Enter,
     /// Unit just exited the bridge structure. Sets on_bridge=false.
     Exit,
@@ -214,7 +214,7 @@ pub(super) fn resolve_cell_transition_bridge_state(
     };
     let on_bridge_after = projected_on_bridge(on_bridge_before, update);
 
-    // `FootClass::Set_Height_On_Bridge` 0x005F5FA0:
+    // `ObjectClass::SetHeight` 0x005F5FA0:
     //   Location.Z = CellClass::GetGroundHeight(own cell) + arg
     //                + (OnBridge ? g_nFootOnBridgeDeckOffsetLeptons : 0)
     // The ground term (`CellClass::ComputeGroundHeightAtCoord` 0x0047B3A0) reads
@@ -496,7 +496,7 @@ mod tests {
     // ------------------------------------------------------------------------
     // Full-span coarse bridge projection at each explicit cell transition.
     //
-    // `FootClass::Set_Height_On_Bridge` 0x005F5FA0 recomputes
+    // `ObjectClass::SetHeight` 0x005F5FA0 recomputes
     //   Location.Z = GroundHeight(own cell) + (OnBridge ? 4 levels : 0)
     // with no stored per-cell deck height and no second gate. These tests walk a
     // multi-cell span because a two-cell fixture is satisfied by the Enter

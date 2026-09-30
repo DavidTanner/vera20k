@@ -1915,7 +1915,6 @@ impl Simulation {
     /// equal-height alive branch4CDECA..4CE145 performs no height write.
     fn materialize_legacy_fly_coordinate(&mut self, stable_id: u64) {
         use crate::rules::locomotor_type::LocomotorKind;
-        use crate::sim::movement::ground_pose::{ground_surface_z_at, position_world_xy};
         use crate::sim::movement::locomotor::MovementLayer;
 
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
@@ -1930,27 +1929,16 @@ impl Simulation {
         {
             return;
         }
-        // Shared ground owner includes the live canonical Dummy's level and
-        // slope. Only a mapless fixture uses the constructor's ground zero.
-        let surface = ground_surface_z_at(
-            position_world_xy(&entity.position),
+        // The split altitude becomes a height over the live ground, as SetHeight
+        // writes it.
+        let altitude = locomotor.altitude.to_num::<i32>();
+        crate::sim::movement::ground_pose::set_height(
+            &mut entity.position,
             entity.on_bridge,
+            altitude,
             self.resolved_terrain.as_ref(),
-            None,
+            self.path_grid.as_deref(),
         );
-        let surface = match (surface, self.resolved_terrain.is_some()) {
-            (Some(surface), _) => surface,
-            (None, false) => {
-                if entity.on_bridge {
-                    BRIDGE_DECK_HEIGHT_LEPTONS
-                } else {
-                    0
-                }
-            }
-            (None, true) => return,
-        };
-        entity.position.exact_z_leptons =
-            Some(surface.wrapping_add(locomotor.altitude.to_num::<i32>()));
     }
 
     /// Run one production air-process visit with the active Fly
