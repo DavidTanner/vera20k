@@ -1279,9 +1279,7 @@ mod tests {
     ) -> crate::sim::bridge_state::BridgeRuntimeCell {
         crate::sim::bridge_state::BridgeRuntimeCell {
             deck_present: true,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(1),
             damage_state: DamageState::Healthy { variant: 0 },
             axis: None,
             role: BridgeCellRole::Body,
@@ -1958,8 +1956,6 @@ mod tests {
             ],
             axis: Axis::NS,
             direction: Direction::E,
-            damage_state: DamageState::Damaged,
-            bridge_group_id: 1,
         });
         sim.bridge_state = Some(bridge_state);
 
@@ -2041,8 +2037,6 @@ mod tests {
             ],
             axis: Axis::NS,
             direction: Direction::E,
-            damage_state: DamageState::Damaged,
-            bridge_group_id: 1,
         });
         sim.bridge_state = Some(bridge_state);
 

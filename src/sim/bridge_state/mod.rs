@@ -256,11 +256,6 @@ pub struct AnchorSpan {
     pub axis: Axis,
     /// Walk direction (compass index 0–7). Used to compute walked cells.
     pub direction: Direction,
-    /// Mirror of anchor cell's damage state. Convenience for queries.
-    pub damage_state: DamageState,
-    /// Group ID (existing `BridgeRuntimeState::group_cells`) — preserved for
-    /// connectivity queries.
-    pub bridge_group_id: u16,
 }
 
 impl AnchorSpan {
@@ -459,9 +454,7 @@ pub(crate) enum BridgeOverlayProjectionOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BridgeRuntimeCell {
     pub deck_present: bool,
-    pub destroyable: bool,
     pub deck_level: u8,
-    pub bridge_group_id: Option<u16>,
 
     /// Per-cell damage state. Drives state-machine progression and renderer
     /// display-tile selection. Replaces the old `destroyed: bool`.
@@ -523,8 +516,6 @@ pub struct BridgeEndpointRecord {
     pub endpoint_a: (u16, u16),
     /// Matching far endpoint discovered by the record builder.
     pub endpoint_b: (u16, u16),
-    /// Which bridge group this record belongs to.
-    pub group_id: u16,
     /// Whether the bridge is traversable (false = destroyed).
     pub active: bool,
     /// High vs low bridge record kind.
@@ -543,7 +534,6 @@ pub struct BridgeRuntimeState {
     width: u16,
     height: u16,
     cells: Vec<Option<BridgeRuntimeCell>>,
-    group_cells: BTreeMap<u16, Vec<(u16, u16)>>,
     /// Strength constant from `[CombatDamage] BridgeStrength=` (default 1000).
     /// Used by the dispatcher's per-path BridgeStrength RNG gate.
     bridge_strength: i32,
@@ -595,10 +585,9 @@ impl BridgeRuntimeState {
         let width = terrain.width();
         let height = terrain.height();
         let mut cells = vec![None; width as usize * height as usize];
-        let mut group_cells: BTreeMap<u16, Vec<(u16, u16)>> = BTreeMap::new();
+        let mut groups: Vec<Vec<(u16, u16)>> = Vec::new();
         let mut anchor_spans: BTreeMap<u16, AnchorSpan> = BTreeMap::new();
         let mut visited = vec![false; cells.len()];
-        let mut next_group_id: u16 = 1;
         let mut next_span_id: u16 = 1;
 
         // Pass 1: BFS-group structural bridge cells. High bridges use the
@@ -611,8 +600,6 @@ impl BridgeRuntimeState {
             if visited[index] || !resolved_cell_has_runtime_deck(cell) {
                 continue;
             }
-            let group_id = next_group_id;
-            next_group_id = next_group_id.saturating_add(1);
             let mut queue = VecDeque::from([(cell.rx, cell.ry)]);
             let mut members = Vec::new();
             while let Some((rx, ry)) = queue.pop_front() {
@@ -632,9 +619,7 @@ impl BridgeRuntimeState {
                 members.push((rx, ry));
                 cells[idx] = Some(BridgeRuntimeCell {
                     deck_present: true,
-                    destroyable,
                     deck_level: resolved.bridge_deck_level,
-                    bridge_group_id: Some(group_id),
                     damage_state: initial_bridge_damage_state(resolved),
                     axis: bridge_fact_axis(resolved)
                         .or_else(|| bridge_layer_to_axis(resolved.bridge_layer.as_ref())),
@@ -658,13 +643,13 @@ impl BridgeRuntimeState {
                 }
             }
             if !members.is_empty() {
-                group_cells.insert(group_id, members);
+                groups.push(members);
             }
         }
 
         // Pass 2: walk anchor patterns. High bridges trust the 0x80 anchor
         // fact. Low/legacy bridges keep the previous bridge_layer fallback.
-        for (&group_id, members) in &group_cells {
+        for members in &groups {
             for &(rx, ry) in members {
                 let Some(resolved) = terrain.cell(rx, ry) else {
                     continue;
@@ -695,15 +680,7 @@ impl BridgeRuntimeState {
                 };
                 let span_id = next_span_id;
                 next_span_id = next_span_id.saturating_add(1);
-                let span = walk_anchor_pattern(
-                    span_id,
-                    (rx, ry),
-                    axis,
-                    direction,
-                    group_id,
-                    width,
-                    height,
-                );
+                let span = walk_anchor_pattern(span_id, (rx, ry), axis, direction, width, height);
                 // Tag each cell in span.
                 for (slot, cell_pos) in span.iter_cells() {
                     if let Some(idx) = index_of(width, height, cell_pos.0, cell_pos.1) {
@@ -777,9 +754,7 @@ impl BridgeRuntimeState {
             }
             cells[idx] = Some(BridgeRuntimeCell {
                 deck_present: true,
-                destroyable,
                 deck_level: cell.bridge_deck_level,
-                bridge_group_id: None,
                 damage_state: DamageState::Healthy { variant: 0 },
                 axis: None,
                 role: BridgeCellRole::Bridgehead,
@@ -789,13 +764,12 @@ impl BridgeRuntimeState {
             });
         }
 
-        let endpoint_records = record_scan::compute_bridge_endpoints(terrain, size, &cells);
+        let endpoint_records = record_scan::compute_bridge_endpoints(terrain, size);
 
         Self {
             width,
             height,
             cells,
-            group_cells,
             bridge_strength,
             endpoint_records,
             native_zone_source_size: size,
@@ -1523,19 +1497,6 @@ pub fn cells_in_5x5_scan(center: (u16, u16)) -> impl Iterator<Item = (u16, u16)>
     })
 }
 
-fn bridge_runtime_group_at(
-    runtime_cells: &[Option<BridgeRuntimeCell>],
-    width: u16,
-    height: u16,
-    rx: u16,
-    ry: u16,
-) -> Option<u16> {
-    index_of(width, height, rx, ry)
-        .and_then(|index| runtime_cells.get(index))
-        .and_then(|cell| cell.as_ref())
-        .and_then(|cell| cell.bridge_group_id)
-}
-
 fn cardinal_neighbors(
     rx: u16,
     ry: u16,
@@ -1639,7 +1600,6 @@ fn walk_anchor_pattern(
     anchor: (u16, u16),
     axis: Axis,
     direction: Direction,
-    bridge_group_id: u16,
     width: u16,
     height: u16,
 ) -> AnchorSpan {
@@ -1686,8 +1646,6 @@ fn walk_anchor_pattern(
         cells,
         axis,
         direction,
-        damage_state: DamageState::Healthy { variant: 0 },
-        bridge_group_id,
     }
 }
 

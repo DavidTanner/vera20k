@@ -122,9 +122,7 @@ fn bridge_state_at(cell: (u16, u16), intact: bool) -> BridgeRuntimeState {
         cell.1,
         BridgeRuntimeCell {
             deck_present: intact,
-            destroyable: true,
             deck_level: 4,
-            bridge_group_id: Some(1),
             damage_state: if intact {
                 DamageState::Healthy { variant: 0 }
             } else {

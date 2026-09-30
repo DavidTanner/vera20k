@@ -64,7 +64,6 @@ fn native_fixture(row: &Value) -> (ResolvedTerrainGrid, ZoneGrid, RawCellOccupat
         .map(|r| BridgeEndpointRecord {
             endpoint_a: pair(&r[0]),
             endpoint_b: pair(&r[1]),
-            group_id: 0,
             active: r[2].as_i64().unwrap() != 0,
             bridge_kind: BridgeRecordKind::High,
         })
@@ -284,7 +283,6 @@ impl Simulation {
             let records = [BridgeEndpointRecord {
                 endpoint_a: (7, 6),
                 endpoint_b: (11, 6),
-                group_id: 0,
                 active: true,
                 bridge_kind: BridgeRecordKind::High,
             }];

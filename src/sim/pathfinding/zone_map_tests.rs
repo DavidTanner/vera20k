@@ -365,7 +365,6 @@ fn gsi_04_06_active_bridge_edge_merges_base_zones_before_projection() {
     let records = [BridgeEndpointRecord {
         endpoint_a: (0, 0),
         endpoint_b: (4, 0),
-        group_id: 1,
         active: true,
         bridge_kind: BridgeRecordKind::High,
     }];

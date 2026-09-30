@@ -359,11 +359,9 @@ fn paradrop_launch_spawns_carrier_with_loaded_cargo() {
         Some(AircraftMission::ParaDropApproach {
             target_rx,
             target_ry,
-            has_revealed_fog,
         }) => {
             assert_eq!(target_rx, 50);
             assert_eq!(target_ry, 20);
-            assert!(!has_revealed_fog);
         }
         ref other => panic!("expected Open-equivalent ParaDropApproach, got {:?}", other),
     }
