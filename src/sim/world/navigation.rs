@@ -12,51 +12,52 @@ use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::entity_store::EntityStore;
+use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::{TerrainCostGrid, build_canonical_terrain_cost_grids};
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 
-/// Cell marking owns structure presence; shared by full and touched-cell views.
+/// The cells one marked structure blocks for movement: its base foundation
+/// with the bib edge relaxed. Every structure-presence reader uses this rule.
+///
+/// Native: Techno enter/exit (0x005683C0 / 0x005687F0) call CellClass
+/// AddContent/RemoveContent (0x0047E8A0 / 0x0047EA90), which mark/clear
+/// occupation; see docs/research/bridges/02-cell-state-layering-zones/
+/// BRIDGE_OCCUPANCY_OBJECT_LISTS_GHIDRA_REPORT.md. Held factory objects and
+/// retained attached upgrades have no independent marked footprint. A dying
+/// structure still blocks until the lifecycle owner unmarks it.
+pub(super) fn marked_structure_movement_cells(
+    entity: &GameEntity,
+    interner: &StringInterner,
+    rules: &RuleSet,
+) -> Vec<(u16, u16)> {
+    if entity.category != EntityCategory::Structure || !entity.lifecycle.cell_marked {
+        return Vec::new();
+    }
+    let object_type = rules.object(interner.resolve(entity.type_ref()));
+    let foundation = object_type
+        .map(|object| object.foundation.as_str())
+        .unwrap_or("1x1");
+    let has_bib = object_type.is_some_and(|object| object.bib);
+    let foundation_cells = crate::sim::production::building_base_foundation_cells(
+        entity.position.rx,
+        entity.position.ry,
+        foundation,
+    );
+    crate::sim::production::building_movement_blocking_cells(&foundation_cells, has_bib)
+}
+
+/// Structure presence over every marked structure. Consumers are
+/// order-insensitive (cell blocks, sets and presence tests).
 fn visit_structure_movement_cells(
     entities: &EntityStore,
     interner: &StringInterner,
     rules: &RuleSet,
     mut visit: impl FnMut((u16, u16)),
 ) {
-    // Native: Techno enter/exit (0x005683C0 / 0x005687F0) call CellClass
-    // AddContent/RemoveContent (0x0047E8A0 / 0x0047EA90), which mark/clear
-    // occupation; see docs/research/bridges/02-cell-state-layering-zones/
-    // BRIDGE_OCCUPANCY_OBJECT_LISTS_GHIDRA_REPORT.md. Held factory objects
-    // and retained attached upgrades have no independent marked footprint.
-    // A dying structure still blocks until the lifecycle owner unmarks it.
-    let mut structures: Vec<(u16, u16, String)> = entities
-        .values()
-        .filter_map(|entity| {
-            (entity.category == EntityCategory::Structure && entity.lifecycle.cell_marked)
-                .then_some((
-                    entity.position.rx,
-                    entity.position.ry,
-                    interner.resolve(entity.type_ref()).to_string(),
-                ))
-        })
-        .collect();
-    structures.sort_by(|a, b| {
-        a.0.cmp(&b.0)
-            .then_with(|| a.1.cmp(&b.1))
-            .then_with(|| a.2.cmp(&b.2))
-    });
-    for (rx, ry, type_id) in structures {
-        let object_type = rules.object(&type_id);
-        let foundation = object_type
-            .map(|object| object.foundation.as_str())
-            .unwrap_or("1x1");
-        let has_bib = object_type.is_some_and(|object| object.bib);
-        let foundation_cells =
-            crate::sim::production::building_base_foundation_cells(rx, ry, foundation);
-        for cell in
-            crate::sim::production::building_movement_blocking_cells(&foundation_cells, has_bib)
-        {
+    for entity in entities.values() {
+        for cell in marked_structure_movement_cells(entity, interner, rules) {
             visit(cell);
         }
     }
