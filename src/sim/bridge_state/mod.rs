@@ -610,10 +610,8 @@ impl BridgeRuntimeState {
         // PathCell.bridge_walkable to false on every rebuild_dynamic_path_grid.
         //
         // Contract: deck_present=true permanently, damage_state=Healthy
-        // permanently, bridge_group_id=None, anchor_span_id=None, axis=None,
-        // overlay_byte=0. The dispatcher (path_matches_cell HighSM/LowSM)
-        // rejects Bridgehead+axis.is_none() so no damage-event RNG fires on
-        // these cells. Pass-3 bridgeheads (axis=Some) stay in the allowed set.
+        // permanently, anchor_span_id=None, axis=None, overlay_byte=0. Damage
+        // admission reads live CellClass tiles and flags, not these entries.
         for cell in terrain.iter() {
             if !cell.bridge_walkable || cell.has_bridge_deck {
                 continue;

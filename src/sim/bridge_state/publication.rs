@@ -273,13 +273,10 @@ pub(crate) fn advance_bridgehead<H: BridgePublicationHost>(
     }
 
     // The three BlowUpBridge cells run along the span from the walk
-    // coordinate; the second column/row shifts them, the zone query and the
-    // flood level's source cell by one.
-    let anchor_coord = host.coord(anchor);
-    let shifted = match axis {
-        Axis::NS => host.subtile(anchor) & 1 != 0,
-        Axis::EW => host.subtile(anchor) >= 5,
-    };
+    // coordinate. Native shifts them, the zone query and the flood level's
+    // source by one column/row when the re-looked-up anchor is NS-odd or has
+    // EW subtile >= 5; the walk above only exits at subtile 4 (NS) or 2 (EW),
+    // so that shift never fires and is not ported.
     let (across, along) = match axis {
         Axis::NS => ((-1, 0), (0, 1)),
         Axis::EW => ((0, -1), (1, 0)),
@@ -290,26 +287,12 @@ pub(crate) fn advance_bridgehead<H: BridgePublicationHost>(
             coord.1.wrapping_add(dy.wrapping_mul(n)),
         )
     };
-    let row = if shifted {
-        offset(walk, across, 1)
-    } else {
-        walk
-    };
     for n in [-1, 0, 1] {
-        let target = host.lookup(offset(row, along, n));
+        let target = host.lookup(offset(walk, along, n));
         host.fallout(target);
     }
-    let center = if shifted {
-        offset(anchor_coord, across, 1)
-    } else {
-        anchor_coord
-    };
-    let level = if shifted {
-        let source = host.lookup(center);
-        host.level(source)
-    } else {
-        host.level(anchor)
-    };
+    let center = host.coord(anchor);
+    let level = host.level(anchor);
     host.flood(
         host.coord(anchor),
         base.wrapping_add(middle).wrapping_add(3),

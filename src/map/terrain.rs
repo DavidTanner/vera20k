@@ -1273,7 +1273,7 @@ mod tests {
                 screen_y: 0.0,
                 tile_id: 100,
                 sub_tile: 3,
-                z: 0,
+                z: 4,
                 rx: 0,
                 ry: 0,
                 is_water: false,
@@ -1292,11 +1292,20 @@ mod tests {
         }
     }
 
-    /// Draws the single cell against a live terrain whose tile is `live`,
-    /// with an atlas holding `resident` tiles. Returns every lookup.
-    fn draw_live_tile(live: (i32, u8), resident: &[u16]) -> (usize, Vec<(u16, u8, u8)>) {
+    /// Draws the level-4 grid cell against a live cell holding `live` (tile,
+    /// subtile, level, Recalc variant), with an atlas holding `resident`
+    /// tiles. Returns every lookup and the drawn (screen y, z_adjust).
+    fn draw_live_tile(
+        live: (i32, u8, u8, u8),
+        resident: &[u16],
+    ) -> (Vec<(u16, u8, u8)>, Vec<(f32, f32)>) {
         let mut cell = crate::map::resolved_terrain::test_flat_cell(0, 0);
-        (cell.final_tile_index, cell.final_sub_tile) = live;
+        (
+            cell.final_tile_index,
+            cell.final_sub_tile,
+            cell.level,
+            cell.variant,
+        ) = live;
         let terrain =
             crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(1, 1, vec![cell]);
         let calls = std::cell::RefCell::new(Vec::new());
@@ -1320,26 +1329,36 @@ mod tests {
             Some(&terrain),
         )
         .normal
-        .len();
-        (drawn, calls.into_inner())
+        .iter()
+        .map(|instance| (instance.position[1], instance.z_adjust))
+        .collect();
+        (calls.into_inner(), drawn)
     }
 
     #[test]
-    fn draw_reads_the_live_tile_a_bridge_publication_wrote() {
-        // Unchanged tile: the load-time file choice stands.
-        assert_eq!(draw_live_tile((100, 3), &[100]), (1, vec![(100, 3, 2)]));
-        // Rewritten tile (a flood keeps the subtile): drawn from its first file.
+    fn draw_reads_the_live_tile_and_level_a_publication_wrote() {
+        let rows = crate::render::native_z::TILE_HEIGHT_ROWS as f32;
+        // Unchanged cell: grid position (level 4) and its Recalc file.
         assert_eq!(
-            draw_live_tile((203, 3), &[100, 203]),
-            (1, vec![(203, 3, 0)])
+            draw_live_tile((100, 3, 4, 2), &[100]),
+            (vec![(100, 3, 2)], vec![(0.0, -rows - 2.0 * rows)])
+        );
+        // A collapse flood writes a new tile and level 0; Recalc picked file 1.
+        assert_eq!(
+            draw_live_tile((203, 3, 0, 1), &[100, 203]),
+            (vec![(203, 3, 1)], vec![(4.0 * HEIGHT_STEP, -rows)])
         );
     }
 
     #[test]
     fn draw_keeps_the_grid_tile_when_the_live_tile_is_not_resident() {
+        let rows = crate::render::native_z::TILE_HEIGHT_ROWS as f32;
         assert_eq!(
-            draw_live_tile((203, 3), &[100]),
-            (1, vec![(203, 3, 0), (100, 3, 2)])
+            draw_live_tile((203, 3, 0, 1), &[100]),
+            (
+                vec![(203, 3, 1), (100, 3, 2)],
+                vec![(0.0, -rows - 2.0 * rows)]
+            )
         );
     }
 
