@@ -209,6 +209,18 @@
       "errors": 1,
       "skipped": 3,
       "log_sha256": "547e04667f9e579cb4461eb96ccdb042fc15799a8e1ab9f3e45a9e40881c7e22"
+    },
+    "second_windows_ci_failure": {
+      "url": "https://github.com/YuriPlanet/vera20k/actions/runs/36740994909/job/109975048761",
+      "tests": 371,
+      "failures": 1,
+      "skipped": 3,
+      "cause": "Library-test fixture omitted Windows executable suffix; resolver correctly returned no match before host classification",
+      "log_sha256": "a65b6455602ac992a1b193c7e75d3882479f408dc1e397bef5a482125b7ddd83"
+    },
+    "final_fixture_tests": {
+      "passed": 42,
+      "log_sha256": "aed709c7952617a15639254ec6b02e979e28f24e44eca923204962188aab9962"
     }
   },
   "bounds": [

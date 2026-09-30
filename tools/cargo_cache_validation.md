@@ -32,7 +32,10 @@ returns zero device/inode/hardlink metadata, and a parser fixture assumed Unix
 absolute paths. Inventory now uses real `lstat`; unidentified inode values are
 counted individually rather than collapsed. The fixture uses host-absolute paths.
 Two added regressions model Windows directory-entry metadata and unknown-inode
-accounting. The initial CI failure is retained in the receipt. See the
+accounting. The initial CI failure is retained in the receipt. A second run passed the
+retention mechanisms but found a library-test fixture without the Windows `.exe`
+suffix; correcting that fixture preserves the resolver's existing host-only
+admission. Both failure receipts remain recorded. See the
 [Python metadata contract](https://docs.python.org/3.12/library/os.html#os.DirEntry.stat).
 
 [The opt-in compiled test](tests/test_cargo_cache_native.py) creates a temporary

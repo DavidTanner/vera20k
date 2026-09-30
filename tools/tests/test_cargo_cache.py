@@ -45,7 +45,7 @@ class CacheTests(unittest.TestCase):
 
     def label(self, *, name='validation', profile='debug/deps'):
         directory = self.store / 'artifacts' / name
-        binary = directory / '0' / 'libtest-hash'
+        binary = directory / '0' / ('libtest-hash.exe' if os.name == 'nt' else 'libtest-hash')
         binary.parent.mkdir(parents=True)
         binary.write_bytes(b'\xcf\xfa\xed\xfe' + b'validation binary')
         manifest = {
