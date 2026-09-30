@@ -14,7 +14,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::map::entities::EntityCategory;
-use crate::sim::components::{DriveLocomotionRuntime, DriveOccupationFootprint};
+use crate::sim::components::DriveLocomotionRuntime;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
@@ -1036,123 +1036,6 @@ impl CellOccupationGrid {
     }
 }
 
-/// Replace the Drive head-to mark without disturbing a still-valid current-cell
-/// mark. The old auxiliary cell is cleared before the new one is installed.
-pub(crate) fn replace_drive_head_to_occupation(
-    foot_occupation_enabled: &mut bool,
-    drive: &mut DriveLocomotionRuntime,
-    occupation: &mut CellOccupationGrid,
-    entity_id: u64,
-    current_cell: (u16, u16),
-    current_layer: MovementLayer,
-    next: DriveOccupationFootprint,
-) {
-    if let Some(old) = drive.occupation_head_to.take() {
-        let aliases_marked_current = (old.rx, old.ry, old.layer)
-            == (current_cell.0, current_cell.1, current_layer)
-            && *foot_occupation_enabled;
-        if !aliases_marked_current {
-            occupation.clear_vehicle_on_layer(old.rx, old.ry, entity_id, old.layer);
-        }
-    }
-    occupation.mark_vehicle_on_layer(next.rx, next.ry, entity_id, next.layer);
-    drive.occupation_head_to = Some(next);
-}
-
-/// Install (or drop) the forward RawTrack handoff mark that accompanies a Drive
-/// curve's head mark.
-///
-/// `Apply_Track_Occupation_Mode` applies the caller's mode to the handoff
-/// coordinate first and to the head coordinate second, so the two marks are
-/// installed and released together.
-///
-/// Two recorded differences from the original, neither of them a "held for the
-/// whole curve" guarantee — an earlier revision of this comment claimed one, and
-/// the code does not provide it:
-///
-/// 1. VERA does not release the handoff the moment the point cursor passes the
-///    handoff index the way the original's cursor guard does. It releases at
-///    curve end (or at replacement).
-/// 2. The cell plane stores one entry per owner with no per-role reference
-///    count, matching the original's single ORed bit. So once the mover is
-///    standing IN its own handoff cell, `clear_current_drive_occupation_for_paid_point`
-///    drops that owner's bit for the cell and the handoff role loses its claim
-///    with it, until the next tick's `reconcile_entity` re-marks from
-///    `drive.occupation_handoff`. The gap is deterministic and inside one tick,
-///    so it is not a desync — but the cell is genuinely unclaimed across it.
-///
-/// Both are UNCHECKED against the original's behaviour for a third mover
-/// arriving in that window.
-pub(crate) fn replace_drive_handoff_occupation(
-    foot_occupation_enabled: &mut bool,
-    drive: &mut DriveLocomotionRuntime,
-    occupation: &mut CellOccupationGrid,
-    entity_id: u64,
-    current_cell: (u16, u16),
-    current_layer: MovementLayer,
-    next: Option<DriveOccupationFootprint>,
-) {
-    if let Some(old) = drive.occupation_handoff.take() {
-        let aliases_marked_current = (old.rx, old.ry, old.layer)
-            == (current_cell.0, current_cell.1, current_layer)
-            && *foot_occupation_enabled;
-        let aliases_head = drive.occupation_head_to == Some(old);
-        if !aliases_marked_current && !aliases_head {
-            occupation.clear_vehicle_on_layer(old.rx, old.ry, entity_id, old.layer);
-        }
-    }
-    if let Some(next) = next {
-        occupation.mark_vehicle_on_layer(next.rx, next.ry, entity_id, next.layer);
-        drive.occupation_handoff = Some(next);
-    }
-}
-
-/// Drop the handoff mark without touching the head mark. Used wherever the head
-/// mark's own lifecycle ends — completion, replacement by a new curve, a new
-/// order, or world removal. `Apply_Track_Occupation_Mode` mode 0 clears the
-/// handoff coordinate and the head coordinate together, so no site may release
-/// one and keep the other: a stranded handoff refuses every later mover entry to
-/// a cell nothing is in.
-pub(crate) fn drop_drive_handoff_occupation(
-    foot_occupation_enabled: &mut bool,
-    drive: &mut DriveLocomotionRuntime,
-    occupation: &mut CellOccupationGrid,
-    entity_id: u64,
-    current_cell: (u16, u16),
-    current_layer: MovementLayer,
-) {
-    replace_drive_handoff_occupation(
-        foot_occupation_enabled,
-        drive,
-        occupation,
-        entity_id,
-        current_cell,
-        current_layer,
-        None,
-    );
-}
-
-/// Clear an obsolete head-to mark during accepted track replacement while
-/// preserving a coincident committed current-cell mark.
-pub(crate) fn clear_drive_head_to_occupation_for_replacement(
-    foot_occupation_enabled: &mut bool,
-    drive: &mut DriveLocomotionRuntime,
-    occupation: &mut CellOccupationGrid,
-    entity_id: u64,
-    current_cell: (u16, u16),
-    current_layer: MovementLayer,
-) {
-    let Some(old) = drive.occupation_head_to.take() else {
-        return;
-    };
-    let aliases_marked_current = (old.rx, old.ry, old.layer)
-        == (current_cell.0, current_cell.1, current_layer)
-        && *foot_occupation_enabled;
-    if !aliases_marked_current {
-        occupation.clear_vehicle_on_layer(old.rx, old.ry, entity_id, old.layer);
-    }
-}
-
 /// A paid Drive point clears the owner's current-coordinate occupation before
 /// the coordinate commit. Object-list membership is intentionally untouched.
 #[cfg(test)]
@@ -1166,97 +1049,6 @@ pub(crate) fn clear_current_drive_occupation_for_paid_point(
 ) {
     occupation.clear_vehicle_on_layer(current_cell.0, current_cell.1, entity_id, current_layer);
     *foot_occupation_enabled = false;
-}
-
-/// A refused selection keeps the standing mover's claim on its own cell.
-///
-/// **VERA-internal, gamemd equivalent UNCHECKED.** The binary supports the
-/// INVARIANT — a refused mover still holds a cell — and not this mechanism. The
-/// Drive code-2 arm nulls the head-to coordinate with three direct stores
-/// (0x004B3607-0x004B3646) and never calls `Apply_Track_Occupation_Mode`, the
-/// only writer of the cell bit, so retail's refusal performs ONE operation:
-/// nothing. It never releases, so it never has to re-mark. This function does
-/// release-then-re-mark, which is load-bearing only because VERA's paid-point
-/// path clears the bit up front (`clear_current_drive_occupation_for_paid_point`
-/// above). That early clear IS native — `Process_Drive_Track` calls the
-/// owner's `+0xF4` on its current coordinate and zeroes `+0x6B6` at
-/// `0x004B1611..161A` when the first point of a transit is paid — so the gap
-/// this closes is VERA's own: retail's refusal never reaches a paid point
-/// without a curve, whereas VERA's refusal can follow a curve that already
-/// paid. Corrected 2026-09-15; an earlier revision said retail never cleared.
-///
-/// Without this, a mover whose previous curve had already paid a point holds NO
-/// bit at all once its head-to mark is dropped: its own cell reads as free to
-/// every other mover, and the next follower drives its hull straight into it.
-/// Measured on `repro_group_move_of_eight_vehicles_to_one_cell` against an
-/// INTERMEDIATE BUILD OF THIS CHANGE — two hulls 29 leptons apart for 28 ticks,
-/// on a cell whose occupation byte read `0x00` under a standing tank. That is
-/// evidence this change needs the restore for its own construction. It is NOT
-/// evidence about the shipped defect the player reported: the pre-change tree
-/// has no refusal path at all, so it could not reach this state by this route.
-pub(crate) fn restore_current_drive_occupation_after_refusal(
-    foot_occupation_enabled: &mut bool,
-    _drive: &mut DriveLocomotionRuntime,
-    occupation: &mut CellOccupationGrid,
-    entity_id: u64,
-    current_cell: (u16, u16),
-    current_layer: MovementLayer,
-) {
-    if *foot_occupation_enabled {
-        return;
-    }
-    occupation.mark_vehicle_on_layer(current_cell.0, current_cell.1, entity_id, current_layer);
-    *foot_occupation_enabled = true;
-}
-
-/// Re-marks the committed cell after a crossing on the legacy Drive step.
-///
-/// Reachability: Drive and Ship production turns hand their crossings to
-/// `track_host.rs`, whose `track_place` gates the raw mark on the Foot
-/// occupation enable exactly as `CellClass::AddContent 0x0047E8A0` does
-/// (`+0xC0` → `FootClass::IsCellOccupationEnabled 0x0041C070`). This helper
-/// runs only from the non-suspending `tick_movement_with_grids` entry, so its
-/// unconditional re-enable is a test-path shape, not the native crossing.
-pub(crate) fn mark_current_drive_occupation_after_crossing(
-    foot_occupation_enabled: &mut bool,
-    _drive: &mut DriveLocomotionRuntime,
-    occupation: &mut CellOccupationGrid,
-    entity_id: u64,
-    current_cell: (u16, u16),
-    current_layer: MovementLayer,
-) {
-    occupation.mark_vehicle_on_layer(current_cell.0, current_cell.1, entity_id, current_layer);
-    *foot_occupation_enabled = true;
-}
-
-/// Normal track completion promotes an aliased head-to mark into the current
-/// mark. There is no endpoint clear when the unit has actually relinked there.
-pub(crate) fn finish_drive_head_to_occupation(
-    foot_occupation_enabled: &mut bool,
-    drive: &mut DriveLocomotionRuntime,
-    occupation: &mut CellOccupationGrid,
-    entity_id: u64,
-    current_cell: (u16, u16),
-    current_layer: MovementLayer,
-) {
-    // The curve is over, so its handoff claim goes with it.
-    drop_drive_handoff_occupation(
-        foot_occupation_enabled,
-        drive,
-        occupation,
-        entity_id,
-        current_cell,
-        current_layer,
-    );
-    let Some(head) = drive.occupation_head_to.take() else {
-        return;
-    };
-    if (head.rx, head.ry, head.layer) == (current_cell.0, current_cell.1, current_layer) {
-        occupation.mark_vehicle_on_layer(current_cell.0, current_cell.1, entity_id, current_layer);
-        *foot_occupation_enabled = true;
-    } else {
-        occupation.clear_vehicle_on_layer(head.rx, head.ry, entity_id, head.layer);
-    }
 }
 
 /// Hard limbo/world removal clears the pending head-to cell before the ordinary
@@ -1845,6 +1637,7 @@ impl OccupancyGrid {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sim::components::DriveOccupationFootprint;
 
     #[test]
     fn gsi_04_12_raw_occupation_preserves_every_raw_bit() {
@@ -2728,40 +2521,6 @@ mod tests {
     }
 
     #[test]
-    fn gsi_04_05_head_to_premark_is_separate_from_object_list() {
-        let mut objects = OccupancyGrid::new();
-        objects.add(
-            2,
-            2,
-            1,
-            MovementLayer::Ground,
-            None,
-            CellListInsertion::PrependNonBuilding,
-        );
-        let mut bits = CellOccupationGrid::new();
-        bits.mark_vehicle_on_layer(2, 2, 1, MovementLayer::Ground);
-        let mut drive = DriveLocomotionRuntime::default();
-        replace_drive_head_to_occupation(
-            &mut true,
-            &mut drive,
-            &mut bits,
-            1,
-            (2, 2),
-            MovementLayer::Ground,
-            DriveOccupationFootprint {
-                rx: 3,
-                ry: 2,
-                layer: MovementLayer::Ground,
-            },
-        );
-
-        assert!(objects.contains_entity(2, 2, 1));
-        assert!(!objects.contains_entity(3, 2, 1));
-        assert_eq!(bits.vehicle_bits(2, 2, MovementLayer::Ground), 0x20);
-        assert_eq!(bits.vehicle_bits(3, 2, MovementLayer::Ground), 0x20);
-    }
-
-    #[test]
     fn gsi_04_05_paid_same_cell_point_clears_current_not_head_or_list() {
         let mut foot_occupation_enabled = true;
         let mut objects = OccupancyGrid::new();
@@ -2798,54 +2557,6 @@ mod tests {
         assert_eq!(bits.vehicle_bits(2, 2, MovementLayer::Ground), 0);
         assert_eq!(bits.vehicle_bits(3, 2, MovementLayer::Ground), 0x20);
         assert!(!foot_occupation_enabled);
-    }
-
-    #[test]
-    fn gsi_04_05_actual_crossing_relinks_and_remarks_committed_cell() {
-        let mut foot_occupation_enabled = false;
-        let mut objects = OccupancyGrid::new();
-        objects.add(
-            2,
-            2,
-            1,
-            MovementLayer::Ground,
-            None,
-            CellListInsertion::PrependNonBuilding,
-        );
-        let mut bits = CellOccupationGrid::new();
-        let mut drive = DriveLocomotionRuntime {
-            occupation_head_to: Some(DriveOccupationFootprint {
-                rx: 3,
-                ry: 2,
-                layer: MovementLayer::Ground,
-            }),
-            ..Default::default()
-        };
-        bits.mark_vehicle_on_layer(3, 2, 1, MovementLayer::Ground);
-
-        objects.move_entity(
-            2,
-            2,
-            3,
-            2,
-            1,
-            MovementLayer::Ground,
-            None,
-            CellListInsertion::PrependNonBuilding,
-        );
-        mark_current_drive_occupation_after_crossing(
-            &mut foot_occupation_enabled,
-            &mut drive,
-            &mut bits,
-            1,
-            (3, 2),
-            MovementLayer::Ground,
-        );
-
-        assert!(!objects.contains_entity(2, 2, 1));
-        assert!(objects.contains_entity(3, 2, 1));
-        assert_eq!(bits.vehicle_bits(3, 2, MovementLayer::Ground), 0x20);
-        assert!(foot_occupation_enabled);
     }
 
     #[test]
@@ -2981,34 +2692,6 @@ mod tests {
         assert_eq!(cleared, MovementLayer::Bridge);
         assert_eq!(bits.vehicle_bits(4, 4, MovementLayer::Bridge), 0);
         assert_eq!(bits.vehicle_bits(4, 4, MovementLayer::Ground), 0x20);
-    }
-
-    #[test]
-    fn gsi_04_05_normal_finish_promotes_endpoint_and_clears_runtime_head() {
-        let mut foot_occupation_enabled = false;
-        let mut bits = CellOccupationGrid::new();
-        bits.mark_vehicle_on_layer(3, 2, 1, MovementLayer::Ground);
-        let mut drive = DriveLocomotionRuntime {
-            occupation_head_to: Some(DriveOccupationFootprint {
-                rx: 3,
-                ry: 2,
-                layer: MovementLayer::Ground,
-            }),
-            ..Default::default()
-        };
-
-        finish_drive_head_to_occupation(
-            &mut foot_occupation_enabled,
-            &mut drive,
-            &mut bits,
-            1,
-            (3, 2),
-            MovementLayer::Ground,
-        );
-
-        assert_eq!(drive.occupation_head_to, None);
-        assert!(foot_occupation_enabled);
-        assert_eq!(bits.vehicle_bits(3, 2, MovementLayer::Ground), 0x20);
     }
 
     #[test]

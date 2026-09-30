@@ -227,70 +227,6 @@ pub fn issue_move_command(
     )
 }
 
-/// Issue a direct move to a single cell without A* pathfinding.
-///
-/// Used for scripted movement into a building footprint where the target
-/// cell is not pathfindable (C4 building entry) and for a Jumpjet
-/// infantryman's damage scatter. Creates
-/// a 2-cell `MovementTarget` `[start, target]` with a Euclidean direction
-/// vector that handles multi-cell deltas correctly. Each step bypasses A*;
-/// callers that also need to bypass `path_grid` walkability (e.g. foundation
-/// traversal) should set `bypass_grid = true` on the resulting `MovementTarget`.
-///
-/// Returns `true` if the entity was found and the move was issued.
-pub fn issue_direct_move(
-    entities: &mut EntityStore,
-    entity_id: u64,
-    target: (u16, u16),
-    speed: SimFixed,
-    timing: crate::sim::movement::DestinationTiming,
-) -> bool {
-    let Some(entity) = entities.get(entity_id) else {
-        return false;
-    };
-    if !can_accept_destination(entity) {
-        return false;
-    }
-    let start = (entity.position.rx, entity.position.ry);
-    if start == target {
-        timing.accept(entities.get_mut(entity_id).expect("accepted mover"));
-        return true;
-    }
-    let current_layer = entity.movement_layer_or_ground();
-
-    let dx = target.0 as i32 - start.0 as i32;
-    let dy = target.1 as i32 - start.1 as i32;
-    // Compute direction vector with EUCLIDEAN length so multi-cell deltas
-    // (e.g. pad→exit_cell may be (-2, +1)) advance at the correct speed.
-    // `cell_delta_to_lepton_dir` only handles unit deltas — for multi-cell
-    // deltas its length is wrong, causing the dual-axis crossing check in
-    // movement_step to never satisfy.
-    let dir_x: SimFixed = SimFixed::from_num(dx * 256);
-    let dir_y: SimFixed = SimFixed::from_num(dy * 256);
-    let dir_len: SimFixed = crate::util::fixed_math::fixed_distance(dir_x, dir_y);
-
-    let movement = MovementTarget {
-        path: vec![start, target],
-        path_layers: vec![current_layer, current_layer],
-        next_index: 1,
-        speed,
-        current_speed: speed,
-        move_dir_x: dir_x,
-        move_dir_y: dir_y,
-        move_dir_len: dir_len,
-        ignore_terrain_cost: true,
-        adapter_route: true,
-        ..Default::default()
-    };
-
-    if let Some(entity_mut) = entities.get_mut(entity_id) {
-        // Direct callers share Foot4D96C2's accepted destination tail.
-        timing.accept(entity_mut);
-        entity_mut.movement_target = Some(movement);
-    }
-    true
-}
-
 pub(crate) fn issue_move_command_with_layered(
     entities: &mut EntityStore,
     grid: &PathGrid,
@@ -688,9 +624,9 @@ pub(crate) fn issue_move_command_with_destination(
     // exact lepton position, so it continues from wherever it is.
     let (dir_x, dir_y, dir_len) = if head_not_yet_reached {
         // The first vector target is the kept curve's head itself — up to two
-        // cells out for a two-node curve — so use the Euclidean form (as in
-        // `issue_direct_move`) in case the curve is torn down early and the
-        // vector step has to cover the multi-cell delta.
+        // cells out for a two-node curve — so use the Euclidean form in case
+        // the curve is torn down early and the vector step has to cover the
+        // multi-cell delta.
         let dx = i32::from(start_rx) - i32::from(current_cell.0);
         let dy = i32::from(start_ry) - i32::from(current_cell.1);
         let dir_x = SimFixed::from_num(dx * 256);
@@ -715,7 +651,6 @@ pub(crate) fn issue_move_command_with_destination(
         // mid-curve (the head itself is the first queued node).
         next_index: first_target_index,
         speed,
-        current_speed: speed,
         move_dir_x: dir_x,
         move_dir_y: dir_y,
         move_dir_len: dir_len,
@@ -909,7 +844,6 @@ pub(super) fn prepare_destination_execution(
     let committed_head = committed_path_head(entity);
     entity.movement_target = Some(MovementTarget {
         speed,
-        current_speed: speed,
         final_goal: Some(target),
         ..Default::default()
     });

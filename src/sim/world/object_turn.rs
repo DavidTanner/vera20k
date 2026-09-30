@@ -531,7 +531,6 @@ impl Simulation {
                 sim.overlay_grid.as_ref(),
                 overlay_registry,
                 sim.playfield_bounds,
-                &sim.terrain_speed_config,
                 timing.close_enough,
                 timing.path_delay_ticks,
                 timing.blockage_path_delay_ticks,
@@ -693,16 +692,9 @@ impl Simulation {
             .merge(movement::movement_tick::finish_movement_pass(
                 pending_movement,
                 &mut sim.substrate.entities,
-                &sim.houses,
-                &sim.house_alliances,
-                &mut sim.substrate.cell_occupation,
                 sim.session.binary_frame,
                 sim.resolved_terrain.as_ref(),
                 sim.path_grid.as_deref(),
-                &mut sim.interner,
-                rules,
-                &mut sim.sound_events,
-                &mut sim.pending_lifecycle_requests,
                 &mut sim.movement_pass_cache,
             ));
         if let Some(tube_active) = movement_before {

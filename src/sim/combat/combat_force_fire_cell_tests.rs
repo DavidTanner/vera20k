@@ -197,7 +197,6 @@ fn force_fire_cell_pursuit_then_fire_integration() {
     // attack_target=Cell set → out of range → pursuit issues movement →
     // (many ticks of walking) → in range → combat fires.
     use crate::sim::command::{Command, CommandEnvelope};
-    use crate::sim::pathfinding::PathGrid;
     use crate::sim::world::Simulation;
 
     let rules = ff_rules();
@@ -219,7 +218,8 @@ fn force_fire_cell_pursuit_then_fire_integration() {
         sim.reveal(1),
         crate::sim::world::RevealOutcome::Revealed { .. }
     ));
-    let grid = PathGrid::test_all_passable(64, 64);
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
+    let grid = (*sim.path_grid_snapshot().unwrap()).clone();
 
     sim.queue_command(CommandEnvelope::new(
         owner_id,

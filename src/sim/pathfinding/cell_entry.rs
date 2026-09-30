@@ -1094,7 +1094,6 @@ pub fn classify_occupied_cell(
     crush_capability: bump_crush::CrushCapability,
     mover_owner: &str,
     mover_locomotor: LocomotorKind,
-    mover_bypass_grid: bool,
     occupancy: &OccupancyGrid,
     entities: &EntityStore,
     alliances: &HouseAllianceMap,
@@ -1107,7 +1106,6 @@ pub fn classify_occupied_cell(
         crush_capability,
         mover_owner,
         mover_locomotor,
-        mover_bypass_grid,
         None,
         occupancy,
         &CellOccupationGrid::new(),
@@ -1130,7 +1128,6 @@ fn classify_occupied_cell_with_slave_query(
     crush_capability: bump_crush::CrushCapability,
     mover_owner: &str,
     mover_locomotor: LocomotorKind,
-    mover_bypass_grid: bool,
     ignored_blockers: Option<&BTreeSet<u64>>,
     occupancy: &OccupancyGrid,
     current_frame: u32,
@@ -1141,7 +1138,6 @@ fn classify_occupied_cell_with_slave_query(
     slave_cleared_vehicle: &mut bool,
     native_unit_tail: bool,
 ) -> CellEntryResult {
-    let _ = mover_bypass_grid;
     // --- Crush candidates ---
     // Crushability is a latch, not an early exit: gamemd sets it while walking
     // the cell list and consults it only after the walk, when nothing else
@@ -1277,7 +1273,6 @@ pub(crate) fn classify_occupied_cell_with_layers_and_ignored_and_occupation(
     crush_capability: bump_crush::CrushCapability,
     mover_owner: &str,
     mover_locomotor: LocomotorKind,
-    mover_bypass_grid: bool,
     ignored_blockers: Option<&BTreeSet<u64>>,
     occupancy: &OccupancyGrid,
     cell_occupation: &CellOccupationGrid,
@@ -1294,7 +1289,6 @@ pub(crate) fn classify_occupied_cell_with_layers_and_ignored_and_occupation(
         crush_capability,
         mover_owner,
         mover_locomotor,
-        mover_bypass_grid,
         ignored_blockers,
         occupancy,
         cell_occupation,
@@ -1315,7 +1309,6 @@ pub(crate) fn classify_occupied_cell_with_occupation_and_slave_query(
     crush_capability: bump_crush::CrushCapability,
     mover_owner: &str,
     mover_locomotor: LocomotorKind,
-    mover_bypass_grid: bool,
     ignored_blockers: Option<&BTreeSet<u64>>,
     occupancy: &OccupancyGrid,
     cell_occupation: &CellOccupationGrid,
@@ -1337,7 +1330,6 @@ pub(crate) fn classify_occupied_cell_with_occupation_and_slave_query(
         crush_capability,
         mover_owner,
         mover_locomotor,
-        mover_bypass_grid,
         ignored_blockers,
         occupancy,
         current_frame,
@@ -1440,7 +1432,6 @@ fn find_primary_blocker(
     target: (u16, u16),
     layer: MovementLayer,
     mover_id: u64,
-    _mover_bypass_grid: bool,
     ignored_blockers: Option<&BTreeSet<u64>>,
     occupancy: &OccupancyGrid,
     _entities: &EntityStore,
@@ -2202,7 +2193,6 @@ mod tests {
             bump_crush::CrushCapability::new(true, false),
             "Americans",
             LocomotorKind::Drive,
-            false,
             &occupancy,
             &entities,
             &alliances,
@@ -2224,7 +2214,6 @@ mod tests {
             bump_crush::CrushCapability::new(true, false),
             "Soviets",
             LocomotorKind::Drive,
-            false,
             &occupancy,
             &entities,
             &alliances,
@@ -2276,7 +2265,6 @@ mod tests {
                 bump_crush::CrushCapability::new(false, false),
                 "Americans",
                 LocomotorKind::Drive,
-                false,
                 &occ,
                 &entities,
                 &alliances,
@@ -2333,7 +2321,6 @@ mod tests {
             bump_crush::CrushCapability::new(false, false),
             "Americans",
             LocomotorKind::Drive,
-            false,
             &occ,
             &entities,
             &alliances,
@@ -2489,7 +2476,7 @@ mod tests {
     }
 
     #[test]
-    fn find_primary_blocker_does_not_use_bypass_grid_as_structure_skip() {
+    fn find_primary_blocker_reports_a_live_structure() {
         use crate::sim::entity_store::EntityStore;
         use crate::sim::game_entity::GameEntity;
 
@@ -2510,12 +2497,10 @@ mod tests {
         refinery.category = EntityCategory::Structure;
         entities.insert(refinery);
 
-        // With bypass_grid=true: structure is filtered, no other occupants → None.
         let result = find_primary_blocker(
             (5, 5),
             MovementLayer::Ground,
-            42,   // mover_id
-            true, // mover_bypass_grid
+            42, // mover_id
             None,
             &occ,
             &entities,
@@ -2523,23 +2508,7 @@ mod tests {
         assert_eq!(
             result,
             Some(100),
-            "bypass_grid must not erase live structure blockers"
-        );
-
-        // With bypass_grid=false: structure is the primary blocker → Some(100).
-        let result = find_primary_blocker(
-            (5, 5),
-            MovementLayer::Ground,
-            42,
-            false, // mover_bypass_grid
-            None,
-            &occ,
-            &entities,
-        );
-        assert_eq!(
-            result,
-            Some(100),
-            "with bypass_grid=false, Structure must still be picked as blocker (regression)"
+            "a live structure blocker stays the primary blocker"
         );
     }
 
@@ -2574,15 +2543,7 @@ mod tests {
         infantry.category = EntityCategory::Infantry;
         entities.insert(infantry);
 
-        let result = find_primary_blocker(
-            (5, 5),
-            MovementLayer::Ground,
-            42,
-            false,
-            None,
-            &occ,
-            &entities,
-        );
+        let result = find_primary_blocker((5, 5), MovementLayer::Ground, 42, None, &occ, &entities);
         assert_eq!(result, Some(20));
     }
 
@@ -2614,7 +2575,6 @@ mod tests {
             (5, 5),
             MovementLayer::Ground,
             42,
-            false,
             Some(&ignored),
             &occ,
             &entities,
@@ -2668,7 +2628,6 @@ mod tests {
             bump_crush::CrushCapability::new(false, false),
             "Allies",
             LocomotorKind::Drive,
-            false,
             None,
             &occ,
             &CellOccupationGrid::new(),

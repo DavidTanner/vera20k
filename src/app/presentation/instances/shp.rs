@@ -901,7 +901,8 @@ fn resolve_infantry_shp_frame(
             set,
             facing,
             entity.body_frame_counter,
-            crate::sim::movement::ready_producer::is_moving_for_unit_shp_draw(entity),
+            // The draw asks the locomotor's Is_Moving (vt+0x10 at `0x0073C696`).
+            crate::sim::movement::motion_query::is_moving(entity) == Some(true),
         )
     {
         return Some(frame);

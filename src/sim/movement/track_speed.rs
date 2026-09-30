@@ -12,53 +12,6 @@ use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed, isqrt_i64};
 
-/// Native Drive4B3DFA..3E21 publishes the request separately from its later
-/// TrackProcess prefix. Signed selectors >=64 preserve the class target and
-/// send the request to the Foot setter instead. Ship has the same branch.
-/// The current fresh caller publishes only after successful selection, so
-/// turning/refusal does not execute this prefix. The world fresh continuation
-/// must place this write after first CanEnter and before its entering callback.
-pub(super) fn publish_fresh_target(
-    entity: &mut GameEntity,
-    rules: Option<&RuleSet>,
-    strength: Option<i32>,
-    terrain: Option<&ResolvedTerrainGrid>,
-    terrain_speed: &TerrainSpeedConfig,
-) {
-    let Some(loco) = entity.locomotor.as_ref() else {
-        return;
-    };
-    let kind = loco.kind;
-    if !matches!(kind, LocomotorKind::Drive | LocomotorKind::Ship) {
-        return;
-    }
-    let target = entity.movement_target.as_ref();
-    let next = target.and_then(|target| target.path.get(target.next_index).copied());
-    let below_yellow = rules.zip(strength).is_some_and(|(r, strength)| {
-        crate::sim::pathfinding::terrain_speed::is_at_or_below_condition_yellow(
-            entity.health.current,
-            strength,
-            r.general.condition_yellow,
-        )
-    });
-    let requested = match (terrain, next) {
-        (Some(terrain), Some(next)) => {
-            let xy = super::ground_pose::position_world_xy(&entity.position);
-            super::drive_locomotion::compute_drive_target_speed_fraction(
-                loco.speed_type,
-                kind,
-                (xy[0], xy[1]),
-                next,
-                terrain,
-                terrain_speed,
-                below_yellow,
-            )
-        }
-        _ => SIM_ONE,
-    };
-    publish_target_fraction(entity, requested);
-}
-
 /// The native Process_Movement fresh arm's publication for its candidate
 /// Cell (`track_fresh`), with Road's row when the retained height is two or
 /// more levels from the Cell (`0x4B3C84`).
@@ -174,18 +127,9 @@ pub(super) fn advance(
     {
         distance += SimFixed::from_num(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
-    let accel = object
-        .map(|o| o.accel_factor)
-        .or_else(|| target.map(|t| t.accel_factor))
-        .unwrap_or(SIM_ZERO);
-    let decel = object
-        .map(|o| o.decel_factor)
-        .or_else(|| target.map(|t| t.decel_factor))
-        .unwrap_or(SIM_ZERO);
-    let slowdown = object
-        .map(|o| SimFixed::from_num(o.slowdown_distance))
-        .or_else(|| target.map(|t| t.slowdown_distance))
-        .unwrap_or(SIM_ZERO);
+    let accel = object.map_or(SIM_ZERO, |o| o.accel_factor);
+    let decel = object.map_or(SIM_ZERO, |o| o.decel_factor);
+    let slowdown = object.map_or(SIM_ZERO, |o| SimFixed::from_num(o.slowdown_distance));
     let unit_passive = entity.category == crate::map::entities::EntityCategory::Unit
         && object.is_some_and(|object| object.passive);
     match kind {
@@ -300,33 +244,6 @@ mod tests {
                 mover.movement_target.as_ref().unwrap().speed,
                 SimFixed::from_num(150)
             );
-        }
-    }
-
-    #[test]
-    fn fresh_publication_uses_signed_selector_and_preserves_the_other_speed_owner() {
-        for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
-            for selector in [-1, 63, 64, 71] {
-                let mut entity = entity(kind, selector, SimFixed::lit("0.5"));
-                entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
-                publish_fresh_target(
-                    &mut entity,
-                    None,
-                    None,
-                    None,
-                    &TerrainSpeedConfig::default(),
-                );
-                let expected = if selector < 64 {
-                    (SIM_ONE, SimFixed::lit("0.25"))
-                } else {
-                    (SimFixed::lit("0.5"), SIM_ONE)
-                };
-                assert_eq!(
-                    (retained(&entity), entity.foot_speed.applied_fraction()),
-                    expected,
-                    "{kind:?} selector {selector}"
-                );
-            }
         }
     }
 

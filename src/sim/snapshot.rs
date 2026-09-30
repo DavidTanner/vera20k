@@ -774,7 +774,9 @@ use crate::sim::world::Simulation;
 // 268 -> 269: the Hover locomotor saves its native object (destination, head,
 // steering facing, the four doubles, Shove and Push state); the locomotor's
 // throttle, request and bob copies are gone.
-const SNAPSHOT_VERSION: u32 = 269;
+// 269 -> 270: a movement target no longer saves the removed Drive/Ship lane's
+// speed ramp, grid/terrain-cost bypasses and adapter-route flag.
+const SNAPSHOT_VERSION: u32 = 270;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3674,7 +3676,8 @@ mod tests {
         // 266 -> 267: Infantry water-transition state+6E8.
         // 267 -> 268: retained Cell targets hash the live fallback coordinate.
         // 268 -> 269: the native Hover locomotor object.
-        assert_eq!(super::SNAPSHOT_VERSION, 269);
+        // 269 -> 270: no lane speed ramp, bypasses or adapter flag on a move.
+        assert_eq!(super::SNAPSHOT_VERSION, 270);
     }
 
     #[test]

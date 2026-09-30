@@ -101,7 +101,6 @@ mod gsi_04_03b_tests {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotor::LocomotorState;
-    use crate::sim::pathfinding::PathGrid;
 
     /// Mission_Harvest state 2 measures to `BuildingClass::GetCoords @
     /// 0x00447AC0` = the foundation centre. For a 4x3 refinery that is
@@ -252,6 +251,12 @@ mod gsi_04_03b_tests {
     #[test]
     fn gsi_04_05_sequential_miner_process_reserves_head_before_next_process() {
         let mut sim = Simulation::new();
+        let rules =
+            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+                "[VehicleTypes]\n0=HARV\n[HARV]\nSpeed=6\n",
+            ))
+            .unwrap();
+        let grid = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let owner = sim.interner.intern("AMERICANS");
         let type_ref = sim.interner.intern("HARV");
         for (entity_id, rx, facing) in [(1, 1, 0x40u8), (2, 3, 0xC0)] {
@@ -268,8 +273,6 @@ mod gsi_04_03b_tests {
             ));
         }
 
-        let grid = PathGrid::new(5, 5);
-        sim.install_fixture_path_grid(Some(&grid));
         let shared_head = (2, 2);
         issue_move_if_idle(&mut sim, None, 1, shared_head, SimFixed::from_num(128));
         assert!(
@@ -284,7 +287,7 @@ mod gsi_04_03b_tests {
                 .is_none(),
             "the helper issues an order; Process owns head admission"
         );
-        sim.process_ground_locomotor_for_test(1, None, Some(&grid), None)
+        sim.process_ground_locomotor_for_test(1, Some(&rules), Some(&grid), None)
             .expect("the first miner Process commits its head reservation");
 
         assert_eq!(
@@ -304,7 +307,7 @@ mod gsi_04_03b_tests {
         ));
 
         issue_move_if_idle(&mut sim, None, 2, shared_head, SimFixed::from_num(128));
-        sim.process_ground_locomotor_for_test(2, None, Some(&grid), None)
+        sim.process_ground_locomotor_for_test(2, Some(&rules), Some(&grid), None)
             .expect("the second miner Process observes the existing reservation");
 
         let second = sim.substrate.entities.get(2).expect("second miner");
@@ -1654,16 +1657,6 @@ pub(crate) fn issue_stock_miner_drive_move(
         return false;
     }
 
-    if let Some(movement) = sim
-        .substrate
-        .entities
-        .get_mut(entity_id)
-        .and_then(|entity| entity.movement_target.as_mut())
-    {
-        movement.accel_factor = info.accel_factor;
-        movement.decel_factor = info.decel_factor;
-        movement.slowdown_distance = info.slowdown_distance;
-    }
     true
 }
 

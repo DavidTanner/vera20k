@@ -545,16 +545,15 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
         "[VehicleTypes]\n0=TURN\n[TURN]\nStrength=100\nSpeed=6\nAccelerates=no\n",
     ))
     .unwrap();
-    let grid = PathGrid::new(20, 20);
     for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
         for refused in [false, true] {
-            // The old fresh Ship adapter still lacks CanEnter dispatch. Its
-            // migration has separate acceptance; do not invent a Ship refusal.
+            // The native rows compose no Ship refusal; do not invent one.
             if refused && kind == LocomotorKind::Ship {
                 continue;
             }
             for residual in [14, -2] {
                 let mut sim = fixture(kind);
+                let grid = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
                 let entity = sim.substrate.entities.get_mut(1).unwrap();
                 entity.category = crate::map::entities::EntityCategory::Unit;
                 // Facing the path's east octant, the refused mover reaches
@@ -574,7 +573,6 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                     path_layers: vec![MovementLayer::Ground; 3],
                     next_index: 1,
                     speed: SimFixed::from_num(330),
-                    current_speed: SimFixed::from_num(330),
                     final_goal: Some((10, 8)),
                     ..Default::default()
                 });
@@ -588,6 +586,7 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                         ..Default::default()
                     },
                 );
+                super::super::navcom::set_destination_internal_cell(entity, (10, 8), None, 0);
                 let target_fraction = SimFixed::lit("0.375");
                 match kind {
                     LocomotorKind::Drive => {
@@ -608,6 +607,16 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                 }
                 let before = super::super::ground_pose::position_world_coord(&entity.position);
                 if refused {
+                    // A live vehicle in the head cell's object list.
+                    let mut blocker = GameEntity::test_default(99, "TURN", "Americans", 9, 8);
+                    blocker.type_ref = sim.intern("TURN");
+                    blocker.owner = sim.intern("Americans");
+                    blocker.lifecycle.object_alive = true;
+                    blocker.lifecycle.in_limbo = false;
+                    blocker.lifecycle.cell_marked = true;
+                    sim.substrate.entities.insert(blocker);
+                    sim.substrate.occupancy =
+                        crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
                     sim.substrate.cell_occupation.mark_vehicle_on_layer(
                         9,
                         8,
@@ -621,7 +630,6 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                 let entity = sim.substrate.entities.get(1).unwrap();
                 let (valid, _, track) = retained(entity, kind);
                 assert_eq!(stats.moved_steps, 0, "{kind:?} refused={refused}");
-                assert_eq!(stats.selection_admission_refusals, u32::from(refused));
                 assert!(!valid);
                 assert_eq!(track.turn_index, -1);
                 let native_rows: Vec<_> = native["rows"]
@@ -745,7 +753,6 @@ fn live_rotation_returns_before_fresh_selection_with_a_queued_path_and_no_displa
             path_layers: vec![MovementLayer::Ground; 3],
             next_index: 1,
             speed: SimFixed::from_num(330),
-            current_speed: SimFixed::from_num(330),
             final_goal: Some((8, 6)),
             ..Default::default()
         });

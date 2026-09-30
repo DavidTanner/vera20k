@@ -218,13 +218,21 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // value for all three replay pins (bridge, global, slice 6), with the RNG pins
 // above unchanged (the probe patch was not committed). Previous:
 // 0x3983_6E86_AD68_DCF0.
-const SLICE6_BASELINE_HASH: u64 = 0x9703_A2A8_E0FF_2C81;
+// 2026-10-01 Drive/Ship legacy lane removal (behavior, fixture inputs): a
+// Drive/Ship visit always runs the native Process, whose Find_Path reads map
+// cells, zones and Map Size, so the fixture now supplies a clear 64x64 map
+// (`arena_fixture::supply_native_map`). With those inputs the E1 also leaves
+// the Walk fixture fallback for native Walk admission. The RNG stream pins,
+// mission counters and per-frame replay equality are unchanged. Previous:
+// 0x9703_A2A8_E0FF_2C81.
+const SLICE6_BASELINE_HASH: u64 = 0xBB09_43C9_DBB1_8884;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
     let rules = slice6_rules();
-    let grid = PathGrid::new(64, 64);
     let mut sim = Simulation::new();
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
+    let grid = (*sim.path_grid_snapshot().unwrap()).clone();
     // id 1: Americans MTNK (the unit we retask). id 2: enemy MTNK (Soviet, hostile
     // by default — no alliance entry). id 3: Americans E1 (second attacker).
     sim.spawn_from_map(
@@ -404,6 +412,7 @@ fn replay_hash_stable_through_slice6() {
     // Unlike the old single-run hash gate, execute every recorded command a
     // second time through ReplayRunner and compare each committed frame.
     let mut replay = Simulation::new();
+    crate::sim::arena_fixture::supply_native_map(&mut replay);
     replay.spawn_from_map(
         &[
             unit("Americans", "MTNK", 3, 3, EntityCategory::Unit),
