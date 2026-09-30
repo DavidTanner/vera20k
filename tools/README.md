@@ -113,18 +113,44 @@ an executable path reported by Cargo or retained in a preserved build manifest.
 The newest session for each crate remains cached. Links, shared hardlinks and
 sessions containing unknown files stay protected. Source, assets, native evidence,
 executables, libraries, labels and debug sidecars are never deletion candidates.
-Every preserved label, including library-test binaries, is treated as active.
+Every saved executable remains protected, including library-test binaries.
+Already absent debug inputs are reported separately as degraded debugging support;
+their absence does not block deletion of independently verified orphan objects.
+Existing dependencies remain protected even when another input of the same binary
+is missing. Restored/mutated dependencies invalidate an in-progress deletion plan.
+This does not restore lost symbols or claim complete debugging support.
 
-Before any deletion, the owner checks all preserved artifact hashes, live cache
-binaries and debugging dependencies. Missing/malformed inputs, tool warnings,
-unsupported formats and changed dependencies stop deletion and leave a receipt.
-Automatic cleanup failure reports the reason and permits the Cargo invocation;
-explicit trimming returns nonzero. Mach-O inspection streams `dsymutil` debug maps
-and retains referenced objects/archives. ELF embedded DWARF uses GNU `readelf`;
-external/split debug information, thin archives and PE/PDB dependency closure are
-currently unsupported and stop trimming. This keeps builds portable while avoiding
-unproven deletion on those formats. See [retention validation](cargo_cache_validation.md)
-for evidence and the known older-label dependency failure on this machine.
+Mach-O inspection reads every N_OSO/N_AST reference directly from every symbol
+table/universal slice, including missing inputs that dsymutil's debug-map output
+omits. ELF embedded DWARF uses GNU `readelf`; external/split debug information,
+thin archives and PE/PDB dependency closure remain unsupported and stop trimming.
+Malformed inputs, links, unknown formats and inspector failures still block deletion.
+
+Inspection results and preserved SHA checks are reused only while executable
+identity (including inode and ctime), expected checksum and inspector revision match.
+Dependency presence and identity are always checked anew. Unknown inode identities
+are never reused. Unchanged inspector failures are cached for at most five minutes;
+changing the binary, inspector or readelf identity retries immediately. These caches
+never authorize deletion without fresh inventory and dependency checks. Automatic
+cleanup failure reports its reason and permits Cargo; explicit trimming returns
+nonzero. See [retention validation](cargo_cache_validation.md).
+
+Saved builds have a separate, explicit lifecycle. Preview exact labels, then apply
+using the same command without `--dry-run`:
+
+```sh
+python -m tools.cargo_run --retire-label old-test-v1 --retire-label old-release-v1 --dry-run
+```
+
+Retirement never selects labels by age or glob and never touches their former
+checkout, compiler cache or external evidence. Original manifests and checksums
+are durably recorded in `owned-builds/label-retirements/` before deletion; retired
+executables themselves are not backed up. Partial failures retain progress receipts.
+All selected labels are preflighted for hashes, unexpected content, links, shared
+hardlinks and open files. Linux/macOS require working `lsof`; unsupported platforms
+fail closed. Process visibility is limited to the invoking user; stop consumers
+launched outside the shared build owner before retiring their labels. Keep final
+and evidence-linked builds unless their retirement is explicitly intended.
 
 Each attempt writes `owned-builds/retention/<timestamp>-<id>.json`: selected and
 removed files, allocated/logical bytes removed, observed free-space change, errors
