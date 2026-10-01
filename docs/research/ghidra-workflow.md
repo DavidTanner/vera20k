@@ -237,6 +237,12 @@ constructor, ReadINI, the other methods and the reads through their type pointer
   `InfantryClass` +0x6C0 is `InfantryTypeClass *pType` and `g_InfantryTypeClass_Array` is
   `InfantryTypeClass **`. `pEnslaves` (TechnoType) and `pSecretInfantry` (BuildingType)
   are `InfantryTypeClass *`.
+- `AircraftTypeClass` (0xE10 bytes): 11 fields after its base. `AircraftClass` +0x6C4 is
+  `AircraftTypeClass *pType`, the same offset UnitClass uses, and
+  `g_AircraftTypeClass_Array` is `AircraftTypeClass **`. `pAirstrikeTeamType`,
+  `pEliteAirstrikeTeamType` and `pSpawns` (TechnoType) are `AircraftTypeClass *`.
+  AircraftClass +0x6C0 holds the IFlyControl interface, so IFlyControl methods such as
+  `AircraftClass__Is_Fighter` read the type as `[this+4]`.
 
 Notes for readers:
 
@@ -244,26 +250,37 @@ Notes for readers:
   strict naming policy puts a Hungarian type prefix in front: `fPowered`, `nX`,
   `aBuildupFile`, `pToOverlay`. A key that names a file is stored in `<Key>File`, and
   the object built from it takes the key: `aCameoFile` and `pCameo`.
-- **Still placeholders.** `ObjectTypeClass` (0x294 bytes) has only `pVtable` typed.
-- **Receivers.** The receivers of the type-class methods are not typed yet, and no
-  `UnitClass__` or `InfantryClass__` method has a typed `this`. Their decompiles therefore
-  still show raw offsets for the type's fields; look them up in `UnitTypeClass` or
-  `InfantryTypeClass`.
+- **Still placeholders.** `ObjectTypeClass` (0x294 bytes) has only `pVtable` typed, and
+  `AircraftClass` (0x6D8 bytes) only `pType`.
+- **Receivers.** The receivers of the type-class methods are not typed yet. No
+  `UnitClass__` or `InfantryClass__` method has a typed `this`, and only 3 of the 83
+  `AircraftClass__` methods do (as `MissionClass *`). Their decompiles therefore still
+  show raw offsets for the type's fields; look them up in `UnitTypeClass`,
+  `InfantryTypeClass` or `AircraftTypeClass`.
 
 Plates tagged `[2026-10-01 BuildingTypeClass layout]`,
-`[2026-10-01 TechnoTypeClass layout]`, `[2026-10-01 UnitTypeClass layout]` and
-`[2026-10-01 InfantryTypeClass layout]` record where YRpp is wrong and the native quirks
-a port must keep. Examples: AddOccupy and RemoveOccupy are swapped in YRpp,
-`TurretControl` is 0x14 bytes, nothing initialises WeaponCount, PitchAngle is read in
-degrees but stored in radians, an unset BurstDelay draws a 3..5 frame delay from the
-scenario RNG, and ReadPip does not keep an absent Pip (the default 1 comes back as 2).
+`[2026-10-01 TechnoTypeClass layout]`, `[2026-10-01 UnitTypeClass layout]`,
+`[2026-10-01 InfantryTypeClass layout]` and `[2026-10-01 AircraftTypeClass layout]`
+record where YRpp is wrong and the native quirks a port must keep. Examples:
+
+- AddOccupy and RemoveOccupy are swapped in YRpp.
+- `TurretControl` is 0x14 bytes, and nothing initialises WeaponCount.
+- PitchAngle is read in degrees but stored in radians.
+- An unset BurstDelay draws a 3..5 frame delay from the scenario RNG.
+- ReadPip does not keep an absent Pip: the default 1 comes back as 2.
+- A missing EliteAirstrikeTeamType takes the AirstrikeTeamType read on the same pass.
+- A SpawnDelay of 0 faults (it divides the frame counter) on an aircraft with a Trailer.
+
 The UnitTypeClass pass also corrected two wrong names: the LandType name converters
 0x48DFD0 and 0x48DF80, once named `MovementZone_*`, are `LandType__ToName` and
 `LandType__FromName`. The InfantryTypeClass pass found that 0x522910, named
 `BuildingClass__AddGarrisonOccupant`, runs with the entering infantry as `this`; its
-plate has the evidence. The per-field ledgers, the checks and the rehearsals are in the
-research folder listed in `LOCAL.md`. Reading established these facts. Nothing was
-executed, so a port pins the conversions with the native oracle.
+plate has the evidence. The AircraftTypeClass pass found that
+`HouseClass__CheckBuildLimit` reads AirportBound through its type argument, where no
+scan of the reads through AircraftClass +0x6C4 can see it; its plate has the rule. The
+per-field ledgers, the checks and the rehearsals are in the research folder listed in
+`LOCAL.md`. Reading established these facts. Nothing was executed, so a port pins the
+conversions with the native oracle.
 
 ## Preserve findings without polluting shared analysis
 
