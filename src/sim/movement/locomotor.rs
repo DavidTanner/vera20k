@@ -429,6 +429,19 @@ impl LocomotorState {
         false
     }
 
+    /// `Lock` (ILocomotion +0xB0): Walk `0x0075CB30` nulls its destination
+    /// (+0x18) and head (+0x24) and writes nothing else. FootClass::Limbo
+    /// (`0x004DB260`) calls it on the first Limbo, after +9C(0) released the
+    /// head's occupation. Other locomotors' +0xB0 bodies are not ported.
+    pub(crate) fn walk_lock(&mut self) {
+        if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
+            (self.kind, &mut self.runtime_payload)
+        {
+            state.destination = None;
+            state.head = None;
+        }
+    }
+
     pub(crate) fn active_slope_transition(&self) -> Option<&SlopeTransitionState> {
         match (self.active_kind(), &self.runtime_payload) {
             (LocomotorKind::Drive, LocomotorRuntimePayload::Drive(state))

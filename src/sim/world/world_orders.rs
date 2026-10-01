@@ -742,9 +742,12 @@ impl Simulation {
                 });
             }
 
-            // Native PerCell51A60D stops the Foot; it does not request Attack
-            // Doing4. The full C4 Stop/destination/ROF tail remains its own
-            // mechanism. Infantry presentation reads the retained Doing owner.
+            // Native PerCell51A60D does not request Attack Doing4; its
+            // 0x004DF0D0 only zeroes TarCom and NavCom, so Walk keeps its
+            // destination and head and its Process runs on. RESIDUAL: the
+            // arm's Uncloak, ROF and forced Scatter (0x0051D0D0) tail is its
+            // own mechanism. Infantry presentation reads the retained Doing
+            // owner.
             if let Some(a) = self.substrate.entities.get_mut(attacker_id) {
                 a.movement_target = None;
             }
@@ -1374,11 +1377,12 @@ impl Simulation {
                     }
                 }
                 PursuitAction::DropTargetAndMovement { entity_id } => {
-                    // Foot4D5730 dispatches virtual+3C8 on Sticky refusal.
+                    // Foot4D5730 dispatches virtual+3C8 on Sticky refusal,
+                    // then the class NULL destination (0x004D573E).
                     let _ = self.assign_target_represented(entity_id, None, Some(rules));
+                    self.assign_null_destination(entity_id, Some(rules));
                     if let Some(e) = self.substrate.entities.get_mut(entity_id) {
                         e.movement_target = None;
-                        e.navigation.nav_com = None;
                     }
                 }
             }

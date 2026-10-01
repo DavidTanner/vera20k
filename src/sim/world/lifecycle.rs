@@ -2517,6 +2517,19 @@ impl Simulation {
             );
         }
         self.release_walk_occupation_before_foot_limbo(stable_id);
+        // FootClass::Limbo (0x004DB260) then Locks the locomotor (+0xB0) on
+        // the first Limbo, so a boarded or stored man keeps no Walk
+        // destination or head to resume.
+        // RESIDUAL: the vt+0x500 call before +9C(0) (Infantry 0x0051DAF0:
+        // Do_Action, the +0x6DC CanEnter scan, FootClass StopMoving) is not
+        // run here. Its Walk writes are subsumed by Lock; its Doing and
+        // +0x6DC writes are missing on every Infantry first Limbo.
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id)
+            && !entity.lifecycle.in_limbo
+            && let Some(locomotor) = entity.locomotor.as_mut()
+        {
+            locomotor.walk_lock();
+        }
         self.release_teleport_occupation_before_foot_limbo(stable_id);
         self.release_jumpjet_occupation_before_foot_limbo(stable_id);
         self.release_foot_air_tracker_before_limbo(stable_id);

@@ -135,7 +135,8 @@ pub(super) fn finish_fresh_head(
 impl crate::sim::world::Simulation {
     /// Foot4DB260's first Limbo invokes ILocomotion+9C(0). Walk75CA30
     /// queries the retained head (75AC00 falls back to current XYZ) and calls
-    /// Infantry+F4. It does not retire the stored head. Repeated Limbo skips
+    /// Infantry+F4. It does not retire the stored head; the Lock (+0xB0,
+    /// `LocomotorState::walk_lock`) that follows it does. Repeated Limbo skips
     /// this destructive raw clear, including when another walker reused it.
     pub(crate) fn release_walk_occupation_before_foot_limbo(&mut self, id: u64) {
         let Some((owner, coord)) = self.substrate.entities.get(id).and_then(|e| {
