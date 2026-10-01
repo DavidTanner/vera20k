@@ -624,6 +624,13 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
             return;
         }
 
+        //Building52298D refreshes its spatial threat after appending the
+        //occupant, before the first-occupant Mark/discovery tail. Ordinary
+        //transport cargo does not call Techno70F6E0 here.
+        if transport_obj.is_some_and(|object| object.can_be_occupied) {
+            sim.refresh_spatial_threat(transport_id, rules, None);
+        }
+
         let first_occupant = sim
             .substrate
             .entities
@@ -1063,6 +1070,9 @@ ConditionYellow=50%
         let owner_id = sim.interner.intern(owner_str);
         let type_id = sim.interner.intern(type_ref);
         let mut ge = GameEntity::test_default(stable_id, type_ref, owner_str, rx, ry);
+        ge.category = EntityCategory::Structure;
+        ge.mission_leaf =
+            crate::sim::mission::leaf::MissionLeafState::for_entity_category(ge.category);
         ge.owner = owner_id;
         ge.type_ref = type_id;
         let obj = rules.object(type_ref).expect("type exists");
@@ -1073,9 +1083,20 @@ ConditionYellow=50%
         };
         sim.substrate.entities.insert(ge);
         assert!(matches!(
-            sim.reveal(stable_id),
+            sim.reveal_entity_with_rules(stable_id, rules),
             RevealOutcome::Revealed { .. }
         ));
+        if sim.resolved_terrain.is_some() {
+            assert!(
+                sim.substrate
+                    .entities
+                    .get(stable_id)
+                    .unwrap()
+                    .cached_spatial_threat()
+                    .is_some(),
+                "admitted fixture Unlimbo publishes Techno+508"
+            );
+        }
         stable_id
     }
 
@@ -1100,9 +1121,20 @@ ConditionYellow=50%
         };
         sim.substrate.entities.insert(entity);
         assert!(matches!(
-            sim.reveal(stable_id),
+            sim.reveal_entity_with_rules(stable_id, rules),
             RevealOutcome::Revealed { .. }
         ));
+        if sim.resolved_terrain.is_some() {
+            assert!(
+                sim.substrate
+                    .entities
+                    .get(stable_id)
+                    .unwrap()
+                    .cached_spatial_threat()
+                    .is_some(),
+                "admitted fixture Unlimbo publishes Techno+508"
+            );
+        }
         stable_id
     }
 
@@ -1110,6 +1142,7 @@ ConditionYellow=50%
     /// targeting `transport_id`.
     fn spawn_boarding_occupier(
         sim: &mut Simulation,
+        rules: &RuleSet,
         type_ref: &str,
         owner_str: &str,
         transport_id: u64,
@@ -1130,9 +1163,20 @@ ConditionYellow=50%
         };
         sim.substrate.entities.insert(ge);
         assert!(matches!(
-            sim.reveal(stable_id),
+            sim.reveal_entity_with_rules(stable_id, rules),
             RevealOutcome::Revealed { .. }
         ));
+        if sim.resolved_terrain.is_some() {
+            assert!(
+                sim.substrate
+                    .entities
+                    .get(stable_id)
+                    .unwrap()
+                    .cached_spatial_threat()
+                    .is_some(),
+                "admitted fixture Unlimbo publishes Techno+508"
+            );
+        }
         stable_id
     }
 
@@ -1281,7 +1325,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         let changed = tick_boarding(&mut sim, &rules);
 
@@ -1298,7 +1342,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         let changed = tick_boarding_and_garrison_reconciliation_in_order(
             &mut sim,
@@ -1316,7 +1360,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
         assert!(
             bldg < pax,
             "fixture keeps stable-id order opposite native order"
@@ -1337,7 +1381,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         let changed = tick_boarding_and_garrison_reconciliation_in_order(
             &mut sim,
@@ -1365,8 +1409,8 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let first = spawn_boarding_occupier(&mut sim, "E1", "Russians", bldg, 10, 11);
-        let second = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 11, 10);
+        let first = spawn_boarding_occupier(&mut sim, &rules, "E1", "Russians", bldg, 10, 11);
+        let second = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 11, 10);
 
         if let Some(building) = sim.substrate.entities.get_mut(bldg) {
             let cargo = building.passenger_role.cargo_mut().expect("cargo exists");
@@ -1404,7 +1448,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
         let neutral = sim.interner.intern("Neutral");
         let americans = sim.interner.intern("Americans");
 
@@ -1514,7 +1558,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
         assert!(sim.live_object_order_snapshot().contains(&pax));
 
         tick_boarding_and_garrison_reconciliation_in_order(&mut sim, &rules, None, &[pax, bldg]);
@@ -1546,7 +1590,8 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = open_topped_test_rules();
         let transport = spawn_transport(&mut sim, &rules, "BFRT", "Americans", 10, 10);
-        let passenger = spawn_boarding_occupier(&mut sim, "E1", "Americans", transport, 10, 11);
+        let passenger =
+            spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", transport, 10, 11);
 
         let tail = sim.allocate_stable_id();
         let owner = sim.interner.intern("Americans");
@@ -1630,7 +1675,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         tick_boarding_and_garrison_reconciliation_in_order(&mut sim, &rules, None, &[pax, bldg]);
         assert!(!sim.live_object_order_snapshot().contains(&pax));
@@ -1661,7 +1706,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         {
             let building = sim
@@ -1683,7 +1728,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
         let passenger = sim.substrate.entities.get(pax).expect("passenger exists");
         let transport = sim.substrate.entities.get(bldg).expect("building exists");
         let mut passenger_obj = rules.object("E1").expect("E1 exists").clone();
@@ -1712,7 +1757,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         {
             let building = sim
@@ -1738,7 +1783,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Russians", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         assert!(
             !can_enter_garrison_fixture(&sim, &rules, pax, bldg),
@@ -1753,7 +1798,7 @@ ConditionYellow=50%
             let rules = garrison_test_rules();
             insert_stamped_house(&mut sim, &rules, owner, owner);
             let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", owner, 10, 10);
-            let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+            let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
             assert!(
                 can_enter_garrison_fixture(&sim, &rules, pax, bldg),
@@ -1789,7 +1834,7 @@ ConditionYellow=50%
         // from `Country=Neutral`, not from the house's own name.
         insert_stamped_house(&mut sim, &rules, "CivHouse", "Neutral");
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "CivHouse", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         assert!(
             can_enter_garrison_fixture(&sim, &rules, pax, bldg),
@@ -1805,7 +1850,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
         sim.substrate.entities.get_mut(bldg).unwrap().mind_control =
             crate::sim::capture_manager::MindControlLink::controlled_by_for_test(999);
         assert!(
@@ -1825,7 +1870,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
         let grid = crate::sim::pathfinding::PathGrid::new(5, 5);
         sim.install_fixture_path_grid(Some(&grid));
 
@@ -1842,7 +1887,7 @@ ConditionYellow=50%
         {
             let mut sim = Simulation::new();
             let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-            let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+            let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
             let building = sim
                 .substrate
                 .entities
@@ -1862,7 +1907,7 @@ ConditionYellow=50%
         {
             let mut sim = Simulation::new();
             let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-            let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+            let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
             let building = sim
                 .substrate
                 .entities
@@ -1886,7 +1931,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let _pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let _pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         tick_boarding(&mut sim, &rules);
 
@@ -1929,7 +1974,8 @@ ConditionYellow=50%
         let rules = open_topped_test_rules();
         let mut sim = Simulation::new();
         let transport = spawn_transport(&mut sim, &rules, "BFRT", "Americans", 10, 10);
-        let passenger = spawn_boarding_occupier(&mut sim, "E1", "Americans", transport, 10, 11);
+        let passenger =
+            spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", transport, 10, 11);
         let actor = sim.substrate.entities.get_mut(passenger).unwrap();
         actor.health.current = row["input"]["health"].as_i64().unwrap() as i32;
         actor.attack_target = Some(crate::sim::combat::AttackTarget::new(transport));
@@ -1963,7 +2009,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         sim.substrate
             .entities
@@ -2012,7 +2058,7 @@ ConditionYellow=50%
                 cargo.board(9999, 1);
             }
         }
-        let _pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg, 10, 11);
+        let _pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
 
         tick_boarding(&mut sim, &rules);
 
@@ -2190,7 +2236,7 @@ ConditionYellow=50%
             cargo: PassengerCargo::new(5, 0),
         };
         sim.substrate.entities.insert(bldg);
-        let _pax = spawn_boarding_occupier(&mut sim, "E1", "Americans", bldg_id, 10, 11);
+        let _pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg_id, 10, 11);
 
         tick_boarding(&mut sim, &rules);
 
@@ -2238,14 +2284,14 @@ ConditionYellow=50%
                 cargo.board(stable_id, obj.size.max(1));
             }
         }
-        // Building inherits garrisoning player's ownership (sim does this on
-        // first board). For destruction tests we set it explicitly here, and
-        // also set category=Structure since GameEntity::test_default leaves it
-        // as Unit — the death-loop branch keys on Structure.
+        // Supplied first-board ownership precedes the native AddOccupant's
+        // threat-refresh tail. The building helper already constructs the
+        // Structure mission receiver; direct-cargo fixtures keep that class.
         if let Some(bldg) = sim.substrate.entities.get_mut(building_id) {
             bldg.owner = owner_id;
             bldg.category = crate::map::entities::EntityCategory::Structure;
         }
+        sim.refresh_spatial_threat(building_id, rules, None);
         stable_id
     }
 

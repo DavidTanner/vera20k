@@ -108,8 +108,8 @@ pub(crate) use lifecycle::{
 #[cfg(test)]
 pub(crate) use lifecycle::{LifecycleTestEvent, RevealFailure};
 pub(crate) use load_object_lifecycle::LoadObjectLifecycle;
-pub(crate) use object_entry::FootEntryReceiver;
 pub(crate) use logic_vector::LogicVector;
+pub(crate) use object_entry::FootEntryReceiver;
 pub use substrate::EnterOrderCounter;
 pub(crate) use substrate::ObjectSubstrate;
 pub(crate) use world_spawn::{GeneratedTechnoInitError, GeneratedTechnoInitTable};
@@ -1121,9 +1121,9 @@ pub struct Simulation {
     /// Rebuilt from state on demand; never serialized or hashed.
     #[serde(skip)]
     pub(crate) movement_pass_cache: crate::sim::movement::movement_tick::MovementPassCache,
-    /// Zone-based connectivity map for instant unreachability detection.
-    /// Built from terrain data; rebuilt when buildings or bridges change.
-    #[serde(skip)]
+    /// Retained native navigation base plane/raw movement rows plus the live
+    /// derived hierarchy. ZoneGrid saves only its own retained base state;
+    /// LoadContent67E8CD rebuilds hierarchy after bound Cell/object restoration.
     pub(crate) zone_grid: Option<ZoneGrid>,
     /// Canonical dynamic navigation projection. Every reader reads it at its
     /// point of use; a republish replaces the `Arc` without mutating readers'
@@ -4568,7 +4568,14 @@ impl Simulation {
         // at a building stops the instant the building changes hands instead of
         // shooting at what is now its own structure.
         self.stop_all_targeting_on_detach(stable_id, rules);
+        //Techno701701..719 removes from the old owner using the retained
+        //Cell. The same Cell survives the owner write for701774..780.
+        let spatial_threat_cell =
+            rules.and_then(|_| self.spatial_threat_before_owner_change(stable_id));
         self.substrate.entities.change_owner(stable_id, new_owner);
+        if let Some(rules) = rules {
+            self.spatial_threat_after_owner_change(stable_id, spatial_threat_cell, rules);
+        }
         self.update_house_tracking(
             stable_id,
             crate::sim::house_tracking::HouseTracking::add_tracking,
@@ -4929,7 +4936,7 @@ impl Simulation {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return false;
         };
-        self.structure_navigation_cells = navigation::NavigationCaches {
+        let result = navigation::NavigationCaches {
             terrain_costs: &mut self.terrain_costs,
             zones: &mut self.zone_grid,
             path: &mut self.path_grid,
@@ -4942,6 +4949,13 @@ impl Simulation {
             &self.interner,
             rules,
         );
+        match result {
+            Ok(cells) => self.structure_navigation_cells = cells,
+            Err(error) => {
+                log::error!("Navigation restoration refused: {error}");
+                return false;
+            }
+        }
         true
     }
 

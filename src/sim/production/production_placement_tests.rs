@@ -3281,6 +3281,28 @@ fn sell_player_built_garrisoned_building_demolishes_and_ejects_alive() {
     // refund is 0 — this test pins the demolition path (entities.remove fired)
     // and the alive-eject of the occupant, not the refund magnitude.
     spawn_structure(&mut sim, 30, "Americans", "NABNKR", 40, 40);
+    // The legacy structure helper writes active/occupation state directly.
+    // Admit this integration fixture through complete Techno Unlimbo before
+    // adding its occupant, rather than inventing the retained +508 value.
+    sim.remove_entity_occupancy(30);
+    sim.substrate
+        .entities
+        .get_mut(30)
+        .unwrap()
+        .lifecycle
+        .in_limbo = true;
+    assert!(matches!(
+        sim.reveal_entity_with_rules(30, &rules),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
+    assert!(
+        sim.substrate
+            .entities
+            .get(30)
+            .unwrap()
+            .cached_spatial_threat()
+            .is_some()
+    );
     let amer_id = sim.interner.intern("Americans");
     let e1_id = sim.interner.intern("E1");
     if let Some(t) = sim.substrate.entities.get_mut(30) {
@@ -3301,6 +3323,8 @@ fn sell_player_built_garrisoned_building_demolishes_and_ejects_alive() {
             c.board(31, 1);
         }
     }
+    // Accepted Building AddOccupant52298D refreshes after the append.
+    sim.refresh_spatial_threat(30, &rules, None);
 
     assert!(super::sell_building_now_for_test(&mut sim, &rules, 30));
 

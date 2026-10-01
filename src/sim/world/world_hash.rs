@@ -487,6 +487,14 @@ impl Simulation {
         self.hash_power_states(&mut hasher);
         self.hash_fog_and_alliances(&mut hasher);
         self.hash_bridge_state(&mut hasher);
+        // Native local graph updates retain route-selection history even
+        // when the current terrain and House threat values are identical.
+        // Ordinary native load rebuilds the hierarchy through581F50; its
+        // resulting hash may intentionally differ from the live pre-save hash.
+        if let Some(zones) = &self.zone_grid {
+            b"retained-navigation-history-v1".hash(&mut hasher);
+            zones.fold_navigation_history(&mut hasher);
+        }
         // `resolved_terrain` is derived/skipped. Fold the exact saved real
         // CellClass `0x1180` values once through their serialized authority.
         // Historical pre-v28/pre-v29 provenance probes must omit both this
@@ -782,6 +790,13 @@ impl Simulation {
     fn hash_houses(&self, hasher: &mut impl Hasher) {
         for (owner, house) in &self.houses {
             owner.hash(hasher);
+            // Retained509400/481870 values affect future path/AI decisions.
+            // The all-zero constructor state preserves historical hashes.
+            let threat = house.spatial_threat_values();
+            if threat.iter().any(|&value| value != 0) {
+                b"house-spatial-threat-v1".hash(hasher);
+                threat.hash(hasher);
+            }
             house.economy.credits.hash(hasher);
             // The sole cash balance retains its original position in the hash stream.
             house.economy.spent_credits.hash(hasher);
@@ -1438,6 +1453,21 @@ impl Simulation {
                     0x68a_u32.hash(hasher);
                     path.scold_latch_raw().hash(hasher);
                 }
+            }
+            // Foot+530 is retained across type changes and saved restores.
+            // Preserve the constructor-zero historical projection; nonzero
+            // values (including negative zero) change future path decisions.
+            let coefficient = entity.navigation.path_threat_coefficient();
+            if coefficient.bits() != 0 {
+                0x530_u32.hash(hasher);
+                coefficient.hash(hasher);
+            }
+            // Techno+508 is a retained contribution, not recomputed live
+            // ThreatPosed. Some(0) differs from constructor-uninitialized None:
+            // a later removal must not read an invented constructor value.
+            if let Some(value) = entity.cached_spatial_threat() {
+                b"techno-spatial-threat-v1".hash(hasher);
+                value.hash(hasher);
             }
             entity.navigation.neighbor_state.hash(hasher);
             entity.navigation.path_replay.hash(hasher);
@@ -4399,3 +4429,7 @@ mod aircraft_dock_hash_tests {
 
 #[cfg(test)]
 mod prism_support_hash_tests {}
+
+#[cfg(test)]
+#[path = "navigation_history_hash_tests.rs"]
+mod navigation_history_hash_tests;

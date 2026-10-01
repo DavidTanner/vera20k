@@ -97,10 +97,11 @@ impl Simulation {
                 self,
                 input.house_roster,
                 session,
+                input.rules,
             );
             Some(placement)
         } else {
-            self.house_alliances = input.house_roster.alliance_map();
+            self.install_house_alliances(input.house_roster.alliance_map(), input.rules);
             None
         };
 

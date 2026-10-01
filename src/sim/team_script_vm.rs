@@ -137,6 +137,11 @@ pub struct TeamTypeIniMetadata {
     /// 0x006F1870`).
     #[serde(default = "minus_one")]
     group: i32,
+    /// TeamType+F2: `AvoidThreats=`; ctor6F07D9 clears it. ReadBool5295F0
+    /// at6F1386 retains the prior byte by default and stores6F138B. Foot
+    /// getter4DC760 returns1.0 for members of a type whose byte is set.
+    #[serde(default)]
+    avoid_threats: bool,
     /// `Recruiter=` (`+0xA8`, ReadBool at `0x006F1249`): recruitment passes
     /// over the group filter.
     #[serde(default)]
@@ -185,6 +190,7 @@ impl Default for TeamTypeIniMetadata {
             are_team_members_recruitable: true,
             reinforce: false,
             group: -1,
+            avoid_threats: false,
             recruiter: false,
             annoyance: false,
             guard_slower: false,
@@ -941,6 +947,18 @@ impl TeamScriptVm {
             .get(&self.teams.get(&team_id)?.team_type_id?)
     }
 
+    /// Foot4DC760's Team+24 -> TeamType+F2 gate, using the existing live
+    /// membership index. Leaving a team immediately removes this override;
+    /// the Foot's retained+530 coefficient remains its navigation owner's.
+    pub(crate) fn member_avoids_threats(&self, entity_id: u64) -> bool {
+        self.member_team
+            .get(&entity_id)
+            .and_then(|id| self.teams.get(id))
+            .and_then(|team| team.team_type_id)
+            .and_then(|id| self.team_type_ini.get(&id))
+            .is_some_and(|metadata| metadata.avoid_threats)
+    }
+
     /// The team's TaskForce entries, none for a team without a TeamType.
     fn task_force_entries(&self, team: &TeamScriptState) -> &[TeamTaskForceEntry] {
         team.task_force_id
@@ -1104,6 +1122,15 @@ impl TeamScriptVm {
         for (id, team) in &self.teams {
             id.hash(hasher);
             team.team_type_id.hash(hasher);
+            // The retained type gate changes the Foot getter and future paths.
+            // Preserve the historical false gate while hashing each active
+            // true override with its Team identity (the surrounding id feed).
+            if team.team_type_id
+                .and_then(|id| self.team_type_ini.get(&id))
+                .is_some_and(|metadata| metadata.avoid_threats)
+            {
+                b"team-avoid-threats-v1".hash(hasher);
+            }
             team.task_force_id.hash(hasher);
             team.script_id.hash(hasher);
             team.owner.hash(hasher);
@@ -1357,6 +1384,8 @@ pub(crate) fn join_team_for_test(
 mod oracle_tests;
 #[cfg(test)]
 mod recruit_oracle_tests;
+#[cfg(test)]
+mod path_threat_input_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2320,7 +2349,9 @@ mod tests {
         let anti_nuke = vm
             .ai_trigger(interner.get("0CAD0DCC-G").expect("stock trigger identity"))
             .expect("resolved stock Allied Anti-Nuke trigger");
-        assert_eq!(anti_nuke.display_name, "Allied Anti-Nuke 1");
+        // AITrigger ReadINI41F5D3..41F60F preserves token0's authored space;
+        // original CRT strtok controls: tools/rules_oracle/ini_token_readers.
+        assert_eq!(anti_nuke.display_name, "Allied Anti-Nuke 1 ");
         assert_eq!(anti_nuke.owner, Some(TeamAiTriggerOwner::All));
         assert_eq!(anti_nuke.tokens[3], "9");
         assert_eq!(anti_nuke.threshold, 9);

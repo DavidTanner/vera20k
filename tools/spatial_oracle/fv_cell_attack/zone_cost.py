@@ -8,20 +8,22 @@ HERE=Path(__file__).resolve().parent
 from . import pursuit
 
 
-def install_graph(q, records, start, goal):
+def install_graph(q, records, start, goal, level_records=None):
  """Explicit tiny graph inputs over original constructed native records."""
  u=q.u;m=q.m
  for level in range(3):
-  rows=records if level==0 else [dict(zone_type=7,parent=0,edges=[]),dict(zone_type=0,parent=0 if level==2 else 1,edges=[])]
+  rows=level_records[level] if level_records is not None else records if level==0 else [dict(zone_type=7,parent=0,edges=[]),dict(zone_type=0,parent=0 if level==2 else 1,edges=[])]
   base=m.read32(0x87F878+level*24)
   for zid,r in enumerate(rows):
    p=base+zid*36;edges=r['edges']; ep=m.alloc(max(8,len(edges)*8))
    for i,(other,flag) in enumerate(edges):u.mem_write(ep+i*8,dwords(other,flag))
    u.mem_write(p+4,dwords(ep,len(edges),1,len(edges),10));u.mem_write(p+24,struct.pack('<H',r['parent']));u.mem_write(p+28,dwords(r['zone_type']))
+   if 'threat_index' in r:u.mem_write(p+32,dwords(r['threat_index']))
   plane=m.read32(0x87F858)
   for xy,zid in [((87,49),start if level==0 else 1),((87,54),goal if level==0 else 1)]:
+   if level_records is not None:zid=start if xy==(87,49)else goal
    u.mem_write(plane+(xy[1]*q.side+xy[0])*10+level*2,struct.pack('<H',zid))
- return [records]+[[dict(zone_type=7,parent=0,edges=[]),dict(zone_type=0,parent=0 if level==2 else 1,edges=[])]for level in (1,2)]
+ return level_records if level_records is not None else [records]+[[dict(zone_type=7,parent=0,edges=[]),dict(zone_type=0,parent=0 if level==2 else 1,edges=[])]for level in (1,2)]
 
 
 def records(types, edges):
@@ -97,5 +99,9 @@ def project_vectors(check=False):
  else:out.write_text(json.dumps(data,separators=(',',':'))+'\n');print('WROTE native cost projection',len(cases),'cases',len(graph_sets),'graph sets')
 
 if __name__=='__main__':
- if '--project' in sys.argv:project_vectors('--check' in sys.argv)
+ if '--threat' in sys.argv:
+  from . import zone_threat
+  finish_vectors(zone_threat.generate,HERE/'zone_threat.json',provenance=zone_threat.metadata,
+                 argv=[arg for arg in sys.argv[1:]if arg!='--threat'])
+ elif '--project' in sys.argv:project_vectors('--check' in sys.argv)
  else:finish_vectors(generate,HERE/'zone_cost.json',provenance=metadata)

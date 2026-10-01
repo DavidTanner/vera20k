@@ -36,6 +36,11 @@ cursors. Healthy huts consume the click without a repair order. The
 [bounded native and retail checks](tools/spatial_oracle/engineer_bridge_production_validation.md)
 cover the object-hut route and concrete/wood rebuilding; broader bridge parity remains open.
 
+Medium tanks use native bridge entrance markers and path finishing. The
+[bounded path and retail checks](tools/spatial_oracle/astar_path_finishing.md)
+cover Hills ramp/deck travel, an underpass and retained navigation on restore;
+whole-bridge parity remains open.
+
 ## Running it
 
 You need Rust 1.88 or newer, a GPU with Vulkan, DirectX 12 or Metal, and the game installed.

@@ -693,6 +693,18 @@ fn walk_arrival_keeps_list_order_and_snapshot_continuation() {
     let mut sim = Simulation::with_seed(0xc311_a771);
     sim.install_resolved_terrain_for_new_map(terrain.clone());
     crate::sim::arena_fixture::supply_native_map(&mut sim);
+    // Full publication reads Map Size from the bridge-runtime map owner, even
+    // for an empty bridge set. Preserve this non-square fixture's 6x3 geometry.
+    sim.bridge_state = Some(
+        crate::sim::bridge_state::BridgeRuntimeState::from_resolved_terrain_with_map_size(
+            &terrain,
+            true,
+            rules.bridge_rules.strength,
+            sim.map_size_diamond().unwrap(),
+        ),
+    );
+    // Publish after supplying map geometry, matching the native load phase.
+    assert!(sim.rebuild_dynamic_navigation(&rules));
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
     let walker = sim
@@ -787,10 +799,25 @@ fn walk_arrival_keeps_list_order_and_snapshot_continuation() {
                 snapshotted = true;
                 let bytes = GameSnapshot::save(&sim, 0, 0, "arrival", 0);
                 let mut loaded = GameSnapshot::load(&bytes).unwrap().sim;
+                assert_eq!(
+                    loaded
+                        .bridge_state
+                        .as_ref()
+                        .unwrap()
+                        .native_zone_source_size(),
+                    sim.bridge_state.as_ref().unwrap().native_zone_source_size(),
+                );
+                loaded.retain_in_scenario_process_state_from(&sim);
                 loaded.restore_after_snapshot_load().unwrap();
                 loaded.resolve_type_handles(&rules);
-                loaded.resolved_terrain = Some(terrain.clone());
-                crate::sim::arena_fixture::supply_native_map(&mut loaded);
+                assert!(loaded.zone_grid.as_ref().unwrap().is_native_load_pending());
+                loaded.rebuild_caches_after_load(
+                    terrain.clone(),
+                    sim.terrain_speed_config.clone(),
+                    &rules,
+                );
+                assert!(loaded.rebuild_dynamic_navigation(&rules));
+                assert!(!loaded.zone_grid.as_ref().unwrap().is_native_load_pending());
                 let loaded_entries: Vec<_> = loaded
                     .substrate
                     .occupancy
@@ -888,9 +915,17 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
     entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
     sim.substrate.entities.insert(entity);
     assert!(matches!(
-        sim.reveal(1),
+        sim.reveal_entity_with_rules(1, &rules),
         crate::sim::world::RevealOutcome::Revealed { .. }
     ));
+    assert!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .cached_spatial_threat()
+            .is_some()
+    );
     let head = DriveCoord {
         x: 13 * 256,
         y: 12 * 256,

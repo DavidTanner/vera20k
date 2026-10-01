@@ -39,6 +39,9 @@ const SEED: u32 = 0x0B21_D6E5;
 /// Enough committed frames for a ~15-cell drive at stock tank speed.
 const MAX_TICKS: u64 = 2000;
 
+#[path = "hills_native_integration_tests.rs"]
+mod hills_native_integration_tests;
+
 #[path = "bridge_restamp_retail_probe.rs"]
 mod bridge_restamp_retail_probe;
 #[path = "bridge_tile_retail_probe.rs"]

@@ -4,10 +4,11 @@
 //! bridge_walkable, transition, height levels). Flat A* reads ground_walkable;
 //! layered A* reads both layers for bridge-aware routing.
 //!
-//! TODO(RE): The stock neighbor predicate is richer than the grid-level checks in this
-//! module. The RE corpus has closed the existence and numeric shape of the cost/legality
-//! classes, but not yet enough of the surrounding runtime state to replace these local
-//! passability/cost shortcuts end-to-end.
+//! Live Foot searches delegate neighbor admission to the concrete Unit/Infantry
+//! receiver. Its native cost class drives expansion and edge cost here; grid
+//! passability remains a compatibility boundary for callers without a Foot.
+//! The same admitted search owns its temporary markers through reconstruction
+//! and both finishing passes.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on map/ (MapCell, TilesetLookup for walkability).
@@ -32,6 +33,24 @@ use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
+/// Accepted native path descriptor (`gamemd.exe 42AA90` reads the parent descriptor's
+/// height into each outgoing-height slot). The selected cell/list is stamped
+/// closed at generation, so this parent and height are written together once
+/// and cannot be replaced while a descendant still points at them. Native execution:
+/// `tools/spatial_oracle/astar_path_finishing.{py,json}` (supplied chains).
+#[derive(Clone, Copy)]
+struct PathDescriptor {
+    parent: usize,
+    height: i16,
+}
+
+impl PathDescriptor {
+    const UNVISITED: Self = Self {
+        parent: usize::MAX,
+        height: 0,
+    };
+}
+
 /// Reusable scratch buffers for `astar_search`. Lives in a thread-local so
 /// repeated repaths share one set of full-map-sized Vecs instead of allocating
 /// six fresh `vec![…; total_cells]` arrays per call (was the dominant heap
@@ -46,8 +65,8 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 struct PathfindWorkspace {
     ground_g: Vec<i32>,
     bridge_g: Vec<i32>,
-    ground_from: Vec<usize>,
-    bridge_from: Vec<usize>,
+    ground_from: Vec<PathDescriptor>,
+    bridge_from: Vec<PathDescriptor>,
     ground_closed: Vec<bool>,
     bridge_closed: Vec<bool>,
     open: BinaryHeap<Reverse<AStarNode>>,
@@ -61,8 +80,16 @@ impl PathfindWorkspace {
         }
         refill(&mut self.ground_g, total_cells, i32::MAX);
         refill(&mut self.bridge_g, total_cells, i32::MAX);
-        refill(&mut self.ground_from, total_cells, usize::MAX);
-        refill(&mut self.bridge_from, total_cells, usize::MAX);
+        refill(
+            &mut self.ground_from,
+            total_cells,
+            PathDescriptor::UNVISITED,
+        );
+        refill(
+            &mut self.bridge_from,
+            total_cells,
+            PathDescriptor::UNVISITED,
+        );
         refill(&mut self.ground_closed, total_cells, false);
         refill(&mut self.bridge_closed, total_cells, false);
         self.open.clear();
@@ -511,7 +538,7 @@ fn blocked_goal_height_matches(current: i16, goal: i16) -> bool {
 
 /// Original42A460 carries signed Cell+11B, optionally plus four, in a dword.
 /// Keep that widened value: raw127 on a deck is131, not wrapped i8(-125).
-fn compute_node_height(
+pub(crate) fn compute_node_height(
     parent_height: i16,
     parent_cell: Option<&PathCell>,
     neighbor_cell: &PathCell,
@@ -779,10 +806,10 @@ pub struct AStarOptions<'a> {
     /// Search-scoped temporary marker overlay equivalent to
     /// `CellClass+0x140 & 0x40000`. Destination hits multiply normal compass
     /// edge cost, but do not change walkability or persistent pathgrid state.
-    /// Residual (#954): AStar_main_loop applies the markers through
-    /// UpdateBridgePassability (0x0042ACF0, calls at 0x00429C1A, 0x0042A42D,
-    /// 0x0042A44C) on every urgency 1/2 search; no production search builds
-    /// an overlay, so live searches pass `None`.
+    /// The live Foot search prepares this through the shared
+    /// UpdateBridgePassability owner (0x0042ACF0, reached at 0x00429C1A)
+    /// after wrapper/zone admission. A* and both finishing passes consume
+    /// the transaction before it is discarded ahead of Foot Mark1.
     pub marker_overlay: Option<&'a SearchMarkerOverlay>,
     /// Reduced-admission searches only (movers without a Foot +1AC search
     /// entry, e.g. the cursor's reachability query): crusher units bypass all
@@ -809,18 +836,53 @@ pub trait SearchCellCostClassifier {
     fn classify(&self, from: (u16, u16), candidate: (u16, u16), bridge: bool) -> u8;
 }
 
+/// Candidate input at the shared Foot +1AC boundary. A* expands copied Cell
+/// coordinates; finishing42B5AD/42BFB3/42C0B7 forwards its retained Cell pointer.
+/// Retained Dummy identity must survive nested lookups changing its coordinate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchEntryCandidate {
+    CopiedCoord((u16, u16)),
+    RetainedNativeCell(crate::map::cell_index::NativeCellIdentity),
+}
+
 /// Arguments supplied by AStar429F37..429F54 to Foot +1AC. Heights are native
-/// signed Cell levels, not leptons; the previous Cell is the expanded node.
+/// signed Cell levels, not leptons. A* supplies the expanded previous Cell;
+/// native path finishing (`42B5B4`, `42BE20`) supplies NULL instead.
 #[derive(Debug, Clone, Copy)]
 pub struct SearchEntryQuery {
-    pub from: (u16, u16),
-    pub candidate: (u16, u16),
+    pub from: Option<(u16, u16)>,
+    pub candidate: SearchEntryCandidate,
     pub direction: i32,
     pub path_height: i32,
 }
 
 pub trait SearchFootEntry {
     fn classify(&self, query: SearchEntryQuery) -> Result<u8, String>;
+
+    /// Successful-search finishing reads Foot4DC760 and House threat state.
+    /// Missing providers are explicit, never a silently assumed coefficient.
+    fn finishing_threat_coefficient(
+        &self,
+    ) -> Result<crate::util::native_x87::NativeF64Bits, String> {
+        Err("Foot finishing coefficient is unavailable".into())
+    }
+    fn finishing_house_threat(&self, _coord: (i16, i16)) -> Result<i32, String> {
+        Err("Foot finishing House threat state is unavailable".into())
+    }
+    ///585F40 reads House+57E4 directly, without a Map lookup.
+    fn hierarchy_house_threat(&self, _padded_index: i32) -> Result<i32, String> {
+        Err("Foot hierarchy House threat state is unavailable".into())
+    }
+    ///429C1A runs after wrapper admission. One transaction is retained through
+    ///A* and both finishing passes; fixtures may supply their static overlay.
+    fn prepare_search_markers(
+        &self,
+    ) -> Result<Option<(u8, std::cell::Ref<'_, SearchMarkerOverlay>)>, String> {
+        Ok(None)
+    }
+    fn prepared_search_markers(&self) -> Option<std::cell::Ref<'_, SearchMarkerOverlay>> {
+        None
+    }
 }
 
 /// The mover facts the A* cost evaluation consults for every neighbour.
@@ -853,8 +915,8 @@ pub struct MoverSearchFacts<'a> {
 /// Walks backward from goal using `decode_from` to follow the parent chain
 /// across ground/bridge transitions.
 fn reconstruct_path_dual(
-    ground_from: &[usize],
-    bridge_from: &[usize],
+    ground_from: &[PathDescriptor],
+    bridge_from: &[PathDescriptor],
     start_idx: usize,
     start_on_bridge: bool,
     goal_idx: usize,
@@ -873,22 +935,23 @@ fn reconstruct_path_dual(
         } else {
             MovementLayer::Ground
         };
+        let descriptor = if current_bridge {
+            bridge_from[current_idx]
+        } else {
+            ground_from[current_idx]
+        };
         path.push(LayeredPathStep {
             rx: x,
             ry: y,
             layer,
+            path_height: descriptor.height,
         });
 
         if current_idx == start_idx && current_bridge == start_on_bridge {
             break;
         }
 
-        let from_array = if current_bridge {
-            bridge_from
-        } else {
-            ground_from
-        };
-        let encoded = from_array[current_idx];
+        let encoded = descriptor.parent;
         debug_assert_ne!(
             encoded,
             usize::MAX,
@@ -951,6 +1014,7 @@ pub fn astar_search(
             rx: start.0,
             ry: start.1,
             layer,
+            path_height: compute_node_height(start_height, None, start_cell),
         }]);
     }
 
@@ -985,10 +1049,16 @@ pub fn astar_search(
         // Close-on-generation: gamemd stamps a (cell, layer) closed at the
         // moment a node is created for it and freezes its g there. The start
         // node is created before the loop, so it is stamped here.
+        let start_descriptor = PathDescriptor {
+            parent: usize::MAX,
+            height: compute_node_height(start_height, None, start_cell),
+        };
         if start_on_bridge {
+            bridge_from[start_idx] = start_descriptor;
             bridge_g[start_idx] = 0;
             bridge_closed[start_idx] = true;
         } else {
+            ground_from[start_idx] = start_descriptor;
             ground_g[start_idx] = 0;
             ground_closed[start_idx] = true;
         }
@@ -998,7 +1068,7 @@ pub fn astar_search(
             g_cost: 0,
             x: start.0,
             y: start.1,
-            height: compute_node_height(start_height, None, start_cell),
+            height: start_descriptor.height,
             on_bridge: start_on_bridge,
         }));
 
@@ -1180,8 +1250,8 @@ pub fn astar_search(
                     Some(
                         entry
                             .classify(SearchEntryQuery {
-                                from: (cx, cy),
-                                candidate: (nx, ny),
+                                from: Some((cx, cy)),
+                                candidate: SearchEntryCandidate::CopiedCoord((nx, ny)),
                                 direction: dir_index as i32,
                                 path_height: i32::from(current.height),
                             })
@@ -1426,7 +1496,10 @@ pub fn astar_search(
                     (&mut ground_g, &mut ground_from)
                 };
                 g_array[n_idx] = tentative_g;
-                from_array[n_idx] = encode_from(c_idx, on_bridge);
+                from_array[n_idx] = PathDescriptor {
+                    parent: encode_from(c_idx, on_bridge),
+                    height: neighbor_height,
+                };
                 if neighbor_use_bridge {
                     bridge_closed[n_idx] = true;
                 } else {
@@ -1464,7 +1537,10 @@ pub fn astar_search(
 
                             // Same close-on-generation rule as the compass edges.
                             ground_g[n_idx] = tentative_g;
-                            ground_from[n_idx] = encode_from(c_idx, on_bridge);
+                            ground_from[n_idx] = PathDescriptor {
+                                parent: encode_from(c_idx, on_bridge),
+                                height: neighbor_height,
+                            };
                             ground_closed[n_idx] = true;
                             let h = euclidean_heuristic(nx, ny, goal.0, goal.1);
                             open.push(Reverse(AStarNode {
@@ -1779,6 +1855,17 @@ pub struct LayeredPathStep {
     pub rx: u16,
     pub ry: u16,
     pub layer: MovementLayer,
+    /// Accepted descriptor height, preserved through reconstruction. This is
+    /// not necessarily the cell ground level or a resampled bridge layer.
+    path_height: i16,
+}
+
+impl LayeredPathStep {
+    /// Native `42AA90` copies this descriptor's height to its outgoing edge.
+    /// Both finishing passes preserve that array even when directions compact.
+    pub fn path_height(self) -> i16 {
+        self.path_height
+    }
 }
 
 /// Shared scalar projection used during map construction and synchronous Recalc.
@@ -2611,6 +2698,7 @@ pub fn find_path_with_costs(
         },
     )
     .ok()
+    .map(|steps| steps.into_iter().map(|step| (step.rx, step.ry)).collect())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2626,8 +2714,8 @@ pub(crate) fn find_path_with_costs_marker(
     entity_block_map: Option<&LayeredEntityBlockMap>,
     marker_overlay: Option<&SearchMarkerOverlay>,
     facts: MoverSearchFacts<'_>,
-) -> Result<Vec<(u16, u16)>, PathSearchFailure> {
-    let steps = astar_search(
+) -> Result<Vec<LayeredPathStep>, PathSearchFailure> {
+    astar_search(
         grid,
         start,
         MovementLayer::Ground,
@@ -2647,8 +2735,7 @@ pub(crate) fn find_path_with_costs_marker(
             resolved_terrain,
             ..Default::default()
         },
-    )?;
-    Ok(steps.into_iter().map(|s| (s.rx, s.ry)).collect())
+    )
 }
 
 /// Resolve a gamemd foundation name into pathfinding footprint dimensions.

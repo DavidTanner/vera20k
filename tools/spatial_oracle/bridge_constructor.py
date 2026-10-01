@@ -26,6 +26,32 @@ MAP, DUMMY = 0x87F7E8, 0xABDC50
 
 
 class OriginalBridgeConstructor:
+    @classmethod
+    def on_map(cls, native_map, typ, requested):
+        """Bind the constructor owner to an already established native map VM.
+
+        Cells, resident TMPs, OverlayType, map bounds and RNG belong to the
+        supplied map owner. Only object storage and empty registry capacity are
+        supplied here; the same original constructor and Mark execute.
+        """
+        self = cls.__new__(cls)
+        self.uc, self.ptrs = native_map.uc, native_map.ptrs
+        self.kind, self.typ, self.requested = 'resident', typ, tuple(requested)
+        self.overlay_id = self.read_u32(typ + 0x294)
+        self.obj, self.coord = native_map.allocate(0xB0), native_map.allocate(4)
+        self.cell = self.ptrs[self.requested]
+        self.scenario = self.read_u32(0xA8B230)
+        self.uc.mem_write(self.coord, packed(*requested))
+        self.required = [0x5F3900, 0x410230, 0x68BCB0, 0x47C550]
+        return self
+
+    @staticmethod
+    def empty_registries(u, allocate, capacity=1024):
+        """Original startup vector vtables with supplied spare storage."""
+        for registry, vtable in zip(REGISTRIES, (0x7E4F64, 0x7E91EC, 0x7E91EC, 0x7E91EC, 0x7E9D24)):
+            u.mem_write(registry, dwords(vtable, allocate(capacity * 4), capacity, 0, 0, 0))
+        u.mem_write(0xB0F698, dwords(0x7E91EC, allocate(capacity * 4), capacity, 0, 0, 0))
+
     def __init__(self, kind, overlay_id, requested=(16, 16)):
         self.kind, self.overlay_id, self.requested = kind, overlay_id, requested
         self.uc = u = Uc(UC_ARCH_X86, UC_MODE_32)
@@ -50,14 +76,10 @@ class OriginalBridgeConstructor:
         u.mem_write(DUMMY, bytes(0x200))
         u.mem_write(DUMMY + 0x38, dwords(0xffff))
         u.mem_write(DUMMY + 0x44, dwords(-1))
-        for n, registry in enumerate(REGISTRIES):
-            # Actual startup vtable stores:4E7AFD,7252ED,72536D,7253ED,4E68FD.
-            u.mem_write(registry, dwords((0x7E4F64, 0x7E91EC, 0x7E91EC, 0x7E91EC, 0x7E9D24)[n]))
-            u.mem_write(registry + 4, dwords(D + 0x30000 + n * 0x100, 16))
-            u.mem_write(registry + 16, dwords(0))
-        u.mem_write(0xB0F69C, dwords(D + 0x31000, 16))
-        u.mem_write(0xB0F698, dwords(0x7E91EC))  # Startup72586D.
-        u.mem_write(0xB0F6A8, dwords(0))
+        # Actual startup vtable stores:4E7AFD,7252ED,72536D,7253ED,4E68FD;
+        # queue startup72586D. Preserve this fixture's established addresses.
+        registry_storage = iter([D + 0x30000 + n * 0x100 for n in range(5)] + [D + 0x31000])
+        self.empty_registries(u, lambda _size: next(registry_storage), capacity=16)
         u.mem_write(0xA8B230, dwords(self.scenario))
         u.mem_write(self.scenario + 0x214, dwords(1000))
         u.mem_write(0xA8E9A0, b'\x01')
@@ -127,9 +149,14 @@ class OriginalBridgeConstructor:
     def read_u32(self, address):
         return struct.unpack('<I', self.uc.mem_read(address, 4))[0]
 
-    def run(self):
+    def construct(self):
+        """Execute construction independently of the optional queue drain."""
         returned = self.call(0x5FC380, self.obj, (self.typ, self.coord, -1), self.required)
         assert returned == self.obj
+        return returned
+
+    def run(self):
+        self.construct()
         u = self.uc
         b = u.mem_read(self.obj, 0xB0)
         result = dict(kind=self.kind, overlay_id=self.overlay_id, requested=self.requested,

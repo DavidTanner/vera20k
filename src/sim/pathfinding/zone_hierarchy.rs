@@ -14,6 +14,123 @@ use super::zone_map::{ZONE_INVALID, ZoneId};
 use crate::rules::locomotor_type::MovementZone;
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53};
 
+/// Retained House+57E4 reader. No Map/GetCell lookup belongs to585F40.
+pub(crate) struct ZonePrecheckThreat<'a> {
+    coefficient: NativeF64Bits,
+    padded_lookup: &'a dyn Fn(i32) -> Result<i32, String>,
+}
+
+impl<'a> ZonePrecheckThreat<'a> {
+    pub(crate) fn new(
+        coefficient: NativeF64Bits,
+        padded_lookup: &'a dyn Fn(i32) -> Result<i32, String>,
+    ) -> Self {
+        Self {
+            coefficient,
+            padded_lookup,
+        }
+    }
+}
+
+/// Original585F40. Native seed records identify the four-cell threat grid;
+/// coarse level2 uses two leading corners of each endpoint block. Signed ADD
+/// wraps before SAR1, and every coordinate addition wraps as a signed word.
+/// Executable controls: fv_cell_attack/zone_threat.{py,json,meta.json}.
+fn estimate_zone_threat(
+    graph: &ZoneLevelGraph,
+    level: usize,
+    source: ZoneId,
+    target: ZoneId,
+    lookup: &dyn Fn(i32) -> Result<i32, String>,
+) -> Result<i32, String> {
+    if level == 0 || level > 2 {
+        return Ok(0);
+    }
+    let index = |zone| {
+        graph
+            .record(zone)
+            .and_then(ZoneRecord::native_threat_index)
+            .ok_or_else(|| format!("hierarchy level{level} zone{zone} lacks native threat seed"))
+    };
+    let target_index = index(target)?;
+    if level == 1 {
+        return lookup(target_index);
+    }
+    let decode = |index: i32| {
+        let remainder = index.wrapping_sub(1) % 130;
+        let x = remainder.wrapping_mul(4);
+        let y = (index.wrapping_sub(remainder) / 130)
+            .wrapping_mul(4)
+            .wrapping_sub(4);
+        let raw = (x as i16, y as i16);
+        let aligned = (
+            raw.0.wrapping_sub(i16::from((x / 4) % 2 != 0)),
+            raw.1.wrapping_sub(i16::from((y / 4) % 2 != 0)),
+        );
+        (raw, aligned)
+    };
+    let (source_raw, source) = decode(index(source)?);
+    let (target_raw, target) = decode(target_index);
+    let read =
+        |coord: (i16, i16)| lookup(crate::sim::house_threat::HouseSpatialThreat::index(coord));
+    if source == target {
+        let a = read(target_raw)?;
+        return Ok(a.wrapping_add(read(source_raw)?) >> 1);
+    }
+    let direction = if source.0 < target.0 {
+        if source.1 < target.1 {
+            3
+        } else if source.1 == target.1 {
+            2
+        } else {
+            1
+        }
+    } else if source.0 > target.0 {
+        if source.1 < target.1 {
+            5
+        } else if source.1 == target.1 {
+            6
+        } else {
+            7
+        }
+    } else if source.1 < target.1 {
+        4
+    } else {
+        0
+    };
+    // Original bytes82A984/82A9C4; offsets populated by CRT585EE0.
+    const START: [[usize; 2]; 8] = [
+        [0, 1],
+        [1, 1],
+        [1, 3],
+        [3, 3],
+        [2, 3],
+        [2, 2],
+        [0, 2],
+        [0, 0],
+    ];
+    const END: [[usize; 2]; 8] = [
+        [2, 3],
+        [2, 2],
+        [0, 2],
+        [0, 0],
+        [0, 1],
+        [1, 1],
+        [1, 3],
+        [3, 3],
+    ];
+    const CORNERS: [(i16, i16); 4] = [(0, 0), (4, 0), (0, 4), (4, 4)];
+    let sample = |base: (i16, i16), corner: usize| {
+        let offset = CORNERS[corner];
+        read((base.0.wrapping_add(offset.0), base.1.wrapping_add(offset.1)))
+    };
+    let a = sample(source, START[direction][0])?;
+    let b = sample(source, START[direction][1])?;
+    let c = sample(target, END[direction][0])?;
+    let d = sample(target, END[direction][1])?;
+    Ok(a.min(b).wrapping_add(c.min(d)) >> 1)
+}
+
 pub(crate) const ZONE_PRECHECK_LEVELS: usize = 3;
 const TOP_LEVEL: usize = 2;
 /// Per-terrain-type base cost `Zone_precheck` @ `0x0042C290` adds per hop.
@@ -33,6 +150,8 @@ pub(crate) struct ZoneRecord {
     pub zone_id: ZoneId,
     pub parent: ZoneId,
     pub zone_type: u8,
+    /// Native record+20, produced from the scanline seed (not a centroid).
+    native_threat_index: Option<i32>,
 }
 
 impl ZoneRecord {
@@ -41,7 +160,26 @@ impl ZoneRecord {
             zone_id,
             parent,
             zone_type,
+            native_threat_index: None,
         }
+    }
+
+    /// Original581F90 and584550 truncate signed seed words by4, then add
+    /// the House+57E4 padding. Both full and local rebuilds use this owner.
+    pub(crate) fn from_seed(
+        zone_id: ZoneId,
+        parent: ZoneId,
+        zone_type: u8,
+        seed: (i16, i16),
+    ) -> Self {
+        let mut record = Self::new(zone_id, parent, zone_type);
+        record.native_threat_index =
+            Some(crate::sim::house_threat::HouseSpatialThreat::index(seed));
+        record
+    }
+
+    pub(crate) fn native_threat_index(self) -> Option<i32> {
+        self.native_threat_index
     }
 }
 
@@ -271,6 +409,47 @@ pub(crate) struct ZoneHierarchy {
 }
 
 impl ZoneHierarchy {
+    /// Fold the retained navigation history, including ordered native edges.
+    /// Original584550 appends/replaces records after local changes;581F90 can
+    /// produce a different graph from the same current Cell facts. Record+20
+    /// then supplies585F40 threat reads and42C290 route selection. Ordinary
+    /// LoadContent67E8CD intentionally rebuilds this history through581F50.
+    pub(crate) fn fold_history_hash(&self, hasher: &mut impl std::hash::Hasher) {
+        use std::hash::Hash;
+
+        for graph in &self.levels {
+            graph.width.hash(hasher);
+            graph.height.hash(hasher);
+            (graph.records.len() as u64).hash(hasher);
+            for record in &graph.records {
+                record.is_some().hash(hasher);
+                if let Some(record) = record {
+                    record.zone_id.hash(hasher);
+                    record.parent.hash(hasher);
+                    record.zone_type.hash(hasher);
+                    record.native_threat_index.hash(hasher);
+                }
+            }
+            (graph.edges.len() as u64).hash(hasher);
+            for edges in &graph.edges {
+                (edges.len() as u64).hash(hasher);
+                for edge in edges {
+                    edge.neighbor.hash(hasher);
+                    edge.flag.hash(hasher);
+                }
+            }
+            (graph.cell_zone_ids.len() as u64).hash(hasher);
+            for id in &graph.cell_zone_ids {
+                id.hash(hasher);
+            }
+            (graph.native_padding_zone_ids.len() as u64).hash(hasher);
+            for (index, id) in &graph.native_padding_zone_ids {
+                (*index as u64).hash(hasher);
+                id.hash(hasher);
+            }
+        }
+    }
+
     /// Levels are passed low-to-high: level 0, level 1, level 2.
     pub(crate) fn new(
         level0: ZoneLevelGraph,
@@ -385,8 +564,8 @@ struct PrecheckNode {
 
 /// The native heap's strict comparisons preserve its array order on ties.
 /// `BinaryHeap` with a sequence tie-break does not reproduce this order.
-/// All costs in the zero-threat domain are finite/nonnegative, so their
-/// binary32 bit ordering is their numerical ordering.
+/// Signed binary32 costs compare through the existing deterministic FP owner;
+/// original ftol's consumed low dword may be negative in raw overflow controls.
 #[derive(Default)]
 struct PrecheckQueue(Vec<usize>);
 
@@ -396,7 +575,7 @@ impl PrecheckQueue {
         self.0.push(node);
         while position != 0 {
             let parent = (position - 1) / 2;
-            if nodes[self.0[parent]].cost.bits() <= nodes[node].cost.bits() {
+            if !precheck_cost_less(nodes[node].cost, nodes[self.0[parent]].cost) {
                 break;
             }
             self.0[position] = self.0[parent];
@@ -417,7 +596,7 @@ impl PrecheckQueue {
             let mut smallest = position;
             for child in [position * 2 + 1, position * 2 + 2] {
                 if child < self.0.len()
-                    && nodes[self.0[child]].cost.bits() < nodes[self.0[smallest]].cost.bits()
+                    && precheck_cost_less(nodes[self.0[child]].cost, nodes[self.0[smallest]].cost)
                 {
                     smallest = child;
                 }
@@ -440,11 +619,19 @@ impl PrecheckQueue {
 /// different spill histories choose different paths than integer1000 scaling.
 /// The selected hierarchy corridor therefore requires these deterministic
 /// binary32 stores; reusing the existing arithmetic owner avoids host FP modes.
-fn precheck_edge_cost(cost: NativeF32Bits, base: i32, flag: u8) -> NativeF32Bits {
+fn precheck_cost_less(a: NativeF32Bits, b: NativeF32Bits) -> bool {
+    X87Chop53::compare(
+        X87Chop53::load_f32(a).expect("finite hierarchy cost"),
+        X87Chop53::load_f32(b).expect("finite hierarchy cost"),
+    ) == crate::util::native_x87::X87Ordering::Less
+}
+
+fn precheck_edge_cost(cost: NativeF32Bits, base: i32, threat: i32, flag: u8) -> NativeF32Bits {
     let mut total = X87Chop53::add(
         X87Chop53::load_i32(base),
         X87Chop53::load_f32(cost).expect("finite precheck node cost"),
     );
+    total = X87Chop53::add(total, X87Chop53::load_i32(threat));
     if flag != 0 {
         total = X87Chop53::add(
             total,
@@ -461,26 +648,35 @@ struct PrecheckLevelResult {
     pops: Vec<(usize, ZoneId, u32, u32)>,
 }
 
-/// Zero-threat `Zone_precheck` @ `0x0042C290`.
-///
-/// The old "slope" annotation was wrong: `4DC760` reads Foot+530 (or the
-/// TeamType+F2 override); `585F40` reads the House threat grid. Ordinary human
-/// FV has +530=0 and no Team, so that branch is absent. Nonzero threat-avoidance
-/// cost remains a separate mechanism; it can change routes for miners and AI
-/// teams. This owner preserves edge flags, float stores, heap order and each
-/// accepted node's predecessor for every existing caller.
+/// Original42C290: retained House threat is estimated before best-cost,
+/// parent/passability and exclusion gates, multiplied by Foot4DC760's
+/// coefficient, and converted by original7C5F00 before the binary32 cost spill.
+/// `None` models its NULL Foot input; live Foot callers supply the shared House.
 pub(crate) fn zone_precheck_flat(
     hierarchy: &ZoneHierarchy,
     start_level0: ZoneId,
     goal_level0: ZoneId,
     movement_zone: MovementZone,
     exclusions: &ZonePrecheckExclusions,
-) -> ZonePrecheckOutcome {
+    threat: Option<ZonePrecheckThreat<'_>>,
+) -> Result<ZonePrecheckOutcome, String> {
+    let coefficient = threat
+        .as_ref()
+        .map(|context| X87Chop53::load_f64(context.coefficient))
+        .transpose()
+        .map_err(|e| e.to_string())?;
+    let active_threat = coefficient.filter(|coefficient| {
+        X87Chop53::compare(
+            *coefficient,
+            X87Chop53::load_f64(NativeF64Bits::from_bits(0x3ee4_f8b5_88e3_68f1))
+                .expect("native threshold"),
+        ) == crate::util::native_x87::X87Ordering::Greater
+    });
     let Some(start_zones) = hierarchy.ancestors_from_level0(start_level0) else {
-        return ZonePrecheckOutcome::Failed;
+        return Ok(ZonePrecheckOutcome::Failed);
     };
     let Some(goal_zones) = hierarchy.ancestors_from_level0(goal_level0) else {
-        return ZonePrecheckOutcome::Failed;
+        return Ok(ZonePrecheckOutcome::Failed);
     };
 
     let mut result = ZonePrecheckResult::new();
@@ -498,8 +694,10 @@ pub(crate) fn zone_precheck_flat(
             movement_zone,
             parent_marked,
             exclusions,
-        ) else {
-            return ZonePrecheckOutcome::Failed;
+            active_threat.zip(threat.as_ref().map(|context| context.padded_lookup)),
+        )?
+        else {
+            return Ok(ZonePrecheckOutcome::Failed);
         };
         result.marked[level] = selected.path.iter().copied().collect();
         result.paths[level] = selected.path;
@@ -507,9 +705,10 @@ pub(crate) fn zone_precheck_flat(
         result.pops.extend(selected.pops);
     }
 
-    ZonePrecheckOutcome::Passed(result)
+    Ok(ZonePrecheckOutcome::Passed(result))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn search_precheck_level(
     graph: &ZoneLevelGraph,
     level: usize,
@@ -518,21 +717,26 @@ fn search_precheck_level(
     movement_zone: MovementZone,
     parent_marked: Option<&BTreeSet<ZoneId>>,
     exclusions: &ZonePrecheckExclusions,
-) -> Option<PrecheckLevelResult> {
-    graph.record(start)?;
-    graph.record(goal)?;
+    threat: Option<(
+        crate::util::native_x87::X87Value,
+        &dyn Fn(i32) -> Result<i32, String>,
+    )>,
+) -> Result<Option<PrecheckLevelResult>, String> {
+    if graph.record(start).is_none() || graph.record(goal).is_none() {
+        return Ok(None);
+    }
     // 42C3B0..42C3E4 checks equality before any movement-type gate. The
     // start record is not type-gated even when a search is needed.
     if start == goal {
-        return Some(PrecheckLevelResult {
+        return Ok(Some(PrecheckLevelResult {
             path: vec![start],
             #[cfg(test)]
             pops: Vec::new(),
-        });
+        }));
     }
 
     let zone_count = graph.zone_count() as usize;
-    let mut best = vec![u32::MAX; zone_count + 1];
+    let mut best = vec![None; zone_count + 1];
     let mut nodes = vec![PrecheckNode {
         parent: None,
         zone: start,
@@ -540,7 +744,7 @@ fn search_precheck_level(
         depth: 0,
     }];
     let mut heap = PrecheckQueue::default();
-    best[start as usize] = 0;
+    best[start as usize] = Some(NativeF32Bits::from_bits(0));
     heap.push(0, &nodes);
     #[cfg(test)]
     let mut pops = Vec::new();
@@ -551,11 +755,11 @@ fn search_precheck_level(
         #[cfg(test)]
         pops.push((level, zone, cost.bits(), depth));
         if zone == goal {
-            return Some(PrecheckLevelResult {
+            return Ok(Some(PrecheckLevelResult {
                 path: reconstruct_zone_path(&nodes, index),
                 #[cfg(test)]
                 pops,
-            });
+            }));
         }
 
         // Native pops and expands retained records even after a cheaper
@@ -563,12 +767,30 @@ fn search_precheck_level(
         // the only repeated-visit filter (42C5D8..42C5EA).
         for edge in graph.edges(zone) {
             let neighbor = edge.neighbor;
-            if neighbor as usize > zone_count || exclusions.contains(level, zone, neighbor) {
+            if neighbor as usize > zone_count {
                 continue;
             }
             let Some(record) = graph.record(neighbor) else {
                 continue;
             };
+            //42C580 precedes all route-admission gates, including a known
+            //best cost and explicit edge exclusion. Preserve read order.
+            let threat_cost = if let Some((coefficient, lookup)) = threat {
+                let estimate = estimate_zone_threat(graph, level, zone, neighbor, lookup)?;
+                X87Chop53::ftol_i32_low_masked(X87Chop53::mul(
+                    X87Chop53::load_i32(estimate),
+                    coefficient,
+                ))
+            } else {
+                0
+            };
+            let Some(base_cost) = ZONE_BASE_COSTS.get(record.zone_type as usize).copied() else {
+                continue;
+            };
+            let new_cost = precheck_edge_cost(cost, base_cost, threat_cost, edge.flag);
+            if best[neighbor as usize].is_some_and(|best| !precheck_cost_less(new_cost, best)) {
+                continue;
+            }
             if let Some(marked) = parent_marked {
                 let parent_allowed = record.zone_type == 1 || marked.contains(&record.parent);
                 if !parent_allowed {
@@ -578,12 +800,11 @@ fn search_precheck_level(
             if !passability::is_passable_for_zone(record.zone_type, movement_zone) {
                 continue;
             }
-            let Some(base_cost) = ZONE_BASE_COSTS.get(record.zone_type as usize).copied() else {
+            if exclusions.contains(level, zone, neighbor) {
                 continue;
-            };
-            let new_cost = precheck_edge_cost(cost, base_cost, edge.flag);
-            if new_cost.bits() < best[neighbor as usize] {
-                best[neighbor as usize] = new_cost.bits();
+            }
+            {
+                best[neighbor as usize] = Some(new_cost);
                 let next = nodes.len();
                 nodes.push(PrecheckNode {
                     parent: Some(index),
@@ -596,7 +817,7 @@ fn search_precheck_level(
         }
     }
 
-    None
+    Ok(None)
 }
 
 fn reconstruct_zone_path(nodes: &[PrecheckNode], goal: usize) -> Vec<ZoneId> {
@@ -656,7 +877,9 @@ mod tests {
             6,
             MovementZone::Crusher,
             &ZonePrecheckExclusions::default(),
-        );
+            None,
+        )
+        .unwrap();
         let ZonePrecheckOutcome::Passed(result) = outcome else {
             panic!("precheck should pass");
         };
@@ -690,7 +913,9 @@ mod tests {
             4,
             MovementZone::Crusher,
             &ZonePrecheckExclusions::default(),
-        ) else {
+            None,
+        )
+        .unwrap() else {
             panic!("precheck should pass");
         };
         assert_eq!(result.paths[0], vec![1, 3, 4]);
@@ -718,7 +943,9 @@ mod tests {
             4,
             MovementZone::Normal,
             &ZonePrecheckExclusions::default(),
-        ) else {
+            None,
+        )
+        .unwrap() else {
             panic!("precheck should pass");
         };
         assert_eq!(result.paths[0], vec![1, 3, 4]);
@@ -737,7 +964,9 @@ mod tests {
             6,
             MovementZone::Normal,
             &ZonePrecheckExclusions::default(),
-        ) else {
+            None,
+        )
+        .unwrap() else {
             panic!("precheck should pass");
         };
         assert_eq!(
@@ -760,7 +989,9 @@ mod tests {
             6,
             MovementZone::Crusher,
             &ZonePrecheckExclusions::default(),
-        ) else {
+            None,
+        )
+        .unwrap() else {
             panic!("precheck should pass");
         };
         assert_eq!(result.paths[0], vec![1, 2, 7, 6]);
@@ -789,7 +1020,9 @@ mod tests {
                 6,
                 MovementZone::Normal,
                 &ZonePrecheckExclusions::default(),
-            ),
+                None
+            )
+            .unwrap(),
             ZonePrecheckOutcome::Failed,
             "type 1 bypasses the parent gate, not the movement-zone passability matrix"
         );
@@ -800,7 +1033,9 @@ mod tests {
             6,
             MovementZone::Crusher,
             &ZonePrecheckExclusions::default(),
-        ) else {
+            None,
+        )
+        .unwrap() else {
             panic!("crusher should be allowed through type 1");
         };
         assert_eq!(result.paths[0], vec![1, 7, 6]);
@@ -827,7 +1062,9 @@ mod tests {
                 2,
                 MovementZone::Crusher,
                 &ZonePrecheckExclusions::default(),
-            ),
+                None
+            )
+            .unwrap(),
             ZonePrecheckOutcome::Failed
         );
     }
@@ -841,7 +1078,7 @@ mod tests {
         assert!(exclusions.insert(0, 3, 4));
 
         let ZonePrecheckOutcome::Passed(result) =
-            zone_precheck_flat(&hierarchy, 1, 6, MovementZone::Normal, &exclusions)
+            zone_precheck_flat(&hierarchy, 1, 6, MovementZone::Normal, &exclusions, None).unwrap()
         else {
             panic!("precheck should pass through another route");
         };
@@ -857,7 +1094,7 @@ mod tests {
         assert!(exclusions.insert(0, 4, 5));
 
         let ZonePrecheckOutcome::Passed(result) =
-            zone_precheck_flat(&hierarchy, 1, 6, MovementZone::Normal, &exclusions)
+            zone_precheck_flat(&hierarchy, 1, 6, MovementZone::Normal, &exclusions, None).unwrap()
         else {
             panic!("precheck should pass through alternate edge into zone 5");
         };
@@ -883,7 +1120,7 @@ mod tests {
         assert!(exclusions.insert(0, 4, 3));
 
         let ZonePrecheckOutcome::Passed(result) =
-            zone_precheck_flat(&hierarchy, 1, 6, MovementZone::Normal, &exclusions)
+            zone_precheck_flat(&hierarchy, 1, 6, MovementZone::Normal, &exclusions, None).unwrap()
         else {
             panic!("precheck should treat reversed exclusion as the same edge");
         };
@@ -909,7 +1146,9 @@ mod tests {
                 2,
                 MovementZone::Normal,
                 &ZonePrecheckExclusions::default(),
-            ),
+                None
+            )
+            .unwrap(),
             ZonePrecheckOutcome::Failed
         );
     }

@@ -80,8 +80,10 @@ fn tube_hierarchy_restore_prepares_detached_dummy_then_publishes_terminal_fields
                 l.zone_at(2, 16),
                 l.zone_at(24, 16),
                 MovementZone::Normal,
-                &ZonePrecheckExclusions::default()
-            ),
+                &ZonePrecheckExclusions::default(),
+                None,
+            )
+            .unwrap(),
             ZonePrecheckOutcome::Passed(_)
         )
     };

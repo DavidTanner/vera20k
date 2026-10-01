@@ -9,6 +9,134 @@ use serde_json::Value;
 
 const WIDTH: u16 = 160;
 
+fn threat_packet() -> Value {
+    serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/fv_cell_attack/zone_threat.json"
+    ))
+    .unwrap()
+}
+
+fn grid_value(grid: &Value, index: i32) -> i32 {
+    grid["overrides"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row[0].as_i64().unwrap() == i64::from(index))
+        .map_or(grid["default"].as_i64().unwrap() as i32, |row| {
+            row[1].as_i64().unwrap() as i32
+        })
+}
+
+#[test]
+fn original_zone_threat_sampling_matches_all_directions_and_signed_average() {
+    let packet = threat_packet();
+    assert_eq!(
+        packet["corners"],
+        serde_json::json!([0, 0, 4, 0, 0, 4, 4, 4])
+    );
+    for row in packet["helpers"].as_array().unwrap() {
+        let reads = std::cell::RefCell::new(Vec::new());
+        let lookup = |index| {
+            reads.borrow_mut().push(index);
+            Ok(grid_value(&row["grid"], index))
+        };
+        let mut graph = ZoneLevelGraph::new(2);
+        for (zone, key) in [(1, "source_index"), (2, "target_index")] {
+            let mut record = ZoneRecord::new(zone, 0, 0);
+            record.native_threat_index = Some(row[key].as_i64().unwrap() as i32);
+            graph.set_record(record);
+        }
+        let answer = estimate_zone_threat(
+            &graph,
+            row["level"].as_u64().unwrap() as usize,
+            1,
+            2,
+            &lookup,
+        )
+        .unwrap();
+        assert_eq!(
+            i64::from(answer),
+            row["returned"].as_i64().unwrap(),
+            "{}",
+            row["name"]
+        );
+        let expected: Vec<i32> = row["reads"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["index"].as_i64().unwrap() as i32)
+            .collect();
+        assert_eq!(*reads.borrow(), expected, "{} read order", row["name"]);
+    }
+}
+
+#[test]
+fn original_positive_zone_prechecks_match_routes_float_costs_and_threat_reads() {
+    let packet = threat_packet();
+    for row in packet["prechecks"].as_array().unwrap() {
+        let graph = hierarchy(&row["graphs"], None);
+        let reads = std::cell::RefCell::new(Vec::new());
+        let lookup = |index| {
+            reads.borrow_mut().push(index);
+            Ok(grid_value(&row["grid"], index))
+        };
+        let coefficient = NativeF64Bits::from_bits(
+            u64::from_str_radix(row["coefficient_bits"].as_str().unwrap(), 16).unwrap(),
+        );
+        let outcome = zone_precheck_flat(
+            &graph,
+            1,
+            4,
+            MovementZone::Normal,
+            &ZonePrecheckExclusions::default(),
+            Some(ZonePrecheckThreat::new(coefficient, &lookup)),
+        )
+        .unwrap();
+        let ZonePrecheckOutcome::Passed(result) = outcome else {
+            panic!("{}", row["name"]);
+        };
+        assert_eq!(
+            result.paths,
+            expected_paths(&row["flow"][0]),
+            "{} paths",
+            row["name"]
+        );
+        assert_eq!(
+            result.pops,
+            expected_pops(&row["hierarchy"]),
+            "{} cost/order",
+            row["name"]
+        );
+        let expected: Vec<i32> = row["reads"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["index"].as_i64().unwrap() as i32)
+            .collect();
+        assert_eq!(*reads.borrow(), expected, "{} threat reads", row["name"]);
+    }
+}
+
+#[test]
+fn original_full_and_local_hierarchy_producers_retain_seed_threat_index() {
+    let packet = threat_packet();
+    let writes = packet["producer_writes"].as_array().unwrap();
+    assert!(writes.iter().any(|row| row["pc"] == "005822ab"));
+    assert!(writes.iter().any(|row| row["pc"] == "00584a78"));
+    for row in writes {
+        let seed = cell(&row["seed"]);
+        let record = ZoneRecord::from_seed(row["zone"].as_u64().unwrap() as u16, 0, 0, seed);
+        assert_eq!(
+            record.native_threat_index().unwrap() as u32,
+            row["index"].as_u64().unwrap() as u32,
+            "{} level{} zone{} seed{seed:?}",
+            row["pc"],
+            row["level"],
+            row["zone"]
+        );
+    }
+}
+
 fn cell(value: &Value) -> (i16, i16) {
     (
         value[0].as_i64().unwrap() as i16,
@@ -48,11 +176,14 @@ fn hierarchy(
             let mut result =
                 ZoneLevelGraph::new((rows.len() - 1) as u16).with_cell_zone_ids(ids, WIDTH, WIDTH);
             for (id, record) in rows.iter().enumerate() {
-                result.set_record(ZoneRecord::new(
+                let mut native_record = ZoneRecord::new(
                     id as u16,
                     record["parent"].as_u64().unwrap() as u16,
                     record["zone_type"].as_u64().unwrap() as u8,
-                ));
+                );
+                native_record.native_threat_index =
+                    record["threat_index"].as_i64().map(|v| v as i32);
+                result.set_record(native_record);
                 for edge in record["edges"].as_array().unwrap() {
                     result.push_edge(
                         id as u16,
@@ -160,7 +291,9 @@ fn native_controls_cover_heap_ties_head_admission_and_binary32_costs() {
             row["target_id"].as_u64().unwrap() as u16,
             MovementZone::Normal,
             &ZonePrecheckExclusions::default(),
-        );
+            None,
+        )
+        .unwrap();
         let original = row["flow"]
             .as_array()
             .unwrap()
@@ -229,7 +362,9 @@ fn physical_fv_candidate_and_fallback_costs_match_four_native_bridge_states() {
             goal_ids[0],
             MovementZone::Normal,
             &ZonePrecheckExclusions::default(),
-        );
+            None,
+        )
+        .unwrap();
         let preflight = &row["preflight"];
         if preflight["returned_al"] == 0 {
             assert_eq!(precheck, ZonePrecheckOutcome::Failed, "{}", row["name"]);

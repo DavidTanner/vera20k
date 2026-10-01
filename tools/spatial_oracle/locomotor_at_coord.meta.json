@@ -14,7 +14,8 @@
     "Original vtable slots, TurnTrack descriptors, RawTrack metadata and point arrays are retained",
     "Drive72 and ordinary Ship64 TurnTrack descriptors; inputs are bounded branch witnesses",
     "Mech, Tunnel and DropPod dormant TS behavior is excluded; active false families use original leaf",
-    "Signed/overflow cases describe native scalar behavior, not reachability on stock maps"
+    "Signed/overflow cases describe native scalar behavior, not reachability on stock maps",
+    "Three marker controls execute original42B080 signed-cell center/height prefix through stop-before42B0F8, then original slot40; no Map lookup or full nearby-list scan executes. Requested height is zero, with original level-step global bytes recorded; no startup claim for that global."
   ],
   "substitutions": [],
   "entry_points": {
@@ -26,9 +27,11 @@
     "ship_query": "0x006A3F50",
     "walk_query": "0x0075CA80",
     "hover_query": "0x00517210",
+    "nearby_probe_prefix": "0x0042B080",
+    "nearby_probe_stop": "0x0042B0F8",
     "drive_transform": "0x004B4780",
     "ship_transform": "0x006A3DB0",
     "false_query": "0x004B6630"
   },
-  "payload_sha256": "a04c47978aa54163172fb6c132a6ec5cefd5ec2d45bfb38f72458704e688e792"
+  "payload_sha256": "4c346212830fea644f467c9ef4d5871732d164f3873671927b411e20a44868aa"
 }

@@ -148,7 +148,7 @@ impl NavigationCaches<'_> {
         entities: &EntityStore,
         interner: &StringInterner,
         rules: &RuleSet,
-    ) -> BTreeSet<(u16, u16)> {
+    ) -> Result<BTreeSet<(u16, u16)>, String> {
         let mut grid = PathGrid::from_resolved_terrain_with_bridges(terrain);
         *self.terrain_costs = build_canonical_terrain_cost_grids(terrain);
 
@@ -157,8 +157,22 @@ impl NavigationCaches<'_> {
             grid.block_structure_cell(x, y);
         }
 
-        self.rebuild_zones(&grid, terrain, bridges);
-        structure_cells
+        if let Some(zones) = self.zones.as_mut()
+            && zones.is_native_load_pending()
+        {
+            zones.finish_native_load(
+                &grid,
+                terrain,
+                bridges
+                    .map(BridgeRuntimeState::endpoint_records)
+                    .unwrap_or(&[]),
+                self.playfield_bounds,
+            )?;
+            *self.path = Some(Arc::new(grid));
+        } else {
+            self.rebuild_zones(&grid, terrain, bridges);
+        }
+        Ok(structure_cells)
     }
 
     /// Publish the path/cost views of one completed47D2B0 Recalc before another

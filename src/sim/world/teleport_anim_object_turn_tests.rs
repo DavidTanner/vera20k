@@ -148,8 +148,18 @@ fn teleport_object_turn_moves_retained_foot_neighbor_counts() {
             .collect(),
     ));
     sim.overlay_grid = Some(OverlayGrid::new(32, 32));
-    // This fixture's original reveal preceded its map installation. Establish
-    // that admitted Unlimbo's counters before executing the real object turn.
+    // This component fixture's Reveal preceded map installation. Complete its
+    // admitted Unlimbo's map-dependent producers in native order before the
+    // object turn: Techno6F6EDE threat, then Foot4D72xx neighbor counters.
+    sim.spatial_threat_after_unlimbo(1, &rules, None);
+    assert!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .cached_spatial_threat()
+            .is_some()
+    );
     sim.foot_neighbors_after_unlimbo(1, Some(&rules));
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .unwrap();

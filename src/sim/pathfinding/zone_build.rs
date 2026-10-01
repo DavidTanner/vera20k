@@ -32,7 +32,7 @@ pub(crate) const NEIGHBORS: [(i32, i32, bool); 8] = [
 ];
 
 /// Shared persistent topology projected through all 13 MovementZone rows.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BaseZoneTopology {
     /// Derived record source Size, shared by full and incremental hierarchy use.
     pub(crate) native_bridge_source_size: Option<(i32, i32)>,
@@ -1538,11 +1538,11 @@ mod tests {
         );
         assert_eq!(
             level2.record(1),
-            Some(ZoneRecord::new(1, 0, zone_class::GROUND))
+            Some(ZoneRecord::from_seed(1, 0, zone_class::GROUND, (0, 0)))
         );
         assert_eq!(
             level2.record(2),
-            Some(ZoneRecord::new(2, 0, zone_class::GROUND))
+            Some(ZoneRecord::from_seed(2, 0, zone_class::GROUND, (8, 0)))
         );
 
         let level1 = hierarchy.level(1).unwrap();
@@ -1553,15 +1553,15 @@ mod tests {
         );
         assert_eq!(
             level1.record(1),
-            Some(ZoneRecord::new(1, 1, zone_class::GROUND))
+            Some(ZoneRecord::from_seed(1, 1, zone_class::GROUND, (0, 0)))
         );
         assert_eq!(
             level1.record(2),
-            Some(ZoneRecord::new(2, 1, zone_class::GROUND))
+            Some(ZoneRecord::from_seed(2, 1, zone_class::GROUND, (4, 0)))
         );
         assert_eq!(
             level1.record(3),
-            Some(ZoneRecord::new(3, 2, zone_class::GROUND))
+            Some(ZoneRecord::from_seed(3, 2, zone_class::GROUND, (8, 0)))
         );
 
         let level0 = hierarchy.level(0).unwrap();
@@ -1573,7 +1573,12 @@ mod tests {
         for (zone, parent) in [(1, 1), (2, 1), (3, 2), (4, 2), (5, 3)] {
             assert_eq!(
                 level0.record(zone),
-                Some(ZoneRecord::new(zone, parent, zone_class::GROUND))
+                Some(ZoneRecord::from_seed(
+                    zone,
+                    parent,
+                    zone_class::GROUND,
+                    ((zone as i16 - 1) * 2, 0)
+                ))
             );
         }
         assert_eq!(level0.edges(1), &[ZoneEdgeRecord::new(2, 0)]);
@@ -1619,11 +1624,11 @@ mod tests {
         );
         assert_eq!(
             level0.record(1),
-            Some(ZoneRecord::new(1, 1, zone_class::GROUND))
+            Some(ZoneRecord::from_seed(1, 1, zone_class::GROUND, (0, 0)))
         );
         assert_eq!(
             level0.record(2),
-            Some(ZoneRecord::new(2, 2, zone_class::BEACH))
+            Some(ZoneRecord::from_seed(2, 2, zone_class::BEACH, (2, 0)))
         );
         assert_eq!(level0.edges(2), &[ZoneEdgeRecord::new(1, 1)]);
         assert_eq!(level0.edges(1), &[ZoneEdgeRecord::new(2, 1)]);

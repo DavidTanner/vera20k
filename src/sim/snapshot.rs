@@ -783,7 +783,14 @@ use crate::sim::world::Simulation;
 // 272 -> 273: Reveal commits every unit's and aircraft's Unlimbo Z, and the
 // Fly wrapper no longer rebuilds a missing one from the altitude cache. A v272
 // save can hold a revealed Fly aircraft without an exact Z. No fields change.
-const SNAPSHOT_VERSION: u32 = 273;
+// 273 -> 274: Foot navigation retains its Unlimbo threat coefficient,
+// TeamType metadata retains AvoidThreats, each House persists its spatial
+// threat grid, and Techno retains its optional contribution. Bincode changes.
+// ZoneGrid retains the native saved base class/height/base-ID plane and13 raw
+// movement rows; LoadContent67E8CD rebuilds its hierarchy after map binding.
+// State hashing also includes the retained navigation topology/history;
+// ordinary load still performs the native full hierarchy rebuild.
+const SNAPSHOT_VERSION: u32 = 274;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1002,6 +1009,8 @@ pub enum SnapshotRestoreError {
         "snapshot retained wall-neighbor storage has {found} cells, but its dimensions require {expected}"
     )]
     RetainedWallNeighborStorageMismatch { expected: usize, found: usize },
+    #[error("snapshot navigation could not be published from retained map authority")]
+    NavigationAuthorityPublicationFailed,
     #[error("snapshot real-cell bridge flags do not match restored CellClass allocation")]
     RealCellBridgeFlagAuthorityMismatch,
     #[error(
@@ -2311,9 +2320,7 @@ impl Simulation {
         }
 
         if !self.rebuild_dynamic_navigation(rules) {
-            return Err(SnapshotRestoreError::MissingMapAuthorityComponent {
-                component: "ResolvedTerrainGrid",
-            });
+            return Err(SnapshotRestoreError::NavigationAuthorityPublicationFailed);
         }
 
         let occupied_overlays = self
@@ -3027,6 +3034,12 @@ mod tests {
         // `OverlayClass::Mark` increments.
         sim.overlay_grid = Some(runtime_overlays);
         sim.install_resolved_terrain_for_new_map(map_terrain.clone());
+        sim.restore_map_authority_after_snapshot_load(&rules, &registry)
+            .expect("publish the live runtime overlay navigation before saving");
+        // Original Scenario full-load resets this stream to Seed(0). Match
+        // that retained load policy when comparing the published live fixture.
+        sim.scenario_rng = crate::sim::rng::SimRng::new(0);
+        let authoritative_hash = sim.state_hash();
 
         let bytes = GameSnapshot::save(&sim, 0, 0, "overlay_restore.map", 0);
         let mut restored = GameSnapshot::load(&bytes)
@@ -3035,7 +3048,13 @@ mod tests {
         restored
             .restore_after_snapshot_load()
             .expect("stable snapshot identity");
-        let authoritative_hash = restored.state_hash();
+        assert!(
+            restored
+                .zone_grid
+                .as_ref()
+                .unwrap()
+                .is_native_load_pending()
+        );
         restored.rebuild_caches_after_load(
             map_terrain,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
@@ -3085,6 +3104,22 @@ mod tests {
             (2, 0, 0, 0x21)
         );
         assert_eq!(restore_output.native_tiberium_stats, Default::default());
+        let saved_authority = bincode::serialize(&sim).unwrap();
+        let loaded_authority = bincode::serialize(&restored).unwrap();
+        assert!(
+            saved_authority == loaded_authority,
+            "overlay authority differs at byte {:?}; lengths {} vs {}",
+            saved_authority
+                .iter()
+                .zip(&loaded_authority)
+                .position(|(a, b)| a != b),
+            saved_authority.len(),
+            loaded_authority.len()
+        );
+        assert_zone_grids_equivalent(
+            sim.zone_grid.as_ref().unwrap(),
+            restored.zone_grid.as_ref().unwrap(),
+        );
         assert_eq!(restored.state_hash(), authoritative_hash);
     }
 
@@ -3186,6 +3221,20 @@ mod tests {
         for &mz in MovementZone::all_ground() {
             let map_a = a.map_for(mz).expect("zone map exists for movement zone");
             let map_b = b.map_for(mz).expect("zone map exists for movement zone");
+            let hierarchy_a = a.hierarchy_for(mz).expect("native hierarchy");
+            let hierarchy_b = b.hierarchy_for(mz).expect("restored native hierarchy");
+            for level in 0..3 {
+                let graph_a = hierarchy_a.level(level).unwrap();
+                let graph_b = hierarchy_b.level(level).unwrap();
+                assert_eq!(graph_a.record_slot_count(), graph_b.record_slot_count());
+                for slot in 0..graph_a.record_slot_count() {
+                    let zone = u16::try_from(slot).unwrap();
+                    // Record equality includes the retained native+20 threat
+                    // seed; equal connectivity alone does not prove its input.
+                    assert_eq!(graph_a.record(zone), graph_b.record(zone));
+                    assert_eq!(graph_a.edges(zone), graph_b.edges(zone));
+                }
+            }
             assert_eq!(map_a.zone_count(), map_b.zone_count());
             for y in 0..a.height {
                 for x in 0..a.width {
@@ -3687,7 +3736,9 @@ mod tests {
         // 270 -> 271: no lane wall-refusal memo on a move.
         // 271 -> 272: no move direction vector or Walk sub-cell destination.
         // 272 -> 273: Reveal commits every Unlimbo Z; no Fly rebuild.
-        assert_eq!(super::SNAPSHOT_VERSION, 273);
+        // 273 -> 274: retained coefficient, Team flag, House threat and cache;
+        // retained native base navigation is saved; its live history is hashed.
+        assert_eq!(super::SNAPSHOT_VERSION, 274);
     }
 
     #[test]
@@ -7109,12 +7160,16 @@ mod tests {
             hash_after_runtime_clear, hash_with_pristine_bridge,
             "the future-affecting real-cell value authority is hashed even with a clear dummy"
         );
+        assert!(live.rebuild_dynamic_navigation(&crate::sim::runtime::SimResources::empty().rules));
         process_dummy.stamp_coord(-23, 17);
         process_dummy.set_level_slope(-7, 11);
         process_dummy.apply_bridge_flag_slot(BridgeStampSlot::Anchor, true);
         let dirty_dummy_before_load = process_dummy.snapshot();
         assert_ne!(dirty_dummy_before_load.bridge_flags_0x1180, 0);
 
+        // In-scenario process state retains the shared Dummy, while native
+        // Scenario deserialization independently resets its RNG to Seed(0).
+        live.scenario_rng = crate::sim::rng::SimRng::new(0);
         let bytes = GameSnapshot::save(&live, 0, 0, "bridge-dummy.map", 0);
         let mut restored = GameSnapshot::load(&bytes).expect("current snapshot").sim;
         restored.retain_in_scenario_process_state_from(&live);
@@ -7185,15 +7240,30 @@ mod tests {
             expected_ground_z,
             "restored raw 0x100 clear removes +416 while retaining the 104-lepton ground kernel"
         );
+        let saved_authority = bincode::serialize(&live).unwrap();
+        let loaded_authority = bincode::serialize(&restored).unwrap();
+        assert!(
+            saved_authority == loaded_authority,
+            "real Cell authority differs at byte {:?}; lengths {} vs {}",
+            saved_authority
+                .iter()
+                .zip(&loaded_authority)
+                .position(|(a, b)| a != b),
+            saved_authority.len(),
+            loaded_authority.len()
+        );
+        assert_zone_grids_equivalent(
+            live.zone_grid.as_ref().unwrap(),
+            restored.zone_grid.as_ref().unwrap(),
+        );
         assert_eq!(
             restored.state_hash(),
-            hash_with_serialized_clear,
-            "direct CellClass cache restoration leaves the saved-cleared authority hash unchanged"
+            live.state_hash(),
+            "completed native hierarchy rebuild matches the published saved-clear world"
         );
-        assert_ne!(
-            restored.state_hash(),
-            hash_if_pristine_template_were_authority,
-            "the restored state hash must not adopt the pristine nonzero template authority"
+        assert_eq!(
+            restored.real_cell_bridge_flags_0x1180,
+            serialized_cleared_authority
         );
         assert_eq!(
             restored_terrain.cell(0, 0).unwrap().bridge_facts.raw_flags
@@ -7890,6 +7960,7 @@ mod tests {
         // Native in-scenario load restarts Scenario RNG from Seed0; isolate
         // destroyed-terrain persistence on that same post-load cursor.
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
+        assert!(sim.rebuild_dynamic_navigation(&rules));
         let authoritative_hash = sim.state_hash();
 
         let bytes = GameSnapshot::save(&sim, 0, 0, "gsi_04_10_destroyed_terrain", 0);
@@ -7988,7 +8059,7 @@ mod tests {
         assert!(path.is_walkable(destroyed_cell.0, destroyed_cell.1));
         assert!(!path.is_walkable(damaged_cell.0, damaged_cell.1));
         assert!(!path.is_walkable(spawner_cell.0, spawner_cell.1));
-        restored.rebuild_zone_grid(&path);
+        assert!(restored.rebuild_dynamic_navigation(&rules));
         assert_ne!(
             restored
                 .zone_grid

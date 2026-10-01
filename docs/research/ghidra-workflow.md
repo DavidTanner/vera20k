@@ -221,7 +221,7 @@ and the list of added references are in the research folder listed in `LOCAL.md`
 ## Class layouts
 
 Since 2026-10-01 these structs have every field checked in code against the
-constructor, ReadINI, the other methods and the reads through their type pointers:
+constructors, ReadINI, the other methods and the reads through their type pointers:
 
 - `BuildingTypeClass` (0x1798 bytes): 195 fields after its base. `BuildingClass` +0x520
   is `BuildingTypeClass *pType`.
@@ -243,6 +243,18 @@ constructor, ReadINI, the other methods and the reads through their type pointer
   `pEliteAirstrikeTeamType` and `pSpawns` (TechnoType) are `AircraftTypeClass *`.
   AircraftClass +0x6C0 holds the IFlyControl interface, so IFlyControl methods such as
   `AircraftClass__Is_Fighter` read the type as `[this+4]`.
+- The `TechnoClass` chain, +0x0..+0x520: 224 fields in `AbstractClass` (0x24, new),
+  `ObjectClass` (0xAC), `MissionClass` (0xD4), `RadioClass` (0xF0, new) and `TechnoClass`
+  (0x520), with new member structs such as `FacingClass` (`PrimaryFacing` +0x388),
+  `StageClass`, `TransitionTimer` and `RecoilData`. The flat structs keep their older
+  fields in their old shape, so the same member can appear twice: `Location_X/_Y/_Z` ints
+  in ObjectClass and TechnoClass are a `CoordStruct` in RadioClass, and MissionClass
+  `nDispatchStartFrame`/`nDispatchDelayFrames` are the `CDTimerClass DispatchTimer` of
+  TechnoClass. Object fields have no INI key: a name is the existing one, YRpp's where
+  the code bears it out, one taken from the code, or `Unknown_0xNNN`. TechnoClass
+  +0x2AC/+0x2B0 are `pLocomotorTarget`/`pLocomotorSource` (once `DeployedFrom` and
+  `pDeployedInto`), and CDTimerClass +4 is `dwClockPad` (once `nAccumTime`; no timer
+  reads it).
 
 Notes for readers:
 
@@ -254,14 +266,15 @@ Notes for readers:
   `AircraftClass` (0x6D8 bytes) only `pType`.
 - **Receivers.** The receivers of the type-class methods are not typed yet. No
   `UnitClass__` or `InfantryClass__` method has a typed `this`, and only 3 of the 83
-  `AircraftClass__` methods do (as `MissionClass *`). Their decompiles therefore still
-  show raw offsets for the type's fields; look them up in `UnitTypeClass`,
-  `InfantryTypeClass` or `AircraftTypeClass`.
+  `AircraftClass__` methods do (as `MissionClass *`). Most `TechnoClass__` methods still
+  take `void *this`. Their decompiles therefore still show raw offsets; look them up in
+  `TechnoClass`, `UnitTypeClass`, `InfantryTypeClass` or `AircraftTypeClass`.
 
 Plates tagged `[2026-10-01 BuildingTypeClass layout]`,
 `[2026-10-01 TechnoTypeClass layout]`, `[2026-10-01 UnitTypeClass layout]`,
-`[2026-10-01 InfantryTypeClass layout]` and `[2026-10-01 AircraftTypeClass layout]`
-record where YRpp is wrong and the native quirks a port must keep. Examples:
+`[2026-10-01 InfantryTypeClass layout]`, `[2026-10-01 AircraftTypeClass layout]` and
+`[2026-10-01 TechnoClass layout]` record where YRpp is wrong and the native quirks a port
+must keep. Examples:
 
 - AddOccupy and RemoveOccupy are swapped in YRpp.
 - `TurretControl` is 0x14 bytes, and nothing initialises WeaponCount.
@@ -270,6 +283,10 @@ record where YRpp is wrong and the native quirks a port must keep. Examples:
 - ReadPip does not keep an absent Pip: the default 1 comes back as 2.
 - A missing EliteAirstrikeTeamType takes the AirstrikeTeamType read on the same pass.
 - A SpawnDelay of 0 faults (it divides the frame counter) on an aircraft with a Trailer.
+- The TechnoClass constructor draws once from the scenario RNG (+0x3C8), and
+  TechnoClass::Fire draws the first spray offset of each burst (+0x2A0).
+- The magnetron release sets BeingManipulatedBy only on a foot target whose vt+0x1C8()
+  is above 0.
 
 The UnitTypeClass pass also corrected two wrong names: the LandType name converters
 0x48DFD0 and 0x48DF80, once named `MovementZone_*`, are `LandType__ToName` and
@@ -278,6 +295,12 @@ The UnitTypeClass pass also corrected two wrong names: the LandType name convert
 plate has the evidence. The AircraftTypeClass pass found that
 `HouseClass__CheckBuildLimit` reads AirportBound through its type argument, where no
 scan of the reads through AircraftClass +0x6C4 can see it; its plate has the rule. The
+TechnoClass pass renamed nine functions whose `this` or purpose the code contradicts:
+0x4D0EF0 `FoggedObjectClass__Constructor_Building`, 0x6B7D80
+`SpawnManagerClass__CountLaunchingSpawns`, 0x4C2BD0 `EBolt__SetOwner`, 0x56DC20
+`MapClass__Find_Nearby_Passable_Cell`, 0x720440 `ThemeControl__Constructor`, and the
+iron-curtain and airstrike tint functions 0x70E380, 0x70E4B0, 0x70E5A0 and 0x70E920 (once
+named after temporal, warp-in and gap effects). Each plate gives the evidence. The
 per-field ledgers, the checks and the rehearsals are in the research folder listed in
 `LOCAL.md`. Reading established these facts. Nothing was executed, so a port pins the
 conversions with the native oracle.

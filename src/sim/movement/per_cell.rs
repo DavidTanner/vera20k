@@ -253,6 +253,11 @@ impl Simulation {
         if let Some(rules) = rules {
             self.refresh_unit_sensor_at_per_cell(id, rules);
         }
+        //4D8657..4D868D compares the two coarse threat buckets and migrates
+        //the cached contribution BEFORE4D870E replaces retained Foot+55C.
+        if let Some(rules) = rules {
+            self.spatial_threat_at_per_cell(id, rules);
+        }
         self.foot_neighbors_at_per_cell(id);
         if let Some(rules) = rules {
             crate::sim::world::techno_ai_cloak::uncloak_on_sensor_neighbour_after_cell_entry(
