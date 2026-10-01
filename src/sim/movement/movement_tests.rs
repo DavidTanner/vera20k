@@ -74,7 +74,13 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
     ));
     // Unit741970 accepts without a route; the first Process requests it.
     let accepted = sim.substrate.entities.get(1).unwrap();
-    assert!(accepted.movement_target.as_ref().unwrap().path.is_empty());
+    assert!(
+        accepted
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty()
+    );
     assert!(committed_track_head(accepted).is_none());
     sim.resolved_terrain = Some(terrain.clone());
     sim.zone_grid = Some(zones.clone());
@@ -83,9 +89,14 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
     sim.process_ground_locomotor_for_test(1, Some(&rules), Some(&grid), None)
         .expect("Process commits the ordinary segment before the tube entrance");
     let accepted = sim.substrate.entities.get(1).unwrap();
+    // Find_Path installed (0,0)->(1,0)->tube->(5,0); the fresh head
+    // acceptance popped the east word and re-referenced at the head cell.
+    assert_eq!(accepted.navigation.path_replay.directions, [2, 8]);
+    assert_eq!(accepted.navigation.path_replay.remaining_directions(), [8]);
+    assert_eq!(accepted.navigation.path_replay.reference_cell, Some((1, 0)));
     assert_eq!(
-        accepted.movement_target.as_ref().unwrap().path,
-        [(0, 0), (1, 0), (5, 0)]
+        accepted.movement_target.as_ref().unwrap().final_goal,
+        Some((5, 0))
     );
     assert!(committed_track_head(accepted).is_some());
     assert!(accepted.drive_locomotion.as_ref().unwrap().track.turn_index >= 0);
@@ -121,7 +132,13 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
                 })
             );
             assert!(entity.drive_locomotion.as_ref().unwrap().track_valid);
-            assert_eq!(entity.movement_target.as_ref().unwrap().next_index, 3);
+            assert!(
+                entity
+                    .navigation
+                    .path_replay
+                    .remaining_directions()
+                    .is_empty()
+            );
             assert!(!entity.lifecycle.cell_marked);
             assert!(!sim.substrate.occupancy.contains_entity(1, 0, 1));
             return;
@@ -276,7 +293,13 @@ fn test_drive_queue_command_reissues_destination_without_navqueue_append() {
     // is replaced and the first Process requests the route.
     let entity = entities.get(1).expect("entity exists");
     let movement = entity.movement_target.as_ref().expect("movement target");
-    assert!(movement.path.is_empty());
+    assert!(
+        entity
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty()
+    );
     assert_eq!(movement.final_goal, Some((4, 0)));
     assert_eq!(
         entity.drive_locomotion.as_ref().and_then(|d| d.destination),
@@ -1096,7 +1119,13 @@ fn gsi_06_02_cross_zone_move_order_is_accepted_without_redirect() {
     let entity = entities.get(1).unwrap();
     let target = entity.movement_target.as_ref().unwrap();
     assert_eq!(target.final_goal, Some((4, 0)));
-    assert!(target.path.is_empty());
+    assert!(
+        entity
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty()
+    );
     assert_eq!(entity.navigation.nav_com, Some(NavTargetRef::cell(4, 0)));
 }
 
@@ -1161,9 +1190,9 @@ fn techno_playfield_false_mover_uses_flat_astar_instead_of_hierarchy_abort() {
         None,
         crate::sim::movement::DestinationTiming::new(0, 60),
     ));
-    let target = entities.get(1).unwrap().movement_target.as_ref().unwrap();
-    assert_eq!(target.path.last(), Some(&(4, 0)));
-    assert!(target.path.contains(&(2, 0)));
+    // The appended search keeps no cells; its acceptance above is the
+    // observable: the hierarchy would have aborted it (no reduced-zone route
+    // past (2,0)) and refused the queued order.
 }
 
 #[test]
@@ -1193,9 +1222,16 @@ fn test_issue_move_command_sets_path() {
         .movement_target
         .as_ref()
         .expect("should have MovementTarget");
-    assert_eq!(*target.path.first().expect("non-empty"), (2, 3));
-    assert_eq!(*target.path.last().expect("non-empty"), (7, 3));
-    assert_eq!(target.next_index, 1);
+    // The command-time search only admits the order; the adapter keeps the
+    // goal and speed, and the first Process's Find_Path installs the route.
+    assert_eq!(target.final_goal, Some((7, 3)));
+    assert!(
+        entity
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty()
+    );
     assert_eq!(target.speed, SimFixed::from_num(768));
 }
 
@@ -1279,15 +1315,9 @@ fn test_issue_move_command_queue_appends_waypoint_path() {
         .movement_target
         .as_ref()
         .expect("should keep movement target");
-    assert_eq!(
-        movement.path.last().copied(),
-        Some((12, 2)),
-        "Queued command should append final waypoint"
-    );
-    assert!(
-        movement.path.len() > 7,
-        "Queued command should extend path beyond initial destination"
-    );
+    // The appended search admits the queued order but keeps no cells (the
+    // adapter keeps its goal and speed); the acceptance above is what remains.
+    assert_eq!(movement.speed, SimFixed::from_num(768));
 }
 
 // --- Friendly-passable pathfinding tests ---
@@ -1313,6 +1343,9 @@ fn test_friendly_passable_moving_unit_not_blocked() {
         speed: SimFixed::from_num(1024),
         ..Default::default()
     });
+    // Moving: its Foot+5E0 head word steps east from (4,0).
+    b.navigation.path_replay =
+        crate::sim::components::FootPathQueue::from_route(&[(4, 0), (5, 0), (6, 0)]);
     entities.insert(b);
 
     let alliances = HouseAllianceMap::new();
@@ -1387,6 +1420,9 @@ fn test_enemy_unit_always_blocks_even_when_moving() {
         speed: SimFixed::from_num(1024),
         ..Default::default()
     });
+    // Moving: its Foot+5E0 head word steps east from (3,0).
+    enemy.navigation.path_replay =
+        crate::sim::components::FootPathQueue::from_route(&[(3, 0), (4, 0)]);
     entities.insert(enemy);
 
     let alliances = HouseAllianceMap::new();
@@ -1461,20 +1497,33 @@ fn test_friendly_passable_path_goes_through_moving_friendly() {
 
 // --- 24-step path segmentation tests ---
 
-#[test]
-fn test_short_path_no_truncation() {
-    // A 5-step path (well under 24) should be delivered intact.
-    let mut entities = EntityStore::new();
-    let grid: PathGrid = PathGrid::new(32, 32);
-
-    let e = GameEntity::test_default(1, "HTNK", "Americans", 0, 0);
-    entities.insert(e);
-
+/// A Drive order on clear ground and its first Process: the order installs
+/// no route (Unit741970); the Process's Find_Path installs the segment.
+/// Returns the route that Find_Path installed from `start` and the adapter's
+/// goal.
+fn drive_first_process_route(
+    start: (u16, u16),
+    goal: (u16, u16),
+) -> (Vec<(u16, u16)>, Option<(u16, u16)>) {
+    let mut sim = Simulation::with_seed(7);
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
+    let grid = PathGrid::from_resolved_terrain(sim.resolved_terrain.as_ref().unwrap());
+    let mut e = GameEntity::test_default(1, "HTNK", "Americans", start.0, start.1);
+    e.owner = sim.intern("Americans");
+    e.type_ref = sim.intern("HTNK");
+    e.category = EntityCategory::Unit;
+    e.locomotor = Some(make_drive_loco_for_test());
+    e.drive_locomotion = Some(Default::default());
+    sim.substrate.entities.insert(e);
+    assert!(matches!(
+        sim.reveal(1),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
     assert!(issue_move_command(
-        &mut entities,
+        &mut sim.substrate.entities,
         &grid,
         1,
-        (5, 0),
+        goal,
         SimFixed::from_num(1024),
         false,
         None,
@@ -1482,79 +1531,54 @@ fn test_short_path_no_truncation() {
         None,
         crate::sim::movement::DestinationTiming::new(0, 60),
     ));
-
-    let entity = entities.get(1).expect("entity exists");
-    let target = entity.movement_target.as_ref().expect("has target");
-    assert_eq!(
-        target.path.len(),
-        6,
-        "5-step path = 6 entries (start + 5 moves)"
+    let accepted = sim.substrate.entities.get(1).unwrap();
+    assert!(
+        accepted
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty(),
+        "the order installs no route"
     );
-    assert_eq!(target.final_goal, Some((5, 0)));
+    sim.process_ground_locomotor_for_test(1, Some(&drive_type_rules()), Some(&grid), None)
+        .unwrap();
+    let entity = sim.substrate.entities.get(1).unwrap();
+    (
+        entity.navigation.path_replay.installed_cells(start),
+        entity.movement_target.as_ref().and_then(|t| t.final_goal),
+    )
+}
+
+#[test]
+fn test_short_path_no_truncation() {
+    // A 5-step path (well under 24) should be delivered intact.
+    let (route, final_goal) = drive_first_process_route((0, 0), (5, 0));
+    assert_eq!(route.len(), 6, "5-step path = 6 entries (start + 5 moves)");
+    assert_eq!(final_goal, Some((5, 0)));
 }
 
 #[test]
 fn test_long_path_truncated_to_24_steps() {
     // A path longer than 24 steps should be truncated to 25 entries.
-    let mut entities = EntityStore::new();
-    let grid: PathGrid = PathGrid::new(50, 1);
-
-    let e = GameEntity::test_default(1, "HTNK", "Americans", 0, 0);
-    entities.insert(e);
-
-    assert!(issue_move_command(
-        &mut entities,
-        &grid,
-        1,
-        (40, 0),
-        SimFixed::from_num(1024),
-        false,
-        None,
-        None,
-        None,
-        crate::sim::movement::DestinationTiming::new(0, 60),
-    ));
-
-    let entity = entities.get(1).expect("entity exists");
-    let target = entity.movement_target.as_ref().expect("has target");
+    let (route, final_goal) = drive_first_process_route((0, 0), (40, 0));
     // Path truncated: 24 steps + start = 25 entries.
     assert_eq!(
-        target.path.len(),
+        route.len(),
         25,
         "Long path should be truncated to 25 entries"
     );
-    assert_eq!(target.path[0], (0, 0), "Path starts at origin");
-    assert_eq!(target.path[24], (24, 0), "Path ends at 24th step");
-    assert_eq!(target.final_goal, Some((40, 0)), "Final goal preserved");
+    assert_eq!(route[0], (0, 0), "Path starts at origin");
+    assert_eq!(route[24], (24, 0), "Path ends at 24th step");
+    assert_eq!(final_goal, Some((40, 0)), "Final goal preserved");
 }
 
 #[test]
 fn test_blocked_repath_uses_final_goal_not_segment_end() {
     // When blocked mid-segment, repath should target final_goal, not segment end.
-    let mut entities = EntityStore::new();
-    let grid: PathGrid = PathGrid::new(50, 5);
-
-    let e = GameEntity::test_default(1, "HTNK", "Americans", 0, 2);
-    entities.insert(e);
-
-    assert!(issue_move_command(
-        &mut entities,
-        &grid,
-        1,
-        (40, 2),
-        SimFixed::from_num(1024),
-        false,
-        None,
-        None,
-        None,
-        crate::sim::movement::DestinationTiming::new(0, 60),
-    ));
-
-    let entity = entities.get(1).expect("entity exists");
-    let target = entity.movement_target.as_ref().expect("has target");
-    assert_eq!(target.final_goal, Some((40, 2)));
+    let (route, final_goal) = drive_first_process_route((0, 2), (40, 2));
+    assert_eq!(final_goal, Some((40, 2)));
     // The segment path ends at (24, 2), but final_goal is (40, 2).
-    assert_eq!(target.path.last(), Some(&(24, 2)));
+    assert_eq!(route.last(), Some(&(24, 2)));
 }
 
 /// Build a minimal Drive LocomotorState for layered-pathfinding tests. Required
@@ -1934,9 +1958,7 @@ fn gsi_06_13_fixture_mover(
     e.lifecycle.in_limbo = false;
     e.lifecycle.cell_marked = true;
     let goal = *path.last().expect("non-empty path");
-    let layers = vec![MovementLayer::Ground; path.len()];
     e.movement_target = Some(MovementTarget {
-        path,
         speed: SimFixed::from_num(768),
         final_goal: Some(goal),
         ..Default::default()

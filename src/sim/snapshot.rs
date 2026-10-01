@@ -790,7 +790,9 @@ use crate::sim::world::Simulation;
 // movement rows; LoadContent67E8CD rebuilds its hierarchy after map binding.
 // State hashing also includes the retained navigation topology/history;
 // ordinary load still performs the native full hierarchy rebuild.
-const SNAPSHOT_VERSION: u32 = 274;
+// 274 -> 275: a movement target no longer saves route cells, their layers or
+// a cursor; the Foot+5E0 queue is a Foot's only route.
+const SNAPSHOT_VERSION: u32 = 275;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3738,7 +3740,8 @@ mod tests {
         // 272 -> 273: Reveal commits every Unlimbo Z; no Fly rebuild.
         // 273 -> 274: retained coefficient, Team flag, House threat and cache;
         // retained native base navigation is saved; its live history is hashed.
-        assert_eq!(super::SNAPSHOT_VERSION, 274);
+        // 274 -> 275: movement targets no longer save route cells.
+        assert_eq!(super::SNAPSHOT_VERSION, 275);
     }
 
     #[test]

@@ -108,20 +108,28 @@ fn rectangular_spawn_bounds(span: i32) -> PlayfieldBounds {
 /// Drive/Ship orders accept without a route (Unit741970); the first Process
 /// requests it with the pass's own blocker plane and zone context, whatever
 /// the caller. Runs that Process through the production host and returns the
-/// installed route.
+/// route its Find_Path installed into Foot+5E0, from the pre-Process Cell
+/// (empty when no words were installed; `None` when the order ended).
 fn first_track_process_route(
     sim: &mut Simulation,
     id: u64,
     rules: Option<&RuleSet>,
     grid: &PathGrid,
-) -> Option<crate::sim::components::MovementTarget> {
-    let request = sim
-        .substrate
-        .entities
-        .get(id)
-        .and_then(|entity| entity.movement_target.as_ref())
-        .expect("the order scheduled a Process");
-    assert!(request.path.is_empty(), "the order installs no route");
+) -> Option<Vec<(u16, u16)>> {
+    let entity = sim.substrate.entities.get(id).expect("fixture mover");
+    assert!(
+        entity.movement_target.is_some(),
+        "the order scheduled a Process"
+    );
+    assert!(
+        entity
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty(),
+        "the order installs no route"
+    );
+    let start = (entity.position.rx, entity.position.ry);
     // Its Foot precheck reads Map Size and the playfield; an unbounded
     // fixture's Map Size is its cell grid, inside generous LocalSize bounds.
     if sim.playfield_bounds.is_none() {
@@ -135,10 +143,27 @@ fn first_track_process_route(
     }
     sim.process_ground_locomotor_for_test(id, rules, Some(grid), None)
         .expect("the first Process completes");
-    sim.substrate
-        .entities
-        .get(id)
-        .and_then(|entity| entity.movement_target.clone())
+    let entity = sim.substrate.entities.get(id)?;
+    entity.movement_target.as_ref()?;
+    Some(installed_route(entity, start))
+}
+
+/// The full route the last Find_Path installed from `start`, read from the
+/// Foot+5E0 words (consumed ones included); empty when none were installed.
+fn installed_route(entity: &GameEntity, start: (u16, u16)) -> Vec<(u16, u16)> {
+    let queue = &entity.navigation.path_replay;
+    if queue.directions.is_empty() {
+        Vec::new()
+    } else {
+        queue.installed_cells(start)
+    }
+}
+
+/// Whether `route` crosses one of the high-bridge deck cells (2..=4, 2) of
+/// `caller_count_bridge_detour`. The fixture pins that the ordinary shortcut
+/// stays on row 0 and the marked detour crosses these cells on the deck.
+fn crosses_detour_bridge_deck(route: &[(u16, u16)]) -> bool {
+    route.iter().any(|&(x, y)| y == 2 && (2..=4).contains(&x))
 }
 
 fn hierarchy_endpoint_zone_grid() -> ZoneGrid {
@@ -371,10 +396,11 @@ fn playfield_hierarchy_initial_order_outside_endpoint_uses_flat_astar() {
         None,
         crate::sim::movement::DestinationTiming::new(0, 60),
     ));
-    // The append drops the start cell it searched from.
+    // The adapter keeps its goal, not the found cells: acceptance above is
+    // the flat search's success, and the new speed marks a found route of at
+    // least two cells.
     let target = entities.get(1).unwrap().movement_target.as_ref().unwrap();
-    assert!(!target.path.is_empty());
-    assert_eq!(target.path.last().copied(), Some((8, 6)));
+    assert_eq!(target.speed, SimFixed::from_num(128));
 }
 
 #[test]
@@ -809,21 +835,16 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
     .unwrap();
     let mut sim = make_sim(&terrain);
     order(&mut sim, &terrain);
-    let movement = first_track_process_route(&mut sim, 1, Some(&rules), &astar_grid)
+    let route = first_track_process_route(&mut sim, 1, Some(&rules), &astar_grid)
         .expect("the first Process should install the projected hierarchy route");
 
     assert_eq!(
-        movement.path.first().copied(),
+        route.first().copied(),
         Some((1, 0)),
-        "projection must not mutate the A* start coordinate or layer"
+        "projection must not mutate the A* start coordinate"
     );
     assert_eq!(
-        movement.path_layers.first().copied(),
-        Some(MovementLayer::Bridge),
-        "the Process search must keep the raw A* start layer"
-    );
-    assert_eq!(
-        movement.path.last().copied(),
+        route.last().copied(),
         Some((3, 0)),
         "projection must not mutate the A* goal or returned path"
     );
@@ -833,7 +854,7 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
     order(&mut sim, &terrain);
     assert!(
         first_track_process_route(&mut sim, 1, Some(&rules), &astar_grid)
-            .is_none_or(|movement| movement.path.is_empty()),
+            .is_none_or(|route| route.is_empty()),
         "destination projection must be selected by the destination structural bit"
     );
 }
@@ -957,6 +978,16 @@ fn caller_count_bridge_detour(
             .iter()
             .any(|step| step.layer == MovementLayer::Bridge)
     );
+    // Foot+5E0 words carry no layer: production callers observe the bridge
+    // detour as a route through the deck cells, which it crosses on the deck.
+    let marked_cells: Vec<_> = marked.iter().map(|step| (step.rx, step.ry)).collect();
+    assert!(crosses_detour_bridge_deck(&marked_cells));
+    assert!(
+        marked
+            .iter()
+            .filter(|step| crosses_detour_bridge_deck(&[(step.rx, step.ry)]))
+            .all(|step| step.layer == MovementLayer::Bridge)
+    );
     (path, zones, terrain)
 }
 
@@ -1045,18 +1076,14 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     assert_eq!(locomotor.movement_zone, MovementZone::Normal);
     assert!(!produced.on_bridge);
     let produced_id = produced.stable_id();
-    let movement = first_track_process_route(&mut sim, produced_id, Some(&rules), &path_grid)
+    let route = first_track_process_route(&mut sim, produced_id, Some(&rules), &path_grid)
         .expect("completed MTNK should receive the hierarchy-backed rally route");
-    assert_eq!(movement.path.first().copied(), Some((1, 0)));
-    assert_eq!(movement.path_layers.first(), Some(&MovementLayer::Ground));
+    assert_eq!(route.first().copied(), Some((1, 0)));
     assert!(
-        movement
-            .path_layers
-            .iter()
-            .any(|layer| *layer == MovementLayer::Bridge),
-        "the rally route must actually traverse the high-bridge layer"
+        crosses_detour_bridge_deck(&route),
+        "the rally route must actually traverse the high-bridge deck"
     );
-    assert_eq!(movement.path.last().copied(), Some((5, 0)));
+    assert_eq!(route.last().copied(), Some((5, 0)));
     assert!(sim.production.factory_shadow.is_empty());
     assert_eq!(
         sim.substrate.entities.get(factory).unwrap().rally_cell(),
@@ -1107,17 +1134,14 @@ fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
         true
     ));
 
-    let movement = first_track_process_route(&mut sim, miner_id, Some(&rules), &path_grid)
+    let route = first_track_process_route(&mut sim, miner_id, Some(&rules), &path_grid)
         .expect("the dock leg's first Process should install the hierarchy-backed route");
-    assert_eq!(movement.path.first().copied(), Some((5, 0)));
+    assert_eq!(route.first().copied(), Some((5, 0)));
     assert!(
-        movement
-            .path_layers
-            .iter()
-            .any(|layer| *layer == MovementLayer::Bridge),
-        "dock approach must actually traverse the high-bridge layer"
+        crosses_detour_bridge_deck(&route),
+        "dock approach must actually traverse the high-bridge deck"
     );
-    assert_eq!(movement.path.last().copied(), Some((1, 0)));
+    assert_eq!(route.last().copied(), Some((1, 0)));
 }
 
 #[test]
@@ -1359,14 +1383,10 @@ fn gsi_04_12_attack_pursuit_entry_threads_exact_blocker_counts() {
     sim.install_fixture_path_grid(Some(&path_grid));
     sim.tick_attack_pursuit(&rules);
 
-    let movement = first_track_process_route(&mut sim, 1, Some(&rules), &path_grid)
+    let route = first_track_process_route(&mut sim, 1, Some(&rules), &path_grid)
         .expect("real out-of-range pursuit should reach the projected hierarchy route");
-    assert_eq!(movement.path.first().copied(), Some((1, 0)));
-    assert_eq!(
-        movement.path_layers.first().copied(),
-        Some(MovementLayer::Bridge)
-    );
-    assert_eq!(movement.path.last().copied(), Some((3, 0)));
+    assert_eq!(route.first().copied(), Some((1, 0)));
+    assert_eq!(route.last().copied(), Some((3, 0)));
 }
 
 #[test]
@@ -1434,15 +1454,11 @@ fn gsi_04_12_phase_six_order_resume_threads_exact_blocker_counts() {
     sim.install_fixture_path_grid(Some(&path_grid));
     sim.tick_order_intents_post_combat(Some(&rules));
 
-    let movement = first_track_process_route(&mut sim, 1, Some(&rules), &path_grid)
+    let route = first_track_process_route(&mut sim, 1, Some(&rules), &path_grid)
         .expect("real Phase-6 resume should reach the projected hierarchy route");
     let resumed = sim.substrate.entities.get(1).expect("resumed mover");
-    assert_eq!(movement.path.first().copied(), Some((1, 0)));
-    assert_eq!(
-        movement.path_layers.first().copied(),
-        Some(MovementLayer::Bridge)
-    );
-    assert_eq!(movement.path.last().copied(), Some((3, 0)));
+    assert_eq!(route.first().copied(), Some((1, 0)));
+    assert_eq!(route.last().copied(), Some((3, 0)));
     assert_eq!(
         resumed.order_intent,
         Some(OrderIntent::AttackMove {
@@ -1537,12 +1553,9 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
         .movement_target
         .as_ref()
         .expect("pending Drive continuation should rebuild the hierarchy route");
-    assert_eq!(movement.path.first().copied(), Some((1, 0)));
-    assert_eq!(
-        movement.path_layers.first().copied(),
-        Some(MovementLayer::Bridge)
-    );
-    assert_eq!(movement.path.last().copied(), Some((3, 0)));
+    let route = installed_route(continued, (1, 0));
+    assert_eq!(route.first().copied(), Some((1, 0)));
+    assert_eq!(route.last().copied(), Some((3, 0)));
     assert_eq!(movement.final_goal, Some((3, 0)));
 }
 
@@ -1617,7 +1630,7 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     ));
     assert_eq!(
         first_track_process_route(&mut ore_trip, 1, Some(&rules), &path_grid)
-            .and_then(|movement| movement.path.last().copied()),
+            .and_then(|route| route.last().copied()),
         Some((3, 0)),
     );
 
@@ -1631,7 +1644,7 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     );
     assert_eq!(
         first_track_process_route(&mut refinery_return, 1, Some(&rules), &path_grid)
-            .and_then(|movement| movement.path.last().copied()),
+            .and_then(|route| route.last().copied()),
         Some((3, 0)),
     );
 }

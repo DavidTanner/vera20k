@@ -1245,6 +1245,19 @@ fn gsi_08_14_idle_turret_returns_to_the_hull_without_a_navcom() {
         Some(crate::sim::components::MovementTarget {
             ..Default::default()
         });
+    // A route east without a NavCom: Foot+5E0 words toward (9,5).
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .navigation
+        .path_replay = crate::sim::components::FootPathQueue::from_route(&[
+        (5, 5),
+        (6, 5),
+        (7, 5),
+        (8, 5),
+        (9, 5),
+    ]);
 
     let result = run_combat_direct(&mut sim, &rules);
     assert_eq!(

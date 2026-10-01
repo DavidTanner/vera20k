@@ -83,7 +83,8 @@ struct MovingContribution {
 /// Effect: mid-turn or with a stale head, the chain follows a different
 /// cell than native and costs x1 where native costs x4 (or the reverse).
 /// Frequency: every search through friendly traffic. Risk: route choice in
-/// congestion; which allies count as moving belongs to Can_Enter_Cell (#683).
+/// congestion. Filed as #972; which allies count as moving belongs to
+/// Can_Enter_Cell (#683).
 ///
 /// RESIDUAL: a Walk whose head word is the tube word (8) names no adjacent
 /// cell, so it reads as stationary (code 6) for that frame, where the removed
@@ -668,10 +669,15 @@ mod tests {
         entity
     }
 
-    fn moving_to(next: (u16, u16), from: (u16, u16)) -> Option<MovementTarget> {
-        Some(MovementTarget {
-            ..MovementTarget::default()
-        })
+    /// An order whose Foot+5E0 head word steps `direction` from the
+    /// occupant's current cell: a moving occupant.
+    fn set_moving(entity: &mut GameEntity, direction: u8) {
+        entity.movement_target = Some(MovementTarget::default());
+        entity.navigation.path_replay = crate::sim::components::FootPathQueue {
+            directions: vec![direction],
+            cursor: 0,
+            reference_cell: Some((entity.position.rx as i16, entity.position.ry as i16)),
+        };
     }
 
     fn rules_again() -> RuleSet {
@@ -759,7 +765,8 @@ mod tests {
 
         // A unit starts moving (code 2 with a next cell, and a moving-ally
         // record), an enemy dies in place, a building goes, a unit arrives.
-        entities.get_mut(1).unwrap().movement_target = moving_to((5, 6), (5, 5));
+        // South from (5,5): next cell (5,6).
+        set_moving(entities.get_mut(1).unwrap(), 4);
         entities.get_mut(3).unwrap().dying = true;
         entities.remove(4);
         entities.insert(unit(5, "Russians", (5, 6)));
@@ -910,7 +917,7 @@ mod tests {
                         match edit {
                             4 => (entity.position.rx, entity.position.ry) = cell,
                             5 => entity.on_bridge = !entity.on_bridge,
-                            6 => entity.movement_target = moving_to(cell, (0, 0)),
+                            6 => set_moving(entity, ((cell.0 * 3 + cell.1) % 8) as u8),
                             7 => entity.dying = !entity.dying,
                             _ => {
                                 entity.foot_occupation_enabled = !entity.foot_occupation_enabled;

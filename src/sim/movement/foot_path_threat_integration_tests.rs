@@ -6,7 +6,6 @@ use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::team_ai_ini::TeamAiIniRegistry;
 use crate::sim::house_state::HouseState;
-use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::snapshot::GameSnapshot;
 use crate::sim::team_script_vm::TeamScriptVm;
 use crate::util::native_x87::NativeF64Bits;
@@ -16,7 +15,7 @@ fn request_move(
     mover: u64,
     rules: &RuleSet,
     registry: &OverlayTypeRegistry,
-) -> (FindPathResult, Vec<(u16, u16)>, Vec<MovementLayer>, Vec<u8>) {
+) -> (FindPathResult, Vec<(u16, u16)>, Vec<u8>) {
     let goal = (20, 15);
     assert!(sim.issue_ground_move(
         crate::sim::world::GroundMove {
@@ -53,11 +52,11 @@ fn request_move(
     let actor = sim.substrate.entities.get(mover).unwrap();
     assert!(actor.lifecycle.cell_marked, "Mark1 restores the live Foot");
     assert!(sim.substrate.occupancy.contains_entity(13, 15, mover));
-    let route = actor.movement_target.as_ref().unwrap();
+    // Find_Path installed the finished route as Foot+5E0 words from the
+    // current cell; no layer is kept per route cell.
     (
         result,
-        route.path.clone(),
-        route.path_layers.clone(),
+        actor.navigation.path_replay.route_cells(),
         actor.navigation.path_replay.remaining_directions().to_vec(),
     )
 }

@@ -698,7 +698,6 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
 #[test]
 fn live_rotation_returns_before_fresh_selection_with_a_queued_path_and_no_display_target() {
     use crate::sim::components::{FootPathQueue, MovementTarget};
-    use crate::sim::movement::locomotor::MovementLayer;
     use crate::util::fixed_math::SimFixed;
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[VehicleTypes]\n0=TURN\n[TURN]\nSpeed=6\nAccelerates=no\n",

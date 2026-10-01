@@ -709,9 +709,48 @@ fn diagnose_rejected_order(
         simulation
             .entities()
             .get(entity_id)
-            .and_then(|entity| entity.movement_target.as_ref())
-            .map(|target| target.path.len())
+            .and_then(|entity| entity.movement_target.as_ref().map(|_| entity
+                .navigation
+                .path_replay
+                .route_cells()
+                .len()))
     );
+}
+
+/// Find_Path rewrites the Foot+5E0 words and rewinds the cursor. Head
+/// acceptance and chain consumption only advance the cursor, and a terminal
+/// head clear only writes -1 words, so neither reads as a rebuilt route.
+fn route_reinstalled(
+    previous: &crate::sim::components::FootPathQueue,
+    current: &crate::sim::components::FootPathQueue,
+) -> bool {
+    let words = |queue: &crate::sim::components::FootPathQueue| {
+        let end = queue
+            .directions
+            .iter()
+            .rposition(|&word| word != u8::MAX)
+            .map_or(0, |at| at + 1);
+        queue.directions[..end].to_vec()
+    };
+    let (previous_words, current_words) = (words(previous), words(current));
+    current.cursor < previous.cursor
+        || previous_words.len() != current_words.len()
+        || previous_words
+            .iter()
+            .zip(&current_words)
+            .any(|(&a, &b)| a != b && a != u8::MAX && b != u8::MAX)
+}
+
+/// The accepted order's Foot+5E0 route still ahead: the reference cell plus
+/// the cells its remaining words step through. Empty until the first Drive
+/// Process installs it; `None` when the order was refused (no adapter).
+fn accepted_route(
+    scenario: &crate::headless_scenario::HeadlessScenario,
+    entity_id: u64,
+) -> Option<Vec<(u16, u16)>> {
+    let entity = scenario.sim().entities().get(entity_id)?;
+    entity.movement_target.as_ref()?;
+    Some(entity.navigation.path_replay.route_cells())
 }
 
 /// Issue an ordinary player `Command::Move` — the same entry point a right-click
@@ -912,12 +951,7 @@ fn drive_across_high_bridge_with_order(
         .advance_frame(&[order], SIM_TICK_MS, TickLane::Ordinary)
         .expect("fixture frame must complete");
 
-    let ordered_path = scenario
-        .sim()
-        .entities()
-        .get(entity_id)
-        .and_then(|entity| entity.movement_target.as_ref())
-        .map(|target| target.path.clone());
+    let ordered_path = accepted_route(&scenario, entity_id);
     match &ordered_path {
         Some(path) => println!(
             "move order accepted: {} node(s) {:?} -> {:?}",
@@ -1652,13 +1686,7 @@ fn drive_across_low_bridge(map_file: &str, unit_type: &str) {
         .advance_frame(&[order], SIM_TICK_MS, TickLane::Ordinary)
         .expect("fixture frame must complete");
 
-    match scenario
-        .sim()
-        .entities()
-        .get(entity_id)
-        .and_then(|entity| entity.movement_target.as_ref())
-        .map(|target| target.path.clone())
-    {
+    match accepted_route(&scenario, entity_id) {
         Some(path) => println!(
             "move order accepted: {} node(s) {:?} -> {:?}",
             path.len(),
@@ -2200,13 +2228,14 @@ fn infantry_attack_moved_across_hills_high_bridge_crosses() {
 ///    This is also the only observation in the project of a drive track that
 ///    *terminates* on a deck cell (residual R-T105's trigger).
 /// 2. Every frame of the crosser obeys the native height model.
-/// 3. On every frame the crosser spends on a structural cell, no node of its
-///    live `path_layers` that lands on a structural cell is `Ground`. This is
-///    the row's named check: a repath that dropped to the ground plane would
-///    show up here as a Ground-layered node on a stamped cell.
-/// 4. Repathing actually happened — the crosser's path was rebuilt at least
-///    once while it was on the deck. Without this the test could pass by the
-///    two units never meeting.
+/// 3. Every frame the crosser spends on a structural cell is driven on the
+///    Bridge layer. This is the row's named check: routes keep no per-cell
+///    layer (the Drive layer is the OnBridge projection written at each track
+///    cell crossing), so a repath that dropped to the ground plane shows up as
+///    a Ground-layered frame on a stamped cell.
+/// 4. Repathing actually happened — Find_Path reinstalled the crosser's
+///    Foot+5E0 route at least once while it was on the deck. Without this the
+///    test could pass by the two units never meeting.
 #[test]
 #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
 fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
@@ -2331,8 +2360,15 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
     let mut rows: Vec<TickRow> = Vec::new();
     let mut path_rebuilds = 0usize;
     let mut rebuilds_while_on_deck = 0usize;
-    let mut ground_nodes_on_stamped_cells: Vec<((u16, u16), usize)> = Vec::new();
-    let mut previous_path: Option<Vec<(u16, u16)>> = None;
+    let mut ground_layer_deck_frames: Vec<TickRow> = Vec::new();
+    let mut previous_route = scenario
+        .sim()
+        .entities()
+        .get(crosser)
+        .expect("crosser present")
+        .navigation
+        .path_replay
+        .clone();
     let mut idle_frames = 0u32;
     for _ in 0..MAX_TICKS {
         scenario.tick();
@@ -2365,30 +2401,24 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
         };
         rows.push(row);
 
-        // The row's named check: every node of the live path that sits on a
-        // stamped cell must be Bridge-layered. A repath that dropped the
-        // remaining route to the ground plane shows up here.
-        if let Some(target) = entity.movement_target.as_ref() {
-            if previous_path.as_ref() != Some(&target.path) {
+        // The row's named check. Routes keep no per-cell layer: the Drive
+        // layer is the OnBridge projection written at each track cell
+        // crossing. A repath that dropped the remaining route to the ground
+        // plane shows up as a stamped-cell frame driven on the Ground layer.
+        if row.structural
+            && row.loco_layer != crate::sim::movement::locomotor::MovementLayer::Bridge
+        {
+            ground_layer_deck_frames.push(row);
+        }
+        if entity.movement_target.is_some() {
+            let route = &entity.navigation.path_replay;
+            if route_reinstalled(&previous_route, route) {
                 path_rebuilds += 1;
                 if row.structural {
                     rebuilds_while_on_deck += 1;
                 }
-                previous_path = Some(target.path.clone());
             }
-            let grid = sim.path_grid().expect("navigation published");
-            for (index, node) in target.path.iter().enumerate() {
-                let stamped = grid
-                    .cell(node.0, node.1)
-                    .is_some_and(|c| c.bridge_structural);
-                let layer = target.path_layers.get(index).copied();
-                if stamped
-                    && layer == Some(crate::sim::movement::locomotor::MovementLayer::Ground)
-                    && index >= target.next_index
-                {
-                    ground_nodes_on_stamped_cells.push((*node, index));
-                }
-            }
+            previous_route = route.clone();
             idle_frames = 0;
         } else {
             idle_frames += 1;
@@ -2426,11 +2456,11 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
         rows.iter().map(|row| row.cell).collect::<Vec<_>>()
     );
     assert!(
-        ground_nodes_on_stamped_cells.is_empty(),
-        "a repath put {} un-traversed path node(s) on the GROUND layer of a stamped bridge \
-         cell — the remaining route was re-planned against the riverbed under the span: {:?}",
-        ground_nodes_on_stamped_cells.len(),
-        ground_nodes_on_stamped_cells,
+        ground_layer_deck_frames.is_empty(),
+        "the crosser drove {} stamped-cell frame(s) on the GROUND layer — a repath \
+         re-planned the route against the riverbed under the span: {:?}",
+        ground_layer_deck_frames.len(),
+        ground_layer_deck_frames,
     );
     assert!(
         rebuilds_while_on_deck > 0,
@@ -2445,7 +2475,7 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
         );
     }
     println!(
-        "T2-03: {rebuilds_while_on_deck} on-deck repath(s), 0 Ground-layered nodes on stamped \
+        "T2-03: {rebuilds_while_on_deck} on-deck repath(s), 0 Ground-layered frames on stamped \
          cells, last cell {:?} (target {:?})",
         last.cell, span.approach_b
     );
@@ -2769,12 +2799,7 @@ fn tank_ordered_across_the_deadman_collapse_gap_never_drives_into_it() {
             TickLane::Ordinary,
         )
         .expect("fixture frame must complete");
-    let accepted = scenario
-        .sim()
-        .entities()
-        .get(entity_id)
-        .and_then(|entity| entity.movement_target.as_ref())
-        .map(|target| (target.path.len(), target.path.clone()));
+    let accepted = accepted_route(&scenario, entity_id).map(|path| (path.len(), path));
     println!(
         "ordinary Command::Move {:?} -> {:?} (across the gap): {}",
         gap.approach,
@@ -2985,12 +3010,7 @@ fn tank_cannot_cross_a_destroyed_shrapnel_low_bridge() {
             TickLane::Ordinary,
         )
         .expect("fixture frame must complete");
-    let accepted = scenario
-        .sim()
-        .entities()
-        .get(entity_id)
-        .and_then(|entity| entity.movement_target.as_ref())
-        .map(|target| target.path.len());
+    let accepted = accepted_route(&scenario, entity_id).map(|path| path.len());
     println!("ordinary Command::Move across the destroyed strip: path={accepted:?}");
 
     let rows = record_until(&mut scenario, entity_id, span.approach_b);
@@ -3762,12 +3782,7 @@ fn order_under_high_span(map_file: &str, unit_type: &str) -> Option<UnderSpanRun
             TickLane::Ordinary,
         )
         .expect("fixture frame must complete");
-    let path = scenario
-        .sim()
-        .entities()
-        .get(entity_id)
-        .and_then(|entity| entity.movement_target.as_ref())
-        .map(|target| target.path.len());
+    let path = accepted_route(&scenario, entity_id).map(|path| path.len());
     println!("ordinary Command::Move {start_cell:?} -> {under_b:?}: path={path:?}");
     if path.is_none() {
         diagnose_rejected_order(

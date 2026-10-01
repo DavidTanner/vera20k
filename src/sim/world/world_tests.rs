@@ -5574,12 +5574,13 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
     for commands in [vec![cmd], Vec::new()] {
         let _ = sim.advance_tick(&commands, Some(&rules), Some(&path_grid), None, 100);
     }
+    // Find_Path's install from the spawn cell (Foot+5E0 words).
     let initial_path = sim
         .substrate
         .entities
         .get(ship_id)
-        .and_then(|ship| ship.movement_target.as_ref())
-        .map(|mt| mt.path.clone())
+        .map(|ship| found_route(ship, (0, 1)))
+        .filter(|route| !route.is_empty())
         .expect("ship should have an initial path");
     for _ in 0..120 {
         let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 100);
@@ -5678,12 +5679,12 @@ fn a_ship_order_routes_around_an_island_through_the_live_search() {
         crate::sim::movement::path_search_used_zone_grid_marker(),
         "the ship's search must run with the live zone grid"
     );
-    let (path, layers) = sim
+    let path = sim
         .substrate
         .entities
         .get(ship_id)
-        .and_then(|ship| ship.movement_target.as_ref())
-        .map(|target| (target.path.clone(), target.path_layers.clone()))
+        .map(|ship| found_route(ship, (1, 3)))
+        .filter(|route| !route.is_empty())
         .expect("the ship's first Process installs a route");
     assert_eq!(
         path,
@@ -5699,16 +5700,18 @@ fn a_ship_order_routes_around_an_island_through_the_live_search() {
             (7, 3),
         ]
     );
-    assert!(layers.iter().all(|&layer| layer == MovementLayer::Ground));
 
     for _ in 0..300 {
         let _ = sim.advance_tick(&[], Some(&rules), Some(&path_grid), None, 100);
-        if sim
-            .substrate
-            .entities
-            .get(ship_id)
-            .is_some_and(|ship| ship.movement_target.is_none())
-        {
+        let ship = sim.substrate.entities.get(ship_id).expect("ship");
+        // The route stays on the ground layer: the OnBridge byte and the
+        // Ship's projected layer never leave it on this bridgeless sea.
+        assert!(!ship.on_bridge);
+        assert_eq!(
+            ship.locomotor.as_ref().map(|loco| loco.layer),
+            Some(MovementLayer::Ground)
+        );
+        if ship.movement_target.is_none() {
             break;
         }
     }
@@ -6296,11 +6299,14 @@ fn test_move_queue_command_appends_waypoint() {
         .entities
         .get(1)
         .expect("entity 1 should exist in EntityStore");
-    let movement = ge
-        .movement_target
-        .as_ref()
-        .expect("movement target should be set");
-    assert_eq!(movement.path.last().copied(), Some((12, 2)));
+    // This rules-less MTNK has no locomotor, so the queued order takes the
+    // command path's append arm: its search admits the order but keeps no
+    // cells and leaves the first order's goal (movement_commands RESIDUAL).
+    // The queued waypoint itself is no longer observable here.
+    assert!(
+        ge.movement_target.is_some(),
+        "movement target should be set"
+    );
 }
 
 #[test]
@@ -6466,9 +6472,20 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
     assert_eq!(stopped.navigation.nav_com, None);
     assert!(stopped.movement_target.is_some());
     let stopped_target = stopped.movement_target.as_ref().unwrap();
+    // The route is cut at the committed head: Stop retires every Foot+5E0
+    // word beyond it and the head stays the committed track head.
+    assert!(
+        stopped
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty()
+    );
+    let head = crate::sim::movement::track_head::committed_track_head(stopped)
+        .expect("Stop keeps the committed head");
     assert_eq!(
-        stopped_target.path,
-        vec![(4, 4), (committed_head.rx, committed_head.ry)]
+        ((head.x / 256) as u16, (head.y / 256) as u16),
+        (committed_head.rx, committed_head.ry)
     );
     assert_eq!(
         stopped_target.final_goal,
@@ -6684,7 +6701,15 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
         .movement_target
         .as_ref()
         .expect("committed Ship segment survives Stop");
-    assert_eq!(target.path, vec![(4, 4), committed_cell]);
+    // Stop retires every Foot+5E0 word beyond the committed head; the head
+    // itself is pinned below.
+    assert!(
+        stopped
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty()
+    );
     assert_eq!(target.final_goal, Some(committed_cell));
     let ship = stopped.ship_locomotion.as_ref().expect("Ship runtime");
     assert_eq!(
@@ -7482,7 +7507,7 @@ fn test_guard_returns_to_anchor_when_displaced() {
         .movement_target
         .as_ref()
         .expect("guard should re-path back to its anchor");
-    assert_eq!(movement.path.last().copied(), Some((2, 2)));
+    assert_eq!(movement.final_goal, Some((2, 2)));
 }
 
 #[test]
@@ -8457,8 +8482,7 @@ fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
         .substrate
         .entities
         .get(mover)
-        .and_then(|m| m.movement_target.as_ref())
-        .map(|t| t.path.clone())
+        .map(|m| found_route(m, (6, 8)))
         .unwrap_or_default();
     assert!(
         route.contains(&PARKED_AT),
@@ -8558,10 +8582,19 @@ fn unit_route_beside_building(
         sim.substrate
             .entities
             .get(tank)
-            .and_then(|m| m.movement_target.as_ref())
-            .map(|t| t.path.clone())
+            .map(|m| found_route(m, (4, 7)))
             .unwrap_or_default(),
     )
+}
+
+/// The route the first Find_Path installed from `start`, read from the
+/// Foot+5E0 words it wrote (consumed ones included), or empty when the
+/// object has no order or no installed words.
+fn found_route(e: &GameEntity, start: (u16, u16)) -> Vec<(u16, u16)> {
+    if e.movement_target.is_none() || e.navigation.path_replay.directions.is_empty() {
+        return Vec::new();
+    }
+    e.navigation.path_replay.installed_cells(start)
 }
 
 /// Find_Path's search calls the Unit's own +1AC for every neighbour
@@ -8671,14 +8704,14 @@ fn stacking_motion_state(sim: &Simulation, id: u64) -> String {
             e.position.rx, e.position.ry, e.position.sub_x, e.position.sub_y
         ),
         Some(mt) => format!(
-            "id={id} at ({},{}) sub=({},{}) path_len={} next_index={} goal={:?}",
+            "id={id} at ({},{}) sub=({},{}) route_ahead={:?} words_left={} goal={:?}",
             e.position.rx,
             e.position.ry,
             e.position.sub_x,
             e.position.sub_y,
-            mt.path.len(),
-            mt.next_index,
-            mt.path.last().copied()
+            e.navigation.path_replay.route_cells(),
+            e.navigation.path_replay.remaining_directions().len(),
+            mt.final_goal
         ),
     };
     format!(
@@ -9540,8 +9573,8 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
         sim.substrate
             .entities
             .get(id)
-            .and_then(|e| e.movement_target.as_ref())
-            .map(|target| target.path.clone())
+            .filter(|e| e.movement_target.is_some())
+            .map(|e| e.navigation.path_replay.route_cells())
             .unwrap_or_default()
     };
     let mut previous_paths = [path_of(&sim, west), path_of(&sim, east)];

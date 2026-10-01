@@ -780,9 +780,8 @@ mod tests {
         let e = sim.substrate.entities.get(1).expect("has entity");
         let target = e.movement_target.as_ref().expect("has target");
         assert_eq!(target.final_goal, Some((20, 15)));
-        // Path contains only the destination (no Bresenham).
-        assert_eq!(target.path.len(), 1);
-        assert_eq!(target.path[0], (20, 15));
+        // The goal is the only route state (no Bresenham, no Foot+5E0 words).
+        assert!(e.navigation.path_replay.remaining_directions().is_empty());
 
         // Should trigger ascending.
         let loco = e.locomotor.as_ref().expect("has loco");

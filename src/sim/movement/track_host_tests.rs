@@ -810,6 +810,13 @@ fn terminal_retires_only_completed_adapter_before_callback() {
                     entity.movement_target = Some(MovementTarget {
                         ..Default::default()
                     });
+                    // The callback's new route: Foot+5E0 words from (10,9).
+                    entity.navigation.path_replay =
+                        crate::sim::components::FootPathQueue::from_route(&[
+                            (10, 9),
+                            (11, 9),
+                            (12, 9),
+                        ]);
                 }
             }
         });

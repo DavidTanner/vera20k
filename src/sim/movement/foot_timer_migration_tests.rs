@@ -2,7 +2,7 @@
 //! path_delay_rules and track_blocked_timers corpora, not full fresh movement.
 //! In particular Ship's current fresh admission adapter does not prove code2.
 
-use super::locomotor::{LocomotorState, MovementLayer};
+use super::locomotor::LocomotorState;
 use super::{DestinationTiming, issue_move_command};
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;

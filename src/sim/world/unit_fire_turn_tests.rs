@@ -11,7 +11,6 @@ use crate::sim::combat::AttackTarget;
 use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, MovementTarget, TrackProgress};
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
-use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::projectile::ProjectileCoord;
 use crate::util::fixed_math::SimFixed;
 
@@ -92,6 +91,8 @@ fn install_paid_track(sim: &mut Simulation, id: u64) {
         },
         ..Default::default()
     });
+    // The accepted head (x, y-1) was the route's last cell, so Foot+5E0
+    // holds no word beyond it: the committed head alone models the route.
     entity.movement_target = Some(MovementTarget {
         speed: SimFixed::from_num(330),
         ..Default::default()

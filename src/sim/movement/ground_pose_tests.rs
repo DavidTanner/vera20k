@@ -266,7 +266,6 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         entity.locomotor.as_mut().unwrap().layer = start_layer;
         let target = entity.movement_target.as_mut().unwrap();
         target.speed = SimFixed::from_num(105); // budget7, strict paid gate >7
-        target.path_layers = vec![start_layer, end_layer, end_layer];
         // This route continues beyond the first retained segment. Native
         // owner NavCom must survive that terminal; a route without it admits
         // EnterIdleMode and its Foot SetSpeedFraction(0) at that first end.
@@ -292,7 +291,6 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         assert_eq!(entity.position.sub_y.to_num::<i32>(), 253);
         assert_eq!(entity.position.exact_z_leptons, Some(731));
         assert_eq!(entity.on_bridge, !leaving);
-        assert_eq!(entity.movement_target.as_ref().unwrap().next_index, 1);
         assert_eq!(
             track(entity).cursor,
             11,
@@ -313,7 +311,6 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         tick(&mut sim, &terrain, &grid, 1);
         let entity = sim.substrate.entities.get(1).unwrap();
         assert_eq!(entity.position.exact_z_leptons, Some(416));
-        assert_eq!(entity.movement_target.as_ref().unwrap().next_index, 2);
         assert_eq!(
             sim.substrate.occupancy.generation(),
             relinked_generation,
@@ -331,7 +328,6 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         tick(&mut sim, &terrain, &grid, 2);
         let entity = sim.substrate.entities.get(1).unwrap();
         assert_eq!(track(entity).cursor, 13);
-        assert_eq!(entity.movement_target.as_ref().unwrap().next_index, 2);
         assert_eq!(entity.position.exact_z_leptons, Some(416));
     }
 }
@@ -392,11 +388,6 @@ fn moving_ramp_snapshot_continues_residual_bridge_crossing_through_paid_points()
         let target = entity.movement_target.as_mut().unwrap();
         // Budget7 for both locomotors, including Ship's fixed-point product.
         target.speed = SimFixed::from_num(106);
-        target.path_layers = vec![
-            MovementLayer::Ground,
-            MovementLayer::Bridge,
-            MovementLayer::Bridge,
-        ];
         seed_track(&mut entity, kind, 11, DriveCoord::cell(3, 2, 731));
         insert(&mut sim, entity);
         tick(&mut sim, &terrain, &grid, 0);
@@ -416,7 +407,6 @@ fn moving_ramp_snapshot_continues_residual_bridge_crossing_through_paid_points()
             ),
             "snapshot must capture the native residual height lag: {kind:?}"
         );
-        assert_eq!(entity.movement_target.as_ref().unwrap().next_index, 1);
         assert_eq!(
             (
                 track(entity).cursor,
@@ -478,7 +468,7 @@ fn moving_ramp_snapshot_continues_residual_bridge_crossing_through_paid_points()
                     entity.position.z,
                     entity.position.exact_z_leptons,
                     entity.on_bridge,
-                    entity.movement_target.as_ref().unwrap().next_index,
+                    entity.navigation.path_replay.clone(),
                 )
             };
             assert_eq!(
@@ -487,7 +477,6 @@ fn moving_ramp_snapshot_continues_residual_bridge_crossing_through_paid_points()
                 "paid continuation {kind:?}, frame {frame}"
             );
             assert!(loaded.on_bridge);
-            assert_eq!(loaded.movement_target.as_ref().unwrap().next_index, 2);
             assert_eq!(track(loaded).cursor, 11 + frame as i32);
             assert_ne!(
                 loaded.position.exact_z_leptons, prior_paid_z,
@@ -573,6 +562,9 @@ fn fresh_walk_refusal_preserves_xyz_before_head_selection() {
         final_goal: Some((4, 2)),
         ..Default::default()
     });
+    // Moving: its Foot+5E0 head word steps east from (3,2).
+    blocker.navigation.path_replay =
+        crate::sim::components::FootPathQueue::from_route(&[(3, 2), (4, 2)]);
     sim.substrate.occupancy.add(
         3,
         2,
@@ -616,9 +608,6 @@ fn terminal_drive_snap_updates_ramp_height_with_stashed_teleport_owner() {
     assert!(loco.begin_drive_piggyback_for_teleporter(0));
     entity.locomotor = Some(loco);
     let target = entity.movement_target.as_mut().unwrap();
-    target.path = vec![(3, 3)];
-    target.path_layers = vec![MovementLayer::Ground];
-    target.next_index = 1;
     target.final_goal = Some((3, 3));
     target.speed = SimFixed::from_num(120);
     seed_track(
@@ -652,8 +641,6 @@ fn terminal_centre_height_commits_before_next_process_turn_without_finalizer() {
     let mut sim = Simulation::new();
     let mut entity = mover(&mut sim, LocomotorKind::Drive);
     let target = entity.movement_target.as_mut().unwrap();
-    target.path = vec![(3, 3), (4, 3)];
-    target.path_layers = vec![MovementLayer::Ground; 2];
     target.final_goal = Some((4, 3));
     target.speed = SimFixed::from_num(120);
     seed_track(
@@ -1022,7 +1009,6 @@ fn chained_mover(sim: &mut Simulation, kind: LocomotorKind) -> (GameEntity, Driv
         _ => unreachable!(),
     }
     entity.movement_target = Some(MovementTarget {
-        path,
         speed: SimFixed::from_num(128),
         final_goal: Some((5, 1)),
         ..Default::default()
