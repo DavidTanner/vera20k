@@ -1111,3 +1111,90 @@ fn a_rocketeer_lifting_off_clears_his_sub_cell() {
     );
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(52, 52), 0);
 }
+
+/// A grounded Rocketeer, as an unload leaves him (Ground layer, height 0).
+fn grounded_rocketeer() -> (super::Simulation, crate::rules::ruleset::RuleSet) {
+    let input = serde_json::json!({
+        "doing": 0,
+        "height": 0,
+        "owner": {"phase": 0, "moving": false},
+    });
+    let (mut sim, rules, _) = rocketeer_crash_fixture(&input);
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .locomotor
+        .as_mut()
+        .unwrap()
+        .layer = crate::sim::movement::locomotor::MovementLayer::Ground;
+    (sim, rules)
+}
+
+/// The ground route (factory rally, unload, pursuit, a grounded mover's Move)
+/// gives a Rocketeer his cell through Foot's setter, as Infantry's does
+/// (`0x0051B1D2` -> `0x004D94B0`): the NavCom with the order (`0x004D9510`)
+/// and the Jumpjet's `Move_To` (`0x004D965D`). It left both to his `Process`.
+#[test]
+fn a_ground_route_order_gives_a_rocketeer_his_navcom_and_move_to() {
+    let (mut sim, rules) = grounded_rocketeer();
+    sim.path_grid = Some(std::sync::Arc::new(
+        crate::sim::pathfinding::PathGrid::test_all_passable(70, 70),
+    ));
+    let speed = sim.resolve_move_info(1, Some(&rules)).unwrap().speed;
+    assert!(sim.issue_ground_move(
+        super::GroundMove {
+            entity_id: 1,
+            target: (60, 52),
+            speed,
+            queue: false,
+            speed_type: None,
+            owner_blocks: false,
+            object_destination: None,
+        },
+        Some(&rules),
+    ));
+    let rocketeer = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(
+        rocketeer.navigation.nav_com,
+        Some(crate::sim::components::NavTargetRef::cell(60, 52))
+    );
+    let runtime = rocketeer
+        .locomotor
+        .as_ref()
+        .unwrap()
+        .jumpjet_runtime()
+        .unwrap();
+    assert!(runtime.moving, "his Move_To ran with the order");
+}
+
+/// So a grounded Rocketeer's Move order survives the frame after it. The
+/// order applies at the frame's tail; the next frame's AI visit commits Move
+/// and runs `Mission_Move` (`0x004D4200`) before his `Process`, and it finds
+/// the NavCom and keeps the cadence. With the NavCom left to his `Process`,
+/// it found none and a still locomotor, and queued Guard (`0x004D4242`).
+#[test]
+fn a_grounded_rocketeers_move_order_survives_its_first_mission_visit() {
+    use crate::sim::command::{Command, CommandEnvelope};
+    use crate::sim::mission::MissionType;
+    let (mut sim, rules) = grounded_rocketeer();
+    let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
+    let americans = sim.interner.intern("Americans");
+    let order = CommandEnvelope::new(
+        americans,
+        sim.session.tick + 1,
+        Command::Move {
+            entity_id: 1,
+            target_rx: 60,
+            target_ry: 52,
+            queue: false,
+        },
+    );
+    sim.advance_tick(&[order], Some(&rules), Some(&grid), None, 67);
+    let rocketeer = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(rocketeer.mission.queued().known(), Some(MissionType::Move));
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
+    let rocketeer = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(rocketeer.mission.current().known(), Some(MissionType::Move));
+    assert_eq!(rocketeer.mission.queued().known(), None);
+}

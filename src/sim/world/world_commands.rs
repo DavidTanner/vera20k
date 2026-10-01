@@ -14,8 +14,7 @@ use crate::map::entities::EntityCategory;
 use crate::map::houses::are_houses_friendly;
 #[cfg(test)]
 use crate::rules::locomotor_type::MovementZone;
-use crate::rules::locomotor_type::{LocomotorKind, SpeedType};
-use crate::rules::object_type::ObjectCategory;
+use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::canonical_cell_coord;
 use crate::sim::combat;
@@ -30,7 +29,6 @@ use crate::sim::components::OrderIntent;
 use crate::sim::docking::building_dock;
 use crate::sim::mission::{DockTeardown, MissionType};
 use crate::sim::movement;
-use crate::sim::movement::jumpjet_movement;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::teleport_movement;
 use crate::sim::overlay_grid::{
@@ -50,15 +48,11 @@ use crate::util::fixed_math::{SimFixed, ra2_speed_to_leptons_per_second};
 /// exactly to keep behavior consistent.
 pub(crate) struct MoveInfo {
     pub(crate) speed: SimFixed,
-    pub(crate) loco_kind: Option<LocomotorKind>,
     pub(crate) loco_layer: MovementLayer,
     pub(crate) speed_type: SpeedType,
-    pub(crate) hover_attack: bool,
     pub(crate) is_harvester: bool,
-    pub(crate) is_infantry: bool,
     #[cfg(test)]
     pub(crate) movement_zone: MovementZone,
-    pub(crate) position: (u16, u16),
     #[cfg(test)]
     pub(crate) regular_crusher: bool,
     #[cfg(test)]
@@ -537,10 +531,8 @@ impl Simulation {
     ) -> Option<MoveInfo> {
         let e = self.substrate.entities.get(entity_id)?;
         let loco = e.locomotor.as_ref();
-        let loco_kind = loco.map(|l| l.kind);
         let loco_layer = e.movement_layer_or_ground();
         let speed_type = loco.map(|l| l.speed_type).unwrap_or(SpeedType::Track);
-        let hover_attack = loco.map(|l| l.hover_attack).unwrap_or(false);
 
         let obj = rules.and_then(|r| self.object_type(e.type_ref(), r));
         // The resolver behind Move, AttackMove, Enter, C4, capture and
@@ -549,15 +541,11 @@ impl Simulation {
 
         Some(MoveInfo {
             speed,
-            loco_kind,
             loco_layer,
             speed_type,
-            hover_attack,
             is_harvester: obj.map_or(false, |o| o.harvester),
-            is_infantry: obj.map_or(false, |o| o.category == ObjectCategory::Infantry),
             #[cfg(test)]
             movement_zone: obj.map_or(MovementZone::Normal, |o| o.movement_zone),
-            position: (e.position.rx, e.position.ry),
             #[cfg(test)]
             regular_crusher: e.regular_crusher,
             #[cfg(test)]
@@ -634,32 +622,9 @@ impl Simulation {
                     return false;
                 };
                 // A Teleport mover takes its class setter inside
-                // `issue_ground_move` (`teleport_destination`).
+                // `issue_ground_move` (`teleport_destination`), and a Jumpjet
+                // takes Foot's on either arm (`jumpjet_cell_destination`).
                 let result = if info.loco_layer == MovementLayer::Air {
-                    // Jumpjet infantry walk fallback: ≤3 cells + !HoverAttack → ground walk.
-                    if info.loco_kind == Some(LocomotorKind::Jumpjet) && info.is_infantry {
-                        let dx = (*target_rx as i32 - info.position.0 as i32).unsigned_abs();
-                        let dy = (*target_ry as i32 - info.position.1 as i32).unsigned_abs();
-                        let dist_cells = dx.max(dy);
-                        if jumpjet_movement::should_use_walk_fallback(
-                            info.hover_attack,
-                            true,
-                            dist_cells,
-                        ) {
-                            return self.issue_ground_move(
-                                GroundMove {
-                                    entity_id: *entity_id,
-                                    target: (*target_rx, *target_ry),
-                                    speed: info.speed,
-                                    queue: *queue,
-                                    speed_type: Some(info.speed_type),
-                                    owner_blocks: true,
-                                    object_destination: None,
-                                },
-                                rules,
-                            );
-                        }
-                    }
                     // Air units fly in straight lines — no A* pathfinding needed.
                     let ok = self.issue_air_cell_destination(
                         *entity_id,

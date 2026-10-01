@@ -830,11 +830,9 @@ impl Simulation {
         });
     }
 
-    /// An air order to a cell. A Jumpjet Unit or Infantry takes Foot's
-    /// setter (`0x004D94B0`: the NavCom, then the locomotor's `Move_To` with
-    /// the cell's `GetCoords`) and Foot's timer tail (`0x004D96C2`); a Unit
-    /// keeps the Fly adapter's power and warp gates. Other fliers continue
-    /// through their established motion adapter.
+    /// An air order to a cell. A Jumpjet Unit or Infantry takes Foot's setter
+    /// ([`Self::jumpjet_cell_destination`]); other fliers continue through
+    /// their established motion adapter.
     pub(crate) fn issue_air_cell_destination(
         &mut self,
         id: u64,
@@ -842,10 +840,62 @@ impl Simulation {
         speed: SimFixed,
         rules: Option<&crate::rules::ruleset::RuleSet>,
     ) -> bool {
-        use crate::map::entities::EntityCategory;
+        if let Some(accepted) = self.jumpjet_cell_destination(id, target, speed, rules) {
+            return accepted;
+        }
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
+        let is_fly = entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.fly_runtime())
+            .is_some();
+        let coordinate = if is_fly {
+            super::navcom::target_cell_coord(target.0, target.1, self.resolved_terrain.as_ref())
+        } else {
+            DriveCoord::cell(target.0, target.1, 0)
+        };
+        self.move_air_coordinate(
+            id,
+            coordinate,
+            speed,
+            Some(super::DestinationTiming::from_rules(
+                self.session.binary_frame,
+                rules,
+            )),
+            rules,
+        )
+    }
+
+    /// A cell order to a Jumpjet Unit or Infantry, whichever route gave it:
+    /// Foot's setter (`0x004D94B0`: the NavCom at `0x004D9510`, then the
+    /// locomotor's `Move_To` with the cell's `GetCoords` at `0x004D965D`) and
+    /// Foot's timer tail (`0x004D96C2`). A Unit keeps the Fly adapter's power
+    /// and warp gates. `None` when `id` is not a Jumpjet Unit or Infantry.
+    ///
+    /// RESIDUAL: before Foot's setter, Infantry's (`0x0051AA40`) swaps the
+    /// Jumpjet of a `JumpJet=` infantry that is not moving for a Walk
+    /// piggyback (`0x0051AE5A..0x0051B1CA`) unless `0x005221D0` says fly or
+    /// the type has `HoverAttack=` (`+0x390`), and ends the piggyback when it
+    /// says fly; a walking one queues the destination (`0x0051AD1F`).
+    /// `0x005221D0` says fly when airborne; on the ground it says walk for a
+    /// reachable hop of one cell, for two or three cells in the playfield
+    /// whose zone cost is at most 7, and in two house and cell cases
+    /// (`0x0053A130`, `0x00484AE0`). VERA flies every hop. Trigger: a grounded
+    /// `JumpJet=` infantry without `HoverAttack=` given a short hop. Effect:
+    /// it lifts off instead of walking. Frequency: dormant in retail, where
+    /// each `JumpJet=` type also sets `HoverAttack=` (raw RULESMD read, not
+    /// the production reader). Risk: a mod's walking jumpjet infantry fly.
+    pub(crate) fn jumpjet_cell_destination(
+        &mut self,
+        id: u64,
+        target: (u16, u16),
+        speed: SimFixed,
+        rules: Option<&crate::rules::ruleset::RuleSet>,
+    ) -> Option<bool> {
+        use crate::map::entities::EntityCategory;
+        let entity = self.substrate.entities.get(id)?;
         let jumpjet = matches!(
             entity.category,
             EntityCategory::Infantry | EntityCategory::Unit
@@ -855,34 +905,15 @@ impl Simulation {
             .and_then(|l| l.jumpjet_runtime())
             .is_some();
         if !jumpjet {
-            let is_fly = entity
-                .locomotor
-                .as_ref()
-                .and_then(|l| l.fly_runtime())
-                .is_some();
-            let coordinate = if is_fly {
-                super::navcom::target_cell_coord(target.0, target.1, self.resolved_terrain.as_ref())
-            } else {
-                DriveCoord::cell(target.0, target.1, 0)
-            };
-            return self.move_air_coordinate(
-                id,
-                coordinate,
-                speed,
-                Some(super::DestinationTiming::from_rules(
-                    self.session.binary_frame,
-                    rules,
-                )),
-                rules,
-            );
+            return None;
         }
         if entity.category == EntityCategory::Unit
             && !super::air_movement::fly_coordinate_admitted(entity)
         {
-            return false;
+            return Some(false);
         }
         let Some(terrain) = self.resolved_terrain.as_ref() else {
-            return false;
+            return Some(false);
         };
         let input = super::navcom::target_cell_coord(target.0, target.1, Some(terrain));
         let entity = self.substrate.entities.get_mut(id).expect("selected mover");
@@ -891,7 +922,7 @@ impl Simulation {
             crate::sim::components::NavTargetRef::cell(target.0, target.1),
         );
         if self.jumpjet_move_to(id, input, rules).is_none() {
-            return false;
+            return Some(false);
         }
         self.publish_jumpjet_destination(id, speed);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
@@ -899,22 +930,8 @@ impl Simulation {
             // the locomotor's Move_To; the Move_To inside Stop cannot own this.
             super::DestinationTiming::from_rules(self.session.binary_frame, rules).accept(entity);
         }
-        true
+        Some(true)
     }
-}
-
-/// Max cells for infantry walk fallback (TS-style jumpjet infantry).
-const INFANTRY_WALK_THRESHOLD_CELLS: u32 = 3;
-
-/// Whether a jumpjet infantry unit should use ground Walk for this move distance.
-///
-/// TS-style rule: infantry with Jumpjet + !HoverAttack walk for ≤3 cells.
-pub fn should_use_walk_fallback(
-    hover_attack: bool,
-    is_infantry: bool,
-    distance_cells: u32,
-) -> bool {
-    is_infantry && !hover_attack && distance_cells <= INFANTRY_WALK_THRESHOLD_CELLS
 }
 
 #[cfg(test)]
@@ -1123,14 +1140,5 @@ mod tests {
                 "{input}"
             );
         }
-    }
-
-    #[test]
-    fn test_infantry_walk_fallback() {
-        assert!(should_use_walk_fallback(false, true, 2));
-        assert!(should_use_walk_fallback(false, true, 3));
-        assert!(!should_use_walk_fallback(false, true, 4));
-        assert!(!should_use_walk_fallback(true, true, 2)); // hover_attack blocks fallback
-        assert!(!should_use_walk_fallback(false, false, 2)); // not infantry
     }
 }

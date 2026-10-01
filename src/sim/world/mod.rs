@@ -5899,7 +5899,9 @@ impl Simulation {
     /// so each wake stays where the hull was and the trail forms behind it as
     /// the unit advances.
     pub(crate) fn spawn_wakes_for_frame(&mut self, rules: &RuleSet) {
-        if self.session.binary_frame % 10 != 0 && self.session.binary_frame % 8 != 0 {
+        if !self.session.binary_frame.is_multiple_of(10)
+            && !self.session.binary_frame.is_multiple_of(8)
+        {
             return;
         }
         let binary_frame = self.session.binary_frame;
@@ -6638,9 +6640,9 @@ pub(crate) fn wake_anchor_for(
         Some(
             crate::rules::locomotor_type::LocomotorKind::Drive
             | crate::rules::locomotor_type::LocomotorKind::Hover,
-        ) => binary_frame % 10 == 0,
+        ) => binary_frame.is_multiple_of(10),
         Some(crate::rules::locomotor_type::LocomotorKind::Ship) => {
-            binary_frame % 8 == 0 && !underwater
+            binary_frame.is_multiple_of(8) && !underwater
         }
         _ => false,
     };

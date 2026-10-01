@@ -829,9 +829,11 @@ impl Simulation {
         Some((state, flight, host.location, effects))
     }
 
-    /// VERA's movement adapter hands a Jumpjet its orders through a goal cell
-    /// rather than through Foot's `Set_Destination`, so before `Process` the
-    /// two native entries are applied from it:
+    /// Cell orders reach a Jumpjet through Foot's setter
+    /// ([`Simulation::jumpjet_cell_destination`]). An object order on the
+    /// ground route, a scatter's re-aim and the orders that drop a goal still
+    /// hand it a goal cell rather than calling Foot's `Set_Destination`, so
+    /// before `Process` the two native entries are applied from it:
     /// - a goal the locomotor is not flying to is a fresh
     ///   `Set_Destination(cell)`: Foot stores the NavCom and hands `Move_To`
     ///   the cell's `GetCoords` (`0x004D94B0`), and the goal then names the
