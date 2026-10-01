@@ -196,7 +196,8 @@ mod tests {
 
     /// `HouseClass::GetSpeedBonus` reaches the live getter through the
     /// owner's House: `SpeedUnitsMult=1.5` turns MTNK's type speed 17 into
-    /// ftol(25.5) = 25; the infantry key does not apply to a UnitType.
+    /// ftol(25.5) = 25, and `SpeedInfantryMult=3` turns E1's 10 into 30; each
+    /// key applies only to its WhatAmI (`0x0050C050`).
     #[test]
     fn owner_house_speed_bonus_reaches_the_live_getter() {
         use crate::rules::ini_parser::IniFile;
@@ -204,7 +205,8 @@ mod tests {
         use crate::sim::intern::{test_intern, test_interner};
         let rules = crate::rules::ruleset::RuleSet::from_ini(&IniFile::from_str(
             "[Countries]\n0=Americans\n[Americans]\nSpeedUnitsMult=1.5\nSpeedInfantryMult=3\n\
-             [VehicleTypes]\n0=MTNK\n[MTNK]\nSpeed=7\n",
+             [VehicleTypes]\n0=MTNK\n[MTNK]\nSpeed=7\n\
+             [InfantryTypes]\n0=E1\n[E1]\nSpeed=4\n",
         ))
         .unwrap();
         let mut mtnk =
@@ -219,6 +221,13 @@ mod tests {
         let no_houses = std::collections::BTreeMap::new();
         assert_eq!(speed(&no_houses), 17);
         assert_eq!(speed(&houses), 25);
+        let mut e1 = crate::sim::game_entity::GameEntity::test_default(2, "E1", "Americans", 0, 0);
+        e1.foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
+        assert_eq!(
+            super::owner_current_speed(&e1, rules.object("E1"), 1.0, &houses),
+            30
+        );
     }
 
     /// The getter rows of `tools/spatial_oracle/track_speed_native.json`
