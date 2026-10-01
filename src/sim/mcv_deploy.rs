@@ -286,13 +286,28 @@ pub(crate) fn issue_order(sim: &mut Simulation, id: u64, rules: &RuleSet) -> boo
     {
         return false;
     }
+    // `0x004C778A..0x004C77DE`: the event is ignored while the MCV's cell
+    // holds a WeaponsFactory= building (Cell_Building `0x0047C520`; VERA's
+    // foundation scan stands in), so an MCV still leaving its factory stays.
+    let (rx, ry) = {
+        let entity = sim.substrate.entities.get(id).unwrap();
+        (entity.position.rx, entity.position.ry)
+    };
+    if crate::sim::credit_income::building_at_cell(sim, rx, ry)
+        .and_then(|building| sim.substrate.entities.get(building))
+        .and_then(|building| sim.object_type(building.type_ref(), rules))
+        .is_some_and(|kind| kind.weapons_factory)
+    {
+        return false;
+    }
     sim.run_dock_teardown(id, crate::sim::mission::retask::DockTeardown::All);
+    // Event DEPLOY: the Unit's class setter takes a null destination
+    // (`0x004C77F8`, Unit `0x00741970`) and its class target setter a null
+    // target (`0x004C7804`) before Queue_Mission(Unload) (`0x004C7812`).
+    // Queue's same-mission guard keeps the handler and timer on a repeated D.
+    sim.assign_null_destination(id, Some(rules));
+    let _ = sim.assign_target_represented(id, None, Some(rules));
     let entity = sim.substrate.entities.get_mut(id).unwrap();
-    // Event9 clears destination and target before Queue(Unload,false). Queue's
-    // existing same-mission guard preserves the handler/timer on repeated D.
-    movement::stop_navigation_at_committed_head(entity);
-    entity.attack_target = None;
-    entity.passively_acquired_target = false;
     entity.order_intent = None;
     sim.mission_queue_exact(
         id,

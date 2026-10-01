@@ -59,8 +59,22 @@ pub(super) fn committed_movement_head(entity: &GameEntity) -> Option<(u16, u16)>
     Some(((head.x / 256) as u16, (head.y / 256) as u16))
 }
 
-/// Clear a destination while preserving only an already committed Drive/Ship
-/// segment. Shared by Stop and the MCV EventClass deploy handoff.
+/// The represented null destination of a receiver whose class setter VERA
+/// does not port: an Aircraft (`0x0041AA80`) and a Jumpjet or Teleport man
+/// (Infantry `0x0051AA40`), each reaching Foot's null setter (`0x004D94B0`).
+/// The Stop command and the death Stun use it for them. Units and Walk
+/// infantry take their class setters (`Simulation::assign_null_destination`).
+///
+/// RESIDUAL: Foot's null arm is represented, not ported, for these receivers.
+/// - Trigger: Stop or a death Stun on an aircraft, a Jumpjet man or a
+///   Teleport man.
+/// - Effect: this clears the NavCom, NavQueue and abandoned route suffix,
+///   keeping only an already committed segment. Native skips the locomotor
+///   Stop for an attacking Aircraft (`0x004D9672..0x004D969C`) and otherwise
+///   runs it (`0x004D96B9`); Fly's Stop_Moving is not ported, and VERA's
+///   aircraft orders read the movement adapter this drops.
+/// - Frequency: every Stop order on aircraft or Rocketeers.
+/// - Risk: what an aircraft does after Stop.
 pub fn stop_navigation_at_committed_head(e: &mut GameEntity) {
     let committed_head = committed_movement_head(e);
     clear_navigation_for_entity(e);
@@ -74,7 +88,7 @@ pub fn stop_navigation_at_committed_head(e: &mut GameEntity) {
 
 /// Keep only physical movement already accepted by the locomotor. The caller
 /// owns destination/queue writes: explicit Attack's null setter does not clear
-/// NavQueue, whereas the pre-existing Stop command path does.
+/// NavQueue, whereas the Unit setter's null arm (`0x007423BE`) does.
 pub(crate) fn retain_committed_movement(e: &mut GameEntity) {
     let head = committed_movement_head(e);
     retain_path_to_head(e, head);

@@ -175,7 +175,9 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
     // 2026-10-01 turretless hull turn (#690): tank 4's FACING turn waits for
     // its Drive to stop, so its later shots and their Scenario draws move
     // (see GLOBAL_HARNESS_FINAL_HASH). Main/MapGen are unchanged.
-    0xED7A_61E6_33FE_939F,
+    // 2026-10-01 Stop through the Unit setter (#952): see
+    // GLOBAL_HARNESS_FINAL_HASH. Main/MapGen are unchanged.
+    0x59F4_735D_FB94_7D28,
     0x39F3_258B_A550_EB7C,
     0x1CE8_1848_7043_6163,
 );
@@ -465,7 +467,18 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // match exactly except tick hashes, including full actor state and all
 // three RNG streams/draws/caller positions. The temporary gate was removed.
 // Rust-only receipt: tools/spatial_oracle/astar_path_finishing_replay/main963/receipt.json.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x8976_4F17_0FCF_A3FB;
+// 2026-10-01 Stop through the Unit setter (#952): Event IDLE's null
+// destination is now Unit 0x00741970, which returns before any write without a
+// NavCom (0x00741A80). Tank 4 is at rest and attacking with no NavCom at the
+// tick-300 Stop, still holding a Foot speed fraction of about 0.73. The old
+// body's Drive Stop zeroed it (navcom.rs `drive_stop_moving`, itself a
+// stand-in for the unported Drive rest tail 0x4B0828), so the old tick-320
+// retreat order (to 8,8) now departs faster, leaves tank 6's fire, and the
+// duel never resolved. RESIDUAL: the native departure speed after an at-rest
+// stop is not established until 0x4B0828 is ported. The order now moves tank 4
+// one cell toward tank 6, and tank 4 still dies inside the run. Main/MapGen
+// are unchanged. Previous: 0x8976_4F17_0FCF_A3FB.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xC355_1AAB_44B6_0A29;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -686,11 +699,12 @@ fn harness_script() -> Vec<(u64, Command)> {
             },
         ),
         (300, Command::Stop { entity_id: 4 }),
+        // One cell toward tank 6: the move keeps tank 4 inside the duel.
         (
             320,
             Command::Move {
                 entity_id: 4,
-                target_rx: 8 + HARNESS_COORD_SHIFT,
+                target_rx: 36 + HARNESS_COORD_SHIFT,
                 target_ry: 8 + HARNESS_COORD_SHIFT,
                 queue: false,
             },
