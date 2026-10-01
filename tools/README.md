@@ -96,6 +96,12 @@ volume. Set `VERA20K_CACHE_GIB`, `VERA20K_INCREMENTAL_GIB`, and
 `--min-free-gib` before `--`. Sizes accept finite nonnegative decimal GiB.
 Limits are soft when protected files prevent reclaiming enough space.
 
+Before a large build, check the runner’s free-space result. If its minimum
+free-space target remains unmet, resolve the owned retention pressure before
+starting another large build; preserve required files and report any remaining
+shortfall. This is an agent workflow requirement; automatic cleanup failure still
+permits Cargo as described below.
+
 Preview or trim without starting Cargo:
 
 ```sh
