@@ -3413,7 +3413,7 @@ impl Simulation {
         }
         let after = self.movement_sound_probe(stable_id);
         let movement_changed = before.is_some() && before != after;
-        let moving_now = crate::sim::movement::ready_producer::is_moving_now_for(
+        let moving_now = crate::sim::movement::motion_query::is_moving_now(
             entity,
             rules.map(|rules| {
                 crate::sim::movement::SpeedRules::new(rules, &self.interner, &self.type_handles)
@@ -6606,8 +6606,9 @@ mod bridge_parity_harness_tests;
 /// (0x004B0823 region: `PUSH 0x600`).
 const WAKE_DRAW_FLAGS: u32 = 0x600;
 
-/// The wake gate for one unit this frame: moving now, not on a bridge, on a
-/// cell whose `CellClass+0xEC` mirror is Water, anchored at its exact leptons.
+/// The wake gate for one unit this frame: a Drive, Ship or Hover locomotor
+/// moving now, not on a bridge, on a cell whose `CellClass+0xEC` mirror is
+/// Water, anchored at its exact leptons.
 pub(crate) fn wake_anchor_for(
     entity: &crate::sim::game_entity::GameEntity,
     rules: Option<crate::sim::movement::SpeedRules<'_>>,
@@ -6619,7 +6620,19 @@ pub(crate) fn wake_anchor_for(
     if entity.sinking.is_active() {
         return None;
     }
-    if !crate::sim::movement::ready_producer::is_moving_now_for(entity, rules, binary_frame) {
+    // Only Drive (`0x004B07CA`), Ship (`0x0069FE92`) and Hover (`0x00514A65`)
+    // read `Rules->Wake` for a moving locomotor; the other readers are
+    // ReceiveDamage and anim bodies. A Jumpjet or Fly flier over water leaves
+    // none.
+    if !entity.locomotor.as_ref().is_some_and(|locomotor| {
+        matches!(
+            locomotor.active_kind(),
+            crate::rules::locomotor_type::LocomotorKind::Drive
+                | crate::rules::locomotor_type::LocomotorKind::Ship
+                | crate::rules::locomotor_type::LocomotorKind::Hover
+        )
+    }) || !crate::sim::movement::motion_query::is_moving_now(entity, rules, binary_frame)
+    {
         return None;
     }
     if entity.is_on_bridge_layer() {

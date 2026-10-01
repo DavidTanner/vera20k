@@ -9,6 +9,7 @@ use crate::sim::components::{
     DriveCoord, DriveLocomotionRuntime, MovementTarget, ShipLocomotionRuntime,
 };
 use crate::sim::movement::SpeedRules;
+use crate::sim::movement::motion_query::is_moving_now;
 use crate::sim::movement::teleport_movement::TeleportState;
 use crate::sim::type_handle_table::TypeHandleTable;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
@@ -81,7 +82,7 @@ fn driving_unit_reports_moving() {
     // (a stop) takes effect at the next query, with no speed cache left to
     // refresh.
     entity.foot_speed.set_speed_fraction(SIM_ZERO);
-    assert!(!is_moving_now_for(&entity, speed, 100));
+    assert!(!is_moving_now(&entity, speed, 100));
 }
 
 /// A speed crate multiplies the type speed inside GetCurrentSpeed
@@ -101,14 +102,14 @@ fn speed_crate_reaches_the_next_moving_query() {
     entity
         .foot_speed
         .set_speed_fraction(SimFixed::lit("0.75") / SimFixed::from_num(full));
-    assert!(!is_moving_now_for(&entity, Some(speed), 100));
+    assert!(!is_moving_now(&entity, Some(speed), 100));
 
     assert!(
         entity
             .foot_speed
             .accept_speed_crate(NativeF64Bits::from_bits(2.0f64.to_bits()))
     );
-    assert!(is_moving_now_for(&entity, Some(speed), 100));
+    assert!(is_moving_now(&entity, Some(speed), 100));
 }
 
 /// Standing exactly on the stale head-to point reads not-moving. This is native
@@ -266,12 +267,12 @@ fn walk_stop_keeps_paid_head_readiness_until_retirement_and_restore() {
     loco.set_walk_destination(None);
     entity.foot_speed.set_speed_fraction(SIM_ONE);
     assert!(entity.movement_target.is_none());
-    assert!(is_moving_now_for(&entity, None, 100));
+    assert!(is_moving_now(&entity, None, 100));
     let mut restored: GameEntity =
         serde_json::from_value(serde_json::to_value(&entity).unwrap()).unwrap();
-    assert!(is_moving_now_for(&restored, None, 100));
+    assert!(is_moving_now(&restored, None, 100));
     restored.locomotor.as_mut().unwrap().set_step_head(None);
-    assert!(!is_moving_now_for(&restored, None, 100));
+    assert!(!is_moving_now(&restored, None, 100));
     assert_eq!(
         restored.locomotor.as_ref().unwrap().walk_is_moving(),
         Some(true)
@@ -347,7 +348,7 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
                 has_order.then(|| crate::sim::components::NavTargetRef::cell(6, 5));
             if kind == LocomotorKind::Walk {
                 assert_eq!(
-                    is_moving_now_for(&entity, None, 100),
+                    is_moving_now(&entity, None, 100),
                     row["moving_now"].as_bool().unwrap(),
                     "{row}"
                 );

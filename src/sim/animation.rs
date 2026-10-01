@@ -255,15 +255,14 @@ pub(crate) fn tick_shp_vehicle_body_frame_counter(
         return;
     }
 
-    let rate =
-        if crate::sim::movement::ready_producer::is_moving_now_for(entity, rules, binary_frame) {
-            cadence.walk_rate
-        } else {
-            if cadence.idle_rate == 0 {
-                return;
-            }
-            cadence.idle_rate
-        };
+    let rate = if crate::sim::movement::motion_query::is_moving_now(entity, rules, binary_frame) {
+        cadence.walk_rate
+    } else {
+        if cadence.idle_rate == 0 {
+            return;
+        }
+        cadence.idle_rate
+    };
 
     if (binary_frame as i32) % rate == 0 {
         entity.body_frame_counter = entity.body_frame_counter.wrapping_add(1);

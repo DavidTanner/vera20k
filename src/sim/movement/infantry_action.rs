@@ -662,7 +662,7 @@ impl Simulation {
         let Some(doing) = actor.mission_leaf.as_infantry().map(|leaf| leaf.doing()) else {
             return;
         };
-        let moving_now = super::ready_producer::is_moving_now_for(
+        let moving_now = super::motion_query::is_moving_now(
             actor,
             Some(super::SpeedRules::new(
                 rules,

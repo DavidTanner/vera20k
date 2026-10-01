@@ -83,32 +83,12 @@ pub(crate) fn ready_state_for(
         LocomotorKind::Jumpjet => Some(jumpjet(locomotor)),
         LocomotorKind::Walk => Some(walk(entity, locomotor)),
         LocomotorKind::Hover => Some(hover(locomotor)),
-        // Catches Fly and Rocket. Neither needs a producer, because nothing consumes one for them: our two
-        // consumers of `is_moving_now` are the Unit and Infantry readiness
-        // branches in `sim::mission::readiness`, aircraft readiness decides from
-        // its mission plus two flags and never reads the locomotor, and
-        // Rocket-locomotor objects are aircraft too, not vehicles or infantry.
-        //
-        // Two things worth knowing before anyone "completes" this arm:
-        //
-        // - It is unreachable for the *readiness gate*, but the native slot
-        //   itself is not dead. gamemd reads it every tick on every foot object
-        //   for the sight/occupancy refresh and the move-sound state, and one
-        //   aircraft weapon predicate is literally its negation. So the slot has
-        //   consumers; the readiness answer just is not one of them.
-        // - Fly and Rocket each override the slot with a real body.
+        // Fly and Rocket have no readiness inputs: the Unit and Infantry
+        // readiness branches in `sim::mission::readiness` never see them, and
+        // aircraft readiness decides from its mission plus two flags. Their
+        // `Is_Moving_Now` bodies answer through `motion_query::is_moving_now`.
         LocomotorKind::Fly | LocomotorKind::Rocket => None,
     }
-}
-
-/// Fresh post-Process moving-now answer for FootClass side effects such as
-/// MoveSound. Native dispatches this locomotor slot at each consumer.
-pub(crate) fn is_moving_now_for(
-    entity: &GameEntity,
-    rules: Option<super::SpeedRules<'_>>,
-    binary_frame: u32,
-) -> bool {
-    ready_state_for(entity, rules, binary_frame).is_some_and(LocomotorReadyState::is_moving_now)
 }
 
 /// Positive sign projection used by Walk's strict >0 query. The native
@@ -246,19 +226,14 @@ fn walk(entity: &GameEntity, locomotor: &LocomotorState) -> LocomotorReadyState 
     }
 }
 
-/// Hover's readiness inputs: `Is_Moving_Now` 0x00514C80 is `Is_Moving`
-/// (0x00514C30, a destination or a head) and a nonzero +0x48 request. The
-/// test is `!= 0`, so a negative request would count as moving.
+/// Hover's readiness inputs ([`super::hover::HoverRuntime::ready_state`]).
 fn hover(locomotor: &LocomotorState) -> LocomotorReadyState {
     locomotor.hover_runtime().map_or(
         LocomotorReadyState::Hover {
             slot_moving: false,
             speed_bits: 0,
         },
-        |hover| LocomotorReadyState::Hover {
-            slot_moving: hover.is_moving(),
-            speed_bits: hover.speed_request_bits(),
-        },
+        super::hover::HoverRuntime::ready_state,
     )
 }
 

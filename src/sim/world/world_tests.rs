@@ -364,6 +364,48 @@ fn app_and_headless_frames_hash_identically_for_particle_frame_timing() {
     }
 }
 
+/// Only Drive (`0x004B07CA`), Ship (`0x0069FE92`) and Hover (`0x00514A65`)
+/// read `Rules->Wake` for a moving locomotor. A Jumpjet cruising over water is
+/// moving now (`0x0054D0D0`) and leaves no wake.
+#[test]
+fn a_jumpjet_cruising_over_water_leaves_no_wake() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n[VehicleTypes]\n0=JJV\n[AircraftTypes]\n[BuildingTypes]\n\
+         [JJV]\nStrength=200\nArmor=light\nSpeed=14\nSpeedType=Hover\nMovementZone=Fly\n\
+         Locomotor={92612C46-F71F-11d1-AC9F-006008055BB5}\n",
+    ))
+    .expect("Jumpjet rules");
+    let mut sim = Simulation::new();
+    let id = sim
+        .spawn_object("JJV", "Americans", 0, 0, 64, &rules)
+        .expect("spawn Jumpjet");
+    let mut terrain = water_terrain(2, 1);
+    for cell in &mut terrain.cells {
+        cell.yr_cell_land_type = crate::rules::terrain_rules::LandType::Water.as_index();
+    }
+    sim.resolved_terrain = Some(terrain);
+    let runtime = sim
+        .substrate
+        .entities
+        .get_mut(id)
+        .and_then(|e| e.locomotor.as_mut())
+        .and_then(|loco| loco.jumpjet_runtime_mut())
+        .expect("Jumpjet runtime");
+    runtime.phase = crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
+    runtime.moving = true;
+    let speed = crate::sim::movement::SpeedRules::new(&rules, &sim.interner, &sim.type_handles);
+    let jumpjet = sim.substrate.entities.get(id).expect("Jumpjet");
+    assert!(crate::sim::movement::motion_query::is_moving_now(
+        jumpjet,
+        Some(speed),
+        10
+    ));
+    assert_eq!(
+        super::wake_anchor_for(jumpjet, Some(speed), sim.resolved_terrain.as_ref(), 10),
+        None
+    );
+}
+
 #[test]
 fn moving_water_unit_spawns_rules_bound_wake_without_preinterned_effect_name() {
     // A drive-family boat: the native wake gate is the drive locomotor's
@@ -816,6 +858,36 @@ fn assert_gsi_13_10_vxl_unit(entity: &GameEntity) {
     assert!(entity.is_voxel);
     assert!(entity.animation.is_none());
     assert!(entity.voxel_animation.is_some());
+}
+
+/// FootClass::AI asks every Foot's locomotor `Is_Moving_Now`
+/// (`0x004DAA24`), aircraft included. Fly's (`0x004CCAC0`) is its current
+/// speed, so a flying aircraft starts its MoveSound with no other change.
+#[test]
+fn a_flying_aircraft_starts_its_move_sound_on_its_speed() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n0=TESTPLANE\n[BuildingTypes]\n\
+         [TESTPLANE]\nStrength=100\nArmor=light\nSpeed=20\nMoveSound=TestMove\n",
+    ))
+    .expect("aircraft MoveSound rules");
+    let run = |speed: SimFixed| {
+        let mut sim = Simulation::with_seed(0x1020_3040);
+        let mut entity = GameEntity::test_default(1, "TESTPLANE", "Americans", 4, 4);
+        entity.type_ref = sim.interner.intern("TESTPLANE");
+        entity.category = EntityCategory::Aircraft;
+        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Fly);
+        locomotor
+            .fly_runtime_mut()
+            .expect("Fly runtime")
+            .current_speed = speed;
+        entity.locomotor = Some(locomotor);
+        sim.substrate.entities.insert(entity);
+        let unchanged = sim.movement_sound_probe(1);
+        sim.tick_move_sound_after_process(1, unchanged, Some(&rules));
+        sim.substrate.entities.get(1).unwrap().move_sound_active
+    };
+    assert!(run(SIM_HALF), "a flying aircraft starts its MoveSound");
+    assert!(!run(SIM_ZERO), "a still one does not");
 }
 
 fn move_sound_test_rules(configured: bool) -> RuleSet {

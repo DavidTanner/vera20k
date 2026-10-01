@@ -1,7 +1,7 @@
-//! Active ILocomotion+10 queries over existing retained state.
-//!
-//! This is distinct from +80 IsMovingNow. Unsupported payloads return None;
-//! callers must keep their remaining adapter limits explicit. No order/path
+//! The active locomotor's two motion queries over existing retained state:
+//! ILocomotion+10 `Is_Moving` ([`is_moving`]) and +80 `Is_Moving_Now`
+//! ([`is_moving_now`]). Native callers dispatch one slot or the other, and
+//! the two answer differently in every family except Teleport. No order/path
 //! presence, movement phase or speed is substituted for a native query here.
 use super::track_process::TrackFamily;
 use crate::rules::locomotor_type::LocomotorKind;
@@ -34,6 +34,32 @@ pub(crate) fn is_moving(entity: &GameEntity) -> Option<bool> {
         // Rocket destination storage still requires its native
         // producer/lifecycle migration.
         _ => None,
+    }
+}
+
+/// `Is_Moving_Now` (ILocomotion+0x80) of the active locomotor: Fly
+/// `0x004CCAC0`, Rocket `0x00661F90`, and the readiness families of
+/// [`super::ready_producer::ready_state_for`] (Drive `0x004AFC20`, Ship,
+/// Walk, Hover `0x00514C80`, Teleport and Jumpjet `0x0054D0D0`). No locomotor
+/// answers false. `rules` gives Drive and Ship the owner's speed getter.
+pub(crate) fn is_moving_now(
+    entity: &GameEntity,
+    rules: Option<super::SpeedRules<'_>>,
+    binary_frame: u32,
+) -> bool {
+    let Some(locomotor) = entity.locomotor.as_ref() else {
+        return false;
+    };
+    match locomotor.active_kind() {
+        LocomotorKind::Fly => locomotor
+            .fly_runtime()
+            .is_some_and(super::fly_height::FlyRuntime::is_moving_now),
+        LocomotorKind::Rocket => entity
+            .rocket_state
+            .as_ref()
+            .is_some_and(|rocket| rocket.phase.is_moving_now()),
+        _ => super::ready_producer::ready_state_for(entity, rules, binary_frame)
+            .is_some_and(super::locomotor_ready::LocomotorReadyState::is_moving_now),
     }
 }
 
