@@ -141,6 +141,8 @@ pub struct TerrainSpawnContext<'a> {
     pub resolved_terrain: Option<&'a ResolvedTerrainGrid>,
     pub overlay_registry: Option<&'a OverlayTypeRegistry>,
     pub ore_growth_state: Option<&'a mut OreGrowthState>,
+    growth_enabled: bool,
+    spread_enabled: bool,
     pub radar_dirty_cells: Option<&'a mut Vec<(u16, u16)>>,
     pub radar_dirty_generation: Option<&'a mut u64>,
     pub tactical_dirty_cells: Option<&'a mut Vec<(u16, u16)>>,
@@ -163,6 +165,8 @@ impl<'a> TerrainSpawnContext<'a> {
             resolved_terrain: None,
             overlay_registry: None,
             ore_growth_state: None,
+            growth_enabled: true,
+            spread_enabled: true,
             radar_dirty_cells: None,
             radar_dirty_generation: None,
             tactical_dirty_cells: None,
@@ -191,9 +195,13 @@ impl<'a> TerrainSpawnContext<'a> {
         mut self,
         ore_growth_state: &'a mut OreGrowthState,
         binary_frame: u32,
+        growth_enabled: bool,
+        spread_enabled: bool,
     ) -> Self {
         self.ore_growth_state = Some(ore_growth_state);
         self.binary_frame = binary_frame;
+        self.growth_enabled = growth_enabled;
+        self.spread_enabled = spread_enabled;
         self
     }
 
@@ -308,8 +316,8 @@ fn tick_terrain_spawner_one_inner(
         live_objects: Some(objects.object_view()),
         rng: ctx.rng,
         binary_frame: ctx.binary_frame,
-        growth_enabled: true,
-        spread_enabled: true,
+        growth_enabled: ctx.growth_enabled,
+        spread_enabled: ctx.spread_enabled,
         radar_dirty_cells: ctx.radar_dirty_cells.as_deref_mut(),
         radar_dirty_generation: ctx.radar_dirty_generation.as_deref_mut(),
         tactical_dirty_cells: ctx.tactical_dirty_cells.as_deref_mut(),
@@ -359,7 +367,12 @@ pub(crate) fn tick_terrain_object_ai(
         cell,
         spawner_cells,
         TerrainSpawnContext::new(sim.overlay_grid.as_mut(), &mut sim.scenario_rng)
-            .with_growth_queue(&mut production.ore_growth_state, sim.session.binary_frame)
+            .with_growth_queue(
+                &mut production.ore_growth_state,
+                sim.session.binary_frame,
+                production.ore_growth_config.grows,
+                production.ore_growth_config.spreads,
+            )
             .with_dirty_tracking(
                 &mut sim.radar_terrain_dirty_cells,
                 &mut sim.radar_terrain_dirty_generation,
@@ -818,7 +831,7 @@ mod tests {
             tick_terrain_animations_stateful(
                 spawners,
                 TerrainSpawnContext::new(Some(&mut self.overlay_grid), rng)
-                    .with_growth_queue(&mut self.growth_state, self.binary_frame)
+                    .with_growth_queue(&mut self.growth_state, self.binary_frame, true, true)
                     .with_live_object_context(
                         &self.entities,
                         &self.occupancy,

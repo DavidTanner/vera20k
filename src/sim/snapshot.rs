@@ -2594,6 +2594,10 @@ mod tests {
                     .ore_growth_state
                     .add_native_growth_queue_cell(
                         overlay,
+                        registry,
+                        &rules.tiberium_types,
+                        resolved,
+                        true,
                         registry
                             .tiberium_type_for_overlay(
                                 &rules.tiberium_types,
@@ -2611,11 +2615,18 @@ mod tests {
                 sim.production
                     .ore_growth_state
                     .add_native_spread_queue_cell(
+                        registry
+                            .tiberium_type_for_overlay(
+                                &rules.tiberium_types,
+                                overlay.cell(ore_cell.0, ore_cell.1).overlay_id.unwrap()
+                            )
+                            .unwrap(),
                         overlay,
                         registry,
                         &rules.tiberium_types,
                         resolved,
-                        false,
+                        &std::collections::BTreeSet::new(),
+                        None,
                         ore_cell.0,
                         ore_cell.1,
                         41,

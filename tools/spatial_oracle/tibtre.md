@@ -199,7 +199,8 @@ release's recorded observations, fingerprints and frame bytes. The receipt keeps
 both validation stages and all three release identities; subsequent changes only
 update documentation and evidence receipts.
 
-The existing OQ-38 enqueue-side growth/spread array-counter rebuild is still a
-long-run residual: reaching its capacity threshold can change queue membership,
-RNG order and later resource processing. This broader queue lifecycle mechanism
-is outside the bounded stock producer/render chain and is not certified here.
+The OQ-38 enqueue-side growth/spread array-counter rebuild was a residual at
+this TIBTRE validation. The subsequent [ore-queue comparison](ore_queue.md)
+implements and checks those thresholds, receiver reseeding and connected callers
+against native execution. Its bounded coverage is separate from the TIBTRE
+producer/render comparisons above; neither certifies a whole long-session history.

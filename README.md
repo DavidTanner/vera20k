@@ -28,7 +28,10 @@ chaining, the Nuke and the Chronosphere. The 30-player, 20,000-unit scale hasn't
 demonstrated yet.
 
 Stock TIBTRE ore trees use retained simulation animation, emit ore at the native
-midpoint and feed the existing growth and harvesting paths. The
+midpoint and feed the existing growth and harvesting paths. Ore queues
+now rebuild at the native enqueue thresholds; the
+[queue comparison](tools/spatial_oracle/ore_queue.md) records the tested boundaries
+and connected callers. The
 [bounded native comparisons](tools/spatial_oracle/tibtre.md) cover their timing,
 RNG and placement; stock artwork uses the native body/shadow frame pairs.
 
