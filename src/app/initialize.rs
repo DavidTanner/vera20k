@@ -493,6 +493,7 @@ impl App {
                     building_placement_preview: None,
                     camera_x: 0.0,
                     camera_y: 0.0,
+                    pending_camera_scroll: Default::default(),
                     zoom_level: 1.0,
                     zoom_target: 1.0,
                     zoom_anchor_world: [0.0, 0.0],

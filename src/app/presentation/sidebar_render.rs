@@ -409,8 +409,8 @@ pub(crate) fn update_camera_from_minimap_cursor(state: &mut AppState) {
     });
     if let Some(target) = native_target {
         // `0x00653EA0 -> FUN_006D6070` writes current and desired viewport
-        // together from the complete CellClass center XYZ. Rust has one
-        // immediate camera point representing both native fields.
+        // together from the complete CellClass center XYZ. The camera owner
+        // discards any pending scroll request when setting the absolute view.
         let (x, y, z) = target.world_leptons;
         crate::app::input::camera::center_camera_on_lepton_point(state, x, y, z);
         return;
@@ -439,8 +439,7 @@ pub(crate) fn update_camera_from_minimap_cursor(state: &mut AppState) {
         rect.w,
         rect.h,
     );
-    state.match_state.input.camera_x = cx;
-    state.match_state.input.camera_y = cy;
+    crate::app::input::camera::set_camera_position(state, (cx, cy));
     crate::app::input::camera::clamp_camera_to_playable_area(state, sw, sh);
 }
 

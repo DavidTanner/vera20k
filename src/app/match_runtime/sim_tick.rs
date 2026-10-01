@@ -555,6 +555,7 @@ pub(crate) struct RuntimePassDecision {
     pub(crate) tick_lane: TickLane,
     pub(crate) admitted_by_pacer: bool,
     pub(crate) tactical_mutation: bool,
+    pub(crate) scroll_input: bool,
 }
 
 /// Decide one in-game runtime pass from raw predicates. This is the single
@@ -573,6 +574,7 @@ pub(crate) fn decide_runtime_pass(inputs: RuntimePassInputs) -> RuntimePassDecis
             tick_lane: TickLane::Ordinary,
             admitted_by_pacer: false,
             tactical_mutation: true,
+            scroll_input: true,
         };
     }
     // The current build has no network-session owner, so neither native
@@ -599,6 +601,18 @@ pub(crate) fn decide_runtime_pass(inputs: RuntimePassInputs) -> RuntimePassDecis
         tick_lane,
         admitted_by_pacer: run_sim && !inputs.frame_stepping && pacer_admitted,
         tactical_mutation: service.tactical_mutation,
+        // Main_Tick polls GScreen input at 0x55D8AB. ThrottleFrame's offline
+        // modes 0/5 skip its extra poll at 0x55E253, so a redraw during that
+        // wait must neither scroll nor latch a right drag. Native executions:
+        // tools/input_oracle/fast_scroll.json (throttle_cases).
+        // Retain VERA's developer-pause camera and existing network policy;
+        // current_session_mode is offline-only, so the latter is not parity.
+        scroll_input: inputs.window_active
+            && inputs.startup_admitted
+            && service.tactical_mutation
+            && (run_sim
+                || (inputs.paused && !inputs.menu_open)
+                || inputs.session_mode.is_network()),
     }
 }
 
@@ -731,9 +745,14 @@ fn advance_in_game_runtime_mode(
         }
     }
 
+    // Sample the gesture once, before simulation. Apply its request at the
+    // native Tactical__AI/pre-follow seam, after this frame's bounds writers.
+    let mouse_scroll = decision
+        .scroll_input
+        .then(|| crate::app::input::camera::poll_mouse_scroll(state));
     if decision.run_sim {
         let tick_lane = decision.tick_lane;
-        let frame_committed = advance_one_simulation_frame(state, tick_lane);
+        let frame_committed = advance_one_simulation_frame(state, tick_lane, mouse_scroll);
         crate::app::presentation::sidebar_render::advance_sidebar_credits_after_frame(
             state,
             frame_committed,
@@ -749,6 +768,8 @@ fn advance_in_game_runtime_mode(
         // were finalized inside the authoritative sim transaction. Only the
         // independent wall-clock terrain-overlay timer remains app-owned.
         crate::app::presentation::building_anim::tick_terrain_overlay_animations(state, 16);
+    } else if let Some(request) = mouse_scroll {
+        crate::app::input::camera::commit_camera_scroll(state, request);
     }
 
     // Ordered native source/global operations were applied with the frame
@@ -776,8 +797,11 @@ fn advance_in_game_runtime_mode(
     crate::app::presentation::building_anim::drain_sound_events(state);
     let in_game_music = state.persistence.options_profile.in_game_music;
     state.audio.main_tick_theme(in_game_music, music_now_ms);
+    if decision.scroll_input {
+        crate::app::input::camera::queue_keyboard_scroll(state);
+    }
     if decision.tactical_mutation {
-        crate::app::input::camera::update_camera(state);
+        crate::app::input::camera::animate_zoom(state);
         update_building_placement_preview(state);
     }
     let sw = state.render_width() as f32;
@@ -801,7 +825,11 @@ fn should_record_replay_tick(
     tick_result.frame_committed || !due_commands.is_empty() || tick_result.terminal_score_finalized
 }
 
-fn advance_one_simulation_frame(state: &mut AppState, tick_lane: TickLane) -> bool {
+fn advance_one_simulation_frame(
+    state: &mut AppState,
+    tick_lane: TickLane,
+    mouse_scroll: Option<(f32, f32)>,
+) -> bool {
     let mut refresh_atlases_after_tick = false;
     // Trigger definitions are runtime-bound (F07), so a live runtime is the
     // only activity source; the old trigger-only fixture mode is unrepresentable.
@@ -965,6 +993,13 @@ fn advance_one_simulation_frame(state: &mut AppState, tick_lane: TickLane) -> bo
                 .commit_frame(drained_combat_lights);
         }
         crate::app::input::dispatch::reconcile_selection_order_after_sim(state);
+        // Scroll_Map (0x4A9840 -> 0x6D8530) accumulates mouse requests;
+        // Tactical__AI commits/clamps them at 0x6D26F9..0x6D2770, before
+        // follow's SetView (0x55B6F3) overwrites both requested/current view.
+        // Applying here also uses any LocalSize changes from this frame.
+        if let Some(request) = mouse_scroll {
+            crate::app::input::camera::commit_camera_scroll(state, request);
+        }
         // Native drives the follow camera from the tail of
         // LogicClass__PerTickUpdate 0x0055B6B8, after every object has updated,
         // so the view lands on this tick's position rather than the last one's.
@@ -1732,6 +1767,10 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "camera_cadence_tests.rs"]
+mod camera_cadence_tests;
 
 #[cfg(test)]
 mod modal_pump_tests {

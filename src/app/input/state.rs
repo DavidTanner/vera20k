@@ -11,6 +11,8 @@ use winit::keyboard::{KeyCode, ModifiersState};
 pub(crate) struct MatchInputState {
     pub(crate) camera_x: f32,
     pub(crate) camera_y: f32,
+    /// Camera-owned requests awaiting Tactical__AI's next single commit.
+    pub(crate) pending_camera_scroll: crate::app::input::camera::PendingCameraScroll,
     /// Current zoom level for the game viewport. 1.0 = native pixel scale,
     /// >1.0 = zoomed in (world appears larger), <1.0 = zoomed out (see more map).
     /// Animated each frame toward `zoom_target`.
@@ -35,7 +37,8 @@ pub(crate) struct MatchInputState {
     pub(crate) hotkey_modifiers: ModifiersState,
     /// Hybrid held/tap state for the retail TypeSelect command.
     pub(crate) type_select: crate::app::types::TypeSelectInputState,
-    pub(crate) health_navigation: crate::app::input::dispatch::selection_navigation::HealthNavigation,
+    pub(crate) health_navigation:
+        crate::app::input::dispatch::selection_navigation::HealthNavigation,
     /// Original CursorCheat toggle A8F7D8, consumed by tactical tooltips.
     pub(crate) cursor_coordinates: bool,
     /// One-shot Shift+S request, consumed at the next render submission.

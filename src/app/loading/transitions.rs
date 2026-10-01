@@ -275,8 +275,7 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
         tactical_height as f32,
         state.match_state.input.zoom_level,
     );
-    state.match_state.input.camera_x = camera_x;
-    state.match_state.input.camera_y = camera_y;
+    crate::app::input::camera::set_camera_position(state, (camera_x, camera_y));
     // gamemd's scenario reader fills all four camera bookmarks with the opening
     // view cell, so F1 before any Ctrl+F1 is a valid "go home".
     crate::app::input::camera::seed_view_bookmarks_from_current_view(state);

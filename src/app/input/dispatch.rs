@@ -372,7 +372,9 @@ pub(crate) fn tactical_mouse(state: &mut AppState, button: MouseButton, btn_stat
                                         state.rules(),
                                         Some(&sim.houses),
                                         &state.height_map(),
-                                        crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
+                                        crate::app::match_runtime::sim_tick::tactical_bridge_cells(
+                                            sim,
+                                        ),
                                         Some(&sim.interner),
                                         sim.playfield_bounds.is_some(),
                                     )
@@ -518,24 +520,17 @@ pub(crate) fn tactical_mouse(state: &mut AppState, button: MouseButton, btn_stat
                         state.match_state.input.cursor_y,
                     ));
                 }
-            } else {
-                state.match_state.input.tactical_mouse.right_held = false;
-                if state.match_state.input.tactical_mouse.captured {
-                    // The cancel ladder runs only when the drag threshold was
-                    // never crossed. A right drag that panned the map ends
-                    // silently — the selection survives it.
-                    let run_cancel_ladder = !state
-                        .match_state
-                        .input
-                        .tactical_mouse
-                        .right_threshold_crossed;
-                    state.match_state.input.tactical_mouse.release();
-                    if run_cancel_ladder {
-                        right_click_cancel_ladder(state);
-                    }
-                    // The native release tears the band rectangle down too.
-                    state.match_state.input.selection_state.cancel_drag();
+            } else if let Some(run_cancel_ladder) =
+                state.match_state.input.tactical_mouse.end_right_press()
+            {
+                // The cancel ladder runs only when the drag threshold was
+                // never crossed. A right drag that panned the map ends
+                // silently — the selection survives it.
+                if run_cancel_ladder {
+                    right_click_cancel_ladder(state);
                 }
+                // The native release tears the band rectangle down too.
+                state.match_state.input.selection_state.cancel_drag();
             }
         }
         _ => {}
