@@ -47,7 +47,7 @@ use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 /// Country-level fields needed by gameplay systems.
 #[derive(Debug, Clone)]
 pub struct CountryRules {
-    /// `MultiplayPassive=` allows non-owner garrison entry in `BuildingClass::CanDock`.
+    /// `MultiplayPassive=` allows non-owner garrison entry in `BuildingClass::CanBeOccupiedBy`.
     pub multiplay_passive: bool,
     /// `WallOwner=` allows this house type's buildings to claim nearby map walls.
     pub wall_owner: bool,

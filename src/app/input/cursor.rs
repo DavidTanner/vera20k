@@ -584,7 +584,7 @@ pub(super) fn capability_cursor_for_hover(
                 }
             }
 
-            // 6. Infantry garrisoning uses the shared CanDock-equivalent predicate.
+            // 6. Infantry garrisoning uses the shared CanBeOccupiedBy-equivalent predicate.
             //    garrisonable — only show Enter for those, not actual enemy-player buildings.
             if is_infantry {
                 if let Some(rules) = rules {
