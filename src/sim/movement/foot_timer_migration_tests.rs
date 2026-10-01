@@ -323,10 +323,6 @@ fn paid_walk_progress_clears_only_blocked_latch_and_retains_timer_words() {
             z: 0,
         }));
     entity.movement_target = Some(MovementTarget {
-        path: vec![(8, 8), (9, 8)],
-        path_layers: vec![MovementLayer::Ground; 2],
-        next_index: 1,
-        final_goal: Some((9, 8)),
         speed: SimFixed::from_num(165),
         ..Default::default()
     });

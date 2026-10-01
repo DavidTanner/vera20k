@@ -15,7 +15,7 @@ use crate::sim::components::{
 use crate::sim::game_entity::GameEntity;
 use crate::sim::game_options::GameOptions;
 use crate::sim::intern::StringInterner;
-use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
 use crate::sim::movement::{FacingClass, SpeedRules};
 use crate::sim::type_handle_table::TypeHandleTable;
@@ -833,9 +833,6 @@ fn infantry_action_fixture(
 
 fn make_movement_target() -> MovementTarget {
     MovementTarget {
-        path: vec![(0, 0), (1, 0)],
-        path_layers: vec![MovementLayer::Ground; 2],
-        next_index: 1,
         speed: SimFixed::from_num(512),
         ..Default::default()
     }

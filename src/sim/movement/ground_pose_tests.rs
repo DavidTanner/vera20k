@@ -59,7 +59,12 @@ fn mover(sim: &mut Simulation, kind: LocomotorKind) -> GameEntity {
             entity.category = EntityCategory::Infantry;
             entity.is_voxel = false;
             entity.sub_cell = Some(0);
-            // Walk follows its Foot+5E0 route toward its destination.
+            // Walk follows its Foot+5E0 route toward its destination; its
+            // adapter keeps no route cells.
+            entity.movement_target = Some(MovementTarget {
+                speed: SimFixed::from_num(61),
+                ..Default::default()
+            });
             entity
                 .locomotor
                 .as_mut()
@@ -532,11 +537,15 @@ fn walking_bridge_entry_commits_new_surface_and_object_list_plane() {
     entity.position.sub_y = SimFixed::from_num(2);
     // A paid head on the deck cell north; this Process's step crosses the
     // boundary (head admission is covered by the walk_prehead corpus).
-    entity.locomotor.as_mut().unwrap().set_step_head(Some(DriveCoord {
-        x: 3 * 256 + 128,
-        y: 2 * 256 + 128,
-        z: 4 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
-    }));
+    entity
+        .locomotor
+        .as_mut()
+        .unwrap()
+        .set_step_head(Some(DriveCoord {
+            x: 3 * 256 + 128,
+            y: 2 * 256 + 128,
+            z: 4 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
+        }));
     insert(&mut sim, entity);
     walk_tick(&mut sim, &terrain, &grid, 1);
     let entity = sim.substrate.entities.get(1).unwrap();

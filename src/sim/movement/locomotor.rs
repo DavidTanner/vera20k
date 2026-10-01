@@ -323,6 +323,13 @@ impl LocomotorState {
         }
     }
 
+    /// The cell of Walk's destination coordinate.
+    #[cfg(test)]
+    pub(crate) fn walk_destination_cell(&self) -> Option<(u16, u16)> {
+        self.walk_destination()
+            .map(|c| ((c.x / 256) as u16, (c.y / 256) as u16))
+    }
+
     pub(crate) fn walk_destination(&self) -> Option<crate::sim::components::DriveCoord> {
         match (self.kind, &self.runtime_payload) {
             (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => state.destination,

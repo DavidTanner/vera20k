@@ -1103,13 +1103,20 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
         engineer.navigation.nav_com,
         Some(NavTargetRef::building(target_id))
     );
-    let request = engineer
-        .movement_target
-        .as_ref()
-        .expect("accepted Capture request");
-    assert_eq!(request.final_goal, Some((5, 0)));
     assert!(
-        request.path.is_empty(),
+        engineer.movement_target.is_some(),
+        "accepted Capture request"
+    );
+    assert_eq!(
+        engineer.locomotor.as_ref().unwrap().walk_destination_cell(),
+        Some((5, 0))
+    );
+    assert!(
+        engineer
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty(),
         "Walk searches during Process, after order admission"
     );
 

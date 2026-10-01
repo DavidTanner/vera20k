@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use super::locomotor::MovementLayer;
 use super::tick_movement_with_grids;
 use crate::map::entities::EntityCategory;
 use crate::rules::art_data::ArtRegistry;
@@ -65,9 +64,6 @@ fn prone_mover() -> GameEntity {
         .unwrap()
         .set_step_head(Some(crate::sim::components::DriveCoord::cell(1, 0, 0)));
     entity.movement_target = Some(MovementTarget {
-        path: vec![(0, 0), (1, 0)],
-        path_layers: vec![MovementLayer::Ground; 2],
-        next_index: 1,
         speed: SimFixed::from_num(165),
         ..Default::default()
     });

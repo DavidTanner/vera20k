@@ -19,7 +19,7 @@ use serde_json::Value;
 fn completed_corner_keeps_heading_until_next_head_is_accepted() {
     use crate::map::resolved_terrain::ResolvedTerrainGrid;
     use crate::sim::components::MovementTarget;
-    use crate::sim::movement::{FacingClass, ground_pose, locomotor::MovementLayer, walk_head};
+    use crate::sim::movement::{FacingClass, ground_pose, walk_head};
 
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n0=E1\n[E1]\nStrength=125\nSpeed=4\n\
@@ -56,13 +56,7 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
         cursor: 0,
         reference_cell: Some((5, 5)),
     };
-    actor.movement_target = Some(MovementTarget {
-        path: vec![(5, 5), (6, 5), (6, 6)],
-        path_layers: vec![MovementLayer::Ground; 3],
-        next_index: 1,
-        final_goal: Some((6, 6)),
-        ..Default::default()
-    });
+    actor.movement_target = Some(MovementTarget::default());
     let loco = actor.locomotor.as_mut().unwrap();
     loco.set_walk_destination(Some(DriveCoord::cell(6, 6, 0)));
     loco.set_step_head(Some(head));

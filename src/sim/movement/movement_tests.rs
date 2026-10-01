@@ -368,7 +368,13 @@ fn walk_path_timer_waits_without_double_aging_or_losing_owner_state() {
                 serde_json::to_value(&actor.position).unwrap(),
                 serde_json::to_value(&position).unwrap()
             );
-            assert!(actor.movement_target.as_ref().unwrap().path.is_empty());
+            assert!(
+                actor
+                    .navigation
+                    .path_replay
+                    .remaining_directions()
+                    .is_empty()
+            );
             assert!(actor.locomotor.as_ref().unwrap().step_head().is_none());
             assert_eq!(sim.scenario_rng.logical_state(), rng);
         }
@@ -412,7 +418,7 @@ fn walk_path_timer_waits_without_double_aging_or_losing_owner_state() {
         );
         assert_eq!(actor.navigation.path_runtime.retries_left, u32::MAX);
         assert_eq!(
-            actor.movement_target.as_ref().unwrap().final_goal,
+            actor.locomotor.as_ref().unwrap().walk_destination_cell(),
             Some((21, 10))
         );
     }
@@ -2040,8 +2046,8 @@ fn group_gis_do_not_jump_or_lose_their_goal() {
                     dx * dx + dy * dy <= 32 * 32,
                     "unexpected jump seed={seed} tick={tick} GI={id} delta=({dx},{dy})"
                 );
-                if let Some(mt) = e.movement_target.as_ref() {
-                    if mt.final_goal != Some((3, 3)) {
+                if e.movement_target.is_some() {
+                    if e.locomotor.as_ref().unwrap().walk_destination_cell() != Some((3, 3)) {
                         let dx = i32::from(p.rx) - 3;
                         let dy = i32::from(p.ry) - 3;
                         assert!(

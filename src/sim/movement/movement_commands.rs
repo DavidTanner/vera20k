@@ -791,13 +791,20 @@ pub(super) fn prepare_destination_execution(
     speed: SimFixed,
 ) {
     let committed_head = committed_path_head(entity);
+    // Walk's goal is its locomotor destination (Walk+0x1C); its adapter
+    // keeps no goal cell.
+    let final_goal = (!entity
+        .locomotor
+        .as_ref()
+        .is_some_and(|l| l.kind == LocomotorKind::Walk))
+    .then_some(target);
     entity.movement_target = Some(MovementTarget {
         speed,
-        final_goal: Some(target),
+        final_goal,
         ..Default::default()
     });
     if committed_head.is_some() {
         retain_path_to_head(entity, committed_head);
-        entity.movement_target.as_mut().unwrap().final_goal = Some(target);
+        entity.movement_target.as_mut().unwrap().final_goal = final_goal;
     }
 }

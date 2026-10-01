@@ -343,9 +343,10 @@ fn follow_clicked_goal(
             );
             assert_eq!(
                 entity
-                    .movement_target
+                    .locomotor
                     .as_ref()
-                    .and_then(|target| target.final_goal),
+                    .and_then(|l| l.walk_destination_cell())
+                    .or(entity.movement_target.as_ref().and_then(|t| t.final_goal)),
                 Some(goal),
                 "each chained retail command must install its exact destination"
             );
@@ -459,7 +460,7 @@ fn ordinary_walk_cell_input_reaches_near_bank_and_valid_high_bridge() {
             })
         );
         assert!(
-            e.movement_target.as_ref().unwrap().path.is_empty(),
+            e.navigation.path_replay.remaining_directions().is_empty(),
             "command accepts before Process search"
         );
         for _ in 0..250 {
@@ -510,10 +511,10 @@ fn encoded_walk_destination_survives_topology_change_before_due_frame() {
         Some(crate::sim::components::NavTargetRef::Cell { rx: 9, ry: 6 })
     );
     assert_eq!(
-        e.movement_target.as_ref().unwrap().final_goal,
+        e.locomotor.as_ref().unwrap().walk_destination_cell(),
         Some(clicked)
     );
-    assert!(e.movement_target.as_ref().unwrap().path.is_empty());
+    assert!(e.navigation.path_replay.remaining_directions().is_empty());
     // This proves exact event installation. The following failed-Process and
     // same-slot Move restart remain the separately documented open increment.
 }
@@ -542,5 +543,8 @@ fn direct_simulation_walk_move_is_an_already_resolved_destination() {
         e.navigation.nav_com,
         Some(crate::sim::components::NavTargetRef::Cell { rx: 9, ry: 5 })
     );
-    assert_eq!(e.movement_target.as_ref().unwrap().final_goal, Some((9, 5)));
+    assert_eq!(
+        e.locomotor.as_ref().unwrap().walk_destination_cell(),
+        Some((9, 5))
+    );
 }
