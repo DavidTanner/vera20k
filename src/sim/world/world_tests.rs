@@ -9631,8 +9631,8 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
     // approach 108 leptons at tick 77, and the pair shares (11,10) for tick
     // 78 only, 119 leptons apart, below the derived transit bound. That bound
     // is derived for the admission instant, inside the frame, which this
-    // fixture does not sample; whether native admits here too is open while
-    // Drive admission runs through `classify_blocker` (ledger row I15).
+    // fixture does not sample; whether native admits here too is open
+    // (ledger row I15).
     // Ratchets on the measured values, not native bounds; the bound is
     // printed.
     const VISIBLE_OVERLAP_LEPTONS: i64 = 108;

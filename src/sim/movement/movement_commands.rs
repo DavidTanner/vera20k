@@ -474,7 +474,7 @@ pub(crate) fn issue_move_command_with_destination(
                     terrain_costs,
                     // Pass the merged entity_blocks set to both layered slots so
                     // the layered A* sees building footprints regardless of which
-                    // layer it expands. Mirrors the try_repath_after_block fix.
+                    // layer it expands.
                     merged_entity_blocks_ref,
                     merged_entity_blocks_ref,
                     merged_entity_blocks_ref,
@@ -526,7 +526,7 @@ pub(crate) fn issue_move_command_with_destination(
             terrain_costs,
             // Pass the merged entity_blocks set to both layered slots so the
             // layered A* sees building footprints regardless of which layer
-            // it expands. Mirrors the try_repath_after_block fix.
+            // it expands.
             merged_entity_blocks_ref,
             merged_entity_blocks_ref,
             merged_entity_blocks_ref,

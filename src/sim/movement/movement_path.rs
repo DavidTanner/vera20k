@@ -8,7 +8,6 @@ use std::collections::BTreeSet;
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-use crate::sim::components::MovementTarget;
 use crate::sim::find_nearby_cell::{
     NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs, RADIUS_HARD_CAP,
     find_nearby_passable_cell,
@@ -23,7 +22,7 @@ use crate::sim::pathfinding::{
     MAX_PATH_SEGMENT_STEPS, PathGrid, SearchMarkerOverlay, truncate_layered_path,
 };
 
-use super::{MovementConfig, MoverPathFacts, PathfindingContext};
+use super::{MoverPathFacts, PathfindingContext};
 
 #[cfg(test)]
 pub(crate) fn reset_path_search_used_zone_grid_marker() {
@@ -39,12 +38,6 @@ pub(crate) fn path_search_used_zone_grid_marker() -> bool {
 thread_local! {
     static PATH_SEARCH_USED_ZONE_GRID: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
-
-/// Ring radius the blocked-goal fallback searches for a reachable substitute.
-///
-/// **VERA-internal, gamemd equivalent UNCHECKED** — a named constant standing in
-/// for what used to be a bare `10` at the call site.
-const NEAREST_REACHABLE_SEARCH_RADIUS: u16 = 10;
 
 /// **VERA-internal, gamemd equivalent UNCHECKED**: the locomotor whitelist and
 /// the zero-size grid sentinel below. `FootClass::Find_Path` @ `0x004D3920`
@@ -596,11 +589,9 @@ pub(super) fn find_move_path_with_marker_detailed(
             // that correctly in `apply_search_marker_cost`; only the two
             // smoothing predicates in this file harden it, and the
             // `(x, y) != goal` carve-out has no native counterpart at all.
-            // Trigger: any blocked repath with a non-empty overlay, i.e.
-            // urgency 1 or 2. Player effect: VERA keeps a detour retail would
-            // straighten back out. Frequency: traffic jams at a chokepoint or
-            // a war-factory exit, several times a match. Downstream risk: low,
-            // it is a predicate the smoother consults.
+            // Dormant: no production search builds an overlay (#954, native
+            // UpdateBridgePassability 0x0042ACF0 is not ported), so this arm
+            // only runs in tests.
             if marker_overlay.is_some_and(|m| m.contains((x, y)) && (x, y) != goal) {
                 return false;
             }
@@ -710,125 +701,6 @@ fn build_flat_fallback_layers(
         }
     }
     layers
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn try_repath_after_block(
-    target: &mut MovementTarget,
-    path_runtime: &mut crate::sim::components::FootPathRuntime,
-    current: (u16, u16),
-    current_layer: MovementLayer,
-    layered_pathing: bool,
-    ctx: PathfindingContext<'_>,
-    terrain_costs: Option<&TerrainCostGrid>,
-    entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    movement_zone: Option<MovementZone>,
-    mcfg: MovementConfig,
-    entity_block_map: Option<&LayeredEntityBlockMap>,
-    facts: MoverPathFacts,
-    allow_zone_hierarchy: bool,
-    marker_search: Option<&super::path_markers::BridgeMarkerSearch>,
-) -> bool {
-    let goal = target
-        .final_goal
-        .unwrap_or_else(|| target.path.last().copied().unwrap_or(current));
-    if goal == current {
-        return false;
-    }
-    let Some(grid) = ctx.path_grid else {
-        path_runtime.start_movement(mcfg.binary_frame, mcfg.path_delay_ticks);
-        return false;
-    };
-
-    let combined_blocks: BTreeSet<(u16, u16)> = entity_blocks.cloned().unwrap_or_default();
-    let Some(effective_goal) = resolve_requested_move_goal(
-        grid,
-        goal,
-        Some(&combined_blocks),
-        movement_zone,
-        ctx.resolved_terrain,
-        NEAREST_REACHABLE_SEARCH_RADIUS,
-    ) else {
-        path_runtime.start_movement(mcfg.binary_frame, mcfg.path_delay_ticks);
-        return false;
-    };
-    if effective_goal != goal {
-        log::info!(
-            "Repath: goal ({},{}) blocked, redirecting to ({},{})",
-            goal.0,
-            goal.1,
-            effective_goal.0,
-            effective_goal.1,
-        );
-        target.final_goal = Some(effective_goal);
-    }
-
-    let zone_mz = movement_zone.unwrap_or(MovementZone::Normal);
-    // The layered A* path consults ground_blocks/bridge_blocks (not entity_blocks)
-    // for per-layer hard blocking. Pass the merged set as both ground_blocks and
-    // bridge_blocks so the layered search sees structure footprints / stationary
-    // obstacles on either layer the same way the flat search does.
-    let marker_overlay = marker_search
-        .map(|search| &search.overlay)
-        .filter(|overlay| !overlay.is_empty());
-    let effective_urgency = marker_search.map_or(facts.urgency, |search| search.effective_urgency);
-    let path_result = find_move_path_with_marker(
-        ctx,
-        layered_pathing,
-        current,
-        current_layer,
-        effective_goal,
-        terrain_costs,
-        Some(&combined_blocks),
-        Some(&combined_blocks),
-        Some(&combined_blocks),
-        zone_mz,
-        movement_zone,
-        entity_block_map,
-        marker_overlay,
-        MoverPathFacts {
-            urgency: effective_urgency,
-            ..facts
-        },
-        allow_zone_hierarchy,
-    );
-    let Some((new_path, new_layers)) = path_result else {
-        path_runtime.start_movement(mcfg.binary_frame, mcfg.path_delay_ticks);
-        return false;
-    };
-    if new_path.len() < 2 {
-        path_runtime.start_movement(mcfg.binary_frame, mcfg.path_delay_ticks);
-        return false;
-    }
-
-    target.path = new_path;
-    target.path_layers = new_layers;
-    debug_assert_eq!(
-        target.path.len(),
-        target.path_layers.len(),
-        "path/path_layers desync after blocked repath"
-    );
-    target.next_index = 1;
-    // Infantry: clear blocking state on repath success (fresh grace period).
-    // Walk's blocked caller restores its grace until actual paid progress.
-    if facts.is_infantry {
-        path_runtime.start_blocked(mcfg.binary_frame, 0);
-        path_runtime.path_blocked = false;
-    }
-    // Do NOT set movement_delay on successful repath. gamemd chains
-    // Process_Drive_Track(is_retry=1) in the same tick, producing a 0-tick
-    // gap. The new path starts consuming on the next tick.
-    let next = target.path[target.next_index];
-    let dx = next.0 as i32 - current.0 as i32;
-    let dy = next.1 as i32 - current.1 as i32;
-    let (d_x, d_y, d_len) = crate::util::lepton::cell_delta_to_lepton_dir(dx, dy);
-    target.move_dir_x = d_x;
-    target.move_dir_y = d_y;
-    target.move_dir_len = d_len;
-    // No facing write: Drive's Process_Movement turns the body only through
-    // Do_Turn (locomotor `+0x4C` at `0x004B344C`) on a later fresh arm, never
-    // after FindPath; Walk snaps at its next head and Hover steers.
-    true
 }
 
 #[cfg(test)]
@@ -1026,136 +898,6 @@ mod tests {
             path
         );
         assert_eq!(path.len(), layers.len());
-    }
-
-    #[test]
-    fn playfield_hierarchy_blocked_repath_outside_endpoint_uses_flat_astar() {
-        let grid = PathGrid::new(16, 16);
-        let mut reduced = PathGrid::new(16, 16);
-        for y in 0..16 {
-            reduced.set_blocked(7, y, true);
-        }
-        let zone_grid = ZoneGrid::following_path_grid(&reduced);
-        assert!(!zone_grid.can_reach(
-            MovementZone::Normal,
-            (6, 6),
-            MovementLayer::Ground,
-            (8, 6),
-            MovementLayer::Ground,
-        ));
-        let terrain = ResolvedTerrainGrid::from_cells(
-            16,
-            16,
-            (0..16)
-                .flat_map(|ry| (0..16).map(move |rx| make_resolved_cell(rx, ry)))
-                .collect(),
-        );
-        let bounds = crate::sim::cell_rect::PlayfieldBounds {
-            base: 10,
-            off_fc: 2,
-            off_100: 1,
-            off_104: 10,
-            off_108: 6,
-        };
-        assert!(!bounds.contains_height_aware_packed(6, 6, 0, 0));
-        assert!(bounds.contains_height_aware_packed(8, 6, 0, 0));
-
-        let mut target = MovementTarget {
-            path: vec![(6, 6), (7, 6), (8, 6)],
-            path_layers: vec![MovementLayer::Ground; 3],
-            next_index: 1,
-            final_goal: Some((8, 6)),
-            ..MovementTarget::default()
-        };
-        let mut path_runtime = crate::sim::components::FootPathRuntime::default();
-        path_runtime.path_blocked = true;
-        path_runtime.start_blocked(0, 1);
-
-        assert!(try_repath_after_block(
-            &mut target,
-            &mut path_runtime,
-            (6, 6),
-            MovementLayer::Ground,
-            false,
-            PathfindingContext {
-                wall_tables: None,
-                path_grid: Some(&grid),
-                zone_grid: Some(&zone_grid),
-                resolved_terrain: Some(&terrain),
-                playfield_bounds: Some(bounds),
-                blocker_neighbor_counts: None,
-            },
-            None,
-            None,
-            Some(MovementZone::Normal),
-            MovementConfig {
-                binary_frame: 0,
-                close_enough: crate::util::fixed_math::SIM_ZERO,
-                path_delay_ticks: 9,
-                blockage_path_delay_ticks: 60,
-            },
-            None,
-            super::MoverPathFacts::without_wall_arm(0, false, false),
-            true,
-            None,
-        ));
-        assert_eq!(target.path.first().copied(), Some((6, 6)));
-        assert_eq!(target.path.last().copied(), Some((8, 6)));
-    }
-
-    #[test]
-    fn gsi_04_12_marker_blocked_repath_consumes_overlay() {
-        let grid = PathGrid::test_all_passable(5, 3);
-        let mut marker_search = super::super::path_markers::BridgeMarkerSearch::default();
-        marker_search.effective_urgency = 1;
-        for x in 1..=3 {
-            marker_search.overlay.toggle((x, 1));
-        }
-        let mut target = MovementTarget {
-            path: vec![(0, 1), (1, 1), (2, 1), (3, 1), (4, 1)],
-            path_layers: vec![MovementLayer::Ground; 5],
-            next_index: 1,
-            final_goal: Some((4, 1)),
-            ..MovementTarget::default()
-        };
-        let mut path_runtime = crate::sim::components::FootPathRuntime::default();
-
-        assert!(try_repath_after_block(
-            &mut target,
-            &mut path_runtime,
-            (0, 1),
-            MovementLayer::Ground,
-            false,
-            PathfindingContext {
-                wall_tables: None,
-                path_grid: Some(&grid),
-                zone_grid: None,
-                resolved_terrain: None,
-                playfield_bounds: None,
-                blocker_neighbor_counts: None,
-            },
-            None,
-            None,
-            Some(MovementZone::Normal),
-            MovementConfig {
-                binary_frame: 0,
-                close_enough: crate::util::fixed_math::SIM_ZERO,
-                path_delay_ticks: 9,
-                blockage_path_delay_ticks: 60,
-            },
-            None,
-            super::MoverPathFacts::without_wall_arm(1, false, false),
-            true,
-            Some(&marker_search),
-        ));
-        assert!(
-            !target
-                .path
-                .iter()
-                .any(|cell| matches!(cell, (1, 1) | (2, 1) | (3, 1))),
-            "blocked repath must route around the search-scoped marker: {:?}",
-            target.path
-        );
     }
 
     #[test]

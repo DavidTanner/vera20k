@@ -406,8 +406,7 @@ pub fn process_teleport(
                 terrain,
                 None,
             );
-            // The path layer follows the destination's OnBridge, as an
-            // ordinary crossing commits it (`cell_arrival`). The cell
+            // The path layer follows the destination's OnBridge. The cell
             // lists move through the caller's Mark pair around this
             // relocation (`0x007195D4` UP, `0x007196B8` DOWN).
             if let Some(locomotor) = entity.locomotor.as_mut() {

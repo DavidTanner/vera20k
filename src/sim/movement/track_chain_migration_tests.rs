@@ -19,6 +19,7 @@ use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::components::NavTargetRef;
 use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, FootPathQueue, TrackProgress};
 use crate::sim::game_entity::{BuildingGateMissionState, BuildingGateRuntime, GameEntity};
 use crate::sim::intern::{test_intern, test_interner};

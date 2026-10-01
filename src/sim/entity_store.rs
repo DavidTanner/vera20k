@@ -11,7 +11,7 @@
 //! - Batch iteration with mutation: collect `keys_sorted()`, loop with
 //!   `get_mut_if()` so an entity the walk leaves unchanged is not handed out
 //!   (every hand-out enters the touch logs; see `touched`)
-//! - One entity mutated while it reads the others live: `store.take_turn(id)`
+//! - One entity held out of the store for its turn: `store.take_turn(id)`
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends only on sim/game_entity.
@@ -33,15 +33,9 @@ pub(crate) struct EntityTurn<'a> {
 }
 
 impl EntityTurn<'_> {
-    /// The entity whose turn it is, and everyone else.
-    pub(crate) fn split(&mut self) -> (&mut GameEntity, OtherEntities<'_>) {
-        let entity = self.entity.as_mut().expect("held until drop");
-        (
-            entity,
-            OtherEntities {
-                store: &*self.store,
-            },
-        )
+    /// The entity whose turn it is.
+    pub(crate) fn entity(&mut self) -> &mut GameEntity {
+        self.entity.as_mut().expect("held until drop")
     }
 }
 
@@ -50,26 +44,6 @@ impl Drop for EntityTurn<'_> {
         if let Some(entity) = self.entity.take() {
             self.store.entities.insert(entity.stable_id(), entity);
         }
-    }
-}
-
-/// Read access to the entities other than the one taking its turn. Lookup by
-/// id only: the infantry registry still lists the absent entity, so it is
-/// not offered here.
-#[derive(Clone, Copy)]
-pub(crate) struct OtherEntities<'a> {
-    store: &'a EntityStore,
-}
-
-impl<'a> OtherEntities<'a> {
-    /// A store nobody is lifted out of. The reader must not expect to find the
-    /// acting entity's own turn-start facts here; callers supply those apart.
-    pub(crate) fn whole(store: &'a EntityStore) -> Self {
-        Self { store }
-    }
-
-    pub(crate) fn get(&self, stable_id: u64) -> Option<&'a GameEntity> {
-        self.store.entities.get(&stable_id).map(Box::as_ref)
     }
 }
 
@@ -273,9 +247,8 @@ impl EntityStore {
         Some(entity.as_mut())
     }
 
-    /// Lift one entity out of the store for its own turn, so it can be mutated
-    /// while every other entity stays readable. The entity returns to the map
-    /// when the guard drops, on every exit path. Its indexed identity (owner,
+    /// Lift one entity out of the store for its own turn. The entity returns
+    /// to the map when the guard drops, on every exit path. Its indexed identity (owner,
     /// type, infantry registry) never leaves the indexes, which is sound because
     /// payload access cannot change it, exactly as with `get_mut`.
     pub(crate) fn take_turn(&mut self, stable_id: u64) -> Option<EntityTurn<'_>> {
@@ -454,20 +427,14 @@ mod tests {
         }
         {
             let mut turn = store.take_turn(2).expect("entity 2 is stored");
-            let (entity, others) = turn.split();
-            // The others are readable while the mover is mutated; the mover
-            // itself is not among them.
-            entity.position.rx = others.get(1).unwrap().position.rx + 7;
-            assert!(others.get(2).is_none());
-            assert!(others.get(3).is_some());
+            turn.entity().position.rx = 17;
         }
         assert_eq!(store.get(2).unwrap().position.rx, 17);
         assert_eq!(store.len(), 3);
 
         fn leaves_early(store: &mut EntityStore) -> Option<()> {
             let mut turn = store.take_turn(3)?;
-            let (entity, _) = turn.split();
-            entity.position.ry = 99;
+            turn.entity().position.ry = 99;
             None
         }
         assert!(leaves_early(&mut store).is_none());
