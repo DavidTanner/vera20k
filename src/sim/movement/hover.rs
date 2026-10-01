@@ -101,10 +101,15 @@ impl HoverRuntime {
         self.destination.is_some() || self.head.is_some()
     }
 
-    /// The +0x48 request, which `Is_Moving_Now` (0x00514C80) and the
-    /// readiness producer read.
-    pub(crate) fn speed_request_bits(&self) -> u64 {
-        self.speed_request.bits()
+    /// `Is_Moving_Now` 0x00514C80's inputs: `Is_Moving` (0x00514C30) and a
+    /// nonzero +0x48 request. The test is `!= 0`, so a negative request
+    /// counts as moving. Hover's own `Move_To` asks the slot too
+    /// (`0x00514E66`).
+    pub(crate) fn ready_state(&self) -> super::locomotor_ready::LocomotorReadyState {
+        super::locomotor_ready::LocomotorReadyState::Hover {
+            slot_moving: self.is_moving(),
+            speed_bits: self.speed_request.bits(),
+        }
     }
 
     /// A Foot with `destination` and `request`, as Move_To leaves it.

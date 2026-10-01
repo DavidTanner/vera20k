@@ -1835,12 +1835,12 @@ fn evaluate_foot_guard_cadence(
 ///   neighbour cells (`MapCoord_StepByDir_GetCell`); a building there whose
 ///   type has `+0x16BB` (`Refinery=`) and whose owner `+0x21C` is this house
 ///   → queue Harvest, return 1. Else `Get_Storage_Percentage() == 1.0` and
-///   the locomotor's `Is_Moving` (ILocomotion slot `+0x10`) true → queue
-///   Harvest, return 1. `TeleportLocomotionClass::Is_Moving @ 0x00718080`
-///   is `byte +0x30 == 1`, true only for the Relocate tick — the
-///   `ready_producer` Teleport producer (`is_moving_now_for`), never "a
-///   teleport state exists". A human WAR miner has no arm here: once on
-///   Guard it stays until a player order.
+///   the locomotor's `Is_Moving` (ILocomotion slot `+0x10`, `0x007409D6`)
+///   true → queue Harvest, return 1. `TeleportLocomotionClass::Is_Moving`
+///   (`0x00718080`) is `byte +0x30 == 1`, true only for the Relocate tick,
+///   never "a teleport state exists"; a Drive that a move installed answers
+///   its own `Is_Moving`. A human WAR miner has no arm here: once on Guard it
+///   stays until a player order.
 ///
 /// Neither arm draws RNG. The slave-recall gate (i) ahead of both, the
 /// `DeploysInto` AI arm (iv) and the weeder latch (v) are outside this lane.
@@ -1899,17 +1899,8 @@ fn harvester_guard_override_requeues_harvest(sim: &Simulation, id: u64, rules: &
             return true;
         }
     }
-    // `Is_Moving` on the teleport locomotor: the Relocate tick only.
-    miner.is_full()
-        && crate::sim::movement::ready_producer::is_moving_now_for(
-            entity,
-            Some(crate::sim::movement::SpeedRules::new(
-                rules,
-                &sim.interner,
-                &sim.type_handles,
-            )),
-            sim.session.binary_frame,
-        )
+    // The active locomotor's `Is_Moving`; on Teleport the Relocate tick only.
+    miner.is_full() && crate::sim::movement::motion_query::is_moving(entity) == Some(true)
 }
 
 /// `MapCoord_StepByDir_GetCell(dir)` for dir 0..8 — the eight neighbours in
@@ -2446,6 +2437,32 @@ mod harvester_guard_override_tests {
         set_teleport_phase(&mut sim, TeleportPhase::Relocate);
         sim.session.binary_frame += 40;
         dispatch(&mut sim, &rules);
+        assert_eq!(queued(&sim), Some(MissionType::Harvest));
+    }
+
+    /// The same test asks the active locomotor's `Is_Moving` (ILocomotion
+    /// +0x10), not Is_Moving_Now: a full Chrono miner driving on the Drive
+    /// installed over its Teleport, with a destination and no speed yet, is
+    /// moving (Drive `0x004AFB80`), so it requeues Harvest.
+    #[test]
+    fn full_chrono_miner_on_its_drive_asks_is_moving_not_is_moving_now() {
+        let rules = rules();
+        let mut sim = Simulation::new();
+        spawn_refinery(&mut sim, "Americans");
+        spawn_guard_miner(&mut sim, MinerKind::Chrono, (40, 40));
+        fill_cargo(&mut sim);
+        let entity = sim.substrate.entities.get_mut(MINER_ID).expect("miner");
+        assert!(crate::sim::movement::locomotor_owner::begin_drive_for_teleporter(entity, 0));
+        entity
+            .drive_locomotion
+            .get_or_insert_with(Default::default)
+            .destination = Some(crate::sim::components::DriveCoord::cell(45, 40, 0));
+        entity
+            .foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
+
+        dispatch(&mut sim, &rules);
+
         assert_eq!(queued(&sim), Some(MissionType::Harvest));
     }
 

@@ -482,10 +482,21 @@ fn step_ready_docked(
     let Some(owner) = sim.substrate.entities.get(owner_id) else {
         return;
     };
-    // Missile slots only launch from a fully stationary parent — the native
-    // gate calls ILocomotor::Is_Moving and Is_Moving_Now on the owner. Aircraft
-    // slots skip it, so Hornets launch from a moving Carrier.
-    if is_missile_slot && (owner.movement_target.is_some() || owner.body_facing.is_rotating(frame))
+    // A missile slot (`SpawnControl+0x14`) launches only while the parent's
+    // locomotor answers false to Is_Moving (`0x006B731E`) and Is_Moving_Now
+    // (`0x006B7349`). Aircraft slots skip it, so Hornets launch from a moving
+    // Carrier.
+    if is_missile_slot
+        && (crate::sim::movement::motion_query::is_moving(owner) == Some(true)
+            || crate::sim::movement::motion_query::is_moving_now(
+                owner,
+                Some(crate::sim::movement::SpeedRules::new(
+                    rules,
+                    &sim.interner,
+                    &sim.type_handles,
+                )),
+                frame,
+            ))
     {
         return;
     }
