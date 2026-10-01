@@ -12,7 +12,6 @@ use crate::sim::combat::{combat_weapon, fire_coord};
 use crate::sim::components::NavTargetRef;
 use crate::sim::mission::MissionType;
 use crate::sim::movement::air_movement;
-use crate::util::fixed_math::SIM_ZERO;
 
 fn navigation_target(target: TargetKind) -> NavTargetRef {
     match target {
@@ -126,15 +125,14 @@ impl Simulation {
             }
             self.assign_aircraft_attack_destination(id, Some(navigation_target(target)), rules);
         } else if object.fighter
-            || entity
-                .locomotor
-                .as_ref()
-                .and_then(crate::sim::movement::locomotor::LocomotorState::fly_runtime)
-                .expect("Fly approach")
-                .current_speed
-                == SIM_ZERO
+            || !crate::sim::movement::motion_query::is_moving_now(
+                entity,
+                None,
+                self.session.binary_frame,
+            )
         {
-            // Fly IsMovingNow4CCAC0 reads actual speed+48, not request+34.
+            // The locomotor's Is_Moving_Now: Fly `0x004CCAC0` reads the speed
+            // at +48, not the +34 request.
             return 4;
         }
         let entity = self.substrate.entities.get(id).unwrap();

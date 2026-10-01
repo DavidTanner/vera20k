@@ -3399,6 +3399,20 @@ impl Simulation {
     /// answer or locomotor state change keeps the handle alive and reloads the
     /// three-visit grace counter. The process-local audio owner selects the
     /// sample only after its device and spatial-acceptance gates.
+    ///
+    /// RESIDUAL: native's "state change" is the body frame counter
+    /// (Foot+0x538) advancing within this AI pass (saved `0x004DA80C`,
+    /// compared `0x004DAA01`). `0x004DA9FB` bumps it every `IdleRate=` frames
+    /// while not moving now, and every frame while a `DeployToLand=` type is
+    /// above ground, unless warping (+0x270/+0x271) or +0x6AD is set. VERA
+    /// compares position, facing, path index and track point instead.
+    /// - Trigger: a hovering `DeployToLand=` Siege Chopper; an idle
+    ///   `IdleRate=` type; a position or facing change while not moving now.
+    /// - Effect: the MoveSound starts or lapses on other frames than native;
+    ///   a hovering Siege Chopper's loop lapses after three visits. A start
+    ///   draws Main RNG (`0x004DAACB`).
+    /// - Frequency: Siege Choppers holding in the air; others rare.
+    /// - Risk: audio, and the Main RNG draw order.
     fn tick_move_sound_after_process(
         &mut self,
         stable_id: u64,
@@ -3413,7 +3427,7 @@ impl Simulation {
         }
         let after = self.movement_sound_probe(stable_id);
         let movement_changed = before.is_some() && before != after;
-        let moving_now = crate::sim::movement::ready_producer::is_moving_now_for(
+        let moving_now = crate::sim::movement::motion_query::is_moving_now(
             entity,
             rules.map(|rules| {
                 crate::sim::movement::SpeedRules::new(rules, &self.interner, &self.type_handles)
@@ -5878,19 +5892,14 @@ impl Simulation {
         Ok(diagnostics)
     }
 
-    /// `DriveLocomotionClass::Process` (0x004B0823 region; ships share the
-    /// drive locomotor's process, hover runs the same test in its `Move` at
-    /// 0x00514AC3) spawns `Rules->Wake` (Rules+0x94) when `Is_Moving_Now`
-    /// (vtable +0x80) holds, `g_CurrentFrameCounter % 10 == 0`, the unit is
-    /// not on a bridge (`+0x8C`), and its cell's `CellClass+0xEC` land type is
-    /// 2 (Water). The anim goes at the unit's exact `PositionCoord`
-    /// (+0xA0/+0xA4), not the cell centre, so each wake stays where the hull
-    /// was and the trail forms behind it as the unit advances. The earlier
-    /// form here spawned every 8 frames at the cell centre for any unit with
-    /// a movement target, which put the foam mid-hull and under stationary
-    /// ships.
+    /// The Drive, Hover and Ship locomotors each spawn `Rules->Wake`
+    /// (Rules+0x94) from their own process; [`wake_anchor_for`] holds the
+    /// three gates. All three build `AnimClass(Wake, Location, 0, 1, 0x600,
+    /// 0, 0)` at the unit's exact `Location` (`+0x9C`), not the cell centre,
+    /// so each wake stays where the hull was and the trail forms behind it as
+    /// the unit advances.
     pub(crate) fn spawn_wakes_for_frame(&mut self, rules: &RuleSet) {
-        if self.session.binary_frame % 10 != 0 {
+        if self.session.binary_frame % 10 != 0 && self.session.binary_frame % 8 != 0 {
             return;
         }
         let binary_frame = self.session.binary_frame;
@@ -5906,12 +5915,11 @@ impl Simulation {
             .keys_sorted()
             .iter()
             .filter_map(|id| {
-                wake_anchor_for(
-                    self.substrate.entities.get(*id)?,
-                    rules_context,
-                    terrain,
-                    binary_frame,
-                )
+                let entity = self.substrate.entities.get(*id)?;
+                let underwater = self
+                    .object_type(entity.type_ref(), rules)
+                    .is_some_and(|object| object.underwater);
+                wake_anchor_for(entity, rules_context, underwater, terrain, binary_frame)
             })
             .collect();
         if wake_positions.is_empty() {
@@ -6606,11 +6614,18 @@ mod bridge_parity_harness_tests;
 /// (0x004B0823 region: `PUSH 0x600`).
 const WAKE_DRAW_FLAGS: u32 = 0x600;
 
-/// The wake gate for one unit this frame: moving now, not on a bridge, on a
-/// cell whose `CellClass+0xEC` mirror is Water, anchored at its exact leptons.
+/// The wake gate for one unit this frame. Only three locomotors read
+/// `Rules->Wake` while moving, each in its own process: Drive (`0x004B078F`)
+/// and Hover (`0x00514A24`) every 10th frame, Ship (`0x0069FE3C`) every 8th
+/// frame and not for an `Underwater=` type (`underwater`, TechnoType+0xD69 at
+/// `0x0069FE6E`). Each asks its own `Is_Moving_Now` first, then wants the
+/// owner off a bridge (`+0x8C`) on a cell whose `CellClass+0xEC` mirror is
+/// Water. The wake is anchored at the exact leptons. A Jumpjet or Fly flier
+/// over water leaves none.
 pub(crate) fn wake_anchor_for(
     entity: &crate::sim::game_entity::GameEntity,
     rules: Option<crate::sim::movement::SpeedRules<'_>>,
+    underwater: bool,
     terrain: Option<&ResolvedTerrainGrid>,
     binary_frame: u32,
 ) -> Option<(u16, u16, SimFixed, SimFixed, u8)> {
@@ -6619,7 +6634,19 @@ pub(crate) fn wake_anchor_for(
     if entity.sinking.is_active() {
         return None;
     }
-    if !crate::sim::movement::ready_producer::is_moving_now_for(entity, rules, binary_frame) {
+    let on_cadence = match entity.locomotor.as_ref().map(|loco| loco.active_kind()) {
+        Some(
+            crate::rules::locomotor_type::LocomotorKind::Drive
+            | crate::rules::locomotor_type::LocomotorKind::Hover,
+        ) => binary_frame % 10 == 0,
+        Some(crate::rules::locomotor_type::LocomotorKind::Ship) => {
+            binary_frame % 8 == 0 && !underwater
+        }
+        _ => false,
+    };
+    if !on_cadence
+        || !crate::sim::movement::motion_query::is_moving_now(entity, rules, binary_frame)
+    {
         return None;
     }
     if entity.is_on_bridge_layer() {

@@ -3,35 +3,8 @@
 //! House/view-cache reconciliation never advances these clocks or emits events.
 use super::Simulation;
 use crate::map::entities::EntityCategory;
-use crate::rules::{locomotor_type::LocomotorKind, ruleset::RuleSet};
-use crate::sim::{game_entity::GameEntity, pathfinding::PathGrid, vision};
-
-/// Active represented slot80 implementations: Fly4CCAC0 compares current speed
-/// with zero; Rocket661F90 accepts signed states3..5; other live families use
-/// the existing native-readiness owner (including Jumpjet54D0D0 state!=0,2).
-fn moving_now(
-    entity: &GameEntity,
-    rules: Option<crate::sim::movement::SpeedRules<'_>>,
-    frame: u32,
-) -> bool {
-    let Some(loco) = entity.locomotor.as_ref() else {
-        return false;
-    };
-    match loco.active_kind() {
-        LocomotorKind::Fly => loco
-            .fly_runtime()
-            .is_some_and(|fly| fly.current_speed != crate::util::fixed_math::SIM_ZERO),
-        LocomotorKind::Rocket => entity.rocket_state.as_ref().is_some_and(|state| {
-            matches!(
-                state.phase,
-                crate::sim::movement::rocket_movement::RocketPhase::Ascent
-                    | crate::sim::movement::rocket_movement::RocketPhase::Cruise
-                    | crate::sim::movement::rocket_movement::RocketPhase::Terminal
-            )
-        }),
-        _ => crate::sim::movement::ready_producer::is_moving_now_for(entity, rules, frame),
-    }
-}
+use crate::rules::ruleset::RuleSet;
+use crate::sim::{pathfinding::PathGrid, vision};
 
 impl Simulation {
     pub(super) fn refresh_high_flying_sight_before_process(
@@ -49,7 +22,7 @@ impl Simulation {
                 entity.category,
                 EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
             )
-            || !moving_now(
+            || !crate::sim::movement::motion_query::is_moving_now(
                 entity,
                 rules.map(|rules| {
                     crate::sim::movement::SpeedRules::new(rules, &self.interner, &self.type_handles)

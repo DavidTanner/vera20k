@@ -129,8 +129,9 @@ pub(crate) fn hover_move_to(
     if !airborne {
         return true;
     }
-    //514E5A: moving now only with a head; a head leaves the request alone.
-    let moving_now = hover.is_moving() && hover.speed_request.bits() & !(1 << 63) != 0;
+    // Its own Is_Moving_Now (`0x00514E66`): moving now only with a head; a
+    // head leaves the request alone.
+    let moving_now = hover.ready_state().is_moving_now();
     if moving_now && hover.head.is_some() {
         return true;
     }

@@ -42,7 +42,7 @@ fn stock_cloak_tick_facts(
     // CloakStop.
     let is_cloakable = object.cloakable
         && !(object.cloak_stop
-            && crate::sim::movement::ready_producer::is_moving_now_for(
+            && crate::sim::movement::motion_query::is_moving_now(
                 entity,
                 Some(crate::sim::movement::SpeedRules::new(
                     rules,
