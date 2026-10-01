@@ -1018,21 +1018,20 @@ fn chained_mover(sim: &mut Simulation, kind: LocomotorKind) -> (GameEntity, Driv
     entity.position.sub_x = SimFixed::from_num(85);
     entity.position.sub_y = SimFixed::from_num(153);
     let path = vec![(3, 3), (3, 2), (4, 1), (5, 1)];
-    let drive_track::DriveTrackDecision::Select(plan) =
-        drive_track::plan_drive_track_from_path(0, (0, -1), Some((1, -1)))
-    else {
-        panic!("native N -> NE curve");
-    };
-    assert_eq!(plan.nodes, 2);
+    // Path N then NE: the native N -> NE curve, a two-node turn.
+    let turn = drive_track::fresh_turn_index(0, 1);
+    assert_ne!(
+        drive_track::TURN_TRACKS[turn].flags & drive_track::TURN_TRACK_TURNS_FLAG,
+        0
+    );
     let offset = super::track_head::offset_head;
-    let turn = plan.selection.turn_track_index;
     let current = super::ground_pose::position_world_coord(&entity.position);
     let head = offset(offset(current, (turn / 8) as u8), (turn % 8) as u8);
     super::track_head::accept_fresh_progress(
         kind,
         &mut entity.drive_locomotion,
         &mut entity.ship_locomotion,
-        plan.selection.turn_track_index,
+        turn,
     );
     let mut replay = crate::sim::components::FootPathQueue::default();
     super::path_markers::install_path_replay(&mut replay, (3, 3), &path, 1);
