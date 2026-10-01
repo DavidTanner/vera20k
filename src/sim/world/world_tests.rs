@@ -401,9 +401,72 @@ fn a_jumpjet_cruising_over_water_leaves_no_wake() {
         10
     ));
     assert_eq!(
-        super::wake_anchor_for(jumpjet, Some(speed), sim.resolved_terrain.as_ref(), 10),
+        super::wake_anchor_for(
+            jumpjet,
+            Some(speed),
+            false,
+            sim.resolved_terrain.as_ref(),
+            10
+        ),
         None
     );
+}
+
+/// Ship's own wake gate (`0x0069FE3C..0x0069FE74`): every 8th frame, not
+/// Drive's 10th, and never for an `Underwater=` type.
+#[test]
+fn a_ship_wakes_every_eighth_frame_unless_it_is_underwater() {
+    let ini = IniFile::from_str(
+        "[InfantryTypes]\n[VehicleTypes]\n0=DEST\n1=SUB\n[AircraftTypes]\n[BuildingTypes]\n\
+         [DEST]\nStrength=600\nArmor=heavy\nSpeed=6\nMovementZone=Water\nSpeedType=Float\n\
+         Naval=yes\nLocomotor={2BEA74E1-7CCA-11d3-BE14-00104B62A16C}\n\
+         [SUB]\nStrength=600\nArmor=heavy\nSpeed=6\nMovementZone=Water\nSpeedType=Float\n\
+         Naval=yes\nUnderwater=yes\nLocomotor={2BEA74E1-7CCA-11d3-BE14-00104B62A16C}\n",
+    );
+    let art = IniFile::from_str("[WAKE1]\nLayer=ground\nYSortAdjust=-288\nRate=120\n");
+    let mut rules =
+        RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("ship rules should parse");
+    rules.install_art_data(ArtRegistry::from_ini(&art));
+    rules.bind_anim_frame_count_for_test("WAKE1", 15);
+    let mut sim = Simulation::new();
+    for (name, rx) in [("DEST", 0), ("SUB", 2)] {
+        let id = sim
+            .spawn_object(name, "Americans", rx, 0, 64, &rules)
+            .expect("spawn ship");
+        let ship = sim.substrate.entities.get_mut(id).expect("ship");
+        let ahead = crate::sim::components::DriveCoord {
+            x: i32::from(rx) * 256 + 256 + 128,
+            y: 128,
+            z: 0,
+        };
+        let runtime = ship.ship_locomotion.get_or_insert_with(Default::default);
+        runtime.destination = Some(ahead);
+        runtime.head_to = Some(ahead);
+        ship.foot_speed
+            .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
+    }
+    // The gate reads the `CellClass+0xEC` mirror; stamp Water on the fixture.
+    let mut terrain = water_terrain(4, 1);
+    for cell in &mut terrain.cells {
+        cell.yr_cell_land_type = crate::rules::terrain_rules::LandType::Water.as_index();
+    }
+    sim.resolved_terrain = Some(terrain);
+    let wakes = |sim: &Simulation| {
+        sim.logic_order()
+            .iter()
+            .filter(|id| {
+                sim.anim(**id)
+                    .is_some_and(|anim| sim.interner.resolve(anim.type_id) == "WAKE1")
+            })
+            .count()
+    };
+
+    sim.session.binary_frame = 10;
+    sim.spawn_wakes_for_frame(&rules);
+    assert_eq!(wakes(&sim), 0, "a ship ignores Drive's 10th frame");
+    sim.session.binary_frame = 8;
+    sim.spawn_wakes_for_frame(&rules);
+    assert_eq!(wakes(&sim), 1, "only the surface ship wakes on the 8th");
 }
 
 #[test]

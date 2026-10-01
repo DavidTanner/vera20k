@@ -10,7 +10,7 @@ use crate::sim::components::{
 };
 use crate::sim::movement::SpeedRules;
 use crate::sim::movement::motion_query::is_moving_now;
-use crate::sim::movement::teleport_movement::TeleportState;
+use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
 use crate::sim::type_handle_table::TypeHandleTable;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
 use crate::util::native_x87::NativeF64Bits;

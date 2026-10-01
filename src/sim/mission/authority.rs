@@ -390,17 +390,18 @@ impl UnitReadyWorld for UnavailableUnitWorld {
 /// All six families that can actually reach this gate — Drive, Ship, Walk, Hover,
 /// Teleport and Jumpjet — are produced live each tick by
 /// `sim::movement::ready_producer`, so none of them land here any more. What
-/// still lands here is the set that producer returns `None` for: Fly, Rocket,
-/// Parachute, Tunnel, DropPod and Mech.
+/// still lands here is Fly and Rocket, which that producer returns `None` for,
+/// and an entity without a locomotor. (The dormant Tiberian Sun kinds resolve
+/// to the constructor's Teleport.)
 ///
 /// Those do not need a producer. `is_moving_now` has exactly two consumers here,
 /// the Unit and Infantry branches in `sim::mission::readiness`; aircraft
 /// readiness decides from its mission plus two flags and never reads the
-/// locomotor, and Rocket-locomotor objects are aircraft as well. So this is a
-/// floor for state the gate cannot reach, not a stand-in for missing work — and
-/// answering "not moving" is also the safe direction if that ever changes.
-/// See `ready_producer`'s fallthrough arm for what the native slot does for each
-/// of those kinds; they do not agree with each other.
+/// locomotor, and no retail Unit or Infantry type runs Fly or Rocket. So this
+/// is a floor for state the gate cannot reach, not a stand-in for missing work —
+/// and answering "not moving" is also the safe direction if that ever changes.
+/// It is not their native answer: Fly and Rocket have real `Is_Moving_Now`
+/// bodies, which `motion_query::is_moving_now` answers.
 ///
 /// This constant and the `degraded_moving_gate` parameter can retire together
 /// once `evaluate_ready` no longer needs a `None` fallback at all.

@@ -111,6 +111,19 @@ pub struct TeleportState {
 }
 
 impl TeleportState {
+    /// `TeleportLocomotionClass::Is_Moving` (`0x00718080`), which its
+    /// `Is_Moving_Now` reaches through the base thunk (`0x004B6610`): the
+    /// +0x30 request byte. Move_To sets it (`0x007181DB`); Stop_Moving
+    /// (`0x00718254`) and Process (`0x00719BD2`) clear it.
+    ///
+    /// RESIDUAL: VERA keeps no request byte and answers with the Relocate
+    /// phase. Those writes do not establish a Relocate-only lifetime, so this
+    /// is a legacy adapter, not parity, until Teleport's request lifecycle is
+    /// ported.
+    pub(crate) fn is_moving(&self) -> bool {
+        self.phase == TeleportPhase::Relocate
+    }
+
     /// YR TeleportLocomotionClass::Process @ 0x007192f0 exposes separate
     /// warp-out and warp-in producer bytes. Relocation is the departure
     /// producer; the post-relocation delay is the arrival producer.

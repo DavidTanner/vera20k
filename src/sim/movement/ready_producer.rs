@@ -56,7 +56,6 @@ use crate::util::fixed_math::SIM_ZERO;
 
 use super::locomotor::LocomotorState;
 use super::locomotor_ready::LocomotorReadyState;
-use super::teleport_movement::TeleportPhase;
 use super::track_process::TrackFamily;
 
 /// Readiness inputs for one entity, or `None` when this family has no faithful
@@ -153,17 +152,18 @@ fn drive_family(
     }
 }
 
-/// Legacy phase adapter, pending Teleport's retained-request lifecycle port.
-/// Native718080 reads interface+30 ==1: MoveTo7181DB sets it, Stop718254 and
-/// Process719BD2 clear it. Process719B0D can also reach Stop through the owner
-/// destination setter. Those writes do not establish a Relocate-only lifetime;
-/// the phase mapping below is not native parity evidence.
+/// Teleport's readiness input: its `Is_Moving_Now` is the base thunk over
+/// `Is_Moving` ([`super::teleport_movement::TeleportState::is_moving`], a
+/// legacy phase adapter). Process `0x00719B0D` can also reach Stop through
+/// the owner destination setter.
 fn teleport(entity: &GameEntity) -> LocomotorReadyState {
     LocomotorReadyState::Teleport {
-        state: u8::from(matches!(
-            entity.teleport_state.as_ref().map(|state| state.phase),
-            Some(TeleportPhase::Relocate)
-        )),
+        state: u8::from(
+            entity
+                .teleport_state
+                .as_ref()
+                .is_some_and(super::teleport_movement::TeleportState::is_moving),
+        ),
     }
 }
 

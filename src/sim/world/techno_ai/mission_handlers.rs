@@ -1831,12 +1831,12 @@ fn evaluate_foot_guard_cadence(
 ///   neighbour cells (`MapCoord_StepByDir_GetCell`); a building there whose
 ///   type has `+0x16BB` (`Refinery=`) and whose owner `+0x21C` is this house
 ///   → queue Harvest, return 1. Else `Get_Storage_Percentage() == 1.0` and
-///   the locomotor's `Is_Moving` (ILocomotion slot `+0x10`) true → queue
-///   Harvest, return 1. `TeleportLocomotionClass::Is_Moving @ 0x00718080`
-///   is `byte +0x30 == 1`, true only for the Relocate tick, never "a
-///   teleport state exists"; a Drive that a move installed answers its own
-///   `Is_Moving`. A human WAR miner has no arm here: once on Guard it stays
-///   until a player order.
+///   the locomotor's `Is_Moving` (ILocomotion slot `+0x10`, `0x007409D6`)
+///   true → queue Harvest, return 1. `TeleportLocomotionClass::Is_Moving`
+///   (`0x00718080`) is `byte +0x30 == 1`, true only for the Relocate tick,
+///   never "a teleport state exists"; a Drive that a move installed answers
+///   its own `Is_Moving`. A human WAR miner has no arm here: once on Guard it
+///   stays until a player order.
 ///
 /// Neither arm draws RNG. The slave-recall gate (i) ahead of both, the
 /// `DeploysInto` AI arm (iv) and the weeder latch (v) are outside this lane.
