@@ -220,22 +220,33 @@ and the list of added references are in the research folder listed in `LOCAL.md`
 
 ## Class layouts
 
-Since 2026-10-01, `struct BuildingTypeClass` (0x1798 bytes) has 195 fields checked in
-code. They are checked against the constructor, ReadINI, the other methods and 644
-reads through `BuildingClass` +0x520, which is now `BuildingTypeClass *pType`.
+Since 2026-10-01 these structs have every field checked in code against the
+constructor, ReadINI, the other methods and the reads through their type pointers:
+
+- `BuildingTypeClass` (0x1798 bytes): 195 fields after its base. `BuildingClass` +0x520
+  is `BuildingTypeClass *pType`.
+- `TechnoTypeClass` (0xDF8 bytes): 318 fields after its base, so BuildingClass
+  decompiles show `pType->base_TechnoTypeClass.nTechLevel`. `g_TechnoTypeClass_Array`
+  is `TechnoTypeClass **`.
+
+Notes for readers:
 
 - **Field names.** A field read from an INI key carries the exact key. The server's
   strict naming policy puts a Hungarian type prefix in front: `fPowered`, `nX`,
-  `aBuildupFile`, `pToOverlay`.
-- **Base class.** `TechnoTypeClass` is still a 0xDF8 placeholder, so base fields show as
-  `base_TechnoTypeClass.field_0x...`.
-- **Receivers.** The receivers of the BuildingTypeClass methods are not typed yet.
+  `aBuildupFile`, `pToOverlay`. A key that names a file is stored in `<Key>File`, and
+  the object built from it takes the key: `aCameoFile` and `pCameo`.
+- **Still placeholders.** `ObjectTypeClass` (0x294 bytes) has only `pVtable` typed.
+  `UnitClass` +0x6C4 and `InfantryClass` +0x6C0 stay `void *pType` until their type
+  classes have structs.
+- **Receivers.** The receivers of the type-class methods are not typed yet.
 
-Plates tagged `[2026-10-01 BuildingTypeClass layout]` record what YRpp got wrong
-(AddOccupy and RemoveOccupy are swapped) and native quirks a port must keep. The
-per-field ledger, the checks and the rehearsal are in the research folder listed in
-`LOCAL.md`. Reading established these facts. Nothing was executed, so a port pins the
-conversions with the native oracle.
+Plates tagged `[2026-10-01 BuildingTypeClass layout]` and
+`[2026-10-01 TechnoTypeClass layout]` record where YRpp is wrong and the native quirks a
+port must keep. Examples: AddOccupy and RemoveOccupy are swapped in YRpp, `TurretControl`
+is 0x14 bytes, nothing initialises WeaponCount, and PitchAngle is read in degrees but
+stored in radians. The per-field ledgers, the checks and the rehearsals are in the
+research folder listed in `LOCAL.md`. Reading established these facts. Nothing was
+executed, so a port pins the conversions with the native oracle.
 
 ## Preserve findings without polluting shared analysis
 
