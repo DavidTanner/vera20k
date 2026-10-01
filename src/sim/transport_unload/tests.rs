@@ -20,7 +20,11 @@ const MAP: u16 = 40;
 /// `[SHAD]` is an `[AircraftTypes]` entry here so tests reach the aircraft
 /// Unload slot; retail lists it under `[VehicleTypes]`, as `[HIND]` is here.
 fn rules() -> RuleSet {
-    let ini = IniFile::from_str(
+    rules_with_patch("")
+}
+
+fn rules_with_patch(patch: &str) -> RuleSet {
+    let mut ini = IniFile::from_str(
         "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=BFRT\n1=FV\n2=LCRF\n3=BGGY\n4=HIND\n\
          [AircraftTypes]\n0=SHAD\n\
          [BuildingTypes]\n[Countries]\n0=Americans\n\n\
@@ -44,6 +48,7 @@ fn rules() -> RuleSet {
          SpeedType=Hover\nMovementZone=Fly\n\
          Locomotor={92612C46-F71F-11d1-AC9F-006008055BB5}\n",
     );
+    ini.merge(&IniFile::from_str(patch));
     RuleSet::from_ini(&ini).expect("transport unload test rules parse")
 }
 
@@ -296,6 +301,163 @@ impl Fixture {
         }
         order
     }
+}
+
+/// Techno6F6ED2 and Foot4D72F4 are required inside the admitted Unlimbo,
+/// before the ejected passenger receives its Move. Native reader712452
+/// and nine-slot4FA2E0 arithmetic are saved in astar_threat_inputs.json;
+/// astar_mtnk_inputs.json executes the original Foot coefficient-copy body.
+/// This checks the real boarding/Limbo/departure consumers at one frame,
+/// without claiming native equivalence of the whole transport mission.
+#[test]
+fn vehicle_unload_republishes_threat_and_foot_coefficient_before_movement() {
+    use crate::sim::house_state::HouseState;
+    use crate::util::native_x87::NativeF64Bits;
+
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/astar_threat_inputs.json"
+    ))
+    .unwrap();
+    let reader = native["type_readers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["value"] == "0.5")
+        .unwrap();
+    let native_coefficient = u64::from_str_radix(reader["after"].as_str().unwrap(), 16)
+        .unwrap()
+        .swap_bytes();
+    let adjustment = native["spatial"]["adjustments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["amount"] == 7 && row["initial"] == 0)
+        .unwrap();
+    let native_slots: Vec<i32> = adjustment["after"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| i32::try_from(value.as_i64().unwrap()).unwrap())
+        .collect();
+
+    let mut fx = Fixture::new(|_, _| false);
+    fx.rules = rules_with_patch("[E1]\nThreatPosed=7\nThreatAvoidanceCoefficient=0.5\n");
+    assert_eq!(
+        fx.rules
+            .object("E1")
+            .unwrap()
+            .threat_avoidance_coefficient
+            .bits(),
+        native_coefficient,
+        "production type reader agrees with original712452"
+    );
+    let owners: Vec<_> = [OWNER, "Russians"]
+        .into_iter()
+        .map(|name| {
+            let owner = fx.sim.interner.intern(name);
+            fx.sim
+                .houses
+                .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
+            owner
+        })
+        .collect();
+    let opposing_house = owners[1];
+    fx.sim.session.house_order = owners;
+    fx.sim.session.game_mode_nonzero = true;
+
+    // Already facing the exit scorer's selected hull direction: the actual
+    // state0 -> state1 -> state3 producer can run without advancing any AI.
+    let transport = fx.spawn("BFRT", 20, 20, 0x20);
+    let passenger = fx.spawn("E1", 20, 19, 0);
+    assert_eq!(
+        fx.sim
+            .substrate
+            .entities
+            .get(passenger)
+            .unwrap()
+            .cached_spatial_threat(),
+        Some(7)
+    );
+    fx.sim
+        .substrate
+        .entities
+        .get_mut(passenger)
+        .unwrap()
+        .passenger_role = PassengerRole::Boarding {
+        target_transport_id: transport,
+    };
+    crate::sim::passenger::tick_passenger_system(&mut fx.sim, &fx.rules, None);
+    assert_eq!(fx.cargo_ids(transport), vec![passenger]);
+    assert!(!fx.revealed(passenger));
+    assert_eq!(
+        fx.sim
+            .substrate
+            .entities
+            .get(passenger)
+            .unwrap()
+            .cached_spatial_threat(),
+        Some(0),
+        "real transport entry removes the passenger's retained threat"
+    );
+    assert!(
+        fx.sim
+            .houses
+            .get(&opposing_house)
+            .unwrap()
+            .spatial_threat_values()
+            .iter()
+            .all(|value| *value == 0)
+    );
+    // A retained Foot value may differ from its type; only admitted Unlimbo
+    // owns refreshing it. No movement/coarse threat updater runs below.
+    fx.sim
+        .substrate
+        .entities
+        .get_mut(passenger)
+        .unwrap()
+        .navigation
+        .retain_threat_avoidance_after_unlimbo(NativeF64Bits::ONE);
+    assert!(fx.apply(Command::UnloadPassengers {
+        transport_id: transport
+    }));
+    let frame = fx.frame();
+    for _ in 0..3 {
+        super::unit_mission_unload(&mut fx.sim, &fx.rules, transport);
+    }
+    assert_eq!(fx.frame(), frame);
+    assert!(
+        fx.revealed(passenger),
+        "real Unload admitted the cargo head"
+    );
+    assert!(fx.cargo_ids(transport).is_empty());
+
+    let passenger = fx.sim.substrate.entities.get(passenger).unwrap();
+    let cell = (passenger.position.rx as i16, passenger.position.ry as i16);
+    let center = crate::sim::house_threat::HouseSpatialThreat::index(cell);
+    let actual_slots: Vec<_> = adjustment["offsets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|offset| {
+            fx.sim
+                .houses
+                .get(&opposing_house)
+                .unwrap()
+                .spatial_threat_at_padded_index(
+                    center + i32::try_from(offset.as_i64().unwrap()).unwrap(),
+                )
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(
+        (
+            passenger.navigation.path_threat_coefficient().bits(),
+            passenger.cached_spatial_threat(),
+            actual_slots
+        ),
+        (native_coefficient, Some(7), native_slots),
+        "admitted departure must publish Foot+530, cached threat and all nine House slots before movement"
+    );
 }
 
 /// Five conscripts in a BFRT: the hull turns first, then one passenger leaves

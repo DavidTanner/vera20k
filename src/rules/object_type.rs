@@ -330,6 +330,11 @@ pub struct ObjectType {
     pub target_strength_coefficient: Option<f64>,
     /// `TargetDistanceCoefficient=` (`TechnoTypeClass+0x2E8`, `0x0071570C`).
     pub target_distance_coefficient: Option<f64>,
+    /// TechnoType+2F0: exact-case `ThreatAvoidanceCoefficient`, ReadDouble
+    /// 712452..712473 (5283D0), constructor positive-zero. FootUnlimbo copies
+    /// this to its own retained+530 after placement succeeds (4D72EA..4D72F4).
+    /// No clamp or post-read conversion; retain the native double bits.
+    pub threat_avoidance_coefficient: crate::util::native_x87::NativeF64Bits,
     /// Armor type name (e.g., "heavy", "light", "wood"). Determines damage
     /// multipliers from warhead Verses= values.
     pub armor: String,
@@ -2002,6 +2007,10 @@ impl ObjectType {
             target_special_threat_coefficient: present_double("TargetSpecialThreatCoefficient"),
             target_strength_coefficient: present_double("TargetStrengthCoefficient"),
             target_distance_coefficient: present_double("TargetDistanceCoefficient"),
+            threat_avoidance_coefficient: section.read_double_bits(
+                "ThreatAvoidanceCoefficient",
+                crate::util::native_x87::NativeF64Bits::POSITIVE_ZERO,
+            ),
             armor: section.read_string("Armor", "none", 0x80),
             speed: section.read_techno_speed("Speed", 0),
             // TechnoTypeClass ctor/read contract: raw signed ints, with no

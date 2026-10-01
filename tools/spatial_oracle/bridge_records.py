@@ -26,6 +26,28 @@ ENTRIES = {"compute_bridge_zones": ENTRY, "iterator_init": 0x00578350,
            "get_tube": 0x00484F20, "step": 0x00481810}
 
 
+def compute_on_map(native_map):
+    """Execute the existing original record producer on retained native Cells.
+
+    The empty MapClass565090 vector header is an explicit constructor boundary.
+    Unlike the scalar comparison below, the full56D6E0 clear/scan/growth executes
+    through the bound VM's existing successful allocator; no records are supplied.
+    """
+    u = native_map.uc
+    u.mem_write(MAP + 0x50, dwords(0x007ED4C0, 0, 0, 0, 1, 10))
+    native_map.call(ENTRY, this=MAP, count=5000000)
+    header = struct.unpack('<6I', u.mem_read(MAP + 0x50, 24))
+    pointer, capacity, count = header[1], header[2], header[4]
+    assert count <= capacity
+    records = []
+    for index in range(count):
+        raw = bytes(u.mem_read(pointer + index * 16, 16))
+        records.append(dict(a=list(struct.unpack('<hh', raw[:4])),
+                            b=list(struct.unpack('<hh', raw[4:8])),
+                            active=bool(raw[8]), kind=struct.unpack('<I', raw[12:])[0]))
+    return dict(entry=hex(ENTRY), count=count, capacity=capacity, records=records)
+
+
 def fixture(name, *, size=(8, 8), cells=(), tubes=(), holes=()):
     # Cell rows: x,y,tile,subtile,flags,land,tube-index. Explicit rows overlay
     # a fully allocated Size diamond, as produced by a successful Resize.

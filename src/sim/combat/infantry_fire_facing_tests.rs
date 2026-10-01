@@ -340,6 +340,25 @@ fn restore_production_pair(sim: &Simulation, rules: &RuleSet) -> Simulation {
         crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
         rules,
     );
+    // Complete original LoadContent's hierarchy publication after terrain
+    // and saved Cell state are bound; a decoded base is not a live graph.
+    if sim.zone_grid.is_some() {
+        assert!(
+            restored
+                .zone_grid
+                .as_ref()
+                .unwrap()
+                .is_native_load_pending()
+        );
+        assert!(restored.rebuild_dynamic_navigation(rules));
+        assert!(
+            !restored
+                .zone_grid
+                .as_ref()
+                .unwrap()
+                .is_native_load_pending()
+        );
+    }
     restored
 }
 
@@ -486,8 +505,9 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
 
     let rules = production_rules(0);
     let (mut sim, firer, target) = production_pair(&rules);
-    assert!(sim.rebuild_dynamic_navigation(&rules));
+    // The full hierarchy must see the same bound map inputs as native load.
     crate::sim::arena_fixture::supply_native_map(&mut sim);
+    assert!(sim.rebuild_dynamic_navigation(&rules));
     let command = |sim: &mut Simulation, command: Command| {
         assert!(sim.apply_command_with_overlays("Americans", &command, Some(&rules), None,));
     };

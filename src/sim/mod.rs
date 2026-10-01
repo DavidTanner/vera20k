@@ -47,6 +47,7 @@ pub mod economy; // per-house wallet/storage/statistics value-type (production+e
 pub mod entity_store;
 pub(crate) mod estimated_health;
 pub mod game_entity;
+pub(crate) mod house_threat;
 pub mod intern;
 pub(crate) mod lifecycle_request;
 pub(crate) mod light_sources;

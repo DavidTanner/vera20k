@@ -132,6 +132,7 @@ impl TeamScriptVm {
                         .read_bool("AreTeamMembersRecruitable", true),
                     reinforce: fields.read_bool("Reinforce", false),
                     group: fields.read_int("Group", -1),
+                    avoid_threats: fields.read_bool("AvoidThreats", false),
                     recruiter: fields.read_bool("Recruiter", false),
                     annoyance: fields.read_bool("Annoyance", false),
                     guard_slower: fields.read_bool("GuardSlower", false),

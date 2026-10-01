@@ -69,7 +69,7 @@ fn coordinate_queries_match_original_heads_transforms_and_native_probes() {
     ))
     .unwrap();
     let cases = data["cases"].as_array().unwrap();
-    assert_eq!(cases.len(), 336);
+    assert_eq!(cases.len(), 339);
     let mut drive_turns = BTreeSet::new();
     let mut ship_turns = BTreeSet::new();
     let mut probes = 0;
@@ -162,7 +162,7 @@ fn coordinate_queries_match_original_heads_transforms_and_native_probes() {
             );
         }
     }
-    assert_eq!(probes, 4164);
+    assert_eq!(probes, 4197);
     assert_eq!(drive_turns, (0..72).collect());
     assert_eq!(ship_turns, (0..64).collect());
     let false_queries = data["false_queries"].as_array().unwrap();

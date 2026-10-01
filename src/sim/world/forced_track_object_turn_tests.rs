@@ -77,6 +77,8 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
     let rules = rules(1);
     for selector in 0x43..=0x47 {
         let mut sim = fixture(selector);
+        crate::sim::arena_fixture::supply_native_map(&mut sim);
+        assert!(sim.rebuild_dynamic_navigation(&rules));
         let count = drive_track::raw_track_points(
             drive_track::turn_track_at(selector as usize)
                 .unwrap()
@@ -113,6 +115,12 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
                 let bytes = GameSnapshot::save(&sim, 0, 0, "forced-track", 0);
                 let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
                 restored.restore_after_snapshot_load().unwrap();
+                restored.rebuild_caches_after_load(
+                    sim.resolved_terrain.as_ref().unwrap().clone(),
+                    sim.terrain_speed_config.clone(),
+                    &rules,
+                );
+                assert!(restored.rebuild_dynamic_navigation(&rules));
                 assert_eq!(
                     restored.state_hash(),
                     sim.state_hash(),

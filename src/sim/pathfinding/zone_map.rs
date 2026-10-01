@@ -59,8 +59,9 @@ pub const ZONE_INVALID: ZoneId = 0;
 pub struct ZoneMap {
     /// Zone ID per cell, indexed by `y * width + x`. ZONE_INVALID = impassable.
     ///
-    /// TODO(RE): RA2/YR does not store zone IDs directly per cell. Each cell carries
-    /// a nodeIndex, and each MovementZone has its own zoneIdByNodeIndex table.
+    /// Compatibility projection of native retained node indices and each
+    /// MovementZone's zoneIdByNodeIndex row. ZoneGrid owns those retained inputs
+    /// and rebuilds this projection at navigation publication boundaries.
     zone_ids: Vec<ZoneId>,
     /// Per-cell bridge redirect: for bridge cells, the ground endpoint cell
     /// whose zone ID should be returned for bridge-layer queries.
@@ -159,6 +160,12 @@ pub struct ZoneGrid {
     maps: BTreeMap<MovementZone, ZoneMap>,
     /// The gamemd-style route-selection hierarchy shared by all rows.
     hierarchy: ZoneHierarchy,
+    /// Derived digest of this owner's retained navigation history. Mutable
+    /// entry points invalidate it before returning any writable borrow.
+    navigation_history_hash: std::sync::OnceLock<u64>,
+    /// Deserialization restores the saved base plane/rows first. Native
+    /// LoadContent67E8CD rebuilds the hierarchy only after Cell/object load.
+    pending_native_load: bool,
     /// Cell-owned reduced classes, shared base clusters, and the retained raw
     /// per-row cluster mappings used by exact one-cell repair.
     base_topology: zone_build::BaseZoneTopology,
@@ -170,7 +177,192 @@ pub struct ZoneGrid {
     pub height: u16,
 }
 
+/// Native Mouse Save5BE727..767 / Load5BE355..3A7 retain Map+68's
+/// classbyte,heightbyte,baseIDshort plane and all13 raw movement rows. The
+/// hierarchy, compatibility projections and digest are rebuilt, not saved.
+#[derive(serde::Deserialize)]
+struct RetainedZoneGrid {
+    width: u16,
+    height: u16,
+    base_topology: zone_build::BaseZoneTopology,
+}
+
+impl serde::Serialize for ZoneGrid {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(serde::Serialize)]
+        struct RetainedZoneGridRef<'a> {
+            width: u16,
+            height: u16,
+            base_topology: &'a zone_build::BaseZoneTopology,
+        }
+        RetainedZoneGridRef {
+            width: self.width,
+            height: self.height,
+            base_topology: &self.base_topology,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ZoneGrid {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let retained = RetainedZoneGrid::deserialize(deserializer)?;
+        let count = usize::from(retained.width) * usize::from(retained.height);
+        let base = retained.base_topology;
+        if base.movement_classes.len() != count
+            || base.levels.len() != count
+            || base.zone_ids.len() != count
+        {
+            return Err(serde::de::Error::custom(
+                "saved navigation plane dimensions differ",
+            ));
+        }
+        let labels = base.raw_zone_ids_by_row[0].len();
+        if labels == 0
+            || base
+                .raw_zone_ids_by_row
+                .iter()
+                .any(|row| row.len() != labels)
+            || base.zone_ids.iter().any(|id| usize::from(*id) >= labels)
+        {
+            return Err(serde::de::Error::custom(
+                "saved navigation raw rows do not cover base IDs",
+            ));
+        }
+        let maps = MovementZone::all_ground()
+            .iter()
+            .map(|&movement| {
+                (
+                    movement,
+                    zone_build::build_zone_map_from_base_topology(
+                        &base,
+                        movement,
+                        retained.width,
+                        retained.height,
+                    ),
+                )
+            })
+            .collect();
+        let native_bridge_source_size = base.native_bridge_source_size;
+        let empty = || super::zone_hierarchy::ZoneLevelGraph::new(0);
+        Ok(Self {
+            maps,
+            hierarchy: ZoneHierarchy::new(empty(), empty(), empty()),
+            navigation_history_hash: std::sync::OnceLock::new(),
+            pending_native_load: true,
+            base_topology: base,
+            bridge_records: Vec::new(),
+            native_bridge_source_size,
+            width: retained.width,
+            height: retained.height,
+        })
+    }
+}
+
 impl ZoneGrid {
+    pub(crate) fn is_native_load_pending(&self) -> bool {
+        self.pending_native_load
+    }
+
+    /// Original LoadContent67E8CD ->581F50 rebuilds levels2,1,0 from the
+    /// loaded Map+68 plane and raw movement rows. It does not call56C510 to
+    /// renumber base connectivity from current terrain. Executable retained
+    /// Save/Load and physical rebuild controls: anytown_navigation_restore.
+    pub(crate) fn finish_native_load(
+        &mut self,
+        path: &PathGrid,
+        terrain: &ResolvedTerrainGrid,
+        records: &[crate::sim::bridge_state::BridgeEndpointRecord],
+        bounds: Option<crate::map::playfield::PlayfieldBounds>,
+    ) -> Result<(), String> {
+        if terrain.width() != self.width || terrain.height() != self.height {
+            return Err("saved navigation dimensions differ from the bound map".into());
+        }
+        self.invalidate_navigation_history();
+        self.maps = Self::project_movement_rows(
+            &self.base_topology,
+            path,
+            terrain,
+            records,
+            self.width,
+            self.height,
+        );
+        self.hierarchy = zone_build::build_zone_hierarchy_with_query(
+            &self.base_topology,
+            Some(terrain),
+            records,
+            self.width,
+            self.height,
+            &mut |x, y| {
+                crate::sim::cell_rect::cell_is_in_playfield_height_aware(
+                    (x, y),
+                    bounds,
+                    Some(terrain),
+                )
+            },
+        );
+        self.bridge_records = records.to_vec();
+        self.pending_native_load = false;
+        Ok(())
+    }
+
+    /// Read-only contribution of the retained native navigation state.
+    /// Local56CB90/586990 updates preserve IDs, raw movement rows and ordered
+    /// hierarchy history. These facts affect live queries and future repairs,
+    /// so equal current terrain does not justify excluding them from the
+    /// lockstep hash. Ordinary load intentionally rebuilds the hierarchy at
+    /// LoadContent67E8CD; this method does not change save/load policy.
+    pub(crate) fn fold_navigation_history(&self, hasher: &mut impl std::hash::Hasher) {
+        use std::hash::Hash;
+        // Dimensions remain public read fields. Fold them outside the digest
+        // so an existing dimension assignment cannot leave a stale cache.
+        self.width.hash(hasher);
+        self.height.hash(hasher);
+        self.navigation_history_hash
+            .get_or_init(|| self.compute_navigation_history_hash())
+            .hash(hasher);
+    }
+
+    fn invalidate_navigation_history(&mut self) {
+        self.navigation_history_hash.take();
+    }
+
+    fn compute_navigation_history_hash(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        fn fold_slice<T: Hash>(values: &[T], hasher: &mut impl Hasher) {
+            (values.len() as u64).hash(hasher);
+            for value in values {
+                value.hash(hasher);
+            }
+        }
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.base_topology
+            .native_bridge_source_size
+            .hash(&mut hasher);
+        self.native_bridge_source_size.hash(&mut hasher);
+        fold_slice(&self.bridge_records, &mut hasher);
+        fold_slice(&self.base_topology.movement_classes, &mut hasher);
+        fold_slice(&self.base_topology.levels, &mut hasher);
+        fold_slice(&self.base_topology.zone_ids, &mut hasher);
+        for row in &self.base_topology.raw_zone_ids_by_row {
+            fold_slice(row, &mut hasher);
+        }
+        (self.maps.len() as u64).hash(&mut hasher);
+        for (movement_zone, map) in &self.maps {
+            (movement_zone.matrix_row().expect("concrete movement row") as u32).hash(&mut hasher);
+            map.width.hash(&mut hasher);
+            map.height.hash(&mut hasher);
+            fold_slice(&map.zone_ids, &mut hasher);
+            map.bridge_redirect.is_some().hash(&mut hasher);
+            if let Some(redirect) = &map.bridge_redirect {
+                fold_slice(redirect, &mut hasher);
+            }
+        }
+        self.hierarchy.fold_history_hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Build zone maps from resolved terrain with no playfield bounds and no
     /// native Map Size receipt.
     #[cfg(test)]
@@ -302,6 +494,8 @@ impl ZoneGrid {
         ZoneGrid {
             maps,
             hierarchy,
+            navigation_history_hash: std::sync::OnceLock::new(),
+            pending_native_load: false,
             base_topology,
             bridge_records: bridge_records.to_vec(),
             native_bridge_source_size,
@@ -355,6 +549,7 @@ impl ZoneGrid {
     /// Mutable access to one row's zone map (test fixtures only).
     #[cfg(test)]
     pub(crate) fn map_mut(&mut self, mz: MovementZone) -> Option<&mut ZoneMap> {
+        self.invalidate_navigation_history();
         self.maps.get_mut(&mz)
     }
 
@@ -735,12 +930,20 @@ impl ZoneGrid {
             return false;
         }
         let index = y as usize * self.width as usize + x as usize;
+        let class = zone_build::movement_class_for_cell(terrain, x, y);
+        let level = terrain.cell(x, y).map_or(0, |cell| cell.level);
+        if self.base_topology.movement_classes.get(index) == Some(&class)
+            && self.base_topology.levels.get(index) == Some(&level)
+        {
+            return true;
+        }
+        self.invalidate_navigation_history();
         let base = &mut self.base_topology;
         let Some(slot) = base.movement_classes.get_mut(index) else {
             return false;
         };
-        *slot = zone_build::movement_class_for_cell(terrain, x, y);
-        base.levels[index] = terrain.cell(x, y).map_or(0, |cell| cell.level);
+        *slot = class;
+        base.levels[index] = level;
         true
     }
 
@@ -756,6 +959,7 @@ impl ZoneGrid {
     }
 
     pub(crate) fn base_topology_mut(&mut self) -> &mut zone_build::BaseZoneTopology {
+        self.invalidate_navigation_history();
         &mut self.base_topology
     }
 
@@ -763,6 +967,7 @@ impl ZoneGrid {
     /// not claim to reproduce the topology producer or its cluster numbering.
     #[cfg(test)]
     pub(crate) fn test_supply_uniform_raw_zone_rows(&mut self, zone: ZoneId) {
+        self.invalidate_navigation_history();
         for row in &mut self.base_topology.raw_zone_ids_by_row {
             row.fill(zone);
         }
@@ -774,12 +979,14 @@ impl ZoneGrid {
     pub(crate) fn base_and_hierarchy_mut(
         &mut self,
     ) -> (&zone_build::BaseZoneTopology, &mut ZoneHierarchy) {
+        self.invalidate_navigation_history();
         (&self.base_topology, &mut self.hierarchy)
     }
 
     /// Project one adopted base cluster through the retained raw 13-row maps.
     /// No topology, count, adjacency, or unrelated cell is rewritten.
     pub(crate) fn project_adopted_base_cell(&mut self, cell_index: usize) {
+        self.invalidate_navigation_history();
         let Some(&cluster) = self.base_topology.zone_ids.get(cell_index) else {
             return;
         };
@@ -799,6 +1006,7 @@ impl ZoneGrid {
     }
 
     pub(crate) fn replace_hierarchy(&mut self, hierarchy: ZoneHierarchy) {
+        self.invalidate_navigation_history();
         self.hierarchy = hierarchy;
     }
 
@@ -810,6 +1018,7 @@ impl ZoneGrid {
         resolved_terrain: &ResolvedTerrainGrid,
         bridge_records: &[crate::sim::bridge_state::BridgeEndpointRecord],
     ) {
+        self.invalidate_navigation_history();
         let base_topology = zone_build::rebuild_base_zone_topology(
             self.base_topology.movement_classes.clone(),
             self.base_topology.levels.clone(),
@@ -833,6 +1042,7 @@ impl ZoneGrid {
     /// Replace the one shared route-selection hierarchy (test fixtures only).
     #[cfg(test)]
     pub(crate) fn set_hierarchy(&mut self, hierarchy: ZoneHierarchy) {
+        self.invalidate_navigation_history();
         self.hierarchy = hierarchy;
     }
 
@@ -891,3 +1101,7 @@ pub(crate) fn cell_is_in_native_map_diamond(
 }
 
 // Tests are declared in zone/mod.rs (zone_map_tests.rs).
+
+#[cfg(test)]
+#[path = "zone_history_hash_tests.rs"]
+mod history_hash_tests;

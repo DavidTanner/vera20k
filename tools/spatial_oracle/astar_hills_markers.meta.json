@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original same-type MTNK42ACF0 marker downgrade and429830 code2 clearing-chain controls on physical Hills, with original full42C900 routes.",
+  "assumptions": [
+    "Physical Hills/type/map/graph setup reuses the existing Route owner. A separately executed original ground_underpass path supplies two retained peer queue directions; reference coordinate and Drive head/destination are explicit fixture inputs, not whole Find_Path/Drive lifecycle.",
+    "Original process-static Unit geometry initializers735180/735210/735230/735250/7352F0 execute from original executable constants before occupancy; registered CRT traversal itself is excluded. Their complete output bytes, original calls and all RNG states are saved, without supplied104/416 or host math.",
+    "Original Unit/Drive constructors and FootMark1/0 establish a same-type, identical-owner ground MTNK blocker at78,75. Constructor fields and supplied Move2/queue/+578/Drive state are saved. Source78,76 default north-facing probe selects its actual original ground list.",
+    "Original42C900/429A90/42ACF0 and all concrete Unit entry, reconstruction and finishing execute for requested urgencies0/1/2. Full Cell marker sets and exact downgrade/replay branch PCs establish preparation and cleanup, without Rust marker/admission/route inputs.",
+    "Direct429830 controls use independently executed original Unit+1AC class2, original map Cell pointers and explicit urgency0/1/2. Original caller FSTP429F9D..429FA1 captures binary32 ST0 before caller scaling/tiebreak; supplied Foot+578 zero/one exercises queue/facing clearing prediction. Ten-hop jams and complete moving-blocker lifecycle are excluded.",
+    "All three complete RNG states and original text hash are retained. Original same-House short circuit excludes weapon/House-index dependencies. Original scenario loader, command dispatch, scheduler, whole Unlimbo and paid Drive Process are excluded."
+  ],
+  "substitutions": [
+    "Inherited bounded allocator/free, CRT TLS/atexit and presentation/visibility sinks. No gameplay admission, bridge record, graph, path, height or RNG result replaced."
+  ],
+  "entry_points": {
+    "bridge_records": "0x0056D6E0",
+    "connectivity": "0x0056C510",
+    "hierarchy": "0x00581F90",
+    "pathfinder_ctor": "0x0042A6D0",
+    "map_resize": "0x0042AC00",
+    "scratch": "0x0042C1C0",
+    "pathfinder_find": "0x0042C900",
+    "astar": "0x00429A90",
+    "unit_entry": "0x0073F0A0",
+    "reconstruct": "0x0042AA90",
+    "corners": "0x0042B210",
+    "smooth": "0x0042B420",
+    "straight": "0x0042B7F0",
+    "straighten": "0x0042BE20",
+    "foot_mark": "0x004D3780",
+    "markers": "0x0042acf0",
+    "same_type_gate": "0x0042ae54",
+    "urgency_downgrade": "0x0042aeca",
+    "edge_cost": "0x00429830",
+    "edge_return_capture": "0x00429f9d",
+    "drive_is_moving": "0x004afb80",
+    "unit_geometry_scale": "0x00735180",
+    "unit_geometry_angle1": "0x00735210",
+    "unit_geometry_angle2": "0x00735230",
+    "unit_level_height": "0x00735250",
+    "unit_bridge_height": "0x007352f0"
+  },
+  "source_normalized_lf_sha256": {
+    "height_owner": "40593945eb8d383b4b53817e319b65655ec6f98714917e3a5a8879c92355a8bd",
+    "hills_route": "a037883525d602fe617bcabd442e76142e282dd236451cab23cc8f0845bd4146",
+    "hills_inputs": "fe60545520c613eb8c0f44afc44dc1f3015cb5ebf58b9b2c0706e6e27f9b554e",
+    "mtnk_inputs": "7e90659dd54d6a9b9fad99a64634b5173d163fe1053066b4d52d833979f83c18",
+    "navigation_inputs": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
+    "navigation": "a3694fc3094c0fcac020e01d2976b2ec794282adf97088f3b2983675e966721d",
+    "bridge_constructor": "e9ca6535f248ec03225f113ee9624ec9471b2ab1ed3c4c1210c4a240c3f937f9",
+    "bridge_records": "1faf4fe970ecb9ef08a336f128c110e9eeb7c07b4f973e545113ba00dbf59c1f"
+  },
+  "payload_sha256": "f7aa3ebf063eca029894472805f4f74763360e0b6cff86b1e6c611f892771fa8"
+}

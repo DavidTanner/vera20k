@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original retail MTNK inputs and the Foot threat coefficient lifecycle.\n\nCompanion to astar_structural_height's --mtnk-inputs mode. The existing Inputs\nowner reads physical Hills rules layers and constructs MTNK's type; original\nUnit/Foot constructor prefix, Drive construction and the admitted Unlimbo coefficient\ncopy execute. This does not execute whole ReadINI, Unlimbo, Scenario loading,\nplacement, high-bridge Cell production, A* search or path finishing.\n",
+  "assumptions": [
+    "Uses the existing navigation_inputs.Inputs owner on physical Hills.map and retained retail RULESMD/LANGRULE/MPBattleMD lexical caches. Host section presence supplies reached type-reader bodies; full INI parsing, discovery and parent ReadINI admission are excluded.",
+    "Inputs also executes its existing Unit Speed postpass for layers without MTNK. The receipt records those calls and preserved state explicitly; it does not claim full UnitType ReadINI reachability on an absent section.",
+    "Original MTNK type constructor, selected scalar readers, complete Unit/Foot constructor prefix and Drive constructor execute. Supplied zero backing storage, owner=NULL, native registry capacity and three original seed0 RNGs are fixture boundaries.",
+    "Original CRT precision and WinMain rounding tail execute through mapgen_range. The admitted Unlimbo copy executes only its original type getter and coefficient load/store; preceding placement and later Unlimbo effects are excluded.",
+    "No high-bridge flags, loaded Cells, actor placement, ordinary Move, A* or path finishing is established by this prerequisite witness."
+  ],
+  "substitutions": [
+    "Inherited successful bounded malloc/free and CRT TLS seams; physical archive/file loading and INI cache preparation are host supplied. No gameplay, scalar-reader, coefficient, RNG or constructor return is supplied."
+  ],
+  "entry_points": {
+    "unit_type_ctor": "0x007470D0",
+    "speed_reader": "0x007121D1",
+    "coefficient_reader": "0x00712452",
+    "crusher_reader": "0x00714CC8",
+    "movement_zone_reader": "0x0071605E",
+    "unit_speed_postpass": "0x007476D3",
+    "unit_ctor_prefix": "0x007353C0",
+    "unit_ctor_stop": "0x007354CE",
+    "drive_ctor": "0x004AF540",
+    "unlimbo_copy_begin": "0x004D72E0",
+    "unlimbo_copy_stop": "0x004D72FA",
+    "type_getter": "0x006F3270"
+  },
+  "source_sha256": {
+    "tools/spatial_oracle/astar_mtnk_inputs.py": "7e90659dd54d6a9b9fad99a64634b5173d163fe1053066b4d52d833979f83c18",
+    "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
+    "tools/spatial_oracle/anytown_damage/next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881"
+  },
+  "source_normalized_lf_sha256": {
+    "height_owner": "40593945eb8d383b4b53817e319b65655ec6f98714917e3a5a8879c92355a8bd",
+    "mtnk_inputs": "7e90659dd54d6a9b9fad99a64634b5173d163fe1053066b4d52d833979f83c18",
+    "navigation_inputs": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
+    "next_family": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881"
+  },
+  "payload_sha256": "fae7c06b5f4b5bca0b3b7e7d63c4e6f2276387fa44e3a2c6218bd93fa81fe313"
+}

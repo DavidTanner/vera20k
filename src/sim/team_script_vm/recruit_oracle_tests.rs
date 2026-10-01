@@ -362,7 +362,7 @@ fn find_own_building_matches_the_original() {
             .collect();
         let mode = row["mode"].as_u64().unwrap() as u32;
         assert_eq!(
-            own_building_pick(&buildings, xyz(&row["leader"]), mode),
+            own_building_pick(&buildings, xyz(&row["leader"]), mode, |_| 0),
             row["result"].as_u64(),
             "own building row {number}"
         );

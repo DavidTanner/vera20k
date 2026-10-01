@@ -256,7 +256,18 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // which the state hash folded. Ceremony: main and this change, each with only
 // those fields dropped from the hash (probe not committed), printed the same
 // value for all three replay pins (bridge, global, slice 6). Previous: 0xB592_E027_A510_DB45.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xCC11_DDD9_1928_916A;
+// Historical retained-path integration compared all201 main7412/candidate
+// observations after omitting newly retained actor fields and RNG source
+// locations; gameplay observations matched and only hash composition moved.
+// That pre-#962/#963 candidate pin was 0xEB5C_F8B1_1E9B_7DC6. The bounded Rust
+// receipt remains tools/spatial_oracle/astar_path_finishing_replay/receipt.json.
+// Main963 retained-path composition: the same-binary control reproduces
+// 0xCC11_DDD9_1928_916A by omitting only navigation history, House threat, Foot530
+// and cached Techno508 hash feeds. All201 control/current observations
+// match exactly except tick hashes, including full actor state and all
+// three RNG streams/draws/caller positions. The temporary gate was removed.
+// Rust-only receipt: tools/spatial_oracle/astar_path_finishing_replay/main963/receipt.json.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x8DE1_6E7B_3B6F_E661;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -584,7 +595,20 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
 
     // ---- Record pass: drive the crossing through the live advance_tick path. ----
     let mut rec = Simulation::with_seed(BRIDGE_HARNESS_SEED);
-    seed_bridge_scenario(&mut rec, &rules);
+    let mut diagnostic = super::global_parity_harness_tests::replay_diagnostic_file("bridge");
+    let mut seed = || seed_bridge_scenario(&mut rec, &rules);
+    let (_, seed_draws) = if diagnostic.is_some() {
+        crate::sim::rng::trace_draws(seed)
+    } else {
+        (seed(), Vec::new())
+    };
+    super::global_parity_harness_tests::record_replay_diagnostic(
+        &mut diagnostic,
+        &rec,
+        None,
+        &[],
+        &seed_draws,
+    );
     let mut log = ReplayLog::new(ReplayHeader {
         version: 1,
         pixel_conversion_bounds: rec.session.pixel_conversion_bounds,
@@ -598,12 +622,26 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
     let mut order_accepted_path: Option<usize> = None;
     for tick in 0..BRIDGE_HARNESS_TICKS {
         let due = due_commands(&rec, &script, tick);
-        let result = rec.advance_tick(
+        let mut advance = || {
+            rec.advance_tick(
+                &due,
+                Some(&rules),
+                Some(&grid),
+                None,
+                BRIDGE_HARNESS_TICK_MS,
+            )
+        };
+        let (result, draws) = if diagnostic.is_some() {
+            crate::sim::rng::trace_draws(advance)
+        } else {
+            (advance(), Vec::new())
+        };
+        super::global_parity_harness_tests::record_replay_diagnostic(
+            &mut diagnostic,
+            &rec,
+            Some(&result),
             &due,
-            Some(&rules),
-            Some(&grid),
-            None,
-            BRIDGE_HARNESS_TICK_MS,
+            &draws,
         );
         let entity = rec
             .substrate

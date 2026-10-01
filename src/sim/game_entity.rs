@@ -1237,11 +1237,24 @@ pub struct GameEntity {
     /// Only allocated when debug inspector is active (X hotkey). Not included in state hashing.
     #[serde(skip)]
     pub debug_log: Option<DebugEventLog>,
+    /// Techno+508, the contribution last published to the House spatial maps.
+    /// Constructor6F310C..6F311E leaves this dword unwritten; None preserves
+    /// that domain until admitted alive Unlimbo6F6ED2 or Add70F689 writes it.
+    /// It is independent of current type/garrison threat and survives saves.
+    #[serde(default)]
+    cached_spatial_threat: Option<i32>,
 }
 
 mod construction_stage;
 
 impl GameEntity {
+    pub(crate) const fn cached_spatial_threat(&self) -> Option<i32> {
+        self.cached_spatial_threat
+    }
+
+    pub(crate) fn retain_spatial_threat(&mut self, value: i32) {
+        self.cached_spatial_threat = Some(value);
+    }
     pub(crate) fn native_stage(&self) -> &crate::sim::stage::StageClass {
         &self.stage
     }
@@ -1589,6 +1602,7 @@ impl GameEntity {
         };
         Self {
             killed_by: None,
+            cached_spatial_threat: None,
             kill_award_points: 0,
             dont_score: false,
             tracking_facts: Default::default(),
@@ -1650,10 +1664,7 @@ impl GameEntity {
             air_spatial_enter_order: stable_id,
             locomotor: None,
             movement_target: None,
-            navigation: NavigationState {
-                path_runtime: crate::sim::components::FootPathRuntime::at_frame(construction_frame),
-                ..NavigationState::default()
-            },
+            navigation: NavigationState::at_frame(construction_frame),
             foot_speed: crate::sim::components::FootSpeedState::default(),
             flight_attitude: Default::default(),
             foot_occupation_enabled: true,

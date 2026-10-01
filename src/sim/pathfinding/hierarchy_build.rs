@@ -276,7 +276,12 @@ fn patch_hierarchy_level(
                 return false;
             };
             let parent_id = parent.map_or(0, |parent| cells.zone(parent, x, y));
-            if !graph.append_record(ZoneRecord::new(zone, parent_id, cells.class(x, y))) {
+            if !graph.append_record(ZoneRecord::from_seed(
+                zone,
+                parent_id,
+                cells.class(x, y),
+                (x as i16, y as i16),
+            )) {
                 return false;
             }
             flood_fill_hierarchy_scanline(
@@ -344,7 +349,12 @@ fn build_hierarchy_level(
                 )
             });
             let parent_id = parent.map_or(0, |parent| cells.zone(parent, x, y));
-            assert!(graph.append_record(ZoneRecord::new(zone, parent_id, cells.class(x, y))));
+            assert!(graph.append_record(ZoneRecord::from_seed(
+                zone,
+                parent_id,
+                cells.class(x, y),
+                (x as i16, y as i16)
+            )));
             let block = HierarchyBlock {
                 x_min: x & !(size - 1),
                 x_max: (x & !(size - 1)) + size - 1,

@@ -42,23 +42,73 @@ use crate::sim::world::Simulation;
 struct FootSearchEntry<'a> {
     terrain: Option<&'a crate::map::resolved_terrain::ResolvedTerrainGrid>,
     receiver: Result<crate::sim::world::FootEntryReceiver<'a>, String>,
+    threat_coefficient: crate::util::native_x87::NativeF64Bits,
+    markers: super::path_markers::DeferredBridgeMarkerSearch<'a>,
 }
 
 impl crate::sim::pathfinding::SearchFootEntry for FootSearchEntry<'_> {
     fn classify(&self, query: crate::sim::pathfinding::SearchEntryQuery) -> Result<u8, String> {
         let terrain = self.terrain.ok_or("Foot search requires map cells")?;
         let receiver = self.receiver.as_ref().map_err(Clone::clone)?;
-        let previous = terrain.native_cell_identity((query.from.0 as i16, query.from.1 as i16));
-        let candidate =
-            terrain.native_cell_identity((query.candidate.0 as i16, query.candidate.1 as i16));
+        let previous = query
+            .from
+            .map(|coord| terrain.native_cell_identity((coord.0 as i16, coord.1 as i16)));
+        let candidate = match query.candidate {
+            crate::sim::pathfinding::SearchEntryCandidate::CopiedCoord(coord) => {
+                terrain.native_cell_identity((coord.0 as i16, coord.1 as i16))
+            }
+            crate::sim::pathfinding::SearchEntryCandidate::RetainedNativeCell(cell) => cell,
+        };
         receiver.can_enter(
             candidate,
             InfantryEntryArgs {
                 direction: query.direction,
                 height: query.path_height,
-                previous_cell: Some(previous),
+                previous_cell: previous,
             },
         )
+    }
+    fn hierarchy_house_threat(&self, padded_index: i32) -> Result<i32, String> {
+        self.receiver
+            .as_ref()
+            .map_err(Clone::clone)?
+            .hierarchy_house_threat(padded_index)
+    }
+    fn prepare_search_markers(
+        &self,
+    ) -> Result<
+        Option<(
+            u8,
+            std::cell::Ref<'_, crate::sim::pathfinding::SearchMarkerOverlay>,
+        )>,
+        String,
+    > {
+        Ok(Some(self.markers.prepare()))
+    }
+    fn prepared_search_markers(
+        &self,
+    ) -> Option<std::cell::Ref<'_, crate::sim::pathfinding::SearchMarkerOverlay>> {
+        self.markers.prepared()
+    }
+    fn finishing_threat_coefficient(
+        &self,
+    ) -> Result<crate::util::native_x87::NativeF64Bits, String> {
+        Ok(self.threat_coefficient)
+    }
+    fn finishing_house_threat(&self, coord: (i16, i16)) -> Result<i32, String> {
+        let terrain = self.terrain.ok_or("Foot finishing requires map cells")?;
+        //56BCD0 first resolves a Cell, including fixed-stride aliases and
+        // shared Dummy replacement. Keep that observable query even when the
+        // product cannot depend on House+59F0: signed-i32 * exact +/-0 is zero.
+        if self.threat_coefficient.bits() & 0x7fff_ffff_ffff_ffff == 0 {
+            let _ = terrain.native_cell_identity(coord);
+            Ok(0)
+        } else {
+            self.receiver
+                .as_ref()
+                .map_err(Clone::clone)?
+                .house_threat(coord)
+        }
     }
 }
 
@@ -393,20 +443,6 @@ impl Simulation {
             Some(rules),
         );
         let counts = self.movement_pass_cache.current_blocker_plane();
-        let entry = self
-            .substrate
-            .entities
-            .get(id)
-            .filter(|actor| {
-                matches!(
-                    actor.category,
-                    EntityCategory::Infantry | EntityCategory::Unit
-                )
-            })
-            .map(|_| FootSearchEntry {
-                terrain: self.resolved_terrain.as_ref(),
-                receiver: self.foot_entry_receiver(id, rules, registry),
-            });
         //The track_fresh_response oracle substitutes the whole AStar core
         //0x4CBBA0 for a CoreNull row, so no +1AC call happens inside it; the
         //replay must not run the search that would consume those answers.
@@ -419,6 +455,67 @@ impl Simulation {
                 crate::sim::pathfinding::zone_search::PathSearchFailure::CellSearchExhausted,
             ))
         } else {
+            // Original42ACF0 runs at429C1A after FootMark0 (4D3E11),
+            // before reconstruction and both finishing passes. Reuse its one
+            // marker owner against the live ordered peer lists/raw bytes here;
+            // the returned overlay stays alive through the finishing passes
+            // and is discarded on success or failure before FootMark1.
+            let mover_peer = super::path_markers::bridge_marker_peer(
+                &self.substrate.entities,
+                id,
+                Some(rules),
+                &self.interner,
+            );
+            let marker_context = super::path_markers::DeferredBridgeMarker {
+                mover_id: id,
+                mover: mover_peer.as_ref(),
+                rules: Some(rules),
+                interner: &self.interner,
+                grid,
+                terrain: self.resolved_terrain.as_ref(),
+                playfield_bounds: self.playfield_bounds,
+            }
+            .reading(
+                &self.substrate.entities,
+                &self.substrate.raw_cell_occupation,
+            );
+            let actor = self
+                .substrate
+                .entities
+                .get(id)
+                .expect("live path requester");
+            let marker_search = marker_context.defer_search(
+                &self.substrate.occupancy,
+                id,
+                (actor.position.rx, actor.position.ry),
+                actor.body_facing.current(frame),
+                actor.on_bridge,
+                request.urgency,
+            );
+            let entry = self
+                .substrate
+                .entities
+                .get(id)
+                .filter(|actor| {
+                    matches!(
+                        actor.category,
+                        EntityCategory::Infantry | EntityCategory::Unit
+                    )
+                })
+                .map(|_| FootSearchEntry {
+                    terrain: self.resolved_terrain.as_ref(),
+                    markers: marker_search,
+                    receiver: self.foot_entry_receiver(id, rules, registry),
+                    threat_coefficient: self
+                        .substrate
+                        .entities
+                        .get(id)
+                        .expect("live Foot")
+                        .navigation
+                        .path_threat_coefficient_for_team(
+                            self.team_script_vm.member_avoids_threats(id),
+                        ),
+                });
             request.search(
                 goal,
                 &self.substrate.entities,
@@ -844,7 +941,7 @@ impl Simulation {
         use crate::sim::cell_rect::get_cellclass_fallback;
         use crate::sim::pathfinding::zone_build::find_high_bridge_record_index;
         use crate::sim::pathfinding::zone_hierarchy::{
-            ZonePrecheckExclusions, ZonePrecheckOutcome, zone_precheck_flat,
+            ZonePrecheckExclusions, ZonePrecheckOutcome, ZonePrecheckThreat, zone_precheck_flat,
         };
         use crate::sim::pathfinding::zone_search::live_hierarchy_projection;
 
@@ -893,13 +990,24 @@ impl Simulation {
             .hierarchy_zone_at_native(0, goal_projection)
             .ok_or("EstimateZoneCost requires the projected destination zone")?;
         // 42D182 clears this operation's exclusion vectors before precheck.
+        let coefficient = actor
+            .navigation
+            .path_threat_coefficient_for_team(self.team_script_vm.member_avoids_threats(id));
+        let threat_lookup = |index| {
+            self.houses
+                .get(&actor.owner())
+                .ok_or("EstimateZoneCost threat requires a live House")?
+                .spatial_threat_at_padded_index(index)
+        };
         let ZonePrecheckOutcome::Passed(path) = zone_precheck_flat(
             hierarchy,
             start_zone,
             goal_zone,
             object.movement_zone,
             &ZonePrecheckExclusions::default(),
-        ) else {
+            Some(ZonePrecheckThreat::new(coefficient, &threat_lookup)),
+        )?
+        else {
             return Ok(i32::MAX);
         };
         let packed = |cell: (i16, i16)| (cell.0 as u16, cell.1 as u16);
@@ -1176,3 +1284,11 @@ mod tests {
         assert_eq!(find_path_search_zone(MovementZone::Invalid), None);
     }
 }
+
+#[cfg(test)]
+#[path = "foot_path_marker_integration_tests.rs"]
+mod marker_integration_tests;
+
+#[cfg(test)]
+#[path = "foot_path_threat_integration_tests.rs"]
+mod threat_integration_tests;

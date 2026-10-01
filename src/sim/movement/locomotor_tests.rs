@@ -155,6 +155,7 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         target_special_threat_coefficient: None,
         target_strength_coefficient: None,
         target_distance_coefficient: None,
+        threat_avoidance_coefficient: crate::util::native_x87::NativeF64Bits::POSITIVE_ZERO,
         armor: "none".to_string(),
         speed: 6,
         walk_rate: 1,

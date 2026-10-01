@@ -209,7 +209,7 @@ impl NavTargetRef {
 ///
 /// `nav_com` is the owner destination. It must stay separate from
 /// `MovementTarget`, which is only the active execution path.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct NavigationState {
     /// Foot+55C is retained lifecycle history, not current occupancy.
     #[serde(default)]
@@ -234,6 +234,67 @@ pub struct NavigationState {
     /// no-active-track arrival clear has not run yet.
     #[serde(default)]
     pub pending_arrival_clear: bool,
+    /// FootClass+530, constructor positive-zero. FootUnlimbo4D72EA..4D72F4
+    /// copies TechnoType+2F0 only after successful Techno placement, neighbor
+    /// publication and the optional AirTracker tail. It outlives routes and
+    /// locomotor instances; native getter4DC760 reads this retained double.
+    #[serde(default = "default_threat_avoidance_coefficient")]
+    threat_avoidance_coefficient: crate::util::native_x87::NativeF64Bits,
+}
+
+const fn default_threat_avoidance_coefficient() -> crate::util::native_x87::NativeF64Bits {
+    crate::util::native_x87::NativeF64Bits::POSITIVE_ZERO
+}
+
+impl Default for NavigationState {
+    fn default() -> Self {
+        Self::at_frame(0)
+    }
+}
+
+impl NavigationState {
+    /// Foot constructor-owned navigation state, including its frame anchors.
+    pub(crate) fn at_frame(frame: u32) -> Self {
+        Self {
+            neighbor_state: Default::default(),
+            path_runtime: FootPathRuntime::at_frame(frame),
+            path_replay: Default::default(),
+            nav_com_aux: None,
+            nav_com: None,
+            suspended_nav_com: None,
+            nav_queue: Vec::new(),
+            pending_arrival_clear: false,
+            threat_avoidance_coefficient: default_threat_avoidance_coefficient(),
+        }
+    }
+
+    /// Retained Foot+530 input to4DC760. Team AvoidThreats overrides this
+    /// value at the getter; it does not mutate the stored coefficient.
+    pub(crate) const fn path_threat_coefficient(&self) -> crate::util::native_x87::NativeF64Bits {
+        self.threat_avoidance_coefficient
+    }
+
+    /// Foot4DC760 reads its TeamType+F2 override without changing Foot+530.
+    /// Original reader/getter controls: astar_threat_inputs.{py,json}.
+    pub(crate) fn path_threat_coefficient_for_team(
+        &self,
+        avoids_threats: bool,
+    ) -> crate::util::native_x87::NativeF64Bits {
+        if avoids_threats {
+            crate::util::native_x87::NativeF64Bits::ONE
+        } else {
+            self.path_threat_coefficient()
+        }
+    }
+
+    /// Successful FootUnlimbo4D72F4's sole type-to-object copy. Failed early
+    /// placement and failed Mark must retain constructor or prior Load state.
+    pub(crate) fn retain_threat_avoidance_after_unlimbo(
+        &mut self,
+        coefficient: crate::util::native_x87::NativeF64Bits,
+    ) {
+        self.threat_avoidance_coefficient = coefficient;
+    }
 }
 
 /// Persistent Foot path state. The FootClass constructor 0x004D31E0 anchors

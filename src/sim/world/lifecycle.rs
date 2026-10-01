@@ -90,6 +90,20 @@ impl<'a> UninitContext<'a> {
         }
     }
 
+    /// A nested receiver with an admitted RuleSet must retain the enclosing
+    /// borrowed map and registry while supplying every type-reading lifecycle
+    /// writer. SellBuilding's nested Foot Unlimbo is one such receiver.
+    pub(crate) const fn requiring_rules<'b>(self, rules: &'b RuleSet) -> UninitContext<'b>
+    where
+        'a: 'b,
+    {
+        UninitContext {
+            terrain: self.terrain,
+            rules: Some(rules),
+            registry: self.registry,
+        }
+    }
+
     /// The match's OverlayTypeClass table, for receivers that classify a
     /// cell's overlay (an ejected occupant's Scatter entry test).
     pub(crate) const fn with_registry(
@@ -798,6 +812,11 @@ impl Simulation {
         {
             entity.discovery.discovered_by_current_house = false;
         }
+        // Techno6F6ED2/6F6EDE publishes its current threat before the Foot
+        // tail. Failed Mark and the dead successful Reveal arm publish none.
+        if let Some(rules) = context.rules {
+            self.spatial_threat_after_unlimbo(stable_id, rules, context.terrain());
+        }
         // FootClass::Unlimbo @ 0x004D7170 dispatches active Drive/Ship
         // Force_Slope at 0x004D71A9 only after TechnoClass placement succeeds.
         // This precedes display/Logic exposure and must not run on either
@@ -826,7 +845,7 @@ impl Simulation {
         // Foot4D72B2/+54 requires high flight, then Type ConsideredAircraft
         // (+D96) admits AirTrackerAdd4D72DB, whatever the locomotor. Mark
         // itself never adds anything. RESIDUAL: a Reveal without rules
-        // (`try_reveal_entity`: passenger departure, `reveal`, spawn
+        // (`try_reveal_entity`, `reveal`, spawn
         // `unlimbo`) reads +D96 as its default, Aircraft only, so a
         // high-flying ConsideredAircraft Unit revealed that way waits for the
         // per-tick `sync_air_spatial_membership`.
@@ -841,6 +860,21 @@ impl Simulation {
             })
         {
             self.aircraft_tracker_add(stable_id);
+        }
+        // FootUnlimbo4D72EA..4D72F4 copies Type+2F0 into Foot+530 after
+        // neighbors and optional AirTracker, including the dead-Techno success
+        // arm. Both early and Mark refusals above must retain the prior value.
+        if let Some(rules) = context.rules
+            && let Some(entity) = self.substrate.entities.get_mut(stable_id)
+            && matches!(
+                entity.category,
+                EntityCategory::Infantry | EntityCategory::Unit | EntityCategory::Aircraft
+            )
+            && let Some(object) = rules.object(self.interner.resolve(entity.type_ref()))
+        {
+            entity
+                .navigation
+                .retain_threat_avoidance_after_unlimbo(object.threat_avoidance_coefficient);
         }
         // Aircraft4143A8 follows successful Foot Unlimbo, including the dead
         // Techno success arm. Failed placement above must not promote +3D4.
@@ -2498,6 +2532,11 @@ impl Simulation {
             self.remove_building_gap_before_limbo(stable_id);
             // 6F6BD1: Removed_From_Game, also only on the first Limbo.
             self.update_house_presence(stable_id, false);
+        }
+        //6F6C2A/2F removes the retained contribution and clears+508 before
+        //ObjectConceal; its result cannot roll these Techno writes back.
+        if let Some(rules) = context.rules() {
+            self.spatial_threat_before_limbo(stable_id, rules, context.terrain());
         }
         // BuildingClass owns this pass before the common TechnoClass Limbo can
         // clear committed type/cell facts or broadcast another expiry callback.

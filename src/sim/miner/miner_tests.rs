@@ -3829,6 +3829,27 @@ fn captured_harvesting_miner_requeues_harvest_for_the_new_owner() {
     let mut sim = Simulation::new();
     let captor = register_capture_houses(&mut sim, true, true);
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 10, 10);
+    ensure_movement_inputs(&mut sim, &rules);
+    // The legacy miner component fixture sets active state directly; this
+    // owner-change integration admits the real Unlimbo before ChangeOwner.
+    sim.substrate
+        .entities
+        .get_mut(miner_id)
+        .unwrap()
+        .lifecycle
+        .in_limbo = true;
+    assert!(matches!(
+        sim.reveal_entity_with_rules(miner_id, &rules),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
+    assert!(
+        sim.substrate
+            .entities
+            .get(miner_id)
+            .unwrap()
+            .cached_spatial_threat()
+            .is_some()
+    );
     place_ore(&mut sim, 10, 10, 100);
     install_land_types_for_placed_ore(&mut sim);
     sim.mission_assign_exact(miner_id, MissionId::from_known(MissionType::Harvest), 0)
@@ -3876,6 +3897,27 @@ fn captured_miner_off_ore_under_a_human_house_parks_on_guard() {
     let mut sim = Simulation::new();
     let captor = register_capture_houses(&mut sim, false, true);
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 10, 10);
+    ensure_movement_inputs(&mut sim, &rules);
+    // The legacy miner component fixture sets active state directly; this
+    // owner-change integration admits the real Unlimbo before ChangeOwner.
+    sim.substrate
+        .entities
+        .get_mut(miner_id)
+        .unwrap()
+        .lifecycle
+        .in_limbo = true;
+    assert!(matches!(
+        sim.reveal_entity_with_rules(miner_id, &rules),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
+    assert!(
+        sim.substrate
+            .entities
+            .get(miner_id)
+            .unwrap()
+            .cached_spatial_threat()
+            .is_some()
+    );
     place_ore(&mut sim, 20, 20, 100);
     sim.mission_assign_exact(miner_id, MissionId::from_known(MissionType::Harvest), 0)
         .expect("miner exists");
@@ -3901,6 +3943,27 @@ fn captured_miner_off_ore_under_an_ai_house_requeues_harvest() {
     let mut sim = Simulation::new();
     let captor = register_capture_houses(&mut sim, true, false);
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 10, 10);
+    ensure_movement_inputs(&mut sim, &rules);
+    // The legacy miner component fixture sets active state directly; this
+    // owner-change integration admits the real Unlimbo before ChangeOwner.
+    sim.substrate
+        .entities
+        .get_mut(miner_id)
+        .unwrap()
+        .lifecycle
+        .in_limbo = true;
+    assert!(matches!(
+        sim.reveal_entity_with_rules(miner_id, &rules),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
+    assert!(
+        sim.substrate
+            .entities
+            .get(miner_id)
+            .unwrap()
+            .cached_spatial_threat()
+            .is_some()
+    );
     place_ore(&mut sim, 20, 20, 100);
     sim.mission_assign_exact(miner_id, MissionId::from_known(MissionType::Harvest), 0)
         .expect("miner exists");
@@ -3928,6 +3991,27 @@ fn captured_miner_in_radio_contact_gets_only_the_forced_guard() {
     let mut sim = Simulation::new();
     let captor = register_capture_houses(&mut sim, true, true);
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 10, 10);
+    ensure_movement_inputs(&mut sim, &rules);
+    // The legacy miner component fixture sets active state directly; this
+    // owner-change integration admits the real Unlimbo before ChangeOwner.
+    sim.substrate
+        .entities
+        .get_mut(miner_id)
+        .unwrap()
+        .lifecycle
+        .in_limbo = true;
+    assert!(matches!(
+        sim.reveal_entity_with_rules(miner_id, &rules),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
+    assert!(
+        sim.substrate
+            .entities
+            .get(miner_id)
+            .unwrap()
+            .cached_spatial_threat()
+            .is_some()
+    );
     spawn_refinery(&mut sim, 2, 12, 12);
     place_ore(&mut sim, 10, 10, 100);
     install_land_types_for_placed_ore(&mut sim);
