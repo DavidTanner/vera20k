@@ -6329,6 +6329,14 @@ fn test_stop_command_clears_move_and_attack_intent() {
     );
 
     if let Some(e) = sim.substrate.entities.get_mut(1) {
+        // A Drive tank moving to a NavCom: the Unit setter (0x00741970)
+        // writes nothing without one (0x00741A80).
+        e.locomotor = Some(
+            crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+                crate::rules::locomotor_type::LocomotorKind::Drive,
+            ),
+        );
+        e.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(9, 4));
         e.movement_target = Some(MovementTarget {
             speed: SimFixed::from_num(1024),
             ..Default::default()

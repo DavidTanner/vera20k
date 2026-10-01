@@ -695,48 +695,43 @@ impl Simulation {
                 // cleared NavCom/TarCom on their next dispatch and own the idle
                 // transition, including Temporal LetGo at that later boundary.
                 self.run_dock_teardown(*entity_id, DockTeardown::All);
-                // The event's null Set_Destination (`0x004C75ED`) reaches a
-                // Jumpjet's Stop_Moving through Foot's null arm, except that
-                // the Unit setter returns first without a NavCom unless its
-                // `+0x1F8` override is up (`0x00741A80`).
-                let jumpjet_stops = self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                    e.category != crate::map::entities::EntityCategory::Unit
-                        || e.navigation.nav_com.is_some()
-                        || e.setter_force_reassign
+                // `0x004C75ED`: the class setter's null destination. A Unit
+                // takes Unit `0x00741970`, which returns before any write
+                // without a NavCom unless its `+0x1F8` override is up
+                // (`0x00741A80`). A Walk infantryman takes Infantry
+                // `0x0051AA40`: Walk Stop `0x0075ADA0` consumes a pending
+                // Deploy through owner +0x54C, and a paid head and the human
+                // deploy refusal survive.
+                let class_setter = self.substrate.entities.get(*entity_id).is_some_and(|e| {
+                    e.category == crate::map::entities::EntityCategory::Unit
+                        || (e.category == crate::map::entities::EntityCategory::Infantry
+                            && e.locomotor.as_ref().is_some_and(|l| {
+                                l.kind == crate::rules::locomotor_type::LocomotorKind::Walk
+                            }))
                 });
-                let walking_infantry = self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                    e.category == crate::map::entities::EntityCategory::Infantry
-                        && e.locomotor.as_ref().is_some_and(|l| {
-                            l.kind == crate::rules::locomotor_type::LocomotorKind::Walk
-                        })
-                });
-                if walking_infantry {
-                    //4C75ED dispatches the actual class NULL setter. Walk
-                    //75ADA0 must consume pending Deploy through owner+54C;
-                    //a paid head and the human deployment refusal survive.
+                if class_setter {
                     self.assign_null_destination(*entity_id, rules);
-                }
-                if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    if !walking_infantry {
+                } else {
+                    // An Aircraft or a Jumpjet or Teleport man: the represented
+                    // body of [`movement::stop_navigation_at_committed_head`],
+                    // a Jumpjet's Stop_Moving through Foot's null arm, then
+                    // the accepted setter's timer tail (`0x004D96C2`), which
+                    // preserves the retry counter.
+                    if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                         movement::stop_navigation_at_committed_head(e);
                     }
+                    if !self.jumpjet_null_destination(*entity_id, rules, overlay_registry) {
+                        return false;
+                    }
+                    if let Some(entity) = self.substrate.entities.get_mut(*entity_id) {
+                        movement::DestinationTiming::from_rules(self.session.binary_frame, rules)
+                            .accept(entity);
+                    }
+                }
+                if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     e.order_intent = None;
                     e.dock_state = None;
                     e.c4_plant = None;
-                }
-                if !walking_infantry
-                    && jumpjet_stops
-                    && !self.jumpjet_null_destination(*entity_id, rules, overlay_registry)
-                {
-                    return false;
-                }
-                if !walking_infantry
-                    && let Some(entity) = self.substrate.entities.get_mut(*entity_id)
-                {
-                    // Accepted null Foot setter4D96C2 follows locomotor Stop,
-                    // including a no-op Stop, and preserves the retry counter.
-                    movement::DestinationTiming::from_rules(self.session.binary_frame, rules)
-                        .accept(entity);
                 }
                 // Event Stop4C75F8 invokes virtual+3C8 AFTER its null
                 // destination4C75ED, including the Infantry class effects.
@@ -2736,6 +2731,27 @@ mod tests {
         // reads that byte, so the fixture must model a revealed object.
         entity.lifecycle.in_limbo = false;
         sim.substrate.entities.insert(entity);
+    }
+
+    /// Event IDLE's null destination (`0x004C75ED`) is the Unit's class
+    /// setter (`0x00741970`), which returns before any write without a NavCom
+    /// unless its `+0x1F8` override is up (`0x00741A80`): Stop on an idle
+    /// Unit keeps its queued waypoints and Foot's movement timer.
+    #[test]
+    fn stop_on_an_idle_unit_takes_the_unit_setter_and_writes_nothing() {
+        let rules = amcv_move_rules();
+        let mut sim = Simulation::new();
+        sim.session.binary_frame = 100;
+        spawn_rule_backed_unit(&mut sim, 1, "AMCV", &rules);
+        let entity = sim.substrate.entities.get_mut(1).unwrap();
+        entity.navigation.nav_queue = vec![crate::sim::components::NavTargetRef::cell(25, 20)];
+        entity.navigation.path_runtime.start_movement(40, 30);
+        assert!(entity.navigation.nav_com.is_none());
+        assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, Some(&rules)));
+        let entity = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(entity.navigation.nav_queue.len(), 1);
+        let timer = entity.navigation.path_runtime.movement_timer;
+        assert_eq!((timer.start_frame(), timer.duration()), (40, 30));
     }
 
     fn gsi_16_01_insert_identity_entity(

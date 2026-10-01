@@ -2910,10 +2910,12 @@ impl Simulation {
     /// contact (`+0x280(3)`), SpawnManager Kill_All_Spawns `0x006B7100` and
     /// ClearAllTargets `0x006B7BB0`, Detach_All(1), and Deselect.
     ///
-    /// The Foot prefix is the Stop command's navigation clear, which keeps only
-    /// an already committed segment; a Jumpjet Unit's `Stop_Driver` is the
-    /// locomotor's `Stop_Moving` ([`Self::jumpjet_stun_stop`]), whose NavCom
-    /// the second NULL destination clears again. Foot+6AD (Magnetron-held)
+    /// A Unit takes its class setter (Unit `0x00741970`,
+    /// [`Self::assign_null_destination`]) at both NULL destinations, then
+    /// Path[0] = -1 and `Stop_Driver`: the locomotor's `Stop_Moving`, a
+    /// Jumpjet Unit's through [`Self::jumpjet_stun_stop`], whose NavCom the
+    /// second NULL destination clears again. An Aircraft takes the represented body of
+    /// [`crate::sim::movement::stop_navigation_at_committed_head`]. Foot+6AD (Magnetron-held)
     /// would skip the spawn calls and Detach_All; VERA never sets it (the
     /// IsLocomotor arm is unported). On this path the spawn calls repeat the Destroy's owner arm
     /// and find nothing left to kill. Detach_All(1) repeats the broadcast the
@@ -2970,9 +2972,19 @@ impl Simulation {
                 if let Err(cause) = self.infantry_stop_driver(stable_id, rules, None) {
                     log::debug!("infantry {stable_id} Stun Stop_Driver: {cause}");
                 }
+            } else if entity.category == EntityCategory::Unit {
+                // The Unit setter `0x00741970(NULL, 1)`, Path[0] = -1
+                // (`0x004D5673`), then Stop_Driver (Unit +0x500 =
+                // `0x004D55C0`): the locomotor's Stop_Moving, Drive/Ship/Hover
+                // here and a Jumpjet's through `jumpjet_stun_stop`.
+                self.assign_null_destination(stable_id, context.rules);
+                if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                    entity.navigation.path_replay.clear_live_head();
+                    crate::sim::movement::track_stop_moving(entity);
+                }
+                self.jumpjet_stun_stop(stable_id, context.rules);
             } else {
                 crate::sim::movement::stop_navigation_at_committed_head(entity);
-                self.jumpjet_stun_stop(stable_id, context.rules);
             }
         }
         if walking_infantry {
@@ -2987,13 +2999,21 @@ impl Simulation {
             self.jumpjet_null_destination(stable_id, context.rules, None);
             self.foot_null_setter_tail(stable_id, context.rules);
         }
-        let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
-            return;
-        };
-        if !walking_infantry {
+        if self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category == EntityCategory::Unit)
+        {
+            self.assign_null_destination(stable_id, context.rules);
+        } else if !walking_infantry && let Some(entity) = self.substrate.entities.get_mut(stable_id)
+        {
             crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
                 entity, None,
             );
+        }
+        if !self.substrate.entities.contains(stable_id) {
+            return;
         }
         crate::sim::radio::broadcast_break(self, stable_id, None);
         crate::sim::spawn_manager::kill_all_spawns_with_context(self, stable_id, context);
