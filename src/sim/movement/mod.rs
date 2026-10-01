@@ -93,6 +93,8 @@ pub(crate) use navcom::{building_dock_cell, nav_target_coordinate, set_walk_dest
 #[cfg(test)]
 pub(crate) mod fresh_oracle_seam;
 mod path_markers;
+#[cfg(test)]
+pub(crate) use path_markers::fixture_path_replay;
 mod per_cell;
 pub(crate) use per_cell::PerCellReason;
 pub(crate) mod ready_producer;

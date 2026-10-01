@@ -233,7 +233,7 @@ fn drive_ship_paid_points_sample_before_residual_xy_and_no_paid_point_retains_ra
 }
 
 #[test]
-fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_point() {
+fn residual_bridge_crossing_preserves_z_and_projects_the_layer_from_on_bridge() {
     for leaving in [false, true] {
         let mut terrain = terrain();
         let mut grid = PathGrid::from_resolved_terrain(&terrain);
@@ -291,6 +291,11 @@ fn residual_bridge_crossing_preserves_z_and_defers_path_consumption_until_paid_p
         assert_eq!(entity.position.sub_y.to_num::<i32>(), 253);
         assert_eq!(entity.position.exact_z_leptons, Some(731));
         assert_eq!(entity.on_bridge, !leaving);
+        assert_eq!(
+            entity.locomotor.as_ref().unwrap().layer,
+            end_layer,
+            "the layer is the OnBridge projection written at the crossing"
+        );
         assert_eq!(
             track(entity).cursor,
             11,
@@ -563,8 +568,7 @@ fn fresh_walk_refusal_preserves_xyz_before_head_selection() {
         ..Default::default()
     });
     // Moving: its Foot+5E0 head word steps east from (3,2).
-    blocker.navigation.path_replay =
-        crate::sim::components::FootPathQueue::from_route(&[(3, 2), (4, 2)]);
+    blocker.navigation.path_replay = crate::sim::movement::fixture_path_replay(&[(3, 2), (4, 2)]);
     sim.substrate.occupancy.add(
         3,
         2,

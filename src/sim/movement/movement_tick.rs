@@ -265,7 +265,7 @@ impl FootPathRequest {
         terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
         blocks: &super::block_index::OwnerBlockSet,
         foot_entry: Option<&dyn crate::sim::pathfinding::SearchFootEntry>,
-    ) -> Result<(Vec<(u16, u16)>, Vec<MovementLayer>), super::movement_path::MovePathFailure> {
+    ) -> Result<Vec<(u16, u16)>, super::movement_path::MovePathFailure> {
         let snap = &self.visit.snap;
         let actor = entities.get(self.entity_id).expect("live suspended mover");
         let start = (actor.position.rx, actor.position.ry);
@@ -309,6 +309,8 @@ impl FootPathRequest {
             snap.allow_zone_hierarchy,
             foot_entry,
         )
+        // Foot+5E0 words carry no layer; the Process reads OnBridge.
+        .map(|(path, _)| path)
     }
 
     pub(crate) fn owner(&self) -> crate::sim::intern::InternedId {

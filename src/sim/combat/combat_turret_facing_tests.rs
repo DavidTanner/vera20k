@@ -1251,7 +1251,7 @@ fn gsi_08_14_idle_turret_returns_to_the_hull_without_a_navcom() {
         .get_mut(1)
         .unwrap()
         .navigation
-        .path_replay = crate::sim::components::FootPathQueue::from_route(&[
+        .path_replay = crate::sim::movement::fixture_path_replay(&[
         (5, 5),
         (6, 5),
         (7, 5),

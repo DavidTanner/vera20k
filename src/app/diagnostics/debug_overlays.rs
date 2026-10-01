@@ -330,11 +330,14 @@ pub(crate) fn build_path_overlay_instances(
         let Some(ref mt) = entity.movement_target else {
             continue;
         };
-        // The Foot+5E0 queue from the current cell; the first is next.
-        let path = entity
+        // The Foot+5E0 words from the reference cell; the first is next.
+        let path: Vec<(u16, u16)> = entity
             .navigation
             .path_replay
-            .cells_from((entity.position.rx, entity.position.ry));
+            .remaining_cells()
+            .into_iter()
+            .map(|(x, y)| (x as u16, y as u16))
+            .collect();
         for (i, &(px, py)) in path.iter().enumerate() {
             let z: u8 = state.height_map().get(&(px, py)).copied().unwrap_or(0);
             let (sx, sy) = terrain::iso_to_screen(px, py, z);

@@ -560,14 +560,14 @@ impl Simulation {
         use super::movement_path::MovePathFailure;
         use crate::sim::pathfinding::zone_search::PathSearchFailure as Search;
         match searched {
-            Ok((path, _)) if path.len() < 2 => {
+            Ok(path) if path.len() < 2 => {
                 //4D3E52..5F skips the copy for a zero-cost route; 4D4003
                 //still records the current Cell.
                 let current = (actor.position.rx as i16, actor.position.ry as i16);
                 actor.navigation.path_replay.reference_cell = Some(current);
                 Ok(Ok(false))
             }
-            Ok((path, _)) => {
+            Ok(path) => {
                 request.install_route(actor, path);
                 Ok(Ok(true))
             }

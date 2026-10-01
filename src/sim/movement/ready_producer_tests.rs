@@ -39,7 +39,7 @@ fn moving_target() -> MovementTarget {
 
 /// The Foot+5E0 words Find_Path installs for that order from (5,5).
 fn order_route() -> crate::sim::components::FootPathQueue {
-    crate::sim::components::FootPathQueue::from_route(&[(5, 5), (6, 5)])
+    crate::sim::movement::fixture_path_replay(&[(5, 5), (6, 5)])
 }
 
 fn driving_mtnk() -> GameEntity {

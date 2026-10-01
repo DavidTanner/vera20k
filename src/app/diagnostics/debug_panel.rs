@@ -356,11 +356,14 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                                 entity.position.sub_y,
                             ));
                             if let Some(ref mt) = entity.movement_target {
-                                // The Foot+5E0 queue from the current cell.
-                                let path = entity
+                                // The Foot+5E0 words from the reference cell.
+                                let path: Vec<(u16, u16)> = entity
                                     .navigation
                                     .path_replay
-                                    .cells_from((entity.position.rx, entity.position.ry));
+                                    .remaining_cells()
+                                    .into_iter()
+                                    .map(|(x, y)| (x as u16, y as u16))
+                                    .collect();
                                 ui.label(format!(
                                     "Path: {} steps left, blocked={}",
                                     path.len(),

@@ -843,6 +843,10 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
         Some((1, 0)),
         "projection must not mutate the A* start coordinate"
     );
+    assert!(
+        sim.substrate.entities.get(1).expect("mover").on_bridge,
+        "the Process search starts on the bridge layer: AStar 0x00429A90 takes the start height from the Foot's OnBridge byte"
+    );
     assert_eq!(
         route.last().copied(),
         Some((3, 0)),
@@ -1386,6 +1390,10 @@ fn gsi_04_12_attack_pursuit_entry_threads_exact_blocker_counts() {
     let route = first_track_process_route(&mut sim, 1, Some(&rules), &path_grid)
         .expect("real out-of-range pursuit should reach the projected hierarchy route");
     assert_eq!(route.first().copied(), Some((1, 0)));
+    assert!(
+        sim.substrate.entities.get(1).expect("mover").on_bridge,
+        "the Process search starts on the bridge layer: AStar 0x00429A90 takes the start height from the Foot's OnBridge byte"
+    );
     assert_eq!(route.last().copied(), Some((3, 0)));
 }
 
@@ -1458,6 +1466,10 @@ fn gsi_04_12_phase_six_order_resume_threads_exact_blocker_counts() {
         .expect("real Phase-6 resume should reach the projected hierarchy route");
     let resumed = sim.substrate.entities.get(1).expect("resumed mover");
     assert_eq!(route.first().copied(), Some((1, 0)));
+    assert!(
+        sim.substrate.entities.get(1).expect("mover").on_bridge,
+        "the Process search starts on the bridge layer: AStar 0x00429A90 takes the start height from the Foot's OnBridge byte"
+    );
     assert_eq!(route.last().copied(), Some((3, 0)));
     assert_eq!(
         resumed.order_intent,
@@ -1555,6 +1567,10 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
         .expect("pending Drive continuation should rebuild the hierarchy route");
     let route = installed_route(continued, (1, 0));
     assert_eq!(route.first().copied(), Some((1, 0)));
+    assert!(
+        continued.on_bridge,
+        "the Process search starts on the bridge layer: AStar 0x00429A90 takes the start height from the Foot's OnBridge byte"
+    );
     assert_eq!(route.last().copied(), Some((3, 0)));
     assert_eq!(movement.final_goal, Some((3, 0)));
 }

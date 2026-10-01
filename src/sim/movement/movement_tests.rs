@@ -1345,7 +1345,7 @@ fn test_friendly_passable_moving_unit_not_blocked() {
     });
     // Moving: its Foot+5E0 head word steps east from (4,0).
     b.navigation.path_replay =
-        crate::sim::components::FootPathQueue::from_route(&[(4, 0), (5, 0), (6, 0)]);
+        crate::sim::movement::fixture_path_replay(&[(4, 0), (5, 0), (6, 0)]);
     entities.insert(b);
 
     let alliances = HouseAllianceMap::new();
@@ -1422,7 +1422,7 @@ fn test_enemy_unit_always_blocks_even_when_moving() {
     });
     // Moving: its Foot+5E0 head word steps east from (3,0).
     enemy.navigation.path_replay =
-        crate::sim::components::FootPathQueue::from_route(&[(3, 0), (4, 0)]);
+        crate::sim::movement::fixture_path_replay(&[(3, 0), (4, 0)]);
     entities.insert(enemy);
 
     let alliances = HouseAllianceMap::new();

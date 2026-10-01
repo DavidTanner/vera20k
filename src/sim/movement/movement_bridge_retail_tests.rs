@@ -718,27 +718,19 @@ fn diagnose_rejected_order(
 }
 
 /// Find_Path rewrites the Foot+5E0 words and rewinds the cursor. Head
-/// acceptance and chain consumption only advance the cursor, and a terminal
-/// head clear only writes -1 words, so neither reads as a rebuilt route.
+/// acceptance and chain consumption only advance the cursor, and a head clear
+/// (`FootPathQueue::clear_live_head`) only writes one -1 word at the cursor,
+/// in place or appended, so neither reads as a rebuilt route.
 fn route_reinstalled(
     previous: &crate::sim::components::FootPathQueue,
     current: &crate::sim::components::FootPathQueue,
 ) -> bool {
-    let words = |queue: &crate::sim::components::FootPathQueue| {
-        let end = queue
-            .directions
-            .iter()
-            .rposition(|&word| word != u8::MAX)
-            .map_or(0, |at| at + 1);
-        queue.directions[..end].to_vec()
-    };
-    let (previous_words, current_words) = (words(previous), words(current));
-    current.cursor < previous.cursor
-        || previous_words.len() != current_words.len()
-        || previous_words
-            .iter()
-            .zip(&current_words)
-            .any(|(&a, &b)| a != b && a != u8::MAX && b != u8::MAX)
+    if current.directions == previous.directions {
+        return current.cursor < previous.cursor;
+    }
+    let mut cleared = previous.clone();
+    cleared.clear_live_head();
+    current.directions != cleared.directions || current.cursor < previous.cursor
 }
 
 /// The accepted order's Foot+5E0 route still ahead: the reference cell plus

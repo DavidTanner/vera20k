@@ -400,33 +400,33 @@ pub struct FootPathQueue {
 }
 
 impl FootPathQueue {
-    /// Fixture words for a found route, as `path_markers::install_path_replay`
-    /// writes them from `path[0]`: one word per later cell (tube word 8 for a
-    /// non-adjacent step), cursor 0, reference `path[0]`.
-    #[cfg(test)]
-    pub(crate) fn from_route(path: &[(u16, u16)]) -> Self {
-        let Some(&(rx, ry)) = path.first() else {
-            return Self::default();
-        };
-        let directions = path
-            .windows(2)
-            .map(|step| {
-                crate::util::direction::direction_from_delta(
-                    i32::from(step[1].0 as i16) - i32::from(step[0].0 as i16),
-                    i32::from(step[1].1 as i16) - i32::from(step[0].1 as i16),
-                )
-                .unwrap_or(8)
+    /// `start` followed by the cells `words` step through from it. A tube
+    /// word (8) names no adjacent cell and ends the walk.
+    fn walk_words(start: (i16, i16), words: &[u8]) -> Vec<(i16, i16)> {
+        let mut cell = start;
+        words
+            .iter()
+            .map_while(|&direction| {
+                let (dx, dy) =
+                    *crate::util::direction::DIRECTION_DELTAS.get(usize::from(direction))?;
+                cell = (
+                    cell.0.wrapping_add(dx as i16),
+                    cell.1.wrapping_add(dy as i16),
+                );
+                Some(cell)
             })
-            .collect();
-        Self {
-            directions,
-            cursor: 0,
-            reference_cell: Some((rx as i16, ry as i16)),
-        }
+            .collect()
     }
 
-    /// The reference cell followed by the cells the remaining words step
-    /// through: the route still ahead, from where it was last accepted.
+    /// The cells the remaining words step through from the reference cell
+    /// (Foot+558), as the path markers read them. Diagnostics and tests.
+    pub(crate) fn remaining_cells(&self) -> Vec<(i16, i16)> {
+        self.reference_cell
+            .map(|reference| Self::walk_words(reference, self.remaining_directions()))
+            .unwrap_or_default()
+    }
+
+    /// The reference cell followed by [`Self::remaining_cells`].
     #[cfg(test)]
     pub(crate) fn route_cells(&self) -> Vec<(u16, u16)> {
         self.reference_cell
@@ -438,56 +438,15 @@ impl FootPathQueue {
 
     /// `start` followed by the cells every word (consumed or not) steps
     /// through from it: the route one Find_Path installed from `start`, while
-    /// the queue still holds that install's words. A tube word (8) names no
-    /// adjacent cell and ends the walk.
+    /// the queue still holds that install's words.
     #[cfg(test)]
     pub(crate) fn installed_cells(&self, start: (u16, u16)) -> Vec<(u16, u16)> {
-        let mut cell = start;
-        std::iter::once(start)
-            .chain(self.directions.iter().map_while(|&direction| {
-                let (dx, dy) =
-                    *crate::util::direction::DIRECTION_DELTAS.get(usize::from(direction))?;
-                cell = (
-                    cell.0.wrapping_add_signed(dx as i16),
-                    cell.1.wrapping_add_signed(dy as i16),
-                );
-                Some(cell)
-            }))
-            .collect()
-    }
-
-    /// The cells the remaining words step through from the reference cell.
-    #[cfg(test)]
-    pub(crate) fn remaining_cells(&self) -> Vec<(i16, i16)> {
-        let Some(mut cell) = self.reference_cell else {
-            return Vec::new();
-        };
-        self.remaining_directions()
-            .iter()
-            .filter_map(|&direction| {
-                let (dx, dy) =
-                    *crate::util::direction::DIRECTION_DELTAS.get(usize::from(direction))?;
-                cell = (cell.0 + dx as i16, cell.1 + dy as i16);
-                Some(cell)
-            })
-            .collect()
-    }
-
-    /// The cells the remaining words step through from `start`, for
-    /// diagnostics (the debug path overlay and panel).
-    pub(crate) fn cells_from(&self, start: (u16, u16)) -> Vec<(u16, u16)> {
-        let mut cell = start;
-        self.remaining_directions()
-            .iter()
-            .filter_map(|&direction| {
-                let (dx, dy) =
-                    *crate::util::direction::DIRECTION_DELTAS.get(usize::from(direction))?;
-                cell = (
-                    cell.0.wrapping_add_signed(dx as i16),
-                    cell.1.wrapping_add_signed(dy as i16),
-                );
-                Some(cell)
-            })
+        std::iter::once((start.0 as i16, start.1 as i16))
+            .chain(Self::walk_words(
+                (start.0 as i16, start.1 as i16),
+                &self.directions,
+            ))
+            .map(|(x, y)| (x as u16, y as u16))
             .collect()
     }
 
