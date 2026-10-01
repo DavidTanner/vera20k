@@ -691,5 +691,458 @@
     }
   ],
   "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
-  "scope": "Original physical FV numbered FLH, flat Drive transform and two burst tails.\n\nPhysical INI cache setup, source lifecycle, source pose, HouseROF1, ScenarioSeed31\nand second FireAt call time are supplied. This proves neither whole Unit AI nor\nwhole-scenario native identity prefix. Read ifv_fire_coord.md for exact coverage.\n"
+  "scope": "Original physical FV numbered FLH, flat Drive transform and two burst tails.\n\nPhysical INI cache setup, source lifecycle, source pose, HouseROF1, ScenarioSeed31\nand second FireAt call time are supplied. This proves neither whole Unit AI nor\nwhole-scenario native identity prefix. Read ifv_fire_coord.md for exact coverage.\nspawn_launch adds GetFLH with a nonzero base and SpawnManagerClass::AI case 0's\nlaunch coordinate for retail V3, DRED and BSUB on a supplied flat pose.\n",
+  "spawn_launch": {
+    "get_flh": [
+      {
+        "base": [
+          -70,
+          0,
+          0
+        ],
+        "burst_index": 1,
+        "calls": [
+          "0x41be00",
+          "0x4c93d0",
+          "0x55a730",
+          "0x5ae890",
+          "0x5af1a0",
+          "0x5afb80",
+          "0x69f670",
+          "0x6f3270",
+          "0x70e140",
+          "0x746e30",
+          "0x7c5f00"
+        ],
+        "control": "retail SecondSpawnOffset",
+        "coordinate": [
+          2639,
+          2737,
+          376
+        ],
+        "location": [
+          2688,
+          2688,
+          416
+        ],
+        "owner": "BSUB",
+        "weapon_index": 1
+      },
+      {
+        "base": [
+          0,
+          0,
+          0
+        ],
+        "burst_index": 1,
+        "calls": [
+          "0x41be00",
+          "0x4c93d0",
+          "0x55a730",
+          "0x5ae890",
+          "0x5af1a0",
+          "0x5afb80",
+          "0x69f670",
+          "0x6f3270",
+          "0x70e140",
+          "0x746e30",
+          "0x7c5f00"
+        ],
+        "control": "zero base",
+        "coordinate": [
+          2688,
+          2688,
+          376
+        ],
+        "location": [
+          2688,
+          2688,
+          416
+        ],
+        "owner": "BSUB",
+        "weapon_index": 1
+      },
+      {
+        "base": [
+          0,
+          25,
+          0
+        ],
+        "burst_index": 1,
+        "calls": [
+          "0x41be00",
+          "0x4c93d0",
+          "0x55a730",
+          "0x5ae890",
+          "0x5af1a0",
+          "0x5afb80",
+          "0x69f670",
+          "0x6f3270",
+          "0x70e140",
+          "0x746e30",
+          "0x7c5f00"
+        ],
+        "control": "supplied lateral base, odd burst",
+        "coordinate": [
+          2757,
+          2714,
+          508
+        ],
+        "location": [
+          2688,
+          2688,
+          416
+        ],
+        "owner": "DRED",
+        "weapon_index": 0
+      },
+      {
+        "base": [
+          0,
+          25,
+          0
+        ],
+        "burst_index": 0,
+        "calls": [
+          "0x41be00",
+          "0x4c93d0",
+          "0x55a730",
+          "0x5ae890",
+          "0x5af1a0",
+          "0x5afb80",
+          "0x69f670",
+          "0x6f3270",
+          "0x70e140",
+          "0x746e30",
+          "0x7c5f00"
+        ],
+        "control": "supplied lateral base, even burst",
+        "coordinate": [
+          2662,
+          2619,
+          508
+        ],
+        "location": [
+          2688,
+          2688,
+          416
+        ],
+        "owner": "DRED",
+        "weapon_index": 0
+      }
+    ],
+    "launches": [
+      {
+        "burst_after": 1,
+        "burst_at_unlimbo": 1,
+        "burst_before": 1,
+        "calls": [
+          "0x4aff60",
+          "0x4c93d0",
+          "0x6f3270",
+          "0x6f3ad0",
+          "0x70e140"
+        ],
+        "cmisl_type": false,
+        "flh_calls": [
+          {
+            "base": [
+              0,
+              0,
+              0
+            ],
+            "burst_index": 1,
+            "weapon_index": 0
+          }
+        ],
+        "owner": "V3",
+        "reset_flag": 0,
+        "slot": 0,
+        "slot_status": 2,
+        "unlimbo_coordinate": [
+          2575,
+          2801,
+          501
+        ],
+        "unlimbo_direction": 32
+      },
+      {
+        "burst_after": 0,
+        "burst_at_unlimbo": 0,
+        "burst_before": 1,
+        "calls": [
+          "0x4c93d0",
+          "0x69f670",
+          "0x6f3270",
+          "0x6f3ad0",
+          "0x70e140"
+        ],
+        "cmisl_type": false,
+        "flh_calls": [
+          {
+            "base": [
+              0,
+              0,
+              0
+            ],
+            "burst_index": 0,
+            "weapon_index": 0
+          }
+        ],
+        "owner": "DRED",
+        "reset_flag": 1,
+        "slot": 0,
+        "slot_status": 2,
+        "unlimbo_coordinate": [
+          2679,
+          2637,
+          518
+        ],
+        "unlimbo_direction": 32
+      },
+      {
+        "burst_after": 0,
+        "burst_at_unlimbo": 1,
+        "burst_before": 1,
+        "calls": [
+          "0x4c93d0",
+          "0x69f670",
+          "0x6f3270",
+          "0x6f3ad0",
+          "0x70e140"
+        ],
+        "cmisl_type": false,
+        "flh_calls": [
+          {
+            "base": [
+              0,
+              0,
+              0
+            ],
+            "burst_index": 1,
+            "weapon_index": 0
+          }
+        ],
+        "owner": "DRED",
+        "reset_flag": 1,
+        "slot": 1,
+        "slot_status": 2,
+        "unlimbo_coordinate": [
+          2739,
+          2697,
+          518
+        ],
+        "unlimbo_direction": 32
+      },
+      {
+        "burst_after": 0,
+        "burst_at_unlimbo": 0,
+        "burst_before": 1,
+        "calls": [
+          "0x4c93d0",
+          "0x69f670",
+          "0x6f3270",
+          "0x6f3ad0",
+          "0x70e140"
+        ],
+        "cmisl_type": true,
+        "flh_calls": [
+          {
+            "base": [
+              0,
+              0,
+              0
+            ],
+            "burst_index": 0,
+            "weapon_index": 1
+          }
+        ],
+        "owner": "BSUB",
+        "reset_flag": 1,
+        "slot": 0,
+        "slot_status": 2,
+        "unlimbo_coordinate": [
+          2648,
+          2648,
+          386
+        ],
+        "unlimbo_direction": 32
+      },
+      {
+        "burst_after": 0,
+        "burst_at_unlimbo": 1,
+        "burst_before": 1,
+        "calls": [
+          "0x4c93d0",
+          "0x69f670",
+          "0x6f3270",
+          "0x6f3ad0",
+          "0x70e140"
+        ],
+        "cmisl_type": true,
+        "flh_calls": [
+          {
+            "base": [
+              -70,
+              0,
+              0
+            ],
+            "burst_index": 1,
+            "weapon_index": 1
+          }
+        ],
+        "owner": "BSUB",
+        "reset_flag": 1,
+        "slot": 1,
+        "slot_status": 2,
+        "unlimbo_coordinate": [
+          2599,
+          2697,
+          386
+        ],
+        "unlimbo_direction": 32
+      }
+    ],
+    "layers": [
+      {
+        "file": "RULESMD.INI",
+        "sections": [
+          "BSUB",
+          "BoomerTorpedo",
+          "BoomerTorpedoE",
+          "CruiseLauncher",
+          "DRED",
+          "DredLauncher",
+          "V3",
+          "V3Launcher"
+        ],
+        "sha256": "3d341ef8a13a4b5ab24af2eef48ac94931ac2bb87d950fe3330a07e2d25672ef"
+      },
+      {
+        "file": "MPBattleMD.ini",
+        "sections": [],
+        "sha256": "50406e81d7523f6be1954daab6b25bd85a8347c455f3d53dcf515d7f719b4963"
+      },
+      {
+        "file": "Hills.map",
+        "sections": [],
+        "sha256": "780d5d6e6d3c81ac0d510a5df326848dd426b3d840ac290114f44faf8eab9e9e"
+      }
+    ],
+    "supplied": {
+      "binary_frame": 0,
+      "cmisl_type": "supplied pointer identity in Rules+548 and the BSUB manager",
+      "origin": [
+        2688,
+        2688,
+        416
+      ],
+      "primary_and_secondary_heading": 8192,
+      "slot_is_spawned_missile": 1,
+      "source_flags": 4,
+      "veterancy": "zero (rookie)"
+    },
+    "types": {
+      "BSUB": {
+        "draw_matrix": "0x69f670",
+        "locomotor_constructor": "0x69ec50",
+        "second_spawn_offset": [
+          -70,
+          0,
+          0
+        ],
+        "turret_count": 0,
+        "weapon_flh": [
+          [
+            225,
+            65,
+            0
+          ],
+          [
+            0,
+            0,
+            -40
+          ]
+        ],
+        "weapons": [
+          "BoomerTorpedo",
+          "CruiseLauncher"
+        ]
+      },
+      "DRED": {
+        "draw_matrix": "0x69f670",
+        "locomotor_constructor": "0x69ec50",
+        "second_spawn_offset": [
+          0,
+          0,
+          0
+        ],
+        "turret_count": 0,
+        "weapon_flh": [
+          [
+            30,
+            43,
+            92
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "weapons": [
+          "DredLauncher",
+          null
+        ]
+      },
+      "V3": {
+        "draw_matrix": "0x4aff60",
+        "locomotor_constructor": "0x4af540",
+        "second_spawn_offset": [
+          0,
+          0,
+          0
+        ],
+        "turret_count": 0,
+        "weapon_flh": [
+          [
+            -160,
+            0,
+            75
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "weapons": [
+          "V3Launcher",
+          null
+        ]
+      }
+    },
+    "weapons": {
+      "BoomerTorpedo": {
+        "burst": 2,
+        "spawner": false
+      },
+      "BoomerTorpedoE": {
+        "burst": 4,
+        "spawner": false
+      },
+      "CruiseLauncher": {
+        "burst": 2,
+        "spawner": true
+      },
+      "DredLauncher": {
+        "burst": 2,
+        "spawner": true
+      },
+      "V3Launcher": {
+        "burst": 1,
+        "spawner": true
+      }
+    }
+  }
 }

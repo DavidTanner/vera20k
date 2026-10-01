@@ -7,17 +7,20 @@
     1,
     33621247
   ],
-  "scope": "Original physical FV numbered FLH, flat Drive transform and two burst tails.\n\nPhysical INI cache setup, source lifecycle, source pose, HouseROF1, ScenarioSeed31\nand second FireAt call time are supplied. This proves neither whole Unit AI nor\nwhole-scenario native identity prefix. Read ifv_fire_coord.md for exact coverage.\n",
+  "scope": "Original physical FV numbered FLH, flat Drive transform and two burst tails.\n\nPhysical INI cache setup, source lifecycle, source pose, HouseROF1, ScenarioSeed31\nand second FireAt call time are supplied. This proves neither whole Unit AI nor\nwhole-scenario native identity prefix. Read ifv_fire_coord.md for exact coverage.\nspawn_launch adds GetFLH with a nonzero base and SpawnManagerClass::AI case 0's\nlaunch coordinate for retail V3, DRED and BSUB on a supplied flat pose.\n",
   "assumptions": [
     "Physical retail strings supplied through native CRC caches; full physical file loader omitted",
     "Partial FV type readers; original UnitType constructor/default BurstDelay loop and numbered FLH loop execute",
     "Source Unit lifecycle/flat pose and HouseROF1 supplied; original Drive constructor and GetFLH execute",
     "Scenario Seed31 and host shot frames0,4 supplied; no intervening world/Bullet AI or whole-world native-ID claim",
-    "HE constructor only, sound registry empty, no native impact/retirement or post6FF43F tail"
+    "HE constructor only, sound registry empty, no native impact/retirement or post6FF43F tail",
+    "spawn_launch: partial V3/DRED/BSUB type readers, full Weapon readers and the ART reader through SecondSpawnOffset execute; owner Unit state, flat pose, heading0x2000, burst index1, frame0 and spawn manager/slot memory supplied",
+    "spawn_launch: case0 runs 6B73C4 to the child Unlimbo call 6B7505 and the reset block to 6B758F; Unlimbo, the CMislType V3TAKOFF anim block and the rest of AI are not executed"
   ],
   "substitutions": [
     "Original Bullet COM activation dispatched to actual6C5090 factory; Windows InterlockedIncrement supplied",
-    "ObjectUnlimbo and Display admission supplied; originalPE instructions unchanged"
+    "ObjectUnlimbo and Display admission supplied; originalPE instructions unchanged",
+    "spawn_launch: CMislType is a supplied pointer identity (native compares pointers only); the CMislType anim block is skipped by resuming at 6B757A"
   ],
   "entry_points": {
     "unit_type_ctor": "0x007470D0",
@@ -28,7 +31,12 @@
     "drive_ctor": "0x004AF540",
     "drive_draw_matrix": "0x004AFF60",
     "launch_to_muzzle_gate": "0x006FE4F2",
-    "get_rof": "0x006FCFA0"
+    "get_rof": "0x006FCFA0",
+    "weapon_reader": "0x00772080",
+    "ship_ctor": "0x0069EC50",
+    "ship_draw_matrix": "0x0069F670",
+    "spawn_launch": "0x006B73C4",
+    "spawn_burst_reset": "0x006B757A"
   },
   "physical_files": [
     {
@@ -48,5 +56,5 @@
       "sha256": "e1f0378394313c04ebbd5073f47785ee3e46f1b3c62d65724e8f3c310ee7ba31"
     }
   ],
-  "payload_sha256": "ec7d88812d9b1a8a1fb52ff872ab43761ebdf6c96032b9e7dddd1699db3aa320"
+  "payload_sha256": "e1d5e1227501889dbbf82465a18128cfe6f4a14d776b6f01f83e9d55e0b471a9"
 }

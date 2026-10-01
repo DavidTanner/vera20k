@@ -2113,3 +2113,202 @@ fn every_hornet_of_a_carrier_wing_flies_a_whole_strafe_pass() {
         }
     }
 }
+
+/// One retail launch, read when the slot's AI pass returned: the child's
+/// Location, exact Z and GetHeight, and the owner's Location, body heading,
+/// its rounded direction (the one the child's Unlimbo takes) and burst index.
+struct RetailLaunch {
+    missile: crate::sim::components::DriveCoord,
+    missile_exact_z: Option<i32>,
+    missile_height: i32,
+    owner: crate::sim::components::DriveCoord,
+    owner_facing: u16,
+    owner_dir: u8,
+    owner_burst: i32,
+}
+
+/// A retail `owner_type` on flat level-4 ground, its body at DirType 0x20 and
+/// its burst index at 1 (a burst in progress), launches every slot at a cell,
+/// one manager pass per slot. This is the pose the original's case-0 rows
+/// were run on (tools/projectile_oracle/ifv_fire_coord.json `spawn_launch`).
+fn retail_launches(
+    rules: &RuleSet,
+    owner_type: &str,
+) -> (Simulation, u64, Vec<(u64, RetailLaunch)>) {
+    use crate::sim::movement::ground_pose::position_world_coord;
+
+    let mut sim = Simulation::new();
+    let house = sim.interner.intern("Russians");
+    sim.houses.insert(
+        house,
+        crate::sim::house_state::HouseState::new(house, 0, None, true, 0, 10),
+    );
+    sim.session.house_order.push(house);
+    crate::sim::arena_fixture::flat_arena(&mut sim, rules);
+    let terrain = sim.resolved_terrain.as_mut().unwrap();
+    for y in 0..32 {
+        for x in 0..32 {
+            terrain.cell_mut(x, y).unwrap().level = 4;
+        }
+    }
+    // MarkSucceeded seats a ship on this dry fixture ground.
+    let owner = sim
+        .construct_object_limbo_at_height(owner_type, "Russians", 10, 10, 0x20, 4, rules)
+        .expect("construct owner");
+    assert!(
+        sim.reveal_constructed_object_at_height(
+            owner,
+            10,
+            10,
+            0x20,
+            4,
+            crate::sim::world::PlacementEvidence::MarkSucceeded,
+            rules,
+        )
+        .is_some()
+    );
+    let entity = sim.substrate.entities.get_mut(owner).unwrap();
+    entity.weapon_burst.complete_shot(2);
+    assert_eq!(entity.weapon_burst.index(), 1);
+    let manager = entity.spawn_manager.as_mut().expect("missile pool");
+    manager.current_target = Some(TargetKind::Cell(20, 10));
+    manager.mode = SpawnManagerMode::Launching;
+    let slots = manager.slots.len();
+
+    let mut launches = Vec::new();
+    for slot in 0..slots {
+        let manager = sim
+            .substrate
+            .entities
+            .get_mut(owner)
+            .and_then(|e| e.spawn_manager.as_mut())
+            .unwrap();
+        manager.update_timer = CdTimer::default();
+        manager.reload_timer = CdTimer::default();
+        tick_spawn_managers(&mut sim, rules, &[owner], None);
+        let frame = sim.session.binary_frame;
+        let owner_entity = sim.substrate.entities.get(owner).unwrap();
+        let child = owner_entity.spawn_manager.as_ref().unwrap().slots[slot]
+            .spawn
+            .expect("the slot keeps its missile");
+        let missile = sim.substrate.entities.get(child).unwrap();
+        assert!(!missile.lifecycle.in_limbo, "slot {slot} launched");
+        launches.push((
+            child,
+            RetailLaunch {
+                missile: position_world_coord(&missile.position),
+                missile_exact_z: missile.position.exact_z_leptons,
+                missile_height: crate::sim::movement::air_movement::current_fly_height(
+                    missile,
+                    sim.resolved_terrain.as_ref(),
+                ),
+                owner: position_world_coord(&owner_entity.position),
+                owner_facing: owner_entity.body_facing.current(frame),
+                owner_dir: owner_entity.body_facing_dir(frame),
+                owner_burst: owner_entity.weapon_burst.index(),
+            },
+        ));
+    }
+    (sim, owner, launches)
+}
+
+/// `SpawnManagerClass::AI` case 0 (`0x006B73C4..0x006B7585`) against the
+/// original's runs (tools/projectile_oracle/ifv_fire_coord.json
+/// `spawn_launch.launches`), through the production readers on retail
+/// RULESMD/ARTMD: each missile unlimbos at the coordinate and direction the
+/// original hands its Unlimbo, Reveal keeps that coordinate as its Location
+/// and exact Z, and the owner's burst index ends as the original's. The rows
+/// cover V3 (weapon 0, Burst=1, odd owner index), both DRED slots (Burst=2
+/// parity) and both BSUB slots (weapon 1, `SecondSpawnOffset=` on the odd
+/// slot, `CMislType=`).
+#[test]
+fn retail_missiles_keep_their_launch_coordinate_from_unlimbo() {
+    use crate::rules::art_data::ArtRegistry;
+    use crate::rules::flh::Flh;
+    use crate::sim::components::DriveCoord;
+
+    let Some((ini, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+        return;
+    };
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(ArtRegistry::from_ini(&art));
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/projectile_oracle/ifv_fire_coord.json"
+    ))
+    .unwrap();
+    let native = &native["spawn_launch"];
+    let int = |value: &serde_json::Value| value.as_i64().unwrap() as i32;
+    let coord = |value: &serde_json::Value| DriveCoord {
+        x: int(&value[0]),
+        y: int(&value[1]),
+        z: int(&value[2]),
+    };
+    let flh =
+        |value: &serde_json::Value| Flh::from([int(&value[0]), int(&value[1]), int(&value[2])]);
+    // The production readers agree with the original's reads of the inputs.
+    for (name, row) in native["types"].as_object().unwrap() {
+        let art = rules.art().get(name).unwrap();
+        assert_eq!(art.primary_fire_flh, flh(&row["weapon_flh"][0]), "{name}");
+        assert_eq!(art.secondary_fire_flh, flh(&row["weapon_flh"][1]), "{name}");
+        assert_eq!(
+            art.second_spawn_offset,
+            flh(&row["second_spawn_offset"]),
+            "{name}"
+        );
+    }
+    for (name, row) in native["weapons"].as_object().unwrap() {
+        let weapon = rules.weapon(name).unwrap();
+        assert_eq!(weapon.burst, int(&row["burst"]), "{name}");
+        assert_eq!(weapon.spawner, row["spawner"].as_bool().unwrap(), "{name}");
+    }
+    assert_eq!(rules.missile_spawn.cmisl.type_name, "CMISL");
+    let origin = coord(&native["supplied"]["origin"]);
+    let heading = native["supplied"]["primary_and_secondary_heading"]
+        .as_u64()
+        .unwrap() as u16;
+
+    for owner_type in ["V3", "DRED", "BSUB"] {
+        let (mut sim, _, launches) = retail_launches(&rules, owner_type);
+        let rows: Vec<_> = native["launches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|row| row["owner"] == owner_type)
+            .collect();
+        assert_eq!(launches.len(), rows.len(), "{owner_type}");
+        for ((_, launch), row) in launches.iter().zip(&rows) {
+            assert_eq!(int(&row["burst_before"]), 1, "the fixture's burst index");
+            assert_eq!((launch.owner, launch.owner_facing), (origin, heading));
+            let expected = coord(&row["unlimbo_coordinate"]);
+            assert_eq!(launch.missile, expected, "{row}");
+            assert_eq!(launch.missile_exact_z, Some(expected.z), "{row}");
+            assert_eq!(
+                launch.missile_height,
+                expected.z - origin.z,
+                "{row}: the owner stands on the floor"
+            );
+            // The rocket's flight turns the child afterwards; the direction
+            // its Unlimbo took is the owner's, rounded.
+            assert_eq!(i32::from(launch.owner_dir), int(&row["unlimbo_direction"]));
+            assert_eq!(launch.owner_burst, int(&row["burst_after"]), "{row}");
+        }
+        if owner_type == "V3" {
+            // Its flight moves Z from the launch coordinate.
+            let (missile, launch) = &launches[0];
+            for _ in 0..8 {
+                let missile = sim.substrate.entities.get_mut(*missile).unwrap();
+                crate::sim::movement::rocket_movement::process_rocket(missile, 0);
+                let altitude = missile
+                    .rocket_state
+                    .as_ref()
+                    .unwrap()
+                    .altitude
+                    .to_num::<i32>();
+                assert_eq!(
+                    missile.position.exact_z_leptons,
+                    Some(launch.missile.z + altitude)
+                );
+            }
+        }
+    }
+}

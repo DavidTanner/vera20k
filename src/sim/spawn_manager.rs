@@ -73,6 +73,12 @@ const LAUNCH_DELAY_FRAMES: u32 = 20;
 const LAUNCH_DELAY_FRAMES_MISSILE_PARENT: u32 = 9;
 /// Height difference (leptons) under which a returning child counts as docked.
 const DOCK_HEIGHT_EPSILON_LEPTONS: i32 = 0x14;
+/// Leptons a launch adds to its GetFLH Z (`ADD EAX,0xa` at `0x006B74B2`).
+const LAUNCH_Z_LIFT_LEPTONS: i32 = 10;
+/// X and Y a `CMislType=` launch takes off its GetFLH coordinate: the dwords
+/// at `0x0084009C` and `0x008400A0` (`0x006B74C4`, `0x006B74CA`), 40 and 40 in
+/// the retail bytes. Those two reads are their only references.
+const CMISL_LAUNCH_OFFSET_LEPTONS: [i32; 2] = [40, 40];
 
 /// Per-slot state. Native uses 0..7 with no case 5; the gap is preserved by
 /// simply not having a variant for it.
@@ -507,10 +513,10 @@ fn step_ready_docked(
     }
 
     let owner_type = sim.interner.resolve(owner.type_ref()).to_string();
-    let launch_rx = owner.position.rx;
-    let launch_ry = owner.position.ry;
-    let launch_z = owner.position.z;
-    let launch_facing = owner.body_facing_byte(frame);
+    let owner_level = owner.position.z;
+    // The Unlimbo direction: the owner's PrimaryFacing `Current()` rounded to
+    // a DirType (`0x006B74E9..0x006B74FC`).
+    let launch_dir = owner.body_facing_dir(frame);
     let owner_veterancy = owner.veterancy();
     let parent_missile_spawn = rules
         .object(&owner_type)
@@ -546,13 +552,17 @@ fn step_ready_docked(
         None
     };
 
-    // Place the child in the world at the launcher; its Unlimbo snaps the
-    // body to the launch direction (`0x006F6DAA`).
+    let Some(launch) = launch_coordinate(sim, rules, owner_id, slot_index, is_missile_slot) else {
+        return;
+    };
+    // The child's Unlimbo (vt+0xD8, `0x006B7505`) at that coordinate, staged
+    // on its limbo Location for Reveal: a `MissileSpawn=` type keeps it whole
+    // (`unlimbo_z`); an aircraft's Z is replaced there. Its Unlimbo snaps the
+    // body to the direction (`0x006F6DAA`). The coarse level stays the owner's.
     if let Some(child) = sim.substrate.entities.get_mut(child_id) {
-        child.position.rx = launch_rx;
-        child.position.ry = launch_ry;
-        child.position.z = launch_z;
-        child.body_facing.snap(u16::from(launch_facing) << 8, frame);
+        crate::sim::movement::ground_pose::put_location(&mut child.position, launch);
+        child.position.z = owner_level;
+        child.body_facing.snap(u16::from(launch_dir) << 8, frame);
     }
     let revealed = matches!(
         sim.reveal_entity_with_rules(child_id, rules),
@@ -586,6 +596,95 @@ fn step_ready_docked(
         m.reload_timer = CdTimer::started(frame as i32, launch_delay as i32);
         m.slots[slot_index].state = SpawnSlotState::InFlight;
     });
+}
+
+/// The coordinate `SpawnManagerClass::AI` case 0 unlimbos a slot's child at
+/// (`0x006B73C4..0x006B74D7`), with its write to the owner's burst index.
+///
+/// - A missile slot whose owner's GetWeapon(0) (vt+0x3F8, elite-aware) has
+///   `Burst > 1` sets the owner's burst index (`+0x3B8`) to the slot index's
+///   parity (`0x006B73CF..0x006B73F6`) and stores 0 after the child's
+///   Unlimbo (`0x006B757A..0x006B7585`). Nothing in between reads it but
+///   this GetFLH, so the parity goes in as GetFLH's argument and the store
+///   happens here.
+/// - GetFLH (vt+0xB0) is asked for weapon 0 when GetWeapon(0) is `Spawner=`
+///   (`+0x131`), else weapon 1 (`0x006B742A..0x006B7436`). Its base is the
+///   owner type's `SecondSpawnOffset=` while the burst index is nonzero, else
+///   zero (`0x006B743B..0x006B7492`).
+/// - The Z gains [`LAUNCH_Z_LIFT_LEPTONS`]; a `CMislType=` pool's X and Y
+///   lose [`CMISL_LAUNCH_OFFSET_LEPTONS`] (`0x006B74B9..0x006B74D7`).
+///
+/// Native comparison: tools/projectile_oracle/ifv_fire_coord.json
+/// `spawn_launch` runs this block on retail V3, DRED and BSUB from the
+/// missile-slot test to the Unlimbo call, then the burst reset.
+///
+/// GetWeapon(0) with no WeaponType faults natively (`0x006B742C` reads
+/// through it); VERA asks for weapon 1 then.
+///
+/// RESIDUAL, inherited from the GetFLH port (GSI-08.04,
+/// `util::flh_transform`): no slope tilt. Trigger: a launch from a sloped
+/// cell, such as a V3 on a ramp. Effect: the missile unlimbos at the
+/// flat-ground FLH, a lepton or two off. Frequency: launches from slopes.
+/// Risk: the launch coordinate seeds the missile's hashed Location.
+fn launch_coordinate(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner_id: u64,
+    slot_index: usize,
+    is_missile_slot: bool,
+) -> Option<crate::sim::components::DriveCoord> {
+    use crate::sim::combat::fire_coord;
+
+    let spawn_type = manager_field(sim, owner_id, |m| m.spawn_type)?;
+    let owner = sim.substrate.entities.get(owner_id)?;
+    let obj = sim.object_type(owner.type_ref(), rules)?;
+    let weapon = crate::sim::combat::combat_weapon::primary_for_tier(obj, owner.veterancy())
+        .and_then(|id| rules.weapon(id));
+    let sets_burst = is_missile_slot && weapon.is_some_and(|weapon| weapon.burst > 1);
+    let burst = if sets_burst {
+        (slot_index & 1) as i32
+    } else {
+        owner.weapon_burst.index()
+    };
+    let base = if burst == 0 {
+        Default::default()
+    } else {
+        fire_coord::firer_art(rules, obj)
+            .map_or_else(Default::default, |art| art.second_spawn_offset)
+    };
+    let fire = fire_coord::fire_coordinate(
+        sim,
+        rules,
+        &fire_coord::FireSource::of_entity(owner),
+        obj,
+        if weapon.is_some_and(|weapon| weapon.spawner) {
+            0
+        } else {
+            1
+        },
+        (burst & 1) as u8,
+        base,
+    );
+    let mut coord = crate::sim::components::DriveCoord {
+        x: fire.coord.x,
+        y: fire.coord.y,
+        z: fire.coord.z.wrapping_add(LAUNCH_Z_LIFT_LEPTONS),
+    };
+    // Native tests the pool's spawn type pointer against Rules' CMislType
+    // once (`0x006B74BC`); a type name names one type, so the name compare is
+    // that test.
+    if sim
+        .interner
+        .resolve(spawn_type)
+        .eq_ignore_ascii_case(&rules.missile_spawn.cmisl.type_name)
+    {
+        coord.x = coord.x.wrapping_sub(CMISL_LAUNCH_OFFSET_LEPTONS[0]);
+        coord.y = coord.y.wrapping_sub(CMISL_LAUNCH_OFFSET_LEPTONS[1]);
+    }
+    if sets_burst && let Some(owner) = sim.substrate.entities.get_mut(owner_id) {
+        owner.weapon_burst.reset();
+    }
+    Some(coord)
 }
 
 /// State 2 for aircraft slots: keep the child pointed at the live target, or
@@ -1161,12 +1260,20 @@ fn recall_child_to_owner(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, c
 /// nuance only; impact cell, damage and warhead are exact, and flight duration
 /// feeds nothing (the regen clock is Rules `PauseFrames + TiltFrames`).
 ///
-/// **DRIFT — launch position and effects.** Native reads the muzzle through
-/// `GetFLH` and offsets the launch Z by +10 leptons; the Boomer additionally
-/// subtracts a hardcoded XY offset and spawns an underwater smoke anim. VERA
-/// launches from the parent's own cell centre with no Z offset, no CMisl
-/// offset (`DAT_0084009c`/`DAT_008400a0` values **UNCHECKED**) and no smoke.
-/// Sub-cell visual only; no gameplay input reads it.
+/// The missile leaves from its Unlimbo coordinate ([`launch_coordinate`]),
+/// which it keeps as its Location: the flight's Z moves from there.
+///
+/// RESIDUAL: a `CMislType=` launch also constructs a `V3TAKOFF` AnimClass at
+/// the missile's Location (`0x006B750B..0x006B7575`: LoopDelay 2, LoopCount
+/// 1, ZAdjust -10); VERA makes none. The constructor (`0x00421EA0`) draws
+/// only for `RandomRate=` (`0x004221C5..0x004221F5`), `IsMeteor=` or
+/// `Bouncer=` (`0x004222C9..0x004222F9`), which retail `[V3TAKOFF]`
+/// (`Translucent`, `Translucency`, `Rate`) leaves unset, so it makes no draw;
+/// its nonzero LoopDelay skips Start (`0x004226F6`). Trigger: every Boomer
+/// missile launch. Effect: no launch smoke, and the anim's object is missing.
+/// Frequency: every Boomer volley. Risk: the anim's ID allocation, its
+/// Unlimbo (`0x005F4EC0`, not traced) and its later AI are absent, so later
+/// IDs can differ from native.
 fn launch_missile_child(
     sim: &mut Simulation,
     rules: &RuleSet,

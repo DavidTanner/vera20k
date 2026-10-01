@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 /// GetROF and6FF2C5 stores the signed remainder afterwards. Target assignment
 /// to another non-null target does not reset it. Assign_Target6FCF5B clears
 /// it on a changed assignment to null (the same-target early exit does not).
+/// A spawn manager's missile launch whose GetWeapon(0) has `Burst > 1` sets
+/// it to the slot's parity around its GetFLH and stores 0 after the child's
+/// Unlimbo (`0x006B73F6`, `0x006B7585`).
 /// This owner replaces the old target-owned remaining-shot count. FLH and
 /// the next GetROF branch both read this retained index.
 #[derive(Debug, Default, Clone, Copy, Hash, Serialize, Deserialize)]
@@ -275,7 +278,10 @@ impl WeaponBurst {
         self.index.wrapping_add(1)
     }
 
-    pub(crate) fn clear_target(&mut self) {
+    /// Store 0: Assign_Target's null arm (`0x006FCF5B`) and a missile launch
+    /// that set the index to its slot's parity (`SpawnManagerClass::AI`,
+    /// `0x006B7585`).
+    pub(crate) fn reset(&mut self) {
         self.index = 0;
     }
 
