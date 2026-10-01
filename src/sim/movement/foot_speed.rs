@@ -57,7 +57,7 @@ pub(super) fn adjusted_speed(
 /// Rust's adjusted input is in leptons/second; native consumes a 15 Hz integer.
 /// This shared fixed-point projection retains live crate and FASTER inputs. Native
 /// house factors and CTF halving remain required getter-input work;
-/// track_speed_native's isolated corpus is not their production implementation.
+/// `foot_speed_native`'s test-only x87 leaf is not their production implementation.
 pub(crate) fn owner_current_speed_from_fraction(
     adjusted_speed_per_second: SimFixed,
     current_speed_fraction: SimFixed,

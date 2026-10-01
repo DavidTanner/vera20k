@@ -1,7 +1,6 @@
 //! ProcessMovement publishes the class target; TrackProcess consumes it.
-//! This fixed-point scaffold still lacks native double precision, raw ramp
-//! speed/full-XYZ distance, and the Foot getter's house/CTF inputs.
-//! Exact numeric helpers remain in track_speed_native pending owner migration.
+//! The speed prefix works in `SimFixed`, not native binary64 (see
+//! `drive_locomotion::track_speed_prefix`).
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::LocomotorKind;
@@ -79,12 +78,78 @@ fn publish_target_fraction(entity: &mut GameEntity, requested: SimFixed) {
     }
 }
 
+/// Drive 0x004B0FBA..0x004B1087 / Ship 0x006A068A..0x006A0757: the 3-D
+/// distance from the raw Foot coordinate (+0x9C) to the class destination
+/// (+0x34). The destination's own Z is replaced (0x004B101D) by the ground
+/// under its XY (0x00578080, slope-interpolated) plus the bridge height when
+/// Map[destination] (0x00565730) has the structural flag 0x100. A null
+/// destination is looked up as (0, 0); there is no null check.
+///
+/// PRECISION: native sums binary64 squares, takes `Sqrt_Approx` (0x004CAC40,
+/// binary32) and truncates. The integer square root floors, so the two differ
+/// by one lepton where binary32 rounding reaches the next integer, which
+/// matters only at exactly SlowdownDistance.
+///
+/// Ship adds the global at 0xB0782C, Drive the one at 0x8A07C4. Each has one
+/// writer, a static initializer of 4 x its class height step (Ship 0x69EBD0,
+/// Drive 0x4AF4C0); both are taken as the deck height (the executed rows
+/// supply 416 for both; the height steps are not traced).
+fn braking_distance(
+    entity: &GameEntity,
+    destination: Option<crate::sim::components::DriveCoord>,
+    terrain: Option<&ResolvedTerrainGrid>,
+    grid: Option<&PathGrid>,
+) -> i32 {
+    let destination =
+        destination.unwrap_or(crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 });
+    let structural = crate::sim::cell_rect::get_cellclass_fallback_leptons(
+        terrain,
+        destination.x,
+        destination.y,
+    )
+    .bridge_flags_0x1180()
+        & crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL
+        != 0;
+    // Headless fixtures without map cells read a level-0 ground.
+    let ground = super::ground_pose::ground_surface_z_at(
+        [destination.x, destination.y],
+        false,
+        terrain,
+        grid,
+    )
+    .unwrap_or(0);
+    let destination_z = super::ground_pose::z_at_height(ground, 0, structural);
+    let current = super::ground_pose::object_location(entity, terrain);
+    let delta = |a: i32, b: i32| i64::from(a.wrapping_sub(b));
+    let (dx, dy, dz) = (
+        delta(current.x, destination.x),
+        delta(current.y, destination.y),
+        delta(current.z, destination_z),
+    );
+    isqrt_i64(dx * dx + dy * dy + dz * dz) as i32
+}
+
+/// The class target (+0x50) of the active Drive or Ship.
+fn retained_target(entity: &mut GameEntity, kind: LocomotorKind) -> Option<&mut SimFixed> {
+    match kind {
+        LocomotorKind::Drive => entity
+            .drive_locomotion
+            .as_mut()
+            .map(|d| &mut d.target_speed_fraction),
+        _ => entity
+            .ship_locomotion
+            .as_mut()
+            .map(|s| &mut s.target_speed_fraction),
+    }
+}
+
 /// One TrackProcess invocation consumes its retained class target, even when
 /// callbacks have changed the path, terrain, health, or destination request.
 pub(super) fn advance(
     entity: &mut GameEntity,
     object: Option<&ObjectType>,
     rules: Option<&RuleSet>,
+    terrain: Option<&ResolvedTerrainGrid>,
     grid: Option<&PathGrid>,
 ) -> i32 {
     let Some(loco) = entity.locomotor.as_ref() else {
@@ -99,71 +164,46 @@ pub(super) fn advance(
         object,
         rules.map_or(1.0, |r| r.general.veteran_speed),
     );
-    let target = entity.movement_target.as_ref();
-    let class_goal = if kind == LocomotorKind::Drive {
-        entity
+    let (destination, selector) = match kind {
+        LocomotorKind::Drive => entity
             .drive_locomotion
             .as_ref()
-            .and_then(|d| d.destination.or(d.head_to))
-    } else {
-        entity
+            .map_or((None, -1), |d| (d.destination, d.track.turn_index)),
+        LocomotorKind::Ship => entity
             .ship_locomotion
             .as_ref()
-            .and_then(|d| d.destination.or(d.head_to))
-    };
-    let goal = target.and_then(|t| t.final_goal);
-    let current = super::ground_pose::position_world_xy(&entity.position);
-    let goal_xy = goal
-        .map(|(x, y)| [i32::from(x) * 256 + 128, i32::from(y) * 256 + 128])
-        .or_else(|| class_goal.map(|c| [c.x, c.y]))
-        .unwrap_or(current);
-    let dx = i64::from(goal_xy[0]) - i64::from(current[0]);
-    let dy = i64::from(goal_xy[1]) - i64::from(current[1]);
-    let mut distance = SimFixed::from_num(isqrt_i64(dx * dx + dy * dy) as i32);
-    if loco.movement_zone.is_water_mover()
-        && grid
-            .and_then(|g| g.cell(entity.position.rx, entity.position.ry))
-            .is_some_and(|cell| cell.bridge_deck_level_if_any().is_some())
-    {
-        distance += SimFixed::from_num(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
-    }
-    let accel = object.map_or(SIM_ZERO, |o| o.accel_factor);
-    let decel = object.map_or(SIM_ZERO, |o| o.decel_factor);
-    let slowdown = object.map_or(SIM_ZERO, |o| SimFixed::from_num(o.slowdown_distance));
-    let unit_passive = entity.category == crate::map::entities::EntityCategory::Unit
-        && object.is_some_and(|object| object.passive);
-    match kind {
-        LocomotorKind::Drive => {
-            if let Some(drive) = entity.drive_locomotion.as_ref() {
-                super::drive_locomotion::update_drive_speed_fraction(
-                    drive,
-                    &mut entity.foot_speed,
-                    entity.drive_accelerates,
-                    unit_passive,
-                    speed / SimFixed::from_num(15),
-                    accel,
-                    decel,
-                    slowdown,
-                    distance,
-                );
-            }
-        }
-        LocomotorKind::Ship => {
-            if let Some(ship) = entity.ship_locomotion.as_ref() {
-                super::drive_locomotion::update_ship_speed_fraction(
-                    ship,
-                    &mut entity.foot_speed,
-                    entity.drive_accelerates,
-                    unit_passive,
-                    speed / SimFixed::from_num(15),
-                    accel,
-                    decel,
-                    slowdown,
-                    distance,
-                );
-            }
-        }
+            .map_or((None, -1), |s| (s.destination, s.track.turn_index)),
         _ => unreachable!(),
+    };
+    let prefix = super::drive_locomotion::TrackSpeedPrefix {
+        accelerates: entity.drive_accelerates,
+        unit_passive: entity.category == crate::map::entities::EntityCategory::Unit
+            && object.is_some_and(|object| object.passive),
+        selector,
+        raw_type_speed: object.map_or(0, |o| {
+            crate::util::fixed_math::ra2_speed_to_leptons_per_frame(o.speed)
+        }),
+        accel: object.map_or(SIM_ZERO, |o| o.accel_factor),
+        decel: object.map_or(SIM_ZERO, |o| o.decel_factor),
+        slowdown_distance: object.map_or(0, |o| o.slowdown_distance),
+        sinking: entity.sinking.is_active(),
+        // RESIDUAL: Foot+0x6B5's producers are not ported, so the crush
+        // slowdown never caps the target.
+        crush_slowdown: false,
+    };
+    if let Some(target) = retained_target(entity, kind).map(|target| *target) {
+        let step = super::drive_locomotion::track_speed_prefix(
+            &prefix,
+            || braking_distance(entity, destination, terrain, grid),
+            target,
+            entity.foot_speed.applied_fraction(),
+        );
+        if let Some(retained) = retained_target(entity, kind) {
+            *retained = step.target;
+        }
+        if let Some(fraction) = step.set_fraction {
+            entity.foot_speed.set_speed_fraction(fraction);
+        }
     }
     super::foot_speed::owner_current_speed_from_fraction(
         speed,
@@ -235,11 +275,17 @@ mod tests {
                 speed: SimFixed::from_num(150),
                 ..Default::default()
             });
-            assert_eq!(advance(&mut mover, Some(object), Some(&rules), None), 10);
+            assert_eq!(
+                advance(&mut mover, Some(object), Some(&rules), None, None),
+                10
+            );
             assert!(mover.foot_speed.accept_speed_crate(
                 crate::util::native_x87::NativeF64Bits::from_bits(1.2_f64.to_bits())
             ));
-            assert_eq!(advance(&mut mover, Some(object), Some(&rules), None), 11);
+            assert_eq!(
+                advance(&mut mover, Some(object), Some(&rules), None, None),
+                11
+            );
             assert_eq!(
                 mover.movement_target.as_ref().unwrap().speed,
                 SimFixed::from_num(150)
@@ -262,7 +308,7 @@ mod tests {
                     ..Default::default()
                 });
                 assert_eq!(
-                    advance(&mut mover, rules.object("MTNK"), Some(&rules), None),
+                    advance(&mut mover, rules.object("MTNK"), Some(&rules), None, None),
                     15
                 );
             }
@@ -310,7 +356,7 @@ mod tests {
             entity
                 .foot_speed
                 .set_speed_fraction(fixed(&input["applied_bits"]));
-            advance(&mut entity, rules.object("MTNK"), Some(&rules), None);
+            advance(&mut entity, rules.object("MTNK"), Some(&rules), None, None);
             assert_eq!(
                 retained(&entity),
                 fixed(&case["output"]["target_bits"]),
@@ -324,5 +370,161 @@ mod tests {
             compared[usize::from(kind == LocomotorKind::Ship)] += 1;
         }
         assert_eq!(compared, [14, 14]);
+    }
+
+    fn native_f64(value: &serde_json::Value) -> f64 {
+        f64::from_bits(u64::from_str_radix(value.as_str().unwrap(), 16).unwrap())
+    }
+
+    /// Drive 0x004B1087 / Ship 0x006A0757 observed distances over a flat
+    /// level-2 map (ground 208), the destination cell structural when a row
+    /// says `bridge`. The destination's own Z never matters.
+    #[test]
+    fn braking_distance_matches_original_rows() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/track_speed_native.json"
+        ))
+        .unwrap();
+        let mut compared = 0;
+        for case in corpus["prefixes"].as_array().unwrap() {
+            let Some(native) = case["output"]["distance"].as_i64() else {
+                continue;
+            };
+            let input = &case["input"];
+            let current: [i32; 3] =
+                serde_json::from_value(input["current"].clone()).unwrap_or([2176, 2176, 208]);
+            let destination: [i32; 3] =
+                serde_json::from_value(input["destination"].clone()).unwrap_or([2688, 2176, -731]);
+            let bridge = input["bridge"].as_bool().unwrap_or(false);
+            let cells = (0..16)
+                .flat_map(|y| {
+                    (0..16).map(move |x| {
+                        let mut cell = crate::map::resolved_terrain::test_flat_cell(x, y);
+                        cell.level = 2;
+                        if bridge
+                            && (i32::from(x), i32::from(y))
+                                == (destination[0] / 256, destination[1] / 256)
+                        {
+                            cell.bridge_facts.raw_flags |=
+                                crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
+                        }
+                        cell
+                    })
+                })
+                .collect();
+            let terrain = ResolvedTerrainGrid::from_cells(16, 16, cells);
+            let mut mover = GameEntity::test_default(1, "MTNK", "Americans", 0, 0);
+            crate::sim::movement::ground_pose::set_position_world_xy(
+                &mut mover.position,
+                [current[0], current[1]],
+            );
+            mover.position.exact_z_leptons = Some(current[2]);
+            let destination = crate::sim::components::DriveCoord {
+                x: destination[0],
+                y: destination[1],
+                z: destination[2],
+            };
+            assert_eq!(
+                braking_distance(&mover, Some(destination), Some(&terrain), None),
+                native as i32,
+                "{input}"
+            );
+            compared += 1;
+        }
+        assert_eq!(compared, 88);
+    }
+
+    /// Every executed Drive/Ship prefix row through the one production port:
+    /// the target and applied fraction within `SimFixed` precision (see
+    /// `track_speed_prefix`), whether the setter ran, and the invocation
+    /// budget from the native getter of the native applied fraction.
+    #[test]
+    fn speed_prefix_matches_original_rows_within_fixed_point() {
+        use crate::sim::movement::drive_locomotion::{TrackSpeedPrefix, track_speed_prefix};
+        use crate::sim::movement::foot_speed_native::{FootSpeedInputs, current_speed};
+        use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/track_speed_native.json"
+        ))
+        .unwrap();
+        let integer = |input: &serde_json::Value, key: &str, fallback: i32| {
+            input[key].as_i64().map_or(fallback, |value| value as i32)
+        };
+        let bits64 = |value: &serde_json::Value| {
+            NativeF64Bits::from_bits(u64::from_str_radix(value.as_str().unwrap(), 16).unwrap())
+        };
+        let mut compared = 0;
+        for case in corpus["prefixes"].as_array().unwrap() {
+            let input = &case["input"];
+            let getter = &case["getter"];
+            let expected = &case["output"];
+            let prefix = TrackSpeedPrefix {
+                accelerates: input["accelerates"].as_bool().unwrap_or(true),
+                unit_passive: input["passive"].as_bool().unwrap_or(false),
+                selector: integer(input, "selector", 1),
+                raw_type_speed: integer(getter, "raw", 17),
+                accel: SimFixed::from_num(native_f64(&input["accel_bits"])),
+                decel: SimFixed::from_num(native_f64(&input["decel_bits"])),
+                slowdown_distance: integer(input, "slowdown", 500),
+                sinking: input["sinking"].as_bool().unwrap_or(false),
+                crush_slowdown: input["crush"].as_bool().unwrap_or(false),
+            };
+            let mut measured = false;
+            let step = track_speed_prefix(
+                &prefix,
+                || {
+                    measured = true;
+                    expected["distance"].as_i64().unwrap() as i32
+                },
+                SimFixed::from_num(native_f64(&input["target_bits"])),
+                SimFixed::from_num(native_f64(&input["applied_bits"])),
+            );
+            assert_eq!(
+                measured,
+                !expected["distance"].is_null(),
+                "distance gate {input}"
+            );
+            assert_eq!(
+                usize::from(step.set_fraction.is_some()),
+                expected["setters"].as_u64().unwrap() as usize,
+                "setter {input}"
+            );
+            // A brake step carries raw speed x half a step of Deceleration=.
+            let tolerance = (f64::from(prefix.raw_type_speed) + 2.0) / 131_072.0;
+            let applied = step
+                .set_fraction
+                .unwrap_or(SimFixed::from_num(native_f64(&input["applied_bits"])))
+                .clamp(SimFixed::ZERO, SimFixed::ONE);
+            for (actual, key) in [(step.target, "target_bits"), (applied, "applied_bits")] {
+                let native = native_f64(&expected[key]);
+                assert!(
+                    (actual.to_num::<f64>() - native).abs() <= tolerance,
+                    "{key}: {actual} vs native {native} for {input}"
+                );
+            }
+            let speed = current_speed(FootSpeedInputs {
+                raw_type_speed: integer(getter, "raw", 17),
+                house_multiplier: NativeF32Bits::from_bits(
+                    u32::from_str_radix(getter["house_bits"].as_str().unwrap(), 16).unwrap(),
+                ),
+                crate_multiplier: bits64(&getter["crate_bits"]),
+                faster: getter["faster"].as_bool().unwrap_or(false),
+                veteran_multiplier: bits64(&getter["veteran_bits"]),
+                applied_fraction: bits64(&expected["applied_bits"]),
+                unit_flag_carrier: integer(getter, "flag_owner", -1) != -1,
+            })
+            .unwrap();
+            assert_eq!(
+                crate::sim::movement::track_process::invocation_budget(
+                    speed,
+                    integer(input, "residual", 7),
+                    input["retry"].as_bool().unwrap_or(false),
+                ),
+                integer(expected, "budget", 0),
+                "budget {input}"
+            );
+            compared += 1;
+        }
+        assert_eq!(compared, 116);
     }
 }

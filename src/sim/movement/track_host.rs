@@ -223,7 +223,13 @@ impl Simulation {
         // order. No scalar speed update crosses the world receiver handoff.
         // The prefix also runs for `retry`, whose budget masks its speed.
         let current_grid = self.path_grid.as_deref();
-        let fresh_budget = super::track_speed::advance(entity, object, rules, current_grid);
+        let fresh_budget = super::track_speed::advance(
+            entity,
+            object,
+            rules,
+            self.resolved_terrain.as_ref(),
+            current_grid,
+        );
         self.try_run_track_points_observed(
             invocation,
             fresh_budget,

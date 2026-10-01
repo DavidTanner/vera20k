@@ -113,7 +113,7 @@ mod track_path;
 pub(crate) mod track_process;
 mod track_speed;
 #[cfg(test)]
-pub(crate) mod track_speed_native;
+pub(crate) mod foot_speed_native;
 pub(crate) mod track_turn;
 mod walk_admission;
 pub(crate) mod walk_head;
