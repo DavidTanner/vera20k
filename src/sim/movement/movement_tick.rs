@@ -905,13 +905,6 @@ impl MovementPassCache {
     }
 }
 
-/// Owned state the visit lends to its path requests. No entity, terrain or
-/// map borrows escape into it.
-#[derive(Default)]
-struct PreparedMovementPass {
-    held_block_sets: HeldBlockSets,
-}
-
 /// The visit's entry work, run once before the ordinary mover advances.
 /// Resuming after a world callback must not repeat it: it runs Tube movement
 /// and the idle Walk tail. Returns the owner of an object that still advances
@@ -1041,7 +1034,8 @@ pub(crate) fn tick_movement_with_grids(
 
 pub(crate) struct PendingMovementPass {
     effects: MovementPassEffects,
-    prepared: PreparedMovementPass,
+    /// The mover owner's block sets the visit lends to its path requests.
+    held_block_sets: HeldBlockSets,
 }
 
 /// Where the Process host re-enters the pending pass for the same mover.
@@ -1081,7 +1075,7 @@ impl PendingMovementPass {
 
     /// The owner sets this pass holds, for the path requests it makes.
     pub(crate) fn held_block_sets(&mut self) -> &mut HeldBlockSets {
-        &mut self.prepared.held_block_sets
+        &mut self.held_block_sets
     }
 
     /// A Drive/Ship Process_Movement that returned without head selection
@@ -1193,7 +1187,7 @@ pub(crate) fn begin_movement(
         playfield_bounds,
     };
     let mut effects = MovementPassEffects::default();
-    let mut prepared = PreparedMovementPass::default();
+    let mut held_block_sets = HeldBlockSets::new();
     let mover_owner = prepare_movement_visit(
         entities,
         entity_id,
@@ -1214,7 +1208,7 @@ pub(crate) fn begin_movement(
         let lent = caches
             .block_index
             .lend_current(owner, entities, alliances, interner, rules);
-        prepared.held_block_sets.insert(owner, lent);
+        held_block_sets.insert(owner, lent);
         advance_ordinary_mover(
             entities,
             entity_id,
@@ -1230,7 +1224,10 @@ pub(crate) fn begin_movement(
             VisitEntry::Process,
         );
     }
-    PendingMovementPass { effects, prepared }
+    PendingMovementPass {
+        effects,
+        held_block_sets,
+    }
 }
 
 pub(crate) fn finish_movement_pass(
@@ -1240,9 +1237,9 @@ pub(crate) fn finish_movement_pass(
 ) -> MovementTickStats {
     let PendingMovementPass {
         effects,
-        mut prepared,
+        held_block_sets,
     } = pending;
-    for (owner, lent) in std::mem::take(&mut prepared.held_block_sets) {
+    for (owner, lent) in held_block_sets {
         caches.block_index.give_back(owner, lent);
     }
     let MovementPassEffects {

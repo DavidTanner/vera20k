@@ -200,7 +200,7 @@ impl Simulation {
             Some(LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk)
         );
         // The vehicle plane is a projection each object turn reconciles once
-        // at Process entry: the ground corridor in `prepare_movement_pass`,
+        // at Process entry: the ground corridor in `prepare_movement_visit`,
         // any other turn here. A sinking object keeps its projection.
         if !ground
             && !sinking

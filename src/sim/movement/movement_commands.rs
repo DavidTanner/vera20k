@@ -270,7 +270,7 @@ pub(crate) fn issue_move_command_with_destination(
 ) -> bool {
     // Read the entity's current position and locomotor state.
     let Some(entity) = entities.get(entity_id) else {
-        log::warn!("issue_move_command: entity {} not found", entity_id);
+        log::warn!("move command: entity {} not found", entity_id);
         return false;
     };
     if !can_accept_destination(entity) {
