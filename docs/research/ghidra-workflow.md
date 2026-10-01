@@ -232,6 +232,11 @@ constructor, ReadINI, the other methods and the reads through their type pointer
   `UnitTypeClass *pType` and `g_UnitTypeClass_Array` is `UnitTypeClass **`. The
   TechnoType and BuildingType fields that hold a unit type (`pUndeploysInto`,
   `pPowersUnit`, `pUnloadingClass`, `pFreeUnit`, `pSecretUnit`) are `UnitTypeClass *`.
+- `InfantryTypeClass` (0xED0 bytes): 38 fields after its base. `pSequence` points to a
+  `SequenceStruct`: 42 `SubSequenceStruct` entries of 0x24 bytes, one per DoType.
+  `InfantryClass` +0x6C0 is `InfantryTypeClass *pType` and `g_InfantryTypeClass_Array` is
+  `InfantryTypeClass **`. `pEnslaves` (TechnoType) and `pSecretInfantry` (BuildingType)
+  are `InfantryTypeClass *`.
 
 Notes for readers:
 
@@ -240,22 +245,25 @@ Notes for readers:
   `aBuildupFile`, `pToOverlay`. A key that names a file is stored in `<Key>File`, and
   the object built from it takes the key: `aCameoFile` and `pCameo`.
 - **Still placeholders.** `ObjectTypeClass` (0x294 bytes) has only `pVtable` typed.
-  `InfantryClass` +0x6C0 stays `void *pType` until InfantryTypeClass has a struct.
 - **Receivers.** The receivers of the type-class methods are not typed yet, and no
-  `UnitClass__` method has a typed `this`. UnitClass decompiles therefore still show raw
-  offsets for the type's fields; look them up in `UnitTypeClass`.
+  `UnitClass__` or `InfantryClass__` method has a typed `this`. Their decompiles therefore
+  still show raw offsets for the type's fields; look them up in `UnitTypeClass` or
+  `InfantryTypeClass`.
 
 Plates tagged `[2026-10-01 BuildingTypeClass layout]`,
-`[2026-10-01 TechnoTypeClass layout]` and `[2026-10-01 UnitTypeClass layout]` record
-where YRpp is wrong and the native quirks a port must keep. Examples: AddOccupy and
-RemoveOccupy are swapped in YRpp, `TurretControl` is 0x14 bytes, nothing initialises
-WeaponCount, PitchAngle is read in degrees but stored in radians, and an unset
-BurstDelay draws a 3..5 frame delay from the scenario RNG. The UnitTypeClass pass also
-corrected two wrong names: the LandType name converters 0x48DFD0 and 0x48DF80, once
-named `MovementZone_*`, are `LandType__ToName` and `LandType__FromName`. The per-field
-ledgers, the checks and the rehearsals are in the research folder listed in `LOCAL.md`.
-Reading established these facts. Nothing was executed, so a port pins the conversions
-with the native oracle.
+`[2026-10-01 TechnoTypeClass layout]`, `[2026-10-01 UnitTypeClass layout]` and
+`[2026-10-01 InfantryTypeClass layout]` record where YRpp is wrong and the native quirks
+a port must keep. Examples: AddOccupy and RemoveOccupy are swapped in YRpp,
+`TurretControl` is 0x14 bytes, nothing initialises WeaponCount, PitchAngle is read in
+degrees but stored in radians, an unset BurstDelay draws a 3..5 frame delay from the
+scenario RNG, and ReadPip does not keep an absent Pip (the default 1 comes back as 2).
+The UnitTypeClass pass also corrected two wrong names: the LandType name converters
+0x48DFD0 and 0x48DF80, once named `MovementZone_*`, are `LandType__ToName` and
+`LandType__FromName`. The InfantryTypeClass pass found that 0x522910, named
+`BuildingClass__AddGarrisonOccupant`, runs with the entering infantry as `this`; its
+plate has the evidence. The per-field ledgers, the checks and the rehearsals are in the
+research folder listed in `LOCAL.md`. Reading established these facts. Nothing was
+executed, so a port pins the conversions with the native oracle.
 
 ## Preserve findings without polluting shared analysis
 
