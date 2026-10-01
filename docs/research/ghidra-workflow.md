@@ -218,6 +218,25 @@ and the list of added references are in the research folder listed in `LOCAL.md`
 - `get_bulk_function_hashes` hashes cover references, so the hashes of the functions
   that got one changed that day.
 
+## Class layouts
+
+Since 2026-10-01, `struct BuildingTypeClass` (0x1798 bytes) has 195 fields checked in
+code. They are checked against the constructor, ReadINI, the other methods and 644
+reads through `BuildingClass` +0x520, which is now `BuildingTypeClass *pType`.
+
+- **Field names.** A field read from an INI key carries the exact key. The server's
+  strict naming policy puts a Hungarian type prefix in front: `fPowered`, `nX`,
+  `aBuildupFile`, `pToOverlay`.
+- **Base class.** `TechnoTypeClass` is still a 0xDF8 placeholder, so base fields show as
+  `base_TechnoTypeClass.field_0x...`.
+- **Receivers.** The receivers of the BuildingTypeClass methods are not typed yet.
+
+Plates tagged `[2026-10-01 BuildingTypeClass layout]` record what YRpp got wrong
+(AddOccupy and RemoveOccupy are swapped) and native quirks a port must keep. The
+per-field ledger, the checks and the rehearsal are in the research folder listed in
+`LOCAL.md`. Reading established these facts. Nothing was executed, so a port pins the
+conversions with the native oracle.
+
 ## Preserve findings without polluting shared analysis
 
 During authorized reverse engineering, preserve proven identities and useful evidence
@@ -266,3 +285,15 @@ Checked 2026-09-30 against the headless GhidraMCP 5.14.2 server:
   `name_substring` finds the others.
 - The `find_code_gaps` records carry the neighbouring function names; compare gap
   positions and sizes, not the text, across renames.
+
+Checked 2026-10-01, struct tools:
+
+- Send `create_struct` and `recreate_struct` `fields` as a JSON string. In a JSON array,
+  each offset reaches the parser as a Gson double (`3589.0`), which `Integer.parseInt`
+  rejects. The field is then appended instead, so the layout comes out packed.
+- Strict naming is the default when the project has no `.ghidra-mcp/conventions.json`.
+  It puts a Hungarian type prefix on struct field names on create, `add_struct_field`
+  and `modify_struct_field`, and a per-call `strict_mode` does not change that. Struct
+  types, `sbyte` and the plain `pointer` type keep the name as given.
+- A retype clears the field name. Pass `new_name` to `modify_struct_field`;
+  `modify_struct_field_type` always drops the name.

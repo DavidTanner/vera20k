@@ -87,6 +87,16 @@ fn hover_unit(entity: &GameEntity) -> bool {
             .is_some_and(|loco| loco.active_kind() == LocomotorKind::Hover)
 }
 
+/// A Unit on a Walk locomotor (no retail VehicleType; a map may assign one):
+/// the Unit setter's Foot tail reaches Walk Move_To (0x0075ACB0).
+fn walk_unit(entity: &GameEntity) -> bool {
+    entity.category == EntityCategory::Unit
+        && entity
+            .locomotor
+            .as_ref()
+            .is_some_and(|loco| loco.active_kind() == LocomotorKind::Walk)
+}
+
 /// A Unit on a Jumpjet locomotor: its null destination reaches the Jumpjet's
 /// `Stop_Moving` through the same Unit setter.
 fn jumpjet_unit(entity: &GameEntity) -> bool {
@@ -695,8 +705,19 @@ impl Simulation {
     ///   order, not the saved one), so the Unit setter's unchanged-NavCom
     ///   return cannot swallow the call.
     ///
-    /// Walk and Hover keep the ground corridor's rebuild (#689).
-    pub(crate) fn complete_pending_order(&mut self, id: u64, rules: Option<&RuleSet>) {
+    /// - Walk and Hover: the object's class setter with NavCom's target,
+    ///   `clear_queue` = 1 as Restore passes it (only the Unit setter reads
+    ///   it; Infantry 0x0051AA40 and the Foot tail never touch NavQueue):
+    ///   Infantry [`Self::set_infantry_destination`], Unit
+    ///   [`Self::set_unit_destination`]. NavCom is cleared first, as for the
+    ///   class arm. A receiver without a represented class setter keeps the
+    ///   represented NavCom.
+    pub(crate) fn complete_pending_order(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
         };
@@ -708,6 +729,12 @@ impl Simulation {
             kind,
             LocomotorKind::Teleport | LocomotorKind::Fly | LocomotorKind::Jumpjet
         );
+        if let (true, Some(rules), LocomotorKind::Walk | LocomotorKind::Hover) =
+            (actor.navigation.pending_arrival_clear, rules, kind)
+        {
+            self.finish_setter_destination(id, rules, registry);
+            return;
+        }
         if !actor.navigation.pending_arrival_clear
             || !(track || (class && rules.is_some()))
             || (track
@@ -778,6 +805,66 @@ impl Simulation {
         } else {
             super::navcom::set_destination_internal_null(actor);
             return;
+        }
+    }
+
+    /// [`Self::complete_pending_order`]'s Walk/Hover arm: Restore's
+    /// `Assign_Destination(saved, 1)` through the object's class setter, with
+    /// the Restore preflight's input checks (`concrete_effects`); a receiver
+    /// whose inputs are missing keeps the represented NavCom.
+    ///
+    /// Residual: native Restore (0x004D8F99) runs this setter inside the
+    /// restore; VERA runs it at the object's next Process entry. Trigger: the
+    /// entity-local target-expiry Restore (`restore_entity_after_target_expiry`,
+    /// an AoE cell target expiring under a suspended mission) or a receiver
+    /// without a represented setter. Effect: the setter's timers, NavQueue
+    /// clear and Move_To land up to one frame later. Frequency: cell-target
+    /// expiry under a suspended Walk/Hover mission. Risk: timing only.
+    fn finish_setter_destination(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        let Some(actor) = self.substrate.entities.get_mut(id) else {
+            return;
+        };
+        actor.navigation.pending_arrival_clear = false;
+        let category = actor.category;
+        // A NavCom cleared after the restore (a Stop) leaves nothing owed.
+        let Some(requested) = actor.navigation.nav_com else {
+            return;
+        };
+        let available = match category {
+            EntityCategory::Unit => {
+                self.unit_setter_receiver(id, Some(rules))
+                    && (matches!(requested, NavTargetRef::Cell { .. })
+                        || super::navcom::nav_target_coordinate(
+                            requested,
+                            Some(id),
+                            &self.substrate.entities,
+                            self.resolved_terrain.as_ref(),
+                            Some((rules, &self.interner)),
+                        )
+                        .is_ok())
+            }
+            EntityCategory::Infantry => {
+                self.infantry_setter_receiver(id, requested, rules)
+                    && self.infantry_destination_inputs_available(id, requested, rules, registry)
+            }
+            _ => false,
+        };
+        if !available {
+            return;
+        }
+        if let Some(actor) = self.substrate.entities.get_mut(id) {
+            super::navcom::foot_stop_moving(actor);
+        }
+        if category == EntityCategory::Unit {
+            self.set_unit_destination(id, requested, rules, true);
+        } else {
+            self.set_infantry_destination(id, requested, rules, registry)
+                .expect("checked Infantry destination inputs");
         }
     }
 
@@ -854,12 +941,15 @@ impl Simulation {
     }
 
     /// Whether the Unit setter (`0x741970`) is represented for `id` as the
-    /// team and harvest callers use it: a Drive, Ship or Hover receiver, or a
+    /// team and harvest callers use it: a Drive, Ship, Hover or Walk receiver, or a
     /// `Teleporter=` Unit whatever its active locomotor. Its cell arm
     /// ([`Self::set_unit_destination`]) also reaches Jumpjet Move_To.
     pub(crate) fn unit_setter_receiver(&self, id: u64, rules: Option<&RuleSet>) -> bool {
         self.substrate.entities.get(id).is_some_and(|actor| {
-            track_unit(actor) || hover_unit(actor) || teleporter_unit(self, actor, rules)
+            track_unit(actor)
+                || hover_unit(actor)
+                || walk_unit(actor)
+                || teleporter_unit(self, actor, rules)
         })
     }
 
@@ -877,8 +967,8 @@ impl Simulation {
     ///   locomotor's Move_To — Drive/Ship ([`prepare_track_destination`]),
     ///   Teleport ([`teleport_move_to`]), Jumpjet
     ///   ([`Self::issue_air_cell_destination`], which writes the NavCom and
-    ///   the timers itself) or Hover ([`hover_move_to`]) — unless Foot+0x6AC
-    ///   skips it once.
+    ///   the timers itself), Hover ([`hover_move_to`]) or Walk
+    ///   ([`set_walk_destination_coord`]) — unless Foot+0x6AC skips it once.
     ///
     /// Returns false for a receiver without a represented Move_To or a
     /// refused destination. Jumpjet still uses its Cell adapter; its non-cell
@@ -887,6 +977,7 @@ impl Simulation {
     /// [`prepare_track_destination`]: super::movement_commands::prepare_track_destination
     /// [`teleport_move_to`]: super::teleport_movement::teleport_move_to
     /// [`hover_move_to`]: super::hover::hover_move_to
+    /// [`set_walk_destination_coord`]: super::navcom::set_walk_destination_coord
     pub(crate) fn set_unit_destination(
         &mut self,
         id: u64,
@@ -900,7 +991,7 @@ impl Simulation {
         let teleporter = teleporter_unit(self, actor, Some(rules));
         let hover = hover_unit(actor);
         let jumpjet = jumpjet_unit(actor);
-        if !(track_unit(actor) || teleporter || hover || jumpjet)
+        if !(track_unit(actor) || teleporter || hover || jumpjet || walk_unit(actor))
             || !super::can_accept_destination(actor)
         {
             return false;
@@ -969,7 +1060,12 @@ impl Simulation {
             true
         } else {
             match actor.locomotor.as_ref().map(|loco| loco.active_kind()) {
-                Some(LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Hover) => {
+                Some(
+                    LocomotorKind::Drive
+                    | LocomotorKind::Ship
+                    | LocomotorKind::Hover
+                    | LocomotorKind::Walk,
+                ) => {
                     let coord = coord.expect("accepted Move_To captures target +4C");
                     let cell = ((coord.x / 256) as u16, (coord.y / 256) as u16);
                     super::navcom::set_destination_internal_coord(
