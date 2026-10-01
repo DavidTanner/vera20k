@@ -1,0 +1,230 @@
+{
+  "schema": 1,
+  "baseline": "7ca614dd",
+  "full_python": {
+    "total": 435,
+    "passed": 431,
+    "skipped": 4
+  },
+  "native_compiled_debug_fixture": {
+    "passed": 1,
+    "coverage": "macOS clang hardlinked incremental alias eviction; preserved binary execution, debug inputs and dsymutil after cleanup"
+  },
+  "failing_original_regressions": {
+    "admission": 2,
+    "cache_eviction": 2
+  },
+  "logs": {
+    "full-python.log.gz": {
+      "sha256": "99a1b4215fde44ed123f67e9bb383d9434b852c3886abfcf7fd3ab70fe2d21a0",
+      "uncompressed_sha256": "29a9d0ffec4bc406861a55c34b6252ae9ef6e6fd837e280fefcb6f1c2f13b626"
+    },
+    "native-debug.log.gz": {
+      "sha256": "53a16cfcf69892f3d6a88a915b1538b3d45edb5dbe04660f01da00a6db5d8105",
+      "uncompressed_sha256": "a2fd9ec87f58ec063a28ff325719d63471416bd89014e8cbcb117ebc3dccb007"
+    },
+    "admission-original-red.log.gz": {
+      "sha256": "39f0912b3e0f8d5a4a74a6261d398061f4dcbec3dbc25af409788f411e5fb59b",
+      "uncompressed_sha256": "f43aad637d22f61bddbb3bc85859c79327a581c10878b7c7d7f7db0b321f7489"
+    },
+    "cache-original-red.log.gz": {
+      "sha256": "c6f780d698a01d199e96ba07fb8f3e1a9f0d9e419f554d3d22c98069168d79df",
+      "uncompressed_sha256": "301858085dfc211d1a309818ff6b5c873e37c52e325e3f902c1aa33fe82c09b2"
+    },
+    "admission-final.log.gz": {
+      "sha256": "6644fbb5710bae0676fd115bad412294ae43cea7863f8102a2f669b5f56b0d04",
+      "uncompressed_sha256": "9372003302d5bc9441b51a6076981f3de8b8d352729d917115a5f4ca34c606e9"
+    },
+    "external-consumer-audit.json.gz": {
+      "sha256": "022fc81a56e9e8485c243a19bd62dbab174c3cc00132cb3c07c28b2c86cdb817",
+      "uncompressed_sha256": "9505bfd70f29ea6e96258b79ef2f627b0f411d216908ad058a04b5185b634a1e"
+    }
+  },
+  "production_dry_run": {
+    "state": "planned",
+    "errors": [],
+    "cache_allocated_bytes": 83539070976,
+    "incremental_allocated_bytes": 25059545088,
+    "projected_removed_allocated_bytes": 61837312000,
+    "projected_remaining_incremental_bytes": 4228255744,
+    "free_before": {
+      "16777234": 5166067712
+    },
+    "projected_free_after": {
+      "16777234": 67003379712
+    },
+    "unmet_targets": {
+      "cache_bytes": 0,
+      "incremental_bytes": 0,
+      "free_bytes": {
+        "16777234": 0
+      }
+    },
+    "receipt_path": "/Users/halvor/Documents/vera20k/.git/owned-builds/retention/1790851862622001000-3ccc0eaa.json",
+    "selected_file_count": 42026,
+    "full_receipt_sha256": "29cb72178f6fd3016984d158e0c77e13583d860a2f6f72ebf5b77649ce34def4"
+  },
+  "production_apply": {
+    "state": "trimmed",
+    "errors": [],
+    "removed_allocated_bytes": 61837312000,
+    "removed_logical_bytes": 190758196465,
+    "free_before": {
+      "16777234": 4989837312
+    },
+    "free_after": {
+      "16777234": 66817437696
+    },
+    "observed_free_delta_bytes": {
+      "16777234": 61827600384
+    },
+    "unmet_targets": {
+      "cache_bytes": 0,
+      "incremental_bytes": 0,
+      "free_bytes": {
+        "16777234": 0
+      }
+    },
+    "receipt_path": "/Users/halvor/Documents/vera20k/.git/owned-builds/retention/1790852467617245000-317de4c1.json",
+    "removed_file_count": 42026,
+    "full_receipt_sha256": "7075f7e1a2d7e40f104bbc56b96abb4195b78b1ba62164cd201b1e85ff86f74b"
+  },
+  "preservation": {
+    "preserved_label_manifest_and_binary_count": 116,
+    "preserved_sha256": {
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/launch-main-20260930-912f8ddd/manifest.json": "a086cb2ba9fda1f9488ced359e37d02ff508556e05b0bbd1b16f53d42b0a23fa",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/launch-main-20260930-912f8ddd/0/vera20k": "adc6e0b542e75192c80525f7586ae85e5fb9832818869c09683942372d9880dd",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-after-20260928/manifest.json": "42427f74a89692464e1da5c5c8854385308aa6251826e2ceb2b43a45085c9eaa",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-after-20260928/0/parity-digest": "0445b0d6ef99873488f0073f856a988dd7e7087e4adb8437d811b986fbd2f5a0",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-after-20260928/1/vera20k": "d17a96753818075fde3080854614c99b838baac9a97d38ed418ab370ef483428",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/capture-clock-after-20260928/manifest.json": "12136971fc0adf53361e4a3973d3ab33b5abe66abb2fea2f0c008fca6374808b",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/capture-clock-after-20260928/0/vera20k": "eacc88f0188563d0a6c0573b982ad71646a6d9874285bd8fe559876500afea9e",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-fv-current-v26/manifest.json": "589efe362080b1afc52e41cc56ae695bc8707bebcb0671bfa110702af9bc6dd0",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-fv-current-v26/0/vera20k-90fe056262fadf5a": "9f61c3df261986cb9798c1ed094b891ffd4090ce958eec5de0ba0725b72f407d",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-concrete-v15/manifest.json": "69c0f4d0e8417c5955f63833caab331f3a65556cfa753903536d09ca33e073a3",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-concrete-v15/0/vera20k-182f054d6e106fa6": "9d6c2e620e6e4c90b17f5e585c7cf496e37d31e0cc078faf45733b1740b44189",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-cnt2/manifest.json": "f34be373999405c21a35c8d3152a6bb9349944259a914eeb9d0d361afc866fb1",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-cnt2/0/sim-bench": "ed48400468dd3b5f4811518c3edc9150b183db5f15c7fa1eb83ad25b2cf0d546",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-before-20260928/manifest.json": "0a6e6fe1d275beeaa13062e59dcb55ace86b058465c37975ac516370e5be685c",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-before-20260928/0/parity-digest": "3a31656d50531e207eb5567acf9691641fa5bb21b6b71d888a105e1eee73ec7f",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-before-20260928/1/vera20k": "bc9a4b8e4eccfbc59018af5530ebb02ac83187e34d23b67e44adf101c6612dad",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/audio-owner-after-20260928/manifest.json": "e6242d96051e5e24400b6469c7e1e94db28d6768d4fea52982cd635827bf772e",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/audio-owner-after-20260928/0/asset": "da347efe61bb1a79009aee2b70589fc54cd20915f2d54dc1de1b42731865dc1b",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/audio-owner-after-20260928/1/parity-digest": "e8de7b7be3506c304b3552bb49bbff2ab6874635eda9d22ba645232e196ac80c",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/audio-owner-after-20260928/2/vera20k": "52b014b2dcf713a88b2c39aefe57c8c9b9be15fcb16444592909fe7279c5e85f",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-bench-b/manifest.json": "b919685a65bc4cca5f8fea5c1a2ae9bb4dd29cfbc13a5bde9a66c761200eabd4",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-bench-b/0/sim-bench": "0afafac35e19dea194d9e89a64e0b37d2786e33f3fd896c0d36a68ea2aa0dc4b",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-concrete-release-v15/manifest.json": "e997f2dd29bab1d3def86f5b2ae4b31ff7a14bd8244a626edaf79de44367ce88",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-concrete-release-v15/0/parity-digest": "d39377f662d1bebef9a59884cebf4e63317bc00dbc52a506c566ceb49a4dba63",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-concrete-release-v15/1/vera20k": "87ffa4af77420091ab1fa0bfb86a88b7eb1b9f5c848c2d1b54589d0ac4e96210",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-fv-tests-final-v28/manifest.json": "4ba9c0a3be249b4328e0bdb88ed72ea4a4605e47f938af063d2b2bdb68404fdb",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-fv-tests-final-v28/0/vera20k-90fe056262fadf5a": "ce0811a69976d8f358447c8500936d6378728c0fb6233a90a85cfc5b2fd8ee28",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-fv-mission-v11a/manifest.json": "05da63bd6c940deec8c747ea0342af56c53d1fe04bf1739f52a40fa873c12fa8",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-fv-mission-v11a/0/vera20k-182f054d6e106fa6": "c3c0f29c9db1953b0af898b6d5c32c76fa6b399ef60f09ff9d6922668e688221",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-release-final/manifest.json": "3d78642b38938688df342a7877e039163e85d0e9884fa6bfd64d77f3c3c193a1",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-release-final/0/parity-digest": "75c27a3bcf9d8498d1b30e2f9c43c499ae71c42bdfb0104656562286dfd79d6e",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-release-final/1/vera20k": "1a066b60229174ad0fa92910955783d517040e76032203a0ccbefeebf1289b0a",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/ini-get-reviewed-20260928/manifest.json": "6e75baf3910d5bac35d42ab61c535533c459ded40a48d0e61c1faa2f3fae857a",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/ini-get-reviewed-20260928/0/asset": "0eab95dcfcd8cedd540a312a4b1ef7c50e05c19b421c6916ad5d07fcc454d87b",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/ini-get-reviewed-20260928/1/parity-digest": "812119b025ea30c8fdb643aa33ef6a7a201020d41d01856124da5edfbb08b9b5",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/ini-get-reviewed-20260928/2/vera20k": "63b7389f2a8a203fe9031c3ac892aeee6b173462811b5116e15240eb3ff461f1",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-queue/manifest.json": "43ac25bcaee4b9aa45b2b5c658dd12f1e00049373408ccfd995e83196f1e3622",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-queue/0/vera20k-182f054d6e106fa6": "f574529ccf45d0891dfdb6af0b741535f4e2c0057098e05a4276a2671e66954f",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/atlas-owner-after-20260928/manifest.json": "9eb656fa5ef8fb2f725e758adc62efedb61ca0a084519afe60e83cea086332be",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/atlas-owner-after-20260928/0/vera20k": "03147bcae30e7386ddbb64630038803aae7ad799e105c887ed54b0057bef3f05",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-stage264-baseline-replay-8982-20260930/manifest.json": "537a12caa33efcc7502314bff428c01aad8a850e00f081ccf0bbd1a7f54f2af0",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-stage264-baseline-replay-8982-20260930/0/vera20k-182f054d6e106fa6": "09e50e15b171d455ee28b746e490b27a46aecfd176601e5044048bd4ee835e4e",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-before-20260928/manifest.json": "fffa419e36eae2e9f7b61a1184f12fa3a55f27e30487058882c522079ae10de6",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-before-20260928/0/parity-digest": "9285b38f350db3ea15c001233a02205e7de1bd72131f468013f4b3268c76f421",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-cnt-new/manifest.json": "7edd7ad6391d7b5b66ed83a03d63ea86f53f6477b0460c57666f62bf1b30da9f",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-cnt-new/0/sim-bench": "50cf6680ae2ece53e8ad39e2b1cb9b3b03e1e2a4d249e797aa105629e8064d4c",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/map-observation-candidate-1/manifest.json": "e3a7c4bde17d7f582fdbc05ae76e527dc7300ed0dfeb3ec7c4615c23ab99a1ce",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/map-observation-candidate-1/0/vera20k": "7d55166b7eda70854f2da411e6396cefec7d54146ed809940b0643d6ecfdd137",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-after-20260928/manifest.json": "6c3ef23a90d27db13e0b5dd6c77a2a53c0634858cbe328c3d1c350959fdf2eaf",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-after-20260928/0/parity-digest": "0ccde314ba58add417941d0c4f05bf8172f69983e3aabf5000f1855d2aba6d2f",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-after-20260928/1/vera20k": "9b30c3cade6e68040b7e0f8c0ace03e2782c83340bb2e3d2a77355995817d9ff",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-final-20260928/manifest.json": "86c557b25e2663f55feb08b9225aedd9b5ae2c4d5018232e1f0fb60e214c97da",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-final-20260928/0/parity-digest": "fbfbdef94af4a9f4600c2381258cca8fd4d77c2e1cf70408b3267a6feb30fbaa",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-final-20260928/1/vera20k": "23c5f0e661fba4430a2b58404c2939f2a766e4d02567983eee7ddd4be8540021",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-cnt-base/manifest.json": "c13ce1c7f4903547136d238e421f09f7cfec99503bcf22cb1d62f94c5181232b",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-cnt-base/0/sim-bench": "857632587a81efc31725850f8c386249c7e8557f7972bfd4e12471a73b9da5e0",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-new4/manifest.json": "c77f0067a298e76680ec1f2dddf9b3b877e9c205c13b578cd8b391f96bc0d8fb",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-new4/0/sim-bench": "276c8918ced5cdd1ead9326e4ca30c20e5cd9f81eebe2943e725fea33d2fa714",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-new3/manifest.json": "2b249c3e85966b63570910e84825174517a00b5fbbca317a7e12f6046c1d7bad",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-new3/0/sim-bench": "1b3239e9a101b7412e34beb1b01d850bbc247bb95dd3957007ff32825db62821",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-new2/manifest.json": "dade0fec9d38af5fcbc5a064208167ddfaf2a57a9e029b231bcffbb2c788ae7a",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-new2/0/sim-bench": "5db22a2a8bd498b2f6728ab53d4858995b8b6d15709e6736c30c23ab7e663058",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-new/manifest.json": "19a0bc4f11e37257641f5b1de5e3dc2bca2ec86929adb85c82e9c80e7f10ed36",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-new/0/sim-bench": "f3d71c19ab5f7060728fbd776515de4913ab6eff89d254e10700b1992f2b7a6c",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-release-integrated-v1/manifest.json": "4c692c614f1501f33dae75ec776b15dcbe2c3cf121d2f9b65426490a89be4221",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-release-integrated-v1/0/parity-digest": "a7cc850b5c2a43131c9ac2983a7bf9586708ad995d2d0f406588751e5959a8ff",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-release-integrated-v1/1/vera20k": "479c4bd56203657a1e35b7eff27ce5e5b5bbf55e931e3e2961a5bb390561ec55",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/ini-get-after-20260928/manifest.json": "50ecbe44f5eab99e17df6ea5369a58dc31cb0377b6a63762d85c71d6a6baad2a",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/ini-get-after-20260928/0/asset": "6d4be86b0b43d8a6d4449c5b784637b487d01c0b8f10f5078085ac51730f7565",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/ini-get-after-20260928/1/parity-digest": "e58dacf12df8ac040a0c532c5ea408dbe38f327a09a5dd6fc1cc643fe5eddbdf",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/ini-get-after-20260928/2/vera20k": "294f7d803db506983d6cbf0a3941d13aea1c0d825ba49db0e3d5307b32396bf8",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-base/manifest.json": "2a1a61589c7e8dd5ac46ff03cc45e6b6a8c488682c62f6926a35d677c7d95f75",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/usa-base/0/sim-bench": "1181b4150f1a2d3b4713d22a7d012e9007b3dc21daf22e0c468c8d21bb6f14e6",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-response-runtime-20260930-stage267-main986/manifest.json": "a760668ed91b4346fb4f7ff34372f990e8b973bd4c0857116e911c4cc0222cf2",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-response-runtime-20260930-stage267-main986/0/vera20k": "e3549a23bd935f463298665c3b891d99c9527c18fca4a7904a8c7a243fe98f11",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-v5/manifest.json": "a41a6f3f331a0af0707b49c6fc13419e7b3a5bff3a89c07dcc6c0a2069227f2a",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-v5/0/vera20k-182f054d6e106fa6": "784943639c3eb9d7c7c93381c4c77806bd14e4fb9b31b0cc0a155a276f50aeec",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-bench-a/manifest.json": "91f10cfc9ed2a2582d116c63fc0ad75aac85223f2bb83b6c568df295626e365c",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-bench-a/0/sim-bench": "daabb62c65b570f244537a5a33ce05f0355d84a320599e9b814bb96f98d4dfea",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/retail-corpus-export-1/manifest.json": "e3d58fe6cbedff03d996a3eca9a242b0dc1783e742c37c47414cd61a385f3c39",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/retail-corpus-export-1/0/asset": "3beb69b8ed594cfeee8f45174ed695d208c1522d9d958e51bd3eee188a14784a",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-path-main965-release-v1-20261001/manifest.json": "e3e5e1d3b0306e2f85b1cc91a3cebf7a1cb30112248791425734dd00ea24dfad",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-path-main965-release-v1-20261001/0/vera20k": "5c7666f7e6b9fc189228bb0b17d25e2e59d59deedb349c592c7c2b5352685982",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/launch-main-20261001-ba362353/manifest.json": "39ed613f4fb3ffe4497b04cb39729cfedda6b9bfeb51e54c7d1b9171292fa9a1",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/launch-main-20261001-ba362353/0/vera20k": "e6b99b5f5dc0684b96692e7bf35b8008e4580f77ab4488cd994a4f0541fac91e",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/foot-z-after-20260928/manifest.json": "34fa41a3af05fb6e64cfb354b84c94bac1c9fe1973d76be2127c7cb8dc964fc7",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/foot-z-after-20260928/0/vera20k": "52b014b2dcf713a88b2c39aefe57c8c9b9be15fcb16444592909fe7279c5e85f",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/manifest.json": "f2ea034c856dbdf1f4900ff0cc697e0e25a1b11442b68b27e7d0c4ad3a3a7e59",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/0/asset": "bec8f1e78372c6f2037cdf8571c9f97554004115a7bbd09220c6662e318c3e5f",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/1/bik-player": "2edc82ff28eac22dfffcf698301e5f98451449c37e3881a41207c4c190326bd4",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/2/bik-survey": "ad1f4c2c0378f97324b5836b5fe0589c84312b331a3330626c1c691b1210d875",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/3/extract-bridge-frames": "98379c61d963a20b191305281be2f0a24146fde4d0ea9e6935c0e9814106bf4e",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/4/extract-ini": "7cf31227c7681c263d736204d0be254e072eeda484cd8cafd6a0ad3ebb637726",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/5/inspect-maps": "4355772ef1e93f99b79a77a15de0d023bc403cda3601ad472f5441b5dd6de605",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/6/inspect-pcx-palette": "6d5c72dfa886d49e1dd5492109789e296dd92b9e38163c9d5f92c9e07c5cda51",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/7/inspect-water-tiles": "716ad384b3bdaf18b7a3af9615f78c723d06fe638b5e956b1ef54c2e6116e464",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/8/inspect-yro-render": "fdc705d512c3f5378cdc7fc2bb709d068ca9b536cef67f3a54fe7f6df4e77c5d",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/9/mix-browser": "d1e081d12cf0416c6394a51563a3e7cd9f8cbc95257ed5736e0ca9148db88e86",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/10/parity-digest": "e12029b7073445c6d6f6d5994f3c88b773a4dbd6b580f0bb8a63f5da1fbf1532",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/11/sim-bench": "562b4487a37b95f1b3232f050111c71c5c89c6ea4df15d9cd66d0f568792363b",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/media-owner-after-20260928/12/vera20k": "82adc5343609e6cb2a9f585e0d6365a16079a51cec693736bd89105c6a82e413",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-integrated-v1/manifest.json": "41ab1902f20f6b03a1001509fbc9ba7554cfdbd3db54665c1d5b32e653c9be9b",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-integrated-v1/0/vera20k-182f054d6e106fa6": "254400ba83816419720e74885b3d64471940f94150a4bfa0a5e2c412e881195e",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/retail-fixture-after-20260928/manifest.json": "727f4b8451690e2739c43a56e903fe65aab5e908f0c4794c79d7dbf6bb6bd813",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/retail-fixture-after-20260928/0/parity-digest": "e12029b7073445c6d6f6d5994f3c88b773a4dbd6b580f0bb8a63f5da1fbf1532",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/retail-fixture-after-20260928/1/vera20k": "82adc5343609e6cb2a9f585e0d6365a16079a51cec693736bd89105c6a82e413",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/engineer-hut-release-main940-20260930/manifest.json": "d4b09e523e0a52a37ef6e1842f9488e04aed4728c46e6c377e924056d7d1de95",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/engineer-hut-release-main940-20260930/0/vera20k": "4721bcfe04688547f7ee3d171487d1443cf28e87117f2987f7ff6031f757b8e0",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/launch-main-20261001-182f1797/manifest.json": "8b87562b09110d810740664133545034e412432a80cab8c46ebeb228688db407",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/launch-main-20261001-182f1797/0/vera20k": "3773641415fc8a9868e92c9afe7a56e50ec7f4ae83a8bf44514a0a884f0a96ca",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-fv-release-current-v27/manifest.json": "e02bced6cd8cd7144c86ac27525e5a5fc1415d3b7a40c0ba3192b5f317fe319b",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-fv-release-current-v27/0/vera20k": "adc6e0b542e75192c80525f7586ae85e5fb9832818869c09683942372d9880dd",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/retail-corpus-final/manifest.json": "ce7e047e5706c2ef9dc396784c8079f95e0e6295643a861aaf4e0a68c394fa1c",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/retail-corpus-final/0/asset": "e530aa4dd125ec608a4d5a98647622aea0b91693b440cac4bf87e339a37fb1cd",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-path-main965-final-tests-v1-20261001/manifest.json": "e56a681e05bcf2041394761cb5dc2923744d26bd956d8e99291c66b7a9918ed5",
+      "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-path-main965-final-tests-v1-20261001/0/vera20k-182f054d6e106fa6": "09907141ed7906538f91a49691455cbeb8c43c342df8bd8d4991fb59aadfa1af"
+    },
+    "code_sha256": {
+      "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/tools/_cargo_cache.py": "8cf359481fea03179e34d58379dff0ab10795cd467a20b46f16578011ae141c1",
+      "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k/tools/cargo_run.py": "222c8369952100429c4e9f33d2cd886280f7f0c20478abbb708fec1265531c6e"
+    },
+    "external_evidence_binaries_checked": 61,
+    "external_dependency_overlap": [],
+    "retained_hashes_match": true
+  },
+  "final_admission_checks": {
+    "total": 27,
+    "passed": 27,
+    "skipped": 0
+  },
+  "critic": {
+    "passes": 1,
+    "confirmed_finding": "Linux native fixture must preserve needed object only when it is an actual debug dependency; corrected",
+    "external_consumer_audit": "61 Mach-O evidence files; zero selected dependency overlap; eight unique existing references are .rlib files, always ineligible"
+  }
+}

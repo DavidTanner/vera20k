@@ -44,6 +44,15 @@ class NativeCacheRetentionTests(unittest.TestCase):
             subprocess.run(['clang', '-g', '-c', str(extra_source), '-o', str(extra)], check=True)
             subprocess.run(['clang', '-g', str(needed), str(extra), '-o', str(binary)], check=True)
             shutil.copy2(needed, orphan)
+            # Rust incremental codegen normally hardlinks objects to deps.
+            # Removing this completed cache alias must preserve the actual
+            # Mach-O debug reference at needed.rcgu.o and permit dsymutil.
+            session = target / 'debug/incremental/fixture-123/s-final'
+            session.mkdir(parents=True)
+            alias = session / 'shared.o'
+            os.link(needed, alias)
+            metadata = session / 'dep-graph.bin'
+            metadata.write_bytes(b'rebuildable compiler metadata' * 256)
             label = store / 'artifacts/native-test'
             preserved = label / '0/validation-test'
             preserved.parent.mkdir(parents=True)
@@ -63,9 +72,17 @@ class NativeCacheRetentionTests(unittest.TestCase):
             dry = trim(root, policy, 0, dry_run=True)
             self.assertEqual(dry['state'], 'planned', dry)
             self.assertTrue(orphan.exists())
+            self.assertTrue(alias.exists())
+            self.assertTrue(metadata.exists())
+            self.assertIn(str(alias), dry['selected_files'])
+            self.assertIn(str(metadata), dry['selected_files'])
             receipt = trim(root, policy, 0)
             self.assertEqual(receipt['state'], 'trimmed', receipt)
             self.assertFalse(orphan.exists())
+            self.assertFalse(alias.exists())
+            self.assertFalse(metadata.exists())
+            if needed in references:
+                self.assertTrue(needed.exists())
             self.assertGreater(receipt['removed_allocated_bytes'], 0)
             for path, digest in before.items():
                 self.assertEqual(hashlib.sha256(Path(path).read_bytes()).hexdigest(), digest)

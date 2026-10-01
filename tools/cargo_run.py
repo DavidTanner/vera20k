@@ -314,6 +314,20 @@ def run(root: Path, args: list[str], label: str | None, timeout: float, *, polic
             raise ValueError(f'Label already exists; choose a new label: {output}')
         register_locked(root, store, target)
         automatic_locked(root, store, policy)
+        # Admission uses a fresh measurement after cleanup, not projected file
+        # allocation or a retention receipt. A protected cache must never cause
+        # another compile to consume the remaining volume reserve.
+        # Check both paths even if platform device identifiers are unavailable
+        # or collide; an artifact copy may consume a different volume.
+        volumes = [target, store] if output else [target]
+        for volume in volumes:
+            available = shutil.disk_usage(volume).free
+            if available < policy.min_free_bytes:
+                raise ValueError(
+                    f'Build blocked: {available / (1024 ** 3):.2f} GiB free at {volume}; '
+                    f'{policy.min_free_bytes / (1024 ** 3):.2f} GiB required. '
+                    'Review owned superseded builds and the cache retention receipt '
+                    'before retrying; protected files were preserved.')
         artifacts = set()
         try:
             before = source_identity(root)
