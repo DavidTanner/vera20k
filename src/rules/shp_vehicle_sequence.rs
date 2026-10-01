@@ -187,6 +187,7 @@ mod tests {
             elite_numbered_weapon_flh: [Default::default();
                 crate::rules::object_type::WEAPON_SLOT_COUNT],
             alternate_flh: Default::default(),
+            second_spawn_offset: Default::default(),
             primary_fire_pixel_offset: None,
             secondary_fire_pixel_offset: None,
             primary_fire_dual_offset: false,

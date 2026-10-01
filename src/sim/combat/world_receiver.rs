@@ -3560,6 +3560,7 @@ pub(super) fn emit_admitted_fire(
         obj,
         selected.index,
         burst_index,
+        crate::rules::flh::Flh::default(),
     );
     let launch_source = fireat_launch_source(world, rules, snap, &fire, weapon);
     let warhead = selected.warhead;

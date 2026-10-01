@@ -213,16 +213,14 @@ pub(crate) fn object_ground_z_leptons(
         .unwrap_or_else(|| i32::from(entity.position.z as i8) * GROUND_LEVEL_HEIGHT_LEPTONS)
 }
 
-/// Height above the ground of an object without an exact coordinate: a
-/// rocket's own flight state (its locomotor keeps only a lagging piggyback
-/// copy), else the altitude of an Air-layer locomotor or of an active Hover
-/// (which floats on the Ground layer). Any other Ground-layer locomotor never
-/// lifts, which keeps a landed or docked aircraft on the floor whatever its
-/// stale altitude. A falling object always has an exact coordinate.
+/// Height above the ground of an object without an exact coordinate: the
+/// altitude of an Air-layer locomotor or of an active Hover (which floats on
+/// the Ground layer). Any other Ground-layer locomotor never lifts, which
+/// keeps a landed or docked aircraft on the floor whatever its stale
+/// altitude. A falling object and a launched missile always have an exact
+/// coordinate (the missile from its Unlimbo, `spawn_manager::launch_coordinate`);
+/// a Rocket locomotor's altitude is only a cache.
 pub(crate) fn object_altitude_leptons(entity: &crate::sim::game_entity::GameEntity) -> i32 {
-    if let Some(state) = entity.rocket_state.as_ref() {
-        return state.altitude.to_num::<i32>();
-    }
     entity
         .locomotor
         .as_ref()

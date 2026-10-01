@@ -164,6 +164,7 @@ impl Simulation {
                 object,
                 0,
                 entity.weapon_burst.index() as u8,
+                crate::rules::flh::Flh::default(),
             )
             .coord;
             //4181F6..41828E: Nav+48 and GetFLH(weapon0, additive zero XYZ).

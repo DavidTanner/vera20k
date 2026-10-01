@@ -2113,3 +2113,225 @@ fn every_hornet_of_a_carrier_wing_flies_a_whole_strafe_pass() {
         }
     }
 }
+
+/// One retail launch, read when the slot's AI pass returned: the child's and
+/// the owner's Locations, the owner's burst index and the child's GetHeight.
+struct RetailLaunch {
+    missile: crate::sim::components::DriveCoord,
+    owner: crate::sim::components::DriveCoord,
+    owner_burst: i32,
+    missile_height: i32,
+}
+
+/// A retail `owner_type` on flat level-4 ground, its body at DirType 0x20 and
+/// its burst index at 1 (a burst in progress), launches every slot at a cell,
+/// one manager pass per slot.
+fn retail_launches(
+    rules: &RuleSet,
+    owner_type: &str,
+) -> (Simulation, u64, Vec<(u64, RetailLaunch)>) {
+    use crate::sim::movement::ground_pose::position_world_coord;
+
+    let mut sim = Simulation::new();
+    let house = sim.interner.intern("Russians");
+    sim.houses.insert(
+        house,
+        crate::sim::house_state::HouseState::new(house, 0, None, true, 0, 10),
+    );
+    sim.session.house_order.push(house);
+    crate::sim::arena_fixture::flat_arena(&mut sim, rules);
+    let terrain = sim.resolved_terrain.as_mut().unwrap();
+    for y in 0..32 {
+        for x in 0..32 {
+            terrain.cell_mut(x, y).unwrap().level = 4;
+        }
+    }
+    // MarkSucceeded seats a ship on this dry fixture ground.
+    let owner = sim
+        .construct_object_limbo_at_height(owner_type, "Russians", 10, 10, 0x20, 4, rules)
+        .expect("construct owner");
+    assert!(
+        sim.reveal_constructed_object_at_height(
+            owner,
+            10,
+            10,
+            0x20,
+            4,
+            crate::sim::world::PlacementEvidence::MarkSucceeded,
+            rules,
+        )
+        .is_some()
+    );
+    let entity = sim.substrate.entities.get_mut(owner).unwrap();
+    entity.weapon_burst.complete_shot(2);
+    assert_eq!(entity.weapon_burst.index(), 1);
+    let manager = entity.spawn_manager.as_mut().expect("missile pool");
+    manager.current_target = Some(TargetKind::Cell(20, 10));
+    manager.mode = SpawnManagerMode::Launching;
+    let slots = manager.slots.len();
+
+    let mut launches = Vec::new();
+    for slot in 0..slots {
+        let manager = sim
+            .substrate
+            .entities
+            .get_mut(owner)
+            .and_then(|e| e.spawn_manager.as_mut())
+            .unwrap();
+        manager.update_timer = CdTimer::default();
+        manager.reload_timer = CdTimer::default();
+        tick_spawn_managers(&mut sim, rules, &[owner], None);
+        let owner_entity = sim.substrate.entities.get(owner).unwrap();
+        let child = owner_entity.spawn_manager.as_ref().unwrap().slots[slot]
+            .spawn
+            .expect("the slot keeps its missile");
+        let missile = sim.substrate.entities.get(child).unwrap();
+        assert!(!missile.lifecycle.in_limbo, "slot {slot} launched");
+        launches.push((
+            child,
+            RetailLaunch {
+                missile: position_world_coord(&missile.position),
+                owner: position_world_coord(&owner_entity.position),
+                owner_burst: owner_entity.weapon_burst.index(),
+                missile_height: crate::sim::movement::air_movement::current_fly_height(
+                    missile,
+                    sim.resolved_terrain.as_ref(),
+                ),
+            },
+        ));
+        assert_eq!(
+            missile.position.exact_z_leptons,
+            Some(launches[slot].1.missile.z),
+            "the missile carries an exact Z from its Unlimbo"
+        );
+    }
+    (sim, owner, launches)
+}
+
+/// The GetFLH port's XY for `owner` with the arguments the launch passes.
+fn retail_flh_xy(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: u64,
+    weapon_index: i32,
+    burst_parity: u8,
+    base: crate::rules::flh::Flh,
+) -> [i32; 2] {
+    let entity = sim.substrate.entities.get(owner).unwrap();
+    let fire = crate::sim::combat::fire_coord::fire_coordinate(
+        sim,
+        rules,
+        &crate::sim::combat::fire_coord::FireSource::of_entity(entity),
+        sim.object_type(entity.type_ref(), rules).unwrap(),
+        weapon_index,
+        burst_parity,
+        base,
+    );
+    [fire.coord.x, fire.coord.y]
+}
+
+/// `SpawnManagerClass::AI` case 0 (`0x006B73C4..0x006B7585`) through the
+/// production readers on retail RULESMD/ARTMD: each missile unlimbos at its
+/// owner's GetFLH, for weapon 0 when GetWeapon(0) is `Spawner=` and weapon 1
+/// otherwise, plus 10 on Z, less 40 on X and Y for `CMislType=`; and Reveal
+/// keeps that coordinate as its Location. A missile slot whose GetWeapon(0)
+/// has `Burst > 1` takes its slot's parity (and, odd, `SecondSpawnOffset=`)
+/// and leaves the owner's burst index at 0; otherwise the owner's own index
+/// stands.
+#[test]
+fn retail_missiles_keep_their_launch_coordinate_from_unlimbo() {
+    use crate::rules::art_data::ArtRegistry;
+    use crate::rules::flh::Flh;
+
+    let Some((ini, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+        return;
+    };
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(ArtRegistry::from_ini(&art));
+    let art = |name: &str| rules.art().get(name).unwrap().clone();
+    let weapon = |name: &str| rules.weapon(name).unwrap();
+    // The retail inputs the expectations rest on.
+    assert!(weapon("V3Launcher").spawner && weapon("V3Launcher").burst == 1);
+    assert!(weapon("DredLauncher").spawner && weapon("DredLauncher").burst == 2);
+    assert!(!weapon("BoomerTorpedo").spawner && weapon("BoomerTorpedo").burst == 2);
+    assert_eq!(art("V3").primary_fire_flh, Flh::from([-160, 0, 75]));
+    assert_eq!(art("DRED").primary_fire_flh, Flh::from([30, 43, 92]));
+    assert_eq!(art("BSUB").secondary_fire_flh, Flh::from([0, 0, -40]));
+    assert_eq!(art("BSUB").second_spawn_offset, Flh::from([-70, 0, 0]));
+    assert_eq!(art("DRED").second_spawn_offset, Flh::default());
+    assert_eq!(rules.missile_spawn.cmisl.type_name, "CMISL");
+
+    // V3: one slot, Burst=1, so the owner's own odd index mirrors the (zero)
+    // lateral and selects its (zero) SecondSpawnOffset, and stays 1.
+    let (mut sim, v3, launches) = retail_launches(&rules, "V3");
+    let (v3_missile, launch) = &launches[0];
+    assert_eq!(launch.missile.z, launch.owner.z + 75 + 10);
+    assert_eq!(
+        launch.missile_height,
+        75 + 10,
+        "the owner stands on the floor"
+    );
+    assert_eq!(
+        [launch.missile.x, launch.missile.y],
+        retail_flh_xy(&sim, &rules, v3, 0, 1, Flh::default())
+    );
+    assert_ne!(
+        [launch.missile.x, launch.missile.y],
+        [launch.owner.x, launch.owner.y],
+        "PrimaryFireFLH moves the missile off the launcher's centre"
+    );
+    assert_eq!(launch.owner_burst, 1);
+    // Its flight moves Z from the launch coordinate.
+    let launch_z = launch.missile.z;
+    for _ in 0..8 {
+        let missile = sim.substrate.entities.get_mut(*v3_missile).unwrap();
+        crate::sim::movement::rocket_movement::process_rocket(missile, 0);
+        let altitude = missile
+            .rocket_state
+            .as_ref()
+            .unwrap()
+            .altitude
+            .to_num::<i32>();
+        assert_eq!(missile.position.exact_z_leptons, Some(launch_z + altitude));
+    }
+
+    // Dreadnought: DredLauncher's Burst=2 gives slot 0 parity 0 and slot 1
+    // parity 1, which mirrors the lateral 43.
+    let (sim, dred, launches) = retail_launches(&rules, "DRED");
+    for (slot, (_, launch)) in launches.iter().enumerate() {
+        assert_eq!(launch.missile.z, launch.owner.z + 92 + 10, "slot {slot}");
+        assert_eq!(
+            [launch.missile.x, launch.missile.y],
+            retail_flh_xy(&sim, &rules, dred, 0, slot as u8, Flh::default()),
+            "slot {slot}"
+        );
+        assert_eq!(launch.owner_burst, 0, "slot {slot}");
+    }
+    assert_ne!(launches[0].1.missile, launches[1].1.missile);
+
+    // Boomer: BoomerTorpedo is no spawner, so weapon 1's FLH (0,0,-40); its
+    // Burst=2 gives slot 1 parity 1 and SecondSpawnOffset; CMISL takes 40 off
+    // X and Y.
+    let (sim, bsub, launches) = retail_launches(&rules, "BSUB");
+    let (_, first) = &launches[0];
+    assert_eq!(
+        first.missile,
+        crate::sim::components::DriveCoord {
+            x: first.owner.x - 40,
+            y: first.owner.y - 40,
+            z: first.owner.z - 40 + 10,
+        }
+    );
+    let (_, second) = &launches[1];
+    let [x, y] = retail_flh_xy(&sim, &rules, bsub, 1, 1, Flh::from([-70, 0, 0]));
+    assert_eq!(
+        second.missile,
+        crate::sim::components::DriveCoord {
+            x: x - 40,
+            y: y - 40,
+            z: second.owner.z - 40 + 10,
+        }
+    );
+    assert_ne!([x, y], [second.owner.x, second.owner.y]);
+    assert!(launches.iter().all(|(_, launch)| launch.owner_burst == 0));
+}

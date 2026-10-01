@@ -12,6 +12,7 @@
 
 use crate::map::entities::EntityCategory;
 use crate::rules::art_data::ArtEntry;
+use crate::rules::flh::Flh;
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
@@ -114,7 +115,14 @@ impl From<&AttackerSnapshot> for FireSource {
 /// Resolve the fire coordinate of `snap` firing the selected native weapon index.
 ///
 /// Non-buildings: `TechnoClass::GetFLH @ 0x006F3AD0`, the type's `FLH` rotated
-/// by the aim facing about the turret offset.
+/// by the aim facing about the turret offset. Its base argument
+/// (`base_coords`) adds to the FLH's forward, lateral and height before the
+/// burst mirror and the rotation (`0x006F3B37..0x006F3B58`). Fire_At
+/// (`0x006FE24B..0x006FE260`), the aircraft approach and the Prism support
+/// pass zero; the spawn launch passes `SecondSpawnOffset=`. The Building
+/// (`0x00453840`) and Infantry (`0x00523250`) overrides call it with zero
+/// whatever they received, so a building's or an infantryman's `base_coords`
+/// is dropped.
 ///
 /// Buildings: the `BuildingClass` override `0x00453840`.
 /// - Occupied (`CanBeOccupied` type byte `+0x157B`, occupant count `+0x408`
@@ -156,12 +164,21 @@ pub(crate) fn fire_coordinate(
     obj: &ObjectType,
     weapon_index: i32,
     burst_index: u8,
+    base_coords: Flh,
 ) -> FireCoordinate {
     if snap.category == EntityCategory::Infantry
         && let Some(fire) = open_topped_port_coordinate(world, rules, snap)
     {
         return fire;
     }
+    let base_coords = if matches!(
+        snap.category,
+        EntityCategory::Structure | EntityCategory::Infantry
+    ) {
+        Flh::default()
+    } else {
+        base_coords
+    };
     let slot = if weapon_index == 1 {
         WeaponSlot::Secondary
     } else {
@@ -200,6 +217,11 @@ pub(crate) fn fire_coordinate(
                         .is_some_and(Option::is_some)
                 });
             let flh = art.weapon_flh(obj.turret_count, obj.weapon_count, weapon_index, use_elite);
+            let flh = Flh {
+                forward: flh.forward.wrapping_add(base_coords.forward),
+                lateral: flh.lateral.wrapping_add(base_coords.lateral),
+                height: flh.height.wrapping_add(base_coords.height),
+            };
             flh_world_delta(art, flh, base.facings, burst_index)
         })
         .unwrap_or((0, 0, 0));
@@ -300,7 +322,8 @@ fn fire_coordinate_base<'r>(
     }
 }
 
-fn firer_art<'r>(rules: &'r RuleSet, obj: &ObjectType) -> Option<&'r ArtEntry> {
+/// The art section GetFLH reads a type's FLH from: its `Image=`, else its ID.
+pub(crate) fn firer_art<'r>(rules: &'r RuleSet, obj: &ObjectType) -> Option<&'r ArtEntry> {
     rules
         .art()
         .get(&obj.image)
@@ -675,6 +698,7 @@ mod tests {
                 obj,
                 0,
                 row["launch"]["burst_before"].as_u64().unwrap() as u8,
+                Flh::default(),
             );
             let expected = &row["launch"]["position"];
             assert_eq!(
@@ -703,18 +727,24 @@ mod tests {
         let mut shooter = source(EntityCategory::Unit);
         let obj = rules.object("FV").unwrap();
         assert_eq!(
-            fire_coordinate(&world, &rules, &shooter, obj, 2, 0).coord.z,
+            fire_coordinate(&world, &rules, &shooter, obj, 2, 0, Flh::default())
+                .coord
+                .z,
             Z + 6
         );
         shooter.veterancy = 200;
         assert_eq!(
-            fire_coordinate(&world, &rules, &shooter, obj, 2, 0).coord.z,
+            fire_coordinate(&world, &rules, &shooter, obj, 2, 0, Flh::default())
+                .coord
+                .z,
             Z + 9
         );
         // GetWeapon70E140 falls back to the normal record for a null elite
         // weapon pointer; its otherwise-authored elite FLH is not selected.
         assert_eq!(
-            fire_coordinate(&world, &rules, &shooter, obj, 0, 0).coord.z,
+            fire_coordinate(&world, &rules, &shooter, obj, 0, 0, Flh::default())
+                .coord
+                .z,
             Z + 3
         );
     }
@@ -724,8 +754,8 @@ mod tests {
         let (rules, world) = (rules(), Simulation::new());
         let obj = rules.object("E1").unwrap();
         let shooter = source(EntityCategory::Infantry);
-        let primary = fire_coordinate(&world, &rules, &shooter, obj, 0, 0);
-        let secondary = fire_coordinate(&world, &rules, &shooter, obj, 1, 0);
+        let primary = fire_coordinate(&world, &rules, &shooter, obj, 0, 0, Flh::default());
+        let secondary = fire_coordinate(&world, &rules, &shooter, obj, 1, 0, Flh::default());
         // A height-only FLH leaves X and Y on the firer.
         assert_eq!(primary.coord, ProjectileCoord::new(X, Y, Z + 105));
         assert_eq!(secondary.coord, ProjectileCoord::new(X, Y, Z + 90));
@@ -744,7 +774,15 @@ mod tests {
         world.substrate.entities.insert(gi);
         let mut shooter = source(EntityCategory::Infantry);
         shooter.stable_id = id;
-        let fire = fire_coordinate(&world, &rules, &shooter, rules.object("E1").unwrap(), 0, 0);
+        let fire = fire_coordinate(
+            &world,
+            &rules,
+            &shooter,
+            rules.object("E1").unwrap(),
+            0,
+            0,
+            Flh::default(),
+        );
         assert_eq!((fire.source_z, fire.coord.z), (333, 333 + 105));
     }
 
@@ -755,17 +793,17 @@ mod tests {
         let mut bunker = source(EntityCategory::Structure);
         // `IsometricPixelToWorld`: 30 px east, 15 px down is one cell along X.
         bunker.garrison_fire_index = Some(0);
-        let port0 = fire_coordinate(&world, &rules, &bunker, obj, 0, 0);
+        let port0 = fire_coordinate(&world, &rules, &bunker, obj, 0, 0, Flh::default());
         assert_eq!(port0.coord, ProjectileCoord::new(X - 128 + 256, Y - 128, Z));
         assert_eq!(port0.offset_y, 0);
         // The mirrored port is one cell along Y instead.
         bunker.garrison_fire_index = Some(1);
-        let port1 = fire_coordinate(&world, &rules, &bunker, obj, 0, 0);
+        let port1 = fire_coordinate(&world, &rules, &bunker, obj, 0, 0, Flh::default());
         assert_eq!(port1.coord, ProjectileCoord::new(X - 128, Y - 128 + 256, Z));
         assert_eq!(port1.offset_y, 256);
         // A port the art does not author is the building coordinate itself.
         bunker.garrison_fire_index = Some(7);
-        let none = fire_coordinate(&world, &rules, &bunker, obj, 0, 0);
+        let none = fire_coordinate(&world, &rules, &bunker, obj, 0, 0, Flh::default());
         assert_eq!(none.coord, ProjectileCoord::new(X - 128, Y - 128, Z));
     }
 
@@ -774,13 +812,13 @@ mod tests {
         let (rules, world) = (rules(), Simulation::new());
         let obj = rules.object("TOWER").unwrap();
         let tower = source(EntityCategory::Structure);
-        let even = fire_coordinate(&world, &rules, &tower, obj, 0, 0);
-        let odd = fire_coordinate(&world, &rules, &tower, obj, 0, 1);
+        let even = fire_coordinate(&world, &rules, &tower, obj, 0, 0, Flh::default());
+        let odd = fire_coordinate(&world, &rules, &tower, obj, 0, 1, Flh::default());
         assert_eq!(even.coord, ProjectileCoord::new(X - 128 + 256, Y - 128, Z));
         assert_eq!(odd.coord, ProjectileCoord::new(X - 128, Y - 128 + 256, Z));
         // No secondary offset authored: the base FLH, from the same building
         // coordinate the pixel arms use.
-        let secondary = fire_coordinate(&world, &rules, &tower, obj, 1, 0);
+        let secondary = fire_coordinate(&world, &rules, &tower, obj, 1, 0, Flh::default());
         assert_eq!(secondary.coord, ProjectileCoord::new(X - 128, Y - 128, Z));
     }
 

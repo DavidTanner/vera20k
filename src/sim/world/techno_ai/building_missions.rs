@@ -717,6 +717,7 @@ fn prism_arm(
         obj,
         0,
         (master.weapon_burst.index() & 1) as u8,
+        crate::rules::flh::Flh::default(),
     )
     .coord;
     arm_delayed_fire(

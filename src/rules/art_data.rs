@@ -102,6 +102,13 @@ pub struct ArtEntry {
     /// [`ArtEntry::open_topped_port_flh`]. Stock: only `[BFRT]`'s five gun
     /// ports.
     pub alternate_flh: [Option<Flh>; 5],
+    /// `SecondSpawnOffset=` (`TechnoTypeClass+0xDB0`): the same art read's
+    /// coordinate read of the image section (`0x0071602E..0x00716058`,
+    /// `Read3Int @ 0x00529CA0`), default the constructor's zeros
+    /// (`0x0071175F..0x00711773`). A spawn launch hands it to GetFLH as the
+    /// base while the owner's burst index is nonzero (`0x006B7448`). Stock:
+    /// only `[BSUB]`, `-70,0,0`.
+    pub second_spawn_offset: Flh,
     /// Fixed building primary fire screen-pixel offset.
     /// Used by non-turret buildings before converting the pixel delta to world leptons.
     pub primary_fire_pixel_offset: Option<(i32, i32)>,
@@ -1184,6 +1191,7 @@ impl ArtRegistry {
                     .read_coord3_value(&format!("AlternateFLH{slot}"))
                     .map(Flh::from)
             });
+            let second_spawn_offset = Flh::from(section.read_coord3("SecondSpawnOffset", [0; 3]));
             // ReadMinMax (`0x00461305`, `0x00461332`); `None` marks an absent key.
             let present_pair = |key: &str| {
                 section.is_present(key).then(|| {
@@ -1343,6 +1351,7 @@ impl ArtRegistry {
                     numbered_weapon_flh,
                     elite_numbered_weapon_flh,
                     alternate_flh,
+                    second_spawn_offset,
                     primary_fire_pixel_offset,
                     secondary_fire_pixel_offset,
                     primary_fire_dual_offset,
