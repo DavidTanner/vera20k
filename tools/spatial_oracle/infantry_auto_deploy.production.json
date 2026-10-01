@@ -1,0 +1,2852 @@
+{
+  "schema_version": 1,
+  "scope": "Production observation of ordinary Battle/AnyTown GI automatic deployment through the release app loader and renderer; native body comparisons are separate. These observed values are not native goldens or whole-object certificates.",
+  "native_comparator": "NONE",
+  "parity_certification": "NONE",
+  "objects_certified": 0,
+  "profile": "tools/map_observation.infantry-auto-deploy.example.json",
+  "reproduce": "python -m tools.cargo_run -- build -p vera20k --release --bin vera20k; then env -u RA2_DIR python -m tools.map_observation --profile <absolute-checkout>/tools/map_observation.infantry-auto-deploy.example.json --contract <absolute-checkout>/src/app/diagnostics/tactical_capture/contract.v2.json --cwd <absolute-checkout> --output <new-absolute-directory>",
+  "source_base": "97ed33d447192ff1b2de524970247609ed2a183d",
+  "release_binary": {
+    "byte_length": 31550304,
+    "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/target/owned-worktrees/a8f0afec7283f099/release/vera20k",
+    "sha256": "4e4ba31df20b20dd1a199b45a5f97fb8beb4c6580be0acacde7e3bd9c7415f01"
+  },
+  "sealed_run": {
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/gi-auto-deploy-20261001-jci-y3sk/run.json",
+    "byte_length": 7887528,
+    "sha256": "dc3d2125f7ed7f71bd331e8b6d551a334c19752600a266834d46d7f86a4bb3b4"
+  },
+  "child_manifest": {
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/gi-auto-deploy-20261001-jci-y3sk/child-output/capture.json",
+    "byte_length": 7336358,
+    "sha256": "b717afb25a787e2b640a7d16aed80d61fee448b896af4e36348be8a974dc8b87"
+  },
+  "repeat_comparison": {
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/gi-auto-deploy-repeat-fixed-20261001-jci-y3sk.json",
+    "byte_length": 156323,
+    "sha256": "895ad2493efa80213fa01034193cfd2f08188cfea0701282a41c8361a221d428"
+  },
+  "repeat_status": "MATCH",
+  "map_source": {
+    "entry_id": -854728974,
+    "kind": "mix",
+    "logical_name": "XMP03T4.MAP",
+    "payload_len": 156269,
+    "source_archive": "multimd.mix",
+    "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+  },
+  "loaded_session": {
+    "map_name": "XMP03T4.MAP",
+    "map_waypoints": {
+      "0": [
+        28,
+        88
+      ],
+      "1": [
+        88,
+        31
+      ],
+      "2": [
+        141,
+        81
+      ],
+      "3": [
+        77,
+        134
+      ]
+    },
+    "options": {
+      "ai_difficulty": 0,
+      "ai_players": 2,
+      "ally_change_allowed": true,
+      "bases": true,
+      "bridges_destroyable": true,
+      "build_off_ally": true,
+      "crates": true,
+      "fog_of_war": false,
+      "game_speed": 1,
+      "harvester_truce": false,
+      "mcv_redeploy": true,
+      "multi_engineer": false,
+      "short_game": false,
+      "shroud": false,
+      "starting_credits": 10000,
+      "super_weapons": true,
+      "tech_level": 2,
+      "tiberium_grows": true,
+      "unit_count": 6
+    },
+    "start_slots": [
+      {
+        "country": "Americans",
+        "difficulty": "Normal",
+        "house": "VERA-OBSERVER",
+        "human": true,
+        "slot": 0,
+        "waypoint": [
+          28,
+          88
+        ]
+      },
+      {
+        "country": "French",
+        "difficulty": "Easy",
+        "house": "Computer1",
+        "human": false,
+        "slot": 1,
+        "waypoint": [
+          88,
+          31
+        ]
+      },
+      {
+        "country": "Americans",
+        "difficulty": "Easy",
+        "house": "Computer2",
+        "human": false,
+        "slot": 2,
+        "waypoint": [
+          141,
+          81
+        ]
+      }
+    ],
+    "theater": "TEMPERATE"
+  },
+  "initial": {
+    "binary_frame": 0,
+    "deterministic_state_hash": 1964020858231473070,
+    "simulation_tick": 0,
+    "total_simulation_ms": 0
+  },
+  "final": {
+    "binary_frame": 250,
+    "deterministic_state_hash": 11563437820873076849,
+    "simulation_tick": 250,
+    "total_simulation_ms": 5500
+  },
+  "exact_step_count": 250,
+  "frame": {
+    "byte_length": 1920000,
+    "file_name": "frame.bgra",
+    "height": 600,
+    "pixel_layout": "BGRA8",
+    "row_stride": 3200,
+    "sha256": "678255a22ebcc91d10daf0d4a48f06631acbc9c05fa6aef29f2563f2c25b7423",
+    "surface_format": "Bgra8UnormSrgb",
+    "width": 800
+  },
+  "render": {
+    "camera": {
+      "requested_cell": [
+        88,
+        31
+      ],
+      "top_left": [
+        1394.0,
+        1471.0
+      ],
+      "zoom": 1.0
+    },
+    "gpu": {
+      "backend": "Metal",
+      "device": 0,
+      "device_type": "IntegratedGpu",
+      "driver": "",
+      "driver_info": "",
+      "name": "Apple M4",
+      "vendor": 0
+    },
+    "instance_counts": {
+      "minimap": 0,
+      "radar_animation": 1,
+      "viewport_rect": 0
+    },
+    "internal_extent": [
+      800,
+      600
+    ],
+    "neutral_input": {
+      "camera_input_idle": true,
+      "static_default_cursor": true
+    },
+    "ready": true,
+    "sidebar_view_present": true,
+    "surface_extent": [
+      800,
+      600
+    ],
+    "ui_scale": 1.0,
+    "unit_atlas": {
+      "last_build_rasterized_sprite_count": 18432,
+      "pages": [
+        {
+          "dimension": "D2",
+          "extent": [
+            6293,
+            6366,
+            1
+          ],
+          "format": "R8Uint",
+          "mip_level_count": 1,
+          "sample_count": 1,
+          "texel_payload_bytes": 40061238
+        }
+      ],
+      "resident_sprite_count": 18432,
+      "total_texel_payload_bytes": 40061238
+    }
+  },
+  "presentation_clock": {
+    "policy": "map-exact-step-presentation-v1",
+    "draws": 250
+  },
+  "observed_gi_state_transitions": [
+    {
+      "stable_id": 1377,
+      "samples": [
+        {
+          "completed_steps": 0,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              24,
+              92
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": -1,
+              "navigation_leptons": [
+                6336,
+                23616,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 0,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 0,
+                "start_frame": 0
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              6336,
+              23616,
+              416
+            ],
+            "stable_id": 1377,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 1,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              24,
+              92
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                6336,
+                23616,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 1,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 27,
+                "start_frame": 0
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              6336,
+              23616,
+              416
+            ],
+            "stable_id": 1377,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 28,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              24,
+              92
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 9,
+              "navigation_leptons": [
+                6336,
+                23616,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 28,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 27,
+                "start_frame": 27
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              6336,
+              23616,
+              416
+            ],
+            "stable_id": 1377,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 88,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              24,
+              92
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                6336,
+                23616,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 88,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 27,
+                "start_frame": 82
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              6336,
+              23616,
+              416
+            ],
+            "stable_id": 1377,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 250,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              24,
+              92
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                6336,
+                23616,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 250,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 27,
+                "start_frame": 244
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              6336,
+              23616,
+              416
+            ],
+            "stable_id": 1377,
+            "target": null,
+            "type_id": "E1"
+          }
+        }
+      ]
+    },
+    {
+      "stable_id": 1378,
+      "samples": [
+        {
+          "completed_steps": 0,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              32,
+              88
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": -1,
+              "navigation_leptons": [
+                8384,
+                22592,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 0,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 0,
+                "start_frame": 0
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              8384,
+              22592,
+              416
+            ],
+            "stable_id": 1378,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 1,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              32,
+              88
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                8384,
+                22592,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 1,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 26,
+                "start_frame": 0
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              8384,
+              22592,
+              416
+            ],
+            "stable_id": 1378,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 250,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              32,
+              88
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                8384,
+                22592,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 250,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 27,
+                "start_frame": 242
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              8384,
+              22592,
+              416
+            ],
+            "stable_id": 1378,
+            "target": null,
+            "type_id": "E1"
+          }
+        }
+      ]
+    },
+    {
+      "stable_id": 1379,
+      "samples": [
+        {
+          "completed_steps": 0,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              32,
+              92
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": -1,
+              "navigation_leptons": [
+                8384,
+                23616,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 0,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 0,
+                "start_frame": 0
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              8384,
+              23616,
+              416
+            ],
+            "stable_id": 1379,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 1,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              32,
+              92
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                8384,
+                23616,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 1,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 28,
+                "start_frame": 0
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              8384,
+              23616,
+              416
+            ],
+            "stable_id": 1379,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 250,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              32,
+              92
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                8384,
+                23616,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 250,
+              "current": 5,
+              "dispatch_timer": {
+                "delay": 27,
+                "start_frame": 246
+              },
+              "effective": 5,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "VERA-OBSERVER",
+            "physical_leptons": [
+              8384,
+              23616,
+              416
+            ],
+            "stable_id": 1379,
+            "target": null,
+            "type_id": "E1"
+          }
+        }
+      ]
+    },
+    {
+      "stable_id": 1383,
+      "samples": [
+        {
+          "completed_steps": 0,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              84,
+              35
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": -1,
+              "navigation_leptons": [
+                21696,
+                9024,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 0,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 0,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              21696,
+              9024,
+              416
+            ],
+            "stable_id": 1383,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 1,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                84,
+                35
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              84,
+              35
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                21696,
+                9024,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 1,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 39,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              21696,
+              9024,
+              416
+            ],
+            "stable_id": 1383,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 40,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                84,
+                35
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              84,
+              35
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 10,
+              "navigation_leptons": [
+                21696,
+                9024,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 40,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 37,
+                "start_frame": 39
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              21696,
+              9024,
+              416
+            ],
+            "stable_id": 1383,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 77,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                84,
+                35
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              84,
+              35
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                21696,
+                9024,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 77,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 1,
+                "start_frame": 76
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": {
+              "Cell": {
+                "rx": 80,
+                "ry": 44
+              }
+            },
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              21696,
+              9024,
+              416
+            ],
+            "stable_id": 1383,
+            "target": {
+              "Entity": 1336
+            },
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 78,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                84,
+                35
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              84,
+              35
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 3,
+              "navigation_leptons": [
+                21696,
+                9280,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 78,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 40,
+                "start_frame": 77
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": {
+              "Cell": {
+                "rx": 80,
+                "ry": 44
+              }
+            },
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              21696,
+              9024,
+              416
+            ],
+            "stable_id": 1383,
+            "target": {
+              "Entity": 1336
+            },
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 250,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                84,
+                35
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              83,
+              40
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 3,
+              "navigation_leptons": [
+                21184,
+                10560,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 250,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 36,
+                "start_frame": 232
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": {
+              "Cell": {
+                "rx": 80,
+                "ry": 44
+              }
+            },
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              21302,
+              10436,
+              416
+            ],
+            "stable_id": 1383,
+            "target": {
+              "Entity": 1336
+            },
+            "type_id": "E1"
+          }
+        }
+      ]
+    },
+    {
+      "stable_id": 1384,
+      "samples": [
+        {
+          "completed_steps": 0,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              92,
+              27
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": -1,
+              "navigation_leptons": [
+                23744,
+                6976,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 0,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 0,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              6976,
+              416
+            ],
+            "stable_id": 1384,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 1,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                27
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              27
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                23744,
+                6976,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 1,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 39,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              6976,
+              416
+            ],
+            "stable_id": 1384,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 40,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                27
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              27
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 9,
+              "navigation_leptons": [
+                23744,
+                6976,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 40,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 40,
+                "start_frame": 39
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              6976,
+              416
+            ],
+            "stable_id": 1384,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 100,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                27
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              27
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                23744,
+                6976,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 100,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 39,
+                "start_frame": 79
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              6976,
+              416
+            ],
+            "stable_id": 1384,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 119,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                27
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              27
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 27,
+              "navigation_leptons": [
+                23744,
+                6976,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 119,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 15,
+                "start_frame": 118
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              6976,
+              416
+            ],
+            "stable_id": 1384,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 134,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                27
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              27
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 28,
+              "navigation_leptons": [
+                23744,
+                6976,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 134,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 37,
+                "start_frame": 133
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              6976,
+              416
+            ],
+            "stable_id": 1384,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 250,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                27
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              27
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 28,
+              "navigation_leptons": [
+                23744,
+                6976,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 250,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 37,
+                "start_frame": 243
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              6976,
+              416
+            ],
+            "stable_id": 1384,
+            "target": null,
+            "type_id": "E1"
+          }
+        }
+      ]
+    },
+    {
+      "stable_id": 1385,
+      "samples": [
+        {
+          "completed_steps": 0,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              92,
+              31
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": -1,
+              "navigation_leptons": [
+                23744,
+                8000,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 0,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 0,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              8000,
+              416
+            ],
+            "stable_id": 1385,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 1,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                31
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              31
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                23744,
+                8000,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 1,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 37,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              8000,
+              416
+            ],
+            "stable_id": 1385,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 38,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                31
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              31
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 9,
+              "navigation_leptons": [
+                23744,
+                8000,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 38,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 38,
+                "start_frame": 37
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              8000,
+              416
+            ],
+            "stable_id": 1385,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 98,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                31
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              31
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                23744,
+                8000,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 98,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 40,
+                "start_frame": 75
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              8000,
+              416
+            ],
+            "stable_id": 1385,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 116,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                31
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              31
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 27,
+              "navigation_leptons": [
+                23744,
+                8000,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 116,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 15,
+                "start_frame": 115
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              8000,
+              416
+            ],
+            "stable_id": 1385,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 131,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                31
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              31
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 28,
+              "navigation_leptons": [
+                23744,
+                8000,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 131,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 36,
+                "start_frame": 130
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              8000,
+              416
+            ],
+            "stable_id": 1385,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 250,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                92,
+                31
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              92,
+              31
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 28,
+              "navigation_leptons": [
+                23744,
+                8000,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 250,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 36,
+                "start_frame": 236
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer1",
+            "physical_leptons": [
+              23744,
+              8000,
+              416
+            ],
+            "stable_id": 1385,
+            "target": null,
+            "type_id": "E1"
+          }
+        }
+      ]
+    },
+    {
+      "stable_id": 1389,
+      "samples": [
+        {
+          "completed_steps": 0,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": -1,
+              "navigation_leptons": [
+                37312,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 0,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 0,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37312,
+              19776,
+              416
+            ],
+            "stable_id": 1389,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 1,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                145,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                37312,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 1,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 36,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37312,
+              19776,
+              416
+            ],
+            "stable_id": 1389,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 37,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                145,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 9,
+              "navigation_leptons": [
+                37312,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 37,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 40,
+                "start_frame": 36
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37312,
+              19776,
+              416
+            ],
+            "stable_id": 1389,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 97,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                145,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                37312,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 97,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 37,
+                "start_frame": 76
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37312,
+              19776,
+              416
+            ],
+            "stable_id": 1389,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 114,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                145,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 27,
+              "navigation_leptons": [
+                37312,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 114,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 15,
+                "start_frame": 113
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37312,
+              19776,
+              416
+            ],
+            "stable_id": 1389,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 129,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                145,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 28,
+              "navigation_leptons": [
+                37312,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 129,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 35,
+                "start_frame": 128
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37312,
+              19776,
+              416
+            ],
+            "stable_id": 1389,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 250,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                145,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 28,
+              "navigation_leptons": [
+                37312,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 250,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 36,
+                "start_frame": 235
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37312,
+              19776,
+              416
+            ],
+            "stable_id": 1389,
+            "target": null,
+            "type_id": "E1"
+          }
+        }
+      ]
+    },
+    {
+      "stable_id": 1390,
+      "samples": [
+        {
+          "completed_steps": 0,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": -1,
+              "navigation_leptons": [
+                37184,
+                19904,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 0,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 0,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37184,
+              19904,
+              416
+            ],
+            "stable_id": 1390,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 1,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                145,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                37184,
+                19904,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 1,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 40,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37184,
+              19904,
+              416
+            ],
+            "stable_id": 1390,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 116,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                145,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 27,
+              "navigation_leptons": [
+                37184,
+                19904,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 116,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 15,
+                "start_frame": 115
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37184,
+              19904,
+              416
+            ],
+            "stable_id": 1390,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 131,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                145,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 28,
+              "navigation_leptons": [
+                37184,
+                19904,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 131,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 36,
+                "start_frame": 130
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37184,
+              19904,
+              416
+            ],
+            "stable_id": 1390,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 250,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                145,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              145,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 28,
+              "navigation_leptons": [
+                37184,
+                19904,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 250,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 35,
+                "start_frame": 239
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              37184,
+              19904,
+              416
+            ],
+            "stable_id": 1390,
+            "target": null,
+            "type_id": "E1"
+          }
+        }
+      ]
+    },
+    {
+      "stable_id": 1391,
+      "samples": [
+        {
+          "completed_steps": 0,
+          "actor": {
+            "active": true,
+            "archive": null,
+            "category": "Infantry",
+            "cell": [
+              137,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": -1,
+              "navigation_leptons": [
+                35264,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 0,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 0,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              35264,
+              19776,
+              416
+            ],
+            "stable_id": 1391,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 1,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                137,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              137,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 0,
+              "navigation_leptons": [
+                35264,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 1,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 37,
+                "start_frame": 0
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              35264,
+              19776,
+              416
+            ],
+            "stable_id": 1391,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 113,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                137,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              137,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 27,
+              "navigation_leptons": [
+                35264,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 113,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 15,
+                "start_frame": 112
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              35264,
+              19776,
+              416
+            ],
+            "stable_id": 1391,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 128,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                137,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              137,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 28,
+              "navigation_leptons": [
+                35264,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 128,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 37,
+                "start_frame": 127
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              35264,
+              19776,
+              416
+            ],
+            "stable_id": 1391,
+            "target": null,
+            "type_id": "E1"
+          }
+        },
+        {
+          "completed_steps": 250,
+          "actor": {
+            "active": true,
+            "archive": {
+              "Cell": [
+                137,
+                77
+              ]
+            },
+            "category": "Infantry",
+            "cell": [
+              137,
+              77
+            ],
+            "dying": false,
+            "foot": {
+              "firing_sequence_latch_68d": 0,
+              "infantry_doing": 28,
+              "navigation_leptons": [
+                35264,
+                19776,
+                416
+              ],
+              "navigation_unavailable": null,
+              "retarget_after_stop_688": false
+            },
+            "health": 125,
+            "in_limbo": false,
+            "mission": {
+              "ai_counter": 250,
+              "current": 11,
+              "dispatch_timer": {
+                "delay": 36,
+                "start_frame": 237
+              },
+              "effective": 11,
+              "handler_state": 0,
+              "queued": -1,
+              "start_frame": 0,
+              "suspended": -1
+            },
+            "nav": null,
+            "on_bridge": false,
+            "owner": "Computer2",
+            "physical_leptons": [
+              35264,
+              19776,
+              416
+            ],
+            "stable_id": 1391,
+            "target": null,
+            "type_id": "E1"
+          }
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "strict_retail_full_lib": {
+      "passed": 9407,
+      "ignored": 225,
+      "failed": 0
+    },
+    "strict_retail_lib_clippy": {
+      "exit_code": 0,
+      "warnings": 733
+    },
+    "sim_field_ratchet": {
+      "base": 2597,
+      "candidate": 2597
+    },
+    "native_automatic_guard_and_range_controls": 100,
+    "native_deploy_reader_controls": 42,
+    "preserved_native_action_controls": 355
+  },
+  "limits": [
+    "Five stationary AI GIs reached27then28; the pursuing AI retains NavCom and refuses, and three human GIs remain undeployed. Actual observed actor rows are retained below.",
+    "Bound SimRuntime tests additionally cover retail GGI and E2 negative admission; this AnyTown release run contains GI starting infantry.",
+    "Moving paid-head/pending callback and snapshot integration are tested against supplied native state; this release observation does not exercise their complete moving trajectory.",
+    "Full native loaded-match scheduling, populated native scans, pixels/audio and whole object lifecycle are not certified."
+  ]
+}

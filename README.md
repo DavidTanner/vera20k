@@ -41,6 +41,11 @@ Medium tanks use native bridge entrance markers and path finishing. The
 cover Hills ramp/deck travel, an underpass and retained navigation on restore;
 whole-bridge parity remains open.
 
+Computer-owned GIs and Guardian GIs automatically deploy during Guard, Sticky
+and AreaGuard, and deployed infantry retain targets using their selected weapon's
+range. The [native comparisons and retail observation](docs/plans/object-completion.md#current-chain-automatic-gi-deployment)
+cover this shared mechanism; complete infantry lifecycles remain in progress.
+
 Hold the right mouse button and drag to fast-scroll. The camera keeps moving while
 the pointer stays displaced from where the press began. The
 [native comparisons](tools/input_oracle/README.md) cover stock drag behavior,

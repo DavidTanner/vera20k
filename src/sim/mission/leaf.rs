@@ -230,9 +230,8 @@ impl MissionLeafState {
         }
     }
 
-    /// Supplied native fixture state. The live undeployed AI Guard producer
-    /// remains recorded at mission_handlers; the Stop consumer is connected.
-    #[cfg(test)]
+    /// Infantry Guard52167C writes this after Stop_Moving returns. The
+    /// synchronous callback521B52 may consume an earlier byte during Stop.
     pub(crate) fn set_infantry_pending_deploy(&mut self, raw: u8) {
         self.expect_infantry_mut().pending_deploy = raw;
     }

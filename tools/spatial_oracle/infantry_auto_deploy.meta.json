@@ -7,70 +7,37 @@
     1,
     33621247
   ],
-  "scope": "Original deployed Infantry Guard521320 and shared Doing predicate522510. Real fire-error/current-cell/radiation-level/target/action/cadence bodies execute. Accepted-fire prefixes stop at real6FDD50; separate supplied-base-return tails execute its original Guard continuation. Not a whole RadEruption shot or loaded-world proof.",
+  "scope": "Original Infantry Guard/Sticky51F620 and AreaGuard51F640 callers, automatic deploy5214F7 admission, stationary action, moving Stop/callback/latch and signed-1 Foot fallback. Supplied actor/type/sequence/House/map state; not a complete retail object lifecycle.",
   "assumptions": [
-    "Same supplied actor/type/42 signed sequence/House/map fixture as infantry_deploy_action, with original Infantry/Cell/Walk vtables and original Walk constructor. No actor/type/weapon/Warhead/Projectile/RadSite constructors or full readers execute in this mode. The physical INIs are separately recorded lexical premises, not reader-return goldens.",
-    "Type normal weapon slots0/1 are explicit supplied identical scalar weapon states. Their Projectile AG/AA bytes are1, Warhead fields are suppliedzero, AreaFire1, Burst1, Damage50, Range/RadLevel from each input. Rules/types/sequence storage startszero and inputs override only declared fields. Elite rank0, TypeFraidycat0, ordinary land movement, HP100, Alive1, Limbo0, no attached particles/radio/temporal/transport links.",
-    "Original Map5657A0/565730 and Cell486840 run on fixed512-stride table with Cell10,10 and11,10, ground level/slope0. Map dimensions128x128 and empty native registered scan storage are supplied. Nonimmune no-target row executes original51F330\u2192Foot4D9920 and scanner under that empty premise; this is not populated scanner registration/topology/placement parity.",
-    "OnBridge/deck416/CellHasBridge0x100 are explicit supplied poses/geometry flags, not native bridge Unlimbo/occupancy production. Self-fire targets the actual current Cell and its own ground coordinate. Range415/416 controls execute real native admission.",
-    "Cell+F8 RadSite pointer and site+4C level/+6C duration/+70 remaining are explicit supplied retained fields. Original65B510 performs signed DWORD multiplication/division; original5213CB..5213DD performs signed RadLevel/3. No Python expected arithmetic supplies decisions.",
-    "Original65C6D0 constructs all three complete3F4-byte RNG objects using the declared seed. Original MissionControl+10 Rate and FPCW0E7F are supplied; native900 multiplier/ftol and ScenarioRandomRanged execute. Main/MapGen are retained, including the callback-tail excluded-base boundary.",
-    "Stop rows reach original6FDD50 before its first instruction, after real51DF60 clears68D. They do not return from Guard and do not prove projectile, rearm, sound, radiation, damage or downstream action/count results. Tail rows instead supply only base6FDD50 EAX/stdcall8 return, then execute unchanged51DF60 suffix, targetNULL, DoAction29 and signed action29 count return. Base FireAt effects/RNG are excluded, not synthesized.",
-    "Supplied YURI UndeployDelay150 and varied signed Undeploy Count31 controls run original early52134C arm. Physical RULESMD YURI/YURIPR author UndeployDelay150/75; ARTMD YuriSequence/YuriXSequence author Undeploy301,6,0/274,6,0, with Count31=6 in both. The arm precedes DeployFire/Immune checks, requests unforced31 and returns Count31 rather than UndeployDelay even when action admission refuses. Negative count returns may equal fallback sentinel\u22121; whole51F620/51F640 Foot fallback scheduling is excluded.",
-    "Sequence sound counts are suppliedzero, GameOptions+A8EB60 speed index is supplied0 (no Options constructor/settings load), and original global audio gate8464AC is false. Sound request order is observed; configured audio/device/Main audio RNG are outside this fixture. Timer middle104 stack word is recorded, not semantic timer authority.",
-    "Physical RadEruptionWeapon IsRadEruption=no/ProjectileInvisibleLow/positiveRadLevel and RadEruptionWarhead are lexical evidence. Saved original FireAt Bullet-create/configure/fire and BulletDetonate469130..469206 slices establish the impact arming path by instruction reading; no full retail DESO firing execution or RadSite activation result is claimed."
+    "Original Infantry/Walk vtables and Walk constructor. Supplied Infantry/type/42 signed sequence records, House/difficulty/Rules vectors and MissionControl rate. Original Infantry/type/INI constructors are not executed.",
+    "Supplied positive HP100, ordinary land zone0, noncarried/nonfalling except explicit falling contrasts, unmarked actor, original coordinate receivers. No zero-HP failed-path, water reclassification or sequence-sound records in these rows.",
+    "Original global audio gate8464AC is false; sound entries observe request order only. Native RNG constructor65C6D0 seeds Scenario RNG31; all gameplay draws execute original RandomRanged.",
+    "Completion executes whole520AE0 with supplied current stage. Stage rows execute actual TechnoAI interior6FABC4..6FAC31 with ESI actor, EBP0; outer AI gates/scheduler order are separately required.",
+    "Return EAX is compared only for Guard521320. Ignored timer middle stack words are excluded. Native code and original Infantry vtable are checked unchanged.",
+    "Shares the existing UnloadFixture map/type/prior Mission state and original vtables. Weapon slots are supplied absent to isolate the Guard producer and its empty-scan Foot fallback, not to represent a retail weapon load. Foot+520=-1 is supplied from constructor4D31F1; that constructor is not executed. IdleActionTimer168/170 has explicit zero start/duration from the supplied prior storage; both words and native writes are compared. Empty native registered scan storage is supplied.",
+    "House difficulty0/1/2 and Rules AIAutoDeployFrameDelay vector are supplied declared input values, not reader results. Production retail reader validation is separate. Object virtual+48 executes for actor/archive; signed truncation, WORD narrowing and wrapping signed frame admission execute original instructions.",
+    "MissionControl Rate0.1, GameOptions speed index0 and Rules IdleActionFrequency0 are supplied for the committed selector and idle-action timer/SpeedNormalize. Original class caller, Foot fallback, cadence arithmetic and ScenarioRandomRanged execute without gameplay substitutions. Signed Count27 may refuse DoAction or return the caller fallback sentinel-1.",
+    "AreaGuard_archive_other_cell runs the original shared521320 shim only, returning-1. The subsequent FootAreaGuard return-to-post navigation is outside this automatic-deploy comparison; its path state is not supplied or synthesized.",
+    "Reacquire controls extend the existing DeployedGuardFixture with nonimmune GI Doing28, supplied DeployFireWeapon1, PrimaryRange1024/SecondaryRange input, ProjectileAG1/AA0 and AreaFire0. Original SelectWeapon(NULL)5218E0, CanFireAt6F77B0/InRange6F7220, empty greatest-threat scan, AssignTargetNULL and Infantry/Foot EnterIdle execute; no baseFireAt callback occurs.",
+    "Reacquire entity targets copy the supplied original Infantry state with physical X delta varied and Doing0; Cells use real Cell15,10 coordinates. Target registration storage remains empty. Controls establish selected-slot range rounding and target/firing-latch cleanup, not populated scanner or full projectile behavior."
   ],
   "substitutions": [
-    "Inherited OS InterlockedIncrement/Decrement support; no code or vtable patches.",
-    "Only rows input.base_fire_boundary=supplied_return replace original base6FDD50 with declared input.base_fire_return EAX and original8-byte argument cleanup. This is a bounded callback tail, not an original FireAt result. Stop/refusal/high-site/predicate rows supply no gameplay return."
+    "OS InterlockedIncrement/Decrement imports emulate their integer operation and stdcall cleanup; no gameplay call replacement."
   ],
   "entry_points": {
     "guard": "0x00521320",
-    "deployed_predicate": "0x00522510",
-    "guard_caller": "0x0051F620",
-    "area_guard_caller": "0x0051F640",
-    "current_cell": "0x0041BEA0",
-    "map_cell": "0x005657A0",
-    "map_world": "0x00565730",
-    "cell_coords": "0x00486840",
-    "rad_site": "0x00487C80",
-    "current_rad_level": "0x0065B510",
-    "target": "0x0051B1F0",
-    "fire_error": "0x0051C8B0",
-    "base_fire_error": "0x006FC0B0",
-    "infantry_fire": "0x0051DF60",
-    "base_fire_boundary": "0x006FDD50",
+    "stop": "0x0075ADA0",
+    "callback": "0x00521B40",
     "do_action": "0x0051D6F0",
-    "deployed_reacquire": "0x0051F330",
-    "greatest_threat": "0x004D9920",
-    "rng_ctor": "0x0065C6D0",
-    "rng_ranged": "0x0065C7E0",
-    "bullet_create_static_caller": "0x006FE55D",
-    "bullet_configure_static_caller": "0x006FF859",
-    "bullet_fire_static_caller": "0x006FF86C",
-    "bullet_detonate_rad_level": "0x00469130"
-  },
-  "preserved_corpora": {
-    "infantry_deploy_action": {
-      "rows": 355,
-      "file_sha256": "b2888e3c2680e11dffe4b845f86fb74e8efd286c06e021e13e258e5cbcbbe62b",
-      "canonical_sha256": "4c3749ed647ae5ccac4ed73a5d012afdc00ec5f9ea6090082874746a2960c9e9"
-    },
-    "infantry_action_callback": {
-      "rows": 44,
-      "file_sha256": "78eb1b9e0f5ef96eae283beab95008aecd1b1e49edec250a89f2c99f8cc11bc5",
-      "canonical_sha256": "525a74860c4f7688d7f90581d244bc80c508f5e28aac47d43421fef0be5911e8"
-    },
-    "infantry_mission_unload": {
-      "rows": 52,
-      "file_sha256": "acc238fc326b4041f1a4261d230ff83c21acb4e80723f7fe9f39768a1d7b7300",
-      "canonical_sha256": "04bc8ca5d63ece95f3fb13b66bbe6c69ce8c2aae2415f178531504a2b02c0278"
-    }
-  },
-  "original_text": {
-    "start": "00401000",
-    "bytes": 4063232,
-    "sha256": "4cd5557a7490debc493ff965afc4483d8d2f1065f434f6b665cbb8fc4835b0cc"
+    "completion": "0x00520AE0",
+    "stage": "0x006FABC4",
+    "reload": "0x0070F770",
+    "rng_constructor": "0x0065C6D0",
+    "guard_caller": 5371424,
+    "area_guard_caller": 5371456,
+    "deployed_reacquire": 5370672,
+    "foot_guard": 5066864,
+    "foot_area_guard": 5074688
   },
   "original_slices": [
     {
@@ -114,66 +81,6 @@
       "end_exclusive": "0070F7D2",
       "hex": "8b918001000083ec0c8b818801000083faff568db180010000740e8b0d84eda8002bca3bc87d362bc183f80a7e2fa1ace7a80085c07526a130b2a8006a086a048d8818020000e825d0f4ff8b0d84eda800890e8b4c2408894e048946085e83c40cc3",
       "sha256": "9597823144c70bb52f04d91eee501fd8ce3632fb4ec6ff7ff0818c3de2c01f30"
-    },
-    {
-      "start": "0051F6E0",
-      "end_exclusive": "0051F7F9",
-      "hex": "5153568bf18b8ec00600008a81c80e000084c00f84f50000008b86c406000083cbff83f81b740f83f81c740a83f81d740583f81e752283b9c4060000ff0f8fa60000008b066a006a016a1f8bceff9058050000e9910000008b16576a006a016a1b8bceff92580500008b068bceff90f00300008bf88bce57e8e3ea1e0084c074548b0f8a815001000084c07448687c5582008bcee8d7460d0084c074158b96c00600008b823c0e00008b98d003000043eb238b3e8d4c240c518bceff97b801000050b9e8f78700e8f45f0400508bceff97c80300008b96c00600005f8b82c406000083f8ff7e028bd88b066a058bceff90f00100008b166a016a008bceff928004000083fbff7e068bc35e5b59c38bcee8bbaafbff5e5b59c3",
-      "sha256": "603f4f3f9d37c91ba502789eeea22ff8141353ffc9eb7d634371d29fa0899743"
-    },
-    {
-      "start": "004DA2B0",
-      "end_exclusive": "004DA2B5",
-      "hex": "e93b8c0d00",
-      "sha256": "affaee2d1609ee0e30a00d18e90184dfa46ad5a8318b5bfe11858eff222697df"
-    },
-    {
-      "start": "005B2EF0",
-      "end_exclusive": "005B2F00",
-      "hex": "b8c2010000c390909090909090909090",
-      "sha256": "2896556c9fe98857d2b466b67c04e6c07d7bd0ef4cc30d00686b605ac48dadb5"
-    },
-    {
-      "start": "005B2FD0",
-      "end_exclusive": "005B3040",
-      "hex": "8b81ac00000083ec0c83f81c8b442410750583f805744633d28981ac000000c781b4000000ffffffff8891b80000008991bc000000a184eda8008981c00000008991c4000000a184eda80081c1c800000089018b44240489410489510883c40cc2040090909090909090909090909090",
-      "sha256": "3a7eecfce2b3cd09524e2474ea0959533225ddf7eb6293200d17044c375c6f05"
-    },
-    {
-      "start": "0070E120",
-      "end_exclusive": "0070E24B",
-      "hex": "568bf1578b3eff97e4030000508bceff97f80300005f5ec3909090909090909056578b7c240c8bf183ffff75075f33c05ec204008d8e50010000e8b11e040084c0741b8b06578bceff90840000008bc8e86b96000085c0740583380075128b16578bceff92840000008bc8e8309600005f5ec204009090909090909090909090568bf18b06ff90840000008bc8e8ce96000084c074138b86380100008b16508bceff92f80300005ec38b1633c0508bceff92f80300005ec390909090909090905356578b7c24108bf183ff020f9cc38b06ff90840000008bc8e88296000084c074168b168bceff92840000003bb80c0800007d04b001eb0232c083ffff7c1384db750484c0740b5f5eb8010000005bc204005f5e33c05bc204009090909090908b44240485c0740d833800",
-      "sha256": "f2fc18ed21ab0924ee712fed255feb5e4b3367f8ccc27997f97f14dbf4de0273"
-    },
-    {
-      "start": "0070DD70",
-      "end_exclusive": "0070DD8F",
-      "hex": "8b01ff90840000008a909106000033c984d20f94c18bc1c390909090909090",
-      "sha256": "9f969abb929543824895d1b3835fa1472a3cf96dc8dbad0b7f139940e4522cbb"
-    },
-    {
-      "start": "0051AA40",
-      "end_exclusive": "0051B3B0",
-      "hex": "83ec2c53558be956578b4500ff503c8bc8e8da0cffff84c0742a8b85c406000083f81b0f846e07000083f81c0f846507000083f81d0f845c07000083f81e0f84530700008b8dc00600008b5c244033ff8a81940d000084c00f84960000003bdf0f848e0000008b55008d442420508bcdff52488bc88b41049981e2ff00000003c2c1f808508b019981e2ff0000008d4c242003c2c1f80850e89329f1ff8b308b138d44242c8bcb5089742418ff52488bc88b41049981e2ff00000003c2c1f808508b019981e2ff0000008d4c241c03c2c1f80850e85729f1ff8b00663bc6894424187510668b4c241a663b4c24160f84a30600008b85a80200003bc7740c89b8a802000089bda802000039bd74060000750a6803400080e8c41b2c008b8574060000508b10ff521083ceff84c074683bdf74648b85c00600008b55006a01568b887c0600005756576a018d44244451508bcdff524850b9e8f78700e890ab04008bc8e8f988f6ff84c0742c8b8dc00600008a81940d000084c0751183bdac000000017508399da4050000740b8b55008bcdff92000500008b8d1c020000e84e0bffff84c0743f3bdf743b399da405000075338a85db06000084c074298b85c00600008a88bf0e000084c975198a88ac0e000084c9750f8b450057576a078bcdff90580500008b55008bcdff928401000083f807740d83bdb4000000070f85cf0000008bcde8e701140084c00f85c00000008bcbe81831efff8bf03bf70f84b50000008bcee8c701140084c074678b068bceff502c83f80175123bdf750433c0eb308b138bcbff522c48eb1e8b068bceff502c83f80675333bdf750433c0eb128b138bcbff522c83e806f7d81bc0f7d023c3578bcd898500050000e851191f0033db895c2440e990010000538bcde83e191f00eb438b4500566a028bcdff907802000083f80175308b55006a0e8bcdff927402000083f80e0f84da04000083f80174158b45006a038bcdff9074020000eb0689b5e00500003bdf0f843b0100008b8dc00600008a81940d000084c00f84270100008b857406000085c0750a6803400080e8d9192c008b8574060000508b10ff521084c00f84ff0000008b8d740600008d857406000085c9c7442414000000007423508d4c2418e82301f4ff85c07d0d3d02400080740650e892192c008b44241485c0750e6803400080e880192c008b4424148b088d54242c5250ff510cb904000000bf609a7e008d74242c33c0f3a70f85850000008b8db40500008b85bc0500008db5ac0500003bc17c228a460d84c0750485c9753e8b461485c07e378b1603c16a00508bceff520884c074278b4e1085c974148b4604c1e102515083c00450e879f22a0083c40c8b5604891a8b4610408946108b45008bcdff90c40100008bd885db895c244074118b8340010000f6c401740633db895c24408b44241485c074068b0850ff51088b95c00600008a82940d000084c00f845c03000033ff3bdf0f84520300008b85740600008db5740600003bc7750a6803400080e88e182c008b06508b08ff511084c00f85280300008b138d44242c508bcbff52488bc8578b019981e2ff00000003c2c1f808668944241c8b41049981e2ff00000003c28b5500c1f808668944241e8b4c241c8d442424894c2418508bcdff524c8bc88b019981e2ff00000003c2c1f80866894424188b41049981e2ff00000003c28d542414c1f808668944241a8b4c24188d44241c894c241c52508bcde8a17200008b8dc0060000884424138a81940d000084c0750432c0eb58568d4c2418e87f8400008b4424143bc7750e6803400080e8bd172c008b4424148b108d4c242c5150ff520cb910000000bfc09a7e008d74242c33dbf3a674051bdb83dbff8d4c2414e8bc9df9ff85db8b5c24400f94c033ff8b95c00600008a8a9003000084c97405c64424130184c08a4424130f846401000084c00f85020200008b85740600008db5740600003bc7897c24407478568d4c2444e83afff3ff3bc77d0d3d02400080740650e829172c008b4424403bc774558b0850ff511c84c0744b8b4424403bc7750e6803400080e805172c008b4424408b1050ff521484c0742b8b063bc774068b0850ff51088b442440893e3bc7750e6803400080e8d7162c008b4424408b105650ff52106a075768609a7e008d4c2420897c2420e8e711f0ff3bc77d0d3d02400080740650e8a6162c008b4424143bc7750e6803400080e894162c008b4424148b085550ff510c8b442414897c24183bc7741f8d5424148d4c241852e86ffef3ff3bc77d0d3d02400080740650e85e162c008b4424188d4c244050e8d08200008b4424183bc774068b0850ff51088b4424403bc774198b0e8b105150ff520c8b4424148bce50e8758200008b4424408b4c24143bcf740a8b1151ff52088b4424403bc70f84b10000008b0850ff5108e9a600000084c00f849e0000008b85740600008db5740600003bc7897c24400f8486000000568d4c2444e8d2fdf3ff3bc77d0d3d02400080740650e8c1152c008b4424403bc774638b1050ff521c84c0744b8b4424403bc7750e6803400080e89d152c008b4424408b0850ff511484c0742b8b063bc774068b1050ff52088b442440893e3bc7750e6803400080e86f152c008b4424408b085650ff51108b4424403bc774068b1050ff52088b4424448bcd5053e8d9e2fbff5f5e5d5b83c42cc2080090909090909090909090909090909053568bf1578b7c241033db3bbeb40200007470395e6c7e4d8b86c4060000889e8d06000083f81b740f83f81c740a83f81d740583f81e75088b0653536a1ceb1d389edb06000074108b1653536a028bceff9258050000eb0d8b065353538bceff90580500003bbeb402000074168b86a80200003bc3740c8998a8020000899ea80200008b86c406000083f81b740f83f81c740a83f81d740583f81e75128b8ec00600003899ac0600000f84a6000000578bcec786e0050000ffffffffe8ff1a1e00399ea40500000f85820000008b96c0060000389abe0e000074743bfb74108b078bcfff502c83f80675048bc7eb0233c08b8ec00600008a89c40e00003acb752f3bc374278b9020050000389a7215000074198b066a01578bceff9080040000889e8e0600005f5e5bc204003acb741f3bc3741b8b8820050000389976150000740d8b166a01578bceff9280040000889e8e0600005f5e5bc204009090909090558bec83e4f881ec80000000538b153c418b0055568bf1570fbe86840600000fbe8e850600008b0482837c8830ff0f94c084c00f850f0400008b168d44246c508bceff52488dbe680500008d4c246057518bc8e8b8bdf1ff8bc8e8d10ff0ff0f",
-      "sha256": "eb5765b86a5911cc7b1643938e4401e2aaca1acfeede273c5caf348153aa0b25"
-    },
-    {
-      "start": "006FCDB0",
-      "end_exclusive": "006FCF95",
-      "hex": "83ec0c53568bf1578b7c241c33db8b86b4020000889e0c0500003bf80f84ba0100008b8e940200003bcb740a39714c7505e85a0dd2ff8b06558bceff502c83f80275583bfb0f843b0100008b168bceff92840000003898540d0000743e8b068bceff90840000003898680d0000752c399efc020000742483beac00000001751b8b86bc00000083f8047e1083f80a7d0b899efc020000e9eb0000003bfb0f84e3000000f6471401745f8b87e40200008dafe40200003bc3744f8b178bcfff522c83f8067443399e7402000074038b7d008b06538bceff90f80300008b003bc374158b80ac0000003bc3740b38985b01000074038b7d008b86940200003bc3740839704c75038b7d003bfe75318d8e9c0000008b969c000000895424108d5424108b410452894424188b4908894c241cb9e8f78700e84788e6ff8bf8eb4b3bfb74478a4714a8027440389f900000007436395f6c7431c0e80224018844242074288a87cd0300008bef3ac3740233ff8b45008bcdff502c83f80f750d8bcde87e5de2ff84c0740233ff8b8ed002000089beb40200003bcb5d740a3bfb750653e83dacfbff399eb40200007506899eb8030000399e0403000074238b16578bceff92ac03000084c075148b8e040300008b01ff90f8000000899e040300005f5e5b83c40cc20400",
-      "sha256": "fe3e3887eb28e550bbc2e20eb325bce77c27a466c6e3e333f88b8ebbcecf62e1"
-    },
-    {
-      "start": "004D94B0",
-      "end_exclusive": "004D9710",
-      "hex": "83ec1c53558be933db568b74242c8a85ad0600005784c0899da005000074083bf30f85330200008a858200000084c074083bf30f8521020000399de402000074083bf30f8511020000399dac020000740d3bf374096a018bcde8d26923003bf389b5a405000075278a85ad06000084c0741d8b85b00200003bc374138998ac020000899db0020000c685ae06000001399da40500000f84270100008b8d040300003bcb740e8b01ff90f8000000899d040300008b8d740600008d85740600003bcb895c24307423508d4c2434e81f19f8ff3bc37d0d3d02400080740650e88e3130008b4424303bc3750e6803400080e87c3130008b4424308b088d54241c5250ff510cb904000000bf409a7e008d74241c33c0f3a775408b95400600008b85480600008b3584eda80083faff740a8bce2bca3bc87d062bc13bc3751b8b4c2414b80100000089b540060000898d440600008985480600008a85ac06000084c07409c685ac06000000eb488b8da40500008d44241055508b11ff524c8b308b78048b58088b857406000085c0750a6803400080e8d93030008b857406000083ec0c8bd48b08508932897a04895a08ff514433db8b4424303bc374588b0850ff5108eb508b55008bcdff522c83f802751f8b8dac000000b8010000003bc874083985b40000007508399db40200007524399d74060000750a6803400080e8703030008b8574060000508b08ff514889b5a4050000c685b7060000008b15e0718800a184eda8008b8a681700008d95680600008985680600008b442414894204894a08a184eda8008b54241433c981c540060000894500895504894d085f5e5d5b83c4",
-      "sha256": "ef33fbeb382baeb0bd6499bf4d0db37012aac62d4fc59622b18cbd2d38fa4f20"
-    },
-    {
-      "start": "005657A0",
-      "end_exclusive": "00565810",
-      "hex": "8b542404560fbf42020fbf32c1e00903c65e78143d000004007d0d8b893c0100008b048185c0750d8b12b850dcab00891574dcab00c2040090909090909090908b4424048b893c0100000fbf50020fbf00c1e20903d0833c91000f95c0c2040083ec105355568be957896c2410e88eea",
-      "sha256": "0510324703c5baff2a6287d225033ca4d5a4bedde7578ee8f3125c114e838a79"
     },
     {
       "start": "00522510",
@@ -250,27 +157,35 @@
   ],
   "infantry_vtable": {
     "start": "007EB058",
+    "hex": "600241000003410010034100003352005004410060195200001b5200e003410050335200c07c510010aa510040335200f0325200901c5200b09d6f00c09d6f00b004410090665f00a0655f00f0bd4d00606b5f0020e64d0040054100b0ba510010047100d0326f00e0a44d00c016520000f85100b0e35100e0b74d00106c5f00b063420070326f00f0fa5100308b7000c0f2510040117000709e4d00d0107000400c7000d0bd4100806c5f0000be41005032520030be4100d06b5f0040dc4d0070c0410010c04100f027520040265200c026520010df5100f0df510020974d00402d7000303270006017520060415f00c017520050185200d0e54d0050387000d0997000104b5f00905b5f00d0606f0090516f00908f5100d0655f00404a6f00c0ad700080374d0030475f0070485f0080be4100104d5f0050fa4d0030c06f0050f2510090f15100d09d6f00a0bf6f00a0445f000026520040e3700000e3700040bf410070796f00c0127000a07f510060047100d0d05100b0435f00c0435f00d07d700040305b0090be410030965100205c5f00b08f4d0060496f00f0435f00709f4d0010c84d0010445f0090bf5100609c4d0010b84d00a0be410060695f00c0695f00106a5f00405f5f00a05f5f00305f5f00b0c57000c0c57000d0c57000f0c57000705d7000e0355b0070355b00d02f5b00408f4d00808f4d00103a5b00601b5200102e5b00202e5b00302e5b00e0f35100204b4d00b04c4d0020f6510040f65100702e520040f5510060f65100c0a24d00d02e5b00e02e5b00e0f6510090924d00102f5b00202f5b00302f5b00402f5b00502f5b0090df4d0080424d00802f5b00902f5b00a02f5b00b02f5b00c02f5b00b0ac6500a0aa650070a96500e0ac6500e0be4100a0bd4d0080326f0050c0410080be7000109e6f00f0be4100c0bd6f0090bc6f0050014e002011700020c67000c08b7000308c7000a0ad7000408b700050ba4d0000da6f0010384d0050396f0000bf410010bf410020bf410080d97000e018520020386f00c0af4d00a0b04d0050c1410060c1410050ad7000301d5200108c7000708d7000207d7000100d7000500d7000a0cf6f00607e7000d0a14d00d0d1700020d4700060d47000d024520080e54d00a0d04d0070fa4d0070fb4d0040ff4d00b0fc4d0000fe4d0090117000908d70002090700060907000b08e7000c08d7000c08f7000008e7000a090700000fe6f00e0fb6f00d0ef700070e74d00c02b5200002c5200e0ef700070d6700030e64d0000ef70002098700060564d0060766f00b0776f0080776f0030796f00d0786f00c0984d0090c06f00b0c8510040e15100f0b1510060df510050f87000d0be4d0080b27000b0eb4d0050dd700070dd700090dd7000a0dd700020e17000a0e1700040e17000a0bf4100b0bf4100c0bf4100d0bf41001014700040b76f0070b16f0070b46f0070b57000b04e6f0010b06f0030f3510060854d00505d7000f0bf410060c04d0080ed700030ee700040667000c0606f00a0646f00909a700090a9700060aa7000c03670007037700090d1700000c041000027520080275200d0165200b0cd5100a0944d0040aa5100a0cb510050af7000d0b1700010f54d0090cc7000c0cc7000f0cc700090d97000e0f04d00a0f14d00c0f14d00d0f14d00e0f14d00f0f14d00b0285200c028520010f34d0020f34d00a0f34d00b0f44d0050e74d0060e74d0090c74d00d0bf4d0060c04100b0e74d0040e94d00f09f4d00d01d5200b01e5200d0db5100f0da5100b0b94d00e02f520090c0410010af4d00f0205200101c5200401c5200601c5200009c4d0040f04d0080ee4d0050ee4d0030c14100801d52004023520040c1410010374d00201b5200401b520060dc4d00d0285200f0d6510000000000cd3b7f669ea076400000000000005f409a9999999999e93f0000000000004e40399d52a246df913fd033800090054100e83380008005410000348000e0054100f00541000006410010024100200241003002410078348000600241000003410010034100704c52005004410060495200604b5200a0707100704d52007004410080044100404d5200504d52004048520090044100a0044100604d520040044100",
     "sha256": "74811e2e32bc67dff163360b4fe8c71de3a384e9c1fdcabdabe135e0613ee1a1"
   },
-  "cell_vtable": {
-    "start": "007E4EEC",
-    "bytes": 512,
-    "sha256": "4b201671aeb086fcf2a4ccccf99edda07a2d731b74d6110479fec74c07091af0"
-  },
-  "walk_vtables": [
-    {
-      "start": "007F6AC4",
-      "sha256": "06bb58bebdf372e94a1df52b2f7a82336fccd57ecfd8552b825fd46b0c9c643c"
+  "preserved_corpora": {
+    "infantry_deploy_action": {
+      "rows": 355,
+      "file_sha256": "b2888e3c2680e11dffe4b845f86fb74e8efd286c06e021e13e258e5cbcbbe62b",
+      "canonical_sha256": "4c3749ed647ae5ccac4ed73a5d012afdc00ec5f9ea6090082874746a2960c9e9"
     },
-    {
-      "start": "007F69F8",
-      "sha256": "e38c30dc682e5648e14d56ba7251de9b7cf4ee59bb89a2e4926377b660e85345"
+    "infantry_action_callback": {
+      "rows": 44,
+      "file_sha256": "78eb1b9e0f5ef96eae283beab95008aecd1b1e49edec250a89f2c99f8cc11bc5",
+      "canonical_sha256": "525a74860c4f7688d7f90581d244bc80c508f5e28aac47d43421fef0be5911e8"
+    },
+    "infantry_mission_unload": {
+      "rows": 52,
+      "file_sha256": "acc238fc326b4041f1a4261d230ff83c21acb4e80723f7fe9f39768a1d7b7300",
+      "canonical_sha256": "04bc8ca5d63ece95f3fb13b66bbe6c69ce8c2aae2415f178531504a2b02c0278"
     }
-  ],
+  },
+  "original_text": {
+    "start": "00401000",
+    "bytes": 4063232,
+    "sha256": "4cd5557a7490debc493ff965afc4483d8d2f1065f434f6b665cbb8fc4835b0cc"
+  },
   "source_normalized_lf_sha256": {
     "generator": "2ee210a14e1a89227affa777632bef5e5daa2ecbf973ff06c08e4d81bf4b7605",
     "native_oracle": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
     "map_queries": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305"
   },
-  "payload_sha256": "92d14ccb42f845f1ea9d3ab88f6b6b9e9b947edafd505ea61f0b972704bcf1f9"
+  "payload_sha256": "cd8ce14f4b5fbf61ddf7d043c527e275798ab2ec453c6d541dd7b1df9e53b1d1"
 }
