@@ -1105,7 +1105,25 @@ impl Simulation {
                     None
                 }
             });
-        if let Some(next) = queued_cell {
+        // 4D838E..83CA: vt+0x480(queue[0], 0), then the queue shift. Drive
+        // and Ship finish the setter at their next Process entry
+        // (`complete_pending_order`); another receiver runs it here.
+        let track = entity.locomotor.as_ref().is_some_and(|loco| {
+            matches!(
+                loco.active_kind(),
+                crate::rules::locomotor_type::LocomotorKind::Drive
+                    | crate::rules::locomotor_type::LocomotorKind::Ship
+            )
+        });
+        let setter_now = queued_cell.is_some()
+            && !track
+            && rules.is_some_and(|rules| self.unit_setter_receiver(id, Some(rules)));
+        let entity = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .expect("same idle-mode actor");
+        if let Some(next) = queued_cell.filter(|_| !setter_now) {
             super::navcom::set_destination_internal_cell(
                 entity,
                 next,
@@ -1115,6 +1133,27 @@ impl Simulation {
             entity.navigation.nav_queue.remove(0);
             entity.navigation.pending_arrival_clear = true;
         }
+        if let (Some((rx, ry)), Some(rules)) = (queued_cell.filter(|_| setter_now), rules) {
+            self.set_unit_destination(
+                id,
+                crate::sim::components::NavTargetRef::cell(rx, ry),
+                rules,
+                false,
+            );
+            let entity = self
+                .substrate
+                .entities
+                .get_mut(id)
+                .expect("same idle-mode actor");
+            if !entity.navigation.nav_queue.is_empty() {
+                entity.navigation.nav_queue.remove(0);
+            }
+        }
+        let entity = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .expect("same idle-mode actor");
         // Normal Foot4D8538 invokes +544(0.0); Unit dispatch4D3710
         // writes Foot+578. The true-return NavQueue arm skips this setter.
         if !ended_drive && entity.navigation.nav_queue.is_empty() && queued_cell.is_none() {

@@ -61,12 +61,14 @@ pub(crate) trait ConcreteMissionEffects: private::Sealed {
         requested: Option<TargetKind>,
     );
 
+    /// Returns whether the receiver's class setter ran. False leaves only the
+    /// represented NavCom write, with the class setter still owed.
     fn apply_destination_mode_one(
         &mut self,
         sim: &mut Simulation,
         prepared: &Self::Prepared,
         requested: Option<NavTargetRef>,
-    );
+    ) -> bool;
 }
 
 /// Honest production boundary until full concrete Target and destination
@@ -113,7 +115,7 @@ impl ConcreteMissionEffects for UnavailableConcreteMissionEffects {
         _sim: &mut Simulation,
         _prepared: &Self::Prepared,
         _requested: Option<NavTargetRef>,
-    ) {
+    ) -> bool {
         unreachable!("unavailable provider cannot produce a destination token")
     }
 }
@@ -291,10 +293,10 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
         sim: &mut Simulation,
         prepared: &Self::Prepared,
         requested: Option<NavTargetRef>,
-    ) {
+    ) -> bool {
         if requested.is_none() {
             sim.assign_null_destination(prepared.receiver, self.rules);
-            return;
+            return true;
         }
         let requested = requested.expect("nonnull destination arm");
         if let Some(rules) = self.rules {
@@ -309,7 +311,7 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
                     if sim.unit_setter_receiver(prepared.receiver, Some(rules)) =>
                 {
                     let _ = sim.set_unit_destination(prepared.receiver, requested, rules, true);
-                    return;
+                    return true;
                 }
                 crate::map::entities::EntityCategory::Infantry
                     if sim.infantry_setter_receiver(prepared.receiver, requested, rules) =>
@@ -322,7 +324,7 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
                             self.overlay_registry,
                         )
                         .expect("represented Infantry destination dependencies must be available");
-                    return;
+                    return true;
                 }
                 crate::map::entities::EntityCategory::Aircraft
                 | crate::map::entities::EntityCategory::Structure
@@ -339,6 +341,7 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
         // their represented NavCom write set. Ordinary Unit/Walk Infantry
         // always run the sole class owner above, including admission/refusal.
         represented_assign_destination_mode_one(entity, Some(requested));
+        false
     }
 }
 
@@ -582,7 +585,7 @@ impl ConcreteMissionEffects for RecordingConcreteMissionEffects {
         sim: &mut Simulation,
         prepared: &Self::Prepared,
         requested: Option<NavTargetRef>,
-    ) {
+    ) -> bool {
         debug_assert!(match prepared.request {
             ConcreteSetterRequest::Destination {
                 requested: destination,
@@ -607,6 +610,7 @@ impl ConcreteMissionEffects for RecordingConcreteMissionEffects {
         entity.navigation.nav_com_aux = None;
         entity.navigation.nav_com = requested;
         entity.navigation.pending_arrival_clear = false;
+        false
     }
 }
 
