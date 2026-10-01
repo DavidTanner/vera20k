@@ -1100,27 +1100,7 @@ impl Simulation {
                 {
                     return false;
                 }
-                self.queue_megamission_with_teardown(
-                    *entity_id,
-                    MissionType::Unload,
-                    DockTeardown::All,
-                    Some(rules),
-                );
-                // Event4C7448 clears ArchiveTarget before class target4C7467
-                // and destination4C747C. Foot4DA1C0's +5AC vector is distinct
-                // from NavQueue588/598 and has no represented producer here.
-                if let Some(actor) = self.substrate.entities.get_mut(*entity_id) {
-                    actor.set_archive_target(None);
-                }
-                self.assign_target_represented(*entity_id, None, Some(rules))
-                    .unwrap_or_else(|cause| panic!("Infantry deploy target: {cause}"));
-                self.assign_destination_represented(
-                    *entity_id,
-                    None,
-                    Some(rules),
-                    overlay_registry,
-                )
-                .unwrap_or_else(|cause| panic!("Infantry deploy destination: {cause}"));
+                self.order_unload(*entity_id, rules, overlay_registry);
                 true
             }
             Command::SetRally {
@@ -1544,6 +1524,13 @@ impl Simulation {
                             // Aircraft readiness has no live transition-latch
                             // producer, so a queued mission would never
                             // promote; commit through Assign.
+                            //
+                            // RESIDUAL: native's self-click sends an aircraft
+                            // the same MEGAMISSION (AircraftClass slot +0x144
+                            // case 4, `0x00417BD0`), whose NULL target and
+                            // destination setters this arm does not run.
+                            // Dormant: no retail `[AircraftTypes]` entry has
+                            // `Passengers=`.
                             let now = self.session.binary_frame;
                             let _ = self.mission_assign_exact(
                                 *transport_id,
@@ -1551,12 +1538,7 @@ impl Simulation {
                                 now,
                             );
                         } else {
-                            self.queue_megamission_with_teardown(
-                                *transport_id,
-                                MissionType::Unload,
-                                DockTeardown::All,
-                                Some(rules),
-                            );
+                            self.order_unload(*transport_id, rules, overlay_registry);
                         }
                         if let Some(e) = self.substrate.entities.get_mut(*transport_id) {
                             e.order_intent = None;
@@ -2684,6 +2666,47 @@ impl Simulation {
         // A class refusal still leaves the accepted queued mission in place.
         self.assign_target_represented(attacker_id, Some(target), rules)
             .is_ok()
+    }
+
+    /// The Unload order a self-click sends: `ClickedMission(Unload, NULL,
+    /// NULL)` (FootClass slot +0x144 case 4, `0x004D74E0`) issues a
+    /// MEGAMISSION. Its arm queues Unload, then for a Foot clears
+    /// ArchiveTarget (`0x004C7448`) and runs the class target (`0x004C7467`)
+    /// and destination (`0x004C747C`) setters with the event's NULL tokens,
+    /// so a moving unit stops where it is and unloads there.
+    ///
+    /// RESIDUAL: the deploy key sends DEPLOY instead (`DeployCommandClass`
+    /// `0x00730AF0` → `ClickedEvent(9)`), and VERA does not tell the two
+    /// apart. That arm (`0x004C7762..0x004C7812`) also nulls the destination
+    /// and target, but it refuses a current mission 0x12 or 0x13, an
+    /// aircraft, a cell holding a `WeaponsFactory=` building (BuildingType
+    /// +0x16BD, read at `0x00460A72`), and a unit off a bridge on a flat cell
+    /// whose vt+0x2B0 answers true; it leaves ArchiveTarget and the suspended
+    /// NavCom/TarCom alone. Trigger: the deploy key on a loaded transport or
+    /// a deployer infantry in one of those states. Effect: VERA unloads or
+    /// deploys where native ignores the key, for example a transport still
+    /// in its war factory's cell. Frequency: rare. Risk: low.
+    fn order_unload(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
+        self.queue_megamission_with_teardown(
+            id,
+            MissionType::Unload,
+            DockTeardown::All,
+            Some(rules),
+        );
+        // Foot4DA1C0 (`0x004C7453`) clears the +5AC vector, distinct from
+        // NavQueue588/598, and has no represented producer here.
+        if let Some(actor) = self.substrate.entities.get_mut(id) {
+            actor.set_archive_target(None);
+        }
+        self.assign_target_represented(id, None, Some(rules))
+            .unwrap_or_else(|cause| panic!("Unload order target: {cause}"));
+        self.assign_destination_represented(id, None, Some(rules), overlay_registry)
+            .unwrap_or_else(|cause| panic!("Unload order destination: {cause}"));
     }
 }
 

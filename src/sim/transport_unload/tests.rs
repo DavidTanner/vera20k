@@ -1,6 +1,6 @@
 //! Transport unload handler tests: cadence, LIFO order, the pre-turn, the
-//! IFV keep-one rule, the hover water→land pre-move, Move cancellation and
-//! the landed-only aircraft gate.
+//! IFV keep-one rule, the hover water→land pre-move, Move cancellation, the
+//! Unload order's stop, the Is_Moving gate and the landed-only aircraft gate.
 
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
@@ -17,9 +17,11 @@ use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 const OWNER: &str = "Americans";
 const MAP: u16 = 40;
 
+/// `[SHAD]` is an `[AircraftTypes]` entry here so tests reach the aircraft
+/// Unload slot; retail lists it under `[VehicleTypes]`, as `[HIND]` is here.
 fn rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=BFRT\n1=FV\n2=LCRF\n3=BGGY\n\
+        "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=BFRT\n1=FV\n2=LCRF\n3=BGGY\n4=HIND\n\
          [AircraftTypes]\n0=SHAD\n\
          [BuildingTypes]\n[Countries]\n0=Americans\n\n\
          [General]\nFixtureOnly=1\n\n\
@@ -37,6 +39,9 @@ fn rules() -> RuleSet {
          MovementZone=Amphibious\nLocomotor={4A582742-9839-11d1-B709-00A024DDAFD1}\n\n\
          [SHAD]\nStrength=200\nArmor=light\nSpeed=14\nROT=5\nPassengers=5\nLandable=yes\n\
          SizeLimit=2\nSpeedType=Hover\nMovementZone=Fly\n\
+         Locomotor={92612C46-F71F-11d1-AC9F-006008055BB5}\n\n\
+         [HIND]\nStrength=200\nArmor=light\nSpeed=14\nROT=5\nPassengers=5\nSizeLimit=2\n\
+         SpeedType=Hover\nMovementZone=Fly\n\
          Locomotor={92612C46-F71F-11d1-AC9F-006008055BB5}\n",
     );
     RuleSet::from_ini(&ini).expect("transport unload test rules parse")
@@ -783,7 +788,7 @@ fn handler_state(fx: &Fixture, id: u64) -> u32 {
         .handler_state()
 }
 
-/// Team-less state graph of `0x004151E0`: a flying Nighthawk ordered to
+/// The NavCom-less state graph of `0x004151E0`: a flying Nighthawk ordered to
 /// unload takes state 0 → 2 (`0x0041530C`, one epilogue draw at
 /// `0x0041525A`), then state 2 polls with `return 1` (`0x004154B1`) and draws
 /// NO Scenario RNG while it descends; once landed it moves to state 3
@@ -838,6 +843,199 @@ fn descending_nighthawk_draws_no_scenario_rng_until_it_ejects() {
         fx.sim.scenario_rng.state(),
         before,
         "state-3 epilogue draws"
+    );
+}
+
+/// `UnitClass::Mission_Unload` state 0 waits (`return 10`) only while the
+/// locomotor's Is_Moving (`0x0073D729`) is true. An order alone does not hold
+/// the unload; a Drive with a destination does, before it has any speed.
+#[test]
+fn unit_unload_waits_on_the_locomotors_is_moving_not_the_order() {
+    let run = |setup: &dyn Fn(&mut crate::sim::game_entity::GameEntity)| {
+        let mut fx = Fixture::new(|_, _| false);
+        let bfrt = fx.spawn("BFRT", 20, 20, 0x40);
+        fx.board(bfrt, 1);
+        setup(fx.sim.substrate.entities.get_mut(bfrt).expect("transport"));
+        let delay = super::unit_mission_unload(&mut fx.sim, &fx.rules, bfrt);
+        (delay, handler_state(&fx, bfrt))
+    };
+    let waiting = (super::WAIT_MOVING_FRAMES, super::STATE_PICK_EXIT);
+    assert_ne!(run(&|_| {}), waiting, "a standing transport unloads");
+    assert_ne!(
+        run(&|e| e.movement_target = Some(crate::sim::components::MovementTarget::default())),
+        waiting,
+        "an order alone does not hold the unload"
+    );
+    assert_eq!(
+        run(&|e| {
+            e.drive_locomotion
+                .get_or_insert_with(Default::default)
+                .destination = Some(crate::sim::components::DriveCoord::cell(25, 20, 0));
+            e.foot_speed.set_speed_fraction(SIM_ZERO);
+        }),
+        waiting,
+        "a Drive with a destination waits before it has any speed"
+    );
+}
+
+/// A Jumpjet transport (retail `[SHAD]` and `[HIND]` are Jumpjet
+/// `[VehicleTypes]` entries) waits at state 0 on the locomotor's moving byte
+/// (`+0x48`, Is_Moving `0x0054AE50`), not on Is_Moving_Now's state
+/// (`0x0054D0D0`, false in the hold): holding in the air with the byte set,
+/// it waits.
+#[test]
+fn jumpjet_transport_unload_waits_on_the_moving_byte_in_the_hold() {
+    let run = |moving: bool| {
+        let mut fx = Fixture::new(|_, _| false);
+        let hind = fx.spawn("HIND", 20, 20, 0x40);
+        fx.board(hind, 1);
+        set_altitude(&mut fx, hind, 500);
+        let runtime = fx
+            .sim
+            .substrate
+            .entities
+            .get_mut(hind)
+            .and_then(|e| e.locomotor.as_mut())
+            .and_then(|loco| loco.jumpjet_runtime_mut())
+            .expect("Jumpjet runtime");
+        runtime.phase = crate::sim::movement::jumpjet_flight::STATE_HOLD;
+        runtime.moving = moving;
+        let delay = super::unit_mission_unload(&mut fx.sim, &fx.rules, hind);
+        (delay, handler_state(&fx, hind))
+    };
+    let waiting = (super::WAIT_MOVING_FRAMES, super::STATE_PICK_EXIT);
+    assert_eq!(run(true), waiting, "holding with the moving byte set waits");
+    assert_ne!(run(false), waiting, "holding with it clear does not");
+}
+
+/// A Jumpjet transport ordered to unload in flight lands first: the order's
+/// NULL destination reaches the Unit setter while a NavCom is set
+/// (`0x00741A80`), whose Foot tail runs Jumpjet `Stop_Moving` (`0x0054B4D0`):
+/// a `Move_To` the floor of the nearest passable cell. The moving byte holds
+/// state 0 until touchdown clears it.
+#[test]
+fn jumpjet_transport_ordered_to_unload_in_flight_lands_first() {
+    let mut fx = Fixture::new(|_, _| false);
+    let hind = fx.spawn("HIND", 8, 20, 0x40);
+    let pax = fx.board(hind, 2);
+    assert!(fx.apply(Command::Move {
+        entity_id: hind,
+        target_rx: 36,
+        target_ry: 20,
+        queue: false,
+    }));
+    let altitude = |fx: &Fixture| {
+        fx.sim
+            .substrate
+            .entities
+            .get(hind)
+            .and_then(|e| e.locomotor.as_ref())
+            .map(|loco| loco.altitude)
+            .expect("locomotor")
+    };
+    for _ in 0..150 {
+        fx.tick();
+    }
+    let ordered_at = fx.cell(hind);
+    assert!(altitude(&fx) > SIM_ZERO, "in flight");
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: hind }));
+    let mut landed_reveals = 0;
+    for _ in 0..600 {
+        fx.tick();
+        let out = pax.iter().filter(|&&id| fx.revealed(id)).count();
+        if out > landed_reveals {
+            assert_eq!(altitude(&fx), SIM_ZERO, "a passenger left in the air");
+            landed_reveals = out;
+        }
+        if out == pax.len() {
+            break;
+        }
+    }
+    let unloaded_at = fx.cell(hind);
+    assert_eq!(landed_reveals, pax.len());
+    assert!(
+        unloaded_at.0 <= ordered_at.0 + 2,
+        "unloaded at {unloaded_at:?}, ordered at {ordered_at:?}"
+    );
+}
+
+/// The Unload order is a MEGAMISSION whose class destination and target
+/// setters run with NULL (`0x004C747C`, `0x004C7467`): a driving transport
+/// stops at its committed head and unloads there, not where it was sent.
+#[test]
+fn unload_order_stops_a_driving_transport_where_it_is() {
+    let mut fx = Fixture::new(|_, _| false);
+    let bfrt = fx.spawn("BFRT", 6, 20, 0x40);
+    let pax = fx.board(bfrt, 2);
+    assert!(fx.apply(Command::Move {
+        entity_id: bfrt,
+        target_rx: 36,
+        target_ry: 20,
+        queue: false,
+    }));
+    for _ in 0..40 {
+        fx.tick();
+    }
+    let ordered_at = fx.cell(bfrt);
+    assert!(
+        ordered_at.0 > 6 && ordered_at.0 < 30,
+        "under way at {ordered_at:?}"
+    );
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+    let transport = fx.sim.substrate.entities.get(bfrt).expect("transport");
+    assert!(
+        transport.navigation.nav_com.is_none(),
+        "the order nulls the NavCom"
+    );
+    assert_eq!(fx.run_until_revealed(&pax, 400).len(), 2);
+    let unloaded_at = fx.cell(bfrt);
+    assert!(
+        unloaded_at.0 <= ordered_at.0 + 2,
+        "unloaded at {unloaded_at:?}, ordered at {ordered_at:?}"
+    );
+}
+
+/// `AircraftClass::Mission_Unload` state 2 moves on to state 3 when the
+/// locomotor's Is_Moving (`0x0041549D`) is false; the order is not asked.
+/// The fixture's `[SHAD]` is an aircraft to reach this slot.
+#[test]
+fn landed_aircraft_transport_unload_asks_the_locomotor_not_the_order() {
+    let run = |setup: &dyn Fn(&mut crate::sim::game_entity::GameEntity)| {
+        let mut fx = Fixture::new(|_, _| false);
+        let shad = fx.spawn("SHAD", 20, 20, 0);
+        fx.board(shad, 2);
+        set_altitude(&mut fx, shad, 600);
+        assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
+        super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, None);
+        fx.sim.session.binary_frame += 1;
+        assert_eq!(handler_state(&fx, shad), super::AIR_STATE_WAIT_STOP);
+        set_altitude(&mut fx, shad, 0);
+        setup(fx.sim.substrate.entities.get_mut(shad).expect("aircraft"));
+        // State 2 polls once its dispatch timer is due.
+        for _ in 0..120 {
+            super::dispatch_aircraft_unload(&mut fx.sim, shad, &fx.rules, None);
+            fx.sim.session.binary_frame += 1;
+            if handler_state(&fx, shad) != super::AIR_STATE_WAIT_STOP {
+                break;
+            }
+        }
+        handler_state(&fx, shad)
+    };
+    assert_eq!(
+        run(&|e| e.movement_target = Some(crate::sim::components::MovementTarget::default())),
+        super::AIR_STATE_EJECT,
+        "an order alone does not hold a landed aircraft transport"
+    );
+    assert_eq!(
+        run(&|e| {
+            e.locomotor
+                .as_mut()
+                .and_then(|loco| loco.jumpjet_runtime_mut())
+                .expect("Jumpjet runtime")
+                .moving = true;
+        }),
+        super::AIR_STATE_WAIT_STOP,
+        "a moving Jumpjet keeps it waiting"
     );
 }
 

@@ -29,7 +29,6 @@ use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{DockTeardown, MissionId, MissionType};
 use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::movement::ready_producer::is_moving_now_for;
 use crate::sim::passenger::{
     DepartureFailure, DepartureRoute, depart_cargo_head, reveal_unloaded_passenger,
 };
@@ -613,17 +612,9 @@ pub(crate) fn unit_mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64
     };
     match entity.mission.handler_state() {
         STATE_PICK_EXIT => {
-            // `ILocomotion::Is_Moving` (`0x0073D729`) → `return 10`.
-            if is_moving_now_for(
-                entity,
-                Some(crate::sim::movement::SpeedRules::new(
-                    rules,
-                    &sim.interner,
-                    &sim.type_handles,
-                )),
-                now,
-            ) || entity.movement_target.is_some()
-            {
+            // `ILocomotion::Is_Moving` (`0x0073D729`) → `return 10`. Neither
+            // an order nor Is_Moving_Now is that query.
+            if crate::sim::movement::motion_query::is_moving(entity) == Some(true) {
                 return WAIT_MOVING_FRAMES;
             }
             // No NavCom and the current cell's LandType is Water (`+0xEC == 2`,
@@ -715,28 +706,29 @@ fn aircraft_landed(
             .is_none_or(|loco| loco.altitude == SIM_ZERO)
 }
 
-/// The Aircraft Unload slot `0x004151E0` (Nighthawk and any other landed
-/// `Passengers > 0` aircraft). Timer-gated inside; writes its own epilogue.
+/// The Aircraft Unload slot `0x004151E0`, for a `Passengers > 0` aircraft.
+/// Timer-gated inside; writes its own epilogue. Dormant in retail: read
+/// through `RuleSet::from_ini`, no `[AircraftTypes]` entry has `Passengers=`.
+/// The Nighthawk `[SHAD]` is a Jumpjet `[VehicleTypes]` entry and unloads
+/// through [`unit_mission_unload`].
 ///
-/// Team-less state graph (`+0x5A4 == NULL`; the team arm is a residual below):
+/// The arms without a NavCom (`+0x5A4 == NULL`; the NavCom arms are a
+/// residual below):
 ///
 /// - State 0 (`0x004151FB`): `GetHeight() == 0` (`0x004151FF`) and
-///   `+0x2E8 == 0.0` (`0x0041520D`) → the team test at `0x00415228` jumps a
-///   team-less aircraft straight to state 3 (`0x00415250`); the
-///   destination-equals-position compare (`0x0041522A`..`0x0041524E`) runs
-///   ONLY for a team. Not landed → `0x00415290`: the airfield branch needs
-///   `Type+0xC95` = `IsDropship=` (`TechnoTypeClass::ReadINI`
+///   `+0x2E8 == 0.0` (`0x0041520D`), then the NavCom test (`0x00415220`):
+///   none → state 3 (`0x00415250`). Not landed → `0x00415290`: the airfield
+///   branch needs `Type+0xC95` = `IsDropship=` (`TechnoTypeClass::ReadINI`
 ///   `0x00712350`..`0x00712373`, key string `0x0084447C`; `AirportBound=` is
 ///   a different field, `AircraftType+0xE0D`, `0x0041CC6E`), and no retail
-///   rulesmd.ini type sets `IsDropship`, so a team-less `[SHAD]` (Nighthawk,
-///   `Passengers=5`, `Landable=yes`) ALWAYS takes state 2 (`0x0041530C`).
+///   rulesmd.ini type sets `IsDropship`, so it takes state 2 (`0x0041530C`).
 ///   Both arms fall into the epilogue at `0x0041525A` (one
 ///   `RandomRanged(0, 2)` draw).
 /// - State 3 early-out: `+0x418 != 0` returns before the hold test
 ///   (`0x004154BB`..`0x004154C3`); its writer and meaning are UNCHECKED and
 ///   VERA does not represent it.
-/// - State 1 (`0x0041542A`): written only at `0x0041541F` inside the team
-///   arm (residual below).
+/// - States 1 and 4 are written at `0x0041541F`, inside the NavCom arm
+///   (residual below).
 /// - State 2 (`0x00415480`): locomotor `Is_Moving` (`+0x10`, `0x0041549D`)
 ///   false → state 3 (`0x004154A4`); `return 1` either way (`0x004154B1`),
 ///   NO epilogue draw while it polls.
@@ -748,14 +740,20 @@ fn aircraft_landed(
 ///   dispatch; epilogue draw.
 /// - State 4 (`0x004155C0`): → 0, `return 1`.
 ///
-/// RESIDUAL: the arms for a transport in a team are not ported: state 0's
-/// destination compare and state 1 (`0x0041522A..0x0041524E`,
-/// `0x0041541F`), the team join of each passenger ejected
-/// (`0x0041556A..0x00415587`), and the unit's join (`Team->Add_Member(
-/// passenger, 0)` at `0x0073DC0C..0x0073DC19`). Trigger: a team's transport
-/// unloads. Only script actions 8, 14 and 43 load or unload one, and they
-/// are not ported (`team_script_vm::actions`), so no ported path reaches
-/// these arms; once they are, passengers would leave their team at unload.
+/// RESIDUAL: the NavCom arms are not ported. A landed aircraft compares its
+/// NavCom with its own coordinate (`0x0041522A..0x0041524E`) and takes state
+/// 3 only on a match. Otherwise, with a NavCom, `0x0041531B..0x00415425`
+/// asks vt+0x550 about it and then sets a new destination, with a team call
+/// on `+0x5D4` at `0x004153DC`, or writes state 1 or 4. Trigger: an aircraft
+/// transport ordered to unload while it has a NavCom. Dormant in retail
+/// (above).
+///
+/// RESIDUAL: the team joins are not ported: each passenger ejected here
+/// (`0x0041556A..0x00415587`) and from a unit (`Team->Add_Member(passenger,
+/// 0)` at `0x0073DC0C..0x0073DC19`). Trigger: a team's transport unloads.
+/// Only script actions 8, 14 and 43 load or unload one, and they are not
+/// ported (`team_script_vm::actions`), so no ported path reaches these arms;
+/// once they are, passengers would leave their team at unload.
 pub(crate) fn dispatch_aircraft_unload(
     sim: &mut Simulation,
     id: u64,
@@ -775,9 +773,8 @@ pub(crate) fn dispatch_aircraft_unload(
     }
     let delay = match entity.mission.handler_state() {
         AIR_STATE_CHECK_LANDED => {
-            // Team-less: landed → 3 (`0x00415250`), otherwise → 2
-            // (`0x0041530C`). The destination compare is team-only
-            // (residual above).
+            // Without a NavCom: landed → 3 (`0x00415250`), otherwise → 2
+            // (`0x0041530C`). The NavCom arms are a residual above.
             let next = if aircraft_landed(entity, sim.resolved_terrain.as_ref()) {
                 AIR_STATE_EJECT
             } else {
@@ -789,18 +786,19 @@ pub(crate) fn dispatch_aircraft_unload(
             unload_epilogue(sim, rules, id)
         }
         AIR_STATE_WAIT_STOP => {
-            // `Is_Moving` false (`0x0041549D`): for the Jumpjet locomotor that
-            // is only true once it has landed — the native locomotor lands on
-            // its own when the linked object's mission is Unload. VERA's
-            // jumpjet does not yet auto-land on Unload (recorded residual), so
-            // the landed altitude gate is applied here as well; an airborne
-            // Nighthawk keeps waiting rather than dropping its cargo mid-air.
-            if entity.movement_target.is_none()
+            // `Is_Moving` false (`0x0041549D`) → state 3.
+            //
+            // RESIDUAL (VERA-only): the landed gate has no native counterpart
+            // here; native state 2 asks only Is_Moving. It stays because
+            // `eject_from_aircraft` reveals each passenger at the aircraft's
+            // own height (the landed-aircraft route), so a still aircraft at
+            // altitude would leave its cargo in the air. Dormant in retail
+            // (see the doc above).
+            if crate::sim::movement::motion_query::is_moving(entity) != Some(true)
                 && aircraft_landed(entity, sim.resolved_terrain.as_ref())
+                && let Some(entity) = sim.substrate.entities.get_mut(id)
             {
-                if let Some(entity) = sim.substrate.entities.get_mut(id) {
-                    entity.mission.set_handler_state(AIR_STATE_EJECT);
-                }
+                entity.mission.set_handler_state(AIR_STATE_EJECT);
             }
             1
         }
