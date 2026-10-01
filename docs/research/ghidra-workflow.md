@@ -288,15 +288,16 @@ Notes for readers:
   fields.
 - **Receivers.** Since 2026-10-01 the methods of `AbstractClass`, `ObjectClass`,
   `MissionClass`, `RadioClass`, `TechnoClass`, `FootClass`, `UnitClass`,
-  `InfantryClass` and `AircraftClass` have typed receivers. 783 of the 898 functions
-  with those name prefixes are `__thiscall` in their class namespace, so a decompile
+  `InfantryClass`, `AircraftClass` and `BuildingClass` have typed receivers. 928 of the
+  1,079 functions with those name prefixes are `__thiscall` in their class namespace, so a decompile
   reads `TechnoClass::TechnoClass__IronCurtain(TechnoClass *this, ...)` and
   `this->IronCurtainTimer`. Each prototype declares the stack bytes its RETs pop;
   parameters nobody has checked are `undefined4`. Plates tagged `[receivers 2026-10-01]`
-  record six corrected prototypes, among them the two `GetCursorForCell` of FootClass
+  record twelve corrected prototypes, among them the two `GetCursorForCell` of FootClass
   and InfantryClass, which take no stack parameter. Every direct call to the TechnoClass
-  and ObjectClass `ReceiveDamage` now shows its seven arguments. The plates also say why
-  115 functions stay untyped:
+  and ObjectClass `ReceiveDamage` now shows its seven arguments, and the 70 calls to
+  `BuildingClass__CreateAnimForSlot` show their five. The plates also say why 151
+  functions stay untyped:
   - COM methods (primary-vtable slots 0–7) take `this` on the stack (`__stdcall`).
   - Methods of a secondary interface receive the interface pointer, not the object.
     The IUnknown adjustor thunks (`_adjustor<N>`) shift it on the stack and jump.
@@ -304,12 +305,27 @@ Notes for readers:
     methods (+0x6C0) take it as their first stack argument. The INoticeSink overrides
     (+8) read it from ECX, which is the object + 8. The interface names are YRpp leads.
   - Trampolines tail-jump through a vtable, and some direct functions have no usable
-    caller evidence.
+    caller evidence. Some are not methods: `BuildingClass__ReadFromINI` 0x44F820 runs
+    with the scenario INI in ECX.
 
   Six vtable methods without a class prefix were outside both passes and are untyped:
   0x4D9C60, 0x4E0150, 0x6FDD50, 0x709A90, 0x70A990 and 0x70AA60. The type-class methods
-  are not typed yet, and a typed `this` is on only 26 of the 181 `BuildingClass__`
-  methods. Their decompiles still show raw offsets.
+  are not typed yet, so their decompiles still show raw offsets.
+- **Signatures.** Since 2026-10-01 every locked prototype declares the stack bytes its
+  RETs pop. Plates tagged `[signatures 2026-10-01]` record the 27 corrected ones, among
+  them `WeaponTypeClass__ReadINI` (it had a stack parameter named `this`, and it returns
+  a bool) and `TechnoClass__ImbueLocomotor` (`FootClass * victim, CLSID locomotor`).
+  Seventeen functions that cannot return are marked no-return:
+  - the CRT exits: `CRT__exit` (the C `exit`), `__amsg_exit`, abort, terminate,
+    `_fptrap`, the entry point and two internal ones;
+  - the C++ and COM throwers `__CxxThrowException@8`, `_com_raise_error` and 0x7DC72E;
+  - `FUN_006bec50`, which exits with the code in ECX, and `FUN_0054a8c0`, which prints
+    and then calls it;
+  - two endless loops that stand in for element compares, and their two wrappers.
+
+  `_com_issue_error` cannot return either, but it stays unmarked and untyped; its plate
+  says why. No switch table has a case the flows lack. 10,108 functions without a
+  prototype still have an unknown stack purge.
 
 Plates tagged `[2026-10-01 BuildingTypeClass layout]`,
 `[2026-10-01 TechnoTypeClass layout]`, `[2026-10-01 UnitTypeClass layout]`,
@@ -433,3 +449,12 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   `(void)` on a `ret 0xC` function breaks the stack analysis of its callers. A custom
   prototype that declares only `this` makes every direct caller's decompile drop the
   arguments.
+- `set_function_no_return` makes the decompiler end each caller's path at the call
+  (`/* WARNING: Subroutine does not return */`) and remove blocks reached only after it.
+  It also removes live code where the decompiler wrongly folds an error branch to
+  always-taken. That happens when a function passes a stack object's address in ECX to a
+  callee without a prototype: the decompile does not show the callee writing the object.
+  Marking `_com_issue_error` cost 12 of its callers code this way. A prototype can do the
+  same: with only `_com_issue_error` typed, the stack past the call was tracked, and two
+  callers lost blocks. On a staging copy, a mark did not change indirect calls the server
+  resolved to the function. Compare the callers' decompiles on a copy before writing.
