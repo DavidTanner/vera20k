@@ -265,6 +265,17 @@ constructors, ReadINI, the other methods and the reads through their type pointe
   (one int[24] kept as `nPathDirections` and `aPathDirections_1`), `cTubeIndex` +0x684,
   `fIsInitiated` +0x689 (once `bConvoyArrived`), `fIsFiring` +0x68D (once
   `bHasReachedDock`) and `fShouldEnterOccupiable` +0x690 (once `bIsDockingToBuilding`).
+- `BuildingClass` (0x720 bytes) is flat from +0 the same way: the TechnoClass rows
+  +0..+0x520, then 94 own fields, so a chain field is now fixed in TechnoClass, FootClass
+  and BuildingClass. The garrison is `Occupants` +0x684 and the overpowering infantry
+  `Overpowerers` +0x66C, each a `DynamicVectorClass<InfantryClass *>` spelled out as seven
+  members. Where the code contradicts YRpp: +0x6CA/+0x6CB are the `[Structures]` map fields
+  8 and 15 (`AIRebuildable`, `AIRepairable`; YRpp BeingProduced and ShouldRebuild), +0x6EB
+  holds +1 or -1 for the cloak generator (`CloakGeneratorState`; YRpp HasCloakingData),
+  and +0x53C, +0x6C9 and +0x6DE stay `Unknown_0xNNN` (YRpp OwnerCountryIndex,
+  ShowRealName and NeedsRepairs; the code shows none of those roles). `PrismTargetCoords`
+  +0x708 holds the weapon index in delayed-fire stage 1 and the coordinates only in
+  stage 2.
 
 Notes for readers:
 
@@ -297,14 +308,15 @@ Notes for readers:
 
   Six vtable methods without a class prefix were outside both passes and are untyped:
   0x4D9C60, 0x4E0150, 0x6FDD50, 0x709A90, 0x70A990 and 0x70AA60. The type-class methods
-  are not typed yet, and a typed `this` is on only 26 of the 179 `BuildingClass__`
+  are not typed yet, and a typed `this` is on only 26 of the 181 `BuildingClass__`
   methods. Their decompiles still show raw offsets.
 
 Plates tagged `[2026-10-01 BuildingTypeClass layout]`,
 `[2026-10-01 TechnoTypeClass layout]`, `[2026-10-01 UnitTypeClass layout]`,
 `[2026-10-01 InfantryTypeClass layout]`, `[2026-10-01 AircraftTypeClass layout]`,
-`[2026-10-01 TechnoClass layout]` and `[2026-10-01 FootClass layout]` record where YRpp
-is wrong and the native quirks a port must keep. Examples:
+`[2026-10-01 TechnoClass layout]`, `[2026-10-01 FootClass layout]` and
+`[2026-10-01 BuildingClass layout]` record where YRpp is wrong and the native quirks a
+port must keep. Examples:
 
 - AddOccupy and RemoveOccupy are swapped in YRpp.
 - `TurretControl` is 0x14 bytes, and nothing initialises WeaponCount.
@@ -317,6 +329,8 @@ is wrong and the native quirks a port must keep. Examples:
   TechnoClass::Fire draws the first spray offset of each burst (+0x2A0).
 - The magnetron release sets BeingManipulatedBy only on a foot target whose vt+0x1C8()
   is above 0.
+- Secret labs draw their reward with the drawn number itself as the index, so two labs can
+  get the same type (`Assign_Secret_Lab_Production` 0x68C050).
 
 The UnitTypeClass pass also corrected two wrong names: the LandType name converters
 0x48DFD0 and 0x48DF80, once named `MovementZone_*`, are `LandType__ToName` and
@@ -333,7 +347,10 @@ iron-curtain and airstrike tint functions 0x70E380, 0x70E4B0, 0x70E5A0 and 0x70E
 named after temporal, warp-in and gap effects). The FootClass pass renamed 0x4DFCB0
 `FootClass__EnterBattleBunker` (once `Find_Nearest_Dock`) and 0x457CE0
 `BuildingClass__CanBeOccupiedBy` (once `CanDock`; it tests CanBeOccupied, Occupier and
-Assaulter, not docking). Each plate gives the evidence. The
+Assaulter, not docking). The BuildingClass pass named 0x459840
+`BuildingClass__GetSecretProduction` and 0x68C050 `Assign_Secret_Lab_Production`, and
+corrected the HasTurret 0x4527D0 plate (its loop walks the upgrades, not the occupants).
+Each plate gives the evidence. The
 per-field ledgers, the checks and the rehearsals are in the research folder listed in
 `LOCAL.md`. Reading established these facts. Nothing was executed, so a port pins the
 conversions with the native oracle.
