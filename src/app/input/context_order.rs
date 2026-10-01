@@ -843,7 +843,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                 }
             }
 
-            // Object51E3B0 Engineer decisions precede CanDock and C4.
+            // Object51E3B0 Engineer decisions precede CanBeOccupiedBy and C4.
             // Consume each Engineer's terminal action while retaining the
             // other selected actors for their own actions below.
             let mut consumed_engineer_action = false;
@@ -867,7 +867,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                 }
             }
 
-            // Garrison entry uses the shared CanDock-equivalent predicate before
+            // Garrison entry uses the shared CanBeOccupiedBy-equivalent predicate before
             // issuing EnterTransport commands.
             // are classified as EnemyStructure but are still garrisonable —
             if context_actions_enabled {
