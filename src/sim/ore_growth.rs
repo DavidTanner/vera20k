@@ -1375,10 +1375,10 @@ impl OreGrowthState {
 
     /// Native `Reduce_Tiberium @ 0x00480A80` full-removal spread reseed.
     ///
-    /// Clears this removed cell's spread bitmap bit for every tiberium class
-    /// (`ClearSpreadBitmaps_AllTypes @ 0x00722AB0`), then calls the REMOVED
-    /// class's `AddToSpreadQueue` for each in-bounds neighbour, which admits
-    /// the neighbour on its own class. Existing heap entries are
+    /// After the caller clears the removed cell's spread bitmap bit for every
+    /// tiberium class (`ClearSpreadBitmaps_AllTypes @ 0x00722AB0`), calls the
+    /// REMOVED class's `AddToSpreadQueue` for each in-bounds neighbour, which
+    /// admits the neighbour on its own class. Existing heap entries are
     /// intentionally left stale.
     #[allow(clippy::too_many_arguments)]
     pub fn reseed_native_spread_neighbors_after_reduction(
@@ -1395,8 +1395,6 @@ impl OreGrowthState {
         spread_enabled: bool,
         rng: &mut SimRng,
     ) -> usize {
-        self.clear_native_spread_bitmap_cell(removed_cell.0, removed_cell.1);
-
         let map_height = self.effective_map_height();
         // `Reduce_Tiberium @ 0x00480A80` offers each direction to
         // `Cell_in_bounds_check @ 0x00568300`, the MapRect diamond, not a

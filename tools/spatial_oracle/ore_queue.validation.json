@@ -3,7 +3,7 @@
   "base_main": "6d2e4d28ee616914c33f6eb6fb53d230bf2714e8",
   "gamemd_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
   "rust_source_sha256": {
-    "src/sim/ore_growth.rs": "f19615c28ad49d653a89f41f86eb9df27a4adb177da3d6a72cb8d881de4b67a3",
+    "src/sim/ore_growth.rs": "d383fbcc689e486f6da8ee4e3aa180d47d2d2e9fd1557416757c9ed9c2d22b31",
     "src/sim/ore_growth/queue_oracle_tests.rs": "69f39197f9fc4d82e343b3da568072f3310339783903a7b4445ce7ed7c19a751",
     "src/sim/tiberium/mod.rs": "54eaa6bd25a9176b16fb95fcdb0253b4e2a7b60a2f0c0bcdac624fd2f48d6dbd",
     "src/sim/terrain_spawn.rs": "a441c085d7fe9d4a693ec8be6e5f59de338dc67331d4e5a19031c12845dec24f",
@@ -20,13 +20,15 @@
       "command": "VERA20K_REQUIRE_RETAIL_INI=1 python -m tools.cargo_run -- test -p vera20k --lib",
       "result": "9416 passed; 0 failed; 226 ignored",
       "log_relative_to_checkout": ".local-audit/ore-queue/lib.log",
-      "log_sha256": "5a0cfedc8259b9e2c2ae4e8ded4ad8507c96680105315a6eaaa194f4f9fa1eac"
+      "log_sha256": "5a0cfedc8259b9e2c2ae4e8ded4ad8507c96680105315a6eaaa194f4f9fa1eac",
+      "rust_source_revision": "8e88183f384dad0ae3e97f0ee32797ca04a53c99"
     },
     "retail_clippy": {
       "command": "VERA20K_REQUIRE_RETAIL_INI=1 python -m tools.cargo_run -- clippy -p vera20k --lib",
       "result": "exit 0; 728 warnings; 0 errors",
       "log_relative_to_checkout": ".local-audit/ore-queue/clippy.log",
-      "log_sha256": "56cc2e53156418bff2dcbeabe37be5315fbaa6f3a4e3fcd6930a5940da586a97"
+      "log_sha256": "56cc2e53156418bff2dcbeabe37be5315fbaa6f3a4e3fcd6930a5940da586a97",
+      "rust_source_revision": "8e88183f384dad0ae3e97f0ee32797ca04a53c99"
     },
     "python": {
       "command": "python -m tools.run_tests",
@@ -39,6 +41,20 @@
       "result": "PASS: all 60 native outputs and provenance match",
       "log_relative_to_checkout": ".local-audit/ore-queue/native-check.log",
       "log_sha256": "fdad241cc7e070838aedec3b2589070e612f3fce916dcba097ecc7e08d8a3914"
+    },
+    "post_review_ore_growth": {
+      "command": "VERA20K_REQUIRE_RETAIL_INI=1 python -m tools.cargo_run -- test -p vera20k --lib sim::ore_growth::",
+      "result": "33 passed; 0 failed; 0 ignored",
+      "log_relative_to_checkout": ".local-audit/ore-queue/focused-after-critic-ore-growth.log",
+      "log_sha256": "3ed06d5ee1c916f2868ce4514ead863312345a5aa4c228d00061c0fffda7b389",
+      "ore_growth_source_sha256": "d383fbcc689e486f6da8ee4e3aa180d47d2d2e9fd1557416757c9ed9c2d22b31"
+    },
+    "post_review_tiberium": {
+      "command": "VERA20K_REQUIRE_RETAIL_INI=1 python -m tools.cargo_run -- test -p vera20k --lib sim::tiberium::",
+      "result": "12 passed; 0 failed; 0 ignored",
+      "log_relative_to_checkout": ".local-audit/ore-queue/focused-after-critic-tiberium.log",
+      "log_sha256": "d27ca6aa61dab78e2c9b3811d9019564636f0eb9406dcb65fe0a75ca9099246c",
+      "ore_growth_source_sha256": "d383fbcc689e486f6da8ee4e3aa180d47d2d2e9fd1557416757c9ed9c2d22b31"
     }
   },
   "pre_fix_regression": "Both drained-heap enqueue counter-reset tests failed before implementation; both pass in final lib suite.",
@@ -49,5 +65,14 @@
     "Prepared valid map and prior queue state; no multi-hour native history or whole Scenario startup comparison.",
     "Synthetic percentages are exact 0.125/0 through the production reader; decimal INI parsing is not established by this queue fixture.",
     "Other OQ-38 residuals and deferred VoxelAnim IsTiberium expiry/ring remain outside this enqueue chain."
-  ]
+  ],
+  "review": {
+    "reviewed_revision": "8e88183f384dad0ae3e97f0ee32797ca04a53c99",
+    "method": "One fresh read-only critic inspected original instructions, implementation and production consumers, and independently reran all 60 original-execution cases.",
+    "result": "No merge-blocking defect. A redundant second full-removal spread-bitmap clear was removed; the outer clear still runs with incomplete reseed context.",
+    "post_review_checks": [
+      "post_review_ore_growth",
+      "post_review_tiberium"
+    ]
+  }
 }

@@ -113,7 +113,9 @@ The [validation receipt](ore_queue.validation.json) records the 60-case Rust/nat
 comparison, the two pre-fix failing regressions, connected production callers,
 9,416 passing mandatory-retail library tests (226 ignored), successful clippy,
 436 Python checks (4 skipped), and the unchanged simulation field ratchet. These
-are bounded executable parity and Rust integration results. Whole Scenario
+are bounded executable parity and Rust integration results. The single fresh
+read-only critic found no blocker; after removing its identified redundant
+full-removal bitmap clear, all 33 queue and 12 Tiberium checks passed. Whole Scenario
 startup and actual multi-hour histories remain outside the comparison. Other
 OQ-38 residuals and the deferred VoxelAnim IsTiberium expiry/ring are separate.
 
