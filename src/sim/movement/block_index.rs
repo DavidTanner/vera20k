@@ -69,8 +69,15 @@ struct MovingContribution {
 }
 
 /// The cell a moving occupant heads for. Walk keeps no route cells: its paid
-/// head's cell, else the cell its Foot+5E0 head word points to (a tube word
-/// names no adjacent cell). Drive/Ship read their track host's route cache.
+/// head's cell, else the cell its Foot+5E0 head word points to. Drive/Ship
+/// read their track host's route cache.
+///
+/// RESIDUAL: a Walk whose head word is the tube word (8) names no adjacent
+/// cell, so it reads as stationary (code 6) for that frame, where the removed
+/// route copy pointed at the tube exit. Trigger: a friendly infantryman at a
+/// tube entrance before its next Process enters the tube. Frequency: tunnel
+/// maps, one frame per entry. Risk: another owner's search that frame
+/// soft-blocks that cell (cost x8) instead of passing it.
 fn moving_next_cell(entity: &GameEntity) -> Option<(u16, u16)> {
     let target = entity.movement_target.as_ref()?;
     let Some(loco) = entity

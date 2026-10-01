@@ -269,7 +269,13 @@ impl FootPathRequest {
         let snap = &self.visit.snap;
         let actor = entities.get(self.entity_id).expect("live suspended mover");
         let start = (actor.position.rx, actor.position.ry);
-        let layer = actor.movement_layer_or_ground();
+        // AStar 0x00429A90 takes the start height from the Foot's OnBridge
+        // byte (+0x8C): the cell level, +4 on a bridge. No path layer.
+        let layer = if actor.on_bridge {
+            MovementLayer::Bridge
+        } else {
+            MovementLayer::Ground
+        };
         let goal = ((goal.x / 256) as u16, (goal.y / 256) as u16);
         let layered = snap
             .locomotor

@@ -6276,11 +6276,7 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
         } else {
             crate::util::fixed_math::SIM_ZERO
         });
-        entity.movement_target = walking.then(|| crate::sim::components::MovementTarget {
-            path: vec![(5, 5), (6, 5)],
-            next_index: 1,
-            ..Default::default()
-        });
+        entity.movement_target = walking.then(crate::sim::components::MovementTarget::default);
     }
 
     #[test]

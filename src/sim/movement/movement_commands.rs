@@ -307,11 +307,6 @@ pub(crate) fn issue_move_command_with_destination(
     // node. Keep its retained selector, cursor and head; anchor the new path
     // at that committed head cell.
     let current_cell = (entity.position.rx, entity.position.ry);
-    let committed_walk = locomotor_kind == Some(LocomotorKind::Walk)
-        && entity
-            .locomotor
-            .as_ref()
-            .is_some_and(|l| l.step_head().is_some());
     let in_flight_curve_head = committed_movement_head(entity);
     let keep_in_flight_curve = in_flight_curve_head.is_some();
     let (start_rx, start_ry) = in_flight_curve_head.unwrap_or(current_cell);
@@ -592,8 +587,7 @@ pub(crate) fn issue_move_command_with_destination(
     // A kept curve's head cell is a future node the body has not crossed into
     // yet: the queue cursor starts ON it so the coordinate crossing consumes
     // it, exactly as it would have consumed that node under the replaced path.
-    let head_not_yet_reached =
-        keep_in_flight_curve && (committed_walk || (start_rx, start_ry) != current_cell);
+    let head_not_yet_reached = keep_in_flight_curve && (start_rx, start_ry) != current_cell;
     let first_target_index = if head_not_yet_reached { 0 } else { 1 };
 
     // Attach the MovementTarget and update facing on the entity.
@@ -607,7 +601,6 @@ pub(crate) fn issue_move_command_with_destination(
         next_index: first_target_index,
         speed,
         final_goal: Some(effective_target),
-        ..Default::default()
     };
     debug_assert_eq!(
         movement.path.len(),
@@ -615,10 +608,8 @@ pub(crate) fn issue_move_command_with_destination(
         "path/path_layers desync in initial MovementTarget"
     );
     if let Some(entity_mut) = entities.get_mut(entity_id) {
-        let locomotor_kind = entity_mut
-            .locomotor
-            .as_ref()
-            .map(|locomotor| locomotor.kind);
+        // A Walk never reaches this install: it returns from its setter arm
+        // or from the queued append above.
         if let Some((reference, coord)) = object_destination {
             super::navcom::set_destination_internal_coord(
                 entity_mut,
@@ -627,21 +618,6 @@ pub(crate) fn issue_move_command_with_destination(
                 resolved_terrain,
                 timing.binary_frame,
             );
-        } else if locomotor_kind == Some(LocomotorKind::Walk) {
-            super::navcom::set_destination_internal_cell(
-                entity_mut,
-                effective_target,
-                resolved_terrain,
-                timing.binary_frame,
-            );
-        }
-        if locomotor_kind == Some(LocomotorKind::Walk) {
-            // Infantry51AD11 clears one live Foot path word. The accepted
-            // setter preserves its suffix/reference and NavQueue; Walk's first
-            // no-head Process requests FindPath75AFC5 later. See
-            // tools/spatial_oracle/walk_first_path.json. MovementTarget keeps
-            // the existing prepared physical path, without publishing it here.
-            entity_mut.navigation.path_replay.clear_live_head();
         }
         // Unit's accepted setter reaches Foot4D96C2..9707 just as Walk's
         // does. Preserve +64C; this is not a Foot constructor.

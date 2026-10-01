@@ -565,11 +565,7 @@ mod tests {
             if input["nav"].as_bool().unwrap_or(true) {
                 entity.navigation.nav_com = Some(NavTargetRef::Cell { rx: 10, ry: 10 });
             }
-            entity.movement_target = Some(MovementTarget {
-                path: vec![(9, 10), (10, 10)],
-                next_index: 1,
-                ..Default::default()
-            });
+            entity.movement_target = Some(MovementTarget::default());
             let current = super::super::ground_pose::position_world_coord(&entity.position);
             let mut raw = RawCellOccupationGrid::default();
             raw_at(
