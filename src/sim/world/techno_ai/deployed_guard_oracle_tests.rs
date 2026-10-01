@@ -76,11 +76,19 @@ fn nonnull_coordinate(value: &Value) -> Option<DriveCoord> {
 /// Mechanical identity translation for the companion's two supplied Cells.
 /// Their coordinates are explicit in the existing native fixture, not inferred
 /// from native pointer arithmetic or VERA's target-selection behavior.
-fn target(pointer: &Value) -> Option<TargetKind> {
+fn target(pointer: &Value, row: &Value) -> Option<TargetKind> {
     let pointer = pointer.as_u64().unwrap();
     let first = &corpus()["guard_rows"][0];
     if pointer == 0 {
         None
+    } else if row["input"]["target_kind"] == "entity"
+        && pointer == row["guard_before"]["target"].as_u64().unwrap()
+    {
+        Some(TargetKind::Entity(2))
+    } else if row["input"]["target_kind"] == "cell"
+        && pointer == row["guard_before"]["target"].as_u64().unwrap()
+    {
+        Some(TargetKind::Cell(15, 10))
     } else if pointer == first["query_order"][0]["returned_cell"].as_u64().unwrap() {
         Some(TargetKind::Cell(10, 10))
     } else {
@@ -97,19 +105,25 @@ fn supplied_rules(input: &Value) -> RuleSet {
         .known()
         .unwrap();
     let range = f64::from(signed(&input["range"])) / 256.0;
+    let secondary_range = input["secondary_range"]
+        .as_i64()
+        .map_or(range, |value| value as f64 / 256.0);
+    let deploy_fire_weapon = i32::from(input["secondary_range"].is_number());
+    let jumpjet = input["jumpjet"].as_i64().unwrap_or(0);
+    let area_fire = i32::from(!input["secondary_range"].is_number());
     let ini = IniFile::from_str(&format!(
         "[AI]\nBlockagePathDelay={}\n[InfantryTypes]\n0={name}\n\
          [{name}]\nStrength=100\nSpeed=4\n\
          Locomotor={{4A582744-9839-11D1-B709-00A024DDAFD1}}\n\
          MobileFire=yes\nDeployer={}\nDeployedCrushable=no\nDeployFire={}\n\
-         UndeployDelay={}\nImmuneToRadiation={}\n\
+         UndeployDelay={}\nImmuneToRadiation={}\nDeployFireWeapon={deploy_fire_weapon}\nJumpJet={jumpjet}\n\
          Primary=SUPPLIED0\nSecondary=SUPPLIED1\n\
          [{}]\nRate={}\n\
-         [SUPPLIED0]\nDamage=1\nSpeed=50\nROF=50\nAreaFire=yes\n\
+         [SUPPLIED0]\nDamage=1\nSpeed=50\nROF=50\nAreaFire={area_fire}\n\
          Projectile=SUPPLIED_PROJECTILE\nWarhead=SUPPLIED_WARHEAD\nRange={range}\nRadLevel={}\n\
-         [SUPPLIED1]\nDamage=1\nSpeed=50\nROF=50\nAreaFire=yes\n\
-         Projectile=SUPPLIED_PROJECTILE\nWarhead=SUPPLIED_WARHEAD\nRange={range}\nRadLevel={}\n\
-         [SUPPLIED_PROJECTILE]\nAA=yes\nAG=yes\n\
+         [SUPPLIED1]\nDamage=1\nSpeed=50\nROF=50\nAreaFire={area_fire}\n\
+         Projectile=SUPPLIED_PROJECTILE\nWarhead=SUPPLIED_WARHEAD\nRange={secondary_range}\nRadLevel={}\n\
+         [SUPPLIED_PROJECTILE]\nAA={area_fire}\nAG=yes\n\
          [SUPPLIED_WARHEAD]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
         input["blockage_path_delay"],
         input["deployer"],
@@ -147,7 +161,12 @@ fn supplied_rules(input: &Value) -> RuleSet {
         "live Ammo0 is a separate generic Techno owner residual"
     );
     let weapon = rules.weapon("SUPPLIED1").unwrap();
-    assert_eq!(weapon.range_leptons, signed(&input["range"]));
+    assert_eq!(
+        weapon.range_leptons,
+        input["secondary_range"]
+            .as_i64()
+            .unwrap_or_else(|| input["range"].as_i64().unwrap()) as i32
+    );
     assert_eq!(weapon.rad_level, signed(&input["rad_level"]));
     for (action, count) in counts.into_iter().enumerate() {
         assert_eq!(
@@ -255,8 +274,8 @@ fn supplied_fixture(row: &Value) -> (Simulation, RuleSet, u64) {
         ai_counter: 0,
         dispatch_timer: MissionDispatchTimer::at_frame(0),
     });
-    actor.attack_target = target(&before["target"]).map(|target| AttackTarget { target });
-    actor.navigation.nav_com = target(&before["nav"]).map(|target| match target {
+    actor.attack_target = target(&before["target"], row).map(|target| AttackTarget { target });
+    actor.navigation.nav_com = target(&before["nav"], row).map(|target| match target {
         TargetKind::Cell(x, y) => NavTargetRef::cell(x, y),
         TargetKind::Entity(_) => unreachable!(),
     });
@@ -276,6 +295,14 @@ fn supplied_fixture(row: &Value) -> (Simulation, RuleSet, u64) {
     actor
         .foot_speed
         .set_speed_fraction_native_bits(input["speed_fraction"].as_f64().unwrap().to_bits());
+    if input["target"] == true && input["target_kind"] == "entity" {
+        let mut supplied_target = actor.clone();
+        supplied_target.stable_id = 2;
+        supplied_target.position.sub_x += SimFixed::from_num(signed(&input["delta"]));
+        supplied_target.attack_target = None;
+        supplied_target.mission_leaf = MissionLeafState::infantry_raw_for_test(0, 0);
+        sim.substrate.entities.insert(supplied_target);
+    }
     // All three original Random2Class objects execute Seed(input.seed) after
     // the supplied actor is prepared. Constructor draws are outside this seam.
     sim.main_rng = SimRng::new(input["seed"].as_u64().unwrap());
@@ -326,10 +353,10 @@ fn assert_actor(actor: &GameEntity, expected: &Value, row: &Value, rearm: bool) 
     );
     assert_eq!(
         actor.attack_target.as_ref().map(|a| a.target),
-        target(&expected["target"]),
+        target(&expected["target"], row),
         "{name}: TarCom"
     );
-    let nav = target(&expected["nav"]).map(|target| match target {
+    let nav = target(&expected["nav"], row).map(|target| match target {
         TargetKind::Cell(x, y) => NavTargetRef::cell(x, y),
         TargetKind::Entity(_) => unreachable!(),
     });
@@ -372,6 +399,42 @@ fn assert_rng(sim: &Simulation, expected: &Value, name: &str) {
             actual[stream], expected[stream],
             "{name}: complete {stream} RNG"
         );
+    }
+}
+
+#[test]
+fn native_gi_reacquire_uses_deployed_weapon_range_and_clears_firing_latch() {
+    let data = super::automatic_deploy_oracle_tests::corpus();
+    let rows = data["reacquire_rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 10);
+    for row in rows {
+        let (mut sim, rules, id) = supplied_fixture(row);
+        dispatch_supported_foot_mission_cadence(&mut sim, id, &rules, ObjectAiCtx::default());
+        assert_actor(
+            sim.substrate.entities.get(id).unwrap(),
+            &row["guard_after"],
+            row,
+            true,
+        );
+        assert_rng(
+            &sim,
+            &row["rng_streams_after"],
+            row["input"]["name"].as_str().unwrap(),
+        );
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(id)
+                .unwrap()
+                .mission
+                .dispatch_timer(),
+            MissionDispatchTimer::from_raw(
+                sim.session.binary_frame as i32,
+                signed(&row["return_signed"])
+            )
+        );
+        assert_eq!(row["execution"]["gameplay_return_supplied"], false);
+        assert_eq!(row["original_text_and_vtables_unchanged"], true);
     }
 }
 

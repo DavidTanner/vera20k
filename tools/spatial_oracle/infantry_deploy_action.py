@@ -724,9 +724,175 @@ def deployed_guard_metadata():
     return out
 
 
+class AutomaticGuardFixture(UnloadFixture):
+    """Original Guard-family caller plus the existing Stop/action fixture.
+
+    The caller entry is selected without changing gameplay code or vtables.
+    Foot+520=-1 is the original constructor4D31F1 premise required by idle.
+    """
+    def __init__(self):
+        super().__init__()
+        self.automatic_original = [bytes(self.u.mem_read(a, b-a)) for a, b in GUARD_SPANS]
+        self.text_sha256 = hashlib.sha256(bytes(self.u.mem_read(0x401000, 0x3E0000))).hexdigest()
+
+    def prepare_execution(self, row):
+        super().prepare_execution(row)
+        self.u.mem_write(ACTOR+0x520, dwords(-1))
+        self.u.mem_write(0xA8EB60, dwords(row['game_speed_index']))
+        self.u.mem_write(RULES+0x1710, struct.pack('<d', row['idle_action_frequency']))
+        self.u.mem_write(ACTOR+0x9C, dwords(*row.get('position', [2688, 2688, 0])))
+        if row.get('archive'):
+            self.u.mem_write(ARCHIVE+0x6C, dwords(100))
+            self.u.mem_write(ARCHIVE+0x90, b'\1')
+
+    def state(self):
+        result = super().state()
+        result['idle_timer'] = [self.read(ACTOR+0x168), self.read(ACTOR+0x170)]
+        return result
+
+    def call(self, address, owner, args=()):
+        if address == 0x521320:
+            if self.automatic_row.get('caller', True):
+                address = 0x51F640 if self.automatic_row['mission'] == 11 else 0x51F620
+        return super().call(address, owner, args)
+
+    def execute(self, row):
+        self.automatic_row = row
+        result = super().execute(row)
+        result['return_signed'] = struct.unpack('<i', dwords(result['return_eax']))[0]
+        result['entry'] = ('00521320' if not row.get('caller', True) else
+                           '0051F640' if row['mission'] == 11 else '0051F620')
+        assert self.automatic_original == [bytes(self.u.mem_read(a, b-a)) for a, b in GUARD_SPANS]
+        assert self.text_sha256 == hashlib.sha256(bytes(self.u.mem_read(0x401000, 0x3E0000))).hexdigest()
+        result['original_text_and_vtables_unchanged'] = True
+        return result
+
+
+def automatic_guard_inputs():
+    base = dict(kind='guard', doing=0, pending=0, prone=0, head=[2688, 2688, 0],
+                moving=0, motion=0, mission=5, nav=False, count=15, human=0,
+                difficulty=1, delays=[15, 25, 100], mission_start=0, now=100,
+                deployer=1, deploy_fire=1, undeploy_delay=-1, immune=0,
+                type_id='E1', blockage_path_delay=0, weapon_present=False, game_speed_index=0,
+                idle_action_frequency=0.0)
+    variants = [dict(name='stationary'), dict(name='moving_paid_head', moving=1, motion=1),
+                dict(name='moving_no_head', moving=1, motion=1, head=[0, 0, 0]),
+                dict(name='moving_old_pending_no_head', moving=1, motion=1,
+                     head=[0, 0, 0], pending=1),
+                dict(name='human', human=1), dict(name='not_deployer', deployer=0),
+                dict(name='not_deploy_fire', deploy_fire=0),
+                dict(name='undeploy_delay_zero', undeploy_delay=0),
+                dict(name='negative_undeploy_delay', undeploy_delay=-2),
+                dict(name='destination_present', nav=True), dict(name='radiation_immune', immune=1),
+                dict(name='deadline_exact', now=25), dict(name='deadline_after', now=26),
+                dict(name='hard_exact', now=15, difficulty=0),
+                dict(name='hard_after', now=16, difficulty=0),
+                dict(name='easy_exact', now=100, difficulty=2),
+                dict(name='easy_after', now=101, difficulty=2),
+                dict(name='archive_same_cell', archive=[2689, 2689, 416]),
+                dict(name='archive_other_cell', archive=[2944, 2688, 0]),
+                dict(name='archive_signed_truncate', position=[-1, -255, 0], archive=[0, 0, 416]),
+                dict(name='archive_word_wrap', archive=[2688+0x1000000, 2688, 0]),
+                dict(name='signed_frame_boundary', now=-2147483648,
+                     mission_start=2147483647, delays=[1, 1, 1]),
+                dict(name='signed_frame_after', now=-2147483647,
+                     mission_start=2147483647, delays=[1, 1, 1]),
+                dict(name='signed_negative_delay', now=0, delays=[-1, -1, -1])]
+    variants += [dict(name=f'signed_count_{count}', count=count)
+                 for count in (-2147483648, -1, 0, 1, 65536, 2147483647)]
+    return [base | variant | dict(name=f'{name}_{variant["name"]}', mission=mission,
+                                 caller=not (mission == 11 and variant['name'] == 'archive_other_cell'))
+            for name, mission in (('Guard', 5), ('Sticky', 6), ('AreaGuard', 11))
+            for variant in variants]
+
+
+class ReacquireGuardFixture(DeployedGuardFixture):
+    """Original GI SelectWeapon(NULL)/InRange, empty rescan and idle suffix."""
+    def prepare_execution(self, row):
+        super().prepare_execution(row)
+        u = self.u
+        u.mem_write(ACTOR+0x520, dwords(-1))
+        u.mem_write(TYPE+0x6A8, dwords(1))
+        u.mem_write(TYPE+0xD94, bytes([row['jumpjet']]))
+        u.mem_write(WEAPON+0xB4, dwords(1024))
+        u.mem_write(WEAPON_OTHER+0xB4, dwords(row['secondary_range']))
+        u.mem_write(GUARD_PROJECTILE+0x2A4, b'\1\0')
+        for weapon in (WEAPON, WEAPON_OTHER):
+            u.mem_write(weapon+0x150, b'\0')
+        if row['target']:
+            if row['target_kind'] == 'cell':
+                u.mem_write(NAV+0x24, struct.pack('<hh', 15, 10))
+                u.mem_write(TABLE+(10*512+15)*4, dwords(NAV))
+            else:
+                # Same supplied original Infantry vtable/type, HP100/Alive1;
+                # no registration is supplied to the native greatest-threat list.
+                u.mem_write(NAV, bytes(u.mem_read(ACTOR, 0x700)))
+                u.mem_write(NAV+0x9C, dwords(2688+row['delta'], 2688, 0))
+                u.mem_write(NAV+0x2B4, dwords(0))
+                u.mem_write(NAV+0x6C4, dwords(0))
+                u.mem_write(NAV+0x68D, b'\0')
+        self.guard_before = self.guard_state()
+
+
+def reacquire_guard_inputs():
+    rows, _ = deployed_guard_inputs()
+    base = next(row for row in rows if row['name'] == 'nonimmune_retained_Cell_target')
+    base = base | dict(type_id='E1', doing=28, immune=0, jumpjet=0,
+                       secondary_range=1280, target_kind='entity', delta=1280)
+    return ([base | dict(name=f'GI_target_delta{delta}', delta=delta)
+             for delta in (1279, 1280, 1281, 1282)]
+            + [base | dict(name=f'GI_Cell_range{limit}', target_kind='cell', secondary_range=limit)
+               for limit in (1278, 1279, 1280, 1281)]
+            + [base | dict(name=f'GI_AreaGuard_empty_jumpjet{jumpjet}', target=False,
+                           mission=11, jumpjet=jumpjet)
+               for jumpjet in (0, 1)])
+
+
+def generate_automatic_guard():
+    preserved = guard_preserved_corpora()
+    result = dict(schema_version=1, preserved_corpora=preserved,
+                  automatic_rows=[AutomaticGuardFixture().execute(row) for row in automatic_guard_inputs()],
+                  reacquire_rows=[ReacquireGuardFixture().execute(row) for row in reacquire_guard_inputs()])
+    assert guard_preserved_corpora() == preserved
+    return result
+
+
+def automatic_guard_metadata():
+    fixture = AutomaticGuardFixture()
+    out = metadata()
+    out['scope'] = ('Original Infantry Guard/Sticky51F620 and AreaGuard51F640 callers, '
+                    'automatic deploy5214F7 admission, stationary action, moving Stop/callback/latch '
+                    'and signed-1 Foot fallback. Supplied actor/type/sequence/House/map state; '
+                    'not a complete retail object lifecycle.')
+    out['assumptions'] += [
+        'Shares the existing UnloadFixture map/type/prior Mission state and original vtables. Weapon slots are supplied absent to isolate the Guard producer and its empty-scan Foot fallback, not to represent a retail weapon load. Foot+520=-1 is supplied from constructor4D31F1; that constructor is not executed. IdleActionTimer168/170 has explicit zero start/duration from the supplied prior storage; both words and native writes are compared. Empty native registered scan storage is supplied.',
+        'House difficulty0/1/2 and Rules AIAutoDeployFrameDelay vector are supplied declared input values, not reader results. Production retail reader validation is separate. Object virtual+48 executes for actor/archive; signed truncation, WORD narrowing and wrapping signed frame admission execute original instructions.',
+        'MissionControl Rate0.1, GameOptions speed index0 and Rules IdleActionFrequency0 are supplied for the committed selector and idle-action timer/SpeedNormalize. Original class caller, Foot fallback, cadence arithmetic and ScenarioRandomRanged execute without gameplay substitutions. Signed Count27 may refuse DoAction or return the caller fallback sentinel-1.',
+        'AreaGuard_archive_other_cell runs the original shared521320 shim only, returning-1. The subsequent FootAreaGuard return-to-post navigation is outside this automatic-deploy comparison; its path state is not supplied or synthesized.',
+        'Reacquire controls extend the existing DeployedGuardFixture with nonimmune GI Doing28, supplied DeployFireWeapon1, PrimaryRange1024/SecondaryRange input, ProjectileAG1/AA0 and AreaFire0. Original SelectWeapon(NULL)5218E0, CanFireAt6F77B0/InRange6F7220, empty greatest-threat scan, AssignTargetNULL and Infantry/Foot EnterIdle execute; no baseFireAt callback occurs.',
+        'Reacquire entity targets copy the supplied original Infantry state with physical X delta varied and Doing0; Cells use real Cell15,10 coordinates. Target registration storage remains empty. Controls establish selected-slot range rounding and target/firing-latch cleanup, not populated scanner or full projectile behavior.',
+    ]
+    out['entry_points'].update(guard_caller=0x51F620, area_guard_caller=0x51F640,
+                               deployed_reacquire=0x51F330, foot_guard=0x4D5070,
+                               foot_area_guard=0x4D6F00)
+    out['preserved_corpora'] = guard_preserved_corpora()
+    out['original_text'] = dict(start='00401000', bytes=0x3E0000, sha256=fixture.text_sha256)
+    out['original_slices'] += [dict(start=f'{a:08X}', end_exclusive=f'{b:08X}', hex=code.hex(),
+                                  sha256=hashlib.sha256(code).hexdigest())
+                             for (a,b),code in zip(GUARD_SPANS,fixture.automatic_original)]
+    return out
+
+
 if __name__ == '__main__':
     args=sys.argv[1:]
-    if '--deployed-guard' in args:
+    if '--automatic-guard' in args:
+        args.remove('--automatic-guard')
+        finish_vectors(generate_automatic_guard,Path(__file__).with_name('infantry_auto_deploy.json'),
+                       provenance=automatic_guard_metadata,argv=args,
+                       source_paths={'generator':Path(__file__),
+                                     'native_oracle':Path(__file__).parents[1]/'native_oracle.py',
+                                     'map_queries':Path(__file__).with_name('map_queries.py')})
+    elif '--deployed-guard' in args:
         args.remove('--deployed-guard')
         finish_vectors(generate_deployed_guard,Path(__file__).with_name('infantry_deployed_guard.json'),
                        provenance=deployed_guard_metadata,argv=args,

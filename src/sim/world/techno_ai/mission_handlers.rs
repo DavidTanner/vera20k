@@ -19,6 +19,10 @@ mod foot_mission_oracle_tests;
 mod deployed_guard_oracle_tests;
 
 #[cfg(test)]
+#[path = "automatic_deploy_oracle_tests.rs"]
+mod automatic_deploy_oracle_tests;
+
+#[cfg(test)]
 #[path = "../infantry_fire_oracle_tests.rs"]
 mod infantry_fire_oracle_tests;
 
@@ -150,7 +154,7 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         return bridge_changed;
     }
 
-    let mut deployed_guard_handled = false;
+    let mut infantry_guard_handled = false;
     let evaluation = match (input.category, input.mission) {
         // `FootClass::Mission_Move` is the native named location for this
         // handler-return cadence; movement execution remains in movement/.
@@ -349,6 +353,17 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                 queue: idle_queue,
             }
         }
+        // Undeployed Guard/Sticky51F620 and AreaGuard51F640 share the
+        // automatic-deploy branch5214F7 before either Foot continuation.
+        (
+            EntityCategory::Infantry,
+            Some(mission @ (MissionType::Guard | MissionType::Sticky | MissionType::AreaGuard)),
+        ) if !input.infantry_deployed_do_type => {
+            infantry_guard_handled = true;
+            MissionHandlerEvaluation::cadence(infantry_automatic_guard_delay(
+                sim, id, rules, mission,
+            ))
+        }
         // Guard/Sticky51F620 and AreaGuard51F640 first call521320.
         // Its deployed special arms return signed sequence COUNT, without
         // depending on whether the following DoAction request was admitted.
@@ -365,7 +380,7 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                     object.undeploy_delay >= 0 || (object.deploy_fire && object.immune_to_radiation)
                 }) =>
         {
-            deployed_guard_handled = true;
+            infantry_guard_handled = true;
             let object = sim
                 .substrate
                 .entities
@@ -471,7 +486,7 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
             EntityCategory::Infantry,
             Some(MissionType::Guard | MissionType::Sticky | MissionType::AreaGuard),
         ) if input.infantry_deployed_do_type && input.infantry_deploy_fire_stance => {
-            deployed_guard_handled = true;
+            infantry_guard_handled = true;
             // Order is native's: `[vtable+0x428]` runs FIRST, then the shim's
             // tail computes `ftol(Rate * 900)` and draws `RandomRanged(0, 2)`.
             let queue = infantry_deployed_attack_reacquire(sim, id, rules, input, ctx);
@@ -656,20 +671,20 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
     };
 
     #[cfg(test)]
-    if deployed_guard_handled {
+    if infantry_guard_handled {
         crate::sim::combat::receiver_fixture::observe_fire_visit(sim, id, "guard-shim-return");
     }
 
     //51F620/51F640 compare the actual shim return with signed-1. Even
     // a deployed arm's raw Count=-1 (or cadence=-1) resumes its Foot body
     // after the shim's target/action effects, rather than writing timer-1.
-    let evaluation = if deployed_guard_handled && evaluation.delay == -1 {
+    let evaluation = if infantry_guard_handled && evaluation.delay == -1 {
         match input.mission {
             Some(MissionType::AreaGuard) => evaluate_foot_area_guard(sim, id, rules, ctx),
             Some(mission @ (MissionType::Guard | MissionType::Sticky)) => {
                 evaluate_foot_guard_cadence(sim, rules, id, mission, input.bunker_delegate)
             }
-            _ => unreachable!("deployed Guard shim belongs to Guard-family slots"),
+            _ => unreachable!("Infantry Guard shim belongs to Guard-family slots"),
         }
     } else {
         evaluation
@@ -783,6 +798,83 @@ impl MissionHandlerEvaluation {
             queue: Some(mission),
         }
     }
+}
+
+/// Undeployed half of Infantry Guard521320, original5214F7..5216B6.
+/// The shared class callers treat only signed-1 as the Foot fallback. Native
+/// executions and stop-before-latch observations: infantry_auto_deploy.json.
+fn infantry_automatic_guard_delay(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    mission: MissionType,
+) -> i32 {
+    let Some(actor) = sim.substrate.entities.get(id) else {
+        return -1;
+    };
+    let Some(house) = sim.houses.get(&actor.owner()) else {
+        return -1;
+    };
+    let Some(object) = sim.object_type(actor.type_ref(), rules) else {
+        return -1;
+    };
+    if house.is_controlled_by_human(sim.session.game_mode_nonzero)
+        || !object.deployer
+        || !object.deploy_fire
+        || object.undeploy_delay > -1
+        || actor.navigation.nav_com.is_some()
+    {
+        return -1;
+    }
+    //521570..521574: ADD wraps before the signed CMP/JGE. A subtraction
+    // of unsigned elapsed frames changes admission across the sign boundary.
+    let deadline = (actor.mission.mission_start_frame() as i32)
+        .wrapping_add(house.difficulty_value(&rules.general.ai_auto_deploy_frame_delay));
+    if deadline >= sim.session.binary_frame as i32 {
+        return -1;
+    }
+    if let Some(archive) = actor.archive_target() {
+        use crate::sim::movement::ground_pose::{object_get_coords, target_get_coords};
+        use crate::util::lepton::lepton_to_cell_packed;
+        let terrain = sim.resolved_terrain.as_ref();
+        let here = object_get_coords(actor, terrain);
+        let Some(post) = target_get_coords(archive, &sim.substrate.entities, terrain) else {
+            return -1;
+        };
+        //521584..5215F3 uses Object virtual+48, truncates each XY/256,
+        // then compares the packed signed WORDs. Z is not a gate.
+        if lepton_to_cell_packed(here.x) != lepton_to_cell_packed(post.x)
+            || lepton_to_cell_packed(here.y) != lepton_to_cell_packed(post.y)
+        {
+            return -1;
+        }
+    }
+    if object.immune_to_radiation {
+        return -1;
+    }
+    let Some(moving) = crate::sim::movement::motion_query::is_moving(actor) else {
+        return -1;
+    };
+    if !moving {
+        //521631..521659 returns raw signed Count27 even when DoAction refuses.
+        let _ = sim.infantry_do_action(id, 27, false, rules);
+        return rules
+            .animation_sequence(&object.id)
+            .and_then(|set| set.infantry_action(27))
+            .map_or(0, |record| record.frames_per_facing);
+    }
+    // Stock GI/GGI use Walk. Stop75ADA0 retains a paid head; with no head
+    // it synchronously invokes521B40 before this producer writes6E4=1.
+    if sim.walk_stop_moving(id, Some(rules)).is_err() {
+        return -1;
+    }
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .expect("Guard Stop retains its Infantry receiver")
+        .mission_leaf
+        .set_infantry_pending_deploy(1);
+    jittered_mission_cadence(sim, rules, mission)
 }
 
 /// The Move handler's arrival hook, reduced to the parts VERA can commit.
@@ -1693,13 +1785,8 @@ fn evaluate_foot_area_guard(
 /// immune self-fire arms run in [`dispatch_supported_foot_mission_cadence`].
 /// Their actual -1 sentinel reaches this shared Foot continuation afterward.
 ///
-/// RESIDUAL — the shim's own **undeployed** branch is still absent. It is
-/// gated on `HouseClass::IsControlledByHuman(...) == 0` plus `Deployer=`
-/// (`InfantryTypeClass+0xEC8`), `DeployFire=`, a negative `UndeployDelay` and a
-/// `Rules[+0xE30]`-indexed frame gate, and makes an AI-owned deployer sit down
-/// on its own. Frequency: every Guard dispatch of such a computer-owned
-/// deployer.
-/// Everything else in that branch returns `-1`, which is the Foot body below.
+/// Its undeployed producer runs in [`infantry_automatic_guard_delay`], with
+/// the same signed-1 continuation after any action or Stop callback effects.
 ///
 /// The Sticky half of the shared-slot claim is confirmed:
 /// `MissionClass::GetMissionTimerEntry` @ `0x005B3A00` is
@@ -2156,16 +2243,9 @@ fn foot_type_takes_cadence_band(
 ///
 /// The object never walks: there is no destination write on any arm.
 ///
-/// RESIDUAL — two approximations, both stated rather than absorbed:
-/// - step 1's legality test is `attack_target_is_stale`, which is aliveness,
-///   not `[vtable+0x3A8]`'s weapon-vs-target legality. A deployed GI holding a
-///   live target its weapon can no longer engage keeps it here, where native
-///   rescans. Trigger: a target that changes legality without dying — chiefly
-///   one that leaves range or cloaks. Frequency: occasional inside an
-///   engagement, and cloak does not exist in VERA yet (GSI-12.05).
-/// - the `GetTechnoType()->[+0xD94] == 0` gate on the idle exit is UNCHECKED
-///   and left out. Omitting it can only let the idle exit run where native
-///   skipped it; no stock type is known to set the byte.
+/// Native SelectWeapon(NULL) and CanFireAt/InRange use their existing owners;
+/// the retained target does not pass through GetFireError (ammo/rearm/cloak).
+/// Range-boundary executions: infantry_auto_deploy.json.
 fn infantry_deployed_attack_reacquire(
     sim: &mut Simulation,
     id: u64,
@@ -2174,7 +2254,15 @@ fn infantry_deployed_attack_reacquire(
     ctx: super::ObjectAiCtx<'_>,
 ) -> Option<MissionType> {
     let had_target = input.has_attack_target;
-    if had_target && !attack_target_is_stale(sim, id) {
+    let weapon_index = super::target_scan::select_weapon(sim, rules, id, None);
+    let target = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|actor| actor.attack_target.as_ref().map(|attack| attack.target));
+    if target.is_some_and(|target| {
+        super::target_scan::can_fire_at(sim, rules, id, target, weapon_index, ctx.overlay_registry)
+    }) {
         return None;
     }
     // The raw scan, NOT `Retaliate_And_Scan`: that routine also stamps the
@@ -2207,7 +2295,16 @@ fn infantry_deployed_attack_reacquire(
     // COMMITTED mission is Guard. That was vacuous while the Attack handler was
     // the only caller; the deploy shim `FUN_00521320` also reaches this virtual
     // from Guard, Sticky and Area Guard, so the gate is now live.
-    if input.mission == Some(MissionType::Guard) {
+    // Type+D94 is JumpJet: ctor710B00/711601 defaults false and the
+    // exact-case reader7151E5..715200 retains that default. E1/GGI are false.
+    if input.mission == Some(MissionType::Guard)
+        || sim
+            .substrate
+            .entities
+            .get(id)
+            .and_then(|actor| sim.object_type(actor.type_ref(), rules))
+            .is_some_and(|object| object.jumpjet)
+    {
         return None;
     }
     sim.temporal_release_if_warping(id);

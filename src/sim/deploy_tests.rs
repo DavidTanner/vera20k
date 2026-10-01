@@ -921,16 +921,32 @@ UndeploysInto=SMIN
 /// The tests exercise the production readers; expected outputs stay in native JSON.
 fn native_deploy_rules(input: &serde_json::Value) -> RuleSet {
     let type_name = input["type_id"].as_str().unwrap_or("E1");
+    let delays = input["delays"].as_array().map_or_else(
+        || "15,25,100".to_owned(),
+        |values| {
+            values
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        },
+    );
     let weapon_keys = if input["weapon_present"].as_bool().unwrap_or(true) {
         "Primary=SUPPLIED0\nSecondary=SUPPLIED1\n"
     } else {
         ""
     };
+    let idle_keys = input["idle_action_frequency"]
+        .as_f64()
+        .map(|frequency| format!("[AudioVisual]\nIdleActionFrequency={frequency}\n"))
+        .unwrap_or_default();
     let ini = IniFile::from_str(&format!(
-        "[AI]\nBlockagePathDelay={}\n[InfantryTypes]\n0={type_name}\n\
+        "{idle_keys}[General]\nAIAutoDeployFrameDelay={delays}\n\
+         [Guard]\nRate=0.1\n[Sticky]\nRate=0.1\n[Area Guard]\nRate=0.1\n\
+         [AI]\nBlockagePathDelay={}\n[InfantryTypes]\n0={type_name}\n\
          [{type_name}]\nStrength=100\nSpeed=4\n\
          Locomotor={{4A582744-9839-11D1-B709-00A024DDAFD1}}\n\
-         Deployer={}\nDeployedCrushable={}\nDeployFire={}\nUndeployDelay={}\n\
+         Deployer={}\nDeployedCrushable={}\nDeployFire={}\nUndeployDelay={}\nImmuneToRadiation={}\n\
          SprayAttack={}\nDeploySound=GIDeploy\nUndeploySound=GIUndeploy\n\
          {weapon_keys}\n\
          [SUPPLIED0]\nAreaFire={}\n[SUPPLIED1]\nAreaFire={}\n",
@@ -939,6 +955,7 @@ fn native_deploy_rules(input: &serde_json::Value) -> RuleSet {
         input["crushable"].as_i64().unwrap_or(0),
         input["deploy_fire"].as_i64().unwrap_or(1),
         input["undeploy_delay"].as_i64().unwrap_or(-1),
+        input["immune"].as_i64().unwrap_or(0),
         input["spray_attack"].as_i64().unwrap_or(0),
         i32::from(
             input["area_fire"].as_i64().unwrap_or(0) != 0
@@ -983,7 +1000,24 @@ fn native_coord(value: &serde_json::Value) -> Option<crate::sim::components::Dri
     (coord.x != 0 || coord.y != 0 || coord.z != 0).then_some(coord)
 }
 
-fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, RuleSet, u64) {
+/// Transport a supplied DWORD coordinate into cell origin plus fixed offset.
+/// The wide WORD-wrap control exceeds a subcell fixed-point value's range;
+/// its full coordinate remains representable with the existing u16 origin.
+fn supplied_world_position(
+    position: &mut crate::sim::components::Position,
+    xyz: &serde_json::Value,
+) {
+    use crate::util::fixed_math::SimFixed;
+    let x = xyz[0].as_i64().unwrap() as i32;
+    let y = xyz[1].as_i64().unwrap() as i32;
+    position.rx = (x / 256).clamp(0, i32::from(u16::MAX)) as u16;
+    position.ry = (y / 256).clamp(0, i32::from(u16::MAX)) as u16;
+    position.sub_x = SimFixed::from_num(x - i32::from(position.rx) * 256);
+    position.sub_y = SimFixed::from_num(y - i32::from(position.ry) * 256);
+    position.exact_z_leptons = Some(xyz[2].as_i64().unwrap() as i32);
+}
+
+pub(crate) fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, RuleSet, u64) {
     use crate::sim::mission::MissionId;
     use crate::util::fixed_math::SimFixed;
     let input = &row["input"];
@@ -992,11 +1026,23 @@ fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, RuleSet, u64) 
     let mut sim = Simulation::with_seed(31);
     sim.mapgen_rng = crate::sim::rng::SimRng::new(31);
     sim.session.binary_frame = input["now"].as_i64().unwrap_or(100) as u32;
+    sim.session.game_options.game_speed = input["game_speed_index"].as_i64().unwrap_or(0) as i32;
     let owner = sim.interner.intern("Americans");
     let human = input["human"].as_i64().unwrap_or(0) != 0;
     sim.houses.insert(
         owner,
         crate::sim::house_state::HouseState::new(owner, 0, None, human, 0, 10),
+    );
+    sim.houses.get_mut(&owner).unwrap().set_difficulty(
+        crate::sim::house_state::HouseDifficulty::from_native(
+            input["difficulty"].as_i64().unwrap_or(1) as i32,
+        )
+        .unwrap(),
+        &rules.general,
+        1.0,
+        sim.session.game_mode_nonzero,
+        0,
+        0,
     );
     sim.resolved_terrain = Some(crate::map::resolved_terrain::test_grid(32, 32, |x, y| {
         crate::map::resolved_terrain::test_tiberium_cell(x, y)
@@ -1011,7 +1057,7 @@ fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, RuleSet, u64) 
     sim.mission_assign_exact(
         id,
         MissionId::from_raw(input["mission"].as_i64().unwrap_or(5) as i32),
-        0,
+        input["mission_start"].as_i64().unwrap_or(0) as u32,
     )
     .unwrap();
     let actor = sim.substrate.entities.get_mut(id).unwrap();
@@ -1019,7 +1065,17 @@ fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, RuleSet, u64) 
     actor.position.sub_x = SimFixed::from_num(128);
     actor.position.sub_y = SimFixed::from_num(128);
     actor.position.exact_z_leptons = Some(0);
+    if input["position"].is_array() {
+        supplied_world_position(&mut actor.position, &input["position"]);
+    }
     actor.infantry.as_mut().unwrap().is_prone = before["prone"] != 0;
+    if before["idle_timer"].is_array() {
+        actor.infantry.as_mut().unwrap().idle_action_timer =
+            crate::sim::mission::MissionTimer::armed(
+                before["idle_timer"][0].as_i64().unwrap() as u32,
+                before["idle_timer"][1].as_i64().unwrap() as u32,
+            );
+    }
     actor.set_falling_down_for_test(input["falling"].as_i64().unwrap_or(0) != 0);
     actor
         .mission_leaf
@@ -1052,24 +1108,34 @@ fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, RuleSet, u64) 
             .unwrap(),
         0,
     );
-    // Retain the supplied +36 byte even with no head: it may survive an earlier
-    // Process/head release. The existing owner operations prepare that state.
-    loco.set_step_head(Some(crate::sim::components::DriveCoord {
-        x: 2688,
-        y: 2688,
-        z: 0,
-    }));
-    if before["motion"] != 0 {
-        loco.begin_walk_motion();
-    }
-    loco.set_step_head(native_coord(&before["head"]));
-    loco.set_walk_destination(native_coord(&before["destination"]));
+    // Supplied raw prior bytes are independent: a retained destination need
+    // not have moving34 set, and motion36 can survive a paid-head release.
+    // MoveTo would invent a transition instead of transporting the fixture.
+    loco.runtime_payload =
+        crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload::Walk(
+            crate::sim::movement::locomotion::piggyback::WalkRuntime {
+                head: native_coord(&before["head"]),
+                destination: native_coord(&before["destination"]),
+                moving: before["moving"] != 0,
+                animation_moving: before["motion"] != 0,
+            },
+        );
     actor.locomotor = Some(loco);
     if before["nav"].as_i64().unwrap_or(0) != 0 {
         actor.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(11, 10));
     }
     if before["target"].as_i64().unwrap_or(0) != 0 {
         actor.attack_target = Some(AttackTarget::for_cell(10, 10));
+    }
+    if input["archive"].is_array() {
+        let post = spawn_infantry(&mut sim, "E1", "Americans", 0, 0);
+        let entity = sim.substrate.entities.get_mut(post).unwrap();
+        supplied_world_position(&mut entity.position, &input["archive"]);
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .set_archive_target(Some(TargetKind::Entity(post)));
     }
     assert_eq!(
         sim.scenario_rng.native_state_hex(),
@@ -1080,7 +1146,7 @@ fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, RuleSet, u64) 
 
 /// Compare original outputs directly. No Rust predicate or timer/RNG calculation
 /// supplies an expected value; ignored native stack residue104 stays outside state.
-fn assert_native_deploy_state(sim: &Simulation, id: u64, row: &serde_json::Value) {
+pub(crate) fn assert_native_deploy_state(sim: &Simulation, id: u64, row: &serde_json::Value) {
     let expected = &row["after"];
     let name = row["input"].to_string();
     let actor = sim.substrate.entities.get(id).unwrap();
@@ -1106,6 +1172,14 @@ fn assert_native_deploy_state(sim: &Simulation, id: u64, row: &serde_json::Value
         "{name}: prone6DB"
     );
     let stage = actor.native_stage();
+    if expected["idle_timer"].is_array() {
+        let timer = actor.infantry.as_ref().unwrap().idle_action_timer;
+        assert_eq!(
+            serde_json::json!([timer.start_frame as i32, timer.duration as i32]),
+            expected["idle_timer"],
+            "{name}: IdleActionTimer168/170"
+        );
+    }
     assert_eq!(
         stage.value(),
         expected["frame"].as_i64().unwrap() as i32,
@@ -1204,9 +1278,9 @@ fn assert_native_deploy_state(sim: &Simulation, id: u64, row: &serde_json::Value
             "{name}: NavCom"
         );
         assert_eq!(
-            actor.archive_target(),
-            None,
-            "{name}: empty archive retained"
+            actor.archive_target().is_some(),
+            expected["archive"] != 0,
+            "{name}: archive identity retained"
         );
         let target = actor.attack_target.as_ref().map(|target| target.target);
         assert_eq!(
@@ -1254,6 +1328,40 @@ fn assert_native_deploy_state(sim: &Simulation, id: u64, row: &serde_json::Value
         actor.deploy_state, None,
         "{name}: no competing Infantry countdown"
     );
+}
+
+/// The current native Guard producer's ordinary stationary case, reached
+/// through VERA's actual Infantry AI and mission dispatcher. Before the
+/// producer is connected, Guard runs its Foot idle continuation instead.
+#[test]
+fn guard_auto_deploy_reaches_the_native_action_from_infantry_ai() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/infantry_deploy_action.json"
+    ))
+    .unwrap();
+    let row = corpus
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| {
+            row["input"]["kind"] == "guard"
+                && row["input"]["moving"] == 0
+                && row["input"]["pending"] == 0
+        })
+        .unwrap();
+    let (mut sim, rules, id) = native_deploy_fixture(row);
+    sim.object_ai_visit_one(id, Some(&rules), Default::default());
+    let actor = sim.substrate.entities.get(id).unwrap();
+    assert_eq!(
+        actor.mission_leaf.as_infantry().unwrap().doing(),
+        row["after"]["doing"].as_i64().unwrap() as i32,
+        "Guard must reach the original automatic Deploy action",
+    );
+    assert!(matches!(
+        sim.sound_events.as_slice(),
+        [SimSoundEvent::EntityDeployed { .. }]
+    ));
+    assert_eq!(actor.deploy_state, None);
 }
 
 #[test]
