@@ -215,9 +215,7 @@ impl Simulation {
             return false;
         };
         let height = current_fly_height(entity, self.resolved_terrain.as_ref());
-        if let Some(locomotor) = entity.locomotor.as_mut() {
-            locomotor.altitude = SimFixed::saturating_from_num(height);
-        }
+        crate::sim::movement::ground_pose::mirror_height(entity, height);
         height <= 0
     }
 
