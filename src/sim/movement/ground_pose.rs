@@ -218,8 +218,9 @@ pub(crate) fn object_ground_z_leptons(
 /// the Ground layer). Any other Ground-layer locomotor never lifts, which
 /// keeps a landed or docked aircraft on the floor whatever its stale
 /// altitude. A falling object and a launched missile always have an exact
-/// coordinate (the missile from its Unlimbo, `spawn_manager::launch_coordinate`);
-/// a Rocket locomotor's altitude is only a cache.
+/// coordinate (the missile from its Unlimbo, `spawn_manager::launch_coordinate`,
+/// which its flight moves), so a Rocket locomotor's piggyback altitude is
+/// never read here.
 pub(crate) fn object_altitude_leptons(entity: &crate::sim::game_entity::GameEntity) -> i32 {
     entity
         .locomotor

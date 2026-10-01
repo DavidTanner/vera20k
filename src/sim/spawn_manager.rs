@@ -613,8 +613,18 @@ fn step_ready_docked(
 /// - The Z gains [`LAUNCH_Z_LIFT_LEPTONS`]; a `CMislType=` pool's X and Y
 ///   lose [`CMISL_LAUNCH_OFFSET_LEPTONS`] (`0x006B74B9..0x006B74D7`).
 ///
+/// Native comparison: tools/projectile_oracle/ifv_fire_coord.json
+/// `spawn_launch` runs this block on retail V3, DRED and BSUB from the
+/// missile-slot test to the Unlimbo call, then the burst reset.
+///
 /// GetWeapon(0) with no WeaponType faults natively (`0x006B742C` reads
 /// through it); VERA asks for weapon 1 then.
+///
+/// RESIDUAL, inherited from the GetFLH port (GSI-08.04,
+/// `util::flh_transform`): no slope tilt. Trigger: a launch from a sloped
+/// cell, such as a V3 on a ramp. Effect: the missile unlimbos at the
+/// flat-ground FLH, a lepton or two off. Frequency: launches from slopes.
+/// Risk: the launch coordinate seeds the missile's hashed Location.
 fn launch_coordinate(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -659,6 +669,9 @@ fn launch_coordinate(
         y: fire.coord.y,
         z: fire.coord.z.wrapping_add(LAUNCH_Z_LIFT_LEPTONS),
     };
+    // Native tests the pool's spawn type pointer against Rules' CMislType
+    // once (`0x006B74BC`); a type name names one type, so the name compare is
+    // that test.
     if sim
         .interner
         .resolve(spawn_type)
@@ -1245,11 +1258,16 @@ fn recall_child_to_owner(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, c
 /// which it keeps as its Location: the flight's Z moves from there.
 ///
 /// RESIDUAL: a `CMislType=` launch also constructs a `V3TAKOFF` AnimClass at
-/// the missile's Location (`0x006B750B..0x006B7575`, ZAdjust -10); VERA makes
-/// none. Trigger: every Boomer missile launch. Effect: no launch smoke, and
-/// the anim's object is missing. Frequency: every Boomer volley. Risk: an
-/// AnimClass constructor's ID allocation and any RNG draw it makes (not
-/// traced) are absent, so later IDs can differ from native.
+/// the missile's Location (`0x006B750B..0x006B7575`: LoopDelay 2, LoopCount
+/// 1, ZAdjust -10); VERA makes none. The constructor (`0x00421EA0`) draws
+/// only for `RandomRate=` (`0x004221C5..0x004221F5`), `IsMeteor=` or
+/// `Bouncer=` (`0x004222C9..0x004222F9`), which retail `[V3TAKOFF]`
+/// (`Translucent`, `Translucency`, `Rate`) leaves unset, so it makes no draw;
+/// its nonzero LoopDelay skips Start (`0x004226F6`). Trigger: every Boomer
+/// missile launch. Effect: no launch smoke, and the anim's object is missing.
+/// Frequency: every Boomer volley. Risk: the anim's ID allocation, its
+/// Unlimbo (`0x005F4EC0`, not traced) and its later AI are absent, so later
+/// IDs can differ from native.
 fn launch_missile_child(
     sim: &mut Simulation,
     rules: &RuleSet,

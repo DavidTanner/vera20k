@@ -234,10 +234,22 @@ fn iso_height_shift_cells(height_leptons: i32) -> i32 {
 /// The engine keeps a single 3-D world coordinate per object and feeds its Z to
 /// both the reveal-centre shift and the line-of-sight viewer level, so terrain
 /// elevation and flight altitude are one quantity here too. A falling object
-/// reads its Location Z, which the fall moves every frame anyway. Otherwise
-/// the precedence between the two things that can hold an object up mirrors
-/// `render::locomotor_visual`, so the shroud and the sprite cannot disagree
-/// about where the object is.
+/// reads its Location Z, which the fall moves every frame anyway. An Air-layer
+/// locomotor's altitude lifts an object as `render::locomotor_visual` lifts
+/// one without an exact coordinate.
+///
+/// RESIDUAL: a rocket reads its stored level plus its flight's altitude
+/// (`rocket_state`), not its Location, which its Unlimbo set to the launch
+/// coordinate (`spawn_manager::launch_coordinate`) and its flight moves. The
+/// shroud therefore sees it lower than its Location and its sprite by the
+/// launch's lift over the owner's floor: FLH height plus 10, 85 leptons for
+/// a V3 rocket.
+/// - Trigger: every spawned missile in flight; only V3ROCKET sees in retail
+///   (`Sight=1`; DMISL and CMISL have `Sight=0`).
+/// - Effect: its reveal-centre shift and line-of-sight viewer level come from
+///   that lower height.
+/// - Frequency: every V3 rocket flight.
+/// - Risk: the hashed shroud counters can differ from native around it.
 fn entity_height_leptons(entity: &crate::sim::game_entity::GameEntity) -> i32 {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::movement::locomotor::MovementLayer;

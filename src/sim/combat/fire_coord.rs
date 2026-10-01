@@ -712,6 +712,57 @@ mod tests {
         }
     }
 
+    /// GetFLH with a base argument against the original
+    /// (tools/projectile_oracle/ifv_fire_coord.json `spawn_launch.get_flh`), on
+    /// retail rules and art through the production readers: BSUB's weapon 1
+    /// with its `SecondSpawnOffset=` and with no base on an odd burst, and a
+    /// supplied lateral base on DRED for both burst parities, which shows the
+    /// base joins the FLH before the odd-burst mirror (`0x006F3B37..0x006F3B58`,
+    /// `0x006F3C82`). The original read BSUB's offset with its own ART reader.
+    #[test]
+    fn retail_flh_base_matches_original_get_flh() {
+        let Some((ini, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+            return;
+        };
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+        rules.install_art_data(ArtRegistry::from_ini(&art));
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/projectile_oracle/ifv_fire_coord.json"
+        ))
+        .unwrap();
+        let native = &native["spawn_launch"];
+        let int = |value: &serde_json::Value| value.as_i64().unwrap() as i32;
+        let triple = |value: &serde_json::Value| [int(&value[0]), int(&value[1]), int(&value[2])];
+        assert_eq!(
+            rules.art().get("BSUB").unwrap().second_spawn_offset,
+            Flh::from(triple(&native["types"]["BSUB"]["second_spawn_offset"]))
+        );
+        let [x, y, z] = triple(&native["supplied"]["origin"]);
+        let heading = native["supplied"]["primary_and_secondary_heading"]
+            .as_u64()
+            .unwrap() as u16;
+        let mut shooter = source(EntityCategory::Unit);
+        (shooter.rx, shooter.ry) = ((x / 256) as u16, (y / 256) as u16);
+        (shooter.sub_x, shooter.sub_y) = (SimFixed::from_num(x % 256), SimFixed::from_num(y % 256));
+        shooter.exact_z_leptons = Some(z);
+        shooter.hull_facing = crate::sim::movement::FacingClass::new(heading, 0);
+        let world = Simulation::new();
+        for row in native["get_flh"].as_array().unwrap() {
+            let obj = rules.object(row["owner"].as_str().unwrap()).unwrap();
+            let shot = fire_coordinate(
+                &world,
+                &rules,
+                &shooter,
+                obj,
+                int(&row["weapon_index"]),
+                int(&row["burst_index"]) as u8,
+                Flh::from(triple(&row["base"])),
+            );
+            let [x, y, z] = triple(&row["coordinate"]);
+            assert_eq!(shot.coord, ProjectileCoord::new(x, y, z), "{row}");
+        }
+    }
+
     #[test]
     fn numbered_weapon_index_and_elite_weapon_binding_reach_fire_coordinate() {
         let mut rules = RuleSet::from_ini(&IniFile::from_str(
