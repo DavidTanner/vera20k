@@ -389,19 +389,19 @@ fn tree_transactions_preserve_tmp_shp_voxel_overlap_and_coalesced_order() {
         });
     let steps = [
         (
-            ObjectTexture::TerrainStatic(TerrainPiece::Body),
+            ObjectTexture::TerrainShp(TerrainPiece::Body),
             RenderZPolicy::ReadWrite,
             32767,
         ),
         (ObjectTexture::ShpPage(0), RenderZPolicy::ReadOnly, 32766),
         (
-            ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
+            ObjectTexture::TerrainShp(TerrainPiece::Shadow),
             RenderZPolicy::ReadWrite,
             32766,
         ),
         (ObjectTexture::ShpPage(1), RenderZPolicy::ReadWrite, 32765),
         (
-            ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
+            ObjectTexture::TerrainShp(TerrainPiece::Shadow),
             RenderZPolicy::ReadWrite,
             32765,
         ), // equality rejects
@@ -411,17 +411,17 @@ fn tree_transactions_preserve_tmp_shp_voxel_overlap_and_coalesced_order() {
             32764,
         ),
         (
-            ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
+            ObjectTexture::TerrainShp(TerrainPiece::Shadow),
             RenderZPolicy::ReadWrite,
             32764,
         ),
         (
-            ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
+            ObjectTexture::TerrainShp(TerrainPiece::Shadow),
             RenderZPolicy::ReadWrite,
             -1,
         ),
         (
-            ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
+            ObjectTexture::TerrainShp(TerrainPiece::Shadow),
             RenderZPolicy::ReadWrite,
             -1,
         ),
@@ -513,7 +513,7 @@ fn tree_transactions_preserve_tmp_shp_voxel_overlap_and_coalesced_order() {
         );
         let tree_steps = steps[..count]
             .iter()
-            .filter(|step| matches!(step.0, ObjectTexture::TerrainStatic(_)))
+            .filter(|step| matches!(step.0, ObjectTexture::TerrainShp(_)))
             .count();
         assert_eq!(stats.pieces, tree_steps * 3);
         assert_eq!(
@@ -601,7 +601,7 @@ fn destination_batching_layer_fences_do_not_plan_ordinary_unit_instances() {
             if read_only {
                 ObjectTexture::ProjectileShp(0, piece)
             } else {
-                ObjectTexture::TerrainStatic(piece)
+                ObjectTexture::TerrainShp(piece)
             }
         };
         for ordinary_count in [1usize, 20_000] {

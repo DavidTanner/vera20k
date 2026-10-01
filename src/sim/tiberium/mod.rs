@@ -21,6 +21,18 @@ use crate::sim::ore_growth::OreGrowthState;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::rng::SimRng;
 
+/// 8 adjacent directions for spread: N, NE, E, SE, S, SW, W, NW.
+pub(crate) const ADJACENT_OFFSETS: [(i32, i32); 8] = [
+    (0, -1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+    (0, 1),
+    (-1, 1),
+    (-1, 0),
+    (-1, -1),
+];
+
 /// Mutable state needed to apply a shared tiberium reduction.
 pub struct ReduceTiberiumContext<'a> {
     pub overlay_grid: Option<&'a mut OverlayGrid>,
@@ -246,6 +258,38 @@ pub(crate) fn can_place_new_tiberium(
         && !live_cell_rejects_tiberium(cell, admission.live_objects)
 }
 
+/// CellClass::CanSpreadTiberium483690 source admission, shared by queues
+/// and the non-forced483780 caller. FirstObject includes non-Techno terrain.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn can_spread_tiberium(
+    overlay_grid: &OverlayGrid,
+    overlay_registry: &OverlayTypeRegistry,
+    tiberium_types: &TiberiumTypeRegistry,
+    resolved_terrain: Option<&ResolvedTerrainGrid>,
+    source_has_object: bool,
+    rx: u16,
+    ry: u16,
+    spread_enabled: bool,
+) -> Option<TiberiumTypeId> {
+    if !spread_enabled || source_has_object {
+        return None;
+    }
+    let own_type =
+        tiberium_cell_view(overlay_grid, overlay_registry, tiberium_types, (rx, ry))?.tiberium_type;
+    let cell = overlay_grid.cell(rx, ry);
+    if cell.overlay_data <= own_type.0 / 2 {
+        return None;
+    }
+    if resolved_terrain
+        .and_then(|terrain| terrain.cell(rx, ry))
+        .is_some_and(|cell| cell.slope_type != 0)
+    {
+        return None;
+    }
+    let ty = tiberium_types.get(own_type)?;
+    crate::sim::ore_growth::native_percentage_admits(ty.spread_percentage_bits).then_some(own_type)
+}
+
 /// Mutable state for the native `CellClass::PlaceTiberium` boundary.
 pub struct PlaceTiberiumContext<'a> {
     pub overlay_grid: &'a mut OverlayGrid,
@@ -303,12 +347,23 @@ pub fn place_tiberium(
             return false;
         };
         let overlay_id = variants[ctx.rng.next_range_u32(12) as usize];
-        ctx.overlay_grid
-            .place_overlay(cell.0, cell.1, overlay_id, 0);
+        // Overlay ctor5FC380 ->Cell47C550 refuses Unlimbo on any Terrain,
+        // including an ordinary tree which CanGerminate4838E0 admitted.
+        // Place487190 still returns success and writes the requested data.
+        // Original execution: tibtre.json ordinary_tree_creation_refused.
+        let terrain_blocks_overlay = ctx.new_cell_admission.is_some_and(|admission| {
+            admission
+                .live_objects
+                .terrain_object_cells
+                .contains_key(&cell)
+        });
+        if !terrain_blocks_overlay {
+            ctx.overlay_grid
+                .place_overlay(cell.0, cell.1, overlay_id, 0);
+        }
         ctx.ore_growth_state.add_native_growth_queue_cell(
             ctx.overlay_grid,
-            ctx.overlay_registry,
-            ctx.tiberium_types,
+            type_id,
             cell.0,
             cell.1,
             ctx.binary_frame,
@@ -360,6 +415,64 @@ pub fn place_tiberium(
         ctx.rng,
     );
     true
+}
+
+/// One port of CellClass::SpreadTiberium483780 for terrain's force1 call
+/// and the growth scheduler's force0 call. Forced calls bypass source admission;
+/// both resolve the source's live resource type (fallback0), draw one starting
+/// direction and scan the native direction order for an empty admitted cell.
+/// Original execution: tools/spatial_oracle/tibtre.json and growth/spread corpus.
+pub(crate) fn spread_tiberium(
+    ctx: &mut PlaceTiberiumContext<'_>,
+    source: (u16, u16),
+    forced: bool,
+) -> Option<(u16, u16)> {
+    let source_type = if forced {
+        tiberium_cell_view(
+            ctx.overlay_grid,
+            ctx.overlay_registry,
+            ctx.tiberium_types,
+            source,
+        )
+        .map_or(TiberiumTypeId(0), |view| view.tiberium_type)
+    } else {
+        can_spread_tiberium(
+            ctx.overlay_grid,
+            ctx.overlay_registry,
+            ctx.tiberium_types,
+            ctx.resolved_terrain,
+            crate::sim::ore_growth::cell_has_native_object(
+                ctx.source_object_cells,
+                ctx.live_objects,
+                source,
+            ),
+            source.0,
+            source.1,
+            ctx.spread_enabled,
+        )?
+    };
+    let start = ctx.rng.next_range_u32(8) as usize;
+    let admission = ctx.new_cell_admission?;
+    for step in 0..8 {
+        let (dx, dy) = ADJACENT_OFFSETS[(start + step) % 8];
+        let x = i32::from(source.0) + dx;
+        let y = i32::from(source.1) + dy;
+        if x < 0
+            || y < 0
+            || x >= i32::from(ctx.overlay_grid.width())
+            || y >= i32::from(ctx.overlay_grid.height())
+        {
+            continue;
+        }
+        let target = (x as u16, y as u16);
+        if !can_place_new_tiberium(ctx.overlay_grid, ctx.source_object_cells, admission, target) {
+            continue;
+        }
+        //48385C returns this first PlaceTiberium result; it does not retry
+        // another neighbour after a failed placement on an admitted target.
+        return place_tiberium(ctx, target, source_type, 3).then_some(target);
+    }
+    None
 }
 
 fn mark_place_radar_dirty(ctx: &mut PlaceTiberiumContext<'_>, cell: (u16, u16)) {
@@ -434,17 +547,11 @@ pub fn reduce_tiberium(
     // Its `< 11` admission makes this live call a deliberate no-op: no queue
     // entry and no Scenario RNG draw are produced before the reduction.
     if current == 11
-        && let (Some(grid), Some(registry), Some(types), Some(rng)) = (
-            ctx.overlay_grid.as_deref(),
-            ctx.overlay_registry,
-            ctx.tiberium_types,
-            ctx.rng.as_deref_mut(),
-        )
+        && let (Some(grid), Some(rng)) = (ctx.overlay_grid.as_deref(), ctx.rng.as_deref_mut())
     {
         let _ = ctx.ore_growth_state.add_native_growth_queue_cell(
             grid,
-            registry,
-            types,
+            view.tiberium_type,
             cell.0,
             cell.1,
             ctx.binary_frame,

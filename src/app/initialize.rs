@@ -555,7 +555,6 @@ impl App {
                     theater_name: "TEMPERATE".to_string(),
                     theater_ext: "tem".to_string(),
                     target_lines: startup_target_lines,
-                    idle_anim_elapsed_ms: 0,
                     cached_overlay_instances: Vec::new(),
                     terrain_grid: None,
                     height_map: BTreeMap::new(),

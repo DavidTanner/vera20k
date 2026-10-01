@@ -129,10 +129,10 @@ fn resolve_body_frame(
 pub const SMUDGE_KEY_PREFIX: &str = "__smudge::";
 
 /// Separate source identity for Terrain DrawIt's paired second-half stencil.
-pub fn terrain_shadow_key(name: &str) -> OverlaySpriteKey {
+pub fn terrain_shadow_key(name: &str, frame: u8) -> OverlaySpriteKey {
     OverlaySpriteKey {
         name: format!("__terrain_shadow::{}", name.to_uppercase()),
-        frame: 0,
+        frame,
     }
 }
 
@@ -376,10 +376,7 @@ pub struct OverlayAtlas {
     pub texture: BatchTexture,
     /// Lookup: (name, frame) → UV rectangle + offset data.
     entries: HashMap<OverlaySpriteKey, OverlaySpriteEntry>,
-    /// Terrain objects with animation: name → total frame count.
-    /// Only populated for terrain objects whose SHP has more than 1 frame.
-    terrain_anim_frames: HashMap<String, u8>,
-    native_static_terrain: HashSet<String>,
+    native_terrain: HashSet<String>,
 }
 
 impl OverlayAtlas {
@@ -388,30 +385,25 @@ impl OverlayAtlas {
         self.entries.get(key)
     }
 
-    /// Static two-frame extended SHP pair decoded from the same source file.
-    pub fn native_static_terrain_pair(
+    /// Terrain body and its corresponding second-half stencil from one SHP.
+    pub fn native_terrain_pair(
         &self,
         name: &str,
+        frame: u8,
     ) -> Option<(&OverlaySpriteEntry, &OverlaySpriteEntry)> {
-        self.native_static_terrain.contains(name).then_some(())?;
+        self.native_terrain.contains(name).then_some(())?;
         Some((
             self.get(&OverlaySpriteKey {
                 name: name.to_owned(),
-                frame: 0,
+                frame,
             })?,
-            self.get(&terrain_shadow_key(name))?,
+            self.get(&terrain_shadow_key(name, frame))?,
         ))
     }
 
     /// Number of unique sprites in the atlas.
     pub fn sprite_count(&self) -> usize {
         self.entries.len()
-    }
-
-    /// Get the animation frame count for an animated terrain object.
-    /// Returns None for non-animated terrain objects (single frame).
-    pub fn terrain_anim_frame_count(&self, name: &str) -> Option<u8> {
-        self.terrain_anim_frames.get(name).copied()
     }
 }
 
@@ -583,8 +575,8 @@ pub(crate) fn build_overlay_atlas_on_device(
     // For terrain objects, probe SHP frame counts. Animated objects (flags, etc.)
     // need all frames loaded; static objects just need frame 0.
     let mut terrain_anim_frames: HashMap<String, u8> = HashMap::new();
-    let mut native_static_candidates = HashSet::new();
-    let mut native_static_terrain = HashSet::new();
+    let mut native_terrain_candidates = HashSet::new();
+    let mut native_terrain = HashSet::new();
     for obj in terrain_objects {
         if terrain_anim_frames.contains_key(&obj.name)
             || needed.contains(&OverlaySpriteKey {
@@ -606,8 +598,11 @@ pub(crate) fn build_overlay_atlas_on_device(
         let ordinary_static = rules_ini.section(&obj.name).is_none_or(|s| {
             !s.read_bool("IsAnimated", false) && !s.read_bool("SpawnsTiberium", false)
         }) && overlay_registry.flags_by_name(&obj.name).is_none();
-        if frame_count == 1 && ordinary_static {
-            native_static_candidates.insert(obj.name.clone());
+        let animated_spawner = rules_ini.section(&obj.name).is_some_and(|section| {
+            section.read_bool("IsAnimated", false) && section.read_bool("SpawnsTiberium", false)
+        });
+        if (frame_count == 1 && ordinary_static) || animated_spawner {
+            native_terrain_candidates.insert(obj.name.clone());
         }
         if frame_count > 1 {
             terrain_anim_frames.insert(obj.name.clone(), frame_count);
@@ -646,7 +641,7 @@ pub(crate) fn build_overlay_atlas_on_device(
             .unwrap_or_default();
         // Terrain objects (e.g. TIBTRE01) aren't in OverlayTypeRegistry, so flags
         // will be default. Check rules.ini for SpawnsTiberium=yes to detect
-        // tiberium trees — the original engine uses unit palette + -12px Y offset for these.
+        // tiberium trees — the original engine uses unit palette + -16px draw-point shift for these.
         let spawns_tiberium: bool = !flags.tiberium
             && rules_ini
                 .section_or_empty(&key.name)
@@ -673,12 +668,12 @@ pub(crate) fn build_overlay_atlas_on_device(
             art_registry,
             &flags,
             spawns_tiberium,
-            native_static_candidates.contains(&key.name),
+            native_terrain_candidates.contains(&key.name),
         ) {
             Some((sprite, shadow)) => {
                 rendered.push(sprite);
                 if let Some(shadow) = shadow {
-                    native_static_terrain.insert(key.name.clone());
+                    native_terrain.insert(key.name.clone());
                     rendered.push(shadow);
                 }
             }
@@ -768,8 +763,7 @@ pub(crate) fn build_overlay_atlas_on_device(
         queue,
         batch,
         &rendered,
-        terrain_anim_frames,
-        native_static_terrain,
+        native_terrain,
     ))
 }
 
@@ -787,7 +781,7 @@ fn render_overlay_sprite(
     art_registry: &ArtRegistry,
     flags: &OverlayTypeFlags,
     spawns_tiberium: bool,
-    native_static: bool,
+    native_terrain: bool,
 ) -> Option<(RenderedOverlay, Option<RenderedOverlay>)> {
     let image_id: String = art_registry.resolve_overlay_image_id(&key.name, rules_ini);
     let mut candidates: Vec<String> = art_data::overlay_shp_candidates(
@@ -867,30 +861,39 @@ fn render_overlay_sprite(
         .collect();
     let frame_idx: usize = resolve_body_frame(key.frame, max_normal_frame, &frame_sizes)?;
 
-    let y_offset: f32 = if spawns_tiberium {
-        -15.0
+    let y_offset: f32 = if native_terrain {
+        0.0
+    } else if spawns_tiberium {
+        -16.0
     } else {
         flags.y_draw_offset()
     };
     let body = render_decoded_overlay_frame(&shp, palette, key.clone(), frame_idx, y_offset)?;
-    // Ordinary static 71C1B0 body/shadow pair. Extended format dispatch and
-    // both cropped rectangles are proven for TREE01; animated/death and raw
-    // frame leaf families remain outside this increment.
-    let shadow = native_static_shadow_frame(&shp, frame_idx, native_static).and_then(|frame| {
-        render_decoded_overlay_frame(&shp, palette, terrain_shadow_key(&key.name), frame, 0.0)
+    // Terrain DrawIt71C1B0 selects body Stage and shadow Stage+rawcount/2.
+    // Stock TIBTRE format3 dispatch and draw arguments: terrain_render.md.
+    let shadow = native_terrain_shadow_frame(&shp, frame_idx, native_terrain).and_then(|frame| {
+        render_decoded_overlay_frame(
+            &shp,
+            palette,
+            terrain_shadow_key(&key.name, key.frame),
+            frame,
+            0.0,
+        )
     });
     Some((body, shadow))
 }
 
-fn native_static_shadow_frame(shp: &ShpFile, frame: usize, ordinary_static: bool) -> Option<usize> {
-    (ordinary_static
-        && frame == 0
-        && shp.frames.len() == 2
-        && shp
-            .frames
-            .iter()
-            .all(|f| f.format & 2 != 0 && f.frame_width > 0 && f.frame_height > 0))
-    .then_some(1)
+fn native_terrain_shadow_frame(shp: &ShpFile, frame: usize, native_terrain: bool) -> Option<usize> {
+    let shadow = frame.checked_add(shp.frames.len() / 2)?;
+    let body = shp.frames.get(frame)?;
+    let stencil = shp.frames.get(shadow)?;
+    (native_terrain
+        && frame < shp.frames.len() / 2
+        && body.format & 2 != 0
+        && stencil.format & 2 != 0
+        && stencil.frame_width > 0
+        && stencil.frame_height > 0)
+        .then_some(shadow)
 }
 
 /// Retain the literal palette index/stencil next to decoded RGB. No palette
@@ -1205,6 +1208,10 @@ fn render_smudge_sprite(
 }
 
 #[cfg(test)]
+#[path = "overlay_atlas_tibtre_tests.rs"]
+mod tibtre_tests;
+
+#[cfg(test)]
 #[path = "overlay_atlas_radar_tests.rs"]
 mod radar_tests;
 
@@ -1234,16 +1241,16 @@ mod tests {
             bytes.extend_from_slice(&payload);
         }
         let mut shp = ShpFile::from_bytes(&bytes).unwrap();
-        assert_eq!(native_static_shadow_frame(&shp, 0, true), Some(1));
-        assert_eq!(native_static_shadow_frame(&shp, 0, false), None);
-        assert_eq!(native_static_shadow_frame(&shp, 1, true), None);
+        assert_eq!(native_terrain_shadow_frame(&shp, 0, true), Some(1));
+        assert_eq!(native_terrain_shadow_frame(&shp, 0, false), None);
+        assert_eq!(native_terrain_shadow_frame(&shp, 1, true), None);
         let palette = Palette::from_bytes(&[0u8; 768]).unwrap();
         let key = OverlaySpriteKey {
             name: "TREE01".into(),
             frame: 0,
         };
         let body = render_decoded_overlay_frame(&shp, &palette, key.clone(), 0, 0.0).unwrap();
-        let shadow_key = terrain_shadow_key("TREE01");
+        let shadow_key = terrain_shadow_key("TREE01", 0);
         let shadow =
             render_decoded_overlay_frame(&shp, &palette, shadow_key.clone(), 1, 0.0).unwrap();
         assert_eq!((body.offset_x, body.offset_y), (-16.0, -76.0));
@@ -1271,10 +1278,10 @@ mod tests {
             );
         }
         shp.frames[1].format = 0;
-        assert_eq!(native_static_shadow_frame(&shp, 0, true), None);
+        assert_eq!(native_terrain_shadow_frame(&shp, 0, true), None);
         shp.frames[1].format = 3;
         shp.frames[1].frame_width = 0;
-        assert_eq!(native_static_shadow_frame(&shp, 0, true), None);
+        assert_eq!(native_terrain_shadow_frame(&shp, 0, true), None);
     }
 
     use std::fmt::Write as _;
@@ -1593,8 +1600,7 @@ fn pack_overlay_sprites(
     queue: &wgpu::Queue,
     batch: &BatchRenderer,
     sprites: &[RenderedOverlay],
-    terrain_anim_frames: HashMap<String, u8>,
-    native_static_terrain: HashSet<String>,
+    native_terrain: HashSet<String>,
 ) -> OverlayAtlas {
     let PackedOverlaySprites {
         rgba,
@@ -1622,8 +1628,7 @@ fn pack_overlay_sprites(
     OverlayAtlas {
         texture,
         entries,
-        terrain_anim_frames,
-        native_static_terrain,
+        native_terrain,
     }
 }
 
@@ -1744,8 +1749,7 @@ impl OverlayAtlas {
         Self {
             texture,
             entries: HashMap::new(),
-            terrain_anim_frames: HashMap::new(),
-            native_static_terrain: HashSet::new(),
+            native_terrain: HashSet::new(),
         }
     }
 }

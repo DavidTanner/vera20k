@@ -940,8 +940,8 @@ impl Simulation {
         self.production
             .ore_growth_state
             .hash_state(hasher, retired_tiberium_fold);
-        // Hash terrain spawners (TIBTRE-style ore generators).
-        for (&(rx, ry), spawner) in &self.production.terrain_spawners {
+        // Hash retained terrain animations, including TIBTRE ore generators.
+        for (&(rx, ry), spawner) in &self.production.terrain_animations {
             rx.hash(hasher);
             ry.hash(hasher);
             spawner.hash(hasher);
@@ -3385,48 +3385,57 @@ mod particle_hash_tests {
     }
 
     #[test]
-    fn terrain_spawners_included_in_state_hash() {
-        use crate::sim::terrain_spawn::TerrainSpawnerState;
+    fn terrain_animations_included_in_state_hash() {
+        use crate::sim::terrain_spawn::TerrainAnimationState;
 
         let mut sim_a = Simulation::new();
         let sim_b = Simulation::new();
         let type_ref = sim_a.interner.intern("TIBTRE01");
-        sim_a
-            .production
-            .terrain_spawners
-            .insert((10, 10), TerrainSpawnerState::new(type_ref, 3000, 3, 22));
+        sim_a.production.terrain_animations.insert(
+            (10, 10),
+            TerrainAnimationState::new(
+                type_ref,
+                crate::util::native_x87::NativeF32Bits::from_bits(0x3b44_9ba6),
+                3,
+                22,
+                0,
+            ),
+        );
 
         assert_ne!(
             sim_a.state_hash(),
             sim_b.state_hash(),
-            "terrain_spawners must affect state hash",
+            "terrain_animations must affect state hash",
         );
     }
 
     #[test]
     fn terrain_spawner_active_fields_change_state_hash() {
-        use crate::sim::terrain_spawn::{TerrainSpawnerPhase, TerrainSpawnerState};
+        use crate::sim::terrain_spawn::TerrainAnimationState;
 
         let mut sim_a = Simulation::new();
         let mut sim_b = Simulation::new();
         let type_ref = sim_a.interner.intern("TIBTRE01");
-        let state = TerrainSpawnerState::new(type_ref, 3000, 3, 22);
+        let state = TerrainAnimationState::new(
+            type_ref,
+            crate::util::native_x87::NativeF32Bits::ONE,
+            3,
+            22,
+            0,
+        );
         sim_a
             .production
-            .terrain_spawners
+            .terrain_animations
             .insert((10, 10), state.clone());
-        sim_b.production.terrain_spawners.insert((10, 10), state);
+        sim_b.production.terrain_animations.insert((10, 10), state);
         assert_eq!(sim_a.state_hash(), sim_b.state_hash());
 
         let spawner_b = sim_b
             .production
-            .terrain_spawners
+            .terrain_animations
             .get_mut(&(10, 10))
             .unwrap();
-        spawner_b.phase = TerrainSpawnerPhase::Active {
-            current_frame: 1,
-            ticks_until_next_frame: 2,
-        };
+        spawner_b.advance_for_test(0, &mut crate::sim::rng::SimRng::new(0));
         assert_ne!(
             sim_a.state_hash(),
             sim_b.state_hash(),

@@ -832,17 +832,16 @@ pub(crate) fn build_overlay_instances(
             continue;
         }
 
-        // Animated terrain objects (flags) cycle through all frames using the
-        // global idle animation timer. Static terrain uses frame 0.
-        let frame: u8 = if let Some(count) = atlas.terrain_anim_frame_count(name) {
-            // RA2 terrain animation rate: ~83ms per frame (12 fps).
-            const TERRAIN_ANIM_RATE_MS: u32 = 83;
-            let tick =
-                state.match_state.match_presentation.idle_anim_elapsed_ms / TERRAIN_ANIM_RATE_MS;
-            (tick % count as u32) as u8
-        } else {
-            0
-        };
+        // Terrain DrawIt71C208 selects the Stage written by Terrain AI.
+        // Wall-clock presentation cannot advance or restart a spawner.
+        let frame = sim
+            .production
+            .terrain_animations
+            .get(&obj.cell())
+            .map_or(Some(0), |animation| {
+                u8::try_from(animation.current_frame()).ok()
+            });
+        let Some(frame) = frame else { continue };
         let key = OverlaySpriteKey {
             name: name.to_string(),
             frame,
@@ -883,7 +882,7 @@ pub(crate) fn build_overlay_instances(
         let Some(parent) = ground_order.object_draw(obj.stable_id, SpriteEncoding::Terrain) else {
             continue;
         };
-        if let Some((body, shadow)) = atlas.native_static_terrain_pair(name) {
+        if let Some((body, shadow)) = atlas.native_terrain_pair(name, frame) {
             use crate::app::presentation::render::draw_plan_lowering::{
                 ObjectPieceInstance, ObjectTexture, PlannedObjectInstance,
             };
@@ -892,29 +891,30 @@ pub(crate) fn build_overlay_instances(
             // Terrain DrawIt 0071C304/0071C34E preserves one draw point for
             // body and shadow. Each SHP's own integer canvas/frame offsets
             // then locate the stored rectangle. No FA2 editor Y adjustment.
-            let point = [screen_x + TILE_WIDTH / 2.0, screen_y + TILE_HEIGHT / 2.0];
-            let [body_instance, shadow_instance] = native_static_terrain_instances(
-                body,
-                shadow,
-                point,
-                lift_px,
-                depth,
-                tint,
-                palette_light,
-            );
+            let point = [
+                screen_x + TILE_WIDTH / 2.0,
+                screen_y + TILE_HEIGHT / 2.0 - if spawns_tiberium { 16.0 } else { 0.0 },
+            ];
+            let [body_instance, shadow_instance] =
+                native_terrain_instances(body, shadow, point, lift_px, depth, tint, palette_light);
             let mut parent = parent;
-            parent.policy.render_z = RenderZPolicy::ReadWrite;
+            let render_z = if sim.production.terrain_animations.contains_key(&obj.cell()) {
+                RenderZPolicy::ReadOnly
+            } else {
+                RenderZPolicy::ReadWrite
+            };
+            parent.policy.render_z = render_z;
             ground_objects.push(PlannedObjectInstance::object(
                 parent,
                 vec![
                     ObjectPieceInstance {
-                        target: ObjectTexture::TerrainStatic(TerrainPiece::Body),
-                        render_z: RenderZPolicy::ReadWrite,
+                        target: ObjectTexture::TerrainShp(TerrainPiece::Body),
+                        render_z,
                         instance: body_instance,
                     },
                     ObjectPieceInstance {
-                        target: ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
-                        render_z: RenderZPolicy::ReadWrite,
+                        target: ObjectTexture::TerrainShp(TerrainPiece::Shadow),
+                        render_z,
                         instance: shadow_instance,
                     },
                 ],
@@ -949,7 +949,7 @@ pub(crate) fn build_overlay_instances(
 
 /// Ordinary Terrain DrawIt 0071C304/0071C34E: both stored frames share one
 /// projected draw point. Native class terms and gradients remain piece data.
-fn native_static_terrain_instances(
+fn native_terrain_instances(
     body: &crate::render::overlay_atlas::OverlaySpriteEntry,
     shadow: &crate::render::overlay_atlas::OverlaySpriteEntry,
     point: [f32; 2],
@@ -1235,7 +1235,7 @@ mod tests {
         };
         let palette =
             crate::render::palette_light::PaletteLight::new([288, 576, 992], 27, 799, false);
-        let pieces = super::native_static_terrain_instances(
+        let pieces = super::native_terrain_instances(
             &body,
             &shadow,
             [376.0, 404.0],

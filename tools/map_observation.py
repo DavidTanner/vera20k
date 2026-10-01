@@ -330,7 +330,24 @@ def _terrain(value: Any, expected_cell: Any, label: str) -> None:
     cell = require_object(value, label)
     fields = ('final_tile_index', 'final_sub_tile', 'presentation_tile', 'level', 'slope',
               'raw_bridge_flags', 'bridge_state', 'has_deck', 'deck_level', 'walkable', 'transition')
-    require_exact_keys(cell, ('cell', 'allocated', *fields), label)
+    extension = ('overlay', 'terrain_object') if 'overlay' in cell or 'terrain_object' in cell else ()
+    require_exact_keys(cell, ('cell', 'allocated', *fields, *extension), label)
+    if extension:
+        overlay = cell['overlay']
+        if overlay is not None:
+            require_exact_keys(require_object(overlay, f'{label}.overlay'), ('id', 'density'), f'{label}.overlay')
+            if overlay['id'] is not None:
+                _bounded_int(overlay['id'], f'{label}.overlay.id', 0, 255)
+            _bounded_int(overlay['density'], f'{label}.overlay.density', 0, 255)
+        obj = cell['terrain_object']
+        if obj is not None:
+            require_exact_keys(require_object(obj, f'{label}.terrain_object'), ('name', 'frame', 'active'), f'{label}.terrain_object')
+            if not isinstance(obj['name'], str) or not obj['name']:
+                raise ValidationError(f'{label}.terrain_object.name must be nonempty')
+            if obj['frame'] is not None:
+                _bounded_int(obj['frame'], f'{label}.terrain_object.frame', -(1 << 31), (1 << 31) - 1)
+            if obj['active'] is not None and type(obj['active']) is not bool:
+                raise ValidationError(f'{label}.terrain_object.active must be boolean or null')
     _require_equal(cell['cell'], expected_cell, f'{label}.cell')
     if type(cell['allocated']) is not bool:
         raise ValidationError(f'{label}.allocated must be a boolean')

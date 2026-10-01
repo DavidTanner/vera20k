@@ -109,6 +109,18 @@ remains exact: no radar masks, channel tolerances or skipped pixels are applied.
 
 ## Ordinary scheduled commands and actor trajectories
 
+For TIBTRE observation, use
+[`map_observation.tibtre.example.json`](map_observation.tibtre.example.json).
+It loads retail AnyTown (`XMP03T4.MAP`), advances 800 simulation steps and looks
+at the two TIBTRE02 cells `(74,32)` and `(76,27)` plus their eight neighbors.
+Requested terrain rows also retain `overlay: {id, density}` and
+`terrain_object: {name, frame, active}` when those owners exist. A nonanimated
+object has null frame/active. These are immutable reads of the live owners;
+they do not inject ore or advance an animation. The validator accepts old rows
+without these fields and requires both fields together on new rows. Native
+cadence and admission comparisons are recorded in
+[`spatial_oracle/tibtre.md`](spatial_oracle/tibtre.md).
+
 Profile v1 remains accepted and retains its original JSON projection. It cannot
 declare the following extension fields, even as empty arrays. Profile v2 adds
 optional `commands`, `observe_owners`, `camera_cell` and `terrain_cells`; omitted

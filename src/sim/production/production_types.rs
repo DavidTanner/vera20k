@@ -182,9 +182,9 @@ pub struct ProductionState {
     pub ore_growth_config: OreGrowthConfig,
     /// Per-TiberiumClass growth and spread queues, bitmaps and timers.
     pub ore_growth_state: OreGrowthState,
-    /// TIBTRE-style ore-spawning terrain objects, keyed by map cell.
+    /// Retained animations for all IsAnimated terrain, keyed by map cell.
     /// Derived from live `terrain_objects`; removal/limbo must remove this index.
-    pub terrain_spawners: BTreeMap<(u16, u16), crate::sim::terrain_spawn::TerrainSpawnerState>,
+    pub terrain_animations: BTreeMap<(u16, u16), crate::sim::terrain_spawn::TerrainAnimationState>,
     /// Live `TerrainClass`-style map objects, keyed by deterministic stable id.
     pub terrain_objects: BTreeMap<u64, crate::sim::terrain_object::TerrainObjectState>,
     /// Live terrain object cell index, cell -> stable id.
@@ -193,8 +193,8 @@ pub struct ProductionState {
     pub terrain_occupation_bits: BTreeMap<(u16, u16), u8>,
     /// Cells occupied by terrain objects whose type has `SpawnsTiberium=yes`.
     ///
-    /// This is broader than `terrain_spawners`: non-animated legacy spawners do
-    /// not tick, but still reject new Tiberium placement in the native gate.
+    /// This has a different gate from `terrain_animations`: a non-animated
+    /// spawner rejects new ore, while an animated non-spawner still draws RNG.
     pub tiberium_spawning_terrain_cells: BTreeSet<(u16, u16)>,
     /// Airfield dock reservations — multi-slot (NumberOfDocks per airfield).
     pub airfield_docks: crate::sim::docking::aircraft_dock::AirfieldDocks,
@@ -215,7 +215,7 @@ impl Default for ProductionState {
             next_enqueue_order: 1,
             ore_growth_config: OreGrowthConfig::disabled(),
             ore_growth_state: OreGrowthState::new(0, 0),
-            terrain_spawners: BTreeMap::new(),
+            terrain_animations: BTreeMap::new(),
             terrain_objects: BTreeMap::new(),
             terrain_object_cells: BTreeMap::new(),
             terrain_occupation_bits: BTreeMap::new(),

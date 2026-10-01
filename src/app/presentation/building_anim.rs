@@ -11,14 +11,6 @@ use crate::app::AppState;
 use crate::app::input::commands::preferred_local_owner_name;
 use crate::sim::production;
 
-/// Advance the app-owned wall-clock terrain-overlay animation timer.
-///
-/// Building one-shot overlays now advance inside the authoritative simulation
-/// frame; this independent timer only drives looping terrain presentation.
-pub(crate) fn tick_terrain_overlay_animations(state: &mut AppState, dt_ms: u32) {
-    state.match_state.match_presentation.idle_anim_elapsed_ms += dt_ms;
-}
-
 /// Tick the sidebar power bar animation (segment-by-segment transition).
 pub(crate) fn update_power_bar_anim(state: &mut AppState) {
     let owner_name = preferred_local_owner_name(state);

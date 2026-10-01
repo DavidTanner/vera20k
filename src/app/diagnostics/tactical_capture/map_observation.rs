@@ -694,7 +694,16 @@ impl TacticalCaptureSession {
             // Immutable real-cell indexing only. A diagnostic lookup must not
             // stamp canonical Dummy or evaluate gameplay height/zone queries.
             let cell = grid.and_then(|grid| grid.cell(rx, ry));
+            let at = (rx, ry);
+            let overlay = sim.overlay_grid.as_ref().map(|grid| grid.cell(rx, ry));
+            let terrain_object = sim.production.terrain_object_cells.get(&at)
+                .and_then(|id| sim.production.terrain_objects.get(id));
+            let animation = sim.production.terrain_animations.get(&at);
             json!({"cell": [rx, ry], "allocated": cell.is_some(),
+                "overlay": overlay.map(|overlay| json!({"id": overlay.overlay_id, "density": overlay.overlay_data})),
+                "terrain_object": terrain_object.map(|object| json!({"name": sim.interner.resolve(object.type_ref),
+                    "frame": animation.map(|animation| animation.current_frame()),
+                    "active": animation.map(|animation| animation.is_active())})),
                 "final_tile_index": cell.map(|cell| cell.final_tile_index),
                 "final_sub_tile": cell.map(|cell| cell.final_sub_tile),
                 "presentation_tile": cell.and_then(|cell| grid.map(|grid| grid.presentation_tile(cell))),

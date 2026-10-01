@@ -6441,7 +6441,7 @@ MutateWarhead=MyMutate\n\
             .terrain_object_type_case_insensitive("tibtre01")
             .expect("TIBTRE01 should be parsed");
         assert!(t.spawns_tiberium);
-        assert_eq!(t.animation_probability_micros, 3000);
+        assert_eq!(t.animation_probability.bits(), 0x3b44_9ba6);
         // TREE01 also parsed but with default flags.
         let tree = rules
             .terrain_object_type_case_insensitive("TREE01")
