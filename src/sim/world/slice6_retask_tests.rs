@@ -241,7 +241,11 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // match exactly except tick hashes, including full actor state and all
 // three RNG streams/draws/caller positions. The temporary gate was removed.
 // Rust-only receipt: tools/spatial_oracle/astar_path_finishing_replay/main963/receipt.json.
-const SLICE6_BASELINE_HASH: u64 = 0xCA13_8857_9211_B978;
+// 2026-10-01 Drive/Ship route owner (hash composition only): MovementTarget
+// keeps no route cells, layers or cursor. Ceremony: main ba362353 with only
+// those fields dropped from the hash (probe not committed) printed this value;
+// the bridge and global pins did not move. Previous: 0xCA13_8857_9211_B978.
+const SLICE6_BASELINE_HASH: u64 = 0x2317_195D_B529_3E9A;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
