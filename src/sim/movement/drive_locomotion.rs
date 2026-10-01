@@ -2,11 +2,12 @@
 //!
 //! This module owns Drive-specific state updates that should not leak into the
 //! generic `MovementTarget` path. Detailed DriveTrack consumption remains in
-//! `track_host`; this file handles the Drive-local speed fraction scaffold.
+//! `track_host`; this file holds the Drive/Ship speed prefix.
 
-use crate::sim::components::FootSpeedState;
 #[cfg(test)]
-use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, ShipLocomotionRuntime};
+use crate::sim::components::{
+    DriveCoord, DriveLocomotionRuntime, FootSpeedState, ShipLocomotionRuntime,
+};
 use crate::sim::game_entity::GameEntity;
 use crate::util::fixed_math::SimFixed;
 
@@ -35,25 +36,32 @@ pub(super) struct TrackSpeedPrefix {
     pub unit_passive: bool,
     /// The class selector (+0x58).
     pub selector: i32,
-    /// The type's stored speed (type +0x678), leptons per frame.
+    /// The type's stored speed (type +0x678 through vt+0x38C), leptons per frame.
     pub raw_type_speed: i32,
     pub accel: SimFixed,
     pub decel: SimFixed,
     /// SlowdownDistance= (type +0x2F8).
     pub slowdown_distance: i32,
-    /// `track_speed::braking_distance`.
-    pub distance: i32,
     /// Techno+0x3CD (`SinkingState`).
     pub sinking: bool,
     /// Foot+0x6B5.
     pub crush_slowdown: bool,
 }
 
-/// One speed prefix: the class target (+0x50, `target`) and the Foot's
-/// applied fraction (+0x578, through `SetSpeedFraction` 0x004D3710). Executed
-/// native rows: tools/spatial_oracle/track_speed_native.json.
+/// What one prefix wrote: the class target (+0x50) and, when it called the
+/// Foot's `SetSpeedFraction` (0x004D3710), the fraction it passed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct TrackSpeedStep {
+    pub target: SimFixed,
+    pub set_fraction: Option<SimFixed>,
+}
+
+/// One speed prefix over the class target and the Foot's applied fraction
+/// (+0x578). `distance` (`track_speed::braking_distance`) is measured only
+/// past the gates, as native reaches it (0x004B0FBA). Executed native rows:
+/// tools/spatial_oracle/track_speed_native.json.
 ///
-/// - Accelerates=false copies the target to the applied fraction.
+/// - Accelerates=false passes the target to the setter.
 /// - A selector of 64 or more, or a Passive Unit, skips the ramp.
 /// - Inside SlowdownDistance (strict) the applied fraction brakes by raw type
 ///   speed x Deceleration down to 0.3; a sinking Techno brakes by 0.0015 x
@@ -70,45 +78,51 @@ pub(super) struct TrackSpeedPrefix {
 ///
 /// RESIDUAL: a Unit's ramp also propagates the applied fraction to its linked
 /// members (0x004B1225 / 0x006A08ED); VERA has no linked-member chain.
-pub(super) fn apply_track_speed_prefix(
+pub(super) fn track_speed_prefix(
     input: &TrackSpeedPrefix,
-    target: &mut SimFixed,
-    owner_speed: &mut FootSpeedState,
-) {
+    distance: impl FnOnce() -> i32,
+    target: SimFixed,
+    applied: SimFixed,
+) -> TrackSpeedStep {
+    let step = |set_fraction| TrackSpeedStep {
+        target,
+        set_fraction,
+    };
     // ProcessMovement retains an unclamped class target. Only the Foot
     // setter clamps the applied fraction to [0,1].
     if !input.accelerates {
-        owner_speed.set_speed_fraction(*target);
-        return;
+        return step(Some(target));
     }
     if input.selector >= 64 || input.unit_passive {
-        return;
+        return step(None);
     }
-    let applied = owner_speed.applied_fraction();
     let raw = SimFixed::from_num(input.raw_type_speed);
     let type_brake = raw * input.decel;
     // raw x 0.0015 as raw x 3 / 2000, rounded once.
     let sinking_brake = SimFixed::from_num(input.raw_type_speed * 3) / SimFixed::from_num(2000);
-    let braking = if input.distance < input.slowdown_distance {
+    let braking = if distance() < input.slowdown_distance {
         Some((applied - type_brake).max(DRIVE_DESTINATION_BRAKE_FLOOR))
     } else if input.sinking {
         Some((applied - sinking_brake).max(SINKING_BRAKE_FLOOR))
     } else {
         None
     };
-    let candidate = if input.crush_slowdown {
-        *target = (*target).min(CRUSH_SLOWDOWN_CAP);
-        *target
-    } else if let Some(braked) = braking {
-        braked
-    } else if applied < *target {
-        (applied + input.accel).min(*target)
-    } else if applied > *target {
-        (applied - type_brake).max(*target)
+    if input.crush_slowdown {
+        let capped = target.min(CRUSH_SLOWDOWN_CAP);
+        return TrackSpeedStep {
+            target: capped,
+            set_fraction: Some(capped),
+        };
+    }
+    step(if let Some(braked) = braking {
+        Some(braked)
+    } else if applied < target {
+        Some((applied + input.accel).min(target))
+    } else if applied > target {
+        Some((applied - type_brake).max(target))
     } else {
-        return;
-    };
-    owner_speed.set_speed_fraction(candidate);
+        None
+    })
 }
 
 #[cfg(test)]
@@ -117,12 +131,7 @@ mod tests {
     use crate::sim::movement::foot_speed::owner_current_speed_from_fraction;
     use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SIM_ZERO};
 
-    fn prefix(
-        accelerates: bool,
-        raw_type_speed: i32,
-        slowdown_distance: i32,
-        distance: i32,
-    ) -> TrackSpeedPrefix {
+    fn prefix(accelerates: bool, raw_type_speed: i32, slowdown_distance: i32) -> TrackSpeedPrefix {
         TrackSpeedPrefix {
             accelerates,
             unit_passive: false,
@@ -131,7 +140,6 @@ mod tests {
             accel: SimFixed::lit("0.03"),
             decel: SimFixed::lit("0.002"),
             slowdown_distance,
-            distance,
             sinking: false,
             crush_slowdown: false,
         }
@@ -172,30 +180,30 @@ mod tests {
         let mut owner_speed = FootSpeedState::default();
         owner_speed.set_speed_fraction(SIM_HALF);
         let ship = ShipLocomotionRuntime {
-            destination: None,
-            head_to: Some(DriveCoord::cell(4, 3, 0)),
             target_speed_fraction: SimFixed::lit("0.3"),
             ..Default::default()
         };
 
         let mut ship = ship;
         for _ in 0..10 {
-            apply_track_speed_prefix(
+            let step = track_speed_prefix(
                 &prefix(
                     true,
                     crate::util::fixed_math::ra2_speed_to_leptons_per_frame(8),
                     0,
-                    256,
                 ),
-                &mut ship.target_speed_fraction,
-                &mut owner_speed,
+                || 256,
+                ship.target_speed_fraction,
+                owner_speed.applied_fraction(),
             );
+            ship.target_speed_fraction = step.target;
+            if let Some(fraction) = step.set_fraction {
+                owner_speed.set_speed_fraction(fraction);
+            }
             assert_eq!(ship.target_speed_fraction, SimFixed::lit("0.3"));
             assert!(owner_current_speed_from_fraction(speed, owner_speed.applied_fraction()) > 0);
         }
 
-        assert_eq!(ship.destination, None);
-        assert_eq!(ship.head_to, Some(DriveCoord::cell(4, 3, 0)));
         assert_eq!(owner_speed.applied_fraction(), SimFixed::lit("0.3"));
         assert_eq!(
             owner_current_speed_from_fraction(speed, owner_speed.applied_fraction()),
@@ -273,11 +281,14 @@ mod tests {
         let mut drive = DriveLocomotionRuntime::default();
 
         drive.target_speed_fraction = SimFixed::lit("1.2");
-        apply_track_speed_prefix(
-            &prefix(false, 10, 500, 1000),
-            &mut drive.target_speed_fraction,
-            &mut owner_speed,
+        let step = track_speed_prefix(
+            &prefix(false, 10, 500),
+            || 1000,
+            drive.target_speed_fraction,
+            owner_speed.applied_fraction(),
         );
+        drive.target_speed_fraction = step.target;
+        owner_speed.set_speed_fraction(step.set_fraction.unwrap());
 
         assert_eq!(drive.target_speed_fraction, SimFixed::lit("1.2"));
         assert_eq!(owner_speed.applied_fraction(), SIM_ONE);

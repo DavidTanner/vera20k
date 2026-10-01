@@ -6,7 +6,7 @@
 //! speed factor or CTF flag-carrier halving yet; when it gains them, its rows
 //! move onto it and this leaf goes. The Drive/Ship speed prefix and braking
 //! distance this file used to hold are ported once, in
-//! `drive_locomotion::apply_track_speed_prefix` and `track_speed`.
+//! `drive_locomotion::track_speed_prefix` and `track_speed`.
 
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 use crate::util::native_x87::{NativeX87Error, X87Chop53 as X};

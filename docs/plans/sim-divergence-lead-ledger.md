@@ -331,9 +331,9 @@ by the mover's movement zone, whether it carries the `< 2` height window, and wh
 on.
 
 #### T1-11 · Crusher speed clamp while driving over a victim is absent — `movement`
-**VERA** `update_vehicle_speed_fraction` has three arms only (slowdown-brake, accelerate,
-decelerate) — no crush arm. Already written down as a known deferral at
-`src/sim/movement/drive_locomotion.rs:201-212`; implementation at `:253-293`.
+**VERA** The crush arm is ported (`drive_locomotion::track_speed_prefix`, checked against
+the executed crush rows of `tools/spatial_oracle/track_speed_native.json`), but nothing
+produces its input, Foot+0x6B5: `track_speed::advance` passes `crush_slowdown: false`.
 **Reference** `drive.cpp:967-970` — inside `While_Moving`'s `IsAccelerates` branch,
 `if (LinkedTo->IsCrushing) { TargetSpeed = min(TargetSpeed, 0.2); Set_Speed(TargetSpeed); }`,
 pre-empting both the accelerate and decelerate arms. `IsCrushing` is raised on entering a

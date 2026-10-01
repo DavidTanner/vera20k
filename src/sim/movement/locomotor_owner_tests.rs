@@ -425,11 +425,13 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
         if case["input"]["family"] == "drive" {
             let mut drive = DriveLocomotionRuntime::default();
             drive.target_speed_fraction = requested;
-            super::super::drive_locomotion::apply_track_speed_prefix(
+            let step = super::super::drive_locomotion::track_speed_prefix(
                 &non_accelerating_prefix(),
-                &mut drive.target_speed_fraction,
-                &mut owner_speed,
+                || unreachable!("Accelerates=false measures no distance"),
+                drive.target_speed_fraction,
+                owner_speed.applied_fraction(),
             );
+            owner_speed.set_speed_fraction(step.set_fraction.unwrap());
             assert_eq!(owner_speed.applied_fraction(), expected);
             entity.foot_speed = owner_speed.clone();
             assert!(begin_drive_for_teleporter(entity, 3));
@@ -450,11 +452,13 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
         } else {
             let mut ship = ShipLocomotionRuntime::default();
             ship.target_speed_fraction = requested;
-            super::super::drive_locomotion::apply_track_speed_prefix(
+            let step = super::super::drive_locomotion::track_speed_prefix(
                 &non_accelerating_prefix(),
-                &mut ship.target_speed_fraction,
-                &mut owner_speed,
+                || unreachable!("Accelerates=false measures no distance"),
+                ship.target_speed_fraction,
+                owner_speed.applied_fraction(),
             );
+            owner_speed.set_speed_fraction(step.set_fraction.unwrap());
             assert_eq!(owner_speed.applied_fraction(), expected);
             entity.foot_speed = owner_speed.clone();
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
@@ -654,7 +658,6 @@ fn non_accelerating_prefix() -> super::super::drive_locomotion::TrackSpeedPrefix
         accel: SIM_ZERO,
         decel: SIM_ZERO,
         slowdown_distance: 0,
-        distance: 1,
         sinking: false,
         crush_slowdown: false,
     }
