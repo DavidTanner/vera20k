@@ -548,6 +548,7 @@ fn prism_recruitment_matches_the_original() {
                 fixture.rules.object("TWR").unwrap(),
                 0,
                 0,
+                Default::default(),
             )
             .coord;
             let supporter = fixture.sim.substrate.entities.get(supporter).unwrap();

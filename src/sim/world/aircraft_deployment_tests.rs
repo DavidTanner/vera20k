@@ -124,8 +124,8 @@ fn mission_only_has_its_own_hash_fold() {
 /// AircraftClass::Unlimbo through production construction and reveal against
 /// the original's runs (tools/spatial_oracle/aircraft_unlimbo_height.json):
 /// the Z it hands Foot Unlimbo, then its tail's +3D4, Stage restart and speed
-/// fraction. A `MissileSpawn=` type keeps no exact Z in VERA (`unlimbo_z`'s
-/// RESIDUAL), so its rows check the tail's Stage only.
+/// fraction. The run's input Z is staged on the limbo Location, where the
+/// spawn launch puts its coordinate; a `MissileSpawn=` type keeps it.
 #[test]
 fn aircraft_unlimbo_height_and_tail_match_original_runs() {
     use crate::map::playfield::PlayfieldBounds;
@@ -198,6 +198,14 @@ fn aircraft_unlimbo_height_and_tail_match_original_runs() {
         if flag("mission_only") {
             entity.mark_mission_only();
         }
+        crate::sim::movement::ground_pose::put_location(
+            &mut entity.position,
+            crate::sim::components::DriveCoord {
+                x: i32::from(cell.0) * 256 + 128,
+                y: i32::from(cell.1) * 256 + 128,
+                z: input["input"][2].as_i64().unwrap() as i32,
+            },
+        );
         let before = (*entity.native_stage(), entity.foot_speed.applied_fraction());
         let placement = if flag("success") {
             PlacementEvidence::MarkSucceeded
@@ -241,10 +249,6 @@ fn aircraft_unlimbo_height_and_tail_match_original_runs() {
             crate::sim::timer::CdTimer::started(stage_int("start"), stage_int("left")),
             "{row}"
         );
-        if flag("missile_spawn") {
-            assert_eq!(entity.position.exact_z_leptons, None, "{row}");
-            continue;
-        }
         let z = row["unlimbo_coord"][2].as_i64().unwrap() as i32;
         assert_eq!(entity.position.exact_z_leptons, Some(z), "{row}");
         // The altitude cache mirrors the committed GetHeight.

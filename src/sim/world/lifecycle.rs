@@ -468,23 +468,23 @@ impl Simulation {
     ///   docs/research/RAMP_UNIT_HEIGHT_GHIDRA_REPORT.md.
     /// - AircraftType keeps the coordinate (`0x0041CF80`), whose Z
     ///   AircraftClass::Unlimbo 0x414310 set first: a `MissileSpawn=` type
-    ///   keeps its input (`0x00414338`); one without Techno+3D4 (`0x00414342`)
-    ///   inside the playfield (`0x005785F0`) takes the floor (`0x00414361`);
-    ///   any other the floor plus its FlightLevel (type virtual +0xBC,
-    ///   `0x00414383`). Native comparison:
+    ///   keeps its input (`0x00414338`), with no floor read; one without
+    ///   Techno+3D4 (`0x00414342`) inside the playfield (`0x005785F0`) takes
+    ///   the floor (`0x00414361`); any other the floor plus its FlightLevel
+    ///   (type virtual +0xBC, `0x00414383`). Native comparison:
     ///   tools/spatial_oracle/aircraft_unlimbo_height.json.
     ///
-    /// A falling paradrop keeps its drop's Z. `None` keeps no exact Z, for:
-    /// - a missile or a tube owner, whose own state carries the height:
-    ///   VERA's Rocket model keeps the missile's in `rocket_state`, not in the
-    ///   Location (RESIDUAL: native keeps the input coordinate. Trigger: every
-    ///   spawned missile. Effect: its Unlimbo GetHeight reads 0, so the
-    ///   tail's speed fraction compares 0 with the FlightLevel; nothing else
-    ///   while only the model reads its height. Risk: a Location reader
-    ///   during the flight sees no exact Z);
+    /// A falling paradrop keeps its drop's Z, and a `MissileSpawn=` aircraft
+    /// the Z its caller staged on its limbo Location (the spawn launch's
+    /// coordinate, `spawn_manager::launch_coordinate`): this level-based API
+    /// carries no input Z of its own. `None` keeps no exact Z, for:
+    /// - a tube owner, whose own state carries the height;
+    /// - a `MissileSpawn=` aircraft whose caller staged no exact Z (no
+    ///   production caller does);
     /// - an Aircraft revealed without rules, which cannot read the type (the
     ///   reveals that pass none reach no Aircraft in production);
-    /// - an object revealed without terrain (headless fixtures).
+    /// - an object revealed without terrain (headless fixtures), except a
+    ///   `MissileSpawn=` aircraft, whose Z reads no floor.
     fn unlimbo_z(
         &self,
         stable_id: u64,
@@ -508,8 +508,15 @@ impl Simulation {
             // object keeps the Z its drop gave it.
             return entity.position.exact_z_leptons;
         }
-        if entity.low_bridge_tube_state.is_some() || entity.rocket_state.is_some() {
+        if entity.low_bridge_tube_state.is_some() {
             return None;
+        }
+        let aircraft_type = context
+            .rules
+            .filter(|_| entity.category == EntityCategory::Aircraft)
+            .and_then(|rules| rules.object(self.interner.resolve(entity.type_ref())));
+        if aircraft_type.is_some_and(|object| object.missile_spawn) {
+            return entity.position.exact_z_leptons;
         }
         let terrain = context.terrain().or(self.resolved_terrain.as_ref())?;
         let ground_z = ground_surface_z_at(xy, false, Some(terrain), None)?;
@@ -517,10 +524,7 @@ impl Simulation {
             EntityCategory::Structure => return Some(ground_z),
             EntityCategory::Aircraft => {
                 let rules = context.rules?;
-                let object = rules.object(self.interner.resolve(entity.type_ref()))?;
-                if object.missile_spawn {
-                    return None;
-                }
+                let object = aircraft_type?;
                 return Some(
                     if !entity.is_mission_only()
                         && self.reveal_position_is_in_playfield(position, context)
@@ -703,8 +707,8 @@ impl Simulation {
         // RESIDUAL: `ObjectClass::Unlimbo` sets this Location through
         // SetLocation (vt+0x1B4 at 0x005F4FA8, before its Mark(1) at
         // 0x005F4FB4), which for a Foot also runs the OpenTopped rider tail.
-        // VERA copies the parts, keeping no exact Z for a missile or tube
-        // owner (`unlimbo_z`), so it cannot go through `foot_set_location`
+        // VERA copies the parts, keeping no exact Z for a tube owner
+        // (`unlimbo_z`), so it cannot go through `foot_set_location`
         // yet. Trigger: a loaded OpenTopped transport revealed away from its
         // riders. Frequency: none known in retail. Effect: the riders keep
         // their old Location.

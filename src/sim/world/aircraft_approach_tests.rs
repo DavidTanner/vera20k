@@ -73,6 +73,7 @@ fn assert_flh(sim: &Simulation, rules: &RuleSet, row: &Value) {
         rules.object("TEST").unwrap(),
         0,
         entity.weapon_burst.index() as u8,
+        Default::default(),
     )
     .coord;
     // Keep the existing deterministic f32 point transform, rather than adding
