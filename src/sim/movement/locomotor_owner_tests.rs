@@ -404,7 +404,6 @@ fn foot_speed_without_class_payload_roundtrips_and_hashes_each_field() {
 #[test]
 fn foot_speed_ownership_matches_original_helper_witnesses() {
     use crate::sim::components::{FootSpeedState, ShipLocomotionRuntime};
-    use crate::util::fixed_math::SIM_ONE;
     let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/foot_speed_owner.json"
     ))
@@ -426,16 +425,10 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
         if case["input"]["family"] == "drive" {
             let mut drive = DriveLocomotionRuntime::default();
             drive.target_speed_fraction = requested;
-            super::super::drive_locomotion::update_drive_speed_fraction(
-                &drive,
+            super::super::drive_locomotion::apply_track_speed_prefix(
+                &non_accelerating_prefix(),
+                &mut drive.target_speed_fraction,
                 &mut owner_speed,
-                false,
-                false,
-                SIM_ONE,
-                SIM_ZERO,
-                SIM_ZERO,
-                SIM_ZERO,
-                SIM_ONE,
             );
             assert_eq!(owner_speed.applied_fraction(), expected);
             entity.foot_speed = owner_speed.clone();
@@ -457,16 +450,10 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
         } else {
             let mut ship = ShipLocomotionRuntime::default();
             ship.target_speed_fraction = requested;
-            super::super::drive_locomotion::update_ship_speed_fraction(
-                &ship,
+            super::super::drive_locomotion::apply_track_speed_prefix(
+                &non_accelerating_prefix(),
+                &mut ship.target_speed_fraction,
                 &mut owner_speed,
-                false,
-                false,
-                SIM_ONE,
-                SIM_ZERO,
-                SIM_ZERO,
-                SIM_ZERO,
-                SIM_ONE,
             );
             assert_eq!(owner_speed.applied_fraction(), expected);
             entity.foot_speed = owner_speed.clone();
@@ -655,5 +642,20 @@ fn drive_end_denial_flags_survive_save_and_block_generic_restore() {
             &mut loaded.substrate.entities,
             1
         ));
+    }
+}
+
+fn non_accelerating_prefix() -> super::super::drive_locomotion::TrackSpeedPrefix {
+    super::super::drive_locomotion::TrackSpeedPrefix {
+        accelerates: false,
+        unit_passive: false,
+        selector: 0,
+        raw_type_speed: 1,
+        accel: SIM_ZERO,
+        decel: SIM_ZERO,
+        slowdown_distance: 0,
+        distance: 1,
+        sinking: false,
+        crush_slowdown: false,
     }
 }
