@@ -214,11 +214,19 @@ fn force_fire_cell_pursuit_then_fire_integration() {
     // GameEntity::test_default resolve correctly.
     sim.interner = crate::sim::intern::test_interner();
     let owner_id = sim.interner.intern("Americans");
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     assert!(matches!(
-        sim.reveal(1),
+        sim.reveal_entity_with_rules(1, &rules),
         crate::sim::world::RevealOutcome::Revealed { .. }
     ));
-    crate::sim::arena_fixture::supply_native_map(&mut sim);
+    assert!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .cached_spatial_threat()
+            .is_some()
+    );
     let grid = (*sim.path_grid_snapshot().unwrap()).clone();
 
     sim.queue_command(CommandEnvelope::new(

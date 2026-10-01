@@ -37,13 +37,7 @@
 //!   as its `Ammo=`: action 0 never finds such a team spent. Trigger: a
 //!   team of units with `Ammo=` above 0. Effect: the team keeps attacking
 //!   where native would move on once all are empty.
-//! - Action 58 in modes 0 and 1 reads the House threat map (`0x0056BCD0`),
-//!   whose producers (`AI_BuildThreatMap @ 0x0050940A`, `Adjust_Threat @
-//!   0x004FA31B`) are not ported: every cell reads 0, its constructor value,
-//!   so both pick the house's first building of the type. Trigger: a retail
-//!   AIMD script with `58,0x0000nnnn` (mode 0, several base-guard scripts).
-//!   Effect: the team guards the house's oldest such building rather than
-//!   the least threatened one.
+
 //! - `Coordinate_Move`'s far branch reads Foot `+0x68E` (a target the
 //!   tank-bunker scans acquired), which no ported code writes: it reads
 //!   clear, so an `Aggressive=` team's fighting member keeps fighting.
@@ -560,7 +554,7 @@ impl Simulation {
     /// (House `+0x68`, in order, with no liveness filter): of BuildingType
     /// index `argument & 0xFFFF`, the highest score (signed, the first on a
     /// tie; none at or below -1): mode 0 `0x7FFFFFFF - threat`, 1 `threat`
-    /// (module residual: threat reads 0), 2 `0x7FFFFFFF - distance`, 3
+    /// from the retained House map, 2 `0x7FFFFFFF - distance`, 3
     /// `distance`, the distance between the building's and the leader's
     /// Locations (`0x0041C380`); any other mode picks none.
     fn team_find_own_building(&self, leader: u64, argument: i32) -> Option<u64> {
@@ -582,7 +576,13 @@ impl Simulation {
                 })
             })
             .collect();
-        own_building_pick(&buildings, [from.x, from.y, from.z], mode)
+        own_building_pick(&buildings, [from.x, from.y, from.z], mode, |location| {
+            self.house_threat_at_cell(
+                leader.owner(),
+                ((location[0] / 256) as i16, (location[1] / 256) as i16),
+            )
+            .expect("FindOwnBuilding requires its native House threat source")
+        })
     }
 
     /// Action 58's destination (`0x006EE6A5..0x006EE7C8`): FNPC from the
@@ -1226,21 +1226,21 @@ fn member_ammo(entity: &GameEntity, object: &crate::rules::object_type::ObjectTy
 /// `FindOwnBuilding @ 0x006EEEA0`'s pick among `buildings` (id, location)
 /// by `mode`: 0 lowest threat, 1 highest, 2 nearest `from` (the leader's
 /// location), 3 farthest, by the approximated 3D distance; the first of
-/// equal scores, none for another mode. The threat map is not ported and
-/// reads 0 (module residual).
+/// equal scores, none for another mode. Modes0/1 read the shared retained
+/// House grid through native56BCD0; distance-only modes never query threat.
 pub(super) fn own_building_pick(
     buildings: &[(u64, [i32; 3])],
     from: [i32; 3],
     mode: u32,
+    mut threat_at: impl FnMut([i32; 3]) -> i32,
 ) -> Option<u64> {
     let mut best = None;
     let mut best_score = -1i32;
     for &(id, location) in buildings {
         let distance = || crate::util::native_x87::distance_3d_leptons(location, from);
-        let threat = 0i32;
         let score = match mode {
-            0 => i32::MAX.wrapping_sub(threat),
-            1 => threat,
+            0 => i32::MAX.wrapping_sub(threat_at(location)),
+            1 => threat_at(location),
             2 => i32::MAX.wrapping_sub(distance()),
             3 => distance(),
             _ => -1,

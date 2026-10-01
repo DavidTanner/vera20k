@@ -230,7 +230,18 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // which the state hash folded. Ceremony: main and this change, each with only
 // those fields dropped from the hash (probe not committed), printed the same
 // value for all three replay pins (bridge, global, slice 6). Previous: 0xBB09_43C9_DBB1_8884.
-const SLICE6_BASELINE_HASH: u64 = 0x5BA5_F8CB_B5F7_2FF5;
+// Historical retained-path integration compared all17 main7412/candidate
+// observations after omitting newly retained actor fields and RNG source
+// locations; gameplay observations matched and only hash composition moved.
+// That pre-#962/#963 candidate pin was 0x2A95_6763_E046_638A. The bounded Rust
+// receipt remains tools/spatial_oracle/astar_path_finishing_replay/receipt.json.
+// Main963 retained-path composition: the same-binary control reproduces
+// 0x5BA5_F8CB_B5F7_2FF5 by omitting only navigation history, House threat, Foot530
+// and cached Techno508 hash feeds. All17 control/current observations
+// match exactly except tick hashes, including full actor state and all
+// three RNG streams/draws/caller positions. The temporary gate was removed.
+// Rust-only receipt: tools/spatial_oracle/astar_path_finishing_replay/main963/receipt.json.
+const SLICE6_BASELINE_HASH: u64 = 0xCA13_8857_9211_B978;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -240,21 +251,28 @@ fn replay_hash_stable_through_slice6() {
     let grid = (*sim.path_grid_snapshot().unwrap()).clone();
     // id 1: Americans MTNK (the unit we retask). id 2: enemy MTNK (Soviet, hostile
     // by default — no alliance entry). id 3: Americans E1 (second attacker).
-    sim.spawn_from_map(
-        &[
-            unit("Americans", "MTNK", 3, 3, EntityCategory::Unit),
-            unit("Soviet", "MTNK", 25, 3, EntityCategory::Unit),
-            unit("Americans", "E1", 5, 5, EntityCategory::Infantry),
-        ],
-        Some(&rules),
-    );
     let mut diagnostic = super::global_parity_harness_tests::replay_diagnostic_file("slice6");
+    let mut seed = || {
+        sim.spawn_from_map(
+            &[
+                unit("Americans", "MTNK", 3, 3, EntityCategory::Unit),
+                unit("Soviet", "MTNK", 25, 3, EntityCategory::Unit),
+                unit("Americans", "E1", 5, 5, EntityCategory::Infantry),
+            ],
+            Some(&rules),
+        )
+    };
+    let (_, seed_draws) = if diagnostic.is_some() {
+        crate::sim::rng::trace_draws(seed)
+    } else {
+        (seed(), Vec::new())
+    };
     super::global_parity_harness_tests::record_replay_diagnostic(
         &mut diagnostic,
         &sim,
         None,
         &[],
-        &[],
+        &seed_draws,
     );
 
     // (execute_tick, command) — apply_due_commands fires each when self.session.tick+1 == tick.

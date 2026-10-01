@@ -103,4 +103,62 @@ def metadata():
                                  'Candidate allocation controls supply a null or real table slot for compass2/tube8 and execute429E19 through the skip or allocated continuation. They stop before any Cell layer/zone/entry semantics and compare retained Dummy bytes unchanged.'],substitutions=[])
 
 if __name__ == "__main__":
-    finish_vectors(generate, Path(__file__).with_suffix(".json"), provenance=metadata)
+    import sys
+    if '--hills-markers' in sys.argv:
+        from tools.spatial_oracle import astar_hills_route, bridge_records
+        hills = astar_hills_route.inputs
+        finish_vectors(astar_hills_route.generate_markers, Path(__file__).with_name('astar_hills_markers.json'),
+                       provenance=astar_hills_route.marker_metadata,
+                       argv=[arg for arg in sys.argv[1:] if arg != '--hills-markers'],
+                       source_paths={'height_owner':Path(__file__), 'hills_route':Path(astar_hills_route.__file__),
+                                     'hills_inputs':Path(hills.__file__), 'mtnk_inputs':Path(hills.astar_mtnk_inputs.__file__),
+                                     'navigation_inputs':Path(hills.navigation_inputs.__file__),
+                                     'navigation':Path(hills.navigation.__file__),
+                                     'bridge_constructor':Path(hills.bridge_constructor.__file__),
+                                     'bridge_records':Path(bridge_records.__file__)})
+    elif '--hills-route' in sys.argv:
+        from tools.spatial_oracle import astar_hills_route, bridge_records
+        hills = astar_hills_route.inputs
+        finish_vectors(astar_hills_route.generate, Path(__file__).with_name('astar_hills_route.json'),
+                       provenance=astar_hills_route.metadata,
+                       argv=[arg for arg in sys.argv[1:] if arg != '--hills-route'],
+                       source_paths={'height_owner':Path(__file__), 'hills_route':Path(astar_hills_route.__file__),
+                                     'hills_inputs':Path(hills.__file__), 'mtnk_inputs':Path(hills.astar_mtnk_inputs.__file__),
+                                     'navigation_inputs':Path(hills.navigation_inputs.__file__),
+                                     'navigation':Path(hills.navigation.__file__),
+                                     'bridge_constructor':Path(hills.bridge_constructor.__file__),
+                                     'bridge_records':Path(bridge_records.__file__)})
+    elif '--hills-inputs' in sys.argv:
+        from tools.spatial_oracle import astar_hills_bridge_inputs
+        finish_vectors(astar_hills_bridge_inputs.generate, Path(__file__).with_name('astar_hills_bridge_inputs.json'),
+                       provenance=astar_hills_bridge_inputs.metadata,
+                       argv=[arg for arg in sys.argv[1:] if arg != '--hills-inputs'],
+                       source_paths={'height_owner':Path(__file__), 'hills_inputs':Path(astar_hills_bridge_inputs.__file__),
+                                     'mtnk_inputs':Path(astar_hills_bridge_inputs.astar_mtnk_inputs.__file__),
+                                     'navigation_inputs':Path(astar_hills_bridge_inputs.navigation_inputs.__file__),
+                                     'navigation':Path(astar_hills_bridge_inputs.navigation.__file__),
+                                     'bridge_constructor':Path(astar_hills_bridge_inputs.bridge_constructor.__file__)})
+    elif '--threat-inputs' in sys.argv:
+        from tools.spatial_oracle import astar_threat_inputs, astar_mtnk_inputs
+        finish_vectors(astar_threat_inputs.generate, Path(__file__).with_name('astar_threat_inputs.json'),
+                       provenance=astar_threat_inputs.metadata,
+                       argv=[arg for arg in sys.argv[1:] if arg != '--threat-inputs'],
+                       source_paths={'height_owner':Path(__file__), 'threat_inputs':Path(astar_threat_inputs.__file__),
+                                     'mtnk_inputs':Path(astar_mtnk_inputs.__file__),
+                                     'navigation_inputs':Path(astar_threat_inputs.navigation_inputs.__file__)})
+    elif '--mtnk-inputs' in sys.argv:
+        from tools.spatial_oracle import astar_mtnk_inputs
+        finish_vectors(astar_mtnk_inputs.generate, Path(__file__).with_name('astar_mtnk_inputs.json'),
+                       provenance=astar_mtnk_inputs.metadata,
+                       argv=[arg for arg in sys.argv[1:] if arg != '--mtnk-inputs'],
+                       source_paths={'height_owner':Path(__file__), 'mtnk_inputs':Path(astar_mtnk_inputs.__file__),
+                                     'navigation_inputs':Path(astar_mtnk_inputs.navigation_inputs.__file__),
+                                     'next_family':Path(astar_mtnk_inputs.next_family_native.__file__)})
+    elif '--finishing' in sys.argv:
+        from tools.spatial_oracle import astar_path_finishing
+        finish_vectors(astar_path_finishing.generate, Path(__file__).with_name('astar_path_finishing.json'),
+                       provenance=astar_path_finishing.metadata,
+                       argv=[arg for arg in sys.argv[1:] if arg != '--finishing'],
+                       source_paths={'height_owner':Path(__file__),'finishing':Path(astar_path_finishing.__file__)})
+    else:
+        finish_vectors(generate, Path(__file__).with_suffix(".json"), provenance=metadata)

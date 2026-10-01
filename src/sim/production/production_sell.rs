@@ -687,6 +687,10 @@ fn place_garrison_passenger_at_cell(
         pax.passenger_role = PassengerRole::None;
     }
     let (sub_x, sub_y) = lepton::subcell_lepton_offset(pax_sub_cell);
+    // SellBuilding4580xx's virtual FootUnlimbo reaches the full Techno6F6CA0
+    // publication and Foot4D72F4 coefficient copy. Keep the enclosing borrowed
+    // MapClass/overlay context and supply the RuleSet this receiver already has.
+    let context = context.requiring_rules(rules);
     let reveal = sim.try_reveal_entity_with_context(
         passenger_id,
         RevealRequest {
@@ -707,12 +711,6 @@ fn place_garrison_passenger_at_cell(
     if !matches!(reveal, RevealOutcome::Revealed { .. }) {
         return false;
     }
-    // A Reveal with rules made Unlimbo's barrel elevation writes; one without
-    // leaves them here.
-    if context.rules().is_none() {
-        sim.unlimbo_barrel_elevation(passenger_id, rules);
-    }
-
     sellbuilding_direct_scatter_handoff(
         sim,
         rules,
@@ -853,6 +851,9 @@ fn eject_garrison_occupants(
         }
     }
 
+    //SellBuilding4581D6 refreshes after its complete occupant ejection.
+    sim.refresh_spatial_threat(building_id, rules, None);
+
     ejected
 }
 
@@ -926,7 +927,7 @@ pub(crate) fn eject_destruction_garrison_with_context(
         "destroyed-garrison cargo must be detached before building UnInit"
     );
 
-    eject_garrison_passengers_at_edges(
+    let ejected = eject_garrison_passengers_at_edges(
         sim,
         rules,
         event.rx,
@@ -938,7 +939,10 @@ pub(crate) fn eject_destruction_garrison_with_context(
         Some(event.owner),
         GarrisonEjectMode::DestructionNoExitRemove,
         uninit_context,
-    )
+    );
+    //SpawnUnitsWithParachute458732 refreshes after its occupant loop.
+    sim.refresh_spatial_threat(event.building_id, rules, uninit_context.terrain());
+    ejected
 }
 
 /// `SellBuilding(0, 0)` on a living `CanBeOccupied` building: the red-health
@@ -998,6 +1002,9 @@ pub(crate) fn sell_building_occupants(
             cargo.clear_contents();
         }
     }
+
+    //SellBuilding4581D6 refreshes after its complete occupant ejection.
+    sim.refresh_spatial_threat(building_id, rules, None);
 
     ejected
 }
@@ -1151,7 +1158,7 @@ mod tests {
         ] {
             let rules = battle_bunker_rules_with_strength(strength);
             let mut sim = Simulation::new();
-            insert_garrisoned_battle_bunker(&mut sim, 10, 11);
+            insert_garrisoned_battle_bunker(&mut sim, &rules, 10, 11);
             sim.substrate.entities.get_mut(10).unwrap().health.current = actual;
             let before = credits_for_owner(&sim, "Americans");
             assert!(sell_building_now_for_test(&mut sim, &rules, 10));
@@ -1161,18 +1168,25 @@ mod tests {
 
     fn insert_captured_player_owned_garrison(
         sim: &mut Simulation,
+        rules: &RuleSet,
         building_id: u64,
         passenger_id: u64,
     ) {
-        insert_player_owned_garrison(sim, "CAGAS01", building_id, passenger_id);
+        insert_player_owned_garrison(sim, rules, "CAGAS01", building_id, passenger_id);
     }
 
-    fn insert_garrisoned_battle_bunker(sim: &mut Simulation, building_id: u64, passenger_id: u64) {
-        insert_player_owned_garrison(sim, "NABNKR", building_id, passenger_id);
+    fn insert_garrisoned_battle_bunker(
+        sim: &mut Simulation,
+        rules: &RuleSet,
+        building_id: u64,
+        passenger_id: u64,
+    ) {
+        insert_player_owned_garrison(sim, rules, "NABNKR", building_id, passenger_id);
     }
 
     fn insert_player_owned_garrison(
         sim: &mut Simulation,
+        rules: &RuleSet,
         type_id: &str,
         building_id: u64,
         passenger_id: u64,
@@ -1196,7 +1210,20 @@ mod tests {
             assert!(cargo.board(passenger_id, 1));
         }
         sim.substrate.entities.insert(building);
-        sim.reveal(building_id);
+        assert!(matches!(
+            sim.reveal_entity_with_rules(building_id, rules),
+            RevealOutcome::Revealed { .. }
+        ));
+        if sim.resolved_terrain.is_some() {
+            assert!(
+                sim.substrate
+                    .entities
+                    .get(building_id)
+                    .unwrap()
+                    .cached_spatial_threat()
+                    .is_some()
+            );
+        }
         sim.add_entity_occupancy(building_id);
 
         insert_hidden_passenger(sim, passenger_id, building_id, "Americans");
@@ -1281,7 +1308,7 @@ mod tests {
         let mut sim = garrison_map(&rules);
         let building_id = 10;
         let passenger_id = 11;
-        insert_garrisoned_battle_bunker(&mut sim, building_id, passenger_id);
+        insert_garrisoned_battle_bunker(&mut sim, &rules, building_id, passenger_id);
 
         let before = credits_for_owner(&sim, "Americans");
 
@@ -1333,7 +1360,7 @@ mod tests {
         let mut sim = garrison_map(&rules);
         let building_id = 20;
         let passenger_id = 21;
-        insert_captured_player_owned_garrison(&mut sim, building_id, passenger_id);
+        insert_captured_player_owned_garrison(&mut sim, &rules, building_id, passenger_id);
 
         let americans = sim.interner.intern("Americans");
 
@@ -1453,7 +1480,7 @@ mod tests {
         let mut sim = garrison_map(&rules);
         let building_id = 60;
         let passenger_id = 61;
-        insert_captured_player_owned_garrison(&mut sim, building_id, passenger_id);
+        insert_captured_player_owned_garrison(&mut sim, &rules, building_id, passenger_id);
         let owner = sim.interner.intern("Americans");
         let event = DestroyedGarrisonBuilding {
             building_id,
@@ -1494,7 +1521,7 @@ mod tests {
         let mut sim = garrison_map(&rules);
         let building_id = 30;
         let passenger_id = 31;
-        insert_captured_player_owned_garrison(&mut sim, building_id, passenger_id);
+        insert_captured_player_owned_garrison(&mut sim, &rules, building_id, passenger_id);
         block_all_garrison_exit_cells(&mut sim, &rules, 10, 10, 2, 2);
         if let Some(cargo) = sim
             .substrate

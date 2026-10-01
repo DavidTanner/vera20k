@@ -526,9 +526,39 @@ pub struct HouseState {
     /// until it expires. The constructor starts it at the construction frame
     /// with no time left. Persisted and hashed (schema v216).
     pub(crate) repair_latch_timer: CdTimer,
+    /// House+57E4..+15FF3: native retained 130x130 padded spatial threat map.
+    /// Constructor4F61EF/4F6312 clears it. Save504093 and Load5031C9 retain
+    /// it through the raw House stream; rebuilding from current objects loses
+    /// incremental rounding/clamping and diplomacy history.
+    #[serde(default)]
+    spatial_threat: crate::sim::house_threat::HouseSpatialThreat,
 }
 
 impl HouseState {
+    pub(crate) fn spatial_threat_values(&self) -> &[i32] {
+        self.spatial_threat.values()
+    }
+
+    pub(crate) fn spatial_threat_at(&self, cell: (i16, i16)) -> Result<i32, String> {
+        self.spatial_threat.at(cell)
+    }
+
+    /// EstimateZoneThreat585F40 level1 reads House+57E4 by ZoneRecord+20.
+    pub(crate) fn spatial_threat_at_padded_index(&self, index: i32) -> Result<i32, String> {
+        self.spatial_threat.at_padded_index(index)
+    }
+
+    pub(crate) fn adjust_spatial_threat(
+        &mut self,
+        cell: (i16, i16),
+        delta: i32,
+    ) -> Result<(), String> {
+        self.spatial_threat.adjust(cell, delta)
+    }
+
+    pub(crate) fn clear_spatial_threat(&mut self) {
+        self.spatial_threat.clear();
+    }
     /// The HouseType this House was made from (HouseClass `+0x34`): its
     /// `Country=`, else its own name, which a map House shares with its type.
     pub(crate) fn house_type_id(&self) -> InternedId {
@@ -768,6 +798,7 @@ impl HouseState {
             repair_delay: 0.0,
             repair_start_latch: false,
             repair_latch_timer: CdTimer::started(0, 0),
+            spatial_threat: Default::default(),
         }
     }
 }

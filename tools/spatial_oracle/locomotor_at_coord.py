@@ -7,9 +7,10 @@ Stored-head creation/clearing, runtime startup and object admission are excluded
 """
 from pathlib import Path
 import struct
+import hashlib
 
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE
-from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ESP
+from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ESP, UC_X86_REG_EDI
 from tools.native_oracle import (
     load_image, run_checked, STACK_BASE, STACK_SIZE, SCRATCH, SCRATCH_SIZE,
     RET_MAGIC, finish_vectors, provenance,
@@ -97,6 +98,40 @@ class OriginalQuery:
         return dict(at=bool(self.uc.reg_read(UC_X86_REG_EAX) & 0xFF),
                     head=self.head_result, track_xy=self.track_result)
 
+    def marker_probe(self, cell, height):
+        """Original42B080 prefix only; stop before the first Map lookup."""
+        # These bounded controls request ground height zero. The executable
+        # global is recorded, but zero * its bits needs no startup assumption.
+        assert height == 0
+        u = self.uc
+        cell_slot = SCRATCH + 0x3000
+        sp = STACK_BASE + STACK_SIZE - 0x1000
+        u.mem_write(cell_slot, struct.pack('<hh', *cell))
+        u.mem_write(sp, dwords(RET_MAGIC, cell_slot, height))
+        u.reg_write(UC_X86_REG_ESP, sp)
+        code = bytes(u.mem_read(0x42B080, 0x78))
+        trace = []
+        hook = u.hook_add(UC_HOOK_CODE,
+                          lambda _u, pc, _size, _data: trace.append(pc))
+        try:
+            run_checked(u, 0x42B080, 0x42B0F8, count=100,
+                        required_addresses=(0x42B08A, 0x42B08D, 0x42B091,
+                                            0x42B094, 0x42B09E, 0x42B0A3, 0x42B0AB))
+        finally:
+            u.hook_del(hook)
+        retained_sp = u.reg_read(UC_X86_REG_ESP)
+        assert retained_sp == sp - 0x2C
+        xyz = [*self.coord(retained_sp + 0x20, 2),
+               wrap32(u.reg_read(UC_X86_REG_EDI))]
+        assert bytes(u.mem_read(0x42B080, 0x78)) == code
+        assert bytes(u.mem_read(cell_slot, 4)) == struct.pack('<hh', *cell)
+        return dict(cell=list(cell), requested_height=height, xyz=xyz,
+                    entry='0x0042B080', stop_before='0x0042B0F8',
+                    original_level_step_bytes=bytes(u.mem_read(0x89C2D8, 4)).hex(),
+                    prefix_sha256=hashlib.sha256(code).hexdigest(),
+                    executed_pcs=[f'0x{pc:08X}' for pc in trace],
+                    full_nearby_scan_executed=False)
+
     def turn(self, index):
         f = self.family
         normal, short, facing, flags = struct.unpack(
@@ -153,6 +188,23 @@ def inputs():
         for z in (-2147483648, 2147483647):
             yield fixture(family, f'wrapping_z_{z}', head=(1664, 1408, z),
                           probes=[[1664, 1408, 0], [1664, 1408, -1]])
+    # FindNearbyBridgePeer42B080 supplies native-produced probe XYZ to slot40.
+    # Prefix execution is bounded before the first Map lookup; the complete
+    # locomotor decision below still executes its original receiver.
+    reader = OriginalQuery(fixture('drive', 'marker_table_reader'))
+    shared = reader.marker_probe((5, 4), 0)
+    yield fixture('drive', 'marker_shared_cell_handoff_z',
+                  current=(1152, 1152, 0), head=(1520, 1152, 416),
+                  turn_index=2, cursor=18, table=reader.turn(2),
+                  marker_probe_receipt=shared, probes=[shared['xyz']])
+    null = reader.marker_probe((0, 0), 0)
+    yield fixture('drive', 'marker_null_head_center',
+                  current=(0, 0, 0), head=(0, 0, 0),
+                  marker_probe_receipt=null, probes=[null['xyz']])
+    negative = reader.marker_probe((-1, -1), 0)
+    yield fixture('hover', 'marker_negative_signed_cell_center',
+                  current=(128, 128, 0), head=(128, 128, 0),
+                  marker_probe_receipt=negative, probes=[negative['xyz']])
     for family in ('drive', 'ship'):
         reader = OriginalQuery(fixture(family, 'table_reader'))
         for index in range(FAMILIES[family]['count']):
@@ -201,8 +253,10 @@ if __name__ == '__main__':
             'Drive72 and ordinary Ship64 TurnTrack descriptors; inputs are bounded branch witnesses',
             'Mech, Tunnel and DropPod dormant TS behavior is excluded; active false families use original leaf',
             'Signed/overflow cases describe native scalar behavior, not reachability on stock maps',
+            'Three marker controls execute original42B080 signed-cell center/height prefix through stop-before42B0F8, then original slot40; no Map lookup or full nearby-list scan executes. Requested height is zero, with original level-step global bytes recorded; no startup claim for that global.',
         ], substitutions=[], entry_points={
             **{f'{name}_head': row['head'] for name, row in FAMILIES.items()},
             **{f'{name}_query': row['query'] for name, row in FAMILIES.items()},
+            'nearby_probe_prefix': 0x42B080, 'nearby_probe_stop': 0x42B0F8,
             'drive_transform': 0x4B4780, 'ship_transform': 0x6A3DB0, 'false_query': 0x4B6630,
         }))

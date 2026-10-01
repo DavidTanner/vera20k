@@ -607,6 +607,72 @@ fn tube_hierarchy_precheck_rejects_unequal_base_labels_before_connected_graph() 
 }
 
 #[test]
+fn wrapper_rejection_precedes_the_marker_transaction() {
+    struct MarkerBoundary;
+    impl super::super::SearchFootEntry for MarkerBoundary {
+        fn classify(&self, _: super::super::SearchEntryQuery) -> Result<u8, String> {
+            panic!("the marker boundary must precede cell expansion")
+        }
+        fn finishing_threat_coefficient(
+            &self,
+        ) -> Result<crate::util::native_x87::NativeF64Bits, String> {
+            Ok(crate::util::native_x87::NativeF64Bits::POSITIVE_ZERO)
+        }
+        fn prepare_search_markers(
+            &self,
+        ) -> Result<Option<(u8, std::cell::Ref<'_, SearchMarkerOverlay>)>, String> {
+            Err("reached429C1A".into())
+        }
+    }
+    //42CB22 rejects different raw base labels before429C1A. A connected
+    //coarse graph must not prepare markers (which can query the shared Dummy).
+    //The admitted control proves this receiver is wired to the live boundary.
+    let grid = PathGrid::new(3, 1);
+    let mut zones = ZoneGrid::following_path_grid(&grid);
+    zones.set_hierarchy(linear_level0_hierarchy(vec![1, 2, 3], &[(1, 2), (2, 3)]));
+    let counts = BlockerNeighborCounts::new(3, 1);
+    for equal in [false, true] {
+        let entry = NativePathEntry {
+            raw_equal: Some(equal),
+            goal_bridge: false,
+            hierarchy_start: (0, 0),
+            hierarchy_goal: (2, 0),
+            endpoints_in_playfield: true,
+        };
+        let result = find_flat_path_after_entry(
+            &grid,
+            (0, 0),
+            (2, 0),
+            &entry,
+            None,
+            None,
+            Some(&zones),
+            MovementZone::Normal,
+            Some(MovementZone::Normal),
+            None,
+            None,
+            None,
+            MoverSearchFacts {
+                foot_entry: Some(&MarkerBoundary),
+                urgency: 2,
+                mover_is_crusher: false,
+                is_infantry: false,
+                wall_cost: None,
+            },
+            Some(&counts),
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            if equal {
+                PathSearchFailure::CellEntryUnavailable("reached429C1A".into())
+            } else {
+                PathSearchFailure::NativeEntryRejected
+            }
+        );
+    }
+}
+
+#[test]
 fn zone_precheck_failed_hierarchy_keeps_zone_map_same_zone_fallback() {
     let astar_grid = PathGrid::new(3, 1);
     let mut zg = ZoneGrid::following_path_grid(&astar_grid);

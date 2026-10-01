@@ -14,7 +14,8 @@ use crate::sim::find_nearby_cell::{
 };
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::pathfinding::LayeredEntityBlockMap;
-use crate::sim::pathfinding::path_smooth;
+#[path = "path_finishing.rs"]
+mod path_finishing;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::zone_map::{ZONE_INVALID, ZoneGrid};
 use crate::sim::pathfinding::zone_search;
@@ -566,43 +567,22 @@ pub(super) fn find_move_path_with_marker_detailed(
             goal,
             path.len(),
         );
-        let coords: Vec<(u16, u16)> = path.iter().map(|step| (step.rx, step.ry)).collect();
-        let layers: Vec<MovementLayer> = path.iter().map(|step| step.layer).collect();
-        if contains_non_adjacent_step(&coords) {
-            let (coords, layers) = truncate_layered_path(coords, layers, MAX_PATH_SEGMENT_STEPS);
-            return Ok((coords, layers));
-        }
-        let layered_smooth_walkable = |x: u16, y: u16, layer: MovementLayer| -> bool {
-            if !grid.is_walkable_on_layer(x, y, layer) {
-                return false;
-            }
-            // Soft-blocked cells (code 2/5/6) must not be used as zigzag
-            // shortcuts: A* deliberately routed around them, smoothing
-            // through them would undo the detour.
-            if entity_block_map.is_some_and(|m| m.contains_key(layer, &(x, y))) {
-                return false;
-            }
-            // **VERA-internal, gamemd equivalent UNCHECKED.** A marked cell is
-            // a hard smoothing block here. Native charges it a soft x4 instead:
-            // `0x004299AA` tests `Cell+0x140 & 0x40000` and, if set,
-            // `FMUL [0x007E37BC]` (= 4.0f) on the edge cost. VERA's A* models
-            // that correctly in `apply_search_marker_cost`; only the two
-            // smoothing predicates in this file harden it, and the
-            // `(x, y) != goal` carve-out has no native counterpart at all.
-            // Dormant: no production search builds an overlay (#954, native
-            // UpdateBridgePassability 0x0042ACF0 is not ported), so this arm
-            // only runs in tests.
-            if marker_overlay.is_some_and(|m| m.contains((x, y)) && (x, y) != goal) {
-                return false;
-            }
-            match layer {
-                MovementLayer::Ground => !ground_blocks.is_some_and(|gb| gb.contains(&(x, y))),
-                MovementLayer::Bridge => !bridge_blocks.is_some_and(|bb| bb.contains(&(x, y))),
-                _ => true,
-            }
-        };
-        let (coords, layers) =
-            path_smooth::smooth_layered_path(coords, layers, &layered_smooth_walkable);
+        let (coords, layers) = path_finishing::finish(
+            path,
+            ctx,
+            grid,
+            foot_entry,
+            terrain_costs,
+            movement_zone,
+            facts,
+            ground_blocks,
+            bridge_blocks,
+            entity_block_map,
+            marker_overlay,
+        )
+        .map_err(|cause| {
+            MovePathFailure::Search(zone_search::PathSearchFailure::CellEntryUnavailable(cause))
+        })?;
         let (coords, layers) = truncate_layered_path(coords, layers, MAX_PATH_SEGMENT_STEPS);
         return Ok((coords, layers));
     }
@@ -636,71 +616,27 @@ pub(super) fn find_move_path_with_marker_detailed(
     )
     .map_err(MovePathFailure::Search)?;
 
-    if contains_non_adjacent_step(&path) {
-        let path_layers = build_flat_fallback_layers(&path, start_layer, grid);
-        let (path, path_layers) = truncate_layered_path(path, path_layers, MAX_PATH_SEGMENT_STEPS);
-        return Ok((path, path_layers));
-    }
-
-    let smooth_walkable = |x: u16, y: u16| -> bool {
-        let terrain_ok = if movement_zone.is_some_and(|mz| mz.is_water_mover()) {
-            crate::sim::pathfinding::is_cell_passable_for_mover(
-                grid,
-                x,
-                y,
-                movement_zone,
-                resolved_terrain,
-            )
-        } else {
-            grid.is_walkable(x, y)
-        };
-        // Soft-blocked cells (code 2/5/6) must not be used as zigzag shortcuts:
-        // A* deliberately routed around them; smoothing through them would
-        // undo the detour and walk the unit straight through the blocker.
-        terrain_ok
-            && !entity_blocks.is_some_and(|eb| eb.contains(&(x, y)))
-            && !entity_block_map.is_some_and(|m| m.contains_any(&(x, y)))
-            // Same VERA-internal hardening as the layered predicate above.
-            && !marker_overlay.is_some_and(|m| m.contains((x, y)) && (x, y) != goal)
-    };
-    let path = path_smooth::smooth_path(path, &smooth_walkable);
-    let path_layers = build_flat_fallback_layers(&path, start_layer, grid);
-    let (path, path_layers) = truncate_layered_path(path, path_layers, MAX_PATH_SEGMENT_STEPS);
-    Ok((path, path_layers))
-}
-
-fn contains_non_adjacent_step(path: &[(u16, u16)]) -> bool {
-    path.windows(2).any(|pair| {
-        let dx = pair[1].0.abs_diff(pair[0].0);
-        let dy = pair[1].1.abs_diff(pair[0].1);
-        dx > 1 || dy > 1
-    })
-}
-
-/// Build per-cell movement layers for a flat A* fallback path.
-///
-/// If the entity starts on a bridge, preserve `MovementLayer::Bridge` for
-/// contiguous bridge-walkable cells from the path start. Once the path
-/// leaves the bridge deck, all remaining cells are `Ground`.
-fn build_flat_fallback_layers(
-    path: &[(u16, u16)],
-    start_layer: MovementLayer,
-    grid: &PathGrid,
-) -> Vec<MovementLayer> {
-    if start_layer != MovementLayer::Bridge {
-        return vec![MovementLayer::Ground; path.len()];
-    }
-    let mut layers = Vec::with_capacity(path.len());
-    let mut on_bridge = true;
-    for &(x, y) in path {
-        if on_bridge && grid.is_walkable_on_layer(x, y, MovementLayer::Bridge) {
-            layers.push(MovementLayer::Bridge);
-        } else {
-            on_bridge = false;
-            layers.push(MovementLayer::Ground);
-        }
-    }
-    layers
+    let (path, path_layers) = path_finishing::finish(
+        path,
+        ctx,
+        grid,
+        foot_entry,
+        terrain_costs,
+        movement_zone,
+        facts,
+        entity_blocks,
+        entity_blocks,
+        entity_block_map,
+        marker_overlay,
+    )
+    .map_err(|cause| {
+        MovePathFailure::Search(zone_search::PathSearchFailure::CellEntryUnavailable(cause))
+    })?;
+    Ok(truncate_layered_path(
+        path,
+        path_layers,
+        MAX_PATH_SEGMENT_STEPS,
+    ))
 }
 
 #[cfg(test)]

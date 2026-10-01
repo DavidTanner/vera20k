@@ -286,9 +286,21 @@ fn receiver_garrison_survivor_keeps_height_aware_playfield_membership() {
         building.passenger_role = PassengerRole::Transport { cargo };
     }
     assert!(matches!(
-        sim.try_reveal_entity(building_id, common_raw_request(13, 13, 4, 128, 128)),
+        sim.try_reveal_entity_with_context(
+            building_id,
+            common_raw_request(13, 13, 4, 128, 128),
+            super::UninitContext::with_rules(&rules)
+        ),
         RevealOutcome::Revealed { .. }
     ));
+    assert!(
+        sim.substrate
+            .entities
+            .get(building_id)
+            .unwrap()
+            .cached_spatial_threat()
+            .is_some()
+    );
     assert!(
         sim.substrate
             .entities
@@ -5221,9 +5233,21 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
         building.passenger_role = PassengerRole::Transport { cargo };
     }
     assert!(matches!(
-        sim.try_reveal_entity(building_id, common_raw_request(8, 8, 0, 128, 128)),
+        sim.try_reveal_entity_with_context(
+            building_id,
+            common_raw_request(8, 8, 0, 128, 128),
+            super::UninitContext::with_rules(&rules)
+        ),
         RevealOutcome::Revealed { .. }
     ));
+    assert!(
+        sim.substrate
+            .entities
+            .get(building_id)
+            .unwrap()
+            .cached_spatial_threat()
+            .is_some()
+    );
 
     // Destruction's native no-exit arm is selected only when every perimeter
     // probe rejects. Occupied blockers establish that production condition.
@@ -6616,8 +6640,10 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
                     start,
                     goal,
                     MovementZone::Normal,
-                    &ZonePrecheckExclusions::default()
-                ),
+                    &ZonePrecheckExclusions::default(),
+                    None,
+                )
+                .unwrap(),
                 ZonePrecheckOutcome::Passed(_)
             ),
         )
@@ -6789,7 +6815,13 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     // the live cursor before normalizing this independent snapshot fixture.
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
     let expected_dynamic_terrain = sim.dynamic_terrain_cells.clone();
-    let expected_hash = sim.state_hash();
+    // Simulation's saved stores here use stable vectors/BTreeMaps; runtime
+    // waypoint HashMaps belong to SimResources and are not serialized. The
+    // ZoneGrid encoding includes native retained base bytes, not hierarchy
+    // history, so this compares exact saved authority without normalizing a
+    // live graph merely to make its hash agree with ordinary load.
+    let expected_authority = bincode::serialize(&sim).unwrap();
+    let expected_base = bincode::serialize(sim.zone_grid.as_ref().unwrap()).unwrap();
     let bytes = GameSnapshot::save(&sim, 0, 0, "collapsed-dcliff", 0);
     let mut restored = GameSnapshot::load(&bytes)
         .expect("collapsed cliff snapshot")
@@ -6797,17 +6829,42 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     restored
         .restore_after_snapshot_load()
         .expect("collapsed cliff stable identities");
+    assert!(
+        restored
+            .zone_grid
+            .as_ref()
+            .unwrap()
+            .is_native_load_pending()
+    );
+    assert_eq!(bincode::serialize(&restored).unwrap(), expected_authority);
     assert_eq!(
-        restored.state_hash(),
-        expected_hash,
-        "serialized collapse state must hash equally before derived map caches rebuild",
+        bincode::serialize(restored.zone_grid.as_ref().unwrap()).unwrap(),
+        expected_base
     );
     restored.rebuild_caches_after_load(pristine_terrain, Default::default(), &rules);
     restored
         .restore_map_authority_after_snapshot_load(&rules, &overlay_registry)
         .expect("dynamic cliff terrain reprojects over the pristine map");
     assert_eq!(restored.dynamic_terrain_cells, expected_dynamic_terrain);
-    assert_eq!(restored.state_hash(), expected_hash);
+    assert!(
+        !restored
+            .zone_grid
+            .as_ref()
+            .unwrap()
+            .is_native_load_pending()
+    );
+    assert_eq!(bincode::serialize(&restored).unwrap(), expected_authority);
+    assert_eq!(
+        bincode::serialize(restored.zone_grid.as_ref().unwrap()).unwrap(),
+        expected_base
+    );
+    // Native LoadContent67E8CD ->581F50 clears the incremental hierarchy
+    // and rebuilds it from this saved base. The physical Anytown restore
+    // packet establishes that its history-sensitive live hash may change.
+    assert_eq!(
+        remote_bridge_route(restored.zone_grid.as_ref().unwrap()),
+        (true, true)
+    );
     let restored_terrain = restored.resolved_terrain.as_ref().unwrap();
     for (&(rx, ry), expected) in &expected_dynamic_terrain {
         assert_eq!(

@@ -18,19 +18,41 @@ def map_inputs(map_file=None):
  raw=Path(map_file or MAPFILE).read_bytes();sections,cells=decode_cells(raw)
  return raw,sections,cells
 
-def extract_tiles(t, *, theater_archive='isotemp.mix', theater_override='isotemmd.mix', tile_suffix='tem', disjoint_theater_additions=False):
+def extract_tiles(t, *, theater_archive='isotemp.mix', theater_override='isotemmd.mix', tile_suffix='tem', disjoint_theater_additions=False, theater_primary=None, theater_short=None, theater_extra=None):
  root=Path(os.environ['RA2_DIR']);archive=(root/'ra2.mix').read_bytes();iso=mix(archive)[mix_hash(theater_archive)];members=mix(iso);rows=[];data={}
  for i,name in t['tiles'].items():
   entry=mix_hash(name);raw=members.get(entry)
   if raw is not None:data[i]=raw
   rows.append(dict(tile=i,file=name,entry=f'{entry:08X}',bytes=len(raw) if raw else 0,sha256=sha(raw) if raw else None))
  wanted={mix_hash(name) for name in t['tiles'].values()};yr=(root/'ra2md.mix').read_bytes();outer=mix(yr);checks=[]
+ # Init_Theater5349C0 registers the long/short theater archives as well as
+ # isometric archives. Wood bridge TMPs reside in TEMPERAT.MIX/SNOW.MIX.
+ # Do not infer precedence: fail on queried-name overlap and prove each
+ # additional physical winner is unique across the registered archives.
+ defaults={'tem':('temperat.mix','tem.mix',()),'sno':('snow.mix','sno.mix',('snowmd.mix',))}
+ primary,short,extra=defaults[tile_suffix]
+ primary=theater_primary or primary;short=theater_short or short
+ extra=extra if theater_extra is None else tuple(theater_extra)
+ theater_checks=[];selected=set(members)&wanted
+ for name in (*extra,primary,short):
+  found=[(source,payload) for source,container in [('ra2.mix',mix(archive)),('ra2md.mix',outer)] if (payload:=container.get(mix_hash(name))) is not None]
+  assert len(found)<=1,('ambiguous theater archive container',name)
+  if not found:theater_checks.append(dict(archive=name,absent=True));continue
+  source,payload=found[0];entries=mix(payload);hits=sorted(set(entries)&wanted)
+  assert not (set(hits)&selected),('ambiguous registered primary TMP',name)
+  for row in rows:
+   entry=int(row['entry'],16)
+   if entry in hits:
+    blob=entries[entry];data[row['tile']]=blob
+    row.update(bytes=len(blob),sha256=sha(blob),source=source+'/'+name)
+  selected.update(hits)
+  theater_checks.append(dict(archive=source+'/'+name,sha256=sha(payload),unique_primary_hits=hits))
  for name in (theater_override,'isogenmd.mix','genermd.mix','localmd.mix','cachemd.mix'):
   raw=outer[mix_hash(name)];entries=mix(raw);hits=sorted(set(entries)&wanted)
   if disjoint_theater_additions and name==theater_override:
    # The stock SNOW additions have no base-name overlap. This admits unique
    # physical files without claiming to execute the native archive resolver.
-   assert not (set(hits)&set(members)),('ambiguous TMP winner',name)
+   assert not (set(hits)&selected),('ambiguous TMP winner',name)
    for row in rows:
     entry=int(row['entry'],16)
     if entry in hits:
@@ -41,7 +63,7 @@ def extract_tiles(t, *, theater_archive='isotemp.mix', theater_override='isotemm
  for name in ('expandmd01.mix','langmd.mix','language.mix'):
   raw=(root/name).read_bytes();hits=sorted(set(mix(raw))&wanted);assert not hits,(name,hits);checks.append(dict(archive=name,sha256=sha(raw),**{f'primary_{tile_suffix}_name_hits':hits}))
  loose={p.name.upper() for p in root.iterdir() if p.is_file()}&{n.upper() for n in t['tiles'].values()};assert not loose,loose
- return data,dict(archive='ra2.mix/'+theater_archive,outer_sha256=sha(archive),inner_sha256=sha(iso),members=rows,selected_override_checks=checks,**{f'loose_primary_{tile_suffix}_hits':sorted(loose)})
+ return data,dict(archive='ra2.mix/'+theater_archive,outer_sha256=sha(archive),inner_sha256=sha(iso),members=rows,registered_theater_checks=theater_checks,selected_override_checks=checks,**{f'loose_primary_{tile_suffix}_hits':sorted(loose)})
 
 class Inputs(ri.Rules):
  def __init__(self,t,*,map_file=None,theater_file='TEMPERATMD.INI',damage_overlays=range(205,233)):
@@ -84,7 +106,12 @@ class Inputs(ri.Rules):
     self.u.reg_write(UC_X86_REG_ESP,ri.SP);self.u.reg_write(UC_X86_REG_EBX,rules_ini);self.u.reg_write(UC_X86_REG_ESI,p);self.u.reg_write(UC_X86_REG_EDI,p+0x24);run_checked(self.u,0x721C3F,(0x721C7B,0x721CDC),count=100000)
    if 'MTNK' in lex:
     p=self.mtnk;self.block(0x5F94B3,0x5F9516,{UC_X86_REG_EBX:p,UC_X86_REG_ESI:rules_ini,UC_X86_REG_EBP:p+0x24,UC_X86_REG_EAX:self.u.mem_read(p+0x231,1)[0]})
-    for a,b in [(0x7121D1,0x7121EB),(0x712270,0x71228A),(0x7122BE,0x7122D8),(0x714CC8,0x714CE9)]:self.block(a,b,{UC_X86_REG_EBP:p,UC_X86_REG_ESI:rules_ini,UC_X86_REG_EDI:rules_ini,UC_X86_REG_EBX:p+0x24})
+    # Original 712452..712473 reads ThreatAvoidanceCoefficient with the
+    # retained Type+2F0 double as default; Foot Unlimbo copies it to Foot+530.
+    for a,b in [(0x7121D1,0x7121EB),(0x712270,0x71228A),(0x7122BE,0x7122D8),(0x712452,0x712473),(0x714CC8,0x714CE9)]:self.block(a,b,{UC_X86_REG_EBP:p,UC_X86_REG_ESI:rules_ini,UC_X86_REG_EDI:rules_ini,UC_X86_REG_EBX:p+0x24})
+    # Original MovementZone reader loads the INI argument from its retained
+    # outer frame after two pushes. Keep its native default/store+5B4 owner.
+    self.u.mem_write(ri.SP+0x380,ri.dwords(rules_ini));self.block(0x71605E,0x716090,{UC_X86_REG_EBP:p,UC_X86_REG_EBX:p+0x24})
    self.block(0x7476D3,0x747711,{UC_X86_REG_EDI:self.mtnk,UC_X86_REG_EBX:rules_ini,UC_X86_REG_EBP:self.mtnk+0x24})
    terrain=[]
    for n,p in self.terrain_ptrs.items():

@@ -70,6 +70,7 @@ impl ZoneGrid {
         record: &BridgeEndpointRecord,
         bounds: Option<PlayfieldBounds>,
     ) -> Result<bool, String> {
+        self.invalidate_navigation_history();
         let signed = |p: (u16, u16)| (i32::from(p.0 as i16), i32::from(p.1 as i16));
         let a = signed(record.endpoint_a);
         let b = signed(record.endpoint_b);
@@ -113,6 +114,7 @@ impl ZoneGrid {
         terrain: &ResolvedTerrainGrid,
         records: &[BridgeEndpointRecord],
     ) {
+        self.invalidate_navigation_history();
         // Compatibility readers retain a derived redirect per movement row.
         // Activation changes structural-cell lookup from the broken span's
         // chosen endpoint to A even when56DB70 requests no connectivity pass.

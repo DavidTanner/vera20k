@@ -688,7 +688,14 @@ mod tests {
         let row = crate::rules::locomotor_type::MovementZone::Normal
             .matrix_row()
             .unwrap();
-        base.raw_zone_ids_by_row[row] = vec![1; overrides.map_or(0, Vec::len) + 1];
+        // Supplied native query premises use one shared Map+4C label count
+        // for all13 Map+18 rows. Only Normal's values are exercised here, but
+        // the unused rows must still form a coherent saved navigation owner.
+        let labels = overrides.map_or(0, Vec::len) + 1;
+        for raw_row in &mut base.raw_zone_ids_by_row {
+            raw_row.resize(labels, 1);
+        }
+        base.raw_zone_ids_by_row[row].fill(1);
         if let Some(overrides) = overrides {
             for (index, zone) in overrides.iter().enumerate() {
                 let x = zone["xy"][0].as_u64().unwrap() as usize;
