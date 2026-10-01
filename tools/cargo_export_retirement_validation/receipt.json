@@ -37,6 +37,14 @@
     "full-python-tests.log": {
       "sha256": "59cea6ae93f3a0f4bacd2becdb8e26e8cb99741e2316bd4592cff7aaefe10b2a",
       "bytes": 81815
+    },
+    "windows-initial-ci-failure.log.gz": {
+      "sha256": "745dfa655ed35659cb75e82b2fc5a382fb565cf8d42e21356f3bdd44aa6db89e",
+      "bytes": 19052
+    },
+    "windows-fixture-fix-focused.log": {
+      "sha256": "9c170144d766dc6b156450ed846c3262ed5911004ed9e22f8abd24410882d86f",
+      "bytes": 5246
     }
   },
   "limitations": [
@@ -55,5 +63,19 @@
     "skipped": 4,
     "log": "full-python-tests.log",
     "total": 424
+  },
+  "windows_initial_ci": {
+    "status": "failed",
+    "run_id": 36826491287,
+    "failures": 7,
+    "errors": 1,
+    "reason": "POSIX-only transaction fixtures ran on Windows; JSON-escaped checkout did not match opaque provenance text. A simulated Darwin symbol test also relied on host nm discovery. Production export retirement is unsupported on Windows and fails closed.",
+    "correction": "Match existing label-retirement POSIX fixture admission; retain Windows unsupported-format guard. Mock native nm discovery in simulated Darwin symbol test. No production deletion checks relaxed."
+  },
+  "windows_fixture_fix_focused": {
+    "total": 70,
+    "passed": 69,
+    "skipped": 1,
+    "log": "windows-fixture-fix-focused.log"
   }
 }

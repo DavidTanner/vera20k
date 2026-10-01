@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import stat
+import sys
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -13,6 +14,8 @@ from unittest.mock import patch
 from tools import _cargo_labels as labels, cargo_run
 
 
+@unittest.skipUnless(sys.platform in {'darwin', 'linux'},
+                     'retirement transaction fixtures require POSIX directory fsync')
 class ExportRetirementTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -290,8 +293,9 @@ class ExportFormatTests(unittest.TestCase):
                   patch.object(labels.shutil, 'which', return_value=None)):
                 with self.assertRaisesRegex(ValueError, 'requires native nm'):
                     labels._libtest(binary)
-            with patch.object(labels.sys, 'platform', 'linux'), self.assertRaises(ValueError):
-                labels._libtest(binary)
+            for platform in ('linux', 'win32'):
+                with patch.object(labels.sys, 'platform', platform), self.assertRaises(ValueError):
+                    labels._libtest(binary)
 
     def test_symbols_need_defined_rust_harness_and_project_tests(self):
         from tools import _cargo_cache
@@ -304,6 +308,7 @@ class ExportFormatTests(unittest.TestCase):
                 return consumer(iter(['_ordinary_symbol\n']))
             with (patch.object(labels.sys, 'platform', 'darwin'),
                   patch.object(labels, '_regular', return_value=SimpleNamespace(st_mode=stat.S_IFREG | 0o755)),
+                  patch.object(labels.shutil, 'which', return_value='/mock/native-nm'),
                   patch.object(_cargo_cache, '_stream', side_effect=stream)):
                 with self.assertRaisesRegex(ValueError, 'Cannot identify'):
                     labels._libtest(binary)

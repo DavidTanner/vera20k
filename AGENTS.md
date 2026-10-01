@@ -245,6 +245,10 @@ age or glob, touch another task's work, or delete active binaries, their require
 dependencies, source, assets or native evidence. External legacy copies of Rust
 binaries require a checked retirement owner, not arbitrary `rm`. Saved-label
 retirement is explicit; automatic retention trims rebuildable compiler caches.
+Before a large build, check the runner’s free-space result. If its minimum
+free-space target remains unmet, resolve the owned retention pressure before
+starting another large build; preserve required files and report any remaining
+shortfall.
 Format edited leaf files only (`rustfmt --edition 2024 <file>`), never crate-wide
 or recursive `mod.rs`. Coordinate snapshot versions/rebaselines; exclude others' WIP.
 

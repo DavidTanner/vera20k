@@ -1,0 +1,42 @@
+.....................................Cache retention: trimmed, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmpc064aujv/.git/owned-builds/retention/1790837496795416000-56e9eb04.json
+Checkout: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmpc064aujv
+Target: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmpc064aujv/target/owned-worktrees/d844e458dfbb4dfa
+Command: ['cargo', 'build', '--message-format=json-render-diagnostics']
+Preserved build: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmpc064aujv/.git/owned-builds/artifacts/build-a
+Cache retention: blocked, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmpc064aujv/.git/owned-builds/retention/1790837496996982000-5e07bb4b.json
+Cache deletion stopped: Unsupported executable debug dependency format: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmpc064aujv/.git/owned-builds/artifacts/build-a/0/actual-hash
+...Cache retention: trimmed, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp7tlynn3i/.git/owned-builds/retention/1790837497465585000-1282b328.json
+Checkout: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp7tlynn3i
+Target: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp7tlynn3i/target/owned-worktrees/721ec287ce13e4ab
+Command: ['cargo', 'build', '--message-format=json-render-diagnostics']
+Cache retention: trimmed, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp7tlynn3i/.git/owned-builds/retention/1790837497586268000-7d75ff38.json
+Cache retention: trimmed, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp7tlynn3i/.git/owned-builds/retention/1790837497674009000-1b7fd2be.json
+Checkout: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp7tlynn3i
+Target: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp7tlynn3i/target/owned-worktrees/721ec287ce13e4ab
+Command: ['cargo', 'build', '--message-format=json-render-diagnostics']
+Cache retention: trimmed, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp7tlynn3i/.git/owned-builds/retention/1790837497843961000-61cba646.json
+..............Cache retention: trimmed, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/.git/owned-builds/retention/1790837499785360000-6d4dd5a5.json
+Checkout: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj
+Target: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/target/owned-worktrees/325e977958e17922
+Command: ['cargo', 'build', '--message-format=json-render-diagnostics']
+Preserved build: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/.git/owned-builds/artifacts/host-build
+Cache retention: blocked, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/.git/owned-builds/retention/1790837499982644000-96bec83f.json
+Cache deletion stopped: Unsupported executable debug dependency format: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/.git/owned-builds/artifacts/host-build/0/asset
+Cache retention: blocked, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/.git/owned-builds/retention/1790837500107169000-17bfb44b.json
+Cache deletion stopped: Unchanged dependency inspection failure (cached up to 300s): Unsupported executable debug dependency format: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/.git/owned-builds/artifacts/host-build/0/asset
+Checkout: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj
+Target: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/target/owned-worktrees/325e977958e17922
+Command: ['cargo', 'build', '--message-format=json-render-diagnostics']
+Preserved build: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/.git/owned-builds/artifacts/test-build
+Cache retention: blocked, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/.git/owned-builds/retention/1790837500325844000-921163f4.json
+Cache deletion stopped: Unchanged dependency inspection failure (cached up to 300s): Unsupported executable debug dependency format: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmp126cjqgj/.git/owned-builds/artifacts/host-build/0/asset
+.Cache retention: trimmed, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmpjr47xbzf/.git/owned-builds/retention/1790837500497466000-f9af10a6.json
+Checkout: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmpjr47xbzf
+Target: /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmpjr47xbzf/target/owned-worktrees/3ded159c1a7785b2
+Command: ['cargo', 'build', '--message-format=json-render-diagnostics']
+Cache retention: trimmed, removed 0 allocated bytes; /private/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/tmpjr47xbzf/.git/owned-builds/retention/1790837500665499000-5508aad4.json
+..............s
+----------------------------------------------------------------------
+Ran 70 tests in 8.555s
+
+OK (skipped=1)

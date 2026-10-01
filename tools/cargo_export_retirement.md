@@ -91,3 +91,9 @@ unchanged. Historical evidence executables were not selected. The focused suite 
 check was skipped. Shared replacement
 inspection is reused within a locked batch; first-seen identities are rechecked
 before every unlink, including mutations during later export inspection.
+
+The initial Windows CI failure is retained in the validation receipt. The
+POSIX transaction fixtures now follow the existing saved-label retirement test
+admission, while unsupported Windows native inspection still has a fail-closed
+check. Simulated Darwin symbol tests explicitly provide native-tool discovery;
+no host `nm` installation is assumed and no deletion check is weakened.
