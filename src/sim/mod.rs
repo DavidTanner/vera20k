@@ -67,7 +67,6 @@ pub(crate) mod touch_log; // which stored objects were handed out mutably, per r
 pub mod type_handle_table; // InternedId -> TypeHandle, one-hop entity->type resolution
 
 // --- Pure read-only deterministic engine-data services (gamemd-exact lookup tables) ---
-pub mod substrate; // direction/facing tables; no render/ui/audio/net dep
 
 // --- Subsystem folders (multi-file subsystems with internal mod.rs) ---
 pub mod bounce;

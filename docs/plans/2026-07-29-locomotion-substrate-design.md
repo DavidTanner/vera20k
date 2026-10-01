@@ -7,6 +7,9 @@ supersedes: nothing. Corrects [docs/research/ILOCOMOTION_COM_PROTOCOL_SPEC.md](h
 updated: 2026-07-29 — open-question closeout pass, then an OQ4/OQ5 re-run (see Changelog); §11b holds self-corrections
 ---
 
+> **2026-10-01:** `src/sim/substrate/locomotion` was removed. No consumer ever used it, and it
+> lacked the +0xA8/+0xAC base slots that `sim::movement::motion_query` and `LocomotorState` port.
+
 # LocomotionClass as an engine substrate service
 
 ## Status legend — used throughout, never upgraded by prose

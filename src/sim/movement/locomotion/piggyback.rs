@@ -42,9 +42,12 @@ pub struct WalkRuntime {
     ///75AAD3 clears; MoveTo75AD5A sets; null MoveTo/Stop clear only with no
     ///head. FindSubCellDest's head retirement does not change this byte.
     pub moving: bool,
-    /// Full object+36 / interface+32, queried by75CB20 and Infantry520F40.
-    /// Process75BD25 sets it before distance/completion; Stop75ADEC clears
-    /// only with no paid head. It is distinct from IsMoving(+34).
+    /// Full object+36 / interface+32: Is_Really_Moving_Now (75CB20), which
+    /// Infantry520F40 asks. Process sets it on a fresh head (75BC2A) and a
+    /// paid one (75BD25), and clears it after a failed path search (75AFD5),
+    /// on a refused head (75B6A3) and on arrival (75BF60). Stop75ADEC clears
+    /// it only with no paid head; Stop_Movement_Animation (75CBC0) always.
+    /// It is distinct from IsMoving(+34).
     pub animation_moving: bool,
 }
 

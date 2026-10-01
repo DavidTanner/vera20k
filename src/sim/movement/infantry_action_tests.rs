@@ -283,3 +283,116 @@ fn the_default_arm_follows_the_native_sequencer_tables() {
         assert_eq!(takes_default_arm(doing), native_default, "Doing {doing}");
     }
 }
+
+/// One `infantry_movement_action` consumer row's actor: a Walk infantryman
+/// with all 42 sequence records of six frames, the row's Doing and prone
+/// byte, Health 100 and the old stage (image frame 7, timer start 17 and
+/// duration 91, rate 92) at frame 100. A motion row's head (2880, 2624, 0)
+/// went through Walk Process to `0x0075BD25`, which set +0x36 alone: the
+/// destination and IsMoving byte (+0x34) keep the constructor's null and
+/// false, as in a row without motion.
+fn walk_consumer(input: &Value) -> (Simulation, RuleSet, u64) {
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n0=E1\n[E1]\nStrength=100\nSpeed=4\n\
+         Locomotor={4A582744-9839-11D1-B709-00A024DDAFD1}\nMovementZone=Infantry\n",
+    ))
+    .unwrap();
+    let mut text = String::from("[E1]\nSequence=SuppliedSequence\n[SuppliedSequence]\n");
+    for name in crate::rules::infantry_sequence::NATIVE_SEQUENCE_NAMES {
+        text.push_str(&format!("{name}=0,6,0\n"));
+    }
+    let art = IniFile::from_str(&text);
+    rules.replace_art_registry_for_test(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    let registry = crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art);
+    rules.replace_animation_sequences_for_test(
+        crate::rules::animation_sequence::build_animation_sequence_catalog(&rules, Some(&registry)),
+    );
+    let mut sim = Simulation::with_seed(0);
+    sim.session.binary_frame = 100;
+    let house = sim.interner.intern("Americans");
+    sim.houses.insert(
+        house,
+        crate::sim::house_state::HouseState::new(house, 0, None, true, 0, 10),
+    );
+    let id = sim
+        .construct_object_limbo_at_height("E1", "Americans", 10, 10, 0, 0, &rules)
+        .expect("infantryman");
+    let entity = sim.substrate.entities.get_mut(id).unwrap();
+    entity.lifecycle.in_limbo = false;
+    entity.health.current = 100;
+    entity.infantry.as_mut().unwrap().is_prone = input["prone"] == true;
+    entity
+        .mission_leaf
+        .set_infantry_doing_verified(input["current"].as_i64().unwrap() as i32)
+        .unwrap();
+    entity.install_native_stage_fixture(crate::sim::stage::StageClass::from_native_fixture(
+        7,
+        0,
+        crate::sim::timer::CdTimer::from_raw(17, 91),
+        92,
+        0,
+    ));
+    if input["motion"] == true {
+        let locomotor = entity.locomotor.as_mut().expect("Walk locomotor");
+        locomotor.set_step_head(Some(crate::sim::components::DriveCoord {
+            x: 2880,
+            y: 2624,
+            z: 0,
+        }));
+        locomotor.begin_walk_motion();
+    }
+    (sim, rules, id)
+}
+
+/// The locomotion action tail of `0x00520F40` asks Walk's
+/// `Is_Really_Moving_Now` (`0x0075CB20`, its +0x36), not `Is_Moving_Now`: a
+/// head admitted with a null destination and a clear IsMoving byte still
+/// walks or crawls. Compares every original consumer row's Doing, prone byte,
+/// +0x36, image frame and stage clock.
+#[test]
+fn walk_locomotion_actions_match_original_consumer_rows() {
+    let corpus: Vec<Value> = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/infantry_movement_action.json"
+    ))
+    .unwrap();
+    let mut compared = 0;
+    for row in corpus.iter().filter(|row| row["input"]["consumer"] == true) {
+        let name = row["input"].to_string();
+        let (mut sim, rules, id) = walk_consumer(&row["input"]);
+        sim.infantry_movement_actions(id, &rules);
+        let entity = sim.substrate.entities.get(id).unwrap();
+        assert_eq!(
+            entity.mission_leaf.as_infantry().unwrap().doing(),
+            row["doing"].as_i64().unwrap() as i32,
+            "{name}: Doing"
+        );
+        assert_eq!(
+            entity.infantry.as_ref().unwrap().is_prone,
+            row["prone"] != 0,
+            "{name}: prone"
+        );
+        assert_eq!(
+            entity.locomotor.as_ref().unwrap().walk_animation_moving(),
+            Some(row["motion"] != 0),
+            "{name}: Walk +0x36"
+        );
+        let stage = entity.native_stage();
+        assert_eq!(
+            [
+                stage.value(),
+                stage.timer().start_frame(),
+                stage.timer().duration(),
+                stage.rate()
+            ],
+            [
+                row["frame"].as_i64().unwrap() as i32,
+                row["timer_start"].as_i64().unwrap() as i32,
+                row["timer_duration"].as_i64().unwrap() as i32,
+                row["timer_repeat"].as_i64().unwrap() as i32,
+            ],
+            "{name}: image frame and stage clock"
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, 20);
+}

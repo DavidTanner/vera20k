@@ -27,9 +27,8 @@
 //! `Is_Moving_Now` is the inherited thunk that re-dispatches to `Is_Moving`.
 //!
 //! ## Why this is a separate module
-//! `locomotor_ready` is destined for `sim::substrate::locomotion`, whose
-//! dependency floor is rules/util only. Producing the inputs requires reading
-//! `GameEntity`, so it stays here in `sim::movement`.
+//! `locomotor_ready` answers from plain inputs; producing those inputs requires
+//! reading `GameEntity`, which this module does.
 //!
 //! ## Error direction is the safety property
 //! Before this module existed the gate always answered "not moving", so the

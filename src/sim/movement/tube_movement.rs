@@ -468,6 +468,19 @@ fn finalize_tube_object(
     ground_pose::foot_set_location(entities, entity_id, exit, rules, interner);
     if let Some(entity) = entities.get_mut(entity_id) {
         if let Some(sub_cell) = infantry_subcell {
+            // The Infantry exit's locomotor Stop_Movement_Animation
+            // (`0x0051BA16`).
+            // RESIDUAL: its Force_Immediate_Destination(null) just before
+            // (`0x0051B9F4`, Walk `0x0075AE30`) is not ported.
+            // - Trigger: an infantryman leaving a map tube.
+            // - Effect: Walk's forced null destination is skipped: its head
+            //   and destination handling (`0x0075C240`), then, once both are
+            //   null, the IsMoving clear and the owner's +0x54C callback.
+            // - Frequency: retail maps with tubes only.
+            // - Risk: the next Walk Process sees a stale head or destination.
+            if let Some(locomotor) = entity.locomotor.as_mut() {
+                locomotor.stop_movement_animation();
+            }
             entity.sub_cell = Some(sub_cell);
             if floor_supported {
                 entity.position.z = terrain
@@ -1057,7 +1070,8 @@ mod tests {
     }
 
     /// Infantry leaves a tube at its chosen spot, at the floor there
-    /// (`0x00578080` at `0x0051B98A`), through SetLocation (`0x0051B99C`).
+    /// (`0x00578080` at `0x0051B98A`), through SetLocation (`0x0051B99C`),
+    /// then stops its locomotor's movement animation (`0x0051BA16`).
     /// The floor is native's: `tools/ramp_height_vectors.json`
     /// `ramp_1_sub_64_192` (level 0, ramp 1, sub-cell (64, 192)) is 26.
     #[test]
@@ -1072,6 +1086,16 @@ mod tests {
         entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(64);
         entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(192);
         entity.position.exact_z_leptons = Some(0);
+        let mut walk = crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+            crate::rules::locomotor_type::LocomotorKind::Walk,
+        );
+        walk.set_step_head(Some(DriveCoord {
+            x: 2 * 256 + 64,
+            y: 192,
+            z: 0,
+        }));
+        walk.begin_walk_motion();
+        entity.locomotor = Some(walk);
         let state = LowBridgeTubeMovementState {
             tube_id: TubeId(0),
             cursor: 2,
@@ -1101,6 +1125,10 @@ mod tests {
         ));
         let owner = entities.get(1).unwrap();
         assert!(owner.low_bridge_tube_state.is_none());
+        assert_eq!(
+            owner.locomotor.as_ref().unwrap().walk_animation_moving(),
+            Some(false)
+        );
         assert_eq!(owner.sub_cell, Some(3));
         assert_eq!(
             ground_pose::position_world_coord(&owner.position),

@@ -33,8 +33,9 @@ pub(crate) struct UnitMissionLeaf {
 pub(crate) struct InfantryMissionLeaf {
     firing_sequence_latch: u8,
     doing: i32,
-    /// Infantry+6E8: ctor517AC2 writes2. DoAction51D8B8 stores0 for
-    /// Water/Beach offbridge, otherwise1, before its action admission.
+    /// Infantry+6E8: ctor517AC2 and Limbo51DF38 write2. DoAction51D8B8
+    /// stores0 for Water/Beach offbridge, otherwise1, before its action
+    /// admission.
     /// Native load retains the signed dword, including the initial sentinel.
     #[serde(default = "initial_infantry_water_state")]
     water_state: i32,
@@ -178,6 +179,12 @@ impl MissionLeafState {
     /// noninterruptible action retains the new land/water state.
     pub(crate) fn set_infantry_water_state(&mut self, on_land: bool) {
         self.expect_infantry_mut().water_state = i32::from(on_land);
+    }
+
+    /// `InfantryClass::Limbo` stores the constructor's sentinel again
+    /// (`0x0051DF38`), so the next `Do_Action` plays no water sound.
+    pub(crate) fn reset_infantry_water_state(&mut self) {
+        self.expect_infantry_mut().water_state = initial_infantry_water_state();
     }
 
     #[cfg(test)]

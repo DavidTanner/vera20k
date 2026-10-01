@@ -1,8 +1,10 @@
-//! The active locomotor's two motion queries over existing retained state:
-//! ILocomotion+10 `Is_Moving` ([`is_moving`]) and +80 `Is_Moving_Now`
-//! ([`is_moving_now`]). Native callers dispatch one slot or the other, and
-//! the two answer differently in every family except Teleport. No order/path
-//! presence, movement phase or speed is substituted for a native query here.
+//! The active locomotor's three motion queries over existing retained state:
+//! ILocomotion+10 `Is_Moving` ([`is_moving`]), +80 `Is_Moving_Now`
+//! ([`is_moving_now`]) and +A8 `Is_Really_Moving_Now`
+//! ([`is_really_moving_now`]). Native callers dispatch one slot or another,
+//! and `Is_Moving` and `Is_Moving_Now` answer differently in every family
+//! except Teleport. No order/path presence, movement phase or speed is
+//! substituted for a native query here.
 use super::track_process::TrackFamily;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;
@@ -58,6 +60,25 @@ pub(crate) fn is_moving_now(
             .is_some_and(|rocket| rocket.phase.is_moving_now()),
         _ => super::ready_producer::ready_state_for(entity, rules, binary_frame)
             .is_some_and(super::locomotor_ready::LocomotorReadyState::is_moving_now),
+    }
+}
+
+/// `Is_Really_Moving_Now` (ILocomotion+0xA8) of the active locomotor: Walk
+/// answers its class byte +0x36 (`0x0075CB20`); every other locomotor's slot
+/// is the base `0x004B4C50`, which asks [`is_moving_now`]. Its one native
+/// caller is the Infantry locomotion action tail (`0x00521161`).
+pub(crate) fn is_really_moving_now(
+    entity: &GameEntity,
+    rules: Option<super::SpeedRules<'_>>,
+    binary_frame: u32,
+) -> bool {
+    match entity
+        .locomotor
+        .as_ref()
+        .and_then(|locomotor| locomotor.walk_animation_moving())
+    {
+        Some(moving) => moving,
+        None => is_moving_now(entity, rules, binary_frame),
     }
 }
 

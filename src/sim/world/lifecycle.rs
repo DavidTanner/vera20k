@@ -2483,14 +2483,17 @@ impl Simulation {
         }
         // `InfantryClass::Limbo @ 0x0051DF10`, before FootClass::Limbo and
         // whether or not the man is already in limbo: its locomotor's
-        // Stop_Movement_Animation (ILocomotion `+0xAC`; Walk's `0x0075CBC0`
-        // clears Walk `+0x36`), `+0x6E8 = 2`, not prone (`+0x6DB`) and Doing
-        // Ready (`+0x6C4`). A boarded man leaves his transport with these.
-        // VERA's animation cascade derives the walk animation itself, and
-        // `+0x6E8` has no reader here.
+        // Stop_Movement_Animation (ILocomotion `+0xAC`, `0x0051DF30`), the
+        // water state's constructor sentinel (`+0x6E8 = 2`), not prone
+        // (`+0x6DB`) and Doing Ready (`+0x6C4`, stored without Do_Action).
+        // A boarded man leaves his transport with these.
         if let Some(entity) = self.substrate.entities.get_mut(stable_id)
             && entity.category == EntityCategory::Infantry
         {
+            if let Some(locomotor) = entity.locomotor.as_mut() {
+                locomotor.stop_movement_animation();
+            }
+            entity.mission_leaf.reset_infantry_water_state();
             if let Some(infantry) = entity.infantry.as_mut() {
                 infantry.is_prone = false;
             }

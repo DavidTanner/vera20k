@@ -378,7 +378,8 @@ impl LocomotorState {
         }
     }
 
-    #[cfg(test)]
+    /// Walk's `Is_Really_Moving_Now` (ILocomotion +0xA8 = `0x0075CB20`):
+    /// its class byte +0x36. `None` for every other locomotor.
     pub(crate) fn walk_animation_moving(&self) -> Option<bool> {
         match (self.kind, &self.runtime_payload) {
             (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => {
@@ -388,8 +389,9 @@ impl LocomotorState {
         }
     }
 
-    /// Original Process75BD25, after a nonnull head is admitted and before
-    /// testing its remaining distance. Does not stand for the whole Process.
+    /// Original Process75BC2A (a fresh head) and 75BD25 (a paid one), after a
+    /// nonnull head is admitted and before testing its remaining distance.
+    /// Does not stand for the whole Process.
     pub(crate) fn begin_walk_motion(&mut self) {
         if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
             (self.kind, &mut self.runtime_payload)
@@ -399,9 +401,12 @@ impl LocomotorState {
         }
     }
 
-    /// Walk75B6A3 clears animation+36 on a refused fresh head, retaining
-    /// its distinct moving byte, destination and head.
-    pub(super) fn refuse_walk_animation(&mut self) {
+    /// `Stop_Movement_Animation` (ILocomotion +0xAC): Walk clears +0x36
+    /// (`0x0075CBC0`) and keeps its IsMoving byte, destination and head;
+    /// every other locomotor's slot is the base `ret 4` (`0x004B4C90`).
+    /// Walk's Process makes the same write inline after a failed path search
+    /// (`0x0075AFD5`) and on a refused fresh head (`0x0075B6A3`).
+    pub(crate) fn stop_movement_animation(&mut self) {
         if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
             (self.kind, &mut self.runtime_payload)
         {
