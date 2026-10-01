@@ -387,7 +387,11 @@ impl Simulation {
                     if reached {
                         entity.movement_target = None;
                     } else if entity.movement_target.is_some()
-                        && entity.navigation.path_replay.remaining_directions().is_empty()
+                        && entity
+                            .navigation
+                            .path_replay
+                            .remaining_directions()
+                            .is_empty()
                     {
                         super::movement_commands::spend_track_route(entity);
                     }
@@ -710,13 +714,14 @@ impl Simulation {
                         .zip(grid.cell(selected_cell.0, selected_cell.1))
                 }) {
                     use super::movement_bridge::{BridgeStateUpdate, BridgeTransition};
-                    let update =
-                        match super::movement_bridge::compute_bridge_transition(source, destination)
-                        {
-                            BridgeTransition::Enter => BridgeStateUpdate::Set,
-                            BridgeTransition::Exit => BridgeStateUpdate::Clear,
-                            BridgeTransition::NoChange => BridgeStateUpdate::Unchanged,
-                        };
+                    let update = match super::movement_bridge::compute_bridge_transition(
+                        source,
+                        destination,
+                    ) {
+                        BridgeTransition::Enter => BridgeStateUpdate::Set,
+                        BridgeTransition::Exit => BridgeStateUpdate::Clear,
+                        BridgeTransition::NoChange => BridgeStateUpdate::Unchanged,
+                    };
                     super::movement_bridge::apply_bridge_layer_state(
                         &mut entity.locomotor,
                         &mut entity.on_bridge,

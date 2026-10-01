@@ -4,9 +4,7 @@
 use super::Simulation;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, MovementTarget, NavTargetRef};
-use crate::sim::movement::{
-    DestinationTiming, air_movement, ground_pose,
-};
+use crate::sim::movement::{DestinationTiming, air_movement, ground_pose};
 use crate::util::fixed_math::SimFixed;
 
 impl Simulation {
