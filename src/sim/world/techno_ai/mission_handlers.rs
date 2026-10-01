@@ -112,9 +112,11 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         {
             return bridge_changed;
         }
-        let moving = entity.movement_target.is_some()
-            || entity.navigation.nav_com.is_some()
-            || crate::sim::movement::track_head::committed_track_head(entity).is_some();
+        // `FootClass::Mission_Move @ 0x004D4200` keeps its cadence while the
+        // NavCom is set (`0x004D4203`) or the locomotor's `Is_Moving` holds
+        // (`0x004D422A`); the order itself is not an input.
+        let moving = entity.navigation.nav_com.is_some()
+            || crate::sim::movement::motion_query::is_moving(entity) == Some(true);
         MissionHandlerInput {
             category,
             mission,
@@ -721,6 +723,8 @@ pub(super) struct MissionHandlerInput {
     /// refinery dock missions (`miner::refinery_dock`).
     pub(super) refinery_dock_miner: bool,
     pub(super) timer_due: bool,
+    /// `Mission_Move`'s keep-going test (`0x004D4203..0x004D4238`): a NavCom,
+    /// the locomotor's `Is_Moving`, or a queued mission.
     pub(super) moving_or_queued: bool,
     pub(super) bunker_delegate: bool,
     pub(super) has_attack_target: bool,
@@ -2546,6 +2550,113 @@ mod harvester_guard_override_tests {
         assert_eq!(queued(&sim), None);
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.current().known(), Some(MissionType::Guard));
+    }
+}
+
+#[cfg(test)]
+mod move_arrival_tests {
+    //! `FootClass::Mission_Move @ 0x004D4200`: with no NavCom, a still
+    //! locomotor and nothing queued, the unit arrives (`Enter_Idle_Mode` at
+    //! `0x004D4242`, Guard queued, return 1); otherwise it keeps the cadence.
+    use super::*;
+    use crate::rules::ini_parser::IniFile;
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::sim::game_entity::GameEntity;
+    use crate::sim::movement::locomotor::LocomotorState;
+
+    const UNIT_ID: u64 = 1;
+
+    fn rules() -> RuleSet {
+        RuleSet::from_ini(&IniFile::from_str(
+            "[InfantryTypes]\n[VehicleTypes]\n0=MTNK\n1=JJV\n[AircraftTypes]\n\
+             [BuildingTypes]\n[MTNK]\nSpeed=6\n\
+             [JJV]\nSpeed=14\nLocomotor={92612C46-F71F-11d1-AC9F-006008055BB5}\n",
+        ))
+        .expect("move arrival rules")
+    }
+
+    /// A Unit of `type_name` on Move with a due timer, no NavCom and no order.
+    fn spawn_on_move(sim: &mut Simulation, type_name: &str, kind: LocomotorKind) {
+        let owner = sim.interner.intern("Americans");
+        let type_ref = sim.interner.intern(type_name);
+        let mut ge = GameEntity::new_at_frame_zero_for_test(
+            UNIT_ID,
+            20,
+            20,
+            0,
+            0,
+            owner,
+            crate::sim::components::Health { current: 300 },
+            type_ref,
+            EntityCategory::Unit,
+            0,
+            5,
+            true,
+        );
+        ge.locomotor = Some(LocomotorState::for_test_kind(kind));
+        sim.substrate.entities.insert(ge);
+        sim.mission_assign_exact(UNIT_ID, MissionId::from_known(MissionType::Move), 0)
+            .expect("assign Move");
+    }
+
+    fn dispatch(sim: &mut Simulation, rules: &RuleSet) -> Option<MissionType> {
+        dispatch_supported_foot_mission_cadence(
+            sim,
+            UNIT_ID,
+            rules,
+            super::super::ObjectAiCtx {
+                overlay_registry: None,
+                terrain_spawner_cells: None,
+                miner_config: None,
+            },
+        );
+        sim.substrate
+            .entities
+            .get(UNIT_ID)
+            .expect("unit")
+            .mission
+            .queued()
+            .known()
+    }
+
+    /// The order is not an input: a tank whose Drive is still and whose
+    /// NavCom is null arrives even while VERA still holds its order.
+    #[test]
+    fn an_order_alone_does_not_keep_a_unit_on_move() {
+        let rules = rules();
+        let mut sim = Simulation::new();
+        spawn_on_move(&mut sim, "MTNK", LocomotorKind::Drive);
+        sim.substrate
+            .entities
+            .get_mut(UNIT_ID)
+            .expect("unit")
+            .movement_target = Some(crate::sim::components::MovementTarget::default());
+
+        assert_eq!(dispatch(&mut sim, &rules), Some(MissionType::Guard));
+    }
+
+    /// A Jumpjet that a stop sent down to the floor has no NavCom but its
+    /// moving byte (`Is_Moving` `0x0054AE50`) holds until it lands, so it keeps
+    /// the Move cadence.
+    #[test]
+    fn a_landing_jumpjet_keeps_its_move_cadence() {
+        let rules = rules();
+        let mut sim = Simulation::new();
+        spawn_on_move(&mut sim, "JJV", LocomotorKind::Jumpjet);
+        sim.substrate
+            .entities
+            .get_mut(UNIT_ID)
+            .and_then(|e| e.locomotor.as_mut())
+            .and_then(|loco| loco.jumpjet_runtime_mut())
+            .expect("Jumpjet runtime")
+            .moving = true;
+
+        assert_eq!(dispatch(&mut sim, &rules), None);
+        let entity = sim.substrate.entities.get(UNIT_ID).expect("unit");
+        assert!(
+            entity.mission.dispatch_timer().delay() > 1,
+            "the Move cadence, not the arrival's return 1"
+        );
     }
 }
 
