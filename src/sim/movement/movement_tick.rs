@@ -265,7 +265,7 @@ impl FootPathRequest {
         terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
         blocks: &super::block_index::OwnerBlockSet,
         foot_entry: Option<&dyn crate::sim::pathfinding::SearchFootEntry>,
-    ) -> Result<(Vec<(u16, u16)>, Vec<MovementLayer>), super::movement_path::MovePathFailure> {
+    ) -> Result<Vec<(u16, u16)>, super::movement_path::MovePathFailure> {
         let snap = &self.visit.snap;
         let actor = entities.get(self.entity_id).expect("live suspended mover");
         let start = (actor.position.rx, actor.position.ry);
@@ -309,6 +309,8 @@ impl FootPathRequest {
             snap.allow_zone_hierarchy,
             foot_entry,
         )
+        // Foot+5E0 words carry no layer; the Process reads OnBridge.
+        .map(|(path, _)| path)
     }
 
     pub(crate) fn owner(&self) -> crate::sim::intern::InternedId {
@@ -319,14 +321,11 @@ impl FootPathRequest {
     /// Foot+5E0 direction queue, and 4D4003 records the current Cell as its
     /// reference. Foot timer/latch/retry state has its own lifetime.
     ///
-    /// Walk reads only that queue. Drive/Ship also keep the found cells and
-    /// layers in their MovementTarget, the track host's per-node layer cache
-    /// (`track_host`); that cache is theirs, not a second Walk route.
+    /// Every Foot reads only that queue; the order adapter keeps no cells.
     pub(super) fn install_route(
         &self,
         actor: &mut crate::sim::game_entity::GameEntity,
         path: Vec<(u16, u16)>,
-        layers: Vec<MovementLayer>,
     ) {
         let current = (actor.position.rx, actor.position.ry);
         super::path_markers::install_path_replay(
@@ -335,15 +334,6 @@ impl FootPathRequest {
             &path,
             1,
         );
-        let walk = actor
-            .locomotor
-            .as_ref()
-            .is_some_and(|loco| loco.kind == LocomotorKind::Walk);
-        if !walk && let Some(target) = actor.movement_target.as_mut() {
-            target.path = path;
-            target.path_layers = layers;
-            target.next_index = usize::from(!target.path.is_empty());
-        }
     }
 }
 

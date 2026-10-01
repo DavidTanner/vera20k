@@ -288,7 +288,6 @@ struct MovementSoundProbe {
     /// The body's FacingClass state: a turn issued during Process changes it;
     /// a turn already running is `Is_Moving_Now`'s.
     facing: crate::sim::movement::FacingClass,
-    path_index: Option<usize>,
     track_point: Option<u16>,
 }
 
@@ -3312,10 +3311,6 @@ impl Simulation {
             sub_x_bits: entity.position.sub_x.to_bits(),
             sub_y_bits: entity.position.sub_y.to_bits(),
             facing: entity.body_facing,
-            path_index: entity
-                .movement_target
-                .as_ref()
-                .map(|target| target.next_index),
             track_point: entity
                 .drive_locomotion
                 .as_ref()

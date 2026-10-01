@@ -7,7 +7,7 @@ use crate::sim::components::{
 };
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::drive_track;
-use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+use crate::sim::movement::locomotor::LocomotorState;
 use crate::util::fixed_math::SimFixed;
 
 fn passive_rules() -> RuleSet {
@@ -40,10 +40,9 @@ fn fixture() -> (Simulation, RuleSet) {
         },
         ..Default::default()
     });
+    // The accepted head (10,9) was the route's last cell, so Foot+5E0 holds
+    // no word beyond it: the committed head alone models the route.
     entity.movement_target = Some(MovementTarget {
-        path: vec![(10, 10), (10, 9)],
-        path_layers: vec![MovementLayer::Ground; 2],
-        next_index: 1,
         speed: SimFixed::from_num(330),
         ..Default::default()
     });
@@ -213,8 +212,9 @@ fn active_drive_ship_track_preserves_target_across_changed_path_and_terrain_requ
         next.speed_costs.track = Some(25);
         next.speed_costs.float = Some(25);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
+        // A new Foot+5E0 route toward (11,10) from the current cell.
+        entity.navigation.path_replay = crate::sim::movement::fixture_path_replay(&[(10, 10), (11, 10)]);
         let target = entity.movement_target.as_mut().unwrap();
-        target.path[1] = (11, 10);
         target.final_goal = Some((11, 10));
         let current = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
         assert_eq!(

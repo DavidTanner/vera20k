@@ -1707,7 +1707,13 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
         .movement_target
         .as_ref()
         .expect("scheduled Process");
-    assert!(request.path.is_empty());
+    assert!(
+        produced
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty()
+    );
     assert_eq!(request.final_goal, Some((39, 39)));
 }
 

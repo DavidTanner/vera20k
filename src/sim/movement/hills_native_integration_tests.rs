@@ -247,66 +247,70 @@ fn spawn_supplied_ground_mtnk(
     .unwrap()
 }
 
-fn assert_route_layer(
+/// The route the ordinary Move's Find_Path installed from `start`: every
+/// Foot+5E0 word stepped from that cell (a Drive head acceptance consumes
+/// words but keeps them in the backing queue).
+fn installed_route(
     scenario: &crate::headless_scenario::HeadlessScenario,
     id: u64,
-    layer: MovementLayer,
+    start: (u16, u16),
 ) -> Vec<(u16, u16)> {
-    let sim = scenario.sim();
-    let target = sim
+    let queue = &scenario
+        .sim()
         .entities()
         .get(id)
         .unwrap()
-        .movement_target
-        .as_ref()
-        .expect("ordinary Move produced a route");
-    assert_eq!(target.path.len(), target.path_layers.len());
-    for (coord, actual) in target.path.iter().zip(&target.path_layers) {
-        if sim
-            .path_grid()
-            .unwrap()
-            .cell(coord.0, coord.1)
-            .unwrap()
-            .bridge_structural
-        {
-            assert_eq!(
-                *actual, layer,
-                "reconstructed/finished route at {coord:?}: {:?}",
-                target.path
-            );
-        }
-    }
-    target.path.clone()
+        .navigation
+        .path_replay;
+    let route = queue.installed_cells(start);
+    let reference = queue.reference_cell.expect("installed route reference");
+    assert!(
+        route.contains(&(reference.0 as u16, reference.1 as u16)),
+        "Foot+558 {reference:?} is not on the route installed from {start:?}: {route:?}"
+    );
+    route
 }
 
-/// Order-time MovementTarget is an empty scheduling adapter. The normal
-/// Drive Process owns Find_Path and route publication on a subsequent tick
+/// Order-time MovementTarget is an empty scheduling adapter and the order
+/// installs no route. The normal Drive Process owns Find_Path and installs
+/// the Foot+5E0 queue on a subsequent tick
 /// (movement_commands::prepare_destination_execution / movement_tick).
 fn await_ordinary_route(
     scenario: &mut crate::headless_scenario::HeadlessScenario,
     id: u64,
-    layer: MovementLayer,
 ) -> Vec<(u16, u16)> {
+    let ordered = scenario
+        .sim()
+        .entities()
+        .get(id)
+        .unwrap()
+        .navigation
+        .path_replay
+        .clone();
     for _ in 0..MAX_TICKS {
         let sim = scenario.sim();
         let actor = sim.entities().get(id).expect("live ordinary Move receiver");
-        let target = actor
-            .movement_target
-            .as_ref()
-            .expect("Move remains scheduled before Find_Path");
-        if target.path.len() >= 2 {
-            return assert_route_layer(scenario, id, layer);
-        }
-        let facts = sim
-            .path_grid()
-            .unwrap()
-            .cell(actor.position.rx, actor.position.ry)
-            .unwrap();
+        assert!(
+            actor.movement_target.is_some(),
+            "Move remains scheduled before Find_Path"
+        );
+        let start = (actor.position.rx, actor.position.ry);
+        let facts = sim.path_grid().unwrap().cell(start.0, start.1).unwrap();
         assert_eq!(
             actor.position.z,
             facts.ground_level + if actor.on_bridge { 4 } else { 0 }
         );
         scenario.tick();
+        let queue = &scenario
+            .sim()
+            .entities()
+            .get(id)
+            .unwrap()
+            .navigation
+            .path_replay;
+        if !queue.directions.is_empty() && *queue != ordered {
+            return installed_route(scenario, id, start);
+        }
     }
     panic!("ordinary Move never published its first route within {MAX_TICKS} ticks");
 }
@@ -388,7 +392,7 @@ fn hills_native_fields_and_mtnk_admission_feed_an_ordinary_ramp_move() {
         "entry queries are RNG-neutral"
     );
     assert!(issue_ordinary_move(&mut scenario, &owner, id, (80, 75)));
-    let path = await_ordinary_route(&mut scenario, id, MovementLayer::Bridge);
+    let path = await_ordinary_route(&mut scenario, id);
     assert_native_route("ramp_to_deck", &path);
     assert_eq!(path.first().copied(), Some((75, 75)));
     assert_eq!(path.last().copied(), Some((80, 75)));
@@ -419,7 +423,7 @@ fn hills_ground_underpass_keeps_the_ground_route_and_pose() {
     let owner = prepare_commanding_house(&mut scenario);
     let id = spawn_mtnk(&mut scenario, &owner, (78, 77));
     assert!(issue_ordinary_move(&mut scenario, &owner, id, (78, 72)));
-    let path = await_ordinary_route(&mut scenario, id, MovementLayer::Ground);
+    let path = await_ordinary_route(&mut scenario, id);
     assert_native_route("ground_underpass", &path);
     assert!(
         path.contains(&(78, 75)),
@@ -513,7 +517,7 @@ fn hills_stationary_friendly_deck_blocker_matches_original_repath() {
         Some(false)
     );
     assert!(issue_ordinary_move(&mut scenario, &owner, mover, (81, 75)));
-    let path = await_ordinary_route(&mut scenario, mover, MovementLayer::Bridge);
+    let path = await_ordinary_route(&mut scenario, mover);
     assert_eq!(
         scenario
             .sim()
@@ -561,7 +565,14 @@ fn hills_opposing_ordinary_moves_repath_on_the_deck() {
         reverse,
         (74, 75)
     ));
-    let mut previous = assert_route_layer(&scenario, forward, MovementLayer::Bridge);
+    let mut previous = scenario
+        .sim()
+        .entities()
+        .get(forward)
+        .unwrap()
+        .navigation
+        .path_replay
+        .clone();
     let mut deck_rebuilds = 0;
     let mut met_on_deck = false;
     for _ in 0..MAX_TICKS {
@@ -583,13 +594,11 @@ fn hills_opposing_ordinary_moves_repath_on_the_deck() {
                 && actor.position.ry.abs_diff(other.position.ry) <= 1;
         }
         if let Some(target) = actor.movement_target.as_ref() {
-            let path = assert_route_layer(&scenario, forward, MovementLayer::Bridge);
-            if path != previous {
-                if facts.bridge_structural {
-                    deck_rebuilds += 1;
-                }
-                previous = path;
+            let queue = &actor.navigation.path_replay;
+            if route_reinstalled(&previous, queue) && facts.bridge_structural {
+                deck_rebuilds += 1;
             }
+            previous = queue.clone();
             assert_eq!(target.final_goal, Some((98, 75)));
         }
         if cell == (98, 75) {
@@ -729,12 +738,7 @@ fn hills_same_type_marker_downgrade_reaches_live_foot_search_and_cleanup() {
             crate::sim::movement::motion_query::is_moving(actor),
             Some(true)
         );
-        actor.movement_target = Some(MovementTarget {
-            path: peer_path.clone(),
-            path_layers: vec![MovementLayer::Ground; peer_path.len()],
-            next_index: 1,
-            ..Default::default()
-        });
+        actor.movement_target = Some(MovementTarget::default());
         install_path_replay(&mut actor.navigation.path_replay, peer_cell, &peer_path, 1);
         assert_eq!(
             actor.navigation.path_replay.reference_cell,
@@ -842,10 +846,7 @@ fn hills_same_type_marker_downgrade_reaches_live_foot_search_and_cleanup() {
                 terrain: sim.resolved_terrain.as_ref(),
                 playfield_bounds: sim.playfield_bounds,
             }
-            .reading(
-                &sim.substrate.entities,
-                &sim.substrate.raw_cell_occupation,
-            );
+            .reading(&sim.substrate.entities, &sim.substrate.raw_cell_occupation);
             let search = context.build(&sim.substrate.occupancy, mover, source, 0, false, urgency);
             let transactions = case["marker_transactions"].as_array().unwrap();
             let expected_urgency = transactions.first().map_or(urgency, |transaction| {
@@ -899,19 +900,13 @@ fn hills_same_type_marker_downgrade_reaches_live_foot_search_and_cleanup() {
             .unwrap(),
             FindPathResult::Route
         );
-        let path = sim
-            .substrate
-            .entities
-            .get(mover)
-            .unwrap()
-            .movement_target
-            .as_ref()
-            .unwrap();
-        assert_original_route(case, &path.path);
-        assert!(
-            path.path_layers
-                .iter()
-                .all(|layer| *layer == MovementLayer::Ground)
+        let actor = sim.substrate.entities.get(mover).unwrap();
+        assert!(actor.movement_target.is_some());
+        let queue = &actor.navigation.path_replay;
+        assert_eq!(queue.cursor, 0, "Find_Path installs an unconsumed queue");
+        assert_original_route(
+            case,
+            &queue.installed_cells((actor.position.rx, actor.position.ry)),
         );
         assert_eq!(case["rng_before"], case["rng_after"]);
         assert_eq!(

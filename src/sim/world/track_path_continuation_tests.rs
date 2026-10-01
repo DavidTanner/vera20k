@@ -114,6 +114,16 @@ fn order(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, u16)) {
     ));
 }
 
+/// Find_Path's install rewrote Foot+5E0: its words carry no -1 terminator,
+/// whereas the order (Unit 0x741970) writes -1 over the live head of the
+/// queue it leaves behind, and a failed search installs no words. Only the
+/// object-NavCom trim (0x4B2770) writes -1 into an installed route; these
+/// orders name cells.
+fn route_installed(e: &crate::sim::game_entity::GameEntity) -> bool {
+    let words = &e.navigation.path_replay.directions;
+    !words.is_empty() && !words.contains(&u8::MAX)
+}
+
 fn words(queue: &FootPathQueue) -> Vec<i32> {
     queue
         .directions
@@ -722,10 +732,7 @@ fn first_process_request_waits_for_the_movement_timer_and_keeps_power() {
         sim.process_ground_locomotor_for_test(id, Some(&rules), grid.as_deref(), Some(&registry))
             .unwrap();
         let e = sim.substrate.entities.get(id).unwrap();
-        let requested = e
-            .movement_target
-            .as_ref()
-            .is_some_and(|target| !target.path.is_empty());
+        let requested = e.movement_target.is_some() && route_installed(e);
         assert_eq!(requested, row["requested_path"] == true, "{row}");
         assert_eq!(
             u64::from(e.locomotor.as_ref().unwrap().powered),
@@ -825,9 +832,10 @@ fn reorder_requests_the_new_route_in_the_process_that_ends_the_head() {
         assert_eq!((timer.start_frame(), timer.duration()), (frame as i32, 0));
         assert_eq!(e.navigation.path_runtime.retries_left, 10);
         assert!(
-            e.movement_target.as_ref().is_some_and(
-                |target| target.final_goal == Some((10, 16)) && !target.path.is_empty()
-            ),
+            e.movement_target
+                .as_ref()
+                .is_some_and(|target| target.final_goal == Some((10, 16)))
+                && route_installed(e),
             "the Process that ended the head installed the new route"
         );
         return;
@@ -1166,7 +1174,8 @@ fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
     assert!(
         e.movement_target
             .as_ref()
-            .is_some_and(|target| target.final_goal == Some((20, 10)) && !target.path.is_empty()),
+            .is_some_and(|target| target.final_goal == Some((20, 10)))
+            && route_installed(e),
         "frame {ended}: the Process that ended the track requested the restored route"
     );
 }
@@ -1270,18 +1279,18 @@ fn queued_waypoint_arrival_returns_before_the_continuation() {
         assert!(e.navigation.pending_arrival_clear);
         assert!(committed_track_head(e).is_none());
         assert!(
-            e.movement_target
-                .as_ref()
-                .is_none_or(|target| target.path.is_empty()),
+            e.movement_target.is_none()
+                || e.navigation.path_replay.remaining_directions().is_empty(),
             "frame {frame}: the arrival Process requested no route"
         );
         visit(&mut sim, &rules, &registry, id, frame + 1);
         let e = sim.substrate.entities.get(id).unwrap();
         assert!(!e.navigation.pending_arrival_clear);
         assert!(
-            e.movement_target.as_ref().is_some_and(
-                |target| target.final_goal == Some((14, 10)) && !target.path.is_empty()
-            ),
+            e.movement_target
+                .as_ref()
+                .is_some_and(|target| target.final_goal == Some((14, 10)))
+                && route_installed(e),
             "the next Process requested the waypoint route"
         );
         return;

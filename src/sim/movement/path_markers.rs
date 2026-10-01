@@ -296,6 +296,17 @@ pub(super) fn install_path_replay(
     queue.reference_cell = Some((reference.0 as i16, reference.1 as i16));
 }
 
+/// Fixture queue for a found route, written by the production install from
+/// `path[0]`.
+#[cfg(test)]
+pub(crate) fn fixture_path_replay(path: &[(u16, u16)]) -> FootPathQueue {
+    let mut queue = FootPathQueue::default();
+    if let Some(&start) = path.first() {
+        install_path_replay(&mut queue, start, path, 1);
+    }
+    queue
+}
+
 pub(super) fn accept_path_replay(
     queue: &mut FootPathQueue,
     endpoint: (i16, i16),
@@ -979,7 +990,6 @@ mod tests {
         peer.navigation.path_replay.directions = vec![2, 2];
         peer.navigation.path_replay.cursor = 2;
         peer.movement_target = Some(crate::sim::components::MovementTarget {
-            path: vec![(5, 4), (6, 4), (7, 4)],
             ..Default::default()
         });
         assert_eq!(remaining_path_from_entity(&peer), ((5, 4), vec![]));

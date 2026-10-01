@@ -231,14 +231,15 @@ pub(super) fn resolve_cell_transition_bridge_state_oracle(
     (update, row)
 }
 
-/// Apply the post-resolver bridge state to a Walk Foot at its boundary.
+/// Apply the post-resolver bridge state to a ground Foot at a cell crossing
+/// (the Walk boundary, a Drive/Ship track crossing).
 ///
 /// `on_bridge` follows the cell-flag predicate's `bridge_update`, never a path
 /// layer: on a ramp going up the A* layer is Bridge before the predicate fires
-/// Enter, and going down it is Ground while OnBridge is still set. Walk keeps
-/// no path layer; its `loco.layer` is the OnBridge projection, which is what
-/// its next Find_Path starts from (AStar 0x00429A90 picks the start height
-/// from Foot+0x8C).
+/// Enter, and going down it is Ground while OnBridge is still set. A Foot
+/// keeps no path layer; its `loco.layer` is the OnBridge projection, which is
+/// what its next Find_Path starts from (AStar 0x00429A90 picks the start
+/// height from Foot+0x8C).
 pub(super) fn apply_bridge_layer_state(
     locomotor: &mut Option<LocomotorState>,
     on_bridge: &mut bool,

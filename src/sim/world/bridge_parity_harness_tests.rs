@@ -648,8 +648,13 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             .entities
             .get(TANK_ID)
             .expect("the crossing tank must stay alive for the whole run");
-        if order_accepted_path.is_none() {
-            order_accepted_path = entity.movement_target.as_ref().map(|t| t.path.len());
+        // Nodes of the route the first Find_Path installed: the start cell
+        // plus one Foot+5E0 word per later cell.
+        if order_accepted_path.is_none()
+            && entity.movement_target.is_some()
+            && !entity.navigation.path_replay.directions.is_empty()
+        {
+            order_accepted_path = Some(entity.navigation.path_replay.directions.len() + 1);
         }
         let cell = (entity.position.rx, entity.position.ry);
         let facts = grid

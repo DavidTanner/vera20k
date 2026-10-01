@@ -356,23 +356,27 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                                 entity.position.sub_y,
                             ));
                             if let Some(ref mt) = entity.movement_target {
+                                // The Foot+5E0 words from the reference cell.
+                                let path: Vec<(u16, u16)> = entity
+                                    .navigation
+                                    .path_replay
+                                    .remaining_cells()
+                                    .into_iter()
+                                    .map(|(x, y)| (x as u16, y as u16))
+                                    .collect();
                                 ui.label(format!(
-                                    "Path: {}/{} steps, blocked={}",
-                                    mt.next_index,
-                                    mt.path.len(),
+                                    "Path: {} steps left, blocked={}",
+                                    path.len(),
                                     entity.navigation.path_runtime.path_blocked,
                                 ));
                                 if let Some(goal) = mt.final_goal {
                                     ui.label(format!("Goal: ({},{})", goal.0, goal.1));
                                 }
                                 // Show first few path steps with walkability.
-                                let start = mt.next_index.saturating_sub(1);
-                                let end = (start + 8).min(mt.path.len());
                                 let grid = path_grid;
-                                for i in start..end {
-                                    let (px, py) = mt.path[i];
+                                for (i, &(px, py)) in path.iter().take(8).enumerate() {
                                     let w = grid.map_or(true, |g| g.is_walkable(px, py));
-                                    let marker = if i == mt.next_index { ">" } else { " " };
+                                    let marker = if i == 0 { ">" } else { " " };
                                     let color = if w {
                                         egui::Color32::from_rgb(20, 120, 20)
                                     } else {

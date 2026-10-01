@@ -111,7 +111,7 @@ pub(super) fn advance(
             .as_ref()
             .and_then(|d| d.destination.or(d.head_to))
     };
-    let goal = target.and_then(|t| t.final_goal.or_else(|| t.path.last().copied()));
+    let goal = target.and_then(|t| t.final_goal);
     let current = super::ground_pose::position_world_xy(&entity.position);
     let goal_xy = goal
         .map(|(x, y)| [i32::from(x) * 256 + 128, i32::from(y) * 256 + 128])

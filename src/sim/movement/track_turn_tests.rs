@@ -569,9 +569,6 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                     reference_cell: Some((8, 8)),
                 };
                 entity.movement_target = Some(MovementTarget {
-                    path: vec![(8, 8), (9, 8), (10, 8)],
-                    path_layers: vec![MovementLayer::Ground; 3],
-                    next_index: 1,
                     speed: SimFixed::from_num(330),
                     final_goal: Some((10, 8)),
                     ..Default::default()
@@ -701,7 +698,6 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
 #[test]
 fn live_rotation_returns_before_fresh_selection_with_a_queued_path_and_no_display_target() {
     use crate::sim::components::{FootPathQueue, MovementTarget};
-    use crate::sim::movement::locomotor::MovementLayer;
     use crate::util::fixed_math::SimFixed;
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[VehicleTypes]\n0=TURN\n[TURN]\nSpeed=6\nAccelerates=no\n",
@@ -749,9 +745,6 @@ fn live_rotation_returns_before_fresh_selection_with_a_queued_path_and_no_displa
             reference_cell: Some((8, 8)),
         };
         entity.movement_target = Some(MovementTarget {
-            path: vec![(8, 8), (8, 7), (8, 6)],
-            path_layers: vec![MovementLayer::Ground; 3],
-            next_index: 1,
             speed: SimFixed::from_num(330),
             final_goal: Some((8, 6)),
             ..Default::default()

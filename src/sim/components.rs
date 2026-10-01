@@ -159,17 +159,11 @@ pub struct BuildingDown {
 /// The order adapter a move order attaches (ground orders through
 /// `issue_move_command_with_destination`, Fly and Jumpjet orders through
 /// their own setters). A Walk keeps only its presence, which schedules its
-/// Process; Drive/Ship keep the path as the track host's layer cache; Fly and
-/// Jumpjet orders keep their goal.
+/// Process; Drive/Ship, Fly and Jumpjet orders also keep their goal. No order
+/// keeps route cells: a Foot's route is its Foot+5E0 queue
+/// (`navigation.path_replay`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MovementTarget {
-    /// Sequence of (rx, ry) cells from current position to goal (inclusive).
-    pub path: Vec<(u16, u16)>,
-    /// Spatial layer for each path step. Matches `path.len()`.
-    pub path_layers: Vec<MovementLayer>,
-    /// Index of the next cell to move toward in the path.
-    /// Starts at 1 (index 0 is the current position).
-    pub next_index: usize,
     /// Maximum movement speed in leptons per second (from rules.ini Speed= value).
     /// 256 leptons = 1 cell. Fixed-point for deterministic multiplayer.
     pub speed: SimFixed,
@@ -406,20 +400,53 @@ pub struct FootPathQueue {
 }
 
 impl FootPathQueue {
-    /// The cells the remaining words step through from the reference cell.
-    #[cfg(test)]
-    pub(crate) fn remaining_cells(&self) -> Vec<(i16, i16)> {
-        let Some(mut cell) = self.reference_cell else {
-            return Vec::new();
-        };
-        self.remaining_directions()
+    /// `start` followed by the cells `words` step through from it. A tube
+    /// word (8) names no adjacent cell and ends the walk.
+    fn walk_words(start: (i16, i16), words: &[u8]) -> Vec<(i16, i16)> {
+        let mut cell = start;
+        words
             .iter()
-            .filter_map(|&direction| {
+            .map_while(|&direction| {
                 let (dx, dy) =
                     *crate::util::direction::DIRECTION_DELTAS.get(usize::from(direction))?;
-                cell = (cell.0 + dx as i16, cell.1 + dy as i16);
+                cell = (
+                    cell.0.wrapping_add(dx as i16),
+                    cell.1.wrapping_add(dy as i16),
+                );
                 Some(cell)
             })
+            .collect()
+    }
+
+    /// The cells the remaining words step through from the reference cell
+    /// (Foot+558), as the path markers read them. Diagnostics and tests.
+    pub(crate) fn remaining_cells(&self) -> Vec<(i16, i16)> {
+        self.reference_cell
+            .map(|reference| Self::walk_words(reference, self.remaining_directions()))
+            .unwrap_or_default()
+    }
+
+    /// The reference cell followed by [`Self::remaining_cells`].
+    #[cfg(test)]
+    pub(crate) fn route_cells(&self) -> Vec<(u16, u16)> {
+        self.reference_cell
+            .into_iter()
+            .chain(self.remaining_cells())
+            .map(|(x, y)| (x as u16, y as u16))
+            .collect()
+    }
+
+    /// `start` followed by the cells every word (consumed or not) steps
+    /// through from it: the route one Find_Path installed from `start`, while
+    /// the queue still holds that install's words.
+    #[cfg(test)]
+    pub(crate) fn installed_cells(&self, start: (u16, u16)) -> Vec<(u16, u16)> {
+        std::iter::once((start.0 as i16, start.1 as i16))
+            .chain(Self::walk_words(
+                (start.0 as i16, start.1 as i16),
+                &self.directions,
+            ))
+            .map(|(x, y)| (x as u16, y as u16))
             .collect()
     }
 
@@ -725,28 +752,9 @@ impl Default for DriveLocomotionRuntime {
 impl Default for MovementTarget {
     fn default() -> Self {
         Self {
-            path: Vec::new(),
-            path_layers: Vec::new(),
-            next_index: 0,
             speed: SIM_ZERO,
             final_goal: None,
         }
-    }
-}
-
-impl MovementTarget {
-    pub fn layer_at(&self, index: usize) -> MovementLayer {
-        debug_assert_eq!(
-            self.path.len(),
-            self.path_layers.len(),
-            "path/path_layers length mismatch: {} vs {}",
-            self.path.len(),
-            self.path_layers.len()
-        );
-        self.path_layers
-            .get(index)
-            .copied()
-            .unwrap_or(MovementLayer::Ground)
     }
 }
 

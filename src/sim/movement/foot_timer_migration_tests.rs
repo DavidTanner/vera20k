@@ -2,7 +2,7 @@
 //! path_delay_rules and track_blocked_timers corpora, not full fresh movement.
 //! In particular Ship's current fresh admission adapter does not prove code2.
 
-use super::locomotor::{LocomotorState, MovementLayer};
+use super::locomotor::LocomotorState;
 use super::{DestinationTiming, issue_move_command};
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
@@ -155,9 +155,6 @@ fn install_stationary_path_request(sim: &mut Simulation) {
         reference_cell: Some((8, 8)),
     };
     entity.movement_target = Some(MovementTarget {
-        path: vec![(8, 8), (8, 7), (8, 6)],
-        path_layers: vec![MovementLayer::Ground; 3],
-        next_index: 1,
         final_goal: Some((8, 6)),
         speed: SIM_ZERO,
         ..Default::default()

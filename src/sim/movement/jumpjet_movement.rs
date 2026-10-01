@@ -821,9 +821,6 @@ impl Simulation {
         let (x, y) = coord_cell(runtime.destination);
         let target = (x as u16, y as u16);
         entity.movement_target = Some(MovementTarget {
-            path: vec![target],
-            path_layers: vec![super::locomotor::MovementLayer::Air],
-            next_index: 0,
             speed,
             final_goal: Some(target),
         });

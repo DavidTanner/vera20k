@@ -1289,17 +1289,11 @@ impl GameEntity {
         self.stage = stage;
     }
 
-    /// Invalidate the one live Foot path head and its Rust route cache.
-    /// Native callers write Foot+5E0=-1; retained suffix/reference words and
-    /// the destination remain intact. The adapter cannot keep consuming cells
-    /// after the authoritative head is gone.
+    /// Invalidate the one live Foot path head. Native callers write
+    /// Foot+5E0=-1; retained suffix/reference words and the destination
+    /// remain intact.
     pub(crate) fn clear_live_path_head(&mut self) {
         self.navigation.path_replay.clear_live_head();
-        if let Some(target) = self.movement_target.as_mut() {
-            target.path.clear();
-            target.path_layers.clear();
-            target.next_index = 0;
-        }
     }
 
     /// `TechnoClass::ArchiveTarget` (`Techno+0x218`): the base-defence

@@ -4,9 +4,7 @@
 use super::Simulation;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, MovementTarget, NavTargetRef};
-use crate::sim::movement::{
-    DestinationTiming, air_movement, ground_pose, locomotor::MovementLayer,
-};
+use crate::sim::movement::{DestinationTiming, air_movement, ground_pose};
 use crate::util::fixed_math::SimFixed;
 
 impl Simulation {
@@ -217,9 +215,6 @@ impl Simulation {
             (request.y / 256) as i16 as u16,
         );
         entity.movement_target = Some(MovementTarget {
-            path: vec![target],
-            path_layers: vec![MovementLayer::Air],
-            next_index: 0,
             speed,
             final_goal: Some(target),
         });

@@ -797,9 +797,6 @@ fn terminal_retires_only_completed_adapter_before_callback() {
         entity.drive_locomotion.as_mut().unwrap().track.cursor =
             super::super::drive_track::raw_track_points(1).len() as i32;
         entity.movement_target = Some(MovementTarget {
-            path: vec![(10, 10), (10, 9)],
-            path_layers: vec![MovementLayer::Ground; 2],
-            next_index: 1,
             ..Default::default()
         });
         // A stopped committed segment has no NavCom, but its completed path
@@ -811,11 +808,15 @@ fn terminal_retires_only_completed_adapter_before_callback() {
                 if retarget {
                     entity.navigation.nav_com = Some(NavTargetRef::cell(12, 9));
                     entity.movement_target = Some(MovementTarget {
-                        path: vec![(10, 9), (11, 9), (12, 9)],
-                        path_layers: vec![MovementLayer::Ground; 3],
-                        next_index: 1,
                         ..Default::default()
                     });
+                    // The callback's new route: Foot+5E0 words from (10,9).
+                    entity.navigation.path_replay =
+                        crate::sim::movement::fixture_path_replay(&[
+                            (10, 9),
+                            (11, 9),
+                            (12, 9),
+                        ]);
                 }
             }
         });

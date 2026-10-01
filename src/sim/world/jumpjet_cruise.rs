@@ -672,9 +672,6 @@ impl Simulation {
         {
             let target = (cell.0 as u16, cell.1 as u16);
             entity.movement_target = Some(crate::sim::components::MovementTarget {
-                path: vec![target],
-                path_layers: vec![MovementLayer::Air],
-                next_index: 0,
                 final_goal: Some(target),
                 ..Default::default()
             });
@@ -1036,9 +1033,6 @@ mod tests {
 
         entity.locomotor = Some(locomotor);
         entity.movement_target = Some(MovementTarget {
-            path: vec![(16, 10)],
-            path_layers: vec![MovementLayer::Air],
-            next_index: 0,
             speed: SimFixed::from_num(14),
             final_goal: Some((16, 10)),
             ..Default::default()

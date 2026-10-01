@@ -28,12 +28,18 @@ fn mtnk_rules() -> RuleSet {
     .expect("minimal MTNK rules")
 }
 
+/// An order toward (6,5). Its route is the Foot+5E0 queue
+/// (`order_route`); the adapter keeps only the goal.
 fn moving_target() -> MovementTarget {
     MovementTarget {
-        path: vec![(5, 5), (6, 5)],
-        next_index: 1,
+        final_goal: Some((6, 5)),
         ..MovementTarget::default()
     }
+}
+
+/// The Foot+5E0 words Find_Path installs for that order from (5,5).
+fn order_route() -> crate::sim::components::FootPathQueue {
+    crate::sim::movement::fixture_path_replay(&[(5, 5), (6, 5)])
 }
 
 fn driving_mtnk() -> GameEntity {
@@ -221,6 +227,7 @@ fn jumpjet_readiness_reads_the_native_state_field() {
         .unwrap()
         .phase = 2;
     entity.movement_target = Some(moving_target());
+    entity.navigation.path_replay = order_route();
     assert!(!ready_state_for(&entity, None, 100).unwrap().is_moving_now());
 }
 
@@ -250,6 +257,7 @@ fn walking_infantry_reports_moving() {
 fn blocked_walker_reports_not_moving() {
     let mut entity = entity_with(LocomotorKind::Walk);
     entity.movement_target = Some(moving_target());
+    entity.navigation.path_replay = order_route();
     let state = ready_state_for(&entity, None, 100).expect("Walk has a producer");
     assert!(
         !state.is_moving_now(),
@@ -344,6 +352,11 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
         // The compatibility path/order must not affect any represented query.
         for has_order in [false, true] {
             entity.movement_target = has_order.then(moving_target);
+            entity.navigation.path_replay = if has_order {
+                order_route()
+            } else {
+                Default::default()
+            };
             entity.navigation.nav_com =
                 has_order.then(|| crate::sim::components::NavTargetRef::cell(6, 5));
             if kind == LocomotorKind::Walk {

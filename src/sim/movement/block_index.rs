@@ -68,9 +68,23 @@ struct MovingContribution {
     raises_code_2: bool,
 }
 
-/// The cell a moving occupant heads for. Walk keeps no route cells: its paid
-/// head's cell, else the cell its Foot+5E0 head word points to. Drive/Ship
-/// read their track host's route cache.
+/// The cell a moving occupant heads for. A Foot keeps no route cells: its
+/// committed head's cell (Walk's paid head, a Drive/Ship track head) while
+/// the body has not crossed into it, else the cell its Foot+5E0 head word
+/// points to from the current cell. Like native, which always steps one cell
+/// from the occupant, it never names the occupant's own cell.
+///
+/// RESIDUAL: `AStar_compute_edge_cost 0x00429830` reads neither. For each
+/// occupant of the chain it takes the first object of the cell's list and,
+/// when its speed fraction (Foot+0x578) is nonzero, the PrimaryFacing
+/// (+0x388) direction rounded to eight (0x004298C4..DC), else the Foot+5E0
+/// head word (0x004298B3, -1 ends the chain clear); a non-Foot occupant
+/// jams (0x0042989A). Trigger: another owner's search past a friendly mover.
+/// Effect: mid-turn or with a stale head, the chain follows a different
+/// cell than native and costs x1 where native costs x4 (or the reverse).
+/// Frequency: every search through friendly traffic. Risk: route choice in
+/// congestion. Filed as #972; which allies count as moving belongs to
+/// Can_Enter_Cell (#683).
 ///
 /// RESIDUAL: a Walk whose head word is the tube word (8) names no adjacent
 /// cell, so it reads as stationary (code 6) for that frame, where the removed
@@ -79,16 +93,12 @@ struct MovingContribution {
 /// maps, one frame per entry. Risk: another owner's search that frame
 /// soft-blocks that cell (cost x8) instead of passing it.
 fn moving_next_cell(entity: &GameEntity) -> Option<(u16, u16)> {
-    let target = entity.movement_target.as_ref()?;
-    let Some(loco) = entity
-        .locomotor
-        .as_ref()
-        .filter(|l| l.kind == crate::rules::locomotor_type::LocomotorKind::Walk)
-    else {
-        return target.path.get(target.next_index).copied();
-    };
-    if let Some(head) = loco.step_head() {
-        return Some(((head.x / 256) as u16, (head.y / 256) as u16));
+    entity.movement_target.as_ref()?;
+    let cell = (entity.position.rx, entity.position.ry);
+    if let Some(head) = super::movement_commands::committed_movement_head(entity)
+        && head != cell
+    {
+        return Some(head);
     }
     let direction = *entity
         .navigation
@@ -97,8 +107,8 @@ fn moving_next_cell(entity: &GameEntity) -> Option<(u16, u16)> {
         .first()?;
     let (dx, dy) = crate::util::direction::DIRECTION_DELTAS.get(usize::from(direction))?;
     Some((
-        entity.position.rx.wrapping_add_signed(*dx as i16),
-        entity.position.ry.wrapping_add_signed(*dy as i16),
+        cell.0.wrapping_add_signed(*dx as i16),
+        cell.1.wrapping_add_signed(*dy as i16),
     ))
 }
 
@@ -659,13 +669,15 @@ mod tests {
         entity
     }
 
-    fn moving_to(next: (u16, u16), from: (u16, u16)) -> Option<MovementTarget> {
-        Some(MovementTarget {
-            path: vec![from, next],
-            path_layers: vec![MovementLayer::Ground; 2],
-            next_index: 1,
-            ..MovementTarget::default()
-        })
+    /// An order whose Foot+5E0 head word steps `direction` from the
+    /// occupant's current cell: a moving occupant.
+    fn set_moving(entity: &mut GameEntity, direction: u8) {
+        entity.movement_target = Some(MovementTarget::default());
+        entity.navigation.path_replay = crate::sim::components::FootPathQueue {
+            directions: vec![direction],
+            cursor: 0,
+            reference_cell: Some((entity.position.rx as i16, entity.position.ry as i16)),
+        };
     }
 
     fn rules_again() -> RuleSet {
@@ -753,7 +765,8 @@ mod tests {
 
         // A unit starts moving (code 2 with a next cell, and a moving-ally
         // record), an enemy dies in place, a building goes, a unit arrives.
-        entities.get_mut(1).unwrap().movement_target = moving_to((5, 6), (5, 5));
+        // South from (5,5): next cell (5,6).
+        set_moving(entities.get_mut(1).unwrap(), 4);
         entities.get_mut(3).unwrap().dying = true;
         entities.remove(4);
         entities.insert(unit(5, "Russians", (5, 6)));
@@ -904,7 +917,7 @@ mod tests {
                         match edit {
                             4 => (entity.position.rx, entity.position.ry) = cell,
                             5 => entity.on_bridge = !entity.on_bridge,
-                            6 => entity.movement_target = moving_to(cell, (0, 0)),
+                            6 => set_moving(entity, ((cell.0 * 3 + cell.1) % 8) as u8),
                             7 => entity.dying = !entity.dying,
                             _ => {
                                 entity.foot_occupation_enabled = !entity.foot_occupation_enabled;

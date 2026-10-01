@@ -1431,11 +1431,7 @@ impl Simulation {
 
             if let Some(ref movement) = entity.movement_target {
                 1u8.hash(hasher);
-                movement.next_index.hash(hasher);
                 movement.speed.hash(hasher);
-
-                movement.path.hash(hasher);
-                movement.path_layers.hash(hasher);
             } else {
                 0u8.hash(hasher);
             }

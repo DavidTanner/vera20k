@@ -423,7 +423,6 @@ mod tests {
         unit.navigation.nav_com = Some(NavTargetRef::cell(25, 25));
         unit.movement_target = Some(MovementTarget {
             final_goal: Some((25, 25)),
-            path: vec![(10, 10), (25, 25)],
             ..Default::default()
         });
         unit.attack_target = Some(AttackTarget::new(2));

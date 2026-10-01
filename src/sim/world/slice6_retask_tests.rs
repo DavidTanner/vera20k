@@ -246,7 +246,12 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // 741C4F..741C78) and keeps the stale suffix behind it, where the old second
 // body exhausted the queue. Both leave no remaining direction; the hash folds
 // the queue's cursor and bytes. Previous: 0xCA13_8857_9211_B978.
-const SLICE6_BASELINE_HASH: u64 = 0xD06C_DAC2_416D_EDE1;
+// 2026-10-01 Every Foot's route has one owner (hash composition only):
+// MovementTarget keeps no route cells, layers or cursor. Ceremony: main
+// 80b56aa1 with only those fields dropped from the hash (probe not committed)
+// printed this value; the bridge and global pins did not move. Previous:
+// 0xD06C_DAC2_416D_EDE1.
+const SLICE6_BASELINE_HASH: u64 = 0x67C2_41E9_F79C_8F43;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

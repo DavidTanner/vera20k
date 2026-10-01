@@ -442,8 +442,10 @@ fn assert_command_state(
     let object = oracle.rules.object(type_id).expect("retail miner type");
     let entity = sim.substrate.entities.get(entity_id).expect("miner entity");
     let movement = entity.movement_target.as_ref().expect("movement target");
-    assert_eq!(movement.path.first().copied(), Some(START));
-    assert_eq!(movement.path.last().copied(), Some(target));
+    // Find_Path installed the route as Foot+5E0 words from START.
+    let route = entity.navigation.path_replay.installed_cells(START);
+    assert_eq!(route.first().copied(), Some(START));
+    assert_eq!(route.last().copied(), Some(target));
     assert_eq!(movement.final_goal, Some(target));
     assert_eq!(
         movement.speed,
@@ -467,10 +469,6 @@ fn assert_command_state(
     );
     assert!(drive.track.cursor >= 0);
     assert!(!drive.track.reversed);
-    assert_eq!(
-        entity.navigation.path_replay.directions.len(),
-        movement.path.len().saturating_sub(1),
-    );
     assert!(!entity.navigation.path_replay.directions.is_empty());
     // The Harvest handler dispatches BEFORE Phase-1 ground movement (the
     // native handler→locomotion order), so by observation time the drive has
