@@ -329,14 +329,7 @@ fn flight_queries_follow_live_altitude_producers_and_keep_jumpjet_exact_z() {
         .as_mut()
         .unwrap()
         .phase = rocket_movement::RocketPhase::Ascent;
-    air_movement::tick_air_movement(
-        &mut sim.substrate.entities,
-        &[1],
-        1,
-        1,
-        Some(&terrain),
-        None,
-    );
+    air_movement::tick_air_movement(&mut sim.substrate.entities, 1, 1, 1, Some(&terrain), None);
     rocket_movement::process_rocket(sim.substrate.entities.get_mut(2).unwrap(), 1);
     for id in [1, 2] {
         let e = sim.substrate.entities.get(id).unwrap();

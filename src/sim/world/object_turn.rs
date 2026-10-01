@@ -200,7 +200,7 @@ impl Simulation {
             Some(LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk)
         );
         // The vehicle plane is a projection each object turn reconciles once
-        // at Process entry: the ground corridor in `prepare_movement_pass`,
+        // at Process entry: the ground corridor in `prepare_movement_visit`,
         // any other turn here. A sinking object keeps its projection.
         if !ground
             && !sinking
@@ -470,7 +470,6 @@ impl Simulation {
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<GroundLocomotorOutcome, super::FrameAdvanceError> {
         let sim = self;
-        let one = [stable_id];
         let mut outcome = GroundLocomotorOutcome::default();
         sim.complete_pending_order(stable_id, rules, overlay_registry);
         let movement_before = sim
@@ -500,9 +499,9 @@ impl Simulation {
         }
         let mut pending_movement = {
             let current_grid = sim.path_grid_snapshot();
-            movement::movement_tick::begin_movement_with_grids_scoped(
+            movement::movement_tick::begin_movement(
                 &mut sim.substrate.entities,
-                Some(&one),
+                stable_id,
                 current_grid.as_deref(),
                 &sim.house_alliances,
                 &mut sim.substrate.occupancy,
@@ -517,12 +516,6 @@ impl Simulation {
                 Some(&sim.type_handles),
                 &mut sim.movement_pass_cache,
             )
-            .map_err(|cause| super::FrameAdvanceError {
-                tick: sim.session.tick,
-                binary_frame: sim.session.binary_frame,
-                entity_id: stable_id,
-                cause,
-            })?
         };
         // Process_Movement's no-queue request and the Process_Track after it.
         // When the active-track Process_Track(0) ends its track, the same

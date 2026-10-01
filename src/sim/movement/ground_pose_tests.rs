@@ -186,29 +186,12 @@ fn tick_with_rules(
     frame: u32,
     rules: Option<&RuleSet>,
 ) {
-    super::movement_tick::tick_movement_object_with_grids(
-        &mut sim.substrate.entities,
-        1,
-        Some(grid),
-        &Default::default(),
-        &Default::default(),
-        &mut sim.substrate.occupancy,
-        &mut sim.substrate.cell_occupation,
-        &mut sim.substrate.raw_cell_occupation,
-        &mut sim.scenario_rng,
-        u64::from(frame),
-        frame,
-        None,
-        Some(terrain),
-        None,
-        None,
-        None,
-        &crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-        &mut sim.interner,
-        rules,
-        &mut Vec::new(),
-        &mut Vec::new(),
-    );
+    sim.resolved_terrain = Some(terrain.clone());
+    sim.install_fixture_path_grid(Some(grid));
+    sim.session.tick = u64::from(frame);
+    sim.session.binary_frame = frame;
+    sim.process_ground_locomotor_stats_for_test(1, rules, None)
+        .expect("fixture reached an unsupported production movement receiver");
 }
 
 #[test]

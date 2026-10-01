@@ -1761,7 +1761,7 @@ impl Simulation {
             Some(stats) => stats,
             None => crate::sim::movement::air_movement::tick_air_movement(
                 &mut self.substrate.entities,
-                &[stable_id],
+                stable_id,
                 self.session.tick,
                 self.session.binary_frame,
                 self.resolved_terrain.as_ref(),

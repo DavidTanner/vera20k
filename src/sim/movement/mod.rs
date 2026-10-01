@@ -145,13 +145,12 @@ pub(crate) use foot_speed::owner_current_speed_from_fraction;
 pub(crate) use foot_speed::{SpeedRules, order_speed, owner_current_speed};
 pub(crate) use drive_locomotion::drive_do_turn;
 
-// Re-export command functions so callers can use `movement::issue_move_command` etc.
-#[cfg(test)]
-pub(crate) use movement_commands::issue_move_command_with_layered;
+// Re-export command functions so callers can use `movement::clear_navigation_for_entity` etc.
 pub use movement_commands::{
-    DestinationTiming, clear_navigation_for_entity, issue_move_command,
-    stop_navigation_at_committed_head,
+    DestinationTiming, clear_navigation_for_entity, stop_navigation_at_committed_head,
 };
+#[cfg(test)]
+pub(crate) use movement_commands::{issue_move_command, issue_move_command_with_layered};
 pub(crate) use movement_commands::{
     can_accept_destination, issue_move_command_with_destination, prepare_walk_destination,
     retain_committed_movement,
@@ -407,23 +406,8 @@ pub fn facing_from_delta(dx: i32, dy: i32) -> u8 {
     facing_from_delta_int(dx, dy)
 }
 
-/// Restore active piggyback locomotors whose owner is no longer moving,
+/// Restore an active piggyback locomotor whose owner is no longer moving,
 /// teleporting, or deploying.
-///
-/// This bridge mirrors FootClass::AI's per-tick "ok to end piggyback" check
-/// without changing existing movement ownership for non-migrated special flows.
-#[cfg(test)]
-pub fn tick_locomotor_piggyback_restore(entities: &mut EntityStore) -> usize {
-    let mut restored = 0usize;
-    let keys = entities.keys_sorted();
-    for id in keys {
-        restored = restored.saturating_add(usize::from(tick_locomotor_piggyback_restore_one(
-            entities, id,
-        )));
-    }
-    restored
-}
-
 pub(crate) fn tick_locomotor_piggyback_restore_one(entities: &mut EntityStore, id: u64) -> bool {
     let Some(entity) = entities.get_mut(id) else {
         return false;

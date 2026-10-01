@@ -156,9 +156,11 @@ pub struct BuildingDown {
 
 /// Movement path target â€” entity is moving along a computed A* path.
 ///
-/// Attached by `issue_move_command()` when a unit is ordered to move.
-/// The movement system (`tick_movement`) advances the entity along the path
-/// each tick. Removed automatically when the entity reaches its destination.
+/// The order adapter a move order attaches (ground orders through
+/// `issue_move_command_with_destination`, Fly and Jumpjet orders through
+/// their own setters). A Walk keeps only its presence, which schedules its
+/// Process; Drive/Ship keep the path as the track host's layer cache; Fly and
+/// Jumpjet orders keep their goal.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MovementTarget {
     /// Sequence of (rx, ry) cells from current position to goal (inclusive).
@@ -171,10 +173,8 @@ pub struct MovementTarget {
     /// Maximum movement speed in leptons per second (from rules.ini Speed= value).
     /// 256 leptons = 1 cell. Fixed-point for deterministic multiplayer.
     pub speed: SimFixed,
-    /// Ultimate destination — preserved across 24-step segment replanning.
-    /// When a path segment is exhausted before reaching this goal, the movement
-    /// system auto-replans from the current position. `None` for short paths
-    /// or test-only movement targets that don't need segmented replanning.
+    /// The order's goal cell, which the path may stop short of. Read by the
+    /// track speed host and Jumpjet cruise.
     pub final_goal: Option<(u16, u16)>,
 }
 
