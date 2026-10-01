@@ -743,12 +743,13 @@ impl Simulation {
             }
 
             // Native PerCell51A60D does not request Attack Doing4; its
-            // 0x004DF0D0 only zeroes TarCom and NavCom, so Walk keeps its
-            // destination and head and its Process runs on. RESIDUAL: the
-            // arm's Uncloak, ROF and forced Scatter (0x0051D0D0) tail is its
-            // own mechanism. Infantry presentation reads the retained Doing
-            // owner.
+            // 0x004DF0D0 only zeroes NavCom and its auxiliary slot, so Walk
+            // keeps its destination and head and its Process runs on.
+            // RESIDUAL: the arm's Uncloak, ROF and forced Scatter
+            // (0x0051D0D0) tail is its own mechanism. Infantry presentation
+            // reads the retained Doing owner.
             if let Some(a) = self.substrate.entities.get_mut(attacker_id) {
+                movement::foot_stop_moving(a);
                 a.movement_target = None;
             }
 
@@ -1201,8 +1202,7 @@ impl Simulation {
             // Ground Infantry's native approach helper4D5690 returns at
             // 4D5A07..18 while NavCom is present. An accepted Walk path/head
             // continues through Process; FootPerCell(mode2)4D882F..896E makes
-            // the range-stop decision after completion. Dropping the path
-            // adapter here strands its independently retained head/raw claim.
+            // the range-stop decision after completion.
             if entity
                 .locomotor
                 .as_ref()
