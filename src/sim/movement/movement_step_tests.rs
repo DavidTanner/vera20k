@@ -1,12 +1,16 @@
 use super::*;
+use crate::map::entities::EntityCategory;
 use crate::sim::components::{
     DriveCoord, DriveLocomotionRuntime, ShipLocomotionRuntime, TrackProgress,
 };
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::drive_track;
+use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::track_host::TrackWorldEvent;
 use crate::sim::movement::track_process::{TrackFamily, TrackInvocation};
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::world::Simulation;
+use crate::util::fixed_math::SIM_ONE;
 
 /// Body/hull in-place turn duration = abs(delta_8bit) / ROT native frames
 /// (gamemd DriveLocomotionClass::Do_Turn on the hull FacingClass at the

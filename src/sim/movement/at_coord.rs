@@ -65,6 +65,7 @@ impl AtCoordQuery {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn head_z(self) -> i32 {
         self.head.z
     }
@@ -124,8 +125,8 @@ impl AtCoordQuery {
             || matches_coord(self.head, probe)
     }
 
-    /// The bridge peer snapshot retains these same native signed cell words;
-    /// its separate live-height test supplies the Z comparison.
+    /// The native signed cell words of the handoff and the head.
+    #[cfg(test)]
     pub(crate) fn cells(self) -> (Option<(i16, i16)>, (i16, i16)) {
         let cell = |point: DriveCoord| ((point.x / 256) as i16, (point.y / 256) as i16);
         (self.handoff.map(cell), cell(self.head))

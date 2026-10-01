@@ -60,41 +60,6 @@ pub(crate) struct RuntimeBridgeTransitionState {
     pub pending_mismatch: bool,
 }
 
-/// Latch Foot+0x68B when the candidate's bridge bit differs from the mover's.
-///
-/// Original: each locomotor's `Process_Movement` compares
-/// candidate `CellClass+0x140 & 0x100` with Foot `+0x8C`, sets `+0x68B` on a
-/// mismatch, then calls virtual `+0x29C` to select the local return path.
-///
-/// The comparison lives in each locomotor's own `Process_Movement`, not in a
-/// shared helper: `DriveLocomotionClass` @ `0x004B3376`-`0x004B339D`
-/// (`EDX = (cell->Flags >> 8) & 1`; `AL = [foot+0x8C]`; `XOR EDX,EAX; JZ`;
-/// `MOV byte [ECX+0x68B],1`; `CALL [vtable+0x29C]`), with twins at
-/// `0x0075B662` (Walk) and `0x006A29E0` (Ship) — three sites carrying the
-/// whole sequence. Hover's (`0x00515501..0x00515513`) stores the byte without
-/// the call. `0x006A3C19` and `0x00736038` are bare
-/// `[+0x68B] = 1` stores in unrelated branches, not twins of this comparison.
-///
-/// `[foot+0x68B]` is write-1-only: zeroed once in `FootClass::Constructor` @
-/// `0x004D33BA`, never cleared, and read only by `FootClass::ComputeChecksum`
-/// @ `0x004DBAD0` (at `0x004DBD0C`).
-///
-/// Residual: the `+0x29C` return-path call after the latch is not made here.
-/// Trigger: a candidate on `advance_ordinary_mover`'s crossing step (the
-/// legacy pass, #689) whose bridge bit differs from `on_bridge`. Effect: the
-/// step continues instead of taking the locomotor's return path. Frequency:
-/// every such crossing by a mover still on that pass. Risk: it can cross a
-/// bridge-state boundary native would turn back from.
-pub(crate) fn latch_runtime_bridge_mismatch(
-    state: &mut RuntimeBridgeTransitionState,
-    candidate_bridge_bit: bool,
-    current_bridge_state: bool,
-) {
-    if candidate_bridge_bit != current_bridge_state {
-        state.pending_mismatch = true;
-    }
-}
-
 /// Read-only runtime bridge row for oracle diagnostics.
 #[cfg(test)]
 #[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
@@ -455,17 +420,6 @@ mod tests {
         assert!(!projected_on_bridge(true, BridgeStateUpdate::Clear));
         assert!(projected_on_bridge(true, BridgeStateUpdate::Unchanged));
         assert!(!projected_on_bridge(false, BridgeStateUpdate::Unchanged));
-    }
-
-    #[test]
-    fn runtime_bridge_mismatch_latches_and_a_match_never_clears() {
-        let mut state = RuntimeBridgeTransitionState::default();
-        latch_runtime_bridge_mismatch(&mut state, true, true);
-        assert!(!state.pending_mismatch);
-        latch_runtime_bridge_mismatch(&mut state, true, false);
-        assert!(state.pending_mismatch);
-        latch_runtime_bridge_mismatch(&mut state, true, true);
-        assert!(state.pending_mismatch);
     }
 
     #[test]

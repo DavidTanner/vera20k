@@ -63,7 +63,6 @@ use crate::util::fixed_math::{SimFixed, facing_from_delta_int};
 // --- Internal submodules ---
 pub(crate) mod at_coord;
 mod building_coordinate;
-mod cell_arrival;
 mod cell_contact;
 mod drive_locomotion;
 mod foot_approach;
@@ -84,12 +83,10 @@ mod infantry_scatter;
 pub(crate) mod locomotor_owner;
 pub(crate) mod locomotor_ready;
 pub(crate) mod motion_query;
-mod movement_blocked;
 pub(crate) mod movement_bridge;
 mod movement_commands;
 #[cfg(test)]
 pub(crate) use movement_commands::clear_destination_path_head;
-mod movement_occupancy;
 mod movement_path;
 mod movement_step;
 pub(crate) mod movement_tick;
@@ -199,11 +196,6 @@ pub(crate) use movement_tick::tick_movement_with_grids;
 /// traffic jam, many times a minute once a base has armour queuing. Downstream
 /// risk: the two clocks are separate fields and must stay separate.
 const PATH_STUCK_INIT: u32 = 10;
-/// Minimum height level difference to trigger Rust's defensive cliff detection.
-///
-/// **VERA-internal, gamemd equivalent UNCHECKED** — "abs(current_z / HeightStep
-/// - cell.height) >= 3 levels" carries no address and no verified owner.
-const CLIFF_HEIGHT_THRESHOLD: u16 = 3;
 
 // ---------------------------------------------------------------------------
 // Types — shared across movement submodules
@@ -352,7 +344,6 @@ impl MoverPathFacts {
 /// Separate from `PathfindingContext` because `find_move_path` doesn't need these.
 #[derive(Clone, Copy)]
 pub(crate) struct MovementConfig {
-    pub binary_frame: u32,
     pub close_enough: SimFixed,
     pub path_delay_ticks: i32,
     pub blockage_path_delay_ticks: i32,
@@ -361,10 +352,7 @@ pub(crate) struct MovementConfig {
 impl MovementConfig {
     /// Invocation-local projection. Rules remain the configuration authority;
     /// timers retain their own signed duration after a reached native store.
-    pub(crate) fn from_rules(
-        binary_frame: u32,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-    ) -> Self {
+    pub(crate) fn from_rules(rules: Option<&crate::rules::ruleset::RuleSet>) -> Self {
         let defaults;
         let general = if let Some(rules) = rules {
             &rules.general
@@ -373,7 +361,6 @@ impl MovementConfig {
             &defaults
         };
         Self {
-            binary_frame,
             close_enough: SimFixed::from_num(general.close_enough),
             path_delay_ticks: general.path_delay_ticks(),
             blockage_path_delay_ticks: general.blockage_path_delay_ticks,
@@ -405,24 +392,7 @@ pub(super) struct MoverSnapshot {
     /// overlay whose own `Armor` is wood, and only for Units.
     pub warhead_wood: bool,
     pub on_bridge: bool,
-    pub runtime_bridge_transition: movement_bridge::RuntimeBridgeTransitionState,
     pub locomotor: Option<locomotor::LocomotorState>,
-    /// Whether this mover's current mission is one of the five the original
-    /// engine lets bypass sub-cell occupancy: Enter (7), Capture (8), Eaten
-    /// (9), Area Guard (11), Patrol (25).
-    ///
-    /// Half of the "priority" placement condition; the other half is the
-    /// NavCom sitting in the cell being entered, which can only be tested per
-    /// crossing (see [`MoverSnapshot::nav_com_cell`]).
-    pub sub_cell_priority_mission: bool,
-    /// Cell currently occupied by this mover's NavCom target, when that target
-    /// is an **object**.
-    ///
-    /// Resolved once per tick from the entity store as the target entity's
-    /// anchor cell. A bare-cell NavCom yields `None`: the original tests its
-    /// destination as an object pointer, so a cell destination never satisfies
-    /// the priority condition.
-    pub nav_com_cell: Option<(u16, u16)>,
     /// Native AStar hierarchy admission reads the stored TechnoClass+0x3D5
     /// byte. False under live MapClass authority bypasses hierarchy and uses
     /// flat A*; headless fixtures without authority retain hierarchy.
@@ -598,8 +568,8 @@ fn walking_to_subcell_dest(
     let Some(loco) = locomotor else {
         return false;
     };
-    // Drive/Ship terminate at their retained raw head. CellArrival's legacy
-    // center projection must not start a second generic movement afterward.
+    // Drive/Ship terminate at their retained raw head; a center projection
+    // must not start a second generic movement afterward.
     if matches!(
         loco.kind,
         crate::rules::locomotor_type::LocomotorKind::Drive

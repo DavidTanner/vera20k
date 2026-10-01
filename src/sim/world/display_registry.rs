@@ -540,7 +540,7 @@ mod tests {
                 1 => {
                     let unit = units[next(4) as usize];
                     let mut turn = sim.substrate.entities.take_turn(unit).unwrap();
-                    let (entity, _) = turn.split();
+                    let entity = turn.entity();
                     entity.position.rx = (entity.position.rx as i32 - delta.signum()) as u16;
                     entity.position.sub_y = SimFixed::from_num((128 - delta).rem_euclid(256));
                 }

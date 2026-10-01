@@ -10,7 +10,7 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::test_interner;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::rng::SimRng;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
@@ -655,7 +655,7 @@ fn entry_active_tube_excludes_drive_slope_process_for_the_whole_turn() {
 }
 
 #[test]
-fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
+fn cell_arrival_infantry_keeps_list_order_and_snapshot_continuation() {
     use crate::map::resolved_terrain::ResolvedTerrainGrid;
     use crate::rules::terrain_rules::SpeedCostProfile;
     use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
@@ -686,6 +686,7 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
     let grid = PathGrid::from_resolved_terrain(&terrain);
     let mut sim = Simulation::with_seed(0xc311_a771);
     sim.install_resolved_terrain_for_new_map(terrain.clone());
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
     let walker = sim
@@ -721,12 +722,17 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
         None,
         crate::sim::movement::DestinationTiming::new(0, 60),
     ));
+    let walk_tick = |sim: &mut Simulation, frame: u32| {
+        sim.session.tick = u64::from(frame);
+        sim.session.binary_frame = frame;
+        sim.process_ground_locomotor_for_test(walker, Some(&rules), Some(&grid), None)
+            .unwrap();
+    };
     let initial_cell = (1, 1);
     let mut previous_cell = initial_cell;
-    // The represented Walk admission defers occupied cells and routes around
-    // this stationary resident. Exercise its actual accepted arrivals; the
-    // occupied-slot claim cases remain covered in bump_crush's leaf tests.
-    let mut crossed_detour_cell = false;
+    // Native Infantry admission shares the resident's cell on a free
+    // sub-cell; each accepted arrival prepends the walker to its new cell.
+    let mut snapshotted = false;
     let mut restored: Option<Simulation> = None;
     let mut trace = Vec::new();
     for frame in 0..400 {
@@ -739,9 +745,9 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
             .movement_target
             .as_ref()
             .map(|target| target.next_index);
-        gsi_04_05_tick_production_movement(&mut sim, Some(&grid), frame);
+        walk_tick(&mut sim, frame);
         if let Some(loaded) = restored.as_mut() {
-            gsi_04_05_tick_production_movement(loaded, Some(&grid), frame);
+            walk_tick(loaded, frame);
             assert_eq!(
                 loaded.state_hash(),
                 sim.state_hash(),
@@ -754,7 +760,6 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
         }
         let entity = sim.substrate.entities.get(walker).unwrap();
         let cell = (entity.position.rx, entity.position.ry);
-        assert_ne!(cell, (2, 1), "the stationary resident remains a blocker");
         assert!(sim.substrate.occupancy.contains_entity(2, 1, resident));
         if cell != previous_cell {
             assert!(!sim.substrate.occupancy.contains_entity(
@@ -772,13 +777,14 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
                 occupants.first_on_layer(MovementLayer::Ground),
                 Some(walker)
             );
-            if cell == (2, 0) {
-                crossed_detour_cell = true;
+            if !snapshotted {
+                snapshotted = true;
                 let bytes = GameSnapshot::save(&sim, 0, 0, "arrival", 0);
                 let mut loaded = GameSnapshot::load(&bytes).unwrap().sim;
                 loaded.restore_after_snapshot_load().unwrap();
                 loaded.resolve_type_handles(&rules);
                 loaded.resolved_terrain = Some(terrain.clone());
+                crate::sim::arena_fixture::supply_native_map(&mut loaded);
                 let loaded_entries: Vec<_> = loaded
                     .substrate
                     .occupancy
@@ -836,8 +842,8 @@ fn cell_arrival_infantry_keeps_detour_order_and_snapshot_continuation() {
         }
     }
     assert!(
-        crossed_detour_cell,
-        "production Walk path must take the same detour; trace={trace:?}"
+        snapshotted,
+        "the walker never arrived in a new cell; trace={trace:?}"
     );
     assert_eq!(previous_cell, (4, 1), "trace={trace:#?}");
     assert!(
@@ -1246,147 +1252,6 @@ fn test_issue_move_command_queue_appends_waypoint_path() {
     assert!(
         movement.path.len() > 7,
         "Queued command should extend path beyond initial destination"
-    );
-}
-
-/// GSI-07.03: the blocked-step Override fires exactly ONCE per block, and the
-/// mover stops where it stood.
-///
-/// The original's blocking-object body runs `Override_Mission(Attack, blocker,
-/// NULL)` and then falls into the shared tail — clear the stored path array,
-/// drive the applied speed fraction to zero, call the locomotor's own
-/// `Stop_Moving` — and returns. With the Override's NULL destination the walk
-/// step has neither a destination nor a path, so it cannot re-enter the arm.
-///
-/// This is the whole reason the trigger needs the stop. A second Override with
-/// an empty queue archives the CURRENT mission, so a mover that re-entered on
-/// tick two would overwrite its archived Move with Attack and every later
-/// Restore would hand it back Attack instead of its order — a unit losing its
-/// move order every time an enemy blocks it.
-/// Four locomotors own the arm in gamemd — Walk, Hover, Drive and Ship. This
-/// test covers Walk's pass lane; Hover's `case 4: case 5:` pair (object arm
-/// Override at 0x00515C2C, wall arm at 0x00515C9C) is its own ProcessMovement
-/// (`hover_process`), which calls the shared blocker override.
-#[test]
-fn gsi_07_03_blocked_mover_overrides_onto_attack_exactly_once() {
-    blocked_override_fires_once_for(crate::rules::locomotor_type::LocomotorKind::Walk);
-}
-
-fn blocked_override_fires_once_for(mover_kind: crate::rules::locomotor_type::LocomotorKind) {
-    use crate::rules::locomotor_type::LocomotorKind;
-    use crate::sim::combat::TargetKind;
-    use crate::sim::mission::leaf::MissionLeafState;
-    use crate::sim::mission::state::MissionTestFixture;
-    use crate::sim::mission::{MissionId, MissionType};
-
-    let mut entities = EntityStore::new();
-    let grid: PathGrid = PathGrid::new(10, 10);
-    let mut occupancy = OccupancyGrid::new();
-
-    let mut mover = GameEntity::test_default(1, "E1", "Americans", 1, 1);
-    mover.category = EntityCategory::Infantry;
-    mover.mission_leaf = MissionLeafState::for_entity_category(EntityCategory::Infantry);
-    mover.locomotor = Some(LocomotorState::for_test_kind(mover_kind));
-    let timer = mover.mission.dispatch_timer();
-    mover.mission.apply_test_fixture(MissionTestFixture {
-        current: MissionId::from_known(MissionType::Move),
-        suspended: MissionId::NONE,
-        queued: MissionId::NONE,
-        movement_bypass_latch: 0,
-        handler_state: 0,
-        mission_start_frame: 0,
-        ai_counter: 0,
-        dispatch_timer: timer,
-    });
-    mover.movement_target = Some(MovementTarget {
-        path: vec![(1, 1), (2, 1), (3, 1)],
-        path_layers: vec![MovementLayer::Ground; 3],
-        next_index: 1,
-        speed: SimFixed::from_num(1024),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
-        final_goal: Some((3, 1)),
-        ..Default::default()
-    });
-    mover.body_facing.snap(0x4000, 0);
-    entities.insert(mover);
-    occupancy.add(
-        1,
-        1,
-        1,
-        MovementLayer::Ground,
-        Some(2),
-        CellListInsertion::PrependNonBuilding,
-    );
-
-    // A stationary enemy infantryman standing in the next cell: native
-    // cell-entry class 5, blocking-object arm.
-    let mut blocker = GameEntity::test_default(2, "E1", "Soviets", 2, 1);
-    blocker.category = EntityCategory::Infantry;
-    blocker.mission_leaf = MissionLeafState::for_entity_category(EntityCategory::Infantry);
-    blocker.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
-    entities.insert(blocker);
-    occupancy.add(
-        2,
-        1,
-        2,
-        MovementLayer::Ground,
-        Some(2),
-        CellListInsertion::PrependNonBuilding,
-    );
-
-    let mut lifecycle_requests = Vec::new();
-    let mut rng = SimRng::new(0);
-    let mut interner = test_interner();
-    for native_frame in 0..24 {
-        tick_movement_with_grid(
-            &mut entities,
-            Some(&grid),
-            &Default::default(),
-            &Default::default(),
-            &mut occupancy,
-            &mut rng,
-            native_frame,
-            &mut interner,
-            &mut lifecycle_requests,
-        );
-    }
-
-    let mover = entities.get(1).expect("mover survives");
-    assert_eq!(
-        mover.mission.current(),
-        MissionId::from_known(MissionType::Attack),
-        "the blocked step overrides onto Attack"
-    );
-    assert_eq!(
-        mover.mission.suspended(),
-        MissionId::from_known(MissionType::Move),
-        "a second Override would have archived Attack over the Move — the \
-         Override must fire exactly once per block"
-    );
-    assert_eq!(
-        mover.attack_target.as_ref().map(|target| target.target),
-        Some(TargetKind::Entity(2)),
-        "the blocker is the installed target"
-    );
-    assert!(
-        mover.movement_target.is_none(),
-        "the tail clears the stored path and the mover stops where it stood"
-    );
-    assert!(
-        mover.navigation.nav_com.is_none(),
-        "the Override passes a NULL destination"
-    );
-    assert_eq!(
-        mover.navigation.suspended_nav_com,
-        Some(NavTargetRef::cell(3, 1)),
-        "the archived destination is what a later Restore hands back"
-    );
-    assert_eq!(
-        (mover.position.rx, mover.position.ry),
-        (1, 1),
-        "the mover never entered the blocked cell"
     );
 }
 
@@ -1800,90 +1665,114 @@ fn tree_corridor() -> (crate::map::resolved_terrain::ResolvedTerrainGrid, PathGr
     (terrain, grid)
 }
 
-/// Order one infantryman from (0,0) to (2,0) on a 3x1 corridor and tick until
-/// he settles. Returns the distinct cells he stood in, in order.
-fn walk_infantry_corridor(grid: &PathGrid) -> (Vec<(u16, u16)>, Vec<(u16, u16)>) {
-    let mut entities = EntityStore::new();
-    let mut walker = GameEntity::test_default(1, "E1", "Americans", 0, 0);
-    walker.category = EntityCategory::Infantry;
-    walker.lifecycle.in_limbo = false;
-    walker.lifecycle.cell_marked = true;
-    // A live infantryman always stands in a functional sub-cell; without one he
-    // registers as a whole-cell blocker and the arrival claim refuses him.
-    walker.sub_cell = Some(2);
-    let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
-    loco.speed_type = SpeedType::Foot;
-    walker.locomotor = Some(loco);
-    entities.insert(walker);
-
-    assert!(
-        issue_move_command(
-            &mut entities,
-            grid,
-            1,
-            (2, 0),
-            SimFixed::from_num(1024),
-            false,
-            None,
-            None,
-            None,
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        ),
-        "infantry must get a route down the corridor",
+/// A Walk infantry (E1, Foot) scene on `terrain` (clear 64x64 when `None`)
+/// with the native map inputs a production Walk Process reads.
+fn walk_scene(
+    seed: u64,
+    terrain: Option<crate::map::resolved_terrain::ResolvedTerrainGrid>,
+) -> (Simulation, crate::rules::ruleset::RuleSet) {
+    use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n0=E1\n[Clear]\nFoot=100%\nTrack=100%\nWheel=100%\nFloat=0%\n\
+         [E1]\nStrength=100\nSpeed=4\n\
+         Locomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n",
+    ))
+    .unwrap();
+    let mut sim = Simulation::with_seed(seed);
+    sim.intern_rule_type_ids(&rules);
+    sim.resolve_type_handles(&rules);
+    let owner = sim.interner.intern("Americans");
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 0),
     );
-    let planned = entities
-        .get(1)
-        .and_then(|e| e.movement_target.as_ref())
-        .map(|mt| mt.path.clone())
-        .expect("walker has a movement target");
-
-    let mut lifecycle_requests = Vec::new();
-    let mut occupancy = OccupancyGrid::new();
-    let mut rng = SimRng::new(0);
-    let mut interner = test_interner();
-    let mut visited: Vec<(u16, u16)> = vec![(0, 0)];
-    for tick in 0..400u64 {
-        tick_movement_with_grid(
-            &mut entities,
-            Some(grid),
-            &Default::default(),
-            &Default::default(),
-            &mut occupancy,
-            &mut rng,
-            tick,
-            &mut interner,
-            &mut lifecycle_requests,
-        );
-        let e = entities.get(1).expect("walker exists");
-        let p = (e.position.rx, e.position.ry);
-        if visited.last() != Some(&p) {
-            visited.push(p);
-        }
+    sim.session.house_order.push(owner);
+    if let Some(terrain) = terrain {
+        sim.install_resolved_terrain_for_new_map(terrain);
     }
-    (planned, visited)
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
+    (sim, rules)
 }
 
-/// Control: the same corridor with no terrain object at all. This pins the
-/// harness itself, so a failure in the tree case below can only be the terrain
-/// predicate and not the test setup.
-#[test]
-fn infantry_walks_a_plain_corridor_end_to_end() {
+fn walk_move(
+    sim: &mut Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    id: u64,
+    to: (u16, u16),
+) {
+    assert!(sim.apply_command_with_overlays(
+        "Americans",
+        &crate::sim::command::Command::Move {
+            entity_id: id,
+            target_rx: to.0,
+            target_ry: to.1,
+            queue: false,
+        },
+        Some(rules),
+        None,
+    ));
+}
+
+fn walk_frame(sim: &mut Simulation, rules: &crate::rules::ruleset::RuleSet) {
+    let grid = sim.path_grid_snapshot();
+    sim.advance_tick(&[], Some(rules), grid.as_deref(), None, 67);
+}
+
+/// Order one infantryman from (0,0) to (2,0) on a 3x1 corridor whose middle
+/// cell is `middle`, through the production Move command and frame. Returns
+/// the distinct cells he stood in, in order.
+fn walk_infantry_corridor(
+    middle: crate::map::resolved_terrain::ResolvedTerrainCell,
+) -> Vec<(u16, u16)> {
+    let clear_costs = crate::rules::terrain_rules::SpeedCostProfile {
+        foot: Some(100),
+        track: Some(100),
+        wheel: Some(100),
+        ..Default::default()
+    };
+    let clear = |cell: crate::map::resolved_terrain::ResolvedTerrainCell| {
+        crate::map::resolved_terrain::ResolvedTerrainCell {
+            speed_costs: clear_costs,
+            base_speed_costs: clear_costs,
+            ..cell
+        }
+    };
     let terrain = crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
         3,
         1,
         vec![
-            drive_speed_test_cell(0, 0, Default::default()),
-            drive_speed_test_cell(1, 0, Default::default()),
-            drive_speed_test_cell(2, 0, Default::default()),
+            clear(crate::map::resolved_terrain::test_flat_cell(0, 0)),
+            clear(middle),
+            clear(crate::map::resolved_terrain::test_flat_cell(2, 0)),
         ],
     );
-    let grid = PathGrid::from_resolved_terrain(&terrain);
-    let (planned, visited) = walk_infantry_corridor(&grid);
+    let (mut sim, rules) = walk_scene(0x75bd25, Some(terrain));
+    let id = sim
+        .spawn_object("E1", "Americans", 0, 0, 0, &rules)
+        .unwrap();
+    walk_move(&mut sim, &rules, id, (2, 0));
+    let mut visited = vec![(0, 0)];
+    for _ in 0..400 {
+        walk_frame(&mut sim, &rules);
+        let e = sim.substrate.entities.get(id).unwrap();
+        let cell = (e.position.rx, e.position.ry);
+        if visited.last() != Some(&cell) {
+            visited.push(cell);
+        }
+        if e.navigation.nav_com.is_none() && e.movement_target.is_none() {
+            break;
+        }
+    }
+    visited
+}
+
+#[test]
+fn infantry_walks_a_plain_corridor_end_to_end() {
+    let visited = walk_infantry_corridor(crate::map::resolved_terrain::test_flat_cell(1, 0));
     assert_eq!(
         visited.last().copied(),
         Some((2, 0)),
-        "control walker must cross a corridor with no terrain object. \
-         planned={planned:?} visited={visited:?}",
+        "control walker must cross a corridor with no terrain object: {visited:?}",
     );
 }
 
@@ -1891,16 +1780,14 @@ fn infantry_walks_a_plain_corridor_end_to_end() {
 /// original reaches its cell gate through a single per-class slot.
 ///
 /// A* plans an infantryman straight through a partially-occupied tree cell. If
-/// the runtime crossing still asks the whole-cell question, the walker reaches
-/// the tree, refuses to enter, repaths onto the identical route — tree cells are
-/// terrain, so they never enter the dynamic block set — and block/repath-loops
-/// until the stuck counter aborts the order. Every temperate retail map carries
-/// hundreds of such cells, so this fires on ordinary infantry movement.
+/// the runtime crossing asked the whole-cell question, the walker would reach
+/// the tree, refuse to enter and repath onto the identical route until the
+/// stuck counter aborts the order. Every temperate retail map carries hundreds
+/// of such cells, so this would fire on ordinary infantry movement.
 #[test]
 fn infantry_traverses_a_partially_occupied_tree_cell_at_runtime() {
     let (_terrain, grid) = tree_corridor();
-
-    // Precondition: this corridor is exactly the split the fix is about.
+    // Precondition: this corridor is exactly the split the test is about.
     assert!(
         !grid.is_walkable(1, 0),
         "the tree closes the cell to the whole-cell view",
@@ -1909,18 +1796,15 @@ fn infantry_traverses_a_partially_occupied_tree_cell_at_runtime() {
         grid.is_walkable_for_infantry(1, 0),
         "one occupation bit leaves sub-cells free for infantry",
     );
-
-    let (planned, visited) = walk_infantry_corridor(&grid);
+    let visited = walk_infantry_corridor(tree_speed_test_cell(1, 0, 4));
     assert!(
         visited.contains(&(1, 0)),
-        "the walker never entered the tree cell: the runtime step-in refused a \
-         cell the search planned. planned={planned:?} visited={visited:?}",
+        "the walker never entered the tree cell: {visited:?}",
     );
     assert_eq!(
         visited.last().copied(),
         Some((2, 0)),
-        "the walker must come out the far side of the tree cell. \
-         planned={planned:?} visited={visited:?}",
+        "the walker must come out the far side of the tree cell: {visited:?}",
     );
 }
 
@@ -1988,7 +1872,7 @@ fn gsi_04_10_crusher_and_omnicrusher_never_enter_or_crush_a_terrain_object_cell(
 // ============================================================================
 
 use crate::map::houses::HouseAllianceMap;
-use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
+use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::tick_movement_with_grid;
 use crate::sim::pathfinding::PathGrid;
@@ -2143,77 +2027,45 @@ fn gsi_06_13_fixture_mover(
 // Drive-track cell crossings are coordinate-derived, not path-derived
 // ---------------------------------------------------------------------------
 
-// Reproduces the eight-GI ordinary-move report. Native scatter gate vectors
-// are retained in tools/infantry_scatter_oracle.json.
+// Reproduces the eight-GI ordinary-move report through the production Move
+// command and frame. Native scatter gate vectors are retained in
+// tools/infantry_scatter_oracle.json.
 #[test]
 fn group_gis_do_not_acquire_scatter_speed_or_lose_their_goal() {
-    let grid = PathGrid::new(30, 30);
     let mut reached = 0;
     for seed in 0..8 {
-        let mut entities = EntityStore::new();
-        for id in 1..=8u64 {
-            let mut e = GameEntity::test_default(
-                id,
-                "E1",
-                "Americans",
-                10 + (id % 3) as u16,
-                10 + (id / 3) as u16,
-            );
-            e.category = EntityCategory::Infantry;
-            e.lifecycle.in_limbo = false;
-            e.lifecycle.cell_marked = true;
-            e.sub_cell = Some(2);
-            let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
-            loco.speed_type = SpeedType::Foot;
-            e.locomotor = Some(loco);
-            entities.insert(e);
+        let (mut sim, rules) = walk_scene(seed, None);
+        let ids: Vec<u64> = (1..=8u16)
+            .map(|n| {
+                sim.spawn_object("E1", "Americans", 10 + n % 3, 10 + n / 3, 0, &rules)
+                    .unwrap()
+            })
+            .collect();
+        for &id in &ids {
+            walk_move(&mut sim, &rules, id, (3, 3));
         }
-        for id in 1..=8u64 {
-            assert!(issue_move_command(
-                &mut entities,
-                &grid,
-                id,
-                (3, 3),
-                SimFixed::from_num(150),
-                false,
-                None,
-                None,
-                None,
-                crate::sim::movement::DestinationTiming::new(0, 60),
-            ));
-        }
-        let mut occupancy = OccupancyGrid::new();
-        for (id, e) in entities.iter_sorted() {
-            occupancy.add(
-                e.position.rx,
-                e.position.ry,
-                id,
-                MovementLayer::Ground,
-                e.sub_cell,
-                CellListInsertion::PrependNonBuilding,
-            );
-        }
-        let mut rng = SimRng::new(seed);
-        let mut interner = test_interner();
-        let mut requests = Vec::new();
+        let speeds: Vec<_> = ids
+            .iter()
+            .map(|&id| {
+                sim.substrate
+                    .entities
+                    .get(id)
+                    .unwrap()
+                    .movement_target
+                    .as_ref()
+                    .map(|t| t.speed)
+            })
+            .collect();
         for tick in 0..1000 {
-            let previous: Vec<_> = (1..=8u64)
-                .map(|id| entities.get(id).unwrap().position.clone())
+            let previous: Vec<_> = ids
+                .iter()
+                .map(|&id| sim.substrate.entities.get(id).unwrap().position.clone())
                 .collect();
-            tick_movement_with_grid(
-                &mut entities,
-                Some(&grid),
-                &Default::default(),
-                &Default::default(),
-                &mut occupancy,
-                &mut rng,
-                tick,
-                &mut interner,
-                &mut requests,
-            );
-            for id in 1..=8u64 {
-                let p = &entities.get(id).unwrap().position;
-                let old = &previous[(id - 1) as usize];
+            walk_frame(&mut sim, &rules);
+            for (n, &id) in ids.iter().enumerate() {
+                let e = sim.substrate.entities.get(id).unwrap();
+                let p = &e.position;
+                let old = &previous[n];
                 let dx = (i32::from(p.rx) - i32::from(old.rx)) * 256
                     + (p.sub_x - old.sub_x).to_num::<i32>();
                 let dy = (i32::from(p.ry) - i32::from(old.ry)) * 256
@@ -2222,16 +2074,13 @@ fn group_gis_do_not_acquire_scatter_speed_or_lose_their_goal() {
                     dx * dx + dy * dy <= 32 * 32,
                     "unexpected jump seed={seed} tick={tick} GI={id} delta=({dx},{dy})"
                 );
-                if let Some(mt) = entities.get(id).unwrap().movement_target.as_ref() {
-                    assert_eq!(
-                        mt.speed,
-                        SimFixed::from_num(150),
-                        "seed={seed} tick={tick} GI={id}"
-                    );
+                if let Some(mt) = e.movement_target.as_ref() {
+                    if let Some(speed) = speeds[n] {
+                        assert_eq!(mt.speed, speed, "seed={seed} tick={tick} GI={id}");
+                    }
                     if mt.final_goal != Some((3, 3)) {
-                        let e = entities.get(id).unwrap();
-                        let dx = i32::from(e.position.rx) - 3;
-                        let dy = i32::from(e.position.ry) - 3;
+                        let dx = i32::from(p.rx) - 3;
+                        let dy = i32::from(p.ry) - 3;
                         assert!(
                             dx * dx + dy * dy <= 9,
                             "only a GI that reached the destination may be scattered: seed={seed} tick={tick} id={id}"
@@ -2239,9 +2088,15 @@ fn group_gis_do_not_acquire_scatter_speed_or_lose_their_goal() {
                     }
                 }
             }
+            if ids.iter().all(|&id| {
+                let e = sim.substrate.entities.get(id).unwrap();
+                e.movement_target.is_none() && e.navigation.nav_com.is_none()
+            }) {
+                break;
+            }
         }
-        for id in 1..=8u64 {
-            let e = entities.get(id).unwrap();
+        for &id in &ids {
+            let e = sim.substrate.entities.get(id).unwrap();
             let dx = i32::from(e.position.rx) - 3;
             let dy = i32::from(e.position.ry) - 3;
             if dx * dx + dy * dy <= 9 {
@@ -2252,85 +2107,6 @@ fn group_gis_do_not_acquire_scatter_speed_or_lose_their_goal() {
     assert_eq!(
         reached, 64,
         "the entire group must reach the destination area"
-    );
-}
-
-#[test]
-fn blocked_walk_keeps_exact_pre_step_position() {
-    let grid = PathGrid::new(30, 30);
-    let mut entities = EntityStore::new();
-    for id in 1..=2 {
-        let mut e = GameEntity::test_default(id, "E1", "Americans", 9 + id as u16, 10);
-        e.category = EntityCategory::Infantry;
-        e.lifecycle.in_limbo = false;
-        e.lifecycle.cell_marked = true;
-        e.sub_cell = Some(2);
-        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
-        loco.speed_type = SpeedType::Foot;
-        e.locomotor = Some(loco);
-        entities.insert(e);
-        assert!(issue_move_command(
-            &mut entities,
-            &grid,
-            id,
-            (20, 10),
-            SimFixed::from_num(150),
-            false,
-            None,
-            None,
-            None,
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        ));
-    }
-    entities.get_mut(1).unwrap().position.sub_x = SimFixed::from_num(253);
-    entities.get_mut(1).unwrap().position.sub_y = SimFixed::from_num(77);
-    let before = entities.get(1).unwrap().position.clone();
-    let mut occupancy = OccupancyGrid::new();
-    for (id, e) in entities.iter_sorted() {
-        occupancy.add(
-            e.position.rx,
-            e.position.ry,
-            id,
-            MovementLayer::Ground,
-            e.sub_cell,
-            CellListInsertion::PrependNonBuilding,
-        );
-    }
-    let mut rng = SimRng::new(0);
-    tick_movement_with_grid(
-        &mut entities,
-        Some(&grid),
-        &Default::default(),
-        &Default::default(),
-        &mut occupancy,
-        &mut rng,
-        0,
-        &mut test_interner(),
-        &mut Vec::new(),
-    );
-    let e = entities.get(1).unwrap();
-    assert_eq!(
-        (
-            e.position.rx,
-            e.position.ry,
-            e.position.sub_x,
-            e.position.sub_y
-        ),
-        (before.rx, before.ry, before.sub_x, before.sub_y)
-    );
-    assert_eq!(
-        e.movement_target.as_ref().unwrap().final_goal,
-        Some((20, 10))
-    );
-    assert_eq!(
-        entities
-            .get(2)
-            .unwrap()
-            .movement_target
-            .as_ref()
-            .unwrap()
-            .final_goal,
-        Some((20, 10))
     );
 }
 

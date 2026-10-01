@@ -387,12 +387,6 @@ impl RawCellOccupationGrid {
         self.write_occupant(key, MovementLayer::Ground, mask, None, false);
     }
 
-    /// The active bridge-avoidance consumer treats every nonzero ground byte as
-    /// occupied, including the consumer-visible bit without an active producer.
-    pub(crate) fn ground_is_occupied(&self, rx: u16, ry: u16) -> bool {
-        self.ground_bits(rx, ry) != 0
-    }
-
     pub(crate) fn mark_deck(&mut self, rx: u16, ry: u16, mask: u8) {
         if mask != 0 {
             self.cells.entry((rx, ry)).or_default().deck |= mask;
@@ -1012,6 +1006,7 @@ impl CellOccupationGrid {
             .map_or(0, |plane| plane.bits_ignoring(entity_id))
     }
 
+    #[cfg(test)]
     pub(crate) fn occupied_by_other(
         &self,
         rx: u16,
@@ -1378,8 +1373,8 @@ impl OccupancyGrid {
         }
     }
 
-    /// Current mutation generation. Bumped on every `add`/`remove`/`update_sub_cell`
-    /// (and thus `move_entity`). Compare across two points to detect whether cell
+    /// Current mutation generation. Bumped on every `add`/`remove` (and thus
+    /// `move_entity`). Compare across two points to detect whether cell
     /// membership changed in between. Transient — not hashed, resets to 0 on rebuild.
     pub fn generation(&self) -> u64 {
         self.generation
@@ -1441,8 +1436,8 @@ impl OccupancyGrid {
     /// This is the gamemd-native `RemoveContent` behavior: it walks only the
     /// selected per-cell list (ground vs bridge/deck) chosen by the occupant's
     /// `OnBridge` byte at the call site, never the other layer. On a bridge cell
-    /// crossing the removal must observe the OLD (pre-transition) layer — see
-    /// `move_entity_layered`. No-op if no matching-layer entry exists.
+    /// crossing the removal must observe the OLD (pre-transition) layer. No-op
+    /// if no matching-layer entry exists.
     ///
     /// For the single-entry-per-cell invariant this grid maintains (each entity is
     /// `add`ed exactly once per cell), the per-layer result equals the layer-agnostic
@@ -1462,9 +1457,7 @@ impl OccupancyGrid {
     /// Move an entity from one cell to another (layer-agnostic remove + add).
     ///
     /// Convenience for callers that do NOT change the occupant's object-list layer
-    /// across the move (teleport, same-layer steps). For a bridge cell crossing that
-    /// may flip `on_bridge`, use `move_entity_layered` so the old-cell removal
-    /// observes the OLD layer and the new-cell insertion the NEW layer.
+    /// across the move (teleport, same-layer steps).
     pub fn move_entity(
         &mut self,
         old_rx: u16,
@@ -1478,45 +1471,6 @@ impl OccupancyGrid {
     ) {
         self.remove(old_rx, old_ry, entity_id);
         self.add(new_rx, new_ry, entity_id, layer, sub_cell, insertion);
-    }
-
-    /// Authoritative two-layer cell crossing — the verified gamemd order:
-    /// 1. remove from the OLD cell on the **OLD** object-list layer (the
-    ///    pre-transition `on_bridge` layer; `RemoveContent` walks only that list),
-    /// 2. add to the NEW cell on the **NEW** object-list layer (the post-transition
-    ///    `on_bridge` layer; `AddContent` selects the list by the new byte).
-    ///
-    /// Old-cell removal observes the pre-transition layer; new-cell insertion the
-    /// post-transition layer. The two halves may target different layers when the
-    /// occupant stepped on/off the deck during the crossing — this asymmetry is the
-    /// load-bearing part of the contract (the list layer is selected by the
-    /// occupant's `OnBridge` byte sampled at each call site, not a single layer
-    /// reused for both halves).
-    #[allow(clippy::too_many_arguments)]
-    pub fn move_entity_layered(
-        &mut self,
-        old_rx: u16,
-        old_ry: u16,
-        new_rx: u16,
-        new_ry: u16,
-        entity_id: u64,
-        old_layer: MovementLayer,
-        new_layer: MovementLayer,
-        sub_cell: Option<u8>,
-        insertion: CellListInsertion,
-    ) {
-        self.remove_on_layer(old_rx, old_ry, entity_id, old_layer);
-        self.add(new_rx, new_ry, entity_id, new_layer, sub_cell, insertion);
-    }
-
-    /// Update an entity's sub-cell within the same cell.
-    pub fn update_sub_cell(&mut self, rx: u16, ry: u16, entity_id: u64, new_sub_cell: Option<u8>) {
-        self.generation = self.generation.wrapping_add(1);
-        if let Some(occ) = self.cells.get_mut(&(rx, ry)) {
-            if let Some(o) = occ.occupants.iter_mut().find(|o| o.entity_id == entity_id) {
-                o.sub_cell = new_sub_cell;
-            }
-        }
     }
 
     /// Get occupancy for a cell (all layers).
@@ -1656,9 +1610,7 @@ mod tests {
         }
 
         assert_eq!(grid.ground_bits(7, 9), u8::MAX);
-        assert!(grid.ground_is_occupied(7, 9));
         assert_eq!(grid.ground_bits(9, 7), 0);
-        assert!(!grid.ground_is_occupied(9, 7));
     }
 
     #[test]
@@ -1747,11 +1699,8 @@ mod tests {
         );
         let g2 = grid.generation();
         assert!(g2 > g1, "move_entity (remove+add) must bump generation");
-        grid.update_sub_cell(2, 2, 10, Some(3));
-        let g3 = grid.generation();
-        assert!(g3 > g2, "update_sub_cell must bump generation");
         grid.remove(2, 2, 10);
-        assert!(grid.generation() > g3, "remove must bump generation");
+        assert!(grid.generation() > g2, "remove must bump generation");
     }
 
     #[test]
@@ -1942,23 +1891,6 @@ mod tests {
             }
         }
         assert_eq!(grid.occupied_cell_count(), 0);
-    }
-
-    #[test]
-    fn update_sub_cell() {
-        let mut grid = OccupancyGrid::new();
-        grid.add(
-            5,
-            5,
-            1,
-            MovementLayer::Ground,
-            Some(2),
-            CellListInsertion::PrependNonBuilding,
-        );
-        grid.update_sub_cell(5, 5, 1, Some(4));
-        let occ = grid.get(5, 5).unwrap();
-        let inf: Vec<(u64, u8)> = occ.infantry(MovementLayer::Ground).collect();
-        assert_eq!(inf, vec![(1, 4)]);
     }
 
     #[test]
@@ -2211,40 +2143,6 @@ mod tests {
             .map(|o| o.entity_id)
             .collect();
         assert_eq!(ids, vec![3, 1]);
-    }
-
-    #[test]
-    fn transition_removes_old_layer_inserts_new_layer() {
-        // GATE A2 / P5: the authoritative two-layer crossing removes from the OLD
-        // cell on the OLD object-list layer and inserts into the NEW cell on the
-        // NEW layer. Step-onto-deck: occupant starts on Ground at the old cell and
-        // lands on Bridge at the new cell.
-        let mut grid = OccupancyGrid::new();
-        grid.add(
-            1,
-            1,
-            9,
-            MovementLayer::Ground,
-            None,
-            CellListInsertion::PrependNonBuilding,
-        );
-        grid.move_entity_layered(
-            1,
-            1,
-            2,
-            2,
-            9,
-            MovementLayer::Ground, // OLD layer
-            MovementLayer::Bridge, // NEW layer
-            None,
-            CellListInsertion::PrependNonBuilding,
-        );
-        // Old cell emptied (the ground entry was removed); new cell holds the
-        // occupant on the BRIDGE layer, not Ground.
-        assert!(grid.get(1, 1).is_none());
-        assert_eq!(grid.count_on_layer(2, 2, MovementLayer::Ground), 0);
-        assert_eq!(grid.count_on_layer(2, 2, MovementLayer::Bridge), 1);
-        assert!(grid.contains_entity(2, 2, 9));
     }
 
     #[test]

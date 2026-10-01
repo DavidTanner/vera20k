@@ -546,8 +546,7 @@ fn is_structural_bridge_deck_height(path_height: i16, cell: &PathCell) -> bool {
 /// The remaining bypass is between structural cells when the parent is not
 /// at its raw level+4 and the candidate lacks 0x200. The caller then uses its
 /// local height-difference rule. That reduced under-bridge domain is not a
-/// claim of the unconditional native receiver contract; changes must also
-/// account for the runtime crossing reader in `movement_occupancy`.
+/// claim of the unconditional native receiver contract.
 pub(crate) fn needs_bridge_traversal_for_edge(
     current_height: i16,
     current_cell: &PathCell,

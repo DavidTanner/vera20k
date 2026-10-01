@@ -106,8 +106,7 @@ fn contribution(
     // (`Foot+0x6B6 == 0`) or an infantryman is first asked on its locomotor
     // slot `+0xA4` (Drive/Ship `Can_Use_Track`, every other class false);
     // a false answer skips it (no entry, the occupation mask arm decides)
-    // and only a true one raises the running code to 2. See
-    // `cell_entry::classify_blocker` for the same arm on the live walk.
+    // and only a true one raises the running code to 2.
     let moving = entity
         .movement_target
         .as_ref()

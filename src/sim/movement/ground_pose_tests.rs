@@ -129,6 +129,64 @@ fn mover_rules() -> RuleSet {
     .unwrap()
 }
 
+/// A Walk infantryman's type: Walk admission and its path request read it.
+fn walk_rules() -> RuleSet {
+    RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n0=MOVER\n[MOVER]\nSpeed=4\n\
+         Locomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n",
+    ))
+    .unwrap()
+}
+
+/// A Walk object turn with the native map inputs its admission and path
+/// request read: rules, zones with Map Size and generous LocalSize bounds.
+fn walk_tick(sim: &mut Simulation, terrain: &ResolvedTerrainGrid, grid: &PathGrid, frame: u32) {
+    let rules = walk_rules();
+    let (width, height) = (terrain.width(), terrain.height());
+    let size = (i32::from(width), i32::from(height));
+    let zones = crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_bridge_geometry(
+        grid,
+        terrain,
+        &[],
+        width,
+        height,
+        Some(size),
+    );
+    let span = size.0.max(size.1);
+    super::movement_tick::tick_movement_object_with_grids(
+        &mut sim.substrate.entities,
+        1,
+        Some(grid),
+        &Default::default(),
+        &Default::default(),
+        &mut sim.substrate.occupancy,
+        &mut sim.substrate.cell_occupation,
+        &mut sim.substrate.raw_cell_occupation,
+        &mut sim.scenario_rng,
+        u64::from(frame),
+        frame,
+        Some(&zones),
+        Some(terrain),
+        None,
+        None,
+        Some(crate::sim::cell_rect::PlayfieldBounds {
+            base: size.0,
+            off_fc: -span,
+            off_100: -span,
+            off_104: span * 2,
+            off_108: span * 2,
+        }),
+        &crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
+        SIM_ZERO,
+        9,
+        60,
+        &mut sim.interner,
+        Some(&rules),
+        &mut Vec::new(),
+        &mut Vec::new(),
+    );
+}
+
 fn tick(sim: &mut Simulation, terrain: &ResolvedTerrainGrid, grid: &PathGrid, frame: u32) {
     tick_with_rules(sim, terrain, grid, frame, None);
 }
@@ -324,12 +382,12 @@ fn walking_subcell_motion_refreshes_exact_ramp_height() {
     insert(&mut sim, entity);
     // Native fresh-head Process75BCBD returns before numeric movement. The
     // subsequent paid-head turns own this test's surface-height writes.
-    tick(&mut sim, &terrain, &grid, 0);
+    walk_tick(&mut sim, &terrain, &grid, 0);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(ground_pose::position_world_coord(&entity.position), before);
     assert!(entity.locomotor.as_ref().unwrap().step_head().is_some());
     for frame in 1..4 {
-        tick(&mut sim, &terrain, &grid, frame);
+        walk_tick(&mut sim, &terrain, &grid, frame);
         let entity = sim.substrate.entities.get(1).unwrap();
         let xy = ground_pose::position_world_xy(&entity.position);
         let expected = crate::util::lepton::ground_height_leptons(0, 2, xy[0], xy[1]).unwrap();
@@ -497,12 +555,12 @@ fn walking_bridge_entry_commits_new_surface_and_object_list_plane() {
     ];
     let before = ground_pose::position_world_coord(&entity.position);
     insert(&mut sim, entity);
-    tick(&mut sim, &terrain, &grid, 0);
+    walk_tick(&mut sim, &terrain, &grid, 0);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(ground_pose::position_world_coord(&entity.position), before);
     assert!(entity.locomotor.as_ref().unwrap().step_head().is_some());
     // The next Process advances the paid step across the bridge boundary.
-    tick(&mut sim, &terrain, &grid, 1);
+    walk_tick(&mut sim, &terrain, &grid, 1);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!((entity.position.rx, entity.position.ry), (3, 2));
     assert!(entity.on_bridge);
@@ -554,7 +612,7 @@ fn fresh_walk_refusal_preserves_xyz_before_head_selection() {
         crate::sim::occupancy::CellListInsertion::from_category(blocker.category),
     );
     sim.substrate.entities.insert(blocker);
-    tick(&mut sim, &terrain, &grid, 0);
+    walk_tick(&mut sim, &terrain, &grid, 0);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!((entity.position.rx, entity.position.ry), (3, 3));
     assert!(
@@ -567,7 +625,8 @@ fn fresh_walk_refusal_preserves_xyz_before_head_selection() {
         "75B690 admission precedes paid SetCoords; a refusal does not take a provisional step"
     );
     assert_eq!(entity.position.exact_z_leptons, Some(731));
-    assert_eq!(entity.locomotor.as_ref().unwrap().step_head(), None);
+    // The refusal's response may select another head in the same Process;
+    // walk_prehead_response_tests pins that response against the original.
     assert_eq!(
         sim.substrate
             .occupancy

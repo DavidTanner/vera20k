@@ -458,7 +458,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<GroundLocomotorOutcome, super::FrameAdvanceError> {
-        let timing = movement::MovementConfig::from_rules(self.session.binary_frame, rules);
+        let timing = movement::MovementConfig::from_rules(rules);
         self.process_ground_locomotor_with_config(stable_id, rules, overlay_registry, timing)
     }
 

@@ -342,65 +342,6 @@ pub fn priority_sub_cell(sub_x: SimFixed, sub_y: SimFixed) -> u8 {
     get_subcell_quadrant(sub_x, sub_y)
 }
 
-/// Recover the functional sub-cell slot a stored lepton destination names.
-///
-/// The three functional slots sit at distinct lepton offsets, so this is an
-/// exact inverse of the slot → offset mapping over `FUNCTIONAL_SUB_CELLS`.
-/// Returns `None` for the cell centre and for any other offset.
-pub fn functional_sub_cell_from_offset(dest: (SimFixed, SimFixed)) -> Option<u8> {
-    FUNCTIONAL_SUB_CELLS
-        .iter()
-        .copied()
-        .find(|&slot| crate::util::lepton::subcell_lepton_offset(Some(slot)) == dest)
-}
-
-/// Claim the sub-cell an infantryman already reserved while walking toward this
-/// cell — the arrival side of the sub-cell handshake.
-///
-/// The original engine does **no** sub-cell selection on arrival: the arrival
-/// branch passes a null coordinate to the sub-cell chooser, which stores the
-/// null destination and returns before reaching the placement function. The slot
-/// the man ends up standing in was decided one cell earlier, by the look-ahead
-/// placement that ran while he was still in the previous cell. So arrival costs
-/// **zero random draws** and re-runs no preference table.
-///
-/// This mirrors that contract: take the pre-reserved slot when it is still free,
-/// otherwise fall back to the deterministic first-free scan. `self_id` is
-/// excluded from the occupancy test because the caller has already moved the
-/// mover into this cell carrying its previous slot. Neither path touches the RNG
-/// — that is the point of the function.
-pub fn claim_reserved_sub_cell(
-    occ: Option<&CellOccupancy>,
-    layer: MovementLayer,
-    self_id: u64,
-    preferred: Option<u8>,
-) -> Option<u8> {
-    if let Some(o) = occ
-        && o.has_blockers_on(layer)
-    {
-        return None;
-    }
-    let others: Vec<u8> = occ.map_or_else(Vec::new, |o| {
-        o.infantry(layer)
-            .filter(|&(id, _)| id != self_id)
-            .map(|(_, slot)| slot)
-            .collect()
-    });
-    if let Some(slot) = preferred
-        && FUNCTIONAL_SUB_CELLS.contains(&slot)
-        && !others.contains(&slot)
-    {
-        return Some(slot);
-    }
-    if others.len() >= MAX_INFANTRY_PER_CELL {
-        return None;
-    }
-    FUNCTIONAL_SUB_CELLS
-        .iter()
-        .copied()
-        .find(|spot| !others.contains(spot))
-}
-
 // ---------------------------------------------------------------------------
 // Crush logic
 // ---------------------------------------------------------------------------
@@ -789,8 +730,7 @@ pub const POST_SCATTER_WAIT_FRAMES: i32 = 10;
 // with the clause that called them: the three-infantry-bit test is real but the
 // block around it is dominated by a radio-tether byte VERA does not model, and
 // the original scatters the man's OWN cell on arrival rather than the
-// destination cell of a blocked step. See the note at the head of
-// `movement_occupancy::handle_deferred_occupancy`.
+// destination cell of a blocked step.
 
 /// Normal speed shared by blocked-cell and damage-triggered displacement.
 pub(super) fn scatter_movement_speed(
@@ -1791,65 +1731,6 @@ mod tests {
             get_subcell_quadrant(SimFixed::from_num(200), SimFixed::from_num(200)),
             4
         );
-    }
-
-    // -- arrival-side claim: the zero-draw half of the sub-cell handshake --
-
-    /// The slot reserved by the look-ahead one cell earlier is the slot the man
-    /// stands in on arrival — retail never re-selects.
-    #[test]
-    fn gsi_06_14_arrival_claims_the_pre_reserved_slot() {
-        assert_eq!(
-            claim_reserved_sub_cell(None, MovementLayer::Ground, 1, None),
-            Some(2),
-            "empty cell falls to the first free slot",
-        );
-        let grid = make_occ(&[(5, 5, 2, MovementLayer::Ground, Some(2))]);
-        let occ = grid.get(5, 5);
-        assert_eq!(
-            claim_reserved_sub_cell(occ, MovementLayer::Ground, 1, Some(4)),
-            Some(4),
-            "the reserved slot wins over the first-free scan",
-        );
-        // Taken by someone else meanwhile: fall back deterministically.
-        assert_eq!(
-            claim_reserved_sub_cell(occ, MovementLayer::Ground, 1, Some(2)),
-            Some(3),
-        );
-    }
-
-    /// The mover has already been inserted into the new cell carrying its old
-    /// slot, so it must not count against itself — three men still fit.
-    #[test]
-    fn gsi_06_14_arrival_claim_excludes_the_mover_itself() {
-        let grid = make_occ(&[
-            (5, 5, 1, MovementLayer::Ground, Some(2)),
-            (5, 5, 2, MovementLayer::Ground, Some(3)),
-            (5, 5, 3, MovementLayer::Ground, Some(4)),
-        ]);
-        let occ = grid.get(5, 5);
-        assert_eq!(
-            claim_reserved_sub_cell(occ, MovementLayer::Ground, 1, Some(2)),
-            Some(2),
-            "self-occupancy must not refuse the mover its own slot",
-        );
-        // A genuine fourth man finds nothing.
-        assert_eq!(
-            claim_reserved_sub_cell(occ, MovementLayer::Ground, 9, None),
-            None,
-        );
-    }
-
-    /// The lepton-offset inverse used to recover the reserved slot is exact over
-    /// the three functional slots and rejects the centre.
-    #[test]
-    fn gsi_06_14_functional_sub_cell_offset_inverse_is_exact() {
-        for slot in FUNCTIONAL_SUB_CELLS {
-            let offset = crate::util::lepton::subcell_lepton_offset(Some(slot));
-            assert_eq!(functional_sub_cell_from_offset(offset), Some(slot));
-        }
-        let centre = crate::util::lepton::subcell_lepton_offset(Some(0));
-        assert_eq!(functional_sub_cell_from_offset(centre), None);
     }
 
     // -- priority placement --
