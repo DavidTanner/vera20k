@@ -10,7 +10,6 @@ use crate::sim::components::{
 };
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::mission::MissionType;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 /// Drive Stop_Moving 0x4AFE00 and Ship 0x69F510 clamp the class target
@@ -330,139 +329,6 @@ pub(crate) fn foot_stop_moving(entity: &mut GameEntity) {
     entity.navigation.nav_com = None;
 }
 
-/// Return the drive-track runtime to rest: no aim point, no active curve.
-fn reset_drive_track_runtime(entity: &mut GameEntity) {
-    if let Some(drive) = entity.drive_locomotion.as_mut() {
-        drive.head_to = None;
-        drive.track_valid = false;
-        drive.track.turn_index = -1;
-        drive.track.cursor = 0;
-    }
-}
-
-/// End-of-track owner-navigation resolution for a mover whose path finished
-/// this tick. Native contract (drive end-of-track block): when the track ends
-/// at the owner destination on a live object, the stop is immediate — the
-/// owner destination pair clears the same tick, the path head resets, and,
-/// only when the current mission is Move, the arrival advance pops the queued
-/// waypoint into a fresh destination. Dying/limbo objects skip the clear
-/// entirely (only the ended track's aim point drops). A track that ends away
-/// from the owner destination (or a non-cell owner target) keeps the
-/// destination; `Simulation::complete_pending_order` finishes it at the next
-/// Process entry.
-pub(super) fn finish_drive_navigation(
-    entity: &mut GameEntity,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    binary_frame: u32,
-) {
-    // Walk's PerCell completion owns its cell/height destination test. Reaching
-    // an A* approach endpoint does not authorize Foot SetDestination(NULL).
-    if entity
-        .locomotor
-        .as_ref()
-        .is_some_and(|l| l.kind == LocomotorKind::Walk)
-    {
-        return;
-    }
-    if is_drive_locomotor(entity) && entity.navigation.nav_com.is_some() {
-        if entity.dying {
-            // Native liveness gate: no owner clear for a dying object; the
-            // ended track still loses its aim point.
-            if let Some(drive) = entity.drive_locomotion.as_mut() {
-                drive.head_to = None;
-            }
-            return;
-        }
-        // Residual: the native arrival match also compares z within twice a
-        // global height tolerance (bridge deck vs ground); NavTargetRef::Cell
-        // carries no layer, so a same-cell bridge/ground mismatch reads as
-        // arrived here.
-        let arrived = matches!(
-            entity.navigation.nav_com,
-            Some(NavTargetRef::Cell { rx, ry })
-                if rx == entity.position.rx && ry == entity.position.ry
-        );
-        if arrived {
-            finish_drive_arrival(entity, resolved_terrain, binary_frame);
-        } else {
-            defer_drive_arrival_clear(entity);
-        }
-        return;
-    }
-    if is_ship_locomotor(entity) {
-        // Ship's terminal Process_Movement retires the committed +0x3C head
-        // before its no-destination/no-path Process tail calls owner
-        // SetSpeedFraction(0). Mark the replay queue exhausted first so the
-        // ordinary Ship null-destination path observes that same rest state.
-        if let Some(ship) = entity.ship_locomotion.as_mut() {
-            ship.head_to = None;
-            entity.navigation.path_replay.cursor = entity
-                .navigation
-                .path_replay
-                .directions
-                .len()
-                .min(u16::MAX as usize) as u16;
-        }
-        set_destination_internal_null(entity);
-        entity.navigation.nav_queue.clear();
-        return;
-    }
-    // A soft Stop can clear the owner destination while an already-committed
-    // Drive curve is still consuming. Its ordinary terminal Enter still clears
-    // the head/valid/selector/cursor tuple even though NavCom is already null.
-    if is_drive_locomotor(entity) {
-        reset_drive_track_runtime(entity);
-    }
-    // Non-drive movers (and the remaining Drive owner state) keep the
-    // pre-existing immediate cleanup.
-    set_destination_internal_null(entity);
-    entity.navigation.nav_queue.clear();
-}
-
-/// Same-tick arrival at the owner destination: clear the owner destination
-/// pair immediately, return the drive runtime to rest, and — only under a
-/// current Move mission (the native arrival gate) — advance the queued
-/// waypoint into a fresh destination. The path toward the fresh destination
-/// is built at the next Process entry (`Simulation::complete_pending_order`),
-/// matching the native next-process track build.
-fn finish_drive_arrival(
-    entity: &mut GameEntity,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    binary_frame: u32,
-) {
-    foot_stop_moving(entity);
-    entity.navigation.pending_arrival_clear = false;
-    reset_drive_track_runtime(entity);
-    // VERA-internal rest-state cleanup (speed clamp + drive destination
-    // drop) — the same rest state the deferred clear used to reach one tick
-    // later; the native drive-runtime equivalent is UNCHECKED.
-    drive_stop_moving(entity);
-    if entity.mission.effective().known() != Some(MissionType::Move) {
-        return;
-    }
-    let Some(NavTargetRef::Cell { rx, ry }) = entity.navigation.nav_queue.first().copied() else {
-        return;
-    };
-    entity.navigation.nav_queue.remove(0);
-    set_destination_internal_cell(entity, (rx, ry), resolved_terrain, binary_frame);
-    entity.navigation.pending_arrival_clear = true;
-}
-
-/// Track/path execution finished away from the owner destination (or the
-/// owner target is not a plain cell): the owner keeps its destination, and
-/// `Simulation::complete_pending_order` finishes it at the next Process
-/// entry — the drive locomotor's process-entry fallback. Arrivals AT the
-/// owner destination never come through here; they clear immediately via
-/// [`finish_drive_arrival`].
-pub(super) fn defer_drive_arrival_clear(entity: &mut GameEntity) -> bool {
-    if !is_drive_locomotor(entity) || entity.navigation.nav_com.is_none() {
-        return false;
-    }
-    entity.navigation.pending_arrival_clear = true;
-    reset_drive_track_runtime(entity);
-    true
-}
-
 fn drive_set_destination(
     entity: &mut GameEntity,
     destination: DriveCoord,
@@ -683,34 +549,6 @@ mod tests {
             SimFixed::lit("0.2"),
             "Stop stores min(previous target, 0.3)"
         );
-    }
-
-    #[test]
-    fn gsi_13_06_ship_final_arrival_retires_head_and_owner_speed() {
-        let mut entity = GameEntity::test_default(1, "DLPH", "Americans", 4, 3);
-        entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
-        entity.navigation.nav_com = Some(NavTargetRef::cell(4, 3));
-        entity.navigation.path_replay = crate::sim::components::FootPathQueue {
-            directions: vec![64],
-            cursor: 0,
-            ..Default::default()
-        };
-        entity.foot_speed.set_speed_fraction(SIM_HALF);
-        entity.ship_locomotion = Some(ShipLocomotionRuntime {
-            destination: Some(DriveCoord::cell(4, 3, 0)),
-            head_to: Some(DriveCoord::cell(4, 3, 0)),
-            target_speed_fraction: SIM_ONE,
-            track: Default::default(),
-            ..Default::default()
-        });
-
-        finish_drive_navigation(&mut entity, None, 0);
-
-        let ship = entity.ship_locomotion.as_ref().expect("Ship runtime");
-        assert_eq!(ship.destination, None);
-        assert_eq!(ship.head_to, None);
-        assert_eq!(entity.navigation.path_replay.cursor, 1);
-        assert_eq!(entity.foot_speed.applied_fraction(), SIM_ZERO);
     }
 
     fn resting_drive_miner() -> GameEntity {

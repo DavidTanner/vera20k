@@ -185,7 +185,7 @@ mod locomotor_field_hash_tests {
     /// active fold are among them.
     #[test]
     fn every_active_and_stashed_locomotor_field_changes_current_hash() {
-        let mutations: [(&str, fn(&mut LocomotorState)); 9] = [
+        let mutations: [(&str, fn(&mut LocomotorState)); 8] = [
             ("kind", |l| l.kind = LocomotorKind::Walk),
             ("powered", |l| l.powered = false),
             ("layer", |l| l.layer = MovementLayer::Bridge),
@@ -195,9 +195,6 @@ mod locomotor_field_hash_tests {
             ("speed_type", |l| l.speed_type = SpeedType::Wheel),
             ("movement_zone", |l| {
                 l.movement_zone = MovementZone::Amphibious
-            }),
-            ("subcell_dest", |l| {
-                l.subcell_dest = Some((SimFixed::from_num(64), SimFixed::from_num(192)))
             }),
         ];
         assert_ne!(hash_with(false, None), hash_with(true, None));
@@ -1951,7 +1948,6 @@ fn hash_locomotor(
         hover_attack,
         speed_type,
         movement_zone,
-        subcell_dest,
     } = loco;
     // The installed class is the kind of the bottom object, which this
     // fold reaches through the stash.
@@ -1964,9 +1960,6 @@ fn hash_locomotor(
     hover_attack.hash(hasher);
     speed_type.hash(hasher);
     movement_zone.hash(hasher);
-    subcell_dest
-        .map(|(x, y)| (x.to_bits(), y.to_bits()))
-        .hash(hasher);
     hash_locomotor_payload(runtime_payload, hasher);
     match piggyback.as_deref() {
         Some(stashed) => {

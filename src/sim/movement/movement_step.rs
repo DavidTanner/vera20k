@@ -2,7 +2,7 @@
 //! cell boundary crossing detection.
 
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::sim::components::{MovementTarget, Position};
+use crate::sim::components::Position;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::util::fixed_math::{SimFixed, fixed_distance};
 
@@ -69,12 +69,8 @@ pub(super) fn completed_walk_head(
 /// SetHeight and Mark(PUT). A diagonal step can enter a side cell before its
 /// other axis crosses.
 pub(super) fn walk_boundary_crossing(
-    target: &MovementTarget,
     position: &Position,
 ) -> Option<crate::sim::components::DriveCoord> {
-    if target.next_index >= target.path.len() {
-        return None;
-    }
     let [x, y] = super::ground_pose::position_world_xy(position);
     (((x / 256) as u16, (y / 256) as u16) != (position.rx, position.ry))
         .then(|| super::ground_pose::position_world_coord(position))

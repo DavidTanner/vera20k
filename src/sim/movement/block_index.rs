@@ -68,6 +68,33 @@ struct MovingContribution {
     raises_code_2: bool,
 }
 
+/// The cell a moving occupant heads for. Walk keeps no route cells: its paid
+/// head's cell, else the cell its Foot+5E0 head word points to (a tube word
+/// names no adjacent cell). Drive/Ship read their track host's route cache.
+fn moving_next_cell(entity: &GameEntity) -> Option<(u16, u16)> {
+    let target = entity.movement_target.as_ref()?;
+    let Some(loco) = entity
+        .locomotor
+        .as_ref()
+        .filter(|l| l.kind == crate::rules::locomotor_type::LocomotorKind::Walk)
+    else {
+        return target.path.get(target.next_index).copied();
+    };
+    if let Some(head) = loco.step_head() {
+        return Some(((head.x / 256) as u16, (head.y / 256) as u16));
+    }
+    let direction = *entity
+        .navigation
+        .path_replay
+        .remaining_directions()
+        .first()?;
+    let (dx, dy) = crate::util::direction::DIRECTION_DELTAS.get(usize::from(direction))?;
+    Some((
+        entity.position.rx.wrapping_add_signed(*dx as i16),
+        entity.position.ry.wrapping_add_signed(*dy as i16),
+    ))
+}
+
 /// The one rule for what an entity contributes.
 fn contribution(
     entity: &GameEntity,
@@ -107,10 +134,7 @@ fn contribution(
     // slot `+0xA4` (Drive/Ship `Can_Use_Track`, every other class false);
     // a false answer skips it (no entry, the occupation mask arm decides)
     // and only a true one raises the running code to 2.
-    let moving = entity
-        .movement_target
-        .as_ref()
-        .and_then(|target| target.path.get(target.next_index).copied())
+    let moving = moving_next_cell(entity)
         .filter(|&next_cell| next_cell != cell)
         .map(|next_cell| {
             let in_transit = !entity.foot_occupation_enabled;

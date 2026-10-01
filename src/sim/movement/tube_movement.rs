@@ -15,7 +15,7 @@ use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::retail_trig::TrigTable;
 use crate::map::tube_facts::{TubeFact, TubeId, TubeSource};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, MovementTarget, Position};
+use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, Position};
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
@@ -52,38 +52,42 @@ pub enum TubeBeginError {
     MissingTerrain,
 }
 
-/// Identify the native direction-8 path shape represented by Rust's
-/// non-adjacent path node. This is a producer admission check only; state and
-/// substrate mutation happen atomically in [`begin_path_tube_step`].
+/// Walk 0x0075B302..0x0075B356: a direction-8 Foot+5E0 head enters the tube
+/// of the current cell when its index (Cell+0x116) is a live tube. Automatic
+/// zero-length records stay predicate metadata (module doc). This is a producer
+/// admission check only; state and substrate mutation happen atomically in
+/// [`begin_path_tube_step`].
+///
+/// RESIDUAL: a direction-8 head without a live tube takes native's invalid-tube
+/// arm (0x0075B551, which clears Foot+5E0); here it falls through to admission,
+/// which reads the word's low three bits. Trigger: a tube route whose tube
+/// record was removed before the head was consumed. Frequency: never observed;
+/// tube records are map-static. Risk: one stray step north.
 pub fn pending_path_tube_id(
-    target: &MovementTarget,
+    path_replay: &crate::sim::components::FootPathQueue,
     position: &Position,
     current_layer: MovementLayer,
     terrain: Option<&ResolvedTerrainGrid>,
 ) -> Option<TubeId> {
-    if current_layer != MovementLayer::Ground || target.next_index >= target.path.len() {
-        return None;
-    }
-    let current = (position.rx, position.ry);
-    let next = target.path[target.next_index];
-    let dx = i32::from(next.0) - i32::from(current.0);
-    let dy = i32::from(next.1) - i32::from(current.1);
-    if (dx.abs() <= 1 && dy.abs() <= 1) || (dx == 0 && dy == 0) {
+    if current_layer != MovementLayer::Ground
+        || path_replay.remaining_directions().first()
+            != Some(&crate::util::direction::TUBE_STEP_DIRECTION)
+    {
         return None;
     }
     let terrain = terrain?;
-    let tube_id = terrain.cell(current.0, current.1)?.tube_index?;
+    let tube_id = terrain.cell(position.rx, position.ry)?.tube_index?;
     if tube_id.0 > i8::MAX as u16 {
         return None;
     }
     let tube = terrain.tube(tube_id)?;
-    (tube.source == TubeSource::ExplicitMap && tube.path_len() > 0 && tube.exit == next)
-        .then_some(tube_id)
+    (tube.source == TubeSource::ExplicitMap && tube.path_len() > 0).then_some(tube_id)
 }
 
 /// Begin a verified explicit tube and perform native Mark(REMOVE) substrate
-/// teardown. The pending non-adjacent node is consumed immediately, preserving
-/// the route tail for the post-tube object turn.
+/// teardown. The direction-8 head is consumed immediately (Walk 0x0075B3E0
+/// shifts Foot+5E0; Drive 0x004B1362), preserving the route tail for the
+/// post-tube object turn.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn begin_path_tube_step(
     foot_occupation_enabled: &mut bool,
@@ -93,7 +97,6 @@ pub(crate) fn begin_path_tube_step(
     position: &mut Position,
     drive_locomotion: &mut Option<DriveLocomotionRuntime>,
     low_bridge_tube_state: &mut Option<LowBridgeTubeMovementState>,
-    target: &mut MovementTarget,
     cell_marked: &mut bool,
     tube_id: TubeId,
     terrain: &ResolvedTerrainGrid,
@@ -142,12 +145,11 @@ pub(crate) fn begin_path_tube_step(
                 .wrapping_add(128),
             z: 0,
         });
-        super::path_markers::consume_path_replay(path_replay, 1);
         drive.track_valid = true; // Original4B1480.
         drive.track.turn_index = -1; // Original4B1484; cursor is untouched.
     }
+    super::path_markers::consume_path_replay(path_replay, 1);
     *low_bridge_tube_state = Some(state);
-    target.next_index = target.next_index.saturating_add(1).min(target.path.len());
     Ok(())
 }
 
@@ -681,7 +683,7 @@ mod tests {
     use super::*;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::map::tube_facts::TubeSource;
-    use crate::sim::components::{DriveLocomotionRuntime, Health};
+    use crate::sim::components::{DriveLocomotionRuntime, Health, MovementTarget};
     use crate::sim::game_entity::GameEntity;
     use crate::sim::occupancy::CellListInsertion;
 
@@ -781,13 +783,14 @@ mod tests {
             vec![flat_cell(0, 0, Some(TubeId(0)))],
             vec![TubeFact::auto_low_bridge((0, 0), 2)],
         );
-        let mut target = MovementTarget::default();
-        target.path = vec![(0, 0), (2, 0)];
-        target.next_index = 1;
+        let queue = crate::sim::components::FootPathQueue {
+            directions: vec![crate::util::direction::TUBE_STEP_DIRECTION],
+            ..Default::default()
+        };
         let entity = unit(1);
         assert_eq!(
             pending_path_tube_id(
-                &target,
+                &queue,
                 &entity.position,
                 MovementLayer::Ground,
                 Some(&terrain)
@@ -886,15 +889,14 @@ mod tests {
     fn gsi_04_15_tube_admission_requires_ground_object_list_layer() {
         let terrain = explicit_terrain(vec![2, 2]);
         let entity = unit(1);
-        let target = MovementTarget {
-            path: vec![(0, 0), (2, 0)],
-            next_index: 1,
-            ..MovementTarget::default()
+        let mut queue = crate::sim::components::FootPathQueue {
+            directions: vec![crate::util::direction::TUBE_STEP_DIRECTION],
+            ..Default::default()
         };
 
         assert_eq!(
             pending_path_tube_id(
-                &target,
+                &queue,
                 &entity.position,
                 MovementLayer::Bridge,
                 Some(&terrain)
@@ -903,12 +905,23 @@ mod tests {
         );
         assert_eq!(
             pending_path_tube_id(
-                &target,
+                &queue,
                 &entity.position,
                 MovementLayer::Ground,
                 Some(&terrain)
             ),
             Some(TubeId(0))
+        );
+        // Walk75B302 enters only on a direction-8 head word.
+        queue.directions = vec![2];
+        assert_eq!(
+            pending_path_tube_id(
+                &queue,
+                &entity.position,
+                MovementLayer::Ground,
+                Some(&terrain)
+            ),
+            None
         );
     }
 
@@ -940,11 +953,6 @@ mod tests {
             cursor: 0,
             reference_cell: Some((-3, 7)),
         };
-        entity.movement_target = Some(MovementTarget {
-            path: vec![(0, 0), (2, 0), (3, 0)],
-            next_index: 1,
-            ..MovementTarget::default()
-        });
         let mut occupancy = OccupancyGrid::new();
         occupancy.add(
             0,
@@ -967,7 +975,6 @@ mod tests {
             &mut entity.position,
             &mut entity.drive_locomotion,
             &mut entity.low_bridge_tube_state,
-            entity.movement_target.as_mut().unwrap(),
             &mut entity.lifecycle.cell_marked,
             TubeId(0),
             &terrain,
@@ -978,7 +985,6 @@ mod tests {
         .unwrap();
 
         assert!(!entity.lifecycle.cell_marked);
-        assert_eq!(entity.movement_target.as_ref().unwrap().next_index, 2);
         assert_eq!(occupancy.count_on_layer(0, 0, MovementLayer::Ground), 0);
         assert_eq!(raw.ground_bits(0, 0), 0);
         assert_eq!(cell_occupation.vehicle_bits(0, 0, MovementLayer::Ground), 0);

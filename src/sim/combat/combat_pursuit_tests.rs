@@ -683,7 +683,7 @@ fn walk_destination_search_observes_route_opened_before_process() {
     ));
     sim.path_grid = Some(open_grid.clone());
     let e = sim.substrate.entities.get(actor).unwrap();
-    assert!(e.movement_target.as_ref().unwrap().path.is_empty());
+    assert!(e.navigation.path_replay.remaining_directions().is_empty());
     assert_eq!(
         e.navigation.nav_com,
         Some(crate::sim::components::NavTargetRef::Cell { rx: 14, ry: 10 })
@@ -693,7 +693,10 @@ fn walk_destination_search_observes_route_opened_before_process() {
     let e = sim.substrate.entities.get(actor).unwrap();
     assert!(e.locomotor.as_ref().unwrap().step_head().is_some());
     assert!(
-        e.movement_target.as_ref().unwrap().path.contains(&(12, 10)),
+        e.navigation
+            .path_replay
+            .remaining_cells()
+            .contains(&(12, 10)),
         "the first Process searches the now-open route"
     );
 
@@ -714,7 +717,7 @@ fn walk_destination_search_observes_route_opened_before_process() {
         crate::sim::movement::DestinationTiming::new(0, 60),
     ));
     let e = sim.substrate.entities.get(actor).unwrap();
-    assert!(e.movement_target.as_ref().unwrap().path.is_empty());
+    assert!(e.movement_target.is_some());
     assert!(e.navigation.nav_com.is_some());
     assert!(e.locomotor.as_ref().unwrap().walk_destination().is_some());
 }

@@ -311,19 +311,9 @@ impl Simulation {
                 self.set_unit_null_destination(id, Some(rules));
             }
             EntityCategory::Infantry => {
-                if self.set_walk_null_destination(id, Some(rules))
-                    && let Some(target) = self
-                        .substrate
-                        .entities
-                        .get_mut(id)
-                        .and_then(|entity| entity.movement_target.as_mut())
-                {
-                    // The proved null/non-Enter Infantry envelope reaches
-                    // Foot4D94B0 and Walk75ADA0 with no paid head left. The
-                    // setter already reset persistent Foot timers; only the
-                    // execution adapter is retired here.
-                    target.next_index = target.path.len();
-                }
+                // With no head and no destination left, the next Walk
+                // Process takes its idle tail and retires the adapter.
+                self.set_walk_null_destination(id, Some(rules));
             }
             _ => {}
         }

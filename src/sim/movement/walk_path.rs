@@ -97,24 +97,12 @@ impl Simulation {
                 //JumpJet=. 75B2FF..75B5A7 reads the untouched Foot+5E0
                 //terminator and steps toward (-1 & 7) = octant 7; the queue
                 //head stays -1. Evidence: instruction reading only.
+                //The core already recorded the reference Cell (4D4003).
                 let actor = self
                     .substrate
                     .entities
                     .get_mut(id)
                     .ok_or("retired Walk path requester")?;
-                let current = (actor.position.rx, actor.position.ry);
-                let (dx, dy) = crate::util::direction::DIRECTION_DELTAS[7];
-                let next = (
-                    current.0.wrapping_add_signed(dx as i16),
-                    current.1.wrapping_add_signed(dy as i16),
-                );
-                let layer = if actor.on_bridge {
-                    super::locomotor::MovementLayer::Bridge
-                } else {
-                    super::locomotor::MovementLayer::Ground
-                };
-                request.install_route(actor, vec![current, next], vec![layer, layer]);
-                actor.navigation.path_replay.clear_live_head();
                 actor.navigation.path_runtime.retries_left = super::PATH_STUCK_INIT;
                 Ok(true)
             }

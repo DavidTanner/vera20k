@@ -97,10 +97,6 @@ pub struct LocomotorState {
     /// Pathfinder movement zone — determines crush capability and special routing.
     /// Cached from ObjectType at spawn to avoid per-tick RuleSet lookups.
     pub movement_zone: MovementZone,
-    /// Within-cell walk destination for infantry. Set when a sub-cell is allocated
-    /// during cell entry. The locomotor walks the infantry toward this point after
-    /// the path is exhausted.
-    pub subcell_dest: Option<(SimFixed, SimFixed)>,
 }
 
 impl LocomotorState {
@@ -163,7 +159,6 @@ impl LocomotorState {
             hover_attack,
             speed_type,
             movement_zone,
-            subcell_dest: None,
         }
     }
 

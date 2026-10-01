@@ -19,136 +19,16 @@ use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::NavTargetRef;
 use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, FootPathQueue, TrackProgress};
+use crate::sim::components::{MovementTarget, NavTargetRef};
 use crate::sim::game_entity::{BuildingGateMissionState, BuildingGateRuntime, GameEntity};
-use crate::sim::intern::{test_intern, test_interner};
+use crate::sim::intern::test_interner;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::track_host::TrackWorldEvent;
 use crate::sim::movement::track_process::{TrackFamily, TrackInvocation};
 use crate::sim::world::LifecycleTestEvent;
 use crate::sim::world::Simulation;
-
-// Slice 6 acceptance: a snapshot rebuilt at repath time reflects same-tick
-// moves — observably equivalent to live per-neighbor Can_Enter_Cell for a
-// synchronous search (study CELLCLASS_MAPCLASS..._SERVICE_STUDY §8 Slice 6).
-#[test]
-fn owner_block_set_refreshes_when_occupancy_generation_advances() {
-    let alliances = HouseAllianceMap::new();
-    let mut entities = EntityStore::new();
-    let mut blocker = GameEntity::test_default(10, "HTNK", "Americans", 5, 5);
-    blocker.category = EntityCategory::Unit;
-    blocker.lifecycle.in_limbo = false;
-    blocker.lifecycle.cell_marked = true;
-    entities.insert(blocker);
-    // Clone the test interner AFTER the entity is created so it can resolve
-    // the just-interned owner string.
-    let interner = test_interner();
-    let owner = test_intern("Americans");
-
-    // Initial snapshot at gen 0: friendly stationary unit -> soft-block at (5,5).
-    let mut index = crate::sim::movement::block_index::OwnerBlockIndex::default();
-    let mut sets = BTreeMap::new();
-    sets.insert(
-        owner,
-        index.lend_current(owner, &mut entities, &alliances, &interner, None),
-    );
-    let mut built_at: BTreeMap<crate::sim::intern::InternedId, u64> = BTreeMap::new();
-    built_at.insert(owner, 0);
-    assert!(
-        sets[&owner]
-            .sets
-            .1
-            .contains_key(MovementLayer::Ground, &(5, 5))
-    );
-    assert!(
-        !sets[&owner]
-            .sets
-            .1
-            .contains_key(MovementLayer::Ground, &(6, 6))
-    );
-
-    // Same-tick move of the blocker to (6,6); occupancy generation advances.
-    {
-        let b = entities.get_mut(10).unwrap();
-        b.position.rx = 6;
-        b.position.ry = 6;
-    }
-    let rebuilt = refresh_owner_block_set_if_stale(
-        &mut sets,
-        &mut built_at,
-        &mut index,
-        owner,
-        7,
-        &mut entities,
-        &alliances,
-        &interner,
-        None,
-    );
-    assert!(
-        rebuilt,
-        "stale snapshot must rebuild when generation advances"
-    );
-    assert!(
-        !sets[&owner]
-            .sets
-            .1
-            .contains_key(MovementLayer::Ground, &(5, 5)),
-        "old cell freed"
-    );
-    assert!(
-        sets[&owner]
-            .sets
-            .1
-            .contains_key(MovementLayer::Ground, &(6, 6)),
-        "new cell blocked"
-    );
-}
-
-#[test]
-fn owner_block_set_not_rebuilt_when_generation_unchanged() {
-    let alliances = HouseAllianceMap::new();
-    let mut entities = EntityStore::new();
-    let mut blocker = GameEntity::test_default(10, "HTNK", "Americans", 5, 5);
-    blocker.category = EntityCategory::Unit;
-    blocker.lifecycle.in_limbo = false;
-    blocker.lifecycle.cell_marked = true;
-    entities.insert(blocker);
-    let interner = test_interner();
-    let owner = test_intern("Americans");
-
-    let mut index = crate::sim::movement::block_index::OwnerBlockIndex::default();
-    let mut sets = BTreeMap::new();
-    sets.insert(
-        owner,
-        index.lend_current(owner, &mut entities, &alliances, &interner, None),
-    );
-    let mut built_at: BTreeMap<crate::sim::intern::InternedId, u64> = BTreeMap::new();
-    built_at.insert(owner, 4);
-
-    // Generation matches the recorded build gen -> no rebuild, even though the
-    // entity moved underneath us.
-    entities.get_mut(10).unwrap().position.rx = 6;
-    let rebuilt = refresh_owner_block_set_if_stale(
-        &mut sets,
-        &mut built_at,
-        &mut index,
-        owner,
-        4,
-        &mut entities,
-        &alliances,
-        &interner,
-        None,
-    );
-    assert!(!rebuilt, "no rebuild when generation is unchanged");
-    assert!(
-        sets[&owner]
-            .sets
-            .1
-            .contains_key(MovementLayer::Ground, &(5, 5)),
-        "snapshot left untouched"
-    );
-}
+use crate::util::fixed_math::SimFixed;
 
 const MOVER: u64 = 1;
 const CANDIDATE: (u16, u16) = (11, 9);

@@ -73,7 +73,6 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
         .unwrap();
     let actor = sim.substrate.entities.get(id).unwrap();
     assert_eq!(ground_pose::position_world_coord(&actor.position), head);
-    assert_eq!(actor.movement_target.as_ref().unwrap().next_index, 2);
     assert_eq!(actor.navigation.path_replay.remaining_directions(), &[4]);
     assert_eq!(actor.locomotor.as_ref().unwrap().step_head(), None);
     assert_eq!(

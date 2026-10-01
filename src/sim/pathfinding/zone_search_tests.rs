@@ -1207,25 +1207,16 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
         engineer.navigation.nav_com,
         Some(NavTargetRef::building(target_id))
     );
-    let movement = engineer
-        .movement_target
-        .as_ref()
-        .expect("live Capture Process should install the hierarchy-backed target route");
-    assert_eq!(movement.final_goal, Some((5, 0)));
-    assert_eq!(movement.path.first().copied(), Some((1, 0)));
-    assert!(
-        movement
-            .path_layers
-            .iter()
-            .any(|layer| *layer == MovementLayer::Bridge),
-        "interaction approach must actually traverse the high-bridge layer"
-    );
     // Native Infantry 51C300/51C37D/51C71B admits the matching Building
     // NavCom. Foot 4D3A92..4D3E0A passes its original Cell to the core;
     // tools/spatial_oracle/capture_core_goal.py covers that admission/goal
     // boundary. This Rust route check does not claim full native AStar parity.
+    // The installed Foot+5E0 route runs from the start Cell to the building
+    // Cell; its words carry no layer.
+    let route = &engineer.navigation.path_replay;
+    assert_eq!(route.reference_cell, Some((1, 0)));
     assert_eq!(
-        movement.path.last().copied(),
+        route.remaining_cells().last().copied(),
         Some((5, 0)),
         "Capture must retain the admitted building Cell as its path goal"
     );
@@ -1459,17 +1450,8 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
         ..rectangular_spawn_bounds(5)
     });
     sim.playfield_size_height = Some(1);
-    sim.process_ground_locomotor_with_config_for_test(
-        1,
-        Some(&rules),
-        None,
-        crate::sim::movement::MovementConfig {
-            close_enough: SimFixed::from_num(0),
-            path_delay_ticks: 9,
-            blockage_path_delay_ticks: 60,
-        },
-    )
-    .expect("the pending Drive Process completes");
+    sim.process_ground_locomotor_one(1, Some(&rules), None)
+        .expect("the pending Drive Process completes");
 
     let continued = sim
         .substrate

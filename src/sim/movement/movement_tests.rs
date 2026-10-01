@@ -737,14 +737,14 @@ fn walk_arrival_keeps_list_order_and_snapshot_continuation() {
     let mut trace = Vec::new();
     for frame in 0..400 {
         let before_generation = sim.substrate.occupancy.generation();
-        let before_path_index = sim
+        let before_route = sim
             .substrate
             .entities
             .get(walker)
             .unwrap()
-            .movement_target
-            .as_ref()
-            .map(|target| target.next_index);
+            .navigation
+            .path_replay
+            .clone();
         walk_tick(&mut sim, frame);
         if let Some(loaded) = restored.as_mut() {
             walk_tick(loaded, frame);
@@ -819,11 +819,11 @@ fn walk_arrival_keeps_list_order_and_snapshot_continuation() {
             // Walk's completed-head corridor 75BD70 performs Mark REMOVE/PUT
             // even when the polar step already entered this cell.
             assert_eq!(sim.substrate.occupancy.generation(), before_generation + 2);
-            let after_index = entity
-                .movement_target
-                .as_ref()
-                .map(|target| target.next_index);
-            assert!(after_index.is_none() || after_index > before_path_index);
+            // 75BD89 consumes the completed head's Foot+5E0 word, if any.
+            assert!(
+                before_route.remaining_directions().is_empty()
+                    || entity.navigation.path_replay.cursor > before_route.cursor
+            );
         }
         trace.push((
             frame,
@@ -832,10 +832,7 @@ fn walk_arrival_keeps_list_order_and_snapshot_continuation() {
             entity.sub_cell,
             sim.scenario_rng.state(),
             entity.locomotor.as_ref().and_then(|l| l.step_head()),
-            entity
-                .movement_target
-                .as_ref()
-                .map(|t| (t.path.clone(), t.next_index)),
+            entity.navigation.path_replay.clone(),
         ));
         if entity.movement_target.is_none() {
             break;
@@ -1264,9 +1261,6 @@ fn lifecycle_authority_empty_logic_order_does_not_fall_back_to_entity_store() {
         path_layers: vec![MovementLayer::Ground; 2],
         next_index: 1,
         speed: SimFixed::from_num(512),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
         ..Default::default()
     });
     sim.substrate.entities.insert(entity);
@@ -1303,9 +1297,6 @@ fn lifecycle_authority_empty_logic_order_does_not_fall_back_to_entity_store() {
         None,
         None,
         &crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-        SIM_ZERO,
-        9,
-        60,
         &mut sim.interner,
         None,
         &mut sounds,
@@ -1356,9 +1347,6 @@ fn test_friendly_passable_moving_unit_not_blocked() {
         path_layers: vec![MovementLayer::Ground; 3],
         next_index: 1,
         speed: SimFixed::from_num(1024),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
         ..Default::default()
     });
     entities.insert(b);
@@ -1436,9 +1424,6 @@ fn test_enemy_unit_always_blocks_even_when_moving() {
         path_layers: vec![MovementLayer::Ground; 2],
         next_index: 1,
         speed: SimFixed::from_num(1024),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
         ..Default::default()
     });
     entities.insert(enemy);
@@ -1829,9 +1814,6 @@ fn gsi_04_10_crusher_and_omnicrusher_never_enter_or_crush_a_terrain_object_cell(
             path_layers: vec![MovementLayer::Ground; 3],
             next_index: 1,
             speed: SimFixed::from_num(1024),
-            move_dir_x: SimFixed::from_num(256),
-            move_dir_y: SIM_ZERO,
-            move_dir_len: SimFixed::from_num(256),
             final_goal: Some((2, 0)),
             ..Default::default()
         });
@@ -2000,9 +1982,6 @@ fn gsi_06_13_fixture_mover(
         path_layers: layers,
         next_index: 1,
         speed: SimFixed::from_num(768),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
         final_goal: Some(goal),
         ..Default::default()
     });
