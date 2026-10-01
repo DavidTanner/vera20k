@@ -1,7 +1,7 @@
-//! Native retained Terrain coordinates through Render and static DrawIt.
+//! Native retained Terrain coordinates through static and animated DrawIt.
 //! The corpus stops at the shape sink; this compares instance inputs, not pixels.
 
-use super::native_static_terrain_instances;
+use super::native_terrain_instances;
 use crate::render::overlay_atlas::OverlaySpriteEntry;
 
 #[test]
@@ -10,8 +10,11 @@ fn terrain_retained_xyz_projection_and_piece_z_match_original_render() {
         "../../../../tools/spatial_oracle/terrain_render.json"
     ))
     .unwrap();
-    let rows = native["rows"].as_array().unwrap();
-    assert_eq!(rows.len(), 82);
+    let static_rows = native["rows"].as_array().unwrap();
+    let animated_rows = native["animated_rows"].as_array().unwrap();
+    assert_eq!(static_rows.len(), 82);
+    assert_eq!(animated_rows.len(), 44);
+    let rows = static_rows.iter().chain(animated_rows);
     // Zero stored offsets isolate the original pre-shape draw point. Actual
     // image/canvas offsets have their separate production atlas comparisons.
     let sprite = OverlaySpriteEntry {
@@ -45,10 +48,18 @@ fn terrain_retained_xyz_projection_and_piece_z_match_original_render() {
             ],
             "{row}: original projection"
         );
-        let pieces = native_static_terrain_instances(
+        let pieces = native_terrain_instances(
             &sprite,
             &sprite,
-            [point.0, point.1],
+            [
+                point.0,
+                point.1
+                    - if row.get("animation").is_some() {
+                        16.0
+                    } else {
+                        0.0
+                    },
+            ],
             lift,
             0.3,
             [1.0; 3],

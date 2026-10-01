@@ -15,7 +15,7 @@ use crate::sim::combat::{armor_index, damage};
 use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::occupancy::RawCellOccupationGrid;
 use crate::sim::production::ProductionState;
-use crate::sim::terrain_spawn::TerrainSpawnerState;
+use crate::sim::terrain_spawn::TerrainAnimationState;
 
 #[cfg(test)]
 #[path = "terrain_coordinate_tests.rs"]
@@ -173,7 +173,7 @@ pub(crate) enum TerrainAreaReceiveResult {
 #[cfg(test)]
 #[derive(Debug, Default, Clone)]
 pub(crate) struct TerrainAreaState {
-    terrain_spawners: BTreeMap<(u16, u16), TerrainSpawnerState>,
+    terrain_animations: BTreeMap<(u16, u16), TerrainAnimationState>,
     terrain_objects: BTreeMap<u64, TerrainObjectState>,
     terrain_object_cells: BTreeMap<(u16, u16), u64>,
     terrain_occupation_bits: BTreeMap<(u16, u16), u8>,
@@ -205,7 +205,7 @@ impl TerrainAreaState {
         raw_occupation: &mut RawCellOccupationGrid,
     ) -> Self {
         Self {
-            terrain_spawners: std::mem::take(&mut production.terrain_spawners),
+            terrain_animations: std::mem::take(&mut production.terrain_animations),
             terrain_objects: std::mem::take(&mut production.terrain_objects),
             terrain_object_cells: std::mem::take(&mut production.terrain_object_cells),
             terrain_occupation_bits: std::mem::take(&mut production.terrain_occupation_bits),
@@ -224,7 +224,10 @@ impl TerrainAreaState {
         production: &mut ProductionState,
         raw_occupation: &mut RawCellOccupationGrid,
     ) {
-        std::mem::swap(&mut self.terrain_spawners, &mut production.terrain_spawners);
+        std::mem::swap(
+            &mut self.terrain_animations,
+            &mut production.terrain_animations,
+        );
         std::mem::swap(&mut self.terrain_objects, &mut production.terrain_objects);
         std::mem::swap(
             &mut self.terrain_object_cells,
@@ -299,7 +302,7 @@ impl TerrainAreaState {
     ) -> bool {
         finalize_terrain_lethal(
             TerrainAuthorityParts {
-                terrain_spawners: &mut self.terrain_spawners,
+                terrain_animations: &mut self.terrain_animations,
                 terrain_objects: &mut self.terrain_objects,
                 terrain_object_cells: &mut self.terrain_object_cells,
                 terrain_occupation_bits: &mut self.terrain_occupation_bits,
@@ -315,7 +318,7 @@ impl TerrainAreaState {
 }
 
 pub(crate) struct TerrainAuthorityParts<'a> {
-    terrain_spawners: &'a mut BTreeMap<(u16, u16), TerrainSpawnerState>,
+    terrain_animations: &'a mut BTreeMap<(u16, u16), TerrainAnimationState>,
     terrain_objects: &'a mut BTreeMap<u64, TerrainObjectState>,
     terrain_object_cells: &'a mut BTreeMap<(u16, u16), u64>,
     terrain_occupation_bits: &'a mut BTreeMap<(u16, u16), u8>,
@@ -401,7 +404,7 @@ pub(crate) fn production_authority_parts<'a>(
     raw_occupation: &'a mut RawCellOccupationGrid,
 ) -> TerrainAuthorityParts<'a> {
     TerrainAuthorityParts {
-        terrain_spawners: &mut production.terrain_spawners,
+        terrain_animations: &mut production.terrain_animations,
         terrain_objects: &mut production.terrain_objects,
         terrain_object_cells: &mut production.terrain_object_cells,
         terrain_occupation_bits: &mut production.terrain_occupation_bits,
@@ -438,7 +441,7 @@ fn limbo_terrain_object_at_cell_parts(
     if let Some(terrain) = authority.terrain_objects.get_mut(&stable_id) {
         terrain.lifecycle = TerrainObjectLifecycle::Limbo;
     }
-    authority.terrain_spawners.remove(&source_cell);
+    authority.terrain_animations.remove(&source_cell);
     authority
         .tiberium_spawning_terrain_cells
         .remove(&source_cell);
@@ -505,7 +508,7 @@ mod tests {
     use crate::sim::pathfinding::cell_entry::{
         CanEnterCellContext, CanEnterCellResult, evaluate_can_enter_cell,
     };
-    use crate::sim::terrain_spawn::seed_terrain_spawners;
+    use crate::sim::terrain_spawn::seed_terrain_animations;
     use crate::sim::world::Simulation;
 
     fn terrain_rules(type_name: &str, wood: bool, type_section: &str) -> RuleSet {
@@ -659,7 +662,7 @@ mod tests {
     }
 
     fn seed_one_at(sim: &mut Simulation, rules: &RuleSet, type_name: &str, cell: (u16, u16)) {
-        seed_terrain_spawners(
+        seed_terrain_animations(
             sim,
             &[TerrainObject {
                 rx: cell.0,
@@ -917,7 +920,7 @@ mod tests {
         );
         assert_eq!(area.raw_occupation.ground_bits(0, 0), 0);
         assert!(!area.terrain_object_cells.contains_key(&(0, 0)));
-        assert!(!area.terrain_spawners.contains_key(&(0, 0)));
+        assert!(!area.terrain_animations.contains_key(&(0, 0)));
         assert!(!area.tiberium_spawning_terrain_cells.contains(&(0, 0)));
         assert!(!area.terrain_occupation_bits.contains_key(&(0, 0)));
         let cell = grid.cell(0, 0).unwrap();
@@ -1000,7 +1003,7 @@ mod tests {
         );
 
         assert_eq!(result, TerrainDamageResult::Ignored);
-        assert!(sim.production.terrain_spawners.contains_key(&(10, 11)));
+        assert!(sim.production.terrain_animations.contains_key(&(10, 11)));
         let terrain = sim.production.terrain_objects.values().next().unwrap();
         assert_eq!(terrain.lifecycle, TerrainObjectLifecycle::Live);
         assert_eq!(terrain.health, 10);
@@ -1027,7 +1030,7 @@ mod tests {
 
         assert_eq!(result, TerrainDamageResult::Destroyed);
         assert!(!sim.production.terrain_object_cells.contains_key(&(10, 11)));
-        assert!(!sim.production.terrain_spawners.contains_key(&(10, 11)));
+        assert!(!sim.production.terrain_animations.contains_key(&(10, 11)));
         assert!(
             !sim.production
                 .tiberium_spawning_terrain_cells
@@ -1137,7 +1140,7 @@ mod tests {
         assert_eq!(result, TerrainDamageResult::Destroyed);
         assert!(!sim.production.terrain_object_cells.contains_key(&(0, 0)));
         assert!(!sim.production.terrain_occupation_bits.contains_key(&(0, 0)));
-        assert!(!sim.production.terrain_spawners.contains_key(&(0, 0)));
+        assert!(!sim.production.terrain_animations.contains_key(&(0, 0)));
         assert!(
             !sim.production
                 .tiberium_spawning_terrain_cells
@@ -1348,7 +1351,7 @@ pub(crate) fn finalize_terrain_lethal(
 
     let removed_id = limbo_terrain_object_at_cell_parts(
         TerrainAuthorityParts {
-            terrain_spawners: &mut *authority.terrain_spawners,
+            terrain_animations: &mut *authority.terrain_animations,
             terrain_objects: &mut *authority.terrain_objects,
             terrain_object_cells: &mut *authority.terrain_object_cells,
             terrain_occupation_bits: &mut *authority.terrain_occupation_bits,

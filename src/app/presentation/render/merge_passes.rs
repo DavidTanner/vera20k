@@ -91,7 +91,7 @@ pub(super) fn draw_native_object_pass<'a>(
         while cursor < ground.runs.len() && destination_edit(ground.runs[cursor].target).is_none() {
             let run = &ground.runs[cursor];
             match run.target {
-                ObjectTexture::TerrainStatic(_) | ObjectTexture::ProjectileShp(_, _) => {
+                ObjectTexture::TerrainShp(_) | ObjectTexture::ProjectileShp(_, _) => {
                     unreachable!("native destination edits split normal runs")
                 }
                 ObjectTexture::OverlayAtlas => {
@@ -197,7 +197,7 @@ fn destination_edit(
     target: ObjectTexture,
 ) -> Option<(crate::render::terrain_draw::TerrainPiece, usize)> {
     match target {
-        ObjectTexture::TerrainStatic(piece) => Some((piece, 0)),
+        ObjectTexture::TerrainShp(piece) => Some((piece, 0)),
         ObjectTexture::ProjectileShp(page, piece) => Some((piece, page + 1)),
         _ => None,
     }

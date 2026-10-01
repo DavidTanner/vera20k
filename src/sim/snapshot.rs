@@ -793,7 +793,9 @@ use crate::sim::world::Simulation;
 // 274 -> 275: a movement target no longer saves route cells, their layers or
 // a cursor; the Foot+5E0 queue is a Foot's only route.
 // 275 -> 276: each House saves its type's `Speed*Mult=` beside the cost ones.
-const SNAPSHOT_VERSION: u32 = 276;
+// 276 -> 277: terrain animations preserve native float probability, signed
+// Stage/rate and a frame-anchored CdTimer; obsolete micros/phase mirrors are gone.
+const SNAPSHOT_VERSION: u32 = 277;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2592,8 +2594,12 @@ mod tests {
                     .ore_growth_state
                     .add_native_growth_queue_cell(
                         overlay,
-                        registry,
-                        &rules.tiberium_types,
+                        registry
+                            .tiberium_type_for_overlay(
+                                &rules.tiberium_types,
+                                overlay.cell(ore_cell.0, ore_cell.1).overlay_id.unwrap()
+                            )
+                            .unwrap(),
                         ore_cell.0,
                         ore_cell.1,
                         41,
@@ -3743,7 +3749,8 @@ mod tests {
         // retained native base navigation is saved; its live history is hashed.
         // 274 -> 275: movement targets no longer save route cells.
         // 275 -> 276: each House saves its type's Speed*Mult.
-        assert_eq!(super::SNAPSHOT_VERSION, 276);
+        // 276 -> 277: retained native terrain animation probability and timer.
+        assert_eq!(super::SNAPSHOT_VERSION, 277);
     }
 
     #[test]
@@ -7841,7 +7848,7 @@ mod tests {
             TerrainDamageResult, TerrainObjectLifecycle, TerrainObjectState,
             damage_terrain_object_at_cell, mark_terrain_occupation, mark_terrain_raw_occupation,
         };
-        use crate::sim::terrain_spawn::TerrainSpawnerState;
+        use crate::sim::terrain_spawn::TerrainAnimationState;
 
         let rules = RuleSet::from_ini(&IniFile::from_str(
             "[General]\nTreeStrength=10\n\
@@ -7913,9 +7920,15 @@ mod tests {
             );
         }
         sim.substrate.next_stable_object_id = spawner_id + 1;
-        sim.production.terrain_spawners.insert(
+        sim.production.terrain_animations.insert(
             spawner_cell,
-            TerrainSpawnerState::new(spawner_type, 3_000, 3, 22),
+            TerrainAnimationState::new(
+                spawner_type,
+                crate::util::native_x87::NativeF32Bits::from_bits(0x3b44_9ba6),
+                3,
+                22,
+                sim.session.binary_frame,
+            ),
         );
         sim.production
             .tiberium_spawning_terrain_cells
@@ -8008,7 +8021,7 @@ mod tests {
             spawner_id
         );
         assert_eq!(
-            restored.production.terrain_spawners[&spawner_cell].type_ref,
+            restored.production.terrain_animations[&spawner_cell].type_ref(),
             spawner_type
         );
         assert!(

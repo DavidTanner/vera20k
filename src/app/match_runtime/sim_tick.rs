@@ -764,10 +764,6 @@ fn advance_in_game_runtime_mode(
             };
             state.platform.frame_pacer.record_admitted_frame(now_ms);
         }
-        // Building one-shots, refinery particles, and their logic-frame clocks
-        // were finalized inside the authoritative sim transaction. Only the
-        // independent wall-clock terrain-overlay timer remains app-owned.
-        crate::app::presentation::building_anim::tick_terrain_overlay_animations(state, 16);
     } else if let Some(request) = mouse_scroll {
         crate::app::input::camera::commit_camera_scroll(state, request);
     }

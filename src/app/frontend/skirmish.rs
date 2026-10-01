@@ -2492,6 +2492,31 @@ mod tests {
     }
 
     #[test]
+    fn runtime_overlay_names_include_tibtre_variants_absent_from_the_map() {
+        let mut text = String::from("[OverlayTypes]\n");
+        for id in 0..12 {
+            text.push_str(&format!("{id}=TIB{:02}\n", id + 1));
+        }
+        for number in 1..=12 {
+            text.push_str(&format!("[TIB{number:02}]\nTiberium=yes\n"));
+        }
+        let registry = OverlayTypeRegistry::from_ini(&IniFile::from_str(&text), None);
+        // A map can contain only TIB01, or no authored ore at all. Original
+        // Place487190 can subsequently allocate any of its12 flat variants
+        // (tools/spatial_oracle/tibtre.json); each must reach the draw lookup.
+        for mut names in [BTreeMap::new(), BTreeMap::from([(0, "TIB01".into())])] {
+            preregister_runtime_overlay_names(
+                &registry,
+                &crate::rules::crate_rules::CrateRules::default(),
+                &mut names,
+            );
+            for id in 0..12 {
+                assert_eq!(names.get(&id).map(String::as_str), registry.name(id));
+            }
+        }
+    }
+
+    #[test]
     fn runtime_overlay_names_include_every_crate_identity_before_startup_scatter() {
         let registry = OverlayTypeRegistry::from_ini(
             &IniFile::from_str(
@@ -2579,11 +2604,15 @@ pub(crate) fn preregister_runtime_overlay_names(
     for overlay_id in 0u8..=u8::MAX {
         let flags = overlay_registry.flags(overlay_id);
         let is_wall = flags.is_some_and(|flags| flags.wall);
+        // Place487190 selects any flat resource variant after map load,
+        // including a map with no authored ore. The atlas already preloads
+        // these shapes; its draw-name projection must cover the same IDs.
+        let is_tiberium = flags.is_some_and(|flags| flags.tiberium);
         let is_crate = flags.is_some_and(|flags| flags.crate_type)
             || selected_crate_ids.contains(&Some(overlay_id));
         let is_low_bridge =
             is_bridge_overlay_index(overlay_id) && !is_high_bridge_index(overlay_id);
-        if !is_wall && !is_low_bridge && !is_crate {
+        if !is_wall && !is_low_bridge && !is_crate && !is_tiberium {
             continue;
         }
         let Some(name) = resolve_overlay_name_for_render(overlay_registry, overlay_id) else {
@@ -2708,6 +2737,7 @@ pub(crate) fn build_overlay_atlas_from_map(
     // Register overlay identities the sim can create after map load. Walls can
     // be placed by production; low bridges replace their CellClass identity as
     // damage/collapse/repair advances while the map-pack entry stays fixed.
+    // TIBTRE and natural spreading allocate new resource variants as well.
     let (wall_ids_added, low_bridge_ids_added, crate_ids_added) =
         preregister_runtime_overlay_names(&overlay_registry, crate_rules, &mut overlay_names);
     if wall_ids_added > 0 {

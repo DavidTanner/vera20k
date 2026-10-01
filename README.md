@@ -27,6 +27,11 @@ movies, and several special weapons and superweapons, such as the Chrono Legionn
 chaining, the Nuke and the Chronosphere. The 30-player, 20,000-unit scale hasn't been
 demonstrated yet.
 
+Stock TIBTRE ore trees use retained simulation animation, emit ore at the native
+midpoint and feed the existing growth and harvesting paths. The
+[bounded native comparisons](tools/spatial_oracle/tibtre.md) cover their timing,
+RNG and placement; stock artwork uses the native body/shadow frame pairs.
+
 Empty IFVs can approach and fire at concrete bridges, continue launched missiles
 after Stop, and resume saved pursuit state. The [native comparisons](tools/spatial_oracle/fv_cell_attack/README.md)
 cover six concrete-bridge cases; the whole-bridge audit remains in progress.

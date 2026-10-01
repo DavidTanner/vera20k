@@ -220,6 +220,22 @@ class MapObservationTests(unittest.TestCase):
                 self.assertEqual(report['status'], 'INVALID', report)
                 self.assertTrue(any('observations.commands' in error for error in report['errors']))
 
+    def test_terrain_resource_extension_accepts_native_frame_and_rejects_invalid_values(self):
+        cell = self.unallocated_cell([74, 32])
+        cell['overlay'] = {'id': None, 'density': 3}
+        cell['terrain_object'] = {'name': 'TIBTRE02', 'frame': 10, 'active': True}
+        observation._terrain(cell, [74, 32], 'terrain')
+        for key, value in (('frame', True), ('frame', 1 << 31), ('active', 1), ('name', '')):
+            bad = deepcopy(cell)
+            bad['terrain_object'][key] = value
+            with self.assertRaises(observation.ValidationError):
+                observation._terrain(bad, [74, 32], 'terrain')
+        for key, value in (('id', 256), ('density', -1), ('density', True)):
+            bad = deepcopy(cell)
+            bad['overlay'][key] = value
+            with self.assertRaises(observation.ValidationError):
+                observation._terrain(bad, [74, 32], 'terrain')
+
     def test_actor_history_retains_capture_and_disappearance_without_rebinding(self):
         self.scripted_profile()
         self.actor_frames[1][0]['owner'] = 'Computer2'

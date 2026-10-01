@@ -1,8 +1,8 @@
 //! TIBTRE-style terrain object ore spawning.
 //!
-//! Per-cell sim state for terrain objects with `SpawnsTiberium=yes`. Idle
-//! spawners roll their native-shaped `AnimationProbability`; a hit starts the
-//! terrain animation, and ore placement is delayed until the animation midpoint.
+//! Per-cell retained animation state for terrain objects with `IsAnimated=yes`.
+//! Idle animations roll `AnimationProbability`; a hit starts the native timer.
+//! `SpawnsTiberium=yes` resets the animation and emits ore at its midpoint.
 //!
 //! ## Animation model
 //! Two-phase: roll succeeds -> start at frame 0 -> advance one frame every
@@ -11,7 +11,7 @@
 //! ## Dependency rules
 //! - Part of sim/ - depends on rules data, sim/overlay_grid, sim/tiberium and
 //!   sim/rng.
-//! - Per-spawner animation config is baked into TerrainSpawnerState at seed time
+//! - Per-object animation config is baked into TerrainAnimationState at seed time
 //!   (mirrors OreGrowthConfig pattern); live placement gates still read entity
 //!   and rules state for building exceptions.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
@@ -21,7 +21,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::ruleset::RuleSet;
-use crate::rules::tiberium_type::{TiberiumTypeId, TiberiumTypeRegistry};
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::occupancy::OccupancyGrid;
@@ -30,178 +29,110 @@ use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::rng::SimRng;
 use crate::sim::terrain_object::{TerrainObjectState, mark_terrain_raw_occupation};
 use crate::sim::tiberium::{
-    NewTiberiumAdmission, TiberiumPlacementObjectContext, can_place_new_tiberium,
+    NewTiberiumAdmission, PlaceTiberiumContext, TiberiumPlacementObjectContext, spread_tiberium,
 };
+use crate::sim::timer::CdTimer;
+use crate::util::native_x87::{MaskedX87Chop53, MaskedX87Ordering, NativeF32Bits, NativeF64Bits};
 
-/// Probability roll denominator. Matches binary's `random % 1_000_000`
-/// against `AnimationProbability` scaled by 1.0e-6.
-const PROBABILITY_DENOMINATOR: u32 = 1_000_000;
-const PROBABILITY_SCALE: f64 = 1.0e-6;
-
-/// Density levels placed per spawn. Matches binary's `PlaceTiberium(tib_type, 3)`.
-const SPAWN_DENSITY_LEVELS: u16 = 3;
-
-/// 8 adjacent directions: N, NE, E, SE, S, SW, W, NW.
-/// Matches `ore_growth::ADJACENT_OFFSETS` ordering.
-const ADJACENT_OFFSETS: [(i32, i32); 8] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
-
-/// Exact fixed representation for `AnimationProbability`.
-///
-/// The binary rolls raw `Random::Next`, treats it as signed, takes abs, mods
-/// by 1,000,000, scales by 1e-6 as a double, then uses strict `<`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct TerrainSpawnProbability {
-    pub micros: u32,
+/// Native Terrain AI71C745..71C796: signed abs/remainder, PC53/chop
+/// multiply by the original1e-6 double, then FCOM/SAHF/JNC. This preserves
+/// stock .003's admitted sample3000 and INT_MIN's negative remainder.
+/// Original execution: tools/spatial_oracle/tibtre.json.
+fn probability_accepts_raw(probability: NativeF32Bits, raw: u32) -> bool {
+    let remainder = (raw as i32).wrapping_abs() % 1_000_000;
+    let sample = MaskedX87Chop53::mul(
+        MaskedX87Chop53::load_i32(remainder),
+        MaskedX87Chop53::load_f64(NativeF64Bits::from_bits(0x3eb0_c6f7_a0b5_ed8d)),
+    );
+    matches!(
+        MaskedX87Chop53::compare(sample, MaskedX87Chop53::load_f32(probability)),
+        MaskedX87Ordering::Less | MaskedX87Ordering::Unordered
+    )
 }
 
-impl TerrainSpawnProbability {
-    pub fn from_micros(micros: u32) -> Self {
-        Self {
-            micros: micros.min(PROBABILITY_DENOMINATOR),
-        }
-    }
-
-    pub fn roll_succeeds(self, rng: &mut SimRng) -> bool {
-        raw_probability_sample(rng.next_u32()) < self.as_f64()
-    }
-
-    fn as_f64(self) -> f64 {
-        f64::from(self.micros) * PROBABILITY_SCALE
-    }
-}
-
-/// Native-shaped probability sample from one raw RNG word.
-pub fn raw_probability_sample(raw: u32) -> f64 {
-    let signed = raw as i32;
-    let abs = if signed < 0 {
-        signed.wrapping_neg() as u32
-    } else {
-        signed as u32
-    };
-    f64::from(abs % PROBABILITY_DENOMINATOR) * PROBABILITY_SCALE
-}
-
-/// Persisted animation state for one terrain spawner.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum TerrainSpawnerPhase {
-    Idle,
-    Active {
-        current_frame: u16,
-        ticks_until_next_frame: u16,
-    },
-}
-
-/// Per-instance state for one TIBTRE-style spawner placed on the map.
-///
-/// Keyed by cell in `ProductionState::terrain_spawners`. This is a derived
-/// tick index for live terrain objects; terrain removal/limbo owns lifecycle.
+/// One live TerrainClass animation, retained by the terrain animation owner.
+/// Type data is immutable; frame/rate/timer are mutated only by this module.
+/// Terrain removal/limbo removes the cell index with the live terrain object.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct TerrainSpawnerState {
-    /// Interned name of the TerrainObjectType (e.g. "TIBTRE01"). Kept for
-    /// debug logging and future render-side visual lookup; NOT used by the
-    /// tick function.
-    pub type_ref: InternedId,
-    /// Compatibility mirror for existing integration/hash code.
-    pub animation_probability_micros: u32,
-    /// Native-shaped fixed probability used by the state-machine tick.
-    pub animation_probability: TerrainSpawnProbability,
-    /// `AnimationRate=` in logic ticks per animation frame.
-    pub animation_rate_ticks: u16,
-    /// Raw loaded terrain SHP frame count from the immutable rules asset
-    /// catalog. Stock TIBTRE uses 22; production logic never hardcodes it.
-    pub frame_count: u16,
-    /// Frame at which the binary resets active state and calls SpreadTiberium.
-    pub midpoint_frame: u16,
-    /// Idle or currently playing terrain animation.
-    pub phase: TerrainSpawnerPhase,
+pub struct TerrainAnimationState {
+    type_ref: InternedId,
+    animation_probability: NativeF32Bits,
+    animation_rate_ticks: i32,
+    frame_count: i16,
+    current_frame: i32,
+    rate: i32,
+    timer: CdTimer,
 }
 
-impl TerrainSpawnerState {
+impl TerrainAnimationState {
     pub fn new(
         type_ref: InternedId,
-        animation_probability_micros: u32,
-        animation_rate_ticks: u16,
+        animation_probability: NativeF32Bits,
+        animation_rate_ticks: i32,
         frame_count: u16,
+        binary_frame: u32,
     ) -> Self {
-        let micros = animation_probability_micros.min(PROBABILITY_DENOMINATOR);
         Self {
             type_ref,
-            animation_probability_micros: micros,
-            animation_probability: TerrainSpawnProbability::from_micros(micros),
+            animation_probability,
             animation_rate_ticks,
-            frame_count,
-            midpoint_frame: frame_count / 2,
-            phase: TerrainSpawnerPhase::Idle,
+            frame_count: frame_count as i16,
+            current_frame: 0,
+            rate: 0,
+            // Terrain constructor/reset71BB9E..71BBD1,71BC86..71BCA5.
+            timer: CdTimer::started(binary_frame as i32, 0),
         }
+    }
+
+    pub fn type_ref(&self) -> InternedId {
+        self.type_ref
+    }
+
+    /// Terrain DrawIt71C208 reads this retained Stage value directly.
+    pub fn current_frame(&self) -> i32 {
+        self.current_frame
     }
 
     pub fn is_active(&self) -> bool {
-        matches!(self.phase, TerrainSpawnerPhase::Active { .. })
+        self.rate != 0
     }
 
-    fn can_animate(&self) -> bool {
-        self.animation_rate_ticks > 0 && self.frame_count > 0
-    }
-
-    fn tick(&mut self, rng: &mut SimRng) -> TerrainSpawnerTick {
-        match self.phase {
-            TerrainSpawnerPhase::Idle => {
-                if self.animation_probability_micros == 0 || !self.can_animate() {
-                    return TerrainSpawnerTick::Idle;
-                }
-                if self.animation_probability.roll_succeeds(rng) {
-                    self.phase = TerrainSpawnerPhase::Active {
-                        current_frame: 0,
-                        ticks_until_next_frame: self.animation_rate_ticks,
-                    };
-                    return TerrainSpawnerTick::AnimationStarted;
-                }
-                TerrainSpawnerTick::Idle
-            }
-            TerrainSpawnerPhase::Active {
-                current_frame,
-                ticks_until_next_frame,
-            } => {
-                let next_timer = ticks_until_next_frame.saturating_sub(1);
-                if next_timer > 0 {
-                    self.phase = TerrainSpawnerPhase::Active {
-                        current_frame,
-                        ticks_until_next_frame: next_timer,
-                    };
-                    return TerrainSpawnerTick::Active;
-                }
-
-                let next_frame = current_frame.saturating_add(1);
-                if next_frame == self.midpoint_frame {
-                    self.phase = TerrainSpawnerPhase::Idle;
-                    TerrainSpawnerTick::SpawnDue
-                } else {
-                    self.phase = TerrainSpawnerPhase::Active {
-                        current_frame: next_frame,
-                        ticks_until_next_frame: self.animation_rate_ticks,
-                    };
-                    TerrainSpawnerTick::Active
-                }
-            }
+    /// Terrain AI71C730, including the same-visit timer test after a hit.
+    /// Stock resets Stage/rate/timer before its forced spread at midpoint11.
+    fn tick(
+        &mut self,
+        binary_frame: u32,
+        is_animated: bool,
+        spawns_tiberium: bool,
+        rng: &mut SimRng,
+    ) -> bool {
+        let now = binary_frame as i32;
+        if is_animated
+            && self.rate == 0
+            && probability_accepts_raw(self.animation_probability, rng.next_u32())
+        {
+            self.current_frame = 0;
+            self.rate = self.animation_rate_ticks;
+            self.timer.start(now, self.rate);
         }
+        if !self.timer.expired(now) || self.rate == 0 {
+            return false;
+        }
+        self.current_frame = self.current_frame.wrapping_add(1);
+        self.timer.start(now, self.rate);
+        if is_animated && spawns_tiberium && self.current_frame == i32::from(self.frame_count) / 2 {
+            self.current_frame = 0;
+            self.rate = 0;
+            self.timer.start(now, 0);
+            return true;
+        }
+        false
     }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TerrainSpawnerTick {
-    Idle,
-    AnimationStarted,
-    Active,
-    SpawnDue,
+    #[cfg(test)]
+    pub(crate) fn advance_for_test(&mut self, binary_frame: u32, rng: &mut SimRng) {
+        self.tick(binary_frame, true, true, rng);
+    }
 }
 
 /// Short-lived mutation context for the stateful terrain spawner tick.
@@ -300,17 +231,11 @@ impl<'a> TerrainSpawnContext<'a> {
     }
 }
 
-/// Tick all terrain spawners using the verified delayed animation state machine.
-///
-/// Contract:
-/// - idle spawners roll probability from raw `rng.next_u32()`;
-/// - a hit starts frame 0 and never spawns on the same tick;
-/// - active spawners do not roll probability;
-/// - midpoint resets active state to idle before the forced spread attempt;
-/// - placement only targets empty cells owned by this file's generic gates.
+/// Test adapter over the same single-object animation and spread owners.
+/// Production dispatch follows retained Logic order, not this cell-key order.
 #[cfg(test)]
-pub fn tick_terrain_spawners_stateful(
-    spawners: &mut BTreeMap<(u16, u16), TerrainSpawnerState>,
+pub fn tick_terrain_animations_stateful(
+    spawners: &mut BTreeMap<(u16, u16), TerrainAnimationState>,
     mut ctx: TerrainSpawnContext<'_>,
 ) {
     if spawners.is_empty() {
@@ -323,43 +248,45 @@ pub fn tick_terrain_spawners_stateful(
     }
 }
 
-/// Dispatch one TerrainClass AI slot through the same spawner state machine as
-/// the compatibility whole-map adapter.
+/// Dispatch one TerrainClass AI slot through the retained animation owner.
 pub(crate) fn tick_terrain_spawner_stateful_one(
-    spawners: &mut BTreeMap<(u16, u16), TerrainSpawnerState>,
+    spawners: &mut BTreeMap<(u16, u16), TerrainAnimationState>,
     cell: (u16, u16),
     spawner_cells: &BTreeSet<(u16, u16)>,
     mut ctx: TerrainSpawnContext<'_>,
-) {
-    tick_terrain_spawner_one_inner(spawners, cell, spawner_cells, &mut ctx);
+) -> Option<(u16, u16)> {
+    tick_terrain_spawner_one_inner(spawners, cell, spawner_cells, &mut ctx)
 }
 
 fn tick_terrain_spawner_one_inner(
-    spawners: &mut BTreeMap<(u16, u16), TerrainSpawnerState>,
+    spawners: &mut BTreeMap<(u16, u16), TerrainAnimationState>,
     cell: (u16, u16),
     spawner_cells: &BTreeSet<(u16, u16)>,
     ctx: &mut TerrainSpawnContext<'_>,
-) {
-    let Some(spawner) = spawners.get_mut(&cell) else {
-        return;
-    };
-    if spawner.tick(ctx.rng) != TerrainSpawnerTick::SpawnDue {
-        return;
+) -> Option<(u16, u16)> {
+    let spawner = spawners.get_mut(&cell)?;
+    let source_cells = ctx.spawning_terrain_cells.unwrap_or(spawner_cells);
+    let is_animated = ctx
+        .rules
+        .zip(ctx.interner)
+        .and_then(|(rules, interner)| {
+            rules.terrain_object_type_case_insensitive(interner.resolve(spawner.type_ref))
+        })
+        .is_none_or(|ty| ty.is_animated);
+    if !spawner.tick(
+        ctx.binary_frame,
+        is_animated,
+        source_cells.contains(&cell),
+        ctx.rng,
+    ) {
+        return None;
     }
-
-    try_spawn_ore(
-        cell,
+    let (Some(grid), Some(registry), Some(state), Some(rules), Some(terrain), Some(objects)) = (
         ctx.overlay_grid.as_deref_mut(),
-        spawner_cells,
-        ctx.resolved_terrain,
         ctx.overlay_registry,
         ctx.ore_growth_state.as_deref_mut(),
-        ctx.rules.map(|rules| &rules.tiberium_types),
-        ctx.binary_frame,
-        ctx.radar_dirty_cells.as_deref_mut(),
-        ctx.radar_dirty_generation.as_deref_mut(),
-        ctx.tactical_dirty_cells.as_deref_mut(),
-        ctx.spawning_terrain_cells,
+        ctx.rules,
+        ctx.resolved_terrain,
         live_object_context(
             ctx.entities,
             ctx.occupancy,
@@ -367,8 +294,27 @@ fn tick_terrain_spawner_one_inner(
             ctx.interner,
             ctx.terrain_object_cells,
         ),
-        ctx.rng,
-    );
+    ) else {
+        return None;
+    };
+    let mut placement = PlaceTiberiumContext {
+        overlay_grid: grid,
+        ore_growth_state: state,
+        overlay_registry: registry,
+        tiberium_types: &rules.tiberium_types,
+        resolved_terrain: Some(terrain),
+        source_object_cells: source_cells,
+        new_cell_admission: Some(NewTiberiumAdmission::runtime(terrain, objects)),
+        live_objects: Some(objects.object_view()),
+        rng: ctx.rng,
+        binary_frame: ctx.binary_frame,
+        growth_enabled: true,
+        spread_enabled: true,
+        radar_dirty_cells: ctx.radar_dirty_cells.as_deref_mut(),
+        radar_dirty_generation: ctx.radar_dirty_generation.as_deref_mut(),
+        tactical_dirty_cells: ctx.tactical_dirty_cells.as_deref_mut(),
+    };
+    spread_tiberium(&mut placement, cell, true)
 }
 
 /// Dispatch the TerrainClass AI leaf for one current LogicClass slot.
@@ -388,7 +334,7 @@ pub(crate) fn tick_terrain_object_ai(
     else {
         return;
     };
-    if !sim.production.terrain_spawners.contains_key(&cell) {
+    if !sim.production.terrain_animations.contains_key(&cell) {
         return;
     }
     let Some(rules) = rules else {
@@ -401,15 +347,15 @@ pub(crate) fn tick_terrain_object_ai(
     } else {
         fallback_spawner_cells = sim
             .production
-            .terrain_spawners
+            .terrain_animations
             .keys()
             .copied()
             .collect::<BTreeSet<_>>();
         &fallback_spawner_cells
     };
     let production = &mut sim.production;
-    tick_terrain_spawner_stateful_one(
-        &mut production.terrain_spawners,
+    let placed = tick_terrain_spawner_stateful_one(
+        &mut production.terrain_animations,
         cell,
         spawner_cells,
         TerrainSpawnContext::new(sim.overlay_grid.as_mut(), &mut sim.scenario_rng)
@@ -429,109 +375,16 @@ pub(crate) fn tick_terrain_object_ai(
             )
             .with_validation_context(sim.resolved_terrain.as_ref(), overlay_registry),
     );
-}
-
-/// Try to place ore in a random adjacent cell. Mirrors the 8-direction
-/// random-start iteration from `ore_growth::try_spread_ore`, but accepts only
-/// empty targets and creates a density-3 cell.
-fn try_spawn_ore(
-    source: (u16, u16),
-    mut overlay_grid: Option<&mut OverlayGrid>,
-    spawner_cells: &BTreeSet<(u16, u16)>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    overlay_registry: Option<&OverlayTypeRegistry>,
-    ore_growth_state: Option<&mut OreGrowthState>,
-    tiberium_types: Option<&TiberiumTypeRegistry>,
-    binary_frame: u32,
-    mut radar_dirty_cells: Option<&mut Vec<(u16, u16)>>,
-    mut radar_dirty_generation: Option<&mut u64>,
-    mut tactical_dirty_cells: Option<&mut Vec<(u16, u16)>>,
-    spawning_terrain_cells: Option<&BTreeSet<(u16, u16)>>,
-    live_context: Option<TiberiumPlacementObjectContext<'_>>,
-    rng: &mut SimRng,
-) {
-    let start_dir = rng.next_range_u32(8) as usize;
-    let new_cell_admission = resolved_terrain
-        .zip(live_context)
-        .map(|(terrain, objects)| NewTiberiumAdmission::runtime(terrain, objects));
-    let mut ore_growth_state = ore_growth_state;
-
-    for i in 0..8 {
-        let dir = (start_dir + i) % 8;
-        let (dx, dy) = ADJACENT_OFFSETS[dir];
-        let nx = source.0 as i32 + dx;
-        let ny = source.1 as i32 + dy;
-        if nx < 0 || ny < 0 || nx > u16::MAX as i32 || ny > u16::MAX as i32 {
-            continue;
-        }
-        let cell = (nx as u16, ny as u16);
-
-        if !can_accept_tiberium(
-            cell,
-            overlay_grid.as_deref(),
-            spawner_cells,
-            spawning_terrain_cells,
-            new_cell_admission,
-        ) {
-            continue;
-        }
-
-        let placed = place_tiberium_empty(
-            cell,
-            overlay_grid.as_deref_mut(),
-            overlay_registry,
-            ore_growth_state.as_deref_mut(),
-            tiberium_types,
-            resolved_terrain,
-            spawning_terrain_cells.unwrap_or(spawner_cells),
-            new_cell_admission,
-            binary_frame,
-            radar_dirty_cells.as_deref_mut(),
-            radar_dirty_generation.as_deref_mut(),
-            tactical_dirty_cells.as_deref_mut(),
-            rng,
-        );
-        if placed {
-            return;
-        }
-    }
-}
-
-/// Whether a cell can receive new ore from a terrain spawner.
-///
-/// Checks the verified stock placement gates available in sim state: target is
-/// in bounds, has no ore/overlay, is not another spawning terrain object, is on
-/// a flat buildable tile, is not a bridge deck/ramp, and the current resolved
-/// tile type has `AllowTiberium=yes`.
-fn can_accept_tiberium(
-    cell: (u16, u16),
-    overlay_grid: Option<&OverlayGrid>,
-    spawner_cells: &BTreeSet<(u16, u16)>,
-    spawning_terrain_cells: Option<&BTreeSet<(u16, u16)>>,
-    new_cell_admission: Option<NewTiberiumAdmission<'_>>,
-) -> bool {
-    if spawning_terrain_cells.is_some_and(|cells| cells.contains(&cell))
-        || spawner_cells.contains(&cell)
+    // Overlay Mark5FC570 ->Cell Recalc47D2B0 is synchronous: a later
+    // Logic object (including a miner) sees the new LandType this frame.
+    if let (Some(cell), Some(grid), Some(terrain), Some(registry)) = (
+        placed,
+        sim.overlay_grid.as_mut(),
+        sim.resolved_terrain.as_mut(),
+        overlay_registry,
+    ) && grid.cell(cell.0, cell.1).overlay_id.is_some()
     {
-        return false;
-    }
-    if let Some(grid) = overlay_grid {
-        let Some(admission) = new_cell_admission else {
-            return false;
-        };
-        if !can_place_new_tiberium(
-            grid,
-            spawning_terrain_cells.unwrap_or(spawner_cells),
-            admission,
-            cell,
-        ) {
-            return false;
-        }
-        true
-    } else {
-        // Tiberium lives in the overlay grid. Without one there is no cell to
-        // place it in.
-        false
+        grid.recalculate_runtime_cell(terrain, registry, cell);
     }
 }
 
@@ -549,63 +402,6 @@ fn live_object_context<'a>(
         interner?,
         terrain_object_cells?,
     ))
-}
-
-/// Place ore at `cell` with density `SPAWN_DENSITY_LEVELS`.
-///
-/// Caller must have already checked `can_accept_tiberium`, which guarantees the
-/// cell is empty for the generic stores owned here.
-fn place_tiberium_empty(
-    cell: (u16, u16),
-    mut overlay_grid: Option<&mut OverlayGrid>,
-    overlay_registry: Option<&OverlayTypeRegistry>,
-    mut ore_growth_state: Option<&mut OreGrowthState>,
-    tiberium_types: Option<&TiberiumTypeRegistry>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    source_object_cells: &BTreeSet<(u16, u16)>,
-    new_cell_admission: Option<NewTiberiumAdmission<'_>>,
-    binary_frame: u32,
-    radar_dirty_cells: Option<&mut Vec<(u16, u16)>>,
-    radar_dirty_generation: Option<&mut u64>,
-    tactical_dirty_cells: Option<&mut Vec<(u16, u16)>>,
-    rng: &mut SimRng,
-) -> bool {
-    if let (Some(grid), Some(registry), Some(state), Some(types)) = (
-        overlay_grid.as_deref_mut(),
-        overlay_registry,
-        ore_growth_state.as_deref_mut(),
-        tiberium_types,
-    ) {
-        let mut ctx = crate::sim::tiberium::PlaceTiberiumContext {
-            overlay_grid: grid,
-            ore_growth_state: state,
-            overlay_registry: registry,
-            tiberium_types: types,
-            resolved_terrain,
-            source_object_cells,
-            new_cell_admission,
-            live_objects: new_cell_admission
-                .map(|admission| admission.live_objects().object_view()),
-            rng,
-            binary_frame,
-            growth_enabled: true,
-            spread_enabled: true,
-            radar_dirty_cells,
-            radar_dirty_generation,
-            tactical_dirty_cells,
-        };
-        return crate::sim::tiberium::place_tiberium(
-            &mut ctx,
-            cell,
-            TiberiumTypeId(0),
-            SPAWN_DENSITY_LEVELS as u8,
-        );
-    }
-
-    // `CellClass::PlaceTiberium` needs the overlay grid, the overlay and
-    // tiberium type registries and the growth queues. Without them nothing is
-    // placed.
-    false
 }
 
 /// Apply `TerrainClass::Unlimbo @ 0x0071D000` source-cell tiberium clearing
@@ -712,7 +508,7 @@ fn construct_terrain_objects_inner(
     for stable_id in old_terrain_ids {
         sim.unregister_non_entity_object(stable_id);
     }
-    sim.production.terrain_spawners.clear();
+    sim.production.terrain_animations.clear();
     sim.production.terrain_objects.clear();
     sim.production.terrain_object_cells.clear();
     sim.production.terrain_occupation_bits.clear();
@@ -794,19 +590,19 @@ fn construct_terrain_objects_inner(
     Ok(constructed)
 }
 
-/// Attach the ore-spawner animation index to already-constructed terrain objects.
+/// Attach the terrain animation index to already-constructed terrain objects.
 ///
 /// Split out of construction because the overlay registry that selects the
 /// default ore identity is installed later in the current map-load pipeline.
 /// The authoritative raw SHP count is already bound on `RuleSet`; the renderer
 /// neither supplies nor mutates this state.
 ///
-/// Returns the number of spawners seeded.
+/// Returns the number of animated live terrain objects indexed.
 pub fn seed_terrain_spawner_animation(
     sim: &mut crate::sim::world::Simulation,
     rules: &crate::rules::ruleset::RuleSet,
 ) -> usize {
-    sim.production.terrain_spawners.clear();
+    sim.production.terrain_animations.clear();
 
     let candidates: Vec<(u64, (u16, u16), InternedId)> = sim
         .production
@@ -827,17 +623,18 @@ pub fn seed_terrain_spawner_animation(
         let Some(t) = rules.terrain_object_type_case_insensitive(&name) else {
             continue;
         };
-        if !t.spawns_tiberium || !t.is_animated {
+        if !t.is_animated {
             continue;
         }
         let frame_count = rules.terrain_spawner_frame_count(&name).unwrap_or(0);
-        sim.production.terrain_spawners.insert(
+        sim.production.terrain_animations.insert(
             cell,
-            TerrainSpawnerState::new(
+            TerrainAnimationState::new(
                 type_ref,
-                t.animation_probability_micros,
-                u16::from(t.animation_rate),
+                t.animation_probability,
+                t.animation_rate,
                 frame_count,
+                sim.session.binary_frame,
             ),
         );
         seeded += 1;
@@ -850,7 +647,7 @@ pub fn seed_terrain_spawner_animation(
 /// Test convenience. The production load path calls the two halves separately
 /// so construction keeps its native position ahead of `[Units]`.
 #[cfg(test)]
-pub fn seed_terrain_spawners(
+pub fn seed_terrain_animations(
     sim: &mut crate::sim::world::Simulation,
     terrain_objects: &[crate::map::overlay::TerrainObject],
     rules: &crate::rules::ruleset::RuleSet,
@@ -882,10 +679,60 @@ mod tests {
     use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
     use crate::sim::ore_growth::OreGrowthState;
-    use crate::sim::tiberium::resolved_cell_accepts_tiberium;
+    use crate::sim::tiberium::{
+        ADJACENT_OFFSETS, can_place_new_tiberium, resolved_cell_accepts_tiberium,
+    };
+
+    #[test]
+    fn probability_boundaries_match_original_executable_controls() {
+        let native: serde_json::Value =
+            serde_json::from_str(include_str!("../../tools/spatial_oracle/tibtre.json")).unwrap();
+        for row in native["probability_controls"].as_array().unwrap() {
+            let input = &row["input"];
+            assert_eq!(
+                probability_accepts_raw(
+                    NativeF32Bits::from_bits(
+                        input["type"]["probability_bits"].as_u64().unwrap() as u32
+                    ),
+                    input["next_raw"].as_i64().unwrap() as u32
+                ),
+                row["started"].as_bool().unwrap(),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn animation_constructor_matches_original_frame_anchored_timer() {
+        let native: serde_json::Value =
+            serde_json::from_str(include_str!("../../tools/spatial_oracle/tibtre.json")).unwrap();
+        for row in native["instance_constructor_controls"].as_array().unwrap() {
+            let state = TerrainAnimationState::new(
+                StringInterner::default().intern("TIBTRE01"),
+                NativeF32Bits::POSITIVE_ZERO,
+                0,
+                22,
+                row["frame"].as_i64().unwrap() as u32,
+            );
+            assert_eq!(
+                i64::from(state.current_frame),
+                row["stage"].as_i64().unwrap()
+            );
+            assert_eq!(i64::from(state.rate), row["rate"].as_i64().unwrap());
+            assert_eq!(
+                i64::from(state.timer.start_frame()),
+                row["timer"][0].as_i64().unwrap()
+            );
+            assert_eq!(
+                i64::from(state.timer.duration()),
+                row["timer"][2].as_i64().unwrap()
+            );
+        }
+    }
 
     const STOCK_FRAME_COUNT: u16 = 22;
-    const STOCK_RATE: u16 = 3;
+    const STOCK_RATE: i32 = 3;
+    const SPAWN_DENSITY_LEVELS: u8 = 3;
 
     fn resolved_cell() -> ResolvedTerrainCell {
         ResolvedTerrainCell {
@@ -909,18 +756,24 @@ mod tests {
         ResolvedTerrainGrid::from_cells(width, height, cells)
     }
 
-    fn spawner(interner: &mut StringInterner, name: &str, prob_micros: u32) -> TerrainSpawnerState {
-        TerrainSpawnerState::new(
+    fn spawner(
+        interner: &mut StringInterner,
+        name: &str,
+        prob_micros: u32,
+    ) -> TerrainAnimationState {
+        TerrainAnimationState::new(
             interner.intern(name),
-            prob_micros,
+            NativeF32Bits::from_bits((prob_micros as f32 / 1_000_000.0).to_bits()),
             STOCK_RATE,
             STOCK_FRAME_COUNT,
+            0,
         )
     }
 
     /// The full `CellClass::PlaceTiberium` context, so spawner tests observe the
     /// overlay cells a live spawner writes.
     struct SpawnWorld {
+        binary_frame: u32,
         registry: OverlayTypeRegistry,
         rules: RuleSet,
         overlay_grid: OverlayGrid,
@@ -944,6 +797,7 @@ mod tests {
             let mut growth_state = OreGrowthState::new(32, 32);
             growth_state.reset_native_tiberium_classes(rules.tiberium_types.len(), 0);
             Self {
+                binary_frame: 0,
                 registry: registry_with_tib_variants(),
                 rules,
                 overlay_grid: OverlayGrid::new(32, 32),
@@ -958,13 +812,13 @@ mod tests {
 
         fn tick(
             &mut self,
-            spawners: &mut BTreeMap<(u16, u16), TerrainSpawnerState>,
+            spawners: &mut BTreeMap<(u16, u16), TerrainAnimationState>,
             rng: &mut SimRng,
         ) {
-            tick_terrain_spawners_stateful(
+            tick_terrain_animations_stateful(
                 spawners,
                 TerrainSpawnContext::new(Some(&mut self.overlay_grid), rng)
-                    .with_growth_queue(&mut self.growth_state, 0)
+                    .with_growth_queue(&mut self.growth_state, self.binary_frame)
                     .with_live_object_context(
                         &self.entities,
                         &self.occupancy,
@@ -974,6 +828,7 @@ mod tests {
                     )
                     .with_validation_context(Some(&self.terrain), Some(&self.registry)),
             );
+            self.binary_frame += 1;
         }
 
         /// Every occupied overlay cell as `(cell, overlay_data)`.
@@ -995,47 +850,6 @@ mod tests {
         }
         let ini = IniFile::from_str(&ini_text);
         OverlayTypeRegistry::from_ini(&ini, None)
-    }
-
-    fn tiberium_types_with_riparius() -> TiberiumTypeRegistry {
-        let ini = IniFile::from_str(
-            "\
-[Tiberiums]
-0=Riparius
-
-[Riparius]
-Image=1
-Growth=2200
-GrowthPercentage=.06
-Spread=2200
-SpreadPercentage=.06
-",
-        );
-        TiberiumTypeRegistry::from_ini(&ini)
-    }
-
-    fn signed_abs_mod_50(raw: u32) -> u32 {
-        let signed = raw as i32;
-        let abs = if signed < 0 {
-            signed.wrapping_neg() as u32
-        } else {
-            signed as u32
-        };
-        abs % 50
-    }
-
-    #[test]
-    fn raw_probability_sample_uses_signed_abs_mod_and_double_scale() {
-        assert_eq!(raw_probability_sample(0), 0.0);
-        assert_eq!(raw_probability_sample(0xFFFF_FFFF), 0.000001);
-        assert_eq!(raw_probability_sample(1_000_001), 0.000001);
-    }
-
-    #[test]
-    fn probability_uses_strict_less_boundary() {
-        let p = TerrainSpawnProbability::from_micros(1);
-        assert!(raw_probability_sample(0) < p.as_f64());
-        assert!(!(raw_probability_sample(0xFFFF_FFFF) < p.as_f64()));
     }
 
     #[test]
@@ -1086,29 +900,30 @@ SpreadPercentage=.06
     #[test]
     fn probability_hit_does_not_spawn_same_tick() {
         let mut world = SpawnWorld::new();
-        let mut interner = StringInterner::default();
         let mut spawners = BTreeMap::new();
-        spawners.insert((10, 10), spawner(&mut interner, "TIBTRE01", 1_000_000));
+        spawners.insert(
+            (10, 10),
+            spawner(&mut world.interner, "TIBTRE01", 1_000_000),
+        );
         let mut rng = SimRng::new(7);
 
         world.tick(&mut spawners, &mut rng);
 
         assert!(world.placed().is_empty());
-        assert_eq!(
-            spawners.get(&(10, 10)).unwrap().phase,
-            TerrainSpawnerPhase::Active {
-                current_frame: 0,
-                ticks_until_next_frame: STOCK_RATE,
-            }
-        );
+        let animation = &spawners[&(10, 10)];
+        assert!(animation.is_active());
+        assert_eq!(animation.current_frame(), 0);
+        assert_eq!(animation.timer, CdTimer::started(0, 3));
     }
 
     #[test]
     fn stock_rate3_spawns_33_ticks_after_probability_hit() {
         let mut world = SpawnWorld::new();
-        let mut interner = StringInterner::default();
         let mut spawners = BTreeMap::new();
-        spawners.insert((10, 10), spawner(&mut interner, "TIBTRE01", 1_000_000));
+        spawners.insert(
+            (10, 10),
+            spawner(&mut world.interner, "TIBTRE01", 1_000_000),
+        );
         let mut rng = SimRng::new(7);
 
         world.tick(&mut spawners, &mut rng);
@@ -1119,10 +934,8 @@ SpreadPercentage=.06
 
         world.tick(&mut spawners, &mut rng);
         assert_eq!(world.placed().len(), 1);
-        assert_eq!(
-            spawners.get(&(10, 10)).unwrap().phase,
-            TerrainSpawnerPhase::Idle
-        );
+        assert!(!spawners[&(10, 10)].is_active());
+        assert_eq!(spawners[&(10, 10)].current_frame(), 0);
     }
 
     #[test]
@@ -1179,9 +992,9 @@ SpreadPercentage=.06
             false,
         );
         assert_eq!(seed_terrain_spawner_animation(&mut sim, &rules), 1);
-        let state = &sim.production.terrain_spawners[&(10, 10)];
+        let state = &sim.production.terrain_animations[&(10, 10)];
         assert_eq!(state.frame_count, 22);
-        assert_eq!(state.midpoint_frame, 11);
+        assert_eq!(state.frame_count / 2, 11);
 
         let path_grid = PathGrid::test_all_passable(32, 32);
         let advance = |sim: &mut Simulation| {
@@ -1209,10 +1022,7 @@ SpreadPercentage=.06
             );
         }
         assert!(advance(&mut sim).frame_committed);
-        assert_eq!(
-            sim.production.terrain_spawners[&(10, 10)].phase,
-            TerrainSpawnerPhase::Idle
-        );
+        assert!(!sim.production.terrain_animations[&(10, 10)].is_active());
         let placed_cells: Vec<(u8, u8)> = sim
             .overlay_grid
             .as_ref()
@@ -1233,13 +1043,10 @@ SpreadPercentage=.06
     #[test]
     fn active_animation_suppresses_probability_rolls() {
         let mut world = SpawnWorld::new();
-        let mut interner = StringInterner::default();
         let mut spawners = BTreeMap::new();
-        let mut state = spawner(&mut interner, "TIBTRE01", 1_000_000);
-        state.phase = TerrainSpawnerPhase::Active {
-            current_frame: 0,
-            ticks_until_next_frame: STOCK_RATE,
-        };
+        let mut state = spawner(&mut world.interner, "TIBTRE01", 1_000_000);
+        state.rate = STOCK_RATE;
+        state.timer = CdTimer::started(0, STOCK_RATE);
         spawners.insert((10, 10), state);
         let mut rng = SimRng::new(123);
         let before = rng.state();
@@ -1255,29 +1062,35 @@ SpreadPercentage=.06
     }
 
     #[test]
-    fn probability_zero_never_starts_animation() {
+    fn zero_probability_still_consumes_idle_draws() {
         let mut world = SpawnWorld::new();
-        let mut interner = StringInterner::default();
         let mut spawners = BTreeMap::new();
-        spawners.insert((10, 10), spawner(&mut interner, "TIBTRE_NEVER", 0));
+        spawners.insert((10, 10), spawner(&mut world.interner, "TIBTRE_NEVER", 0));
         let mut rng = SimRng::new(7);
+        let mut native_rng = rng.clone();
 
         for _ in 0..1000 {
             world.tick(&mut spawners, &mut rng);
+            native_rng.next_u32();
         }
-        assert!(world.placed().is_empty());
         assert_eq!(
-            spawners.get(&(10, 10)).unwrap().phase,
-            TerrainSpawnerPhase::Idle
+            rng.state(),
+            native_rng.state(),
+            "Terrain AI71C745 rolls even at zero probability"
         );
+        assert!(world.placed().is_empty());
+        assert!(!spawners[&(10, 10)].is_active());
+        assert_eq!(spawners[&(10, 10)].current_frame(), 0);
     }
 
     #[test]
     fn spawn_on_empty_cell_creates_density_3_ore() {
         let mut world = SpawnWorld::new();
-        let mut interner = StringInterner::default();
         let mut spawners = BTreeMap::new();
-        spawners.insert((10, 10), spawner(&mut interner, "TIBTRE01", 1_000_000));
+        spawners.insert(
+            (10, 10),
+            spawner(&mut world.interner, "TIBTRE01", 1_000_000),
+        );
         let mut rng = SimRng::new(7);
 
         for _ in 0..34 {
@@ -1292,9 +1105,11 @@ SpreadPercentage=.06
     #[test]
     fn spawn_skips_existing_ore_neighbors_instead_of_growing_them() {
         let mut world = SpawnWorld::new();
-        let mut interner = StringInterner::default();
         let mut spawners = BTreeMap::new();
-        spawners.insert((10, 10), spawner(&mut interner, "TIBTRE01", 1_000_000));
+        spawners.insert(
+            (10, 10),
+            spawner(&mut world.interner, "TIBTRE01", 1_000_000),
+        );
         for &(dx, dy) in &ADJACENT_OFFSETS {
             if (dx, dy) == (1, 1) {
                 continue;
@@ -1324,9 +1139,11 @@ SpreadPercentage=.06
     #[test]
     fn spawn_places_nothing_when_all_neighbors_have_overlays() {
         let mut world = SpawnWorld::new();
-        let mut interner = StringInterner::default();
         let mut spawners = BTreeMap::new();
-        spawners.insert((10, 10), spawner(&mut interner, "TIBTRE01", 1_000_000));
+        spawners.insert(
+            (10, 10),
+            spawner(&mut world.interner, "TIBTRE01", 1_000_000),
+        );
         for &(dx, dy) in &ADJACENT_OFFSETS {
             world
                 .overlay_grid
@@ -1340,78 +1157,6 @@ SpreadPercentage=.06
 
         assert_eq!(world.placed().len(), 8);
         assert!(world.placed().iter().all(|(_, data)| *data == 0));
-    }
-
-    #[test]
-    fn new_cell_enqueues_native_growth_when_tiberium_types_available() {
-        let registry = registry_with_tib_variants();
-        let tiberium_types = tiberium_types_with_riparius();
-        let mut overlay_grid = OverlayGrid::new(32, 32);
-        let spawner_cells = BTreeSet::new();
-        let mut growth_state = OreGrowthState::new(32, 32);
-        growth_state.reset_native_tiberium_classes(tiberium_types.len(), 0);
-        let terrain = resolved_grid(32, 32);
-        let rules_ini = IniFile::from_str(
-            "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n",
-        );
-        let rules = RuleSet::from_ini(&rules_ini).expect("rules");
-        let interner = StringInterner::default();
-        let entities = EntityStore::new();
-        let occupancy = OccupancyGrid::new();
-        let terrain_object_cells = BTreeMap::new();
-        let live_objects = TiberiumPlacementObjectContext::new(
-            &entities,
-            &occupancy,
-            &rules,
-            &interner,
-            &terrain_object_cells,
-        );
-        let mut rng = SimRng::new(8);
-        let mut expected_rng = rng.clone();
-        let start_dir = expected_rng.next_range_u32(8) as usize;
-        let variant = expected_rng.next_range_u32(12) as u8;
-        let queue_raw = expected_rng.next_u32();
-        let (dx, dy) = ADJACENT_OFFSETS[start_dir];
-        let expected_cell = ((10 + dx) as u16, (10 + dy) as u16);
-
-        try_spawn_ore(
-            (10, 10),
-            Some(&mut overlay_grid),
-            &spawner_cells,
-            Some(&terrain),
-            Some(&registry),
-            Some(&mut growth_state),
-            Some(&tiberium_types),
-            77,
-            None,
-            None,
-            None,
-            None,
-            Some(live_objects),
-            &mut rng,
-        );
-
-        assert_eq!(
-            overlay_grid
-                .cell(expected_cell.0, expected_cell.1)
-                .overlay_data,
-            SPAWN_DENSITY_LEVELS as u8
-        );
-        assert_eq!(
-            overlay_grid
-                .cell(expected_cell.0, expected_cell.1)
-                .overlay_id,
-            Some(variant)
-        );
-        let class = &growth_state.native_tiberium_state().classes[0];
-        assert_eq!(class.growth.len(), 1);
-        assert!(class.growth_bitmap.contains(&expected_cell));
-        let entry = class.growth.heap_entry(0).unwrap();
-        assert_eq!((entry.rx, entry.ry), expected_cell);
-        assert_eq!(
-            entry.priority_bits,
-            (77.0 + signed_abs_mod_50(queue_raw) as f32).to_bits()
-        );
     }
 
     #[test]
@@ -1473,13 +1218,7 @@ SpreadPercentage=.06
             let admission = NewTiberiumAdmission::runtime(&terrain, context);
 
             assert_eq!(
-                can_accept_tiberium(
-                    (11, 10),
-                    Some(&overlay_grid),
-                    &spawner_cells,
-                    None,
-                    Some(admission),
-                ),
+                can_place_new_tiberium(&overlay_grid, &spawner_cells, admission, (11, 10)),
                 expected,
                 "{type_name}"
             );
@@ -1489,41 +1228,35 @@ SpreadPercentage=.06
     #[test]
     fn spawning_terrain_cells_reject_tiberium_even_when_not_animated() {
         let overlay_grid = OverlayGrid::new(32, 32);
-        let spawner_cells = BTreeSet::new();
         let mut spawning_terrain_cells = BTreeSet::new();
         spawning_terrain_cells.insert((12, 10));
         let terrain = resolved_grid(32, 32);
         let no_objects = crate::sim::tiberium::test_support::NoLiveObjects::new();
         let admission = NewTiberiumAdmission::runtime(&terrain, no_objects.context());
 
-        assert!(can_accept_tiberium(
-            (13, 10),
-            Some(&overlay_grid),
-            &spawner_cells,
-            Some(&spawning_terrain_cells),
-            Some(admission),
+        assert!(can_place_new_tiberium(
+            &overlay_grid,
+            &spawning_terrain_cells,
+            admission,
+            (13, 10)
         ));
-        assert!(!can_accept_tiberium(
-            (12, 10),
-            Some(&overlay_grid),
-            &spawner_cells,
-            Some(&spawning_terrain_cells),
-            Some(admission),
+        assert!(!can_place_new_tiberium(
+            &overlay_grid,
+            &spawning_terrain_cells,
+            admission,
+            (12, 10)
         ));
     }
 
     #[test]
     fn deterministic_same_seed_same_pattern() {
-        let mut interner = StringInterner::default();
-        let mut spawners = BTreeMap::new();
-        spawners.insert((10, 10), spawner(&mut interner, "TIBTRE_HALF", 500_000));
-
-        fn run(
-            source: &BTreeMap<(u16, u16), TerrainSpawnerState>,
-            seed: u64,
-        ) -> Vec<((u16, u16), u8)> {
+        fn run(seed: u64) -> Vec<((u16, u16), u8)> {
             let mut world = SpawnWorld::new();
-            let mut spawners = source.clone();
+            let mut spawners = BTreeMap::new();
+            spawners.insert(
+                (10, 10),
+                spawner(&mut world.interner, "TIBTRE_HALF", 500_000),
+            );
             let mut rng = SimRng::new(seed);
             for _ in 0..200 {
                 world.tick(&mut spawners, &mut rng);
@@ -1531,13 +1264,13 @@ SpreadPercentage=.06
             world.placed()
         }
 
-        let a = run(&spawners, 42);
-        let b = run(&spawners, 42);
+        let a = run(42);
+        let b = run(42);
         assert_eq!(a, b, "same seed must produce identical state");
     }
 
     #[test]
-    fn seed_filters_to_spawning_animated_types_and_caches_probability_and_rate() {
+    fn seed_all_animated_types_and_keep_native_probability_and_rate() {
         use crate::map::overlay::TerrainObject;
         use crate::rules::ini_parser::IniFile;
         use crate::rules::ruleset::RuleSet;
@@ -1579,24 +1312,20 @@ SpreadPercentage=.06
                 name: "UNKNOWN".to_string(),
             },
         ];
-        let seeded = seed_terrain_spawners(&mut sim, &objs, &rules, false);
-        assert_eq!(seeded, 1);
+        let seeded = seed_terrain_animations(&mut sim, &objs, &rules, false);
+        assert_eq!(seeded, 2);
         let placed = sim
             .production
-            .terrain_spawners
+            .terrain_animations
             .get(&(5, 6))
             .expect("TIBTRE01 seeded at (5,6)");
-        assert_eq!(placed.animation_probability_micros, 3000);
-        assert_eq!(
-            placed.animation_probability,
-            TerrainSpawnProbability::from_micros(3000)
-        );
+        assert_eq!(placed.animation_probability.bits(), 0x3b44_9ba6);
         assert_eq!(placed.animation_rate_ticks, 3);
         // Rendering addresses 11 body frames in the 22-frame SHP. Native
         // TerrainClass::AI reads raw 22 and performs the one midpoint divide
         // itself, so the authoritative target must remain 11 rather than 5.
-        assert_eq!(placed.frame_count, STOCK_FRAME_COUNT);
-        assert_eq!(placed.midpoint_frame, STOCK_FRAME_COUNT / 2);
+        assert_eq!(placed.frame_count, STOCK_FRAME_COUNT as i16);
+        assert_eq!(placed.frame_count / 2, STOCK_FRAME_COUNT as i16 / 2);
         assert_eq!(
             sim.production.tiberium_spawning_terrain_cells,
             BTreeSet::from([(5, 6), (1, 2)])
@@ -1766,13 +1495,13 @@ SpreadPercentage=.06
             false,
         );
         assert!(
-            sim.production.terrain_spawners.is_empty(),
+            sim.production.terrain_animations.is_empty(),
             "construction alone leaves the animation index empty"
         );
         assert_eq!(seed_terrain_spawner_animation(&mut sim, &rules), 1);
         assert_eq!(
-            sim.production.terrain_spawners[&(5, 6)].frame_count,
-            STOCK_FRAME_COUNT
+            sim.production.terrain_animations[&(5, 6)].frame_count,
+            STOCK_FRAME_COUNT as i16
         );
     }
 
@@ -1837,10 +1566,10 @@ SpreadPercentage=.06
                     .mark_deck(object.rx, object.ry, 0x5A);
             }
 
-            let seeded = seed_terrain_spawners(&mut sim, &objects, &rules, snow_theater);
+            let seeded = seed_terrain_animations(&mut sim, &objects, &rules, snow_theater);
 
             assert_eq!(seeded, 0, "all fixtures are recognized non-spawners");
-            assert!(sim.production.terrain_spawners.is_empty());
+            assert!(sim.production.terrain_animations.is_empty());
             assert_eq!(sim.production.terrain_objects.len(), objects.len());
             for (object, source_mask) in objects.iter().zip(selected_masks) {
                 let expected_raw = match source_mask {

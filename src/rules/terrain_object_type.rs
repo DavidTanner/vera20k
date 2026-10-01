@@ -1,18 +1,19 @@
-//! Parsing for `[TIBTRE*]`-style terrain object types (rules.ini sections).
+//! TerrainTypeClass data read from layered RULESMD sections.
 //!
 //! Distinct from `terrain_rules` (which parses LAND types like Clear/Rough/Water).
 //! These are per-object-type definitions for terrain decorations — currently
 //! all terrain objects contribute their theater-selected occupation byte to
-//! resolved terrain. Only TIBTRE (Tiberium Tree) fields are consumed by the
-//! ore-spawner system.
+//! resolved terrain. Animation fields drive retained Terrain AI, including
+//! the TIBTRE (Tiberium Tree) midpoint's forced ore spread.
 
 use crate::rules::foundation;
 use crate::rules::ini_parser::IniSection;
+use crate::util::native_x87::NativeF32Bits;
 
 /// Type-class data for a terrain object (e.g. `[TIBTRE01]`).
 ///
-/// Only the fields the sim needs; render-only fields (LightVisibility, tints,
-/// IsFlammable) are intentionally not parsed.
+/// Fields consumed by terrain occupation, damage and animation. Other terrain
+/// mechanisms retain their existing gaps; this is not the complete native type.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TerrainObjectType {
     /// Section name, e.g. "TIBTRE01".
@@ -21,14 +22,10 @@ pub struct TerrainObjectType {
     pub spawns_tiberium: bool,
     /// `IsAnimated=yes` — required gate for SpawnsTiberium logic.
     pub is_animated: bool,
-    /// `AnimationRate=` (frames per anim step). Currently parsed but unused
-    /// in sim — animation timing is collapsed to single-phase. Kept for
-    /// future render-side use and to surface mod-tuning differences.
-    pub animation_rate: u8,
-    /// `AnimationProbability=` × 1_000_000, stored as integer micros.
-    /// Used directly in the sim tick: `rng.next_range_u32(1_000_000) < this`.
-    /// Avoids f32 in the hot path.
-    pub animation_probability_micros: u32,
+    /// Signed logic frames per animation step; native ReadInt stores without clamps.
+    pub animation_rate: i32,
+    /// Native ReadDouble/FSTP-float result, preserved without micros quantization.
+    pub animation_probability: NativeF32Bits,
     /// Inherited `Armor=`. TerrainTypeClass constructor defaults to Wood.
     pub armor: String,
     /// Inherited `Strength=`. The constructor value and explicit -1 resolve
@@ -70,9 +67,8 @@ impl TerrainObjectType {
     ) -> Self {
         // ReadDouble -> `FSTP dword [ESI+0x2A4]` (`0x0071E073`) over the
         // constructor's zero (`0x0071DACD`).
-        let probability_f = section.read_float("AnimationProbability", 0.0);
-        let animation_probability_micros: u32 =
-            (probability_f.clamp(0.0, 1.0) * 1_000_000.0).round() as u32;
+        let animation_probability =
+            section.read_double_to_float("AnimationProbability", NativeF32Bits::POSITIVE_ZERO);
         let is_veinhole = section.read_bool("IsVeinhole", false);
         // Terrain ctor71DBAC initializes Strength=-1. ObjectType5F94D3 reads
         // with that current default; Terrain71DEC8..71DEDC substitutes
@@ -84,8 +80,8 @@ impl TerrainObjectType {
             name: name.to_string(),
             spawns_tiberium: section.read_bool("SpawnsTiberium", false),
             is_animated: section.read_bool("IsAnimated", false),
-            animation_rate: section.read_int("AnimationRate", 0).clamp(0, 255) as u8,
-            animation_probability_micros,
+            animation_rate: section.read_int("AnimationRate", 0),
+            animation_probability,
             // ObjectType `Armor=` (`0x005F94C8`): ReadString 0x80 ahead of the
             // armor-name lookup, over the constructor's Wood (`0x0071DBB6`).
             armor: section
@@ -132,7 +128,7 @@ mod tests {
         assert!(t.spawns_tiberium);
         assert!(t.is_animated);
         assert_eq!(t.animation_rate, 3);
-        assert_eq!(t.animation_probability_micros, 3000);
+        assert_eq!(t.animation_probability.bits(), 0x3b44_9ba6);
         assert_eq!(t.armor, "wood");
         assert_eq!(
             t.strength,
@@ -156,15 +152,15 @@ mod tests {
         let t = TerrainObjectType::from_ini_section("TREE01", section);
         assert!(!t.spawns_tiberium);
         assert!(!t.is_animated);
-        assert_eq!(t.animation_probability_micros, 0);
+        assert_eq!(t.animation_probability.bits(), 0);
     }
 
     #[test]
-    fn animation_probability_clamps_above_one() {
+    fn animation_probability_preserves_native_float_above_one() {
         let ini = IniFile::from_str("[X]\nAnimationProbability=2.5\n");
         let section = ini.section("X").expect("section");
         let t = TerrainObjectType::from_ini_section("X", section);
-        assert_eq!(t.animation_probability_micros, 1_000_000);
+        assert_eq!(t.animation_probability.bits(), 2.5_f32.to_bits());
     }
 
     #[test]

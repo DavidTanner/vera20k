@@ -6681,3 +6681,7 @@ pub(crate) fn wake_anchor_for(
         entity.position.z,
     ))
 }
+
+#[cfg(test)]
+#[path = "tibtre_oracle_tests.rs"]
+mod tibtre_oracle_tests;

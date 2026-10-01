@@ -360,7 +360,7 @@ mod tests {
             )))
             .unwrap();
             let mut sim = world(&rules);
-            crate::sim::terrain_spawn::seed_terrain_spawners(
+            crate::sim::terrain_spawn::seed_terrain_animations(
                 &mut sim,
                 &[TerrainObject {
                     rx: 4,

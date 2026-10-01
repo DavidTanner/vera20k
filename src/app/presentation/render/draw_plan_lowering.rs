@@ -38,7 +38,7 @@ pub(crate) struct PlannedBuildingPieceInstance {
 pub(crate) enum ObjectTexture {
     OverlayAtlas,
     /// Per-piece native destination edit; never a texture-only coalesced draw.
-    TerrainStatic(crate::render::terrain_draw::TerrainPiece),
+    TerrainShp(crate::render::terrain_draw::TerrainPiece),
     /// Bullet body/shadow: signed native Z comparison, destination edits,
     /// and no depth write. The atlas page is payload, never an ordering key.
     ProjectileShp(usize, crate::render::terrain_draw::TerrainPiece),

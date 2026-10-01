@@ -689,7 +689,7 @@ impl Simulation {
         let miner_config = rules.map(crate::sim::miner::MinerConfig::from_rules);
         let terrain_spawner_cells = self
             .production
-            .terrain_spawners
+            .terrain_animations
             .keys()
             .copied()
             .collect::<BTreeSet<_>>();

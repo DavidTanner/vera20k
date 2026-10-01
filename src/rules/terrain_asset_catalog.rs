@@ -72,11 +72,11 @@ impl TerrainSpawnerAssetCatalog {
                 catalog.frame_counts.insert(name, frame_count);
             } else if found_asset {
                 log::warn!(
-                    "Authoritative terrain-spawner asset [{name}] has no valid SHP candidate ({invalid_candidates:?}); spawning animation remains disabled"
+                    "Authoritative terrain-spawner asset [{name}] has no valid SHP candidate ({invalid_candidates:?}); no validated spawning midpoint is available"
                 );
             } else {
                 log::warn!(
-                    "Authoritative terrain-spawner asset [{name}] is missing; spawning animation remains disabled"
+                    "Authoritative terrain-spawner asset [{name}] is missing; no validated spawning midpoint is available"
                 );
             }
         }
