@@ -28,14 +28,14 @@ pub struct TiberiumType {
     pub image: u8,
     /// Credit value per harvested density unit.
     pub value: i32,
-    /// Growth timer reload value.
-    pub growth: u32,
+    /// Signed `Growth=` timer reload input (`TiberiumClass+0xA8`).
+    pub growth: i32,
     /// `GrowthPercentage=` as the native `TiberiumClass+0xB0` double (IEEE
     /// bits); the growth processor multiplies the heap count by it in x87
     /// arithmetic and compares it against 1e-05.
     pub growth_percentage_bits: u64,
-    /// Spread timer reload value.
-    pub spread: u32,
+    /// Signed `Spread=` timer reload value (`TiberiumClass+0x9C`).
+    pub spread: i32,
     /// `SpreadPercentage=` as the native `TiberiumClass+0xA0` double.
     pub spread_percentage_bits: u64,
     /// Number of valid overlay data density levels.
@@ -111,12 +111,15 @@ impl TiberiumType {
             color: section.read_name("Color", 0x20).map(str::to_string),
             image,
             value: section.read_int("Value", 0),
-            growth: u32::try_from(section.read_int("Growth", 0)).unwrap_or(0),
+            // ReadInt stores its signed result directly, without a clamp
+            // (`0x00721AE1`); original execution: spatial_oracle/ore_queue.md.
+            growth: section.read_int("Growth", 0),
             // ReadDouble -> `FSTP qword [ESI+0xB0]` (`0x00721AF4`).
             growth_percentage_bits: section
                 .read_double("GrowthPercentage", CTOR_PERCENTAGE)
                 .to_bits(),
-            spread: u32::try_from(section.read_int("Spread", 0)).unwrap_or(0),
+            // The same raw signed store at `0x00721AA6`.
+            spread: section.read_int("Spread", 0),
             // ReadDouble -> `FSTP qword [ESI+0xA0]` (`0x00721AB9`).
             spread_percentage_bits: section
                 .read_double("SpreadPercentage", CTOR_PERCENTAGE)
@@ -129,6 +132,56 @@ impl TiberiumType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Selected original constructor/ReadINI instructions and physical RULESMD
+    // inputs; executable identity and fixture bounds: ore_queue.md.
+    #[test]
+    fn timer_and_percentage_readers_match_original_constructor_and_read_ini() {
+        let corpus: serde_json::Value =
+            serde_json::from_str(include_str!("../../tools/spatial_oracle/ore_queue.json"))
+                .unwrap();
+        let rows = corpus["timer_reader_cases"].as_array().unwrap();
+        assert_eq!(rows.len(), 16);
+        let retail = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini");
+        for row in rows {
+            let name = row["name"].as_str().unwrap();
+            let mut text = String::from("[Tiberiums]\n0=Riparius\n[Riparius]\nImage=1\n");
+            for (field, key) in [
+                ("growth", "Growth"),
+                ("spread", "Spread"),
+                ("growth_percentage", "GrowthPercentage"),
+                ("spread_percentage", "SpreadPercentage"),
+            ] {
+                if let Some(value) = row["input"][field].as_str() {
+                    text.push_str(&format!("{key}={value}\n"));
+                }
+            }
+            let registry = TiberiumTypeRegistry::from_ini(&IniFile::from_str(&text));
+            assert_native_timer_inputs(registry.get(TiberiumTypeId(0)).unwrap(), row, name);
+            if let (Some(retail), Some(section)) = (&retail, row["physical"]["section"].as_str()) {
+                let registry = TiberiumTypeRegistry::from_ini(retail);
+                let ty = registry.get(registry.id_by_name(section).unwrap()).unwrap();
+                assert_native_timer_inputs(ty, row, name);
+            }
+        }
+    }
+
+    fn assert_native_timer_inputs(ty: &TiberiumType, row: &serde_json::Value, name: &str) {
+        for (field, actual) in [("growth", ty.growth), ("spread", ty.spread)] {
+            assert_eq!(
+                i64::from(actual),
+                row["output"][field].as_i64().unwrap(),
+                "{name}: {field}"
+            );
+        }
+        for (field, actual) in [
+            ("growth_percentage_bits", ty.growth_percentage_bits),
+            ("spread_percentage_bits", ty.spread_percentage_bits),
+        ] {
+            let expected = u64::from_str_radix(row["output"][field].as_str().unwrap(), 16).unwrap();
+            assert_eq!(actual, expected, "{name}: {field}");
+        }
+    }
 
     #[test]
     fn parses_tiberiums_order_and_per_type_growth_spread_fields() {

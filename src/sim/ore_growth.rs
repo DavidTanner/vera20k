@@ -33,7 +33,7 @@ use crate::sim::timer::CdTimer;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53, X87Ordering};
 
 #[cfg(test)]
-mod queue_oracle_tests;
+pub(crate) mod queue_oracle_tests;
 
 /// The `1e-05` double at `0x007E3810` every tiberium percentage gate compares
 /// against (`CanGrowTiberium @ 0x00483620`, `CanSpreadTiberium @ 0x00483690`,
@@ -66,8 +66,8 @@ const NATIVE_GROWTH_RELOAD_UNIT_MULTIPLIER_BITS: u64 = 0x3FF0_0000_0000_0000;
 pub struct OreGrowthConfig {
     /// `ScenarioClass+0x34A6` (`[Basic] TiberiumGrowthEnabled`, default 1 from
     /// `Set_Defaults @ 0x00683848`, read at `Read_INI_Basic @ 0x0068A57A`):
-    /// the entry gate of both `GrowthDriver_AllTypes @ 0x00722C48` and
-    /// `SpreadDriver_AllTypes @ 0x007221B8`, and of `CanGrowTiberium`.
+    /// the entry gate of both `GrowthDriver_AllTypes @ 0x00722C40` and
+    /// `SpreadDriver_AllTypes @ 0x007221B0`, and of `CanGrowTiberium`.
     pub grows: bool,
     /// `ScenarioClass` flags bit `0x80` (`TiberiumSpreads`): the
     /// `CellClass::CanSpreadTiberium @ 0x00483690` gate.
@@ -141,7 +141,7 @@ impl OreGrowthConfig {
 /// (`0x0E7F`: 53-bit precision, round toward zero) for `ftol`, so both the
 /// multiply and the conversion truncate. Stock `Growth=2200` therefore reloads
 /// to **659** (2200 x 0.3 chops just below 660), `Growth=10000` to 2999.
-pub(crate) fn native_growth_timer_reload(growth: u32, tiberium_grows_flag: bool) -> u32 {
+pub(crate) fn native_growth_timer_reload(growth: i32, tiberium_grows_flag: bool) -> i32 {
     let multiplier_bits = if tiberium_grows_flag {
         NATIVE_GROWTH_RELOAD_FAST_MULTIPLIER_BITS
     } else {
@@ -149,10 +149,10 @@ pub(crate) fn native_growth_timer_reload(growth: u32, tiberium_grows_flag: bool)
     };
     let multiplier = X87Chop53::load_f64(NativeF64Bits::from_bits(multiplier_bits))
         .expect("retail reload multipliers are finite normals");
-    let product = X87Chop53::mul(X87Chop53::load_i32(growth as i32), multiplier);
+    let product = X87Chop53::mul(X87Chop53::load_i32(growth), multiplier);
     // The signed-dword input and multiplier at most 1.0 fit signed64;
     // native keeps EAX (the low dword).
-    X87Chop53::ftol_i32_low_masked(product) as u32
+    X87Chop53::ftol_i32_low_masked(product)
 }
 
 /// Native `TiberiumClass` queue/timer state shell.
@@ -753,7 +753,7 @@ impl OreGrowthState {
                 // `0x00722C9E..0x00722CE3`: see `native_growth_timer_reload`.
                 class.growth_timer = CdTimer::started(
                     current_frame as i32,
-                    native_growth_timer_reload(ty.growth, tiberium_grows_flag) as i32,
+                    native_growth_timer_reload(ty.growth, tiberium_grows_flag),
                 );
             }
         }
@@ -991,7 +991,11 @@ impl OreGrowthState {
         mut radar_dirty_generation: Option<&mut u64>,
         mut tactical_dirty_cells: Option<&mut Vec<(u16, u16)>>,
     ) -> NativeSpreadProcessStats {
-        if !growth_enabled || !spread_enabled {
+        // `SpreadDriver_AllTypes @ 0x007221B0` tests only Basic growth
+        // (`0x007221B8`, Scenario+0x34A6). The spread bit gates sources inside
+        // the processor; due queues still consume budget RNG and reload while
+        // it is off. Executed histories: tools/spatial_oracle/ore_queue.md.
+        if !growth_enabled {
             return NativeSpreadProcessStats::default();
         }
         let due_ids: Vec<TiberiumTypeId> = self
@@ -1034,7 +1038,7 @@ impl OreGrowthState {
                 // `SpreadDriver_AllTypes @ 0x00722205..0x00722227`: the raw
                 // `Spread=` int (`TiberiumClass+0x9C`) reloads the timer; no
                 // multiplier and no flag test on this driver.
-                class.spread_timer = CdTimer::started(current_frame as i32, ty.spread as i32);
+                class.spread_timer = CdTimer::started(current_frame as i32, ty.spread);
             }
         }
         stats
@@ -2452,7 +2456,7 @@ SpreadPercentage=.06
                 .duration();
             assert_eq!(
                 interval,
-                native_growth_timer_reload(2200, tiberium_grows_flag) as i32
+                native_growth_timer_reload(2200, tiberium_grows_flag)
             );
             fired
         };

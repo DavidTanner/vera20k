@@ -3545,6 +3545,7 @@ impl Simulation {
                 &self.production.terrain_object_cells,
             );
             if let (Some(grid), Some(registry)) = (self.overlay_grid.as_mut(), overlay_registry) {
+                let dirty_start = grid.pending_dirty_cells().len();
                 self.production.ore_growth_state.tick_native_growth_driver(
                     grid,
                     registry,
@@ -3576,7 +3577,23 @@ impl Simulation {
                     Some(&mut self.radar_terrain_dirty_generation),
                     Some(&mut self.tactical_dirty_cells),
                 );
+                // Original Place487190 -> Overlay Mark5FC570 -> Recalc47D2B0
+                // publishes LandType before Logic55B4DC returns to live-object
+                // AI. Within the ore loops, a stamped cell is excluded by its
+                // overlay identity before admission reads its land; growth and
+                // source gates use density/slope. Their Recalcs can therefore
+                // publish as this batch without changing admission or RNG order.
+                // Native cell results: tools/spatial_oracle/ore_queue.json.
+                let marked = grid.pending_dirty_cells()[dirty_start..].to_vec();
+                if let Some(terrain) = self.resolved_terrain.as_mut() {
+                    for cell in marked {
+                        grid.recalculate_runtime_cell(terrain, registry, cell);
+                    }
+                }
             }
+            // Use the existing publication owner before movement/path readers,
+            // retaining dirty cells for the normal render-output finalizer.
+            self.finish_terrain_navigation_changes(rules, &[]);
         }
     }
 
@@ -6685,3 +6702,7 @@ pub(crate) fn wake_anchor_for(
 #[cfg(test)]
 #[path = "tibtre_oracle_tests.rs"]
 mod tibtre_oracle_tests;
+
+#[cfg(test)]
+#[path = "ore_spread_oracle_tests.rs"]
+mod ore_spread_oracle_tests;

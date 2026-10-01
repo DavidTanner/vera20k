@@ -1,11 +1,15 @@
-# Enqueue-side ore queue rebuild comparison
+# Ore queues and natural spread comparison
 
 `ore_queue.py` executes the pinned retail `gamemd.exe` through the existing
-[`harvest_field` fixture](harvest_field.py). It supplies prior map/queue state;
+[`harvest_field` fixture](harvest_field.py) and, for natural spread, the
+[`TIBTRE` fixture](tibtre.py) with original Overlay construction. It supplies prior map/queue state;
 the enqueue, rebuild, Cell predicates, iterator, heap operations and Scenario RNG
-run original instructions. `ore_queue.json` contains 60 cases: 52 direct enqueue
-calls, three full `CellClass::Reduce_Tiberium` callers, and five full
-`TiberiumClass::GrowthProcessor` callers. The sidecar records executable identity,
+run original instructions. `ore_queue.json` contains 118 body cases: the retained
+52 direct enqueue calls, three full `CellClass::Reduce_Tiberium` callers, five full
+`TiberiumClass::GrowthProcessor` callers, 40 full natural `SpreadProcessor` calls,
+14 complete `SpreadDriver_AllTypes` histories, and four growth-before-spread
+driver histories. Sixteen selected constructor/INI reader rows independently
+establish signed timer values and stock percentages. The sidecar records executable identity,
 Unicorn version, payload hash and fixture boundaries.
 
 ```sh
@@ -74,6 +78,101 @@ The original `FILD i32; FSTP f32` uses the fixture's native round-toward-zero st
 16777251 but store bits `0x4B800011` (16777250), whereas a nearest f32 conversion
 would store `0x4B800012`. This is an executed conversion result.
 
+## Natural spread and driver execution
+
+The complete `SpreadProcessor @ 0x00722440` executes over supplied valid heap
+references and the original diamond. Its budget is the original truncated
+`heap_count * SpreadPercentage`, clamped to 5..25, followed by the signed
+absolute/remainder draw plus one. Empty heaps and a zero percentage draw nothing.
+The processor rebuilds only when **heap reference count > capacity - 20**: count
+44 retains the old heap, while 45 rebuilds it. An array counter of 55 with a
+one-reference heap does not trigger this guard. Rebuilding uses the existing
+class receiver and original `CanSpreadTiberium` predicate.
+
+The original processor pops its first root before checking a nonpositive budget;
+the `INT_MIN` control therefore retains its array/bitmap while draining the
+first heap reference and draws once. For positive budgets it counts the eight
+neighbors with original `CanPlaceTiberium @ 0x004838E0` before checking whether
+the source can spread. A root with no target clears its spread bitmap and does
+not spend the success/visit budget. A root with targets invokes original
+`SpreadTiberium @ 0x00483780` with `force=0`, spends one budget unit even if source
+admission fails, and directly appends the source at priority bits zero whenever
+the pre-count found more than one target. That inline append has no enqueue
+counter guard or priority draw. With exactly one target it neither appends nor
+clears the existing bitmap. All these outcomes are compared through native
+queue arrays, actual heap reference indices and bitmap cells.
+
+Natural Spread executes its source overlay/type, density, percentage, slope,
+occupancy and Scenario spread-bit gates. On success, original
+`RandomRanged(0,7)` selects the start of the N..NW scan, then the first admitted
+target enters full `PlaceTiberium @ 0x00487190` with amount 3. The original flat
+variant draw, `OverlayClass::Constructor @ 0x005FC380`, Mark `0x005FC570` and
+RecalcAttributes `0x0047D2B0` execute. Growth queue admission runs before the new
+density write and can synchronously rebuild its existing owner. The case with
+a growth counter of 55 captures the new cell's zero-density rebuild seed followed
+by the already-admitted duplicate append and density 3. The ordinary-Terrain
+control retains the native constructor refusal: Place still returns, appends
+growth and writes density 3 while the overlay remains -1.
+
+Target controls execute with native `GameActive=1` over the shared real
+Unit/Building/Terrain vtables: live visible Buildings and spawning Terrain refuse
+germination; Units, ordinary Terrain, dead Buildings and either native
+invisibility flag admit it. Other controls cover existing overlay 7, non-Buildable
+land, non-AllowTiberium tile, slope, bridge flags, allocated-diamond edges,
+cross-class queue sources, stale empty overlays/density/slope/occupancy, three
+seeds, signed frame limits and chopped priorities beyond `2^24`. Full output
+records every allocated diamond cell, including empty and non-tiberium cells.
+Map lookup's resident dummy is observed from its original retained coordinates;
+no boundary or admission return is supplied by an observer.
+
+`SpreadDriver_AllTypes` starts at **`0x007221B0`**, the original function called
+by Logic at `0x0055B4DC`. Its only Scenario admission gate is the Basic growth
+byte at `+0x34A6`. The SpecialFlags spread bit is consumed by source predicates,
+so with growth enabled and spreading disabled the due processor still draws its
+budget, visits/reinserts the existing source and reloads its timer. Growth disabled
+prevents all class dispatch and timer changes. The driver visits the class vector
+in ascending order and always reloads each due timer after its processor, even
+when the heap or percentage causes an immediate return. Reload stores the raw
+signed `Spread=` duration; no fast-growth multiplier applies.
+
+The timer histories cover running-before-due, due/after-due, paused positive and
+paused zero durations, zero and negative reloads, and signed frame wrap. Four
+class outputs make retained timers and dispatch order visible. The composed
+histories invoke full `GrowthDriver_AllTypes @ 0x00722C40` followed by SpreadDriver
+in their observed Logic caller order; growth can enqueue spread synchronously
+before the later same-frame driver. The stock fast-growth control executes the
+original multiplier/`Math::ftol` and reloads 2200 at 659 frames and 10000 at 2999;
+the same spread reloads remain 2200/10000. Negative Growth inputs also execute
+the original normal and fast-growth reload paths.
+
+`RandomRanged @ 0x0065C7E0` contains an inline Random draw and may reject several
+words for a single chosen variant. Its entry/result and every actual inline draw
+at `0x0065C837..0x0065C87E` are observed. For example, seed 42's three successful
+spread visits consume 14 total draws, including rejected variant words. Draw
+count includes these inline words as well as calls to `Random::Next`; hashes,
+cursors and four following draws compare the entire continuation. Entry events
+also retain actual instruction addresses and CanPlace return values.
+
+## Native timer and percentage inputs
+
+The selected original constructor member block `0x007216CF..0x007217A6`
+establishes `Spread=0`, `Growth=0` and percentage bits `0x3FB999999999999A` (0.1).
+The original `ReadINI @ 0x00721A50` slice `0x00721A78..0x00721AFA` executes the
+Spread, SpreadPercentage, Growth and GrowthPercentage reads and stores with the
+current constructor fields as defaults. Shared cached INI indexes supply lexical
+strings; scalar conversion and final stores execute original `ReadInt`/`ReadDouble`.
+Missing, empty and malformed durations retain zero. Negative, signed-limit,
+decimal-overflow, hexadecimal and trailing-text controls retain native ReadInt
+results without a clamp; `-3` remains -3 and `$FFFFFFFF` becomes -1.
+
+The four physical retail RULESMD sections are saved with file identity and exact
+lexical keys. Original reading gives Riparius/Vinifera/Aboreus Growth/Spread 2200,
+Cruentus 10000, and retail `.06` percentage bits `0x3FAEB851E0000000` after the
+native scanner's f32-to-double promotion. Cruentus's explicit percentages remain
+zero. The `spread_driver_original_retail_reader_values` and stock fast-growth
+composition use these independently produced native values. Whole layered INI
+file loading and type registry discovery remain outside the cached-reader fixture.
+
 ## Inputs and limits
 
 The successful Resize diamond, adequate queue storage, prior array counters and
@@ -81,16 +180,21 @@ heap references are supplied state. The fixture represents history with popped
 entries still present in the array; it does not simulate a multi-hour game to
 reach these thresholds. Its four synthetic Tiberium instances use the shared
 Riparius/Cruentus overlay registry, MaxDensity 12 and declared per-case
-percentages. Constructors, INI/MIX loading, allocation failure and whole Scenario
-startup/scheduling are outside this comparison.
+percentages. Full Scenario/type constructors, INI/MIX loading, allocation failure
+and surrounding whole Scenario startup/scheduling are outside this comparison;
+the selected Tiberium constructor defaults/readers, ore Overlay constructor and
+complete ore drivers described above do execute.
 
 The shared fixture answers OS Interlocked imports and presentation sinks.
 `Cell` rectangle queries at `0x0047FDE0`, `0x0047FB90` and `0x0047FF80` return empty
 rectangles; radar/tactical dirtiness are service sinks. The full-removal
 RecalcAttributes sink publishes declared bare land. No admission, growth, density,
-queue, rebuild, iterator, timer or RNG return is substituted. Existing-cell Place
-does not enter the new-overlay constructor/allocator branch in these processor
-controls. Timer padding is declared zero and has no independent semantic claim.
+queue, rebuild, iterator, timer or RNG return is substituted. The five retained
+growth-processor controls use existing-cell Place. The 58 natural-spread/driver
+rows inherit TIBTRE's allocator/free storage services and empty dirty sinks;
+original Overlay construction/Mark and cell attribute recalculation run. Timers'
+opaque `+4` padding is declared zero, including the uninitialized driver caller
+local written there, and has no independent semantic claim.
 
 Native execution establishes these bounded queue/caller and numeric cases. The
 Rust corpus comparison and separate production integration checks establish their
@@ -109,7 +213,7 @@ creates new ore while growth-off rebuilds seed nothing. Queue resets retain
 backing allocations. Serialized queue/timer ownership and snapshot layout remain
 unchanged.
 
-The [validation receipt](ore_queue.validation.json) records the 60-case Rust/native
+The historical enqueue section of the [validation receipt](ore_queue.validation.json) records the 60-case Rust/native
 comparison, the two pre-fix failing regressions, connected production callers,
 9,416 passing mandatory-retail library tests (226 ignored), successful clippy,
 436 Python checks (4 skipped), and the unchanged simulation field ratchet. These
@@ -122,3 +226,44 @@ OQ-38 residuals and the deferred VoxelAnim IsTiberium expiry/ring are separate.
 Extending the shared harvest fixture's presentation rectangle sink required
 refreshing TIBTRE source provenance. Original TIBTRE execution was repeated and
 its payload stayed byte-identical (SHA-256 recorded in the receipt).
+
+
+### Natural spread follow-up
+
+The native active caller is `LogicClass::Update @ 0x0055AFB0`, reached by
+`Main_Tick @ 0x0055DC9E`: it calls GrowthDriver at `0x0055B4D7`, then
+SpreadDriver at `0x0055B4DC`, before live-object AI. Original bytes were checked
+against the pinned executable. `GameActive` is established by session preparation
+(`0x0052D9D7`); this is an active YR path.
+
+The existing `OreGrowthState` driver now uses only the Basic growth gate, leaving
+SpecialFlags spread admission with its existing source predicate. The existing
+Tiberium registry retains raw signed Growth/Spread values through both timer
+consumers. No second queue, timer, reader or admission owner was introduced.
+Original numeric comparisons include negative reloads, signed wrap, stock
+659/2999 fast-growth timers and all following RNG state.
+
+New Overlay Mark attributes also reach the resolved-cell and navigation owners
+in the ore rung, before object AI. This uses the existing runtime Recalc and
+navigation publication methods and retains render dirty receipts. Recalculation
+can be batched at this boundary: an already-stamped cell fails target admission
+at its overlay-identity gate before land is read, while growth and source gates
+use density/slope. This changes no ore-loop admission or draw ordering. The
+production test checks native LandType results at this boundary and the path/
+movement caches' consistency with those cells, rather than relying on the end
+of frame to mask a stale view.
+
+The shared supplied-state fixture builds both direct-owner comparisons and the
+18 app-frame histories. The direct comparison publishes actual owner-produced
+Mark dirtiness through the same cell Recalc before inspecting cells; native
+expected fields never initialize this publication. Native constructor refusal
+under ordinary Terrain remains covered. Original TIBTRE execution still has the
+same payload bytes after the CanGerminate observer was corrected to read actual
+Cell coordinates instead of inferring them from pointer arithmetic.
+
+The receipt's `natural_spread_followup` stage records the new validation.
+Whole native Scenario startup, physical save/load execution, all map dimensions,
+resource image-3/4 placement and arbitrary long histories remain outside this
+bounded comparison. Existing snapshot timer reset/rebuild behavior is retained;
+original Load721E80 resets timers via 46B640 at721FA9..721FC2, while Rust's saved
+state/restore integration is covered separately by the library suite.

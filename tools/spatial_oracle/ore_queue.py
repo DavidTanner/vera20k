@@ -1,26 +1,32 @@
-"""Original enqueue-counter ore queue rebuilds over the shared harvest fixture.
+"""Original ore queues and natural drivers over the shared native fixtures.
 
 Run ``python -m tools.spatial_oracle.ore_queue --check`` (or ``--write``).
 Prepared map/queue state is explicit; AddToGrowth/Spread and both rebuild bodies,
 their CellIterator/predicates, heap writes and Scenario Random execute unchanged.
 """
+from functools import lru_cache
 import hashlib
+import os
 from pathlib import Path
 import struct
 
 from unicorn import UC_HOOK_CODE
-from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_ESP
+from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_ESI, UC_X86_REG_ESP
 
-from tools.native_oracle import finish_vectors, provenance
+from tools.native_oracle import finish_vectors, provenance, run_checked
 from tools.spatial_oracle.harvest_field import (
     ADD_GROWTH, ADD_SPREAD, FIELD, REDUCE, TIBS, fixture,
 )
 from tools.spatial_oracle.map_queries import dwords
-from tools.spatial_oracle.refinery_dock import cell, cell_xy
+from tools.spatial_oracle.refinery_dock import ACTOR, cell, cell_xy
+from tools.spatial_oracle.unit_scatter_state import SP
 from tools.spatial_oracle.unit_source_scatter import MAP, SCENARIO, TABLE
 
 REBUILD_GROWTH, REBUILD_SPREAD, RANDOM = 0x7233A0, 0x7228B0, 0x65C780
+RANGED = 0x65C7E0
 GROWTH_PROCESSOR, GROW_CELL = 0x722F00, 0x483710
+SPREAD_PROCESSOR, SPREAD_DRIVER, GROWTH_DRIVER = 0x722440, 0x7221B0, 0x722C40
+SPREAD_CELL, CAN_PLACE, PLACE = 0x483780, 0x4838E0, 0x487190
 ARENA, ARENA_SIZE = FIELD + 0x200000, 0x20000
 FIELDS = {'growth': (0x10C, 0x110, 0x114, 0x118), 'spread': (0xF0, 0xF4, 0xF8, 0xFC)}
 DEFAULT_CELLS = [
@@ -32,6 +38,66 @@ DEFAULT_CELLS = [
     dict(cell=[3, 5], type_id=0, variant=0, density=3, slope=1, occupied=False),
     dict(cell=[3, 4], type_id=0, variant=0, density=4, slope=0, occupied=True),
 ]
+
+
+def native_timer_reader(name, values):
+    """Original constructor member block and four native ReadINI stores.
+
+    The shared cached-INI owner supplies lexical strings; no host scalar parser
+    supplies constructor defaults, ReadInt values or ReadDouble rounding.
+    """
+    from tools.rules_oracle.bridge_landing_inputs import Landing
+    from tools.rules_oracle.guided_controls import normalized_cache
+    from tools.spatial_oracle.building_body_rules import INI, SP as READER_SP
+    m = Landing()
+    u, pointer = m.u, m.alloc(0x200)
+    u.mem_write(pointer + 0x24, b'OracleTiberium\0')
+    u.reg_write(UC_X86_REG_ESI, pointer)
+    u.reg_write(UC_X86_REG_ESP, READER_SP)
+    # AbstractType construction/name and later registry publication are outside
+    # this selected initialization block; the original 0/0.1 defaults execute.
+    run_checked(u, 0x7216CF, 0x7217A6, required_addresses=(0x7216FB, 0x721707))
+    keys = dict(Growth=values.get('growth'), Spread=values.get('spread'),
+                GrowthPercentage=values.get('growth_percentage'),
+                SpreadPercentage=values.get('spread_percentage'))
+    normalized = {k: v for k, v in keys.items() if v is not None}
+    m.make_ini(normalized_cache({'OracleTiberium': dict(FixtureOnly='1', **normalized)}))
+    u.reg_write(UC_X86_REG_ESI, pointer)
+    u.reg_write(UC_X86_REG_EBX, INI)
+    u.reg_write(UC_X86_REG_ESP, READER_SP)
+    run_checked(u, 0x721A78, 0x721AFA, required_addresses=(0x5276D0, 0x5283D0, 0x721AA6, 0x721AE1))
+    assert u.reg_read(UC_X86_REG_ESP) == READER_SP - 4
+    signed = lambda offset: struct.unpack('<i', u.mem_read(pointer + offset, 4))[0]
+    real_bits = lambda offset: f'{struct.unpack("<Q", u.mem_read(pointer + offset, 8))[0]:016x}'
+    return dict(name=name, input=values,
+                output=dict(growth=signed(0xA8), spread=signed(0x9C),
+                            growth_percentage_bits=real_bits(0xB0),
+                            spread_percentage_bits=real_bits(0xA0)))
+
+
+@lru_cache(maxsize=1)
+def timer_reader_cases():
+    from tools.rules_oracle.bridge_child_sound import sections
+    rows = []
+    for name, raw in [('missing', None), ('empty', ''), ('malformed', 'junk'),
+                      ('zero', '0'), ('positive', '2200'), ('negative', '-3'),
+                      ('minimum', '-2147483648'), ('maximum', '2147483647'),
+                      ('signed_overflow', '2147483648'), ('all_bits', '4294967295'),
+                      ('hex_all_bits', '$FFFFFFFF'), ('trailing_text', '2200suffix')]:
+        rows.append(native_timer_reader(name, dict(growth=raw, spread=raw)))
+    raw = (Path(os.environ.get('VERA20K_TIBTRE_INI', 'ini')) / 'RULESMD.INI').read_bytes()
+    physical = sections(raw)
+    for name in ('Riparius', 'Cruentus', 'Vinifera', 'Aboreus'):
+        # This shared extractor supplies cached lexical strings only. These
+        # selected retail sections/keys are unique; native readers own parsing.
+        keys = physical[name]
+        values = {field: keys.get(key) for field, key in
+                  [('growth', 'Growth'), ('spread', 'Spread'),
+                   ('growth_percentage', 'GrowthPercentage'), ('spread_percentage', 'SpreadPercentage')]}
+        row = native_timer_reader(f'retail_{name}', values)
+        row['physical'] = dict(filename='RULESMD.INI', sha256=hashlib.sha256(raw).hexdigest(), section=name)
+        rows.append(row)
+    return rows
 
 
 def prepared_case(name, queue, count, **overrides):
@@ -47,7 +113,7 @@ def changed_cells(**updates):
     return [dict(c, **updates) if c['cell'] == [4, 4] else dict(c) for c in DEFAULT_CELLS]
 
 
-def cases():
+def enqueue_cases():
     rows = []
     for queue, counts in [('growth', (53, 54, 55)), ('spread', (43, 44, 45))]:
         for count in counts:
@@ -129,6 +195,161 @@ def cases():
     return rows
 
 
+def supplied_queue(kind, name, coordinates=(), priority_bits=0, bitmap=None):
+    """Declare retained state; native heap mutation is never simulated here."""
+    entries = [dict(cell=list(c), priority_bits=priority_bits) for c in coordinates]
+    return dict(type_id=kind, queue=name, entries=entries,
+                heap_indices=list(range(len(entries))),
+                bitmap=[list(c) for c in (coordinates if bitmap is None else bitmap)])
+
+
+def natural_case(name, **overrides):
+    source = dict(cell=[4, 4], type_id=0, variant=0, density=3, slope=0, occupied=False)
+    queues = [supplied_queue(k, q, [[4, 4]] if k == 0 and q == 'spread' else [])
+              for k in range(4) for q in FIELDS]
+    base = prepared_case(name, 'spread', 1, entry='spread_processor', pre_cell=[4, 4],
+                         cells=[source], queue_states=queues,
+                         growth_timers=[[-1, 0, 3]] * 4,
+                         spread_timers=[[-1, 0, 0], [-1, 0, 5], [-1, 0, 7], [-1, 0, 11]],
+                         growth_frames=[3, 5, 7, 11], spread_frames=[3, 5, 7, 11])
+    return dict(base, **overrides)
+
+
+def natural_cases():
+    rows = [natural_case(f'spread_processor_seed_{seed}', seed=seed) for seed in (1, 31, 42)]
+    rows += [natural_case('spread_processor_negative_budget_drops_first_root', next_raw=0x80000000),
+             natural_case('spread_processor_spreads_disabled_still_visits_and_reinserts', spreads=False),
+             natural_case('spread_processor_grows_disabled_direct_call', grows=False),
+             natural_case('spread_processor_empty_queue_no_draw', queue_states=[
+                 supplied_queue(k, q) for k in range(4) for q in FIELDS]),
+             natural_case('spread_processor_zero_percentage_no_draw', spread_percentages=[0.0] * 4)]
+    ring = [(4, 3), (5, 3), (5, 4), (5, 5), (4, 5), (3, 5), (3, 4), (3, 3)]
+    for target_count in (0, 1, 2):
+        rows.append(natural_case(f'spread_processor_{target_count}_targets', next_raw=0,
+                                  blocked=[[*c, 'overlay'] for c in ring[target_count:]]))
+    for gate in ('slope', 'bridge', 'land', 'building', 'tree', 'ordinary_tree'):
+        rows.append(natural_case(f'spread_processor_target_{gate}', next_raw=0,
+                                  blocked=[[*c, gate] for c in ring]))
+    rows.append(natural_case('spread_processor_target_units_are_allowed', units=[list(c) for c in ring], next_raw=0))
+    for option in ('building_invisible', 'building_invisible_in_game'):
+        rows.append(natural_case(f'spread_processor_target_{option}', next_raw=0,
+                                  blocked=[[*c, 'building'] for c in ring], **{option: True}))
+    rows.append(natural_case('spread_processor_target_dead_building', next_raw=0,
+                             blocked=[[*c, 'building'] for c in ring], building_health=0))
+    for key, value in [('density', 0), ('slope', 1), ('occupied', True)]:
+        c = dict(natural_case('unused')['cells'][0], **{key: value})
+        rows.append(natural_case(f'spread_processor_stale_source_{key}', cells=[c], next_raw=0))
+    c = dict(natural_case('unused')['cells'][0], overlay=-1, land=0, density=0)
+    rows.append(natural_case('spread_processor_stale_source_empty_overlay', cells=[c], next_raw=0))
+    c = dict(natural_case('unused')['cells'][0], cell=[1, 4])
+    rows.append(natural_case('spread_processor_source_on_diamond_edge', cells=[c], next_raw=0,
+                             queue_states=[supplied_queue(k, q, [[1, 4]] if k == 0 and q == 'spread' else [])
+                                           for k in range(4) for q in FIELDS]))
+    rows.append(natural_case('spread_processor_no_tile_admission', tile_allows_tiberium=False, next_raw=0))
+    for frame in (16777220, 2147483647, -2147483648):
+        rows.append(natural_case(f'spread_processor_new_cell_frame_{frame}', frame=frame, next_raw=0))
+    rows.append(natural_case('spread_processor_crossclass_receiver_uses_source_type', receiver=1,
+                             queue_states=[supplied_queue(k, q, [[4, 4]] if k == 1 and q == 'spread' else [])
+                                           for k in range(4) for q in FIELDS], next_raw=0))
+    c = dict(natural_case('unused')['cells'][0], type_id=1, density=1)
+    rows.append(natural_case('spread_processor_crossclass_ore_receiver_gem_source', cells=[c], next_raw=0))
+    queues = natural_case('unused')['queue_states']
+    queues[1] = supplied_queue(0, 'spread', [[4, 4], [2, 3]], bitmap=[[4, 4], [2, 3]])
+    c = dict(natural_case('unused')['cells'][0], cell=[2, 3])
+    rows.append(natural_case('spread_processor_zero_target_root_does_not_spend_budget',
+                             queue_states=queues, cells=[natural_case('unused')['cells'][0], c],
+                             blocked=[[*p, 'overlay'] for p in ring], next_raw=0))
+    # A drained append array can be large while its heap contains one root.
+    # Conversely, only heap_count > capacity-20 triggers the processor rebuild.
+    for count in (44, 45):
+        queues = natural_case('unused')['queue_states']
+        queues[1] = supplied_queue(0, 'spread', [[4, 4]] * count, bitmap=[[4, 4]])
+        rows.append(natural_case(f'spread_processor_heap_count_{count}', queue_states=queues,
+                                 next_raw=0, spreads=False))
+    queues = natural_case('unused')['queue_states']
+    queues[1] = supplied_queue(0, 'spread', [[4, 4]] * 45, bitmap=[[4, 4]])
+    rows.append(natural_case('spread_processor_heap_rebuild_reseeds_live_source',
+                             queue_states=queues, next_raw=0))
+    queues = natural_case('unused')['queue_states']
+    queues[0] = supplied_queue(0, 'growth', [[4, 4]] * 55, bitmap=[[4, 4]])
+    queues[0]['heap_indices'] = [54]
+    rows.append(natural_case('spread_processor_new_cell_rebuilds_growth_before_density_store',
+                             queue_states=queues, next_raw=0))
+    queues = natural_case('unused')['queue_states']
+    queues[1] = supplied_queue(0, 'spread', [[4, 4]] * 55, bitmap=[[4, 4]])
+    queues[1]['heap_indices'] = [54]
+    rows.append(natural_case('spread_processor_large_array_small_heap_no_rebuild',
+                             queue_states=queues, next_raw=0))
+    for percentage in (1.0, 10.0):
+        queues = natural_case('unused')['queue_states']
+        queues[1] = supplied_queue(0, 'spread', [[4, 4]] * 6, bitmap=[[4, 4]])
+        rows.append(natural_case(f'spread_processor_budget_percentage_{percentage:g}',
+                                 queue_states=queues, spread_percentages=[percentage] * 4,
+                                 spreads=False, next_raw=24))
+    rows += [natural_case('spread_driver_spreads_disabled_timer_reload', entry='spread_driver', spreads=False),
+             natural_case('spread_driver_grows_disabled_no_dispatch', entry='spread_driver', grows=False),
+             natural_case('spread_driver_empty_queue_reloads_without_draw', entry='spread_driver',
+                          queue_states=[supplied_queue(k, q) for k in range(4) for q in FIELDS]),
+             natural_case('spread_driver_zero_percentage_reloads_without_draw', entry='spread_driver',
+                          spread_percentages=[0.0] * 4),
+             natural_case('spread_driver_three_frame_cadence', entry='spread_driver',
+                          frames=[100, 101, 102, 103, 104, 106]),
+             natural_case('spread_driver_all_classes_due_native_order', entry='spread_driver',
+                          spread_timers=[[-1, 0, 0]] * 4,
+                          queue_states=[supplied_queue(k, q, [[4, 4]] if q == 'spread' else [])
+                                        for k in range(4) for q in FIELDS], spreads=False),
+             natural_case('spread_driver_stock_timer_reload', entry='spread_driver',
+                          growth_frames=[2200, 10000, 2200, 2200],
+                          spread_frames=[2200, 10000, 2200, 2200],
+                          spread_timers=[[-1, 0, 0]] * 4, spreads=False)]
+    for timer_name, timer, frames in [
+        ('running_before_due', [98, 0, 3], [100, 101, 102]),
+        ('paused_remaining', [-1, 0, 3], [100, 1000]),
+        ('paused_zero', [-1, 0, 0], [100]),
+        ('zero_reload_every_frame', [-1, 0, 0], [100, 101, 102]),
+        ('negative_reload_every_frame', [-1, 0, 0], [100, 101, 102]),
+        ('signed_frame_wrap', [2147483647, 0, 1], [2147483647, -2147483648, -2147483647]),
+    ]:
+        raw = 0 if timer_name == 'zero_reload_every_frame' else -3 if timer_name == 'negative_reload_every_frame' else 3
+        rows.append(natural_case(f'spread_driver_timer_{timer_name}', entry='spread_driver', frames=frames,
+                                 spread_timers=[timer, [-1, 0, 5], [-1, 0, 7], [-1, 0, 11]],
+                                 spread_frames=[raw, 5, 7, 11], spreads=False))
+    queues = natural_case('unused')['queue_states']
+    queues[0] = supplied_queue(0, 'growth', [[4, 4]])
+    queues[1] = supplied_queue(0, 'spread')
+    rows.append(natural_case('growth_then_spread_driver_same_frame_new_queue',
+                             entry='growth_then_spread_driver', queue_states=queues,
+                             growth_timers=[[-1, 0, 0], [-1, 0, 5], [-1, 0, 7], [-1, 0, 11]],
+                             next_raw=0))
+    retail = [row['output'] for row in timer_reader_cases() if row['name'].startswith('retail_')]
+    retail_growth = [r['growth'] for r in retail]
+    retail_spread = [r['spread'] for r in retail]
+    retail_growth_pct = [struct.unpack('<d', struct.pack('<Q', int(r['growth_percentage_bits'], 16)))[0] for r in retail]
+    retail_spread_pct = [struct.unpack('<d', struct.pack('<Q', int(r['spread_percentage_bits'], 16)))[0] for r in retail]
+    rows.append(natural_case('spread_driver_original_retail_reader_values', entry='spread_driver',
+                             growth_frames=retail_growth, spread_frames=retail_spread,
+                             growth_percentages=retail_growth_pct, spread_percentages=retail_spread_pct,
+                             spread_timers=[[-1, 0, 0]] * 4))
+    rows.append(natural_case('growth_then_spread_driver_stock_fast_growth_reload',
+                             entry='growth_then_spread_driver', fast_growth=True,
+                             growth_frames=retail_growth, spread_frames=retail_spread,
+                             growth_percentages=retail_growth_pct, spread_percentages=retail_spread_pct,
+                             growth_timers=[[-1, 0, 0]] * 4, spread_timers=[[-1, 0, 0]] * 4,
+                             queue_states=[supplied_queue(k, q) for k in range(4) for q in FIELDS]))
+    for fast in (False, True):
+        rows.append(natural_case(f'growth_then_spread_driver_negative_growth_fast_{fast}',
+                                 entry='growth_then_spread_driver', fast_growth=fast,
+                                 growth_frames=[-3, -10, -2147483648, 2147483647],
+                                 growth_timers=[[-1, 0, 0]] * 4,
+                                 frames=[100, 101, 102],
+                                 queue_states=[supplied_queue(k, q) for k in range(4) for q in FIELDS]))
+    return rows
+
+
+def cases():
+    return enqueue_cases() + natural_cases()
+
+
 def queue_address(kind, name):
     return ARENA + kind * 0x8000 + (0x4000 if name == 'growth' else 0)
 
@@ -170,7 +391,15 @@ def execute(case):
     inherited = dict(case, west_building=False,
                      ore=[[*c['cell'], c['type_id'], c['variant'], c['density']]
                           for c in case['cells']])
-    u, call, read32, _events, _unused = fixture(inherited)
+    natural = case['entry'] in ('spread_processor', 'spread_driver', 'growth_then_spread_driver')
+    if natural:
+        # Reuse TIBTRE's real Overlay constructor/Mark/recalc ownership. Its
+        # supplied tree at (16,16) is outside this diamond, available only for
+        # declared blocked-target object controls.
+        from tools.spatial_oracle.tibtre import fixture as tibtre_fixture
+        u, call, read32, _coords, _events = tibtre_fixture(inherited)
+    else:
+        u, call, read32, _events, _unused = fixture(inherited)
     u.mem_map(ARENA, ARENA_SIZE)
     width, height = case['size']
     u.mem_write(MAP + 0xF4, dwords(width, height))
@@ -193,14 +422,26 @@ def execute(case):
     u.mem_write(SCENARIO + 0x34A6, bytes([case['grows']]))
     for c in case['cells']:
         u.mem_write(cell(*c['cell']) + 0x11C, bytes([c['slope']]))
-        u.mem_write(cell(*c['cell']) + 0xE4, dwords(1 if c['occupied'] else 0))
+        u.mem_write(cell(*c['cell']) + 0xE4, dwords((ACTOR if natural else 1) if c['occupied'] else 0))
+        if 'overlay' in c:
+            u.mem_write(cell(*c['cell']) + 0x44, dwords(c['overlay']))
+        if 'land' in c:
+            u.mem_write(cell(*c['cell']) + 0xEC, dwords(c['land']))
+    if natural:
+        flags = (0x80 if case['spreads'] else 0) | (0x40 if case.get('fast_growth', False) else 0)
+        u.mem_write(SCENARIO, dwords(flags))
     for kind in range(4):
         tib = TIBS + kind * 0x200
         u.mem_write(tib + 0xA0, struct.pack('<d', case['spread_percentages'][kind]))
         u.mem_write(tib + 0xB0, struct.pack('<d', case['growth_percentages'][kind]))
         u.mem_write(tib + 0xE4, dwords(12))
-        u.mem_write(tib + 0x100, struct.pack('<3i', 11 + kind, 0, 200 + kind))
-        u.mem_write(tib + 0x11C, struct.pack('<3i', 21 + kind, 0, 300 + kind))
+        growth_timer = case.get('growth_timers', [[21 + k, 0, 300 + k] for k in range(4)])[kind]
+        spread_timer = case.get('spread_timers', [[11 + k, 0, 200 + k] for k in range(4)])[kind]
+        u.mem_write(tib + 0x100, struct.pack('<3i', *spread_timer))
+        u.mem_write(tib + 0x11C, struct.pack('<3i', *growth_timer))
+        if natural:
+            u.mem_write(tib + 0x9C, dwords(case['spread_frames'][kind]))
+            u.mem_write(tib + 0xA8, dwords(case['growth_frames'][kind]))
         for name, fields in FIELDS.items():
             q = queue_address(kind, name)
             selected = kind == case['receiver'] and name == case['queue']
@@ -209,10 +450,19 @@ def execute(case):
                 count = 1
             heap = case['pre_heap_indices'] if selected else [0]
             bitmaps = case['pre_bitmap'] if selected else [[2, 3]]
+            supplied = next((state for state in case.get('queue_states', [])
+                             if state['type_id'] == kind and state['queue'] == name), None)
+            if supplied is not None:
+                count, heap, bitmaps = len(supplied['entries']), supplied['heap_indices'], supplied['bitmap']
             u.mem_write(tib + fields[0], dwords(count, q, q + 0x2000, q + 0x100))
             u.mem_write(q, dwords(len(heap), capacity, q + 0x1000, 0, 0xFFFFFFFF))
             packed = struct.pack('<hhI', *case['pre_cell'], case['pre_priority_bits'])
-            u.mem_write(q + 0x100, packed * count)
+            if supplied is None:
+                u.mem_write(q + 0x100, packed * count)
+            else:
+                for index, entry in enumerate(supplied['entries']):
+                    u.mem_write(q + 0x100 + index * 8,
+                                struct.pack('<hhI', *entry['cell'], entry['priority_bits']))
             for slot, index in enumerate(heap, 1):
                 assert 0 <= index < count
                 u.mem_write(q + 0x1000 + slot * 4, dwords(q + 0x100 + index * 8))
@@ -227,14 +477,23 @@ def execute(case):
         a, b = SCENARIO + 0x224 + first * 4, SCENARIO + 0x224 + second * 4
         u.mem_write(a, dwords(case['next_raw'] ^ read32(b)))
     before = output_state(u, read32, capacity, bitmap_coordinates)
-    events, pending_random = [], []
+    events, pending_random, pending_ranged, pending_can_place = [], [], [], []
+    ranged_draw_index = None
 
     def observe(_u, address, _size, _data):
+        nonlocal ranged_draw_index
         sp, this = u.reg_read(UC_X86_REG_ESP), u.reg_read(UC_X86_REG_ECX)
+        event_start = len(events)
         if pending_random and address == pending_random[-1][0]:
             _, index = pending_random.pop()
             events[index]['raw'] = u.reg_read(UC_X86_REG_EAX)
             events[index]['rng_after'] = [read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)]
+        if pending_ranged and address == pending_ranged[-1][0]:
+            _, index = pending_ranged.pop()
+            events[index]['result'] = struct.unpack('<i', dwords(u.reg_read(UC_X86_REG_EAX)))[0]
+        if pending_can_place and address == pending_can_place[-1][0]:
+            _, index = pending_can_place.pop()
+            events[index]['result'] = bool(u.reg_read(UC_X86_REG_EAX) & 0xFF)
         if address == RANDOM:
             events.append(dict(kind='random', rng_before=[read32(SCENARIO + 0x21C),
                                                          read32(SCENARIO + 0x220)]))
@@ -250,9 +509,76 @@ def execute(case):
             events.append(dict(kind='grow_cell', cell=cell_xy(this)))
         elif address == GROWTH_PROCESSOR:
             events.append(dict(kind='growth_processor', receiver=(this - TIBS) // 0x200))
+        elif natural and address == SPREAD_PROCESSOR:
+            events.append(dict(kind='spread_processor', receiver=(this - TIBS) // 0x200))
+        elif natural and address in (SPREAD_DRIVER, GROWTH_DRIVER):
+            events.append(dict(kind='spread_driver' if address == SPREAD_DRIVER else 'growth_driver'))
+        elif natural and address == SPREAD_CELL:
+            events.append(dict(kind='spread_cell', cell=cell_xy(this), force=read32(sp + 4)))
+        elif natural and address == PLACE:
+            events.append(dict(kind='place', cell=cell_xy(this), type_id=read32(sp + 4),
+                               amount=read32(sp + 8)))
+        elif natural and address == CAN_PLACE:
+            # Read the original Cell coordinate so the resident shared Dummy
+            # Cell is observable when neighbor lookup leaves the diamond.
+            events.append(dict(kind='can_place', cell=list(struct.unpack('<hh', u.mem_read(this + 0x24, 4))),
+                               caller=f'{read32(sp):08x}', argument=read32(sp + 4)))
+            pending_can_place.append((read32(sp), len(events) - 1))
+        elif natural and address == 0x5FC380:
+            events.append(dict(kind='overlay_constructor',
+                               cell=list(struct.unpack('<hh', u.mem_read(read32(sp + 8), 4))),
+                               overlay=read32(read32(sp + 4) + 0x294)))
+        elif natural and address == RANGED:
+            events.append(dict(kind='ranged', lo=read32(sp + 4), hi=read32(sp + 8)))
+            pending_ranged.append((read32(sp), len(events) - 1))
+        elif natural and address == 0x65C837:
+            # RandomRanged owns an inline Random::Next copy and may reject
+            # several words. Observe each original draw, never infer a count
+            # from the final selection or substitute its result.
+            events.append(dict(kind='random', ranged=True,
+                               rng_before=[read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)]))
+            ranged_draw_index = len(events) - 1
+        elif natural and address == 0x65C87E and ranged_draw_index is not None:
+            events[ranged_draw_index]['raw'] = u.reg_read(UC_X86_REG_EAX)
+            events[ranged_draw_index]['rng_after'] = [read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)]
+            ranged_draw_index = None
+        if natural:
+            for event in events[event_start:]:
+                event['address'] = f'{address:08x}'
+
+    observed_coordinates = sorted(map(tuple, bitmap_coordinates.values())) if natural else [tuple(c['cell']) for c in case['cells']]
+
+    def cell_state():
+        result = [dict(cell=list(c), overlay=struct.unpack('<i', u.mem_read(cell(*c) + 0x44, 4))[0],
+                       density=u.mem_read(cell(*c) + 0x11E, 1)[0]) for c in observed_coordinates]
+        if natural:
+            for row in result:
+                row['land'] = struct.unpack('<i', u.mem_read(cell(*row['cell']) + 0xEC, 4))[0]
+        return result
 
     u.hook_add(UC_HOOK_CODE, observe)
-    if case['entry'] == 'reduce':
+    steps = []
+    if natural:
+        for frame in case.get('frames', [case['frame']]):
+            first = len(events)
+            u.mem_write(0xA8ED84, dwords(frame))
+            # Driver timer+4 is an uninitialized caller-local padding word;
+            # explicitly provide zero, as the shared TIBTRE timeline does.
+            u.mem_write(SP - 0x100, bytes(0x100))
+            if case['entry'] == 'growth_then_spread_driver':
+                call(GROWTH_DRIVER, 0, [])
+            if case['entry'] == 'spread_processor':
+                call(SPREAD_PROCESSOR, TIBS + case['receiver'] * 0x200, [])
+            else:
+                u.mem_write(SP - 0x100, bytes(0x100))
+                call(SPREAD_DRIVER, 0, [])
+            assert not pending_random and not pending_ranged and not pending_can_place and ranged_draw_index is None
+            step_events = events[first:]
+            steps.append(dict(frame=frame, state=output_state(u, read32, capacity, bitmap_coordinates),
+                              cells=cell_state(), events=step_events,
+                              draw_count=sum(e['kind'] == 'random' for e in step_events)))
+        returned = None
+    elif case['entry'] == 'reduce':
         call(REDUCE, cell(*case['target']), [case.get('amount', 1)])
         returned = u.reg_read(UC_X86_REG_EAX)
     elif case['entry'] == 'growth_processor':
@@ -269,17 +595,19 @@ def execute(case):
     for _ in range(4):
         call(RANDOM, SCENARIO + 0x218, [])
         next_random.append(u.reg_read(UC_X86_REG_EAX))
-    return dict(input=case, capacity=capacity, before=before, state=final, events=observed_events,
+    result = dict(input=case, capacity=capacity, before=before, state=final, events=observed_events,
                 bitmap_coordinate_map=[dict(index=index, cell=coord)
                                        for index, coord in sorted(bitmap_coordinates.items())],
                 draw_count=sum(e['kind'] == 'random' for e in observed_events),
-                next_random=next_random, returned=returned,
-                cells=[dict(cell=c['cell'], overlay=struct.unpack('<i', u.mem_read(cell(*c['cell']) + 0x44, 4))[0],
-                            density=u.mem_read(cell(*c['cell']) + 0x11E, 1)[0]) for c in case['cells']])
+                next_random=next_random, returned=returned, cells=cell_state())
+    if natural:
+        result['steps'] = steps
+    return result
 
 
 def generate():
-    return dict(source='unicorn/gamemd.exe', cases=[execute(case) for case in cases()])
+    return dict(source='unicorn/gamemd.exe', cases=[execute(case) for case in cases()],
+                timer_reader_cases=timer_reader_cases())
 
 
 if __name__ == '__main__':
@@ -289,7 +617,10 @@ if __name__ == '__main__':
               'append, cross-class receivers, timer retention and Scenario RNG continuation; '
               'three full Reduce_Tiberium480A80 caller controls and five complete '
               'GrowthProcessor722F00 calls through GrowTiberium483710/PlaceTiberium487190 '
-              'and spread-counter rebuild admission.',
+              'and spread-counter rebuild admission. Full natural SpreadProcessor722440, '
+              'SpreadDriver7221B0, ordered GrowthDriver722C40-before-SpreadDriver histories, '
+              'active-match target selection/Overlay constructor and timer cadence; selected '
+              'original Tiberium constructor defaults and ReadINI timer/percentage stores.',
         entry_points={'add_growth': ADD_GROWTH, 'add_spread': ADD_SPREAD,
                       'rebuild_growth': REBUILD_GROWTH, 'rebuild_spread': REBUILD_SPREAD,
                       'can_grow': 0x483620, 'can_spread': 0x483690,
@@ -297,7 +628,13 @@ if __name__ == '__main__':
                       'capacity': 0x42B1F0, 'bitmap_ordinal': 0x42B1C0,
                       'reduce_tiberium': REDUCE, 'random': RANDOM,
                       'growth_processor': GROWTH_PROCESSOR, 'grow_tiberium': GROW_CELL,
-                      'place_tiberium': 0x487190},
+                      'place_tiberium': PLACE, 'can_place_tiberium': CAN_PLACE,
+                      'spread_tiberium': SPREAD_CELL, 'spread_processor': SPREAD_PROCESSOR,
+                      'spread_driver': SPREAD_DRIVER, 'growth_driver': GROWTH_DRIVER,
+                      'ranged': RANGED, 'ranged_inline_draw': 0x65C837,
+                      'overlay_constructor': 0x5FC380, 'overlay_mark': 0x5FC570,
+                      'tiberium_constructor_members': 0x7216CF,
+                      'tiberium_timer_readers': 0x721A78},
         assumptions=['Shared harvest_field/refinery_dock fixture: original Cell/Unit vtables, '
                      'original Scenario seeder, declared successful Size4x4 diamond over '
                      'the existing 32x32 backing table; CellIterator executes until first null.',
@@ -307,6 +644,25 @@ if __name__ == '__main__':
                      'Adequate external entries/heap/bitmap stores, explicit append count and '
                      'valid heap references represent prior queue state; initialization/allocator '
                      'failure, whole Logic/map startup and actual long-session history are excluded.',
+                     'Natural spread rows reuse the existing TIBTRE fixture with GameActive1, '
+                     'real Unit/Building/Terrain and Overlay vtables, resident1x1 TMP/tile and '
+                     'Buildable land rows, initialized empty listener/Overlay registries. '
+                     'Declared source/target objects, tile/land/slope/structural flags and '
+                     'adequate allocator storage are prepared state; original admission, '
+                     'Overlay constructor/Mark/Recalc and target placement execute. '
+                     'The existing tree at16,16 is outside this Size4x4 diamond and is used '
+                     'only as the real object identity of declared spawner-blocked targets.',
+                     'Driver rows invoke the complete original functions per declared frame. '
+                     'Growth-before-spread composition supplies their observed Logic caller '
+                     'order and excludes unrelated surrounding Logic callbacks. Signed timer '
+                     'anchors/raw durations execute; each opaque timer+4 padding input is '
+                     'explicitly zero, with no gameplay meaning inferred from that word.',
+                     'Selected Tiberium constructor7216CF..7217A6 and ReadINI721A78..721AFA '
+                     'execute original zero/double defaults and ReadInt/ReadDouble stores '
+                     'over shared cached lexical INI indexes. AbstractType construction, '
+                     'full type registry discovery and physical INI file loading are excluded. '
+                     'Four retail RULESMD sections carry physical file identity and original '
+                     'reader-established timer/percentage outputs used by selected driver rows.',
                      'Timer+4 padding is supplied zero; sentinel frame/duration values are compared '
                      'for every class. X87 control0x0E7F comes from the shared fixture; signed frame '
                      'wrap and >2^24 chopped FILD/FSTP boundaries execute. Four next_raw controls '
@@ -315,6 +671,17 @@ if __name__ == '__main__':
         substitutions=['Shared fixture OS Interlocked imports and unused refinery presentation '
                        'sinks remain. Reduce_Tiberium observers supply empty tactical rectangles, '
                        'RecalcAttributes bare-land publication and radar/tactical dirtiness sinks. '
-                       'No ore admission, queue, rebuild, iterator or RNG return is substituted.']),
+                       'Natural spread rows inherit the existing TIBTRE allocation/free storage '
+                       'service hooks and empty tactical/radar dirty sinks; original Overlay '
+                       'attribute recalculation executes. No ore admission, queue, rebuild, '
+                       'iterator, timer, direction/variant choice or RNG return is substituted.']),
         source_paths={'producer': Path(__file__), 'harvest_field': Path(__file__).with_name('harvest_field.py'),
-                      'refinery_dock': Path(__file__).with_name('refinery_dock.py')})
+                      'refinery_dock': Path(__file__).with_name('refinery_dock.py'),
+                      'tibtre': Path(__file__).with_name('tibtre.py'),
+                      'unit_scatter_state': Path(__file__).with_name('unit_scatter_state.py'),
+                      'unit_source_scatter': Path(__file__).with_name('unit_source_scatter.py'),
+                      'building_body_rules': Path(__file__).with_name('building_body_rules.py'),
+                      'bridge_constructor': Path(__file__).with_name('bridge_constructor.py'),
+                      'bridge_landing_inputs': Path('tools/rules_oracle/bridge_landing_inputs.py'),
+                      'bridge_child_sound': Path('tools/rules_oracle/bridge_child_sound.py'),
+                      'guided_controls': Path('tools/rules_oracle/guided_controls.py')})
