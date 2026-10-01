@@ -833,7 +833,7 @@ fn refresh_mover_speed_after_promotion(sim: &mut Simulation, id: u64, rules: &Ru
         return;
     }
     let obj = sim.object_type(entity.type_ref(), rules);
-    let speed = crate::sim::movement::order_speed(entity, obj, Some(rules));
+    let speed = crate::sim::movement::order_speed(entity, obj, Some(rules), &sim.houses);
     if let Some(target) = sim
         .substrate
         .entities

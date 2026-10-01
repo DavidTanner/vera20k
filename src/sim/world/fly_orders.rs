@@ -96,6 +96,7 @@ impl Simulation {
                 entity,
                 self.object_type(entity.type_ref(), rules),
                 Some(rules),
+                &self.houses,
             );
             self.move_air_coordinate(id, coord, speed, None, Some(rules));
         }

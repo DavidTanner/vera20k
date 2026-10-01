@@ -3425,7 +3425,12 @@ impl Simulation {
         let moving_now = crate::sim::movement::motion_query::is_moving_now(
             entity,
             rules.map(|rules| {
-                crate::sim::movement::SpeedRules::new(rules, &self.interner, &self.type_handles)
+                crate::sim::movement::SpeedRules::new(
+                    rules,
+                    &self.interner,
+                    &self.type_handles,
+                    &self.houses,
+                )
             }),
             self.session.binary_frame,
         );
@@ -5919,6 +5924,7 @@ impl Simulation {
             rules,
             &self.interner,
             &self.type_handles,
+            &self.houses,
         ));
         let wake_positions: Vec<(u16, u16, SimFixed, SimFixed, u8)> = self
             .substrate

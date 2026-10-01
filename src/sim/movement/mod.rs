@@ -112,8 +112,6 @@ mod track_host;
 mod track_path;
 pub(crate) mod track_process;
 mod track_speed;
-#[cfg(test)]
-pub(crate) mod foot_speed_native;
 pub(crate) mod track_turn;
 mod walk_admission;
 pub(crate) mod walk_head;
@@ -145,6 +143,8 @@ pub use facing_class::FacingClass;
 #[cfg(test)]
 pub(crate) use foot_speed::owner_current_speed_from_fraction;
 pub(crate) use foot_speed::{SpeedRules, order_speed, owner_current_speed};
+#[cfg(test)]
+pub(crate) use foot_speed::owner_speed_bonus;
 pub(crate) use drive_locomotion::drive_do_turn;
 
 // Re-export command functions so callers can use `movement::clear_navigation_for_entity` etc.

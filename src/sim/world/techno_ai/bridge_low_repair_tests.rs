@@ -359,6 +359,7 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
         Some(object),
         object.speed,
         runtime.resources.rules.general.veteran_speed,
+        crate::sim::movement::owner_speed_bonus(&runtime.simulation.houses, actor, Some(object)),
     );
     assert_eq!(
         i64::from(crate::sim::movement::owner_current_speed_from_fraction(

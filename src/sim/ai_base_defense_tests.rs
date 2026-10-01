@@ -375,10 +375,10 @@ fn production_state_feeds_the_choice_as_native() {
     );
     house.base_plan.nodes = row_nodes(row);
     house.enemy_house = Some(enemy);
-    house.project_country_cost_mults(&rules, &sim.interner);
+    house.project_country_mults(&rules, &sim.interner);
     sim.houses.insert(owner, house);
     let mut enemy_house = HouseState::new(enemy, 1, None, false, 0, 10);
-    enemy_house.project_country_cost_mults(&rules, &sim.interner);
+    enemy_house.project_country_mults(&rules, &sim.interner);
     sim.houses.insert(enemy, enemy_house);
     for building in row["buildings"].as_array().unwrap() {
         let (x, y) = cell(&building[1]);

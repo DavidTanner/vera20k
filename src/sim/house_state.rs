@@ -69,12 +69,23 @@ impl Default for HouseRofBias {
 /// in [`crate::rules::object_type::ObjectType::factor_slot`] order), which
 /// `Cost_Of` multiplies in (`0x0050BDF0`). The type never changes, so the
 /// House keeps the rules' values from its creation
-/// ([`HouseState::project_country_cost_mults`]) and prices objects without a
+/// ([`HouseState::project_country_mults`]) and prices objects without a
 /// rules lookup, as the lifecycle's value totals must (`house_tracking`).
 /// `Simulation::cost_of` checks the copy against the rules in debug builds.
 /// The HouseType constructor stores 1.0.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CountryCostMults(pub [NativeF32Bits; 5]);
+
+/// The `Speed*Mult=` floats of the House's type (Infantry, Units, Aircraft at
+/// `HouseTypeClass+0x128/+0x12C/+0x130`). The HouseType constructor stores 1.0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct CountrySpeedMults([NativeF32Bits; 3]);
+
+impl Default for CountrySpeedMults {
+    fn default() -> Self {
+        Self([NativeF32Bits::ONE; 3])
+    }
+}
 
 impl Default for CountryCostMults {
     fn default() -> Self {
@@ -332,6 +343,10 @@ pub struct HouseState {
     /// hash.
     #[serde(default)]
     pub country_cost_mults: CountryCostMults,
+    /// The HouseType's `Speed*Mult=`, projected with the cost factors and
+    /// likewise left out of the state hash. Read through [`Self::speed_bonus`].
+    #[serde(default)]
+    country_speed_mults: CountrySpeedMults,
     /// Whether this player has been eliminated.
     pub is_defeated: bool,
     /// Victory flag.
@@ -565,15 +580,34 @@ impl HouseState {
         self.country.unwrap_or(self.name)
     }
 
-    /// Take the `Cost*Mult=` of the House's type from `rules`
-    /// ([`CountryCostMults`]); the scenario's House creation calls it once.
-    pub(crate) fn project_country_cost_mults(
+    /// Take the `Cost*Mult=` and `Speed*Mult=` of the House's type from
+    /// `rules` ([`CountryCostMults`]); the scenario's House creation calls it
+    /// once.
+    pub(crate) fn project_country_mults(
         &mut self,
         rules: &crate::rules::ruleset::RuleSet,
         interner: &crate::sim::intern::StringInterner,
     ) {
-        self.country_cost_mults =
-            CountryCostMults(rules.country_cost_mults(interner.resolve(self.house_type_id())));
+        let house_type = interner.resolve(self.house_type_id());
+        self.country_cost_mults = CountryCostMults(rules.country_cost_mults(house_type));
+        self.country_speed_mults = CountrySpeedMults(rules.country_speed_mults(house_type));
+    }
+
+    /// `HouseClass::GetSpeedBonus @ 0x0050C050`: the HouseType's float for
+    /// the type's WhatAmI (AircraftType `+0x130`, InfantryType `+0x128`,
+    /// UnitType `+0x12C`), 1.0 for any other type.
+    pub(crate) fn speed_bonus(
+        &self,
+        category: crate::rules::object_type::ObjectCategory,
+    ) -> NativeF32Bits {
+        use crate::rules::object_type::ObjectCategory;
+        let [infantry, units, aircraft] = self.country_speed_mults.0;
+        match category {
+            ObjectCategory::Infantry => infantry,
+            ObjectCategory::Vehicle => units,
+            ObjectCategory::Aircraft => aircraft,
+            ObjectCategory::Building => NativeF32Bits::ONE,
+        }
     }
 
     /// `HouseClass::SetDifficulty @ 0x004F6EC0`, for the fields VERA keeps:
@@ -761,6 +795,7 @@ impl HouseState {
             rof_bias: HouseRofBias::default(),
             multiplay_passive: false,
             country_cost_mults: CountryCostMults::default(),
+            country_speed_mults: CountrySpeedMults::default(),
             is_defeated: false,
             has_won: false,
             has_lost: false,

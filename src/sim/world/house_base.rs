@@ -615,7 +615,7 @@ mod tests {
     fn add_house(sim: &mut Simulation, name: &str, rules: &RuleSet) -> InternedId {
         let owner = sim.interner.intern(name);
         let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 0, 10);
-        house.project_country_cost_mults(rules, &sim.interner);
+        house.project_country_mults(rules, &sim.interner);
         sim.houses.insert(owner, house);
         sim.session.house_order.push(owner);
         owner
@@ -1359,7 +1359,7 @@ mod tests {
         let [allies, soviets] = ["Americans", "Russians"].map(|name| sim.interner.intern(name));
         for house in [allies, soviets] {
             let mut state = HouseState::new(house, 0, None, false, 0, 10);
-            state.project_country_cost_mults(&rules, &sim.interner);
+            state.project_country_mults(&rules, &sim.interner);
             sim.houses.insert(house, state);
         }
         let tank = rules.object("HTNK").unwrap();

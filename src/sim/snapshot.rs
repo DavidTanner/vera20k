@@ -792,7 +792,8 @@ use crate::sim::world::Simulation;
 // ordinary load still performs the native full hierarchy rebuild.
 // 274 -> 275: a movement target no longer saves route cells, their layers or
 // a cursor; the Foot+5E0 queue is a Foot's only route.
-const SNAPSHOT_VERSION: u32 = 275;
+// 275 -> 276: each House saves its type's `Speed*Mult=` beside the cost ones.
+const SNAPSHOT_VERSION: u32 = 276;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3741,7 +3742,8 @@ mod tests {
         // 273 -> 274: retained coefficient, Team flag, House threat and cache;
         // retained native base navigation is saved; its live history is hashed.
         // 274 -> 275: movement targets no longer save route cells.
-        assert_eq!(super::SNAPSHOT_VERSION, 275);
+        // 275 -> 276: each House saves its type's Speed*Mult.
+        assert_eq!(super::SNAPSHOT_VERSION, 276);
     }
 
     #[test]

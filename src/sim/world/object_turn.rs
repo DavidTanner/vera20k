@@ -514,6 +514,7 @@ impl Simulation {
                 &mut sim.interner,
                 rules,
                 Some(&sim.type_handles),
+                &sim.houses,
                 &mut sim.movement_pass_cache,
             )
         };
@@ -876,6 +877,7 @@ impl Simulation {
                             rules,
                             &sim.interner,
                             &sim.type_handles,
+                            &sim.houses,
                         )
                     }),
                     cadence,

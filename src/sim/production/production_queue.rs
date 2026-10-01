@@ -499,7 +499,7 @@ pub(super) fn deliver_produced_object(
             // the factory already promoted (InitialVeteran, cloning) drives to
             // the rally point at its FASTER speed.
             let speed = match sim.substrate.entities.get(stable_id) {
-                Some(e) => crate::sim::movement::order_speed(e, obj, Some(rules)),
+                Some(e) => crate::sim::movement::order_speed(e, obj, Some(rules), &sim.houses),
                 None => crate::util::fixed_math::ra2_speed_to_leptons_per_second(
                     obj.map_or(4, |o| o.speed),
                 ),

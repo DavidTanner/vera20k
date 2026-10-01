@@ -693,6 +693,7 @@ fn apply_mission_mutation(sim: &mut Simulation, rules: &RuleSet, m: MissionMutat
                     e,
                     sim.object_type(e.type_ref(), rules),
                     Some(rules),
+                    &sim.houses,
                 )
             })
             .unwrap_or(SimFixed::from_num(8));

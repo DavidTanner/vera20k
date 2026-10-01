@@ -7,6 +7,8 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::house_state::HouseState;
+use crate::sim::intern::InternedId;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed, isqrt_i64};
@@ -149,6 +151,7 @@ pub(super) fn advance(
     entity: &mut GameEntity,
     object: Option<&ObjectType>,
     rules: Option<&RuleSet>,
+    houses: &std::collections::BTreeMap<InternedId, HouseState>,
     terrain: Option<&ResolvedTerrainGrid>,
     grid: Option<&PathGrid>,
 ) -> i32 {
@@ -163,6 +166,7 @@ pub(super) fn advance(
         entity,
         object,
         rules.map_or(1.0, |r| r.general.veteran_speed),
+        houses,
     );
     let (destination, selector) = match kind {
         LocomotorKind::Drive => entity
@@ -276,14 +280,28 @@ mod tests {
                 ..Default::default()
             });
             assert_eq!(
-                advance(&mut mover, Some(object), Some(&rules), None, None),
+                advance(
+                    &mut mover,
+                    Some(object),
+                    Some(&rules),
+                    &Default::default(),
+                    None,
+                    None
+                ),
                 10
             );
             assert!(mover.foot_speed.accept_speed_crate(
                 crate::util::native_x87::NativeF64Bits::from_bits(1.2_f64.to_bits())
             ));
             assert_eq!(
-                advance(&mut mover, Some(object), Some(&rules), None, None),
+                advance(
+                    &mut mover,
+                    Some(object),
+                    Some(&rules),
+                    &Default::default(),
+                    None,
+                    None
+                ),
                 11
             );
             assert_eq!(
@@ -308,7 +326,14 @@ mod tests {
                     ..Default::default()
                 });
                 assert_eq!(
-                    advance(&mut mover, rules.object("MTNK"), Some(&rules), None, None),
+                    advance(
+                        &mut mover,
+                        rules.object("MTNK"),
+                        Some(&rules),
+                        &Default::default(),
+                        None,
+                        None
+                    ),
                     15
                 );
             }
@@ -356,7 +381,14 @@ mod tests {
             entity
                 .foot_speed
                 .set_speed_fraction(fixed(&input["applied_bits"]));
-            advance(&mut entity, rules.object("MTNK"), Some(&rules), None, None);
+            advance(
+                &mut entity,
+                rules.object("MTNK"),
+                Some(&rules),
+                &Default::default(),
+                None,
+                None,
+            );
             assert_eq!(
                 retained(&entity),
                 fixed(&case["output"]["target_bits"]),
@@ -437,11 +469,10 @@ mod tests {
     /// Every executed Drive/Ship prefix row through the one production port:
     /// the target and applied fraction within `SimFixed` precision (see
     /// `track_speed_prefix`), whether the setter ran, and the invocation
-    /// budget from the native getter of the native applied fraction.
+    /// budget from the production getter of the native applied fraction.
     #[test]
     fn speed_prefix_matches_original_rows_within_fixed_point() {
         use crate::sim::movement::drive_locomotion::{TrackSpeedPrefix, track_speed_prefix};
-        use crate::sim::movement::foot_speed_native::{FootSpeedInputs, current_speed};
         use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
         let corpus: serde_json::Value = serde_json::from_str(include_str!(
             "../../../tools/spatial_oracle/track_speed_native.json"
@@ -502,18 +533,24 @@ mod tests {
                     "{key}: {actual} vs native {native} for {input}"
                 );
             }
-            let speed = current_speed(FootSpeedInputs {
-                raw_type_speed: integer(getter, "raw", 17),
-                house_multiplier: NativeF32Bits::from_bits(
+            // The getter, as production runs it, on the native applied value.
+            let type_speed = crate::sim::combat::veterancy::current_type_speed(
+                integer(getter, "raw", 17),
+                NativeF32Bits::from_bits(
                     u32::from_str_radix(getter["house_bits"].as_str().unwrap(), 16).unwrap(),
                 ),
-                crate_multiplier: bits64(&getter["crate_bits"]),
-                faster: getter["faster"].as_bool().unwrap_or(false),
-                veteran_multiplier: bits64(&getter["veteran_bits"]),
-                applied_fraction: bits64(&expected["applied_bits"]),
-                unit_flag_carrier: integer(getter, "flag_owner", -1) != -1,
-            })
-            .unwrap();
+                bits64(&getter["crate_bits"]),
+                getter["faster"]
+                    .as_bool()
+                    .unwrap_or(false)
+                    .then(|| f64::from_bits(bits64(&getter["veteran_bits"]).bits())),
+            );
+            let mut owner = crate::sim::components::FootSpeedState::default();
+            owner.set_speed_fraction_native_bits(bits64(&expected["applied_bits"]).bits());
+            let speed = crate::sim::movement::owner_current_speed_from_fraction(
+                SimFixed::from_num(type_speed * 15),
+                owner.applied_fraction(),
+            );
             assert_eq!(
                 crate::sim::movement::track_process::invocation_budget(
                     speed,

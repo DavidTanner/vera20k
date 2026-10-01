@@ -887,7 +887,12 @@ mod tests {
             // GetCurrentSpeed follows the fraction; the rules-less getter
             // reads the order's stamped 150 leptons/s.
             assert_eq!(
-                crate::sim::movement::owner_current_speed(owner, None, 1.0),
+                crate::sim::movement::owner_current_speed(
+                    owner,
+                    None,
+                    1.0,
+                    &std::collections::BTreeMap::new(),
+                ),
                 if blocked { 0 } else { 10 }
             );
             assert_eq!(owner.low_bridge_tube_state.is_some(), blocked);

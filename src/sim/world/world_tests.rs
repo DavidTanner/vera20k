@@ -393,7 +393,12 @@ fn a_jumpjet_cruising_over_water_leaves_no_wake() {
         .expect("Jumpjet runtime");
     runtime.phase = crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
     runtime.moving = true;
-    let speed = crate::sim::movement::SpeedRules::new(&rules, &sim.interner, &sim.type_handles);
+    let speed = crate::sim::movement::SpeedRules::new(
+        &rules,
+        &sim.interner,
+        &sim.type_handles,
+        &sim.houses,
+    );
     let jumpjet = sim.substrate.entities.get(id).expect("Jumpjet");
     assert!(crate::sim::movement::motion_query::is_moving_now(
         jumpjet,

@@ -260,6 +260,7 @@ mod tests {
                     Some(object),
                     4,
                     1.0,
+                    crate::sim::movement::owner_speed_bonus(&sim.houses, entity, Some(object)),
                 );
                 assert_eq!(
                     (speed / SimFixed::from_num(15)).to_num::<i32>(),
