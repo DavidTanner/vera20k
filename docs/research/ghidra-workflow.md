@@ -38,6 +38,16 @@ the analyzed program. Re-importing or enabling analysis is not routine reconnect
 - Find state writers and initialization. Zero-filled image data may be populated
   at runtime. Confirm active-YR gates and retail inputs; inherited TS code alone
   does not establish a feature's applicability.
+- Check a decompile's stack offsets against the code when a parameter or local looks
+  misplaced (`unaff_retaddr`, `in_stack_`, a parameter where another is pushed). For a
+  call whose stack change it does not know, the decompiler assumes the call pops nothing,
+  unless paths that meet pin the value. That covers every virtual or COM call, and every
+  direct call to a function without a stored purge. A call that pops its arguments then
+  leaves the rest of that path off by those bytes. FUN_007CA650 is MSVC's `_chkstk`,
+  which Ghidra does not recognise, so the decompiles of its 30 callers place their locals
+  above the return address. `frame_compare.py PORT ADDR` in the type-layouts research
+  folder (see `LOCAL.md`) compares the decompiler's offsets with ESP computed from the
+  code.
 
 Follow production consumers far enough to establish the claimed result. Visual/audio
 work includes composition, active flags, selected assets/frames, timing and output;
@@ -324,8 +334,24 @@ Notes for readers:
   - two endless loops that stand in for element compares, and their two wrappers.
 
   `_com_issue_error` cannot return either, but it stays unmarked and untyped; its plate
-  says why. No switch table has a case the flows lack. 10,108 functions without a
+  says why. No switch table has a case the flows lack. 10,088 functions without a
   prototype still have an unknown stack purge.
+- **Stack objects.** Since 2026-10-01 the 923 functions that callers hand a stack object
+  in ECX take it: 735 are `__thiscall`, and 188 are `__fastcall` because they read EDX
+  first too. `this` is `void *`, and each prototype declares the stack bytes its RETs pop.
+  Before, the decompiler did not see the object passed, so it kept the values last stored
+  there: a COM smart pointer folded to NULL, and the branches that test it vanished
+  (FootClass__ChronoWarpTo 0x4DF7F0, SuperClass__Launch 0x6CC390). 9,407 of the 10,674
+  calls that pass a stack address in ECX now reach a typed function. Plates tagged
+  `[stack objects 2026-10-01]` say why each takes ECX: it reads it first, or it passes it
+  on unchanged to a function that does. 80 such callees stay untyped; the stack-objects
+  research folder (see `LOCAL.md`) gives each one's reason in `apply/left.json`.
+  - Where such an object's address reaches a typed function, the decompiler no longer
+    folds the object's vtable, so a call through it shows as a slot call:
+    `DynamicVectorClass<MSAnim*>__SetCapacity(n + 10, 0)` reads
+    `(*(code *)vt[2])(n + growth, 0)`.
+  - FUN_007CA650's plate says it is MSVC's `_chkstk`. The plates of FUN_005271c0 and
+    FUN_005271e0 say they are one function split in two.
 
 Plates tagged `[2026-10-01 BuildingTypeClass layout]`,
 `[2026-10-01 TechnoTypeClass layout]`, `[2026-10-01 UnitTypeClass layout]`,
@@ -449,6 +475,14 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   `(void)` on a `ret 0xC` function breaks the stack analysis of its callers. A custom
   prototype that declares only `this` makes every direct caller's decompile drop the
   arguments.
+- `set_function_prototype` applies the parameters under the function's old convention
+  and sets the new convention afterwards. Ghidra stores a stack purge only for a function
+  that has none, and computes it from that first step. So a `__fastcall` prototype on a
+  function without a stored purge also counts 4 bytes for each register parameter, and
+  callers read the stack that many bytes off after each call (8 with ECX and EDX). Write
+  `__stdcall` with only the stack parameters first, then the `__fastcall` prototype. No
+  endpoint reads a purge; the signature census of a staging copy does.
+- The server renumbers parameters named `param_N` by position.
 - `set_function_no_return` makes the decompiler end each caller's path at the call
   (`/* WARNING: Subroutine does not return */`) and remove blocks reached only after it.
   It also removes live code where the decompiler wrongly folds an error branch to
