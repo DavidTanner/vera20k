@@ -2171,10 +2171,9 @@ fn infantry_attack_moved_across_hills_high_bridge_crosses() {
 // ---------------------------------------------------------------------------
 // Repath after a block, ON the deck — matrix row T2-03.
 //
-// `try_repath_after_block` (`movement_path.rs`) is reached from
-// `movement_blocked.rs` when a mover's next step is occupied. It is untested on
-// a deck anywhere in the tree, and the row's question is whether the repath it
-// produces stays on the Bridge layer or silently drops the remaining path to
+// A blocked repath is reached when a mover's next step is occupied. It is
+// untested on a deck anywhere in the tree, and the row's question is whether
+// the repath it produces stays on the Bridge layer or silently drops the remaining path to
 // Ground — which on a high span means the route is re-planned against the
 // riverbed under the mover's feet.
 //
@@ -2433,7 +2432,7 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
     assert!(
         rebuilds_while_on_deck > 0,
         "no path rebuild happened while the crosser stood on a stamped cell, so \
-         `try_repath_after_block` was never exercised on a deck and this run settles nothing \
+         a blocked repath was never exercised on a deck and this run settles nothing \
          ({path_rebuilds} rebuild(s) total)"
     );
     for row in &deck_frames {

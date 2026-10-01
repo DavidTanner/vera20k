@@ -612,6 +612,7 @@ fn walk_pursuit_scene() -> (Simulation, RuleSet, u64, u64) {
         crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(64, 64, cells),
     );
     assert!(sim.rebuild_dynamic_navigation(&rules));
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     let actor = sim.spawn_object("E1", "Local", 10, 10, 0, &rules).unwrap();
     // Production visibility is recomputed by the frame host, not by spawn.
     // Establish the actor's sight before introducing an enemy or an order.

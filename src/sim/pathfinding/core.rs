@@ -546,8 +546,7 @@ fn is_structural_bridge_deck_height(path_height: i16, cell: &PathCell) -> bool {
 /// The remaining bypass is between structural cells when the parent is not
 /// at its raw level+4 and the candidate lacks 0x200. The caller then uses its
 /// local height-difference rule. That reduced under-bridge domain is not a
-/// claim of the unconditional native receiver contract; changes must also
-/// account for the runtime crossing reader in `movement_occupancy`.
+/// claim of the unconditional native receiver contract.
 pub(crate) fn needs_bridge_traversal_for_edge(
     current_height: i16,
     current_cell: &PathCell,
@@ -780,9 +779,13 @@ pub struct AStarOptions<'a> {
     /// Search-scoped temporary marker overlay equivalent to
     /// `CellClass+0x140 & 0x40000`. Destination hits multiply normal compass
     /// edge cost, but do not change walkability or persistent pathgrid state.
+    /// Residual (#954): AStar_main_loop applies the markers through
+    /// UpdateBridgePassability (0x0042ACF0, calls at 0x00429C1A, 0x0042A42D,
+    /// 0x0042A44C) on every urgency 1/2 search; no production search builds
+    /// an overlay, so live searches pass `None`.
     pub marker_overlay: Option<&'a SearchMarkerOverlay>,
     /// Reduced-admission searches only (movers without a Foot +1AC search
-    /// entry, e.g. the legacy blocked-repath lane): crusher units bypass all
+    /// entry, e.g. the cursor's reachability query): crusher units bypass all
     /// entity soft-block costs (codes 1-6); buildings (code 7, in the
     /// entity_blocks set) still block. Searches through the live +1AC price
     /// codes natively and ignore this.

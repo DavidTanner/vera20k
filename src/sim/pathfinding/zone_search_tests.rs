@@ -1464,7 +1464,6 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
         Some(&rules),
         None,
         crate::sim::movement::MovementConfig {
-            binary_frame: 1,
             close_enough: SimFixed::from_num(0),
             path_delay_ticks: 9,
             blockage_path_delay_ticks: 60,

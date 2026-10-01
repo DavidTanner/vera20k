@@ -50,10 +50,6 @@ const APPROACH_LEVEL: u8 = 4;
 /// Terrain level of the gorge the span crosses — the riverbed the tank must
 /// never sit on while it is flagged on-bridge.
 const GORGE_LEVEL: u8 = 0;
-/// `ObjectClass::SetHeight`'s deck term, in levels. Same number as
-/// `sim::movement::movement_occupancy::crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16`, which is
-/// `pub(super)` to the movement module and therefore not nameable from here.
-
 /// Start cell: plain plateau ground, one step before the entry ramp.
 const APPROACH_A_X: u16 = 14;
 /// Entry ramp: a bridgehead **transition** cell that is deliberately NOT

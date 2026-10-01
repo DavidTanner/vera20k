@@ -487,6 +487,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
     let rules = production_rules(0);
     let (mut sim, firer, target) = production_pair(&rules);
     assert!(sim.rebuild_dynamic_navigation(&rules));
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     let command = |sim: &mut Simulation, command: Command| {
         assert!(sim.apply_command_with_overlays("Americans", &command, Some(&rules), None,));
     };

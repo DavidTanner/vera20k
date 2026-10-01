@@ -458,7 +458,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<GroundLocomotorOutcome, super::FrameAdvanceError> {
-        let timing = movement::MovementConfig::from_rules(self.session.binary_frame, rules);
+        let timing = movement::MovementConfig::from_rules(rules);
         self.process_ground_locomotor_with_config(stable_id, rules, overlay_registry, timing)
     }
 
@@ -558,7 +558,7 @@ impl Simulation {
         let mut retry = false;
         loop {
             // The Scatter calls a step queued while the pass held the world
-            // (tube exit, pass-lane cell entry), in call order.
+            // (the tube exit), in call order.
             outcome.bridge_state_changed |= sim
                 .run_scatter_requests(
                     pending_movement.take_scatter_requests(),
@@ -959,7 +959,7 @@ impl Simulation {
             .get(stable_id)
             .map(|entity| (entity.position.rx, entity.position.ry));
         // A mover whose Process has no ported `Per_Cell_Process` call (Fly,
-        // a cruising Jumpjet, Rocket, the legacy lane's other movers) takes
+        // a cruising Jumpjet, Rocket) takes
         // VERA's cell-change stand-in for the Foot body's sensor, uncloak,
         // Temporal and promote steps (`movement/per_cell.rs`).
         //
