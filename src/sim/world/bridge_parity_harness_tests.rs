@@ -251,7 +251,12 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // and the zone rebuild over it; the crossing runs through native Find_Path.
 // The absolute RNG pins, per-tick replay equality and every route/height/
 // on_bridge tripwire pass unchanged. Previous: 0x14B8_172A_D6EA_A02C.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xB592_E027_A510_DB45;
+// 2026-10-01 Walk route owner (hash composition only): Walk keeps no
+// MovementTarget route cells and no locomotor sub-cell destination, both of
+// which the state hash folded. Ceremony: main and this change, each with only
+// those fields dropped from the hash (probe not committed), printed the same
+// value for all three replay pins (bridge, global, slice 6). Previous: 0xB592_E027_A510_DB45.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xCC11_DDD9_1928_916A;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
