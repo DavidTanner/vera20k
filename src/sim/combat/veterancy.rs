@@ -164,35 +164,38 @@ pub fn ftol_scale(value: i32, multiplier: f64) -> i32 {
     ))
 }
 
-/// `FootClass::GetCurrentSpeed @ 0x004DB1A0`, the FASTER arm.
+/// `FootClass::GetCurrentSpeed @ 0x004DB1A0`, stages 1 and 2, on the native
+/// integer type speed (`TechnoType+0x678`, leptons per frame).
 ///
-/// gamemd-derived: the type speed is truncated to an integer lepton-per-frame
-/// value first (`0x004DB1CD..0x004DB1DB`), then — for a `FASTER` holder —
-/// `ftol(speed * Rules.VeteranSpeed)` at `0x004DB1F1..0x004DB200`, and only
-/// then multiplied by the locomotor's current-speed fraction. VERA carries
-/// the per-frame integer as leptons per second (`* 15`), so the multiply runs
-/// on the recovered integer and the result is re-widened the same way.
+/// gamemd-derived: `ftol((speed * house) * crate)` (`0x004DB1CD..0x004DB1DB`;
+/// the house float is `HouseClass::GetSpeedBonus @ 0x0050C050`, the crate
+/// double Foot+0x580), then, for a `FASTER` holder (`veteran_speed` given),
+/// `ftol(speed * Rules.VeteranSpeed)` at `0x004DB1F1..0x004DB200`. Each ftol
+/// keeps the low 32 bits. Stage 3 multiplies in the Foot+0x578 fraction
+/// (`movement::owner_current_speed_from_fraction`).
 ///
-/// Prefer [`mover_speed_leptons_per_second`] at call sites: it owns the whole
-/// getter, so a new speed resolver cannot silently skip this stage.
-pub fn veteran_speed_leptons_per_second(
-    base_leptons_per_second: SimFixed,
-    rank: VeterancyRank,
-    object: &ObjectType,
-    veteran_speed: f64,
-) -> SimFixed {
-    if !has_weapon_ability(rank, object, Ability::Faster) {
-        return base_leptons_per_second;
-    }
-    const FRAMES_PER_SECOND: i32 = 15;
-    let per_frame =
-        (base_leptons_per_second / SimFixed::from_num(FRAMES_PER_SECOND)).to_num::<i32>();
-    use crate::util::native_x87::{MaskedX87Chop53 as X, NativeF64Bits};
-    let adjusted = X::ftol_i32_low_masked(X::mul(
-        X::load_i32(per_frame),
-        X::load_f64(NativeF64Bits::from_bits(veteran_speed.to_bits())),
-    ));
-    SimFixed::from_num(adjusted) * SimFixed::from_num(FRAMES_PER_SECOND)
+/// The stock crate factor 1.2 makes native type speed 10 become 11, not 12:
+/// crate_speed_effect.json executes both the writer and original getter, and
+/// track_speed_native.json's getter rows add the house float. Use the
+/// deterministic native arithmetic for this demonstrated gameplay rounding
+/// boundary; movement coordinates remain SimFixed.
+pub(crate) fn current_type_speed(
+    type_speed: i32,
+    house_bonus: crate::util::native_x87::NativeF32Bits,
+    crate_multiplier: crate::util::native_x87::NativeF64Bits,
+    veteran_speed: Option<f64>,
+) -> i32 {
+    use crate::util::native_x87::{MaskedX87Chop53 as X, NativeF32Bits, NativeF64Bits};
+    // Both factors 1.0: the product is the integer itself.
+    let speed = if house_bonus == NativeF32Bits::ONE && crate_multiplier == NativeF64Bits::ONE {
+        type_speed
+    } else {
+        X::ftol_i32_low_masked(X::mul(
+            X::mul(X::load_i32(type_speed), X::load_f32(house_bonus)),
+            X::load_f64(crate_multiplier),
+        ))
+    };
+    veteran_speed.map_or(speed, |veteran_speed| ftol_scale(speed, veteran_speed))
 }
 
 /// Which locomotors ask `FootClass::GetCurrentSpeed` for their movement speed.
@@ -232,8 +235,10 @@ pub fn locomotor_consults_current_speed(kind: Option<LocomotorKind>) -> bool {
 /// integer per-frame speed, then `HasWeaponAbility(0)` (`FASTER`) gates
 /// `ftol(speed * Rules.VeteranSpeed)`. Stage 3 multiplies in the
 /// `[this+0x578]` fraction (`movement::owner_current_speed`), so this helper
-/// stops one stage short deliberately. The crate factor is live Foot state.
-/// The country/house factor remains an open getter dependency.
+/// stops one stage short deliberately. The crate factor is live Foot state;
+/// `house_bonus` is the owner's `HouseClass::GetSpeedBonus @ 0x0050C050`
+/// (`movement::owner_speed_bonus`). The arithmetic is
+/// [`current_type_speed`]'s.
 ///
 /// Call this instead of `ra2_speed_to_leptons_per_second` wherever a type
 /// `Speed=` becomes an entity's movement speed — native reaches the FASTER
@@ -245,34 +250,22 @@ fn mover_speed_leptons_per_second(
     rank: VeterancyRank,
     object: Option<&ObjectType>,
     veteran_speed: f64,
+    house_bonus: crate::util::native_x87::NativeF32Bits,
     crate_multiplier: crate::util::native_x87::NativeF64Bits,
 ) -> SimFixed {
-    let base = crate::util::fixed_math::ra2_speed_to_leptons_per_second(raw_type_speed);
-    let Some(object) = object else {
-        return base;
+    let type_speed = crate::util::fixed_math::ra2_speed_to_leptons_per_frame(raw_type_speed);
+    let speed = match object {
+        Some(object) if locomotor_consults_current_speed(loco_kind) => current_type_speed(
+            type_speed,
+            house_bonus,
+            crate_multiplier,
+            has_weapon_ability(rank, object, Ability::Faster).then_some(veteran_speed),
+        ),
+        _ => type_speed,
     };
-    if !locomotor_consults_current_speed(loco_kind) {
-        return base;
-    }
-    if crate_multiplier == crate::util::native_x87::NativeF64Bits::ONE {
-        return veteran_speed_leptons_per_second(base, rank, object, veteran_speed);
-    }
-    // The stock crate factor 1.2 makes native type speed10 become11, not12:
-    // crate_speed_effect.json executes both the writer and original getter.
-    // Use the existing deterministic native arithmetic for this demonstrated
-    // gameplay rounding boundary; movement coordinates remain SimFixed.
-    use crate::util::native_x87::MaskedX87Chop53 as X;
-    let native_speed = (base / SimFixed::from_num(15)).to_num::<i32>();
-    let adjusted = X::ftol_i32_low_masked(X::mul(
-        X::load_i32(native_speed),
-        X::load_f64(crate_multiplier),
-    ));
-    veteran_speed_leptons_per_second(
-        SimFixed::from_num(adjusted) * SimFixed::from_num(15),
-        rank,
-        object,
-        veteran_speed,
-    )
+    // Leptons/second saturates where native's integer has no ceiling; only a
+    // factor product past 2184 leptons per frame reaches it.
+    SimFixed::saturating_from_num(i64::from(speed) * 15)
 }
 
 /// [`mover_speed_leptons_per_second`] with the rank and locomotor read off the
@@ -282,6 +275,7 @@ pub fn entity_mover_speed_leptons_per_second(
     object: Option<&ObjectType>,
     raw_type_speed: i32,
     veteran_speed: f64,
+    house_bonus: crate::util::native_x87::NativeF32Bits,
 ) -> SimFixed {
     mover_speed_leptons_per_second(
         raw_type_speed,
@@ -289,6 +283,7 @@ pub fn entity_mover_speed_leptons_per_second(
         rank_of(entity.veterancy_raw),
         object,
         veteran_speed,
+        house_bonus,
         entity.foot_speed.crate_multiplier(),
     )
 }
@@ -711,23 +706,26 @@ mod tests {
     /// (1.2000000476837158) gives Rhino15 ->18 (ruleset.rs asserts it).
     #[test]
     fn gsi_08_12_veteran_speed_scales_the_per_frame_integer() {
-        use crate::util::fixed_math::ra2_speed_to_leptons_per_second;
+        use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
         let object = object_with(&[Ability::Faster], &[]);
-        let rhino = ra2_speed_to_leptons_per_second(6);
-        assert_eq!(rhino, SimFixed::from_num(15 * 15));
+        let speed = |raw, rank| {
+            mover_speed_leptons_per_second(
+                raw,
+                None,
+                rank,
+                Some(&object),
+                1.2,
+                NativeF32Bits::ONE,
+                NativeF64Bits::ONE,
+            )
+        };
+        // Rhino Speed=6 and Grizzly Speed=7: native type speeds 15 and 17.
+        assert_eq!(speed(6, VeterancyRank::Rookie), SimFixed::from_num(15 * 15));
         assert_eq!(
-            veteran_speed_leptons_per_second(rhino, VeterancyRank::Rookie, &object, 1.2),
-            rhino
-        );
-        assert_eq!(
-            veteran_speed_leptons_per_second(rhino, VeterancyRank::Veteran, &object, 1.2),
+            speed(6, VeterancyRank::Veteran),
             SimFixed::from_num(17 * 15)
         );
-        let grizzly = ra2_speed_to_leptons_per_second(7);
-        assert_eq!(
-            veteran_speed_leptons_per_second(grizzly, VeterancyRank::Elite, &object, 1.2),
-            SimFixed::from_num(20 * 15)
-        );
+        assert_eq!(speed(7, VeterancyRank::Elite), SimFixed::from_num(20 * 15));
     }
 
     #[test]
@@ -748,8 +746,17 @@ mod tests {
                 .accept_speed_crate(crate::util::native_x87::NativeF64Bits::from_bits(
                     u64::from_str_radix(case["input"]["crate_bits"].as_str().unwrap(), 16).unwrap(),
                 ));
+            let house = crate::util::native_x87::NativeF32Bits::from_bits(
+                u32::from_str_radix(case["input"]["house_bits"].as_str().unwrap(), 16).unwrap(),
+            );
             assert_eq!(
-                entity_mover_speed_leptons_per_second(&actor, Some(&object), ini_speed as i32, 1.2),
+                entity_mover_speed_leptons_per_second(
+                    &actor,
+                    Some(&object),
+                    ini_speed as i32,
+                    1.2,
+                    house
+                ),
                 SimFixed::from_num(case["output"].as_i64().unwrap() * 15),
                 "{}",
                 case["state"]

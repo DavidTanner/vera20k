@@ -401,7 +401,7 @@ fn special_process_selectors_preserve_or_copy_applied_fraction_like_native_prefi
         let mut sim = fixture(case);
         let entity = sim.substrate.entities.get_mut(UNIT).unwrap();
         entity.drive_accelerates = case["input"]["accelerates"].as_bool().unwrap();
-        super::super::track_speed::advance(entity, None, None, None);
+        super::super::track_speed::advance(entity, None, None, &Default::default(), None, None);
         assert_eq!(
             mirrored_state(entity),
             case["output"]["state"],

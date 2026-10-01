@@ -737,13 +737,17 @@ pub(super) fn scatter_movement_speed(
     entity: &GameEntity,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     interner: &crate::sim::intern::StringInterner,
+    houses: &std::collections::BTreeMap<
+        crate::sim::intern::InternedId,
+        crate::sim::house_state::HouseState,
+    >,
 ) -> SimFixed {
     // Scatter installs a destination; the walking process still calls
     // InfantryClass::GetCurrentSpeed (0x00521D80), delegating to
     // FootClass::GetCurrentSpeed (0x004DB1A0), so it stamps an ordinary Move's
     // speed.
     let obj = rules.and_then(|r| r.object(interner.resolve(entity.type_ref())));
-    super::order_speed(entity, obj, rules)
+    super::order_speed(entity, obj, rules, houses)
 }
 
 /// One accepted nonfatal Infantry damage scatter, selected before the
@@ -1665,7 +1669,12 @@ mod tests {
             ),
         );
         assert_eq!(
-            scatter_movement_speed(&civilian, Some(&rules), &interner),
+            scatter_movement_speed(
+                &civilian,
+                Some(&rules),
+                &interner,
+                &std::collections::BTreeMap::new(),
+            ),
             crate::util::fixed_math::ra2_speed_to_leptons_per_second(4)
         );
     }

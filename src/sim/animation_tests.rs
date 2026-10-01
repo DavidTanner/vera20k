@@ -259,6 +259,10 @@ struct Gsi1306Speed {
     rules: RuleSet,
     interner: StringInterner,
     types: TypeHandleTable,
+    houses: std::collections::BTreeMap<
+        crate::sim::intern::InternedId,
+        crate::sim::house_state::HouseState,
+    >,
 }
 
 impl Gsi1306Speed {
@@ -274,11 +278,17 @@ impl Gsi1306Speed {
             .expect("SHP fixture rules"),
             interner: crate::sim::intern::test_interner(),
             types: TypeHandleTable::default(),
+            houses: std::collections::BTreeMap::new(),
         }
     }
 
     fn rules(&self) -> Option<SpeedRules<'_>> {
-        Some(SpeedRules::new(&self.rules, &self.interner, &self.types))
+        Some(SpeedRules::new(
+            &self.rules,
+            &self.interner,
+            &self.types,
+            &self.houses,
+        ))
     }
 }
 

@@ -48,6 +48,7 @@ fn stock_cloak_tick_facts(
                     rules,
                     &sim.interner,
                     &sim.type_handles,
+                    &sim.houses,
                 )),
                 sim.session.binary_frame,
             ));

@@ -673,6 +673,7 @@ impl Simulation {
                 rules,
                 &self.interner,
                 &self.type_handles,
+                &self.houses,
             )),
             self.session.binary_frame,
         );

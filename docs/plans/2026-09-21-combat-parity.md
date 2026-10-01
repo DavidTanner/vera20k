@@ -953,7 +953,7 @@ Sidecars record binary identity; landing-era SHA-256 `1cdd1180e49024fbda8ad568ca
 | walk_paid_step / walk_direction_table | paid step; lookup | 40 / 65,536 | supplied speed; lookup exhaustive |
 | walk_completion / walk_first_step | completion; first step | 42 / 10 | no Process/placement |
 | facing_class / building_fire_turn | Facing histories; `44B068` | 61 / 140 | — |
-| crate_speed_effect / crate_pickup / track_speed_native | speed; dispatch; getters | 23/28/75+116 | no production pickup/House |
+| crate_speed_effect / crate_pickup / track_speed_native | speed; dispatch; getters | 23/28/75+116 | no production pickup; CTF halving unported |
 | display_anim_owner / anim_layer_rules / anim_damage_fire_expiry | Anim Display | 24/19/8 | no full AI, destructors, sound |
 | display_entity_layer / display_non_entity / crate_ground_membership | GetLayer; Ground | 88/9/6 | Map+140 length fixed |
 | flat_art | Bullet ART Flat | 38 | other ART readers uncertified |

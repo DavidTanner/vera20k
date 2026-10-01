@@ -300,7 +300,12 @@ fn evaluate_ready(
         let locomotor = crate::sim::movement::ready_producer::ready_state_for(
             entity,
             rules.map(|rules| {
-                crate::sim::movement::SpeedRules::new(rules, &sim.interner, &sim.type_handles)
+                crate::sim::movement::SpeedRules::new(
+                    rules,
+                    &sim.interner,
+                    &sim.type_handles,
+                    &sim.houses,
+                )
             }),
             sim.session.binary_frame,
         )

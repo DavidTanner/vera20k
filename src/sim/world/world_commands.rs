@@ -537,7 +537,7 @@ impl Simulation {
         let obj = rules.and_then(|r| self.object_type(e.type_ref(), r));
         // The resolver behind Move, AttackMove, Enter, C4, capture and
         // bunker-entry.
-        let speed = crate::sim::movement::order_speed(e, obj, rules);
+        let speed = crate::sim::movement::order_speed(e, obj, rules, &self.houses);
 
         Some(MoveInfo {
             speed,

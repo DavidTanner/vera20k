@@ -47,7 +47,7 @@ use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 /// Country-level fields needed by gameplay systems.
 #[derive(Debug, Clone)]
 pub struct CountryRules {
-    /// `MultiplayPassive=` allows non-owner garrison entry in `BuildingClass::CanDock`.
+    /// `MultiplayPassive=` allows non-owner garrison entry in `BuildingClass::CanBeOccupiedBy`.
     pub multiplay_passive: bool,
     /// `WallOwner=` allows this house type's buildings to claim nearby map walls.
     pub wall_owner: bool,
@@ -77,6 +77,13 @@ pub struct CountryRules {
     /// `HouseClass::GetCostBonus @ 0x0050BDF0` returns the slot. No retail
     /// country sets them.
     pub cost_mults: [NativeF32Bits; 5],
+    /// `SpeedInfantryMult=`, `SpeedUnitsMult=` and `SpeedAircraftMult=`
+    /// (HouseType `+0x128/+0x12C/+0x130`): ReadDouble into floats, read in
+    /// that order (`0x00511C0D`, `0x00511C2C`, `0x00511C4B`) between the
+    /// Cost and BuildTime keys, the constructor's 1.0 as default, no clamp.
+    /// `HouseClass::GetSpeedBonus @ 0x0050C050` returns the slot. No retail
+    /// country sets them.
+    pub speed_mults: [NativeF32Bits; 3],
     /// `BuildTimeInfantryMult=`, `BuildTimeUnitsMult=`, `BuildTimeAircraftMult=`,
     /// `BuildTimeBuildingsMult=` and `BuildTimeDefensesMult=` (HouseType
     /// `+0x134..+0x144`): ReadDouble into floats (`0x00511C70..0x00511CEC`),
@@ -136,6 +143,7 @@ impl Default for CountryRules {
             armor_buildings_mult: 1.0,
             armor_defenses_mult: 1.0,
             cost_mults: [NativeF32Bits::ONE; 5],
+            speed_mults: [NativeF32Bits::ONE; 3],
             build_time_mults: [NativeF32Bits::ONE; 5],
             rof: 1.0,
             ui_name: None,
@@ -168,6 +176,8 @@ impl CountryRules {
                 "CostDefensesMult",
             ]
             .map(|key| section.read_double_to_float(key, NativeF32Bits::ONE)),
+            speed_mults: ["SpeedInfantryMult", "SpeedUnitsMult", "SpeedAircraftMult"]
+                .map(|key| section.read_double_to_float(key, NativeF32Bits::ONE)),
             build_time_mults: [
                 "BuildTimeInfantryMult",
                 "BuildTimeUnitsMult",
@@ -4400,6 +4410,13 @@ impl RuleSet {
             .map_or([NativeF32Bits::ONE; 5], |country| country.cost_mults)
     }
 
+    /// A country's `Speed*Mult=` floats (`HouseType+0x128..+0x130`), the
+    /// constructor's 1.0 for an unknown country.
+    pub(crate) fn country_speed_mults(&self, id: &str) -> [NativeF32Bits; 3] {
+        self.country_rules(id)
+            .map_or([NativeF32Bits::ONE; 3], |country| country.speed_mults)
+    }
+
     /// `HouseClass::GetArmorMultForType @ 0x0050BD30` for a house of country
     /// `id`: its per-category float for `object` (a `BuildCat=Combat`
     /// building takes `ArmorDefensesMult=`), 1.0 for an unknown country.
@@ -5640,6 +5657,39 @@ CellSpread=0
         );
         assert_eq!(rules.country_cost_mults("Russians"), [one; 5]);
         assert_eq!(rules.country_cost_mults("Nowhere"), [one; 5]);
+    }
+
+    #[test]
+    fn country_speed_mults_read_doubles_into_floats() {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[Countries]\n0=Americans\n1=Russians\n\
+             [Americans]\nSpeedUnitsMult=1.15\nSpeedAircraftMult=85%\n",
+        ))
+        .unwrap();
+        let one = NativeF32Bits::ONE;
+        assert_eq!(
+            rules.country_speed_mults("americans"),
+            [
+                one,
+                NativeF32Bits::from_bits(1.15_f32.to_bits()),
+                NativeF32Bits::from_bits(0x3F59_9999),
+            ]
+        );
+        assert_eq!(rules.country_speed_mults("Russians"), [one; 3]);
+    }
+
+    /// No retail `RULESMD.INI` country authors a speed bonus, through the
+    /// production reader (mode INIs and maps are not checked).
+    #[test]
+    fn retail_countries_author_no_speed_mults() {
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let rules = RuleSet::from_ini(&ini).expect("retail rules parse");
+        assert!(!rules.countries.is_empty());
+        for (name, country) in &rules.countries {
+            assert_eq!(country.speed_mults, [NativeF32Bits::ONE; 3], "{name}");
+        }
     }
 
     #[test]

@@ -347,7 +347,7 @@ fn force_values_follow_the_objects_on_the_map() {
     let [americans, russians] = ["Americans", "Russians"].map(|name| {
         let house = sim.interner.intern(name);
         let mut state = HouseState::new(house, 0, None, false, 0, 10);
-        state.project_country_cost_mults(&rules, &sim.interner);
+        state.project_country_mults(&rules, &sim.interner);
         sim.houses.insert(house, state);
         house
     });

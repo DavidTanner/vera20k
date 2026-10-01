@@ -255,6 +255,16 @@ constructors, ReadINI, the other methods and the reads through their type pointe
   +0x2AC/+0x2B0 are `pLocomotorTarget`/`pLocomotorSource` (once `DeployedFrom` and
   `pDeployedInto`), and CDTimerClass +4 is `dwClockPad` (once `nAccumTime`; no timer
   reads it).
+- `FootClass` (0x6C0 bytes) is flat from +0 like TechnoClass: the TechnoClass rows
+  +0..+0x520 are copied in, then 66 own fields. The server's naming policy prefixed 28
+  older names in the copy (`Health` is `nHealth` there), so fix a chain field in both
+  structs. `UnitClass`, `InfantryClass` and `AircraftClass` embed `FootClass
+  base_FootClass` at +0. Corrected names include `NavQueue` +0x5AC (once `EnterQueue`),
+  the attack-move order +0x5C4..+0x5D1 (`MegaMission`, `pMegaDestination`,
+  `pMegaTarget`, `fHaveAttackMoveTarget`; once `TarCom_*`), the path directions +0x5E0
+  (one int[24] kept as `nPathDirections` and `aPathDirections_1`), `cTubeIndex` +0x684,
+  `fIsInitiated` +0x689 (once `bConvoyArrived`), `fIsFiring` +0x68D (once
+  `bHasReachedDock`) and `fShouldEnterOccupiable` +0x690 (once `bIsDockingToBuilding`).
 
 Notes for readers:
 
@@ -262,8 +272,9 @@ Notes for readers:
   strict naming policy puts a Hungarian type prefix in front: `fPowered`, `nX`,
   `aBuildupFile`, `pToOverlay`. A key that names a file is stored in `<Key>File`, and
   the object built from it takes the key: `aCameoFile` and `pCameo`.
-- **Still placeholders.** `ObjectTypeClass` (0x294 bytes) has only `pVtable` typed, and
-  `AircraftClass` (0x6D8 bytes) only `pType`.
+- **Still placeholders.** `ObjectTypeClass` (0x294 bytes) has only `pVtable` typed.
+  `AircraftClass` (0x6D8 bytes) has its FootClass base and `pType`, none of its own
+  fields.
 - **Receivers.** Since 2026-10-01 the `AbstractClass`, `ObjectClass`, `MissionClass`,
   `RadioClass` and `TechnoClass` methods have typed receivers. 434 of the 494 functions
   with those name prefixes are `__thiscall` in their class namespace, so a decompile
@@ -278,13 +289,13 @@ Notes for readers:
   the 179 `BuildingClass__`, 3 of the 94 `UnitClass__` (as `MissionClass *` or
   `TechnoClass *`), none of the 87 `InfantryClass__` and 3 of the 83 `AircraftClass__`
   (as `MissionClass *`). Their decompiles still show raw offsets; look them up in
-  `TechnoClass`, `UnitTypeClass`, `InfantryTypeClass` or `AircraftTypeClass`.
+  `FootClass`, `UnitTypeClass`, `InfantryTypeClass` or `AircraftTypeClass`.
 
 Plates tagged `[2026-10-01 BuildingTypeClass layout]`,
 `[2026-10-01 TechnoTypeClass layout]`, `[2026-10-01 UnitTypeClass layout]`,
-`[2026-10-01 InfantryTypeClass layout]`, `[2026-10-01 AircraftTypeClass layout]` and
-`[2026-10-01 TechnoClass layout]` record where YRpp is wrong and the native quirks a port
-must keep. Examples:
+`[2026-10-01 InfantryTypeClass layout]`, `[2026-10-01 AircraftTypeClass layout]`,
+`[2026-10-01 TechnoClass layout]` and `[2026-10-01 FootClass layout]` record where YRpp
+is wrong and the native quirks a port must keep. Examples:
 
 - AddOccupy and RemoveOccupy are swapped in YRpp.
 - `TurretControl` is 0x14 bytes, and nothing initialises WeaponCount.
@@ -310,7 +321,10 @@ TechnoClass pass renamed nine functions whose `this` or purpose the code contrad
 `SpawnManagerClass__CountLaunchingSpawns`, 0x4C2BD0 `EBolt__SetOwner`, 0x56DC20
 `MapClass__Find_Nearby_Passable_Cell`, 0x720440 `ThemeControl__Constructor`, and the
 iron-curtain and airstrike tint functions 0x70E380, 0x70E4B0, 0x70E5A0 and 0x70E920 (once
-named after temporal, warp-in and gap effects). Each plate gives the evidence. The
+named after temporal, warp-in and gap effects). The FootClass pass renamed 0x4DFCB0
+`FootClass__EnterBattleBunker` (once `Find_Nearest_Dock`) and 0x457CE0
+`BuildingClass__CanBeOccupiedBy` (once `CanDock`; it tests CanBeOccupied, Occupier and
+Assaulter, not docking). Each plate gives the evidence. The
 per-field ledgers, the checks and the rehearsals are in the research folder listed in
 `LOCAL.md`. Reading established these facts. Nothing was executed, so a port pins the
 conversions with the native oracle.
@@ -375,6 +389,12 @@ Checked 2026-10-01, struct tools:
   types, `sbyte` and the plain `pointer` type keep the name as given.
 - A retype clears the field name. Pass `new_name` to `modify_struct_field`;
   `modify_struct_field_type` always drops the name.
+- No struct tool clears a field in place. `remove_struct_field` deletes the component
+  and shifts every later field down (FootClass shrank from 0x6C0 to 0x6BC bytes on a
+  staging copy). `add_struct_field` refuses to overlay a defined field ("Not enough
+  undefined bytes"), and `modify_struct_field` rejects `undefined` ("New data type not
+  found"). Change a live layout only by filling undefined bytes and retyping or renaming
+  in place; a retype to a smaller type frees the tail bytes.
 
 Checked 2026-10-01 on a staging copy, receiver tools:
 

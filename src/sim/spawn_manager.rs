@@ -500,6 +500,7 @@ fn step_ready_docked(
                     rules,
                     &sim.interner,
                     &sim.type_handles,
+                    &sim.houses,
                 )),
                 frame,
             ))
@@ -1210,7 +1211,12 @@ fn child_air_speed(
         .entities
         .get(child_id)
         .map(|c| {
-            crate::sim::movement::order_speed(c, sim.object_type(c.type_ref(), rules), Some(rules))
+            crate::sim::movement::order_speed(
+                c,
+                sim.object_type(c.type_ref(), rules),
+                Some(rules),
+                &sim.houses,
+            )
         })
         .unwrap_or(crate::util::fixed_math::SimFixed::from_num(8))
 }

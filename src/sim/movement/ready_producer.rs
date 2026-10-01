@@ -129,7 +129,12 @@ fn drive_family(
     let owner_speed = if !turning_active && slot_moving && head_to_nonnull {
         match rules {
             Some(rules) => rules.owner_current_speed(entity),
-            None => super::foot_speed::owner_current_speed(entity, None, 1.0),
+            None => super::foot_speed::owner_current_speed(
+                entity,
+                None,
+                1.0,
+                &std::collections::BTreeMap::new(),
+            ),
         }
     } else {
         0

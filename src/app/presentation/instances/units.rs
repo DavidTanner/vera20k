@@ -608,7 +608,12 @@ pub(crate) fn build_unit_instances(
         let moving = crate::sim::movement::motion_query::is_moving_now(
             entity,
             state.rules().map(|rules| {
-                crate::sim::movement::SpeedRules::new(rules, &sim.interner, &sim.type_handles)
+                crate::sim::movement::SpeedRules::new(
+                    rules,
+                    &sim.interner,
+                    &sim.type_handles,
+                    &sim.houses,
+                )
             }),
             display_binary_frame,
         );

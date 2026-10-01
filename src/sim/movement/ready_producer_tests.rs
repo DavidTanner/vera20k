@@ -79,7 +79,8 @@ fn driving_unit_reports_moving() {
     let rules = mtnk_rules();
     let interner = crate::sim::intern::test_interner();
     let types = TypeHandleTable::default();
-    let speed = Some(SpeedRules::new(&rules, &interner, &types));
+    let houses = std::collections::BTreeMap::new();
+    let speed = Some(SpeedRules::new(&rules, &interner, &types, &houses));
 
     let state = ready_state_for(&entity, speed, 100).expect("Drive has a producer");
     assert!(state.is_moving_now(), "a driving tank must report moving");
@@ -101,7 +102,8 @@ fn speed_crate_reaches_the_next_moving_query() {
     let rules = mtnk_rules();
     let interner = crate::sim::intern::test_interner();
     let types = TypeHandleTable::default();
-    let speed = SpeedRules::new(&rules, &interner, &types);
+    let houses = std::collections::BTreeMap::new();
+    let speed = SpeedRules::new(&rules, &interner, &types, &houses);
 
     let full = speed.owner_current_speed(&entity);
     assert!(full > 1, "MTNK covers several leptons per frame");

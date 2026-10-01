@@ -3226,6 +3226,7 @@ fn fireat_launch_aim(
                         target,
                         target_type,
                         rules.general.veteran_speed,
+                        &world.houses,
                     ),
                 ))
             }),

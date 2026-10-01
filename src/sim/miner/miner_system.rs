@@ -402,7 +402,7 @@ pub(super) fn build_miner_snapshot(
     // The miner's drive loop asks the same getter every mover does, so a
     // `FASTER` miner takes the multiply here.
     let obj = sim.object_type(entity.type_ref(), rules);
-    let speed: SimFixed = crate::sim::movement::order_speed(entity, obj, Some(rules));
+    let speed: SimFixed = crate::sim::movement::order_speed(entity, obj, Some(rules), &sim.houses);
     let cursor = MinerState::from_cursor(entity.mission.handler_state());
     debug_assert!(
         cursor.is_some(),

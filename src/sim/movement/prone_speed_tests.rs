@@ -113,6 +113,7 @@ fn advance_prone_mover(crawls: bool) -> SimFixed {
             entities.get(1).unwrap(),
             rules.object("E1"),
             rules.general.veteran_speed,
+            &std::collections::BTreeMap::new(),
         ),
         10
     );
