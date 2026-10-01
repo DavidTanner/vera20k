@@ -713,6 +713,11 @@ fn missile_flight_override(
                 || name.eq_ignore_ascii_case(&rules.missile_spawn.dmisl.type_name)
         })
     {
+        // Native asks the installed locomotor's `Is_Moving_Now` (`0x0041B965`,
+        // `0x0041B9C5`). This reads the Rocket body directly: both types run
+        // Rocket in retail, and `motion_query::is_moving_now` needs the frame
+        // for its Drive and Ship turn arm, which the flight-level callers do
+        // not carry.
         return Some(
             entity
                 .rocket_state

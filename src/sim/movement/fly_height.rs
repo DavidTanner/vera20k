@@ -125,6 +125,12 @@ impl FlyRuntime {
         self.moving
     }
 
+    /// `Is_Moving_Now` `0x004CCAC0`: the current speed (Fly+48) is not zero.
+    /// The +34 request is not asked.
+    pub(crate) fn is_moving_now(&self) -> bool {
+        self.current_speed != SimFixed::ZERO
+    }
+
     pub(crate) fn landing_effect_latched(&self) -> bool {
         self.landing_effect_latched
     }

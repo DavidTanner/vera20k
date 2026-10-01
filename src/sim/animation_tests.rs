@@ -411,7 +411,7 @@ fn gsi_13_06_draw_and_cadence_use_distinct_movement_predicates() {
             "slot-4 Is_Moving sees the class-owned destination"
         );
         assert!(
-            !crate::sim::movement::ready_producer::is_moving_now_for(&entity, speed.rules(), 4),
+            !crate::sim::movement::motion_query::is_moving_now(&entity, speed.rules(), 4),
             "slot-32 Is_Moving_Now also requires positive applied speed"
         );
         tick_shp_vehicle_body_frame_counter(
@@ -443,7 +443,7 @@ fn gsi_13_06_positive_fraction_below_get_current_speed_threshold_is_idle() {
             "{name} slot +0x10 still sees its locomotor destination"
         );
         assert!(
-            !crate::sim::movement::ready_producer::is_moving_now_for(&entity, speed.rules(), 1),
+            !crate::sim::movement::motion_query::is_moving_now(&entity, speed.rules(), 1),
             "{name} slot +0x80 requires truncated GetCurrentSpeed > 0"
         );
         tick_shp_vehicle_body_frame_counter(
@@ -459,7 +459,7 @@ fn gsi_13_06_positive_fraction_below_get_current_speed_threshold_is_idle() {
 
         entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
         assert!(
-            crate::sim::movement::ready_producer::is_moving_now_for(&entity, speed.rules(), 1),
+            crate::sim::movement::motion_query::is_moving_now(&entity, speed.rules(), 1),
             "{name} moves at the full fraction"
         );
     }
@@ -496,7 +496,7 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
             crate::sim::movement::motion_query::is_moving(&entity),
             Some(false)
         );
-        assert!(!crate::sim::movement::ready_producer::is_moving_now_for(
+        assert!(!crate::sim::movement::motion_query::is_moving_now(
             &entity,
             speed.rules(),
             4
@@ -527,7 +527,7 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
             _ => unreachable!(),
         }
         assert!(crate::sim::movement::motion_query::is_moving(&entity) == Some(true));
-        assert!(crate::sim::movement::ready_producer::is_moving_now_for(
+        assert!(crate::sim::movement::motion_query::is_moving_now(
             &entity,
             speed.rules(),
             4

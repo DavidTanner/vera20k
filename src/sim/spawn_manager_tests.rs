@@ -100,6 +100,7 @@ Cost=800
 Strength=150
 Armor=light
 Speed=4
+Locomotor={4A582741-9839-11d1-B709-00A024DDAFD1}
 Sight=20
 Primary=V3Launcher
 Spawns=V3ROCKET
@@ -676,10 +677,13 @@ fn v3_launches_its_rocket_into_the_kamikaze_window() {
     );
 }
 
-#[test]
-fn a_moving_launcher_holds_its_missile() {
+/// Runs a V3's first manager pass on a still launcher (Idle → Launching,
+/// which promotes the queued target), applies `setup` to the launcher, then
+/// runs the pass whose slot walk may launch. Returns whether the missile is
+/// still in limbo.
+fn missile_held_after(setup: impl FnOnce(&mut crate::sim::game_entity::GameEntity, u32)) -> bool {
     let rules = make_spawner_rules();
-    let mut sim = Simulation::new();
+    let mut sim = flat_sim();
     let v3 = sim
         .spawn_object("V3", "Russians", 10, 10, 0, &rules)
         .expect("spawn V3");
@@ -693,28 +697,72 @@ fn a_moving_launcher_holds_its_missile() {
         .and_then(|e| e.spawn_manager.as_ref())
         .and_then(|m| m.slots[0].spawn)
         .expect("child");
-
-    let frame = sim.session.binary_frame;
-    if let Some(entity) = sim.substrate.entities.get_mut(v3) {
-        // Mid-turn: the native gate is ILocomotor::Is_Moving_Now.
-        entity.body_facing.set_rot(5);
-        entity.body_facing.set(0x4000, frame);
-        if let Some(manager) = entity.spawn_manager.as_mut() {
-            manager.set_target(Some(TargetKind::Entity(target)));
-            manager.update_timer = CdTimer::default();
-            manager.mode = SpawnManagerMode::Launching;
-        }
+    if let Some(manager) = sim
+        .substrate
+        .entities
+        .get_mut(v3)
+        .and_then(|e| e.spawn_manager.as_mut())
+    {
+        manager.set_target(Some(TargetKind::Entity(target)));
+        manager.update_timer = CdTimer::default();
     }
     tick_spawn_managers(&mut sim, &rules, &[v3], None);
 
+    let frame = sim.session.binary_frame;
+    let entity = sim.substrate.entities.get_mut(v3).expect("V3");
+    setup(entity, frame);
+    let manager = entity.spawn_manager.as_mut().expect("manager");
+    assert_eq!(manager.mode, SpawnManagerMode::Launching);
     assert!(
-        sim.substrate
-            .entities
-            .get(child_id)
-            .expect("child")
-            .lifecycle
-            .in_limbo,
+        manager.current_target.is_some(),
+        "the first pass promoted the target"
+    );
+    manager.update_timer = CdTimer::default();
+    tick_spawn_managers(&mut sim, &rules, &[v3], None);
+    sim.substrate
+        .entities
+        .get(child_id)
+        .expect("child")
+        .lifecycle
+        .in_limbo
+}
+
+#[test]
+fn a_moving_launcher_holds_its_missile() {
+    assert!(
+        !missile_held_after(|_, _| {}),
+        "a still V3 launches on the second pass"
+    );
+    // Mid-turn: a Drive's Is_Moving_Now is true while its body turns.
+    assert!(
+        missile_held_after(|entity, frame| {
+            entity.body_facing.set_rot(5);
+            entity.body_facing.set(0x4000, frame);
+        }),
         "a V3 that is still turning may not launch"
+    );
+}
+
+/// The missile slot's stationary gate asks the parent's locomotor, Is_Moving
+/// (`0x006B731E`) and Is_Moving_Now (`0x006B7349`), not its order: a V3 whose
+/// Drive still has a destination holds its missile, and one with an order but
+/// a still Drive launches.
+#[test]
+fn a_launcher_asks_its_locomotor_whether_it_is_moving() {
+    assert!(
+        missile_held_after(|entity, _| {
+            entity
+                .drive_locomotion
+                .get_or_insert_with(Default::default)
+                .destination = Some(crate::sim::components::DriveCoord::cell(14, 10, 0));
+        }),
+        "a Drive with a destination holds the missile"
+    );
+    assert!(
+        !missile_held_after(|entity, _| {
+            entity.movement_target = Some(crate::sim::components::MovementTarget::default());
+        }),
+        "an order alone does not"
     );
 }
 

@@ -733,19 +733,14 @@ pub(crate) fn state3_translate(
     state
 }
 
-/// `Is_Moving_Now @ 0x0054D0D0`: true for any state other than ground and
-/// hold. `Process` gates Update on this or the moving byte, so an idle landed
-/// (state 0) or idle holding (state 2) Jumpjet is advanced by nothing at all.
-pub(crate) fn is_moving_now(state: i32) -> bool {
-    state != STATE_GROUND && state != STATE_HOLD
-}
-
 /// One `Process @ 0x0054AEC0` frame: the Update gate, the crash latch, then the
 /// state at `+0x50` through the jump table at `0x0054B19C`. Returns the new
 /// state.
 ///
-/// The gate comes first, so a crashing owner idle in the hold (state 2 with the
-/// moving byte clear) never latches and hangs where it is, natively too.
+/// The gate is the moving byte or `Is_Moving_Now` (`0x0054D0D0`, any state
+/// but ground and hold), so an idle landed (state 0) or idle holding (state 2)
+/// Jumpjet is advanced by nothing at all. It comes first, so a crashing owner
+/// idle in the hold never latches and hangs where it is, natively too.
 ///
 /// Not modelled: `0x0053A130`'s constant-false arm and the two visibility
 /// probes in the tail.
@@ -757,7 +752,8 @@ pub(crate) fn process(
     flight: &mut JumpjetFlight,
     host: &mut impl JumpjetFlightHost,
 ) -> i32 {
-    if !moving && !is_moving_now(state) {
+    if !moving && !(super::locomotor_ready::LocomotorReadyState::Jumpjet { state }).is_moving_now()
+    {
         return state;
     }
     update_coordinates_and_altitude(state, destination, params, flight, host);

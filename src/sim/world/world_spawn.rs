@@ -1476,7 +1476,7 @@ impl Simulation {
             // to radio contact 0, then +0x68C.
             let now = self.session.binary_frame;
             if let Some(entity) = self.substrate.entities.get_mut(stable_id)
-                && !crate::sim::movement::ready_producer::is_moving_now_for(
+                && !crate::sim::movement::motion_query::is_moving_now(
                     entity,
                     Some(crate::sim::movement::SpeedRules::new(
                         rules,
