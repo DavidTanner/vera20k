@@ -365,7 +365,6 @@ fn cell_scatter_dispatch_matches_original_execution() {
         let no_kidding = flag(input, "dispatch_all", false);
         let dispatched = scatter_objects_admitted(
             &technos,
-            None,
             no_kidding,
             Some(&rules),
             &entities,
@@ -399,11 +398,10 @@ fn cell_scatter_dispatch_matches_original_execution() {
     assert_eq!(checked, 62);
 }
 
-/// The pass lane's crusher walk, unforced, on live houses and parsed
+/// `Scatter_Objects`' unforced walk (0x00481670) on live houses and parsed
 /// abilities: a house under `[IQ] Scatter=` keeps its man standing, a
 /// SCATTER veteran ability or an elite occupant releases the cell, and so
-/// does `PlayerScatter=`. The asking crusher is neither scanned nor
-/// dispatched. The walk draws no RNG: it takes no generator.
+/// does `PlayerScatter=`. The walk draws no RNG: it takes no generator.
 #[test]
 fn unforced_walk_reads_house_iq_ability_elite_and_player_scatter() {
     use crate::rules::ini_parser::IniFile;
@@ -416,10 +414,6 @@ fn unforced_walk_reads_house_iq_ability_elite_and_player_scatter() {
     };
     let stock = rules(false);
     let mut entities = EntityStore::new();
-    let mut crusher = GameEntity::test_default(1, "MTNK", "Allies", 5, 5);
-    crusher.category = EntityCategory::Unit;
-    crusher.set_veterancy_rank(200);
-    entities.insert(crusher);
     let mut man = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
     man.category = EntityCategory::Infantry;
     let owner = man.owner();
@@ -428,21 +422,13 @@ fn unforced_walk_reads_house_iq_ability_elite_and_player_scatter() {
     houses.insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
     let interner = crate::sim::intern::test_interner();
     let walk = |entities: &EntityStore, houses: &BTreeMap<_, _>, rules: &RuleSet, cell: &[u64]| {
-        scatter_objects_admitted(
-            cell,
-            Some(1),
-            false,
-            Some(rules),
-            entities,
-            houses,
-            &interner,
-        )
+        scatter_objects_admitted(cell, false, Some(rules), entities, houses, &interner)
     };
     for (iq, rank, expected) in [(1, 0, false), (2, 0, true), (1, 100, true)] {
         houses.get_mut(&owner).unwrap().current_iq = iq;
         entities.get_mut(2).unwrap().set_veterancy_rank(rank);
         assert_eq!(
-            walk(&entities, &houses, &stock, &[1, 2]),
+            walk(&entities, &houses, &stock, &[2]),
             if expected { vec![2] } else { vec![] },
             "IQ={iq} rank={rank}"
         );
@@ -455,10 +441,10 @@ fn unforced_walk_reads_house_iq_ability_elite_and_player_scatter() {
     elite.set_veterancy_rank(200);
     entities.insert(elite);
     assert_eq!(walk(&entities, &houses, &stock, &[3, 2]), vec![3, 2]);
-    assert!(walk(&entities, &houses, &stock, &[1, 2]).is_empty());
+    assert!(walk(&entities, &houses, &stock, &[2]).is_empty());
 }
 
-/// A Hover Unit's null arm reaches the pass lane's route, and a Jumpjet
+/// A Hover Unit's null arm reaches its Hover route, and a Jumpjet
 /// Unit's reaches its air destination: the Unit setter sends every retail
 /// Unit locomotor to the nearby passable cell, which may be its own cell,
 /// and neither arm draws.
@@ -494,7 +480,7 @@ fn unit_null_arm_moves_hover_and_jumpjet_units() {
     let cell = sim.scatter_nearby_cell(hover, &rules).unwrap();
     assert!(!sim.scatter_null(hover, flags, &rules, None).unwrap());
     let unit = sim.substrate.entities.get(hover).unwrap();
-    let route = unit.movement_target.as_ref().expect("the lane's route");
+    let route = unit.movement_target.as_ref().expect("the Hover route");
     assert_eq!(route.final_goal, Some(cell));
     assert_eq!((unit.position.rx, unit.position.ry), (10, 10));
     let cell = sim.scatter_nearby_cell(jumpjet, &rules).unwrap();

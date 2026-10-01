@@ -12,8 +12,8 @@ use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 ///
 /// The stamp is VERA's; native keeps no order speed and re-queries the getter
 /// (or a Fly/Jumpjet/Rocket locomotor its own speed) each Process frame. The
-/// track, walk and Fly steps already re-query live, so the stamp's remaining
-/// production reader is the legacy pass lane.
+/// track, walk and Fly steps already re-query live; the stamp's remaining
+/// production reader is the Jumpjet order speed (`jumpjet_order_speed`).
 ///
 /// No minimum: none of the getter's truncations (`0x004DB1DB`, `0x004DB200`,
 /// `0x004DB213`) clamp, so a `Speed=0` type stamps 0. Every retail mover that

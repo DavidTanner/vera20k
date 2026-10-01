@@ -351,18 +351,12 @@ impl Simulation {
             .entities
             .get_mut(id)
             .ok_or("retired Walk code2 owner")?;
-        let runtime = &mut actor.navigation.path_runtime;
-        if !runtime.path_blocked {
-            runtime.path_blocked = true;
-            runtime.start_blocked(frame, rules.general.blockage_path_delay_ticks);
-        }
-        if !runtime.movement_timer.expired(frame as i32) {
+        let Some(urgency) = walk_code2_gate(
+            &mut actor.navigation.path_runtime,
+            frame,
+            rules.general.blockage_path_delay_ticks,
+        ) else {
             return Ok(());
-        }
-        let urgency = if runtime.path_blocked && runtime.blocked_timer.expired(frame as i32) {
-            2
-        } else {
-            1
         };
         let destination = actor
             .locomotor
@@ -618,5 +612,76 @@ impl Simulation {
             );
         }
         Ok(())
+    }
+}
+
+/// Walk code 2 (0x0075B8A9..0x0075B979): the first refusal latches Foot+6B7
+/// and starts the BlockagePathDelay grace (+668); a running +640 movement
+/// delay waits; otherwise Find_Path runs with urgency 2 once the grace has
+/// expired, else 1.
+fn walk_code2_gate(
+    runtime: &mut crate::sim::components::FootPathRuntime,
+    frame: u32,
+    blockage_delay: i32,
+) -> Option<u8> {
+    if !runtime.path_blocked {
+        runtime.path_blocked = true;
+        runtime.start_blocked(frame, blockage_delay);
+    }
+    if !runtime.movement_timer.expired(frame as i32) {
+        return None;
+    }
+    Some(
+        if runtime.path_blocked && runtime.blocked_timer.expired(frame as i32) {
+            2
+        } else {
+            1
+        },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sim::timer::CdTimer;
+
+    /// Original instructions 0x75B8A0..0x75B979 / 0x75C1F1, recheck with
+    /// `python -m tools.infantry_scatter_oracle --check`: the grace latch and
+    /// its preservation, the movement-delay gate and the urgency selection.
+    /// Find_Path and the post-search PathDelay restart are outside the oracle.
+    #[test]
+    fn walk_code2_gate_matches_native_vectors() {
+        let data: serde_json::Value =
+            serde_json::from_str(include_str!("../../../tools/infantry_scatter_oracle.json"))
+                .unwrap();
+        assert_eq!(data["source"], "unicorn/gamemd.exe");
+        let cases = data["walk_code2_timers"].as_array().unwrap();
+        assert_eq!(cases.len(), 30);
+        let mut observed = [0usize; 3];
+        for case in cases {
+            let n = |key: &str| case[key].as_i64().unwrap() as i32;
+            let b = |key: &str| case[key].as_bool().unwrap();
+            let frame = n("frame");
+            let mut runtime = crate::sim::components::FootPathRuntime::default();
+            runtime.path_blocked = b("already_blocked");
+            runtime.blocked_timer = CdTimer::from_raw(n("grace_start"), n("grace_duration"));
+            runtime.movement_timer = CdTimer::from_raw(n("movement_start"), n("movement_duration"));
+            let urgency = super::walk_code2_gate(&mut runtime, frame as u32, n("configured_grace"));
+            assert_eq!(urgency.is_some(), b("repath"), "{case}");
+            if let Some(urgency) = urgency {
+                assert_eq!(
+                    i64::from(urgency),
+                    case["urgency"].as_i64().unwrap(),
+                    "{case}"
+                );
+            }
+            observed[urgency.map_or(0, usize::from)] += 1;
+            assert_eq!(runtime.path_blocked, b("out_blocked"), "{case}");
+            assert_eq!(
+                runtime.blocked_timer.remaining(frame),
+                CdTimer::from_raw(n("out_grace_start"), n("out_grace_duration")).remaining(frame),
+                "{case}"
+            );
+        }
+        assert!(observed.iter().all(|&count| count > 0), "{observed:?}");
     }
 }

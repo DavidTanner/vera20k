@@ -589,11 +589,9 @@ pub(super) fn find_move_path_with_marker_detailed(
             // that correctly in `apply_search_marker_cost`; only the two
             // smoothing predicates in this file harden it, and the
             // `(x, y) != goal` carve-out has no native counterpart at all.
-            // Trigger: any blocked repath with a non-empty overlay, i.e.
-            // urgency 1 or 2. Player effect: VERA keeps a detour retail would
-            // straighten back out. Frequency: traffic jams at a chokepoint or
-            // a war-factory exit, several times a match. Downstream risk: low,
-            // it is a predicate the smoother consults.
+            // Dormant: no production search builds an overlay (#954, native
+            // UpdateBridgePassability 0x0042ACF0 is not ported), so this arm
+            // only runs in tests.
             if marker_overlay.is_some_and(|m| m.contains((x, y)) && (x, y) != goal) {
                 return false;
             }

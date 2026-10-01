@@ -416,24 +416,12 @@ impl MoverSnapshot {
 pub struct MovementTickStats {
     pub movers_total: u32,
     pub moved_steps: u32,
-    pub blocked_attempts: u32,
-    pub repath_attempts: u32,
-    pub repath_successes: u32,
-    /// Scatter calls the pass lane queued for a blocked cell entry.
-    pub scatter_requests: u32,
-    /// Stuck entities that recovered via repath or scatter.
-    pub stuck_recoveries: u32,
 }
 
 impl MovementTickStats {
     pub(crate) fn merge(&mut self, other: Self) {
         self.movers_total = self.movers_total.saturating_add(other.movers_total);
         self.moved_steps = self.moved_steps.saturating_add(other.moved_steps);
-        self.blocked_attempts = self.blocked_attempts.saturating_add(other.blocked_attempts);
-        self.repath_attempts = self.repath_attempts.saturating_add(other.repath_attempts);
-        self.repath_successes = self.repath_successes.saturating_add(other.repath_successes);
-        self.scatter_requests = self.scatter_requests.saturating_add(other.scatter_requests);
-        self.stuck_recoveries = self.stuck_recoveries.saturating_add(other.stuck_recoveries);
     }
 }
 

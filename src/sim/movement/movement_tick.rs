@@ -664,7 +664,6 @@ fn advance_ordinary_mover(
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
-    rng: &mut SimRng,
     sim_tick: u64,
     native_frame: u32,
     interner: &mut crate::sim::intern::StringInterner,
@@ -895,28 +894,6 @@ fn advance_ordinary_mover(
                             return;
                         }
                     }
-
-                    if entity.locomotor.as_ref().is_some_and(|loco| {
-                        loco.kind == crate::rules::locomotor_type::LocomotorKind::Walk
-                            && loco.walk_destination().is_some()
-                    }) && entity
-                        .navigation
-                        .path_replay
-                        .remaining_directions()
-                        .is_empty()
-                    {
-                        // The first no-head Walk Process owns the FindPath
-                        // request75AFC5 and success publication4D3E98/4D4003.
-                        // handle_path_exhaustion has just searched using the live
-                        // object-turn blockers; publish that result here.
-                        // The full native search/retry loop remains unported.
-                        super::path_markers::install_path_replay(
-                            &mut entity.navigation.path_replay,
-                            (entity.position.rx, entity.position.ry),
-                            &target.path,
-                            target.next_index,
-                        );
-                    }
                 }
 
                 if let Some(tube_id) = tube_movement::pending_path_tube_id(
@@ -971,33 +948,6 @@ fn advance_ordinary_mover(
                 return;
             }
         } // Release the admission borrow before live head/priority queries.
-        let fresh_walk_head = entities.get(entity_id).is_some_and(|entity| {
-            entity.locomotor.as_ref().is_some_and(|loco| {
-                loco.kind == crate::rules::locomotor_type::LocomotorKind::Walk
-                    && loco.step_head().is_none()
-            })
-        });
-        if !super::walk_head::prepare_step_head(
-            entities,
-            entity_id,
-            occupancy,
-            raw_cell_occupation,
-            resolved_terrain,
-            path_grid,
-            rules,
-            interner,
-            rng,
-        ) {
-            return;
-        }
-        if fresh_walk_head
-            && let Some(entity) = entities.get_mut(entity_id)
-            && super::walk_head::finish_fresh_head(entity, native_frame)
-        {
-            //75BC2A..75BCBD publishes motion/facing/speed then returns.
-            // Numeric paid-head motion starts on a later Process invocation.
-            return;
-        }
         {
             let Some(mut turn) = entities.take_turn(entity_id) else {
                 return;
@@ -1749,7 +1699,6 @@ impl PendingMovementPass {
         let occupancy = &mut sim.substrate.occupancy;
         let cell_occupation = &mut sim.substrate.cell_occupation;
         let raw_cell_occupation = &mut sim.substrate.raw_cell_occupation;
-        let rng = &mut sim.scenario_rng;
         let sim_tick = sim.session.tick;
         let native_frame = sim.session.binary_frame;
         let overlay_grid = sim.overlay_grid.as_ref();
@@ -1823,7 +1772,6 @@ impl PendingMovementPass {
             occupancy,
             cell_occupation,
             raw_cell_occupation,
-            rng,
             sim_tick,
             native_frame,
             interner,
@@ -2021,7 +1969,6 @@ pub(crate) fn begin_movement_with_grids_scoped(
             occupancy,
             cell_occupation,
             raw_cell_occupation,
-            rng,
             sim_tick,
             native_frame,
             interner,

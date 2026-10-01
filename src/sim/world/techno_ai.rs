@@ -820,11 +820,11 @@ fn veterancy_promotion_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
 /// `ShipLocomotionClass::Process_Drive_Track @ 0x006A093C`,
 /// `HoverLocomotionClass::Move @ 0x00514372`), so a unit promoted mid-path
 /// speeds up on the very next frame. VERA's track and Walk steps and the
-/// readiness gate query the getter live; the legacy pass lane still moves by
-/// the `MovementTarget::speed` stamp made at path creation, so the stamp is
-/// refreshed here when the rank changes. The crate multiplier and the house
-/// factor do not refresh it: a legacy-lane mover keeps its stamp until its
-/// next order.
+/// readiness gate query the getter live; the Jumpjet order speed
+/// (`jumpjet_order_speed`) still reads the `MovementTarget::speed` stamp made
+/// at path creation, so the stamp is refreshed here when the rank changes. The
+/// crate multiplier and the house factor do not refresh it: such a mover keeps
+/// its stamp until its next order.
 fn refresh_mover_speed_after_promotion(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;

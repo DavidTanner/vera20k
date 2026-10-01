@@ -58,8 +58,8 @@ impl ScatterFlags {
 }
 
 /// `Scatter(null, flags)` calls a movement-pass step makes while the pass
-/// holds the world split: the tube exit's blocked cell (`0x00735F55`) and the
-/// pass lane's cell-entry arms. The object turn runs them in call order once
+/// holds the world split: the tube exit's blocked cell (`0x00735F55`). The
+/// object turn runs them in call order once
 /// the pass returns ([`Simulation::run_scatter_requests`]), still inside that
 /// object's Process. Each object is asked at most once per pass.
 #[derive(Debug, Default)]
@@ -225,20 +225,17 @@ pub(super) fn scatter_dispatch_allowed(
 /// `CellClass::Scatter_Objects`' dispatch walk (`0x00481670`): the objects of
 /// one cell list, in list order, its gate hands `Scatter(coord, forced,
 /// no_kidding)`. Without no-kidding the list is first pre-scanned for an
-/// elite, which releases every occupant. `caller` is the object asking when
-/// VERA already lists it in that cell (the pass lane's crusher); native
-/// never lists it there, so it is neither scanned nor dispatched.
+/// elite, which releases every occupant.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn scatter_objects_admitted(
     occupants: &[u64],
-    caller: Option<u64>,
     no_kidding: bool,
     rules: Option<&RuleSet>,
     entities: &EntityStore,
     houses: &BTreeMap<InternedId, HouseState>,
     interner: &StringInterner,
 ) -> Vec<u64> {
-    let listed = || occupants.iter().copied().filter(|&id| Some(id) != caller);
+    let listed = || occupants.iter().copied();
     let eligibility = ScatterEligibility::from_rules(rules);
     let elite_in_cell = !no_kidding
         && listed().any(|id| {
@@ -397,7 +394,6 @@ impl Simulation {
             .map_or_else(Vec::new, |occ| occ.snapshot_layer(layer));
         let admitted = scatter_objects_admitted(
             &occupants,
-            None,
             flags.no_kidding,
             Some(rules),
             &self.substrate.entities,

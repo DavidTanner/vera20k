@@ -698,9 +698,11 @@ mod tests {
     }
 }
 
-/// Accepted-head producer with short entity borrows. Raw leaves and map
-/// lookups can run in their native order while querying other live objects.
-/// Pre-head CanEnter75B690 remains the caller's responsibility.
+/// Test adapter over [`prepare_step_head_at`]: the prospective coordinate is
+/// taken from the fixture's `MovementTarget` path instead of the retained Foot
+/// path word Walk75BC1A reads. Pre-head CanEnter75B690 remains the caller's
+/// responsibility.
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn prepare_step_head(
     entities: &mut crate::sim::entity_store::EntityStore,
@@ -745,7 +747,7 @@ pub(super) fn prepare_step_head(
 
 /// Walk75BC1A consumes the prospective coordinate already selected from the
 /// retained Foot path word. Its caller owns admission; this is the same
-/// priority/subcell/raw-occupation owner used by the adapter above.
+/// priority/subcell/raw-occupation owner.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn prepare_step_head_at(
     entities: &mut crate::sim::entity_store::EntityStore,
