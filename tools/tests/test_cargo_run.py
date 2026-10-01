@@ -30,6 +30,8 @@ class CargoRunTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
         os.environ.pop('CARGO_TARGET_DIR', None)
+        # Ordinary runner fixtures do not depend on the host disk reserve.
+        os.environ['VERA20K_MIN_FREE_GIB'] = '0'
 
     def test_export_retirement_routes_only_explicit_plan_without_building(self):
         from tools import _cargo_labels
@@ -126,6 +128,83 @@ class CargoRunTests(unittest.TestCase):
              patch.object(cargo_run.subprocess, 'check_output', side_effect=output), \
              patch.object(cargo_run.subprocess, 'Popen', side_effect=start):
             return cargo_run.run(self.root, ['build'], label, 0)
+
+    def test_low_free_space_blocks_before_cargo_or_label_publication(self):
+        from tools import _cargo_cache
+        policy = _cargo_cache.CachePolicy(1 << 40, 1 << 40, 4096)
+        real_popen = subprocess.Popen
+        def start(command, **kwargs):
+            self.assertNotEqual(command[0], 'cargo', 'Cargo must not start below reserve')
+            return real_popen(command, **kwargs)
+        with patch.object(cargo_run, 'build_processes', return_value=[]), \
+             patch.object(_cargo_cache, 'automatic_locked'), \
+             patch.object(cargo_run.shutil, 'disk_usage', return_value=unittest.mock.Mock(free=4095)), \
+             patch.object(cargo_run.subprocess, 'Popen', side_effect=start):
+            with self.assertRaisesRegex(ValueError, 'Build blocked'):
+                cargo_run.run(self.root, ['build'], 'blocked', 0, policy=policy)
+        self.assertFalse((self.root / '.git/owned-builds/artifacts/blocked').exists())
+        self.assertEqual((self.root / 'source.rs').read_text(), 'first')
+
+    def test_free_space_is_measured_after_cleanup_at_exact_admission_boundary(self):
+        from tools import _cargo_cache
+        policy = _cargo_cache.CachePolicy(1 << 40, 1 << 40, 4096)
+        free = 1
+        def cleanup(*args):
+            nonlocal free
+            free = 4096
+        original = subprocess.Popen
+        child = unittest.mock.MagicMock()
+        child.__enter__.return_value = child
+        child.stdout = io.StringIO('')
+        child.wait.return_value = 0
+        launched = []
+        def start(command, **kwargs):
+            if command[0] == 'cargo':
+                launched.append(command)
+                return child
+            return original(command, **kwargs)
+        with patch.object(cargo_run, 'build_processes', return_value=[]), \
+             patch.object(_cargo_cache, 'automatic_locked', side_effect=cleanup), \
+             patch.object(cargo_run.shutil, 'disk_usage', side_effect=lambda path: unittest.mock.Mock(free=free)), \
+             patch.object(cargo_run.subprocess, 'Popen', side_effect=start):
+            self.assertEqual(cargo_run.run(self.root, ['check'], None, 0, policy=policy), 0)
+        self.assertEqual(len(launched), 1)
+
+    def test_label_admission_checks_artifact_volume_as_well_as_target(self):
+        from tools import _cargo_cache
+        from types import SimpleNamespace
+        store, namespace = cargo_run.build_store(self.root)
+        target = self.root / 'target/owned-worktrees' / namespace
+        policy = _cargo_cache.CachePolicy(1 << 40, 1 << 40, 4096)
+        real_popen = subprocess.Popen
+        measured = []
+        def usage(path):
+            measured.append(path)
+            return SimpleNamespace(free=4096 if path == target else 4095)
+        def start(command, **kwargs):
+            self.assertNotEqual(command[0], 'cargo', 'Cargo must not start with full artifact volume')
+            return real_popen(command, **kwargs)
+        with patch.object(cargo_run, 'build_processes', return_value=[]), \
+             patch.object(_cargo_cache, 'automatic_locked'), \
+             patch.object(cargo_run.shutil, 'disk_usage', side_effect=usage), \
+             patch.object(cargo_run.subprocess, 'Popen', side_effect=start):
+            with self.assertRaisesRegex(ValueError, 'Build blocked'):
+                cargo_run.run(self.root, ['build'], 'blocked-artifact', 0, policy=policy)
+        self.assertEqual(measured, [target, store])
+        self.assertFalse((store / 'artifacts/blocked-artifact').exists())
+
+    def test_free_space_measurement_failure_never_launches_cargo(self):
+        from tools import _cargo_cache
+        real_popen = subprocess.Popen
+        def start(command, **kwargs):
+            self.assertNotEqual(command[0], 'cargo', 'Cargo must not start without free-space measurement')
+            return real_popen(command, **kwargs)
+        with patch.object(cargo_run, 'build_processes', return_value=[]), \
+             patch.object(_cargo_cache, 'automatic_locked'), \
+             patch.object(cargo_run.shutil, 'disk_usage', side_effect=OSError('volume unavailable')), \
+             patch.object(cargo_run.subprocess, 'Popen', side_effect=start):
+            with self.assertRaisesRegex(OSError, 'volume unavailable'):
+                cargo_run.run(self.root, ['check'], None, 0)
 
     def test_copies_only_emitted_executable_and_refuses_overwrite(self):
         self.assertEqual(self.invoke(), 0)

@@ -315,17 +315,123 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(result['removed_files'], [str(first), str(second)], result)
         self.assertEqual(set(result['unmet_targets']['free_bytes'].values()), {100})
 
-    def test_incremental_budget_deletes_whole_cold_session_and_keeps_hottest(self):
+    def test_incremental_budget_keeps_hottest_if_it_fits_after_cold_eviction(self):
         cold = [self.write('debug/incremental/crate-123/s-old/object.o', age=10),
                 self.write('debug/incremental/crate-123/s-old/dep-graph.bin', age=10)]
         hot = self.write('debug/incremental/crate-123/s-hot/object.o', age=20)
         outside = self.write('debug/deps/orphan.rcgu.o', age=1)
-        result = self.trim(cache.CachePolicy(1 << 40, 0, 0))
+        result = self.trim(cache.CachePolicy(1 << 40, cache._allocated(hot.stat()), 0))
         self.assertEqual(set(result['removed_files']), {str(path) for path in cold}, result)
         self.assertFalse(cold[0].parent.exists())
         self.assertTrue(hot.exists())
         self.assertTrue(outside.exists())
+        self.assertEqual(result['unmet_targets']['incremental_bytes'], 0)
+
+    def test_incremental_pressure_evicts_hottest_when_cold_cache_is_insufficient(self):
+        cold = self.write('debug/incremental/crate-123/s-old/object.o', age=10)
+        hot = self.write('debug/incremental/crate-123/s-hot/object.o', age=20)
+        result = self.trim(cache.CachePolicy(1 << 40, 0, 0))
+        self.assertEqual(result['removed_files'], [str(cold), str(hot)], result)
+        self.assertEqual(result['unmet_targets']['incremental_bytes'], 0)
+
+    def test_native_style_incremental_aliases_preserve_debug_paths_and_release_metadata(self):
+        binary, _ = self.label()
+        dependency = self.write('debug/deps/required.rcgu.o')
+        aliases, metadata = [], []
+        for name in ('s-old', 's-hot'):
+            directory = self.target / 'debug/incremental/crate-123' / name
+            directory.mkdir(parents=True)
+            alias = directory / 'object.o'
+            os.link(dependency, alias)
+            aliases.append(alias)
+            metadata.append(self.write(str((directory / 'dep-graph.bin').relative_to(self.target))))
+        kept = {path: path.read_bytes() for path in (binary, dependency)}
+        metadata_bytes = sum(cache._allocated(path.stat()) for path in metadata)
+        dependency_bytes = cache._allocated(dependency.stat())
+        policy = cache.CachePolicy(1 << 40, 0, 0)
+        dry = self.trim(policy, dry_run=True, dependencies=lambda executable: {dependency})
+        self.assertEqual(dry['projected_removed_allocated_bytes'], metadata_bytes, dry)
+        self.assertEqual(dry['projected_remaining_incremental_bytes'], 0, dry)
+        self.assertTrue(all(path.exists() for path in aliases + metadata))
+        with patch.object(cache.time, 'monotonic', side_effect=iter(range(100))):
+            result = self.trim(policy, dependencies=lambda executable: {dependency})
+        self.assertEqual(result['state'], 'trimmed', result)
+        self.assertEqual(set(result['removed_files']), set(map(str, aliases + metadata)))
+        self.assertEqual(result['removed_allocated_bytes'], metadata_bytes)
+        self.assertEqual(result['remaining_incremental_allocated_bytes'], 0)
+        self.assertEqual(result['remaining_cache_allocated_bytes'],
+                         result['cache_allocated_bytes'] - metadata_bytes)
+        self.assertGreaterEqual(result['remaining_cache_allocated_bytes'], dependency_bytes)
+        for path, contents in kept.items():
+            self.assertEqual(path.read_bytes(), contents)
+        self.assertEqual(dependency.stat().st_nlink, 1)
+
+    def test_known_hardlinks_release_allocation_only_after_last_alias(self):
+        first = self.write('debug/deps/first.rcgu.o', age=10)
+        second = self.target / 'debug/deps/second.rcgu.o'
+        os.link(first, second)
+        allocated = cache._allocated(first.stat())
+        dry = self.trim(dry_run=True)
+        self.assertEqual(dry['projected_removed_allocated_bytes'], allocated, dry)
+        self.assertEqual(dry['projected_remaining_cache_bytes'], 0)
+        result = self.trim()
+        self.assertEqual(set(result['removed_files']), {str(first), str(second)}, result)
+        self.assertEqual(result['removed_allocated_bytes'], allocated)
+        self.assertEqual(result['removed_logical_bytes'], 2 * 8192)
+
+    def test_unknown_external_hardlink_preserves_entire_incremental_session(self):
+        object_file = self.write('debug/incremental/crate-123/s-final/object.o')
+        metadata = self.write('debug/incremental/crate-123/s-final/dep-graph.bin')
+        external = self.root / 'required-external-object'
+        os.link(object_file, external)
+        result = self.trim()
+        self.assertEqual(result['removed_files'], [], result)
+        for path in (object_file, metadata, external):
+            self.assertTrue(path.exists())
+
+    def test_debug_reference_to_incremental_path_preserves_whole_session(self):
+        self.label()
+        object_file = self.write('debug/incremental/crate-123/s-final/object.o')
+        metadata = self.write('debug/incremental/crate-123/s-final/dep-graph.bin')
+        sibling = self.target / 'debug/deps/alias.rcgu.o'
+        sibling.parent.mkdir(parents=True)
+        os.link(object_file, sibling)
+        result = self.trim(dependencies=lambda executable: {object_file})
+        self.assertEqual(result['removed_files'], [str(sibling)], result)
+        self.assertEqual(result['removed_allocated_bytes'], 0)
+        self.assertTrue(object_file.exists())
+        self.assertTrue(metadata.exists())
+
+    def test_working_session_is_preserved_even_when_cache_pressure_remains(self):
+        working = self.write('debug/incremental/crate-123/s-new-working/object.o', age=20)
+        metadata = self.write('debug/incremental/crate-123/s-new-working/dep-graph.part.bin', age=20)
+        finalized = self.write('debug/incremental/crate-123/s-final/object.o', age=10)
+        result = self.trim()
+        self.assertEqual(result['removed_files'], [str(finalized)], result)
+        self.assertTrue(working.exists())
+        self.assertTrue(metadata.exists())
         self.assertGreater(result['unmet_targets']['incremental_bytes'], 0)
+
+    def test_external_mutation_after_own_alias_unlink_stops_deletion(self):
+        self.label()
+        dependency = self.write('debug/deps/required.rcgu.o')
+        alias = self.target / 'debug/incremental/crate-123/s-final/a-object.o'
+        alias.parent.mkdir(parents=True)
+        os.link(dependency, alias)
+        metadata = self.write('debug/incremental/crate-123/s-final/query-cache.bin')
+        original_unlink = Path.unlink
+        def mutate_after_alias(path, *args, **kwargs):
+            result = original_unlink(path, *args, **kwargs)
+            if path == alias:
+                dependency.write_bytes(b'external modification')
+            return result
+        with patch.object(Path, 'unlink', new=mutate_after_alias):
+            result = self.trim(dependencies=lambda executable: {dependency})
+        self.assertEqual(result['state'], 'partial', result)
+        self.assertEqual(result['removed_files'], [str(alias)])
+        self.assertEqual(result['removed_allocated_bytes'], 0)
+        self.assertTrue(metadata.exists())
+        self.assertTrue(result['errors'])
 
     def test_hardlinks_symlinks_unknown_source_and_debug_files_are_preserved(self):
         hard = self.write('debug/deps/shared.rcgu.o')
@@ -342,9 +448,9 @@ class CacheTests(unittest.TestCase):
                     ('symbols.pdb', 'symbols.dwo', 'symbols.dwp', 'archive.rlib', 'unknown.o')]
         outside_profile = self.write('research/deps/native.rcgu.o')
         result = self.trim()
-        self.assertEqual(result['removed_files'], [], result)
+        self.assertEqual(result['removed_files'], [str(hot)], result)
         self.assertTrue(linked.is_symlink())
-        for path in [hard, alias, external, cold, source, hot, outside_profile, *sidecars]:
+        for path in [hard, alias, external, cold, source, outside_profile, *sidecars]:
             self.assertTrue(path.exists(), path)
 
     def test_link_inside_cold_session_prevents_partial_session_deletion(self):
@@ -353,14 +459,13 @@ class CacheTests(unittest.TestCase):
         link = cold.parent / 'unknown.bin'
         link.symlink_to(self.root / 'missing-input')
         result = self.trim(cache.CachePolicy(1 << 40, 0, 0))
-        self.assertEqual(result['removed_files'], [], result)
+        self.assertEqual(result['removed_files'], [str(hot)], result)
         self.assertTrue(cold.exists())
-        self.assertTrue(hot.exists())
         self.assertTrue(link.is_symlink())
 
     def test_directory_link_inside_cold_session_prevents_partial_session_deletion(self):
         cold = self.write('debug/incremental/crate-123/s-old/object.o', age=1)
-        self.write('debug/incremental/crate-123/s-hot/object.o', age=20)
+        hot = self.write('debug/incremental/crate-123/s-hot/object.o', age=20)
         external = self.root / 'source-directory'
         external.mkdir()
         source = external / 'evidence.json'
@@ -368,7 +473,7 @@ class CacheTests(unittest.TestCase):
         link = cold.parent / 'source'
         link.symlink_to(external, target_is_directory=True)
         result = self.trim(cache.CachePolicy(1 << 40, 0, 0))
-        self.assertEqual(result['removed_files'], [], result)
+        self.assertEqual(result['removed_files'], [str(hot)], result)
         self.assertTrue(cold.exists())
         self.assertTrue(link.is_symlink())
         self.assertEqual(source.read_text(), 'native evidence')
@@ -379,9 +484,8 @@ class CacheTests(unittest.TestCase):
                               content=b'captured native instructions', age=1)
         hot = self.write('debug/incremental/crate-123/s-hot/object.o', age=20)
         result = self.trim(cache.CachePolicy(1 << 40, 0, 0))
-        self.assertEqual(result['removed_files'], [], result)
+        self.assertEqual(result['removed_files'], [str(hot)], result)
         self.assertTrue(cold.exists())
-        self.assertTrue(hot.exists())
         self.assertEqual(evidence.read_bytes(), b'captured native instructions')
 
     def test_symlinked_owned_root_never_adopts_external_cache_for_deletion(self):
@@ -504,8 +608,7 @@ class CacheTests(unittest.TestCase):
         with cargo_run.build_lock(self.store / 'cargo.lock', 0):
             cache.register_locked(self.root, self.store, self.target, artifacts={binary})
         recorded = self.trim()
-        self.assertEqual(set(recorded['removed_files']), {str(cross_object), str(cold)}, recorded)
-        self.assertTrue(hot.exists())
+        self.assertEqual(set(recorded['removed_files']), {str(cross_object), str(cold), str(hot)}, recorded)
         self.assertTrue(binary.exists())
 
     def test_preserved_label_original_source_proves_cross_target_profile(self):
@@ -626,7 +729,7 @@ class CacheTests(unittest.TestCase):
             self.assertEqual(automatic.call_count, 2)
             self.assertFalse((self.store / 'artifacts').exists())
 
-    def test_retention_free_space_failure_does_not_abort_ordinary_cargo(self):
+    def test_retention_free_space_failure_blocks_cargo_admission(self):
         real_popen = subprocess.Popen
         launched = []
         child = MagicMock()
@@ -641,14 +744,14 @@ class CacheTests(unittest.TestCase):
         with patch.object(cache.shutil, 'disk_usage', side_effect=OSError('volume unavailable')), \
              patch.object(cargo_run, 'source_identity', return_value={'same': True}), \
              patch.object(cargo_run.subprocess, 'Popen', side_effect=start), \
-             redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
-            result = cargo_run.run(self.root, ['check'], None, 0,
-                                   policy=cache.CachePolicy(0, 0, 0))
-        self.assertEqual(result, 0)
-        self.assertEqual(len(launched), 1)
+             redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()), \
+             self.assertRaisesRegex(OSError, 'volume unavailable'):
+            cargo_run.run(self.root, ['check'], None, 0,
+                          policy=cache.CachePolicy(0, 0, 0))
+        self.assertEqual(launched, [])
         receipts = [json.loads(path.read_text()) for path in
                     (self.store / 'retention').glob('*.json')]
-        self.assertEqual(len(receipts), 2)
+        self.assertEqual(len(receipts), 1)
         self.assertTrue(all(receipt['state'] == 'blocked' for receipt in receipts))
         self.assertTrue(all(receipt['removed_files'] == [] for receipt in receipts))
 

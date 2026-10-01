@@ -366,6 +366,41 @@ def _allocated_total(infos) -> int:
     return unidentified + sum(_allocated(info) for info in unique.values())
 
 
+class _CacheLinks:
+    """Account for paths separately from the allocation shared by their inode."""
+
+    def __init__(self, inventory, increments):
+        self.keys = {path: (info.st_dev, info.st_ino) if info.st_ino else path
+                     for path, info in inventory.items()}
+        self.aliases = {}
+        for path, key in self.keys.items():
+            self.aliases.setdefault(key, set()).add(path)
+        self.remaining = {key: set(paths) for key, paths in self.aliases.items()}
+        self.incremental = {key: paths & increments for key, paths in self.aliases.items()}
+        self.sizes = {key: _allocated(inventory[next(iter(paths))])
+                      for key, paths in self.aliases.items()}
+        self.closed = set()
+        for key, paths in self.aliases.items():
+            identities = {(info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
+                           info.st_ctime_ns, info.st_nlink)
+                          for path in paths for info in (inventory[path],)}
+            if len(identities) == 1 and next(iter(identities))[-1] == len(paths):
+                self.closed.add(key)
+
+    def eligible(self, path):
+        # Unknown outside links cannot establish a complete allocation closure.
+        return self.keys[path] in self.closed
+
+    def remove(self, path):
+        key = self.keys[path]
+        paths, incremental = self.remaining[key], self.incremental[key]
+        paths.remove(path)
+        was_incremental = path in incremental
+        incremental.discard(path)
+        return (self.sizes[key] if not paths else 0,
+                self.sizes[key] if was_incremental and not incremental else 0)
+
+
 def _magic(path: Path) -> bytes:
     with path.open('rb') as source:
         return source.read(4)
@@ -505,12 +540,13 @@ def trim_locked(root: Path, store: Path, policy: CachePolicy, *, dry_run=False) 
                 if missing:
                     receipt['degraded_debug_inputs'][str(binary)] = sorted(missing)
             receipt['protected_files'] = len(protected)
+            links = _CacheLinks(inventory, increments)
             groups = []
             # Only exact Cargo profile/deps *.rcgu.o; never arbitrary *.o.
             for path, info in inventory.items():
                 if (path.name.endswith('.rcgu.o') and path.parent in {profile / 'deps' for profile in profiles}
-                        and info.st_nlink == 1 and path not in protected):
-                    groups.append(([path], False, info.st_mtime_ns))
+                        and links.eligible(path) and path not in protected):
+                    groups.append(([path], False, info.st_mtime_ns, 0))
             sessions = {}
             for path in increments:
                 # Cargo incremental/<crate-hash>/s-<session>/{objects,*.bin}.
@@ -526,9 +562,13 @@ def trim_locked(root: Path, store: Path, policy: CachePolicy, *, dry_run=False) 
                 if previous is None or (age, str(session)) > (previous[0], str(previous[1])):
                     newest[session.parent] = (age, session)
             for session, paths in sessions.items():
-                if newest[session.parent][1] == session:
-                    continue  # Retain the hottest session for each crate.
-                if any(path in protected or inventory[path].st_nlink != 1
+                # rustc publishes complete immutable sessions and reuses objects
+                # through hardlinks. Evict the full finalized cache, preserving
+                # required deps paths even when they share its object inodes.
+                # https://doc.rust-lang.org/stable/nightly-rustc/src/rustc_incremental/persist/fs.rs.html
+                if session.name.endswith('-working'):
+                    continue
+                if any(path in protected or not links.eligible(path)
                        or not (path.suffix == '.o' or path.name in {
                            'dep-graph.bin', 'dep-graph.part.bin', 'query-cache.bin',
                            'work-products.bin', 'metadata.rmeta'}) for path in paths):
@@ -541,21 +581,24 @@ def trim_locked(root: Path, store: Path, policy: CachePolicy, *, dry_run=False) 
                     continue
                 if set(paths) != {path for path in entries if path.is_file()}:
                     continue
-                groups.append((sorted(paths), True, max(inventory[path].st_mtime_ns for path in paths)))
-            groups.sort(key=lambda group: (group[2], str(group[0][0])))
+                groups.append((sorted(paths), True, max(inventory[path].st_mtime_ns for path in paths),
+                               int(newest[session.parent][1] == session)))
+            # Hottest sessions remain useful until cold caches cannot meet pressure.
+            groups.sort(key=lambda group: (group[3], group[2], str(group[0][0])))
             selected, projected_free, projected_total, projected_incremental = [], dict(free), total, incremental
-            for paths, is_incremental, age in groups:
+            projection = _CacheLinks(inventory, increments)
+            for paths, is_incremental, age, _ in groups:
                 device = str(inventory[paths[0]].st_dev)
                 if (projected_total <= policy.cache_bytes and
                         (not is_incremental or projected_incremental <= policy.incremental_bytes)
                         and projected_free[device] >= policy.min_free_bytes):
                     continue
-                size = sum(_allocated(inventory[path]) for path in paths)
                 selected.append((paths, is_incremental))
-                projected_total -= size
-                if is_incremental:
-                    projected_incremental -= size
-                projected_free[device] += size
+                for path in paths:
+                    released, incremental_released = projection.remove(path)
+                    projected_total -= released
+                    projected_incremental -= incremental_released
+                    projected_free[device] += released
             receipt['selected_files'] = [str(path) for paths, _ in selected for path in paths]
             receipt['projected_removed_allocated_bytes'] = total - projected_total
             receipt['projected_remaining_cache_bytes'] = projected_total
@@ -570,10 +613,15 @@ def trim_locked(root: Path, store: Path, policy: CachePolicy, *, dry_run=False) 
                     raise ValueError(f'Debug dependency changed during inspection: {path}')
             # Preflight every eligible fallback too: APFS clones/snapshots can
             # reclaim less than allocated bytes, requiring further cold entries.
-            candidates = {path: _identity(path) for paths, _, _ in groups for path in paths}
+            candidate_paths = {path for paths, _, _, _ in groups for path in paths}
+            # Every known alias participates in preflight, including required debug
+            # paths which must survive removal of a sibling incremental alias.
+            alias_paths = {alias for path in candidate_paths
+                           for alias in links.aliases[links.keys[path]]}
+            candidates = {path: _identity(path) for path in alias_paths}
             for path, identity in candidates.items():
                 info = inventory[path]
-                if identity != (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, 1):
+                if identity != (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_nlink):
                     raise ValueError(f'Compiler cache changed during inspection: {path}')
             receipt['state'] = 'planned' if dry_run else 'trimmed'
             for path, identity in directory_states.items():
@@ -582,7 +630,7 @@ def trim_locked(root: Path, store: Path, policy: CachePolicy, *, dry_run=False) 
             if not dry_run:
                 receipt['selected_files'] = []
                 remaining_total, remaining_incremental, checked_at = total, incremental, 0.0
-                for paths, is_incremental, _ in groups:
+                for paths, is_incremental, _, _ in groups:
                     device = inventory[paths[0]].st_dev
                     actual_free = shutil.disk_usage(devices[device]).free
                     if (remaining_total <= policy.cache_bytes and
@@ -603,15 +651,37 @@ def trim_locked(root: Path, store: Path, policy: CachePolicy, *, dry_run=False) 
                         checked_at = time.monotonic()
                     receipt['selected_files'].extend(str(path) for path in paths)
                     for path in paths:
-                        if _identity(path) != candidates[path]:
-                            raise ValueError(f'Compiler cache changed before unlink: {path}')
+                        key = links.keys[path]
+                        # Validate the entire inode closure before each unlink.
+                        # Checking only this path would miss mutation of a retained
+                        # alias after a previous removal changed inode ctime/nlink.
+                        survivors = links.remaining[key] - {path}
+                        for alias in links.remaining[key]:
+                            if _identity(alias) != candidates[alias]:
+                                raise ValueError(f'Compiler cache changed before unlink: {alias}')
+                        prior = candidates[path]
                         path.unlink()
                         receipt['removed_files'].append(str(path))
-                        receipt['removed_allocated_bytes'] += _allocated(inventory[path])
+                        released, incremental_released = links.remove(path)
+                        receipt['removed_allocated_bytes'] += released
                         receipt['removed_logical_bytes'] += inventory[path].st_size
-                        remaining_total -= _allocated(inventory[path])
-                        if is_incremental:
-                            remaining_incremental -= _allocated(inventory[path])
+                        remaining_total -= released
+                        remaining_incremental -= incremental_released
+                        receipt['remaining_cache_allocated_bytes'] = remaining_total
+                        receipt['remaining_incremental_allocated_bytes'] = remaining_incremental
+                        # Own unlinks change ctime/nlink of every surviving alias.
+                        # Accept exactly that scoped transition, never changes to
+                        # inode, contents metadata or an unexpected link count.
+                        updates = {}
+                        for alias in survivors:
+                            identity = _identity(alias)
+                            if identity[:4] != prior[:4] or identity[5] != prior[5] - 1:
+                                raise ValueError(f'Compiler cache alias changed after unlink: {alias}')
+                            updates[alias] = identity
+                        for alias, identity in updates.items():
+                            candidates[alias] = identity
+                            if alias in watched:
+                                watched[alias] = identity
                     # Remove empty session directories only. Never recursive rmtree.
                     if paths and paths[0].parent.name.startswith('s-'):
                         try:

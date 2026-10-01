@@ -94,13 +94,18 @@ cache**, **4 GiB incremental cache**, and **16 GiB minimum free space** per cach
 volume. Set `VERA20K_CACHE_GIB`, `VERA20K_INCREMENTAL_GIB`, and
 `VERA20K_MIN_FREE_GIB`, or pass `--cache-gib`, `--incremental-gib`, and
 `--min-free-gib` before `--`. Sizes accept finite nonnegative decimal GiB.
-Limits are soft when protected files prevent reclaiming enough space.
+Cache budgets are soft when protected files prevent reclaiming enough space.
+The minimum free-space target also controls build admission: after cleanup, the
+runner measures the target volume again and blocks Cargo below that target.
+Labelled builds also check the saved-artifact volume. Measurement failure blocks
+the build; it never permits unsafe deletion. This reserve cannot predict the
+peak size of a future build or prevent unrelated applications consuming space.
 
 Before a large build, check the runner’s free-space result. If its minimum
 free-space target remains unmet, resolve the owned retention pressure before
 starting another large build; preserve required files and report any remaining
-shortfall. This is an agent workflow requirement; automatic cleanup failure still
-permits Cargo as described below.
+shortfall. The runner enforces the free-space admission check for every Cargo
+invocation using the configured target, including checks and unlabelled builds.
 
 Preview or trim without starting Cargo:
 
@@ -113,11 +118,16 @@ The owner records every new target (including failed, unlabelled, check and cust
 target invocations) in `owned-builds/cache-roots.json`. Historical labelled roots
 are adopted only when their live checkout/common Git directory and namespace
 prove ownership. Unregistered, abandoned or unverifiable caches stay untouched.
-Only orphaned `deps/*.rcgu.o` and complete cold incremental sessions are eligible;
+Only orphaned `deps/*.rcgu.o` and complete finalized incremental sessions are eligible;
 paths must belong to exact Cargo profile directories. Cross-target profiles require
 an executable path reported by Cargo or retained in a preserved build manifest.
-The newest session for each crate remains cached. Links, shared hardlinks and
-sessions containing unknown files stay protected. Source, assets, native evidence,
+Older sessions are considered first; newest sessions are eligible if pressure
+remains. Working sessions and sessions containing links or unknown files stay
+protected. Shared compiler objects are eligible only when every inode alias
+is accounted for in registered caches and required debug-reference paths survive.
+Unknown external hardlinks remain protected; the cleaner never unlinks a required
+debug path. Cache and reclaimed-space accounting counts each inode once, and
+removing an alias does not claim freed allocation while another alias remains. Source, assets, native evidence,
 executables, libraries, labels and debug sidecars are never deletion candidates.
 Every saved executable remains protected, including library-test binaries.
 Already absent debug inputs are reported separately as degraded debugging support;
@@ -138,8 +148,9 @@ Dependency presence and identity are always checked anew. Unknown inode identiti
 are never reused. Unchanged inspector failures are cached for at most five minutes;
 changing the binary, inspector or readelf identity retries immediately. These caches
 never authorize deletion without fresh inventory and dependency checks. Automatic
-cleanup failure reports its reason and permits Cargo; explicit trimming returns
-nonzero. See [retention validation](cargo_cache_validation.md).
+cleanup failure reports its reason; Cargo can proceed only when a fresh
+measurement meets the configured free-space reserve. Explicit trimming returns
+nonzero on inspection/deletion errors. See [retention validation](cargo_cache_validation.md).
 
 Saved builds have a separate, explicit lifecycle. Default to unlabelled iteration;
 preserve only binaries needed for active comparisons, captures or debugging.
