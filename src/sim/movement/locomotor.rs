@@ -97,10 +97,6 @@ pub struct LocomotorState {
     /// Pathfinder movement zone — determines crush capability and special routing.
     /// Cached from ObjectType at spawn to avoid per-tick RuleSet lookups.
     pub movement_zone: MovementZone,
-    /// Within-cell walk destination for infantry. Set when a sub-cell is allocated
-    /// during cell entry. The locomotor walks the infantry toward this point after
-    /// the path is exhausted.
-    pub subcell_dest: Option<(SimFixed, SimFixed)>,
 }
 
 impl LocomotorState {
@@ -163,7 +159,6 @@ impl LocomotorState {
             hover_attack,
             speed_type,
             movement_zone,
-            subcell_dest: None,
         }
     }
 
@@ -326,6 +321,13 @@ impl LocomotorState {
             (LocomotorKind::Hover, LocomotorRuntimePayload::Hover(runtime)) => Some(runtime),
             _ => None,
         }
+    }
+
+    /// The cell of Walk's destination coordinate.
+    #[cfg(test)]
+    pub(crate) fn walk_destination_cell(&self) -> Option<(u16, u16)> {
+        self.walk_destination()
+            .map(|c| ((c.x / 256) as u16, (c.y / 256) as u16))
     }
 
     pub(crate) fn walk_destination(&self) -> Option<crate::sim::components::DriveCoord> {

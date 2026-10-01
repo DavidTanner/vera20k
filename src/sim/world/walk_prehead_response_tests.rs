@@ -195,13 +195,7 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
     p.path_blocked = before["blocked"] == 1;
     p.retries_left = before["retries"].as_i64().unwrap() as u32;
     p.set_scold_latch_for_test(before["flag68a"].as_u64().unwrap() as u8);
-    e.movement_target = Some(MovementTarget {
-        path: vec![(9, 10), (10, 10), (11, 11), (11, 12), (10, 13)],
-        path_layers: vec![MovementLayer::Ground; 5],
-        next_index: 1,
-        final_goal: Some((10, 10)),
-        ..Default::default()
-    });
+    e.movement_target = Some(MovementTarget::default());
     if input["radio"] == true {
         e.radio_contacts.insert(999);
     }

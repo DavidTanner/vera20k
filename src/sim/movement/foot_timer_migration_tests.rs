@@ -3,7 +3,7 @@
 //! In particular Ship's current fresh admission adapter does not prove code2.
 
 use super::locomotor::{LocomotorState, MovementLayer};
-use super::{DestinationTiming, MovementConfig, issue_move_command};
+use super::{DestinationTiming, issue_move_command};
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
@@ -257,14 +257,13 @@ fn rules_driven_sentinel_timers_survive_snapshot_and_same_frame_process() {
         install_stationary_path_request(&mut sim);
         sim.session.binary_frame = u32::MAX;
         sim.session.tick = u64::from(u32::MAX);
-        let timing = MovementConfig::from_rules(Some(&rules));
-        assert_eq!(timing.path_delay_ticks, expected_path);
+        assert_eq!(rules.general.path_delay_ticks(), expected_path);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         DestinationTiming::from_rules(u32::MAX, Some(&rules)).accept(entity);
         entity
             .navigation
             .path_runtime
-            .start_movement(u32::MAX, timing.path_delay_ticks);
+            .start_movement(u32::MAX, expected_path);
         entity.navigation.path_runtime.retries_left = 0x8000_0001;
         let expected = timer_pair(entity);
         assert_eq!(expected.0, CdTimer::from_raw(-1, expected_path));
@@ -324,14 +323,7 @@ fn paid_walk_progress_clears_only_blocked_latch_and_retains_timer_words() {
             z: 0,
         }));
     entity.movement_target = Some(MovementTarget {
-        path: vec![(8, 8), (9, 8)],
-        path_layers: vec![MovementLayer::Ground; 2],
-        next_index: 1,
-        final_goal: Some((9, 8)),
         speed: SimFixed::from_num(165),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
         ..Default::default()
     });
     entity

@@ -1,7 +1,6 @@
 //! Bridge layer transitions — applies the on_bridge cell-flag predicate at each
-//! cell boundary crossing, and decouples `on_bridge` from `loco.layer` so that the
-//! A* path layer (walkability-driving) and the runtime bridge state (predicate-driven)
-//! can disagree at ramp cells — which they must, to match the reference behavior.
+//! cell boundary crossing. The runtime bridge state is predicate-driven, never
+//! derived from an A* path layer: the two disagree at ramp cells.
 //!
 //! Predicate:
 //!   Enter:  dst.height_level == src.height_level - 4 AND dst has bridge structural flag
@@ -147,9 +146,8 @@ pub(super) fn compute_bridge_transition(
 /// (deck_level on Enter, dst.ground_level on Exit, or next_layer's effective height
 /// on NoChange).
 ///
-/// Does NOT return a layer — the caller continues to use `next_layer` from A*'s
-/// `path_layers` for `loco.layer`. The predicate's role is independent: it drives
-/// `on_bridge` via the returned `BridgeStateUpdate`.
+/// Does NOT return a layer. The predicate drives `on_bridge` via the returned
+/// `BridgeStateUpdate`.
 ///
 /// Fallback: returns `Unchanged` (no position.z modification) when `path_grid` is
 /// `None` or either cell lookup is out-of-bounds. Out-of-bounds at the boundary
@@ -233,29 +231,30 @@ pub(super) fn resolve_cell_transition_bridge_state_oracle(
     (update, row)
 }
 
-/// Apply the post-resolver bridge state to entity components.
+/// Apply the post-resolver bridge state to a Walk Foot at its boundary.
 ///
-/// `loco.layer` follows `active_layer` (= A*'s path_layer for this step), which drives
-/// walkability and cell_entry occupancy lookup.
-///
-/// `on_bridge` is driven INDEPENDENTLY by `bridge_update` from
-/// the cell-flag predicate. This is the load-bearing G2 parity fix: the runtime
-/// on_bridge state is NOT derivable from the A* layer, because on a ramp going up
-/// loco.layer=Bridge but on_bridge=false (predicate hasn't fired Enter yet), and on a
-/// ramp going down loco.layer=Ground but on_bridge=true.
+/// `on_bridge` follows the cell-flag predicate's `bridge_update`, never a path
+/// layer: on a ramp going up the A* layer is Bridge before the predicate fires
+/// Enter, and going down it is Ground while OnBridge is still set. Walk keeps
+/// no path layer; its `loco.layer` is the OnBridge projection, which is what
+/// its next Find_Path starts from (AStar 0x00429A90 picks the start height
+/// from Foot+0x8C).
 pub(super) fn apply_bridge_layer_state(
     locomotor: &mut Option<LocomotorState>,
     on_bridge: &mut bool,
-    active_layer: MovementLayer,
     bridge_update: BridgeStateUpdate,
 ) {
-    if let Some(loco) = locomotor {
-        loco.layer = active_layer;
-    }
     match bridge_update {
         BridgeStateUpdate::Set => *on_bridge = true,
         BridgeStateUpdate::Clear => *on_bridge = false,
         BridgeStateUpdate::Unchanged => {}
+    }
+    if let Some(loco) = locomotor {
+        loco.layer = if *on_bridge {
+            MovementLayer::Bridge
+        } else {
+            MovementLayer::Ground
+        };
     }
 }
 
@@ -746,78 +745,36 @@ mod tests {
     }
 
     #[test]
-    fn render_state_on_bridge_decoupled_from_loco_layer() {
-        // active_layer=Bridge but bridge_update=Unchanged.
-        // on_bridge must retain its prior value (does NOT become true just because layer is Bridge).
-        let mut loco = make_loco(MovementLayer::Ground);
-        let mut on_b = false;
-        apply_bridge_layer_state(
-            &mut loco,
-            &mut on_b,
-            MovementLayer::Bridge,
-            BridgeStateUpdate::Unchanged,
-        );
-        assert_eq!(loco.as_ref().unwrap().layer, MovementLayer::Bridge);
-        assert!(!on_b, "on_bridge must NOT be derived from active_layer");
-    }
-
-    #[test]
-    fn render_state_ramp_going_up_keeps_on_bridge_false() {
-        // Going up onto a ramp: A*'s path puts the ramp on Bridge layer, but the
-        // predicate doesn't fire Enter until Ramp→Body next tick. So this tick:
-        //   active_layer = Bridge, bridge_update = Unchanged, on_bridge = false (prior).
-        let mut loco = make_loco(MovementLayer::Ground);
-        let mut on_b = false;
-        apply_bridge_layer_state(
-            &mut loco,
-            &mut on_b,
-            MovementLayer::Bridge,
-            BridgeStateUpdate::Unchanged,
-        );
-        assert_eq!(loco.as_ref().unwrap().layer, MovementLayer::Bridge);
-        assert!(!on_b, "on_bridge must stay false on the ramp tick going up");
-    }
-
-    #[test]
-    fn render_state_ramp_going_down_keeps_on_bridge_true() {
-        // Coming off a bridge: A*'s path puts the ramp on Ground layer (is_at_bridge_level
-        // returns false), but the predicate hasn't fired Exit yet. on_bridge stays true.
-        let mut loco = make_loco(MovementLayer::Bridge);
-        let mut on_b = true;
-        apply_bridge_layer_state(
-            &mut loco,
-            &mut on_b,
-            MovementLayer::Ground,
-            BridgeStateUpdate::Unchanged,
-        );
-        assert_eq!(loco.as_ref().unwrap().layer, MovementLayer::Ground);
-        assert!(on_b, "on_bridge must stay true on the ramp tick going down");
-    }
-
-    #[test]
-    fn render_state_set_enters_the_bridge() {
-        let mut loco = make_loco(MovementLayer::Bridge);
-        let mut on_b = false;
-        apply_bridge_layer_state(
-            &mut loco,
-            &mut on_b,
-            MovementLayer::Bridge,
-            BridgeStateUpdate::Set,
-        );
-        assert!(on_b);
-    }
-
-    #[test]
-    fn render_state_clear_leaves_the_bridge() {
-        let mut loco = make_loco(MovementLayer::Ground);
-        let mut on_b = true;
-        apply_bridge_layer_state(
-            &mut loco,
-            &mut on_b,
-            MovementLayer::Ground,
-            BridgeStateUpdate::Clear,
-        );
-        assert!(!on_b);
+    fn walk_bridge_state_follows_the_predicate_and_layer_follows_on_bridge() {
+        // (prior layer, prior on_bridge, update) -> on_bridge after. A ramp
+        // tick (Unchanged) keeps the prior flag whatever A* planned.
+        for (layer, before, update, after) in [
+            (
+                MovementLayer::Ground,
+                false,
+                BridgeStateUpdate::Unchanged,
+                false,
+            ),
+            (
+                MovementLayer::Bridge,
+                true,
+                BridgeStateUpdate::Unchanged,
+                true,
+            ),
+            (MovementLayer::Bridge, false, BridgeStateUpdate::Set, true),
+            (MovementLayer::Ground, true, BridgeStateUpdate::Clear, false),
+        ] {
+            let mut loco = make_loco(layer);
+            let mut on_b = before;
+            apply_bridge_layer_state(&mut loco, &mut on_b, update);
+            assert_eq!(on_b, after, "{update:?}");
+            let expected = if after {
+                MovementLayer::Bridge
+            } else {
+                MovementLayer::Ground
+            };
+            assert_eq!(loco.unwrap().layer, expected, "{update:?}");
+        }
     }
 }
 

@@ -44,7 +44,7 @@ fn slave_master_admission_reaches_head_selection_in_the_same_object_turn() {
             .unwrap();
         // Supplied manager/deposit leg tests the real object-turn admission
         // continuation, not production slave AI or a stock hut manager.
-        direct_move(&mut sim, slave, (16, 15), SimFixed::from_num(150), &rules);
+        direct_move(&mut sim, slave, SimFixed::from_num(150), &rules);
         sim.mission_assign_exact(
             slave,
             crate::sim::mission::MissionId::from_known(
@@ -393,16 +393,12 @@ fn walk_boundary_relinks_current_xyz_and_leaves_the_raw_bit_on_the_head() {
         y: 15 * 256 + 192,
         z: 0,
     };
-    let (owner, queue, path_index) = {
+    let (owner, queue) = {
         let e = sim.substrate.entities.get_mut(id).unwrap();
         e.position.sub_x = SimFixed::from_num(192);
         e.position.sub_y = SimFixed::from_num(64);
         e.locomotor.as_mut().unwrap().set_step_head(Some(head));
-        (
-            e.owner(),
-            e.navigation.path_replay.clone(),
-            e.movement_target.as_ref().unwrap().next_index,
-        )
+        (e.owner(), e.navigation.path_replay.clone())
     };
     sim.substrate
         .raw_cell_occupation
@@ -427,7 +423,6 @@ fn walk_boundary_relinks_current_xyz_and_leaves_the_raw_bit_on_the_head() {
     assert_eq!(e.sub_cell, Some(0));
     assert_eq!(e.locomotor.as_ref().unwrap().step_head(), Some(head));
     assert_eq!(e.navigation.path_replay, queue);
-    assert_eq!(e.movement_target.as_ref().unwrap().next_index, path_index);
     assert_eq!(
         sim.substrate.raw_cell_occupation.ground_bits(15, 15) & 0x1f,
         0
@@ -720,7 +715,6 @@ fn ready_engineer(
     direct_move(
         sim,
         id,
-        (16, 15),
         crate::util::fixed_math::SimFixed::from_num(61),
         rules,
     );
@@ -1218,7 +1212,7 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
         let e = sim.substrate.entities.get(id).unwrap();
         assert_eq!(ground_pose::position_world_coord(&e.position), before);
         assert_eq!(e.locomotor.as_ref().unwrap().step_head(), Some(head));
-        assert_eq!(e.movement_target.as_ref().unwrap().next_index, 0);
+        assert!(e.navigation.path_replay.remaining_directions().is_empty());
         assert_eq!(e.navigation.nav_com.is_none(), stop);
         // Both instance-owned XYZ values survive the actual snapshot envelope.
         let map_terrain = sim.resolved_terrain.as_ref().unwrap().clone();
@@ -1328,15 +1322,9 @@ fn walk_completion_uses_retained_destination_and_exact_height_tolerance() {
         e.navigation.path_runtime.start_blocked(40, 6);
         e.navigation.path_runtime.path_blocked = true;
         e.navigation.path_runtime.retries_left = 0x8000_0001;
-        // Supplied exhausted paid-head adapter, as the object-turn suspension
-        // exposes it to the real PerCell completion owner.
-        e.movement_target = Some(crate::sim::components::MovementTarget {
-            path: vec![(16, 15)],
-            path_layers: vec![crate::sim::movement::locomotor::MovementLayer::Ground],
-            next_index: 1,
-            final_goal: Some(((dest.x / 256) as u16, (dest.y / 256) as u16)),
-            ..Default::default()
-        });
+        // The paid head is the last Foot+5E0 word, as the object-turn
+        // suspension exposes it to the real PerCell completion owner.
+        e.movement_target = Some(Default::default());
         sim.run_completed_walk_step(id, head, Some(&rules), Some(&registry))
             .expect("fixture frame must complete");
         let e = sim.substrate.entities.get(id).unwrap();
@@ -1364,16 +1352,10 @@ fn walk_completion_uses_retained_destination_and_exact_height_tolerance() {
             survives
         );
         if survives {
-            let request = e.movement_target.as_ref().unwrap();
+            assert!(e.movement_target.is_some());
             assert!(
-                request.path.is_empty(),
+                e.navigation.path_replay.remaining_directions().is_empty(),
                 "surviving destination must regain a first-search request"
-            );
-            assert!(request.path_layers.is_empty());
-            assert_eq!(request.next_index, 0);
-            assert_eq!(
-                request.final_goal,
-                Some(((dest.x / 256) as u16, (dest.y / 256) as u16))
             );
             assert_eq!(e.navigation.path_replay.reference_cell, Some((16, 15)));
             assert_eq!(e.locomotor.as_ref().unwrap().walk_destination(), Some(dest));
@@ -1981,31 +1963,20 @@ fn failed_jumpjet_stop_stock_fatal_receiver_precedes_cache_retirement() {
     }
 }
 
-/// A supplied one-leg route `[start, target]` with an accepted destination.
+/// An accepted destination's scheduling adapter; callers supply the Walk
+/// destination and head.
 fn direct_move(
     sim: &mut Simulation,
     id: u64,
-    target: (u16, u16),
     speed: crate::util::fixed_math::SimFixed,
     rules: &RuleSet,
 ) {
-    use crate::util::fixed_math::{SimFixed, fixed_distance};
     let timing =
         crate::sim::movement::DestinationTiming::from_rules(sim.session.binary_frame, Some(rules));
     let e = sim.substrate.entities.get_mut(id).unwrap();
-    let start = (e.position.rx, e.position.ry);
-    let layer = e.movement_layer_or_ground();
-    let dir_x = SimFixed::from_num((i32::from(target.0) - i32::from(start.0)) * 256);
-    let dir_y = SimFixed::from_num((i32::from(target.1) - i32::from(start.1)) * 256);
     timing.accept(e);
     e.movement_target = Some(crate::sim::components::MovementTarget {
-        path: vec![start, target],
-        path_layers: vec![layer; 2],
-        next_index: 1,
         speed,
-        move_dir_x: dir_x,
-        move_dir_y: dir_y,
-        move_dir_len: fixed_distance(dir_x, dir_y),
         ..Default::default()
     });
 }

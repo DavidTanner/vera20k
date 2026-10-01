@@ -1,7 +1,7 @@
 //! World placement corridors of Walk75AEC0: boundary75C117 and completion75BD7D.
 //! walk_step owns the paid numeric approach; this owner supplies synchronous
 //! Mark/PerCell placement before the pass tail.
-use super::{ground_pose, locomotor::MovementLayer};
+use super::ground_pose;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::{components::DriveCoord, world::Simulation};
@@ -122,21 +122,6 @@ impl Simulation {
                 }
             }
             self.walk_stop_moving(id, rules)?;
-        } else if let Some(destination) = destination
-            && let Some(target) = self
-                .substrate
-                .entities
-                .get_mut(id)
-                .and_then(|actor| actor.movement_target.as_mut())
-            && target.next_index >= target.path.len()
-        {
-            //75BF64 retains a changed destination, even in the same cell when
-            //the height differs. Preserve Foot queue/reference/timers while
-            //retiring only the exhausted route into the existing search request.
-            target.path.clear();
-            target.path_layers.clear();
-            target.next_index = 0;
-            target.final_goal = Some(((destination.x / 256) as u16, (destination.y / 256) as u16));
         }
         Ok(())
     }
@@ -171,17 +156,6 @@ impl Simulation {
             return;
         };
         let cell = (e.position.rx, e.position.ry);
-        let active_layer = e
-            .movement_target
-            .as_ref()
-            .map(|t| t.layer_at(t.next_index))
-            .unwrap_or_else(|| {
-                if e.on_bridge {
-                    MovementLayer::Bridge
-                } else {
-                    MovementLayer::Ground
-                }
-            });
         // Recalc may replace the canonical PathGrid. Read its current cell
         // flags after REMOVE, then SetHeight samples current resolved terrain.
         let update = super::movement_bridge::resolve_cell_transition_bridge_state(
@@ -194,7 +168,6 @@ impl Simulation {
         super::movement_bridge::apply_bridge_layer_state(
             &mut e.locomotor,
             &mut e.on_bridge,
-            active_layer,
             update,
         );
         ground_pose::set_height(
@@ -252,13 +225,6 @@ impl Simulation {
         };
         e.navigation.path_replay.reference_cell =
             Some((e.position.rx as i16, e.position.ry as i16));
-        if let Some(target) = e.movement_target.as_mut() {
-            //75BD97 consumes the completed path entry without turning toward
-            //its successor. Walk turns only when that head is accepted
-            //(75BC97) or paid (75C035), through the body FacingClass owner.
-            //The generic mover's heading/direction caches do not own Walk.
-            target.next_index += 1;
-        }
         //Infantry+1CC=5F5FA0; marked is already false, so the SetHeight0
         //receiver samples current ground+OnBridge without nested Mark calls.
         ground_pose::set_height(
@@ -282,7 +248,6 @@ impl Simulation {
         }
         if let Some(loco) = e.locomotor.as_mut() {
             loco.set_step_head(None);
-            loco.subcell_dest = Some((e.position.sub_x, e.position.sub_y));
         }
         //75BE11 clears only the paid-step latch before head retirement/PerCell.
         e.navigation.path_runtime.path_blocked = false;

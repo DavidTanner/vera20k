@@ -56,9 +56,7 @@ use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 #[cfg(test)]
 use crate::sim::rng::SimRng;
-#[cfg(test)]
-use crate::util::fixed_math::SIM_ZERO;
-use crate::util::fixed_math::{SimFixed, facing_from_delta_int};
+use crate::util::fixed_math::facing_from_delta_int;
 
 // --- Internal submodules ---
 pub(crate) mod at_coord;
@@ -340,34 +338,6 @@ impl MoverPathFacts {
     }
 }
 
-/// Invocation-local movement delays from [AI] and threshold from [General].
-/// Separate from `PathfindingContext` because `find_move_path` doesn't need these.
-#[derive(Clone, Copy)]
-pub(crate) struct MovementConfig {
-    pub close_enough: SimFixed,
-    pub path_delay_ticks: i32,
-    pub blockage_path_delay_ticks: i32,
-}
-
-impl MovementConfig {
-    /// Invocation-local projection. Rules remain the configuration authority;
-    /// timers retain their own signed duration after a reached native store.
-    pub(crate) fn from_rules(rules: Option<&crate::rules::ruleset::RuleSet>) -> Self {
-        let defaults;
-        let general = if let Some(rules) = rules {
-            &rules.general
-        } else {
-            defaults = crate::rules::ruleset::GeneralRules::default();
-            &defaults
-        };
-        Self {
-            close_enough: SimFixed::from_num(general.close_enough),
-            path_delay_ticks: general.path_delay_ticks(),
-            blockage_path_delay_ticks: general.blockage_path_delay_ticks,
-        }
-    }
-}
-
 /// Snapshot of mover properties taken before the inner movement loop.
 /// Avoids repeated `entities.get()` calls and survives across the mutable/immutable
 /// borrow boundary (lines ~211–920 hold `&mut GameEntity`, lines ~920–1230 release
@@ -529,9 +499,6 @@ pub(crate) fn tick_movement_with_grid(
         None,            // No resolved terrain in legacy wrapper
         None,            // No playfield bounds in legacy wrapper
         &TerrainSpeedConfig::default(),
-        SIM_ZERO, // No CloseEnough in legacy wrapper
-        9,        // Default PathDelay
-        60,       // Default BlockagePathDelay
         interner,
         None, // No RuleSet in legacy wrapper — crush sounds suppressed
         &mut sound_events,
@@ -542,35 +509,6 @@ pub(crate) fn tick_movement_with_grid(
 // ---------------------------------------------------------------------------
 // Internal helpers — shared across movement submodules
 // ---------------------------------------------------------------------------
-
-/// Returns true if the entity has a within-cell destination it hasn't reached yet.
-/// Generic sub-cell arrival for locomotors without a retained Drive/Ship head.
-/// The locomotor's `subcell_dest` field stores the target lepton coordinates.
-///
-/// Takes individual fields to avoid borrow conflicts with `entity.movement_target`.
-fn walking_to_subcell_dest(
-    locomotor: &Option<crate::sim::movement::locomotor::LocomotorState>,
-    sub_x: SimFixed,
-    sub_y: SimFixed,
-) -> bool {
-    let Some(loco) = locomotor else {
-        return false;
-    };
-    // Drive/Ship terminate at their retained raw head; a center projection
-    // must not start a second generic movement afterward.
-    if matches!(
-        loco.kind,
-        crate::rules::locomotor_type::LocomotorKind::Drive
-            | crate::rules::locomotor_type::LocomotorKind::Ship
-    ) {
-        return false;
-    }
-    let Some((dest_x, dest_y)) = loco.subcell_dest else {
-        return false;
-    };
-    let threshold: SimFixed = SimFixed::from_num(4);
-    (dest_x - sub_x).abs() > threshold || (dest_y - sub_y).abs() > threshold
-}
 
 #[cfg(test)]
 pub(crate) mod bridge_layer_oracle_tests;

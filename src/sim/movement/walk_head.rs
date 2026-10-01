@@ -228,7 +228,6 @@ mod tests {
         use crate::map::entities::EntityCategory;
         use crate::rules::{ini_parser::IniFile, locomotor_type::LocomotorKind, ruleset::RuleSet};
         use crate::sim::{
-            components::MovementTarget,
             entity_store::EntityStore,
             game_entity::GameEntity,
             intern::StringInterner,
@@ -257,11 +256,11 @@ mod tests {
         slave.position.sub_x = SimFixed::from_num(192);
         slave.position.sub_y = SimFixed::from_num(64);
         slave.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
-        slave.movement_target = Some(MovementTarget {
-            path: vec![(3, 4), (4, 4)],
-            next_index: 1,
-            ..Default::default()
-        });
+        slave.navigation.path_replay = crate::sim::components::FootPathQueue {
+            directions: vec![2],
+            cursor: 0,
+            reference_cell: Some((3, 4)),
+        };
         slave.slave = crate::sim::slave_manager::SlaveLink::for_test(Some(1), Vec::new());
         let current = super::super::ground_pose::position_world_coord(&slave.position);
         entities.insert(slave);
@@ -566,11 +565,7 @@ mod tests {
             if input["nav"].as_bool().unwrap_or(true) {
                 entity.navigation.nav_com = Some(NavTargetRef::Cell { rx: 10, ry: 10 });
             }
-            entity.movement_target = Some(MovementTarget {
-                path: vec![(9, 10), (10, 10)],
-                next_index: 1,
-                ..Default::default()
-            });
+            entity.movement_target = Some(MovementTarget::default());
             let current = super::super::ground_pose::position_world_coord(&entity.position);
             let mut raw = RawCellOccupationGrid::default();
             raw_at(
@@ -699,8 +694,8 @@ mod tests {
 }
 
 /// Test adapter over [`prepare_step_head_at`]: the prospective coordinate is
-/// taken from the fixture's `MovementTarget` path instead of the retained Foot
-/// path word Walk75BC1A reads. Pre-head CanEnter75B690 remains the caller's
+/// the Foot+5E0 head word's neighbour (Walk 0x0075B5A7), as the admission
+/// request reads it. Pre-head CanEnter75B690 remains the caller's
 /// responsibility.
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
@@ -725,19 +720,14 @@ pub(super) fn prepare_step_head(
     if loco.kind != LocomotorKind::Walk || loco.step_head().is_some() {
         return true;
     }
-    let Some(next) = entity
-        .movement_target
-        .as_ref()
-        .and_then(|t| t.path.get(t.next_index))
-        .copied()
-    else {
+    let Some(&direction) = entity.navigation.path_replay.remaining_directions().first() else {
         return true;
     };
-    let is_walk = loco.kind == LocomotorKind::Walk;
+    let (dx, dy) = crate::util::direction::DIRECTION_DELTAS[usize::from(direction & 7)];
     let current = super::ground_pose::position_world_coord(&entity.position);
     let input = DriveCoord {
-        x: i32::from(next.0) * 256 + if is_walk { current.x % 256 } else { 128 },
-        y: i32::from(next.1) * 256 + if is_walk { current.y % 256 } else { 128 },
+        x: current.x.wrapping_add(dx * 256),
+        y: current.y.wrapping_add(dy * 256),
         z: current.z,
     };
     prepare_step_head_at(
@@ -777,7 +767,7 @@ pub(super) fn prepare_step_head_at(
     let owner = entity.owner();
     let current = super::ground_pose::position_world_coord(&entity.position);
     let next = ((input.x / 256) as u16, (input.y / 256) as u16);
-    let (head, sub) = if is_walk {
+    let head = if is_walk {
         //75C2A0 first; even a failed chooser must restore current raw at75C62A.
         raw_at(raw, owner, current, false, terrain, grid);
         let mut priority = false;
@@ -879,10 +869,7 @@ pub(super) fn prepare_step_head_at(
         let ground =
             super::ground_pose::ground_surface_z_at([input.x, input.y], false, terrain, grid)
                 .unwrap_or(current.z);
-        (
-            selected_head(input, slot, ground, bridge),
-            Some(crate::util::lepton::subcell_lepton_offset(Some(slot))),
-        )
+        selected_head(input, slot, ground, bridge)
     } else {
         //Hover515380..5153D5 retains head Z; the threshold has no extra
         //structural-cell gate and uses the existing GetHeight projection.
@@ -891,25 +878,19 @@ pub(super) fn prepare_step_head_at(
                 .unwrap_or(current.z);
         let bridge =
             current.z.wrapping_add(loco.altitude.to_num::<i32>()) >= ground.wrapping_add(312);
-        (
-            DriveCoord {
-                x: input.x,
-                y: input.y,
-                z: ground.wrapping_add(if bridge {
-                    crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
-                } else {
-                    0
-                }),
-            },
-            None,
-        )
+        DriveCoord {
+            x: input.x,
+            y: input.y,
+            z: ground.wrapping_add(if bridge {
+                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+            } else {
+                0
+            }),
+        }
     };
     let Some(loco) = entities.get_mut(id).and_then(|e| e.locomotor.as_mut()) else {
         return false;
     };
-    if let Some(sub) = sub {
-        loco.subcell_dest = Some(sub);
-    }
     loco.set_step_head(Some(head));
     if is_walk {
         raw_at(raw, owner, head, true, terrain, grid);

@@ -1607,12 +1607,7 @@ mod tests {
                 actor.navigation.nav_com = Some(NavTargetRef::cell(12, 10));
                 actor.navigation.path_replay.directions =
                     vec![before["path_field"].as_u64().unwrap() as u8, 2, 3];
-                actor.movement_target = Some(MovementTarget {
-                    path: vec![(10, 10), (11, 10), (12, 10)],
-                    next_index: 1,
-                    final_goal: Some((12, 10)),
-                    ..Default::default()
-                });
+                actor.movement_target = Some(MovementTarget::default());
                 actor.locomotor = Some(LocomotorState::for_test_kind(
                     crate::rules::locomotor_type::LocomotorKind::Walk,
                 ));

@@ -222,7 +222,6 @@ impl Simulation {
             next_index: 0,
             speed,
             final_goal: Some(target),
-            ..Default::default()
         });
         if let Some(timing) = timing {
             timing.accept(entity);

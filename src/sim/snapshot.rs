@@ -778,7 +778,9 @@ use crate::sim::world::Simulation;
 // speed ramp, grid/terrain-cost bypasses and adapter-route flag.
 // 270 -> 271: a movement target no longer saves the removed lane's
 // wall-refusal memo.
-const SNAPSHOT_VERSION: u32 = 271;
+// 271 -> 272: a movement target no longer saves its unread direction vector,
+// and a locomotor no longer saves the Walk lane's sub-cell destination.
+const SNAPSHOT_VERSION: u32 = 272;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3680,7 +3682,8 @@ mod tests {
         // 268 -> 269: the native Hover locomotor object.
         // 269 -> 270: no lane speed ramp, bypasses or adapter flag on a move.
         // 270 -> 271: no lane wall-refusal memo on a move.
-        assert_eq!(super::SNAPSHOT_VERSION, 271);
+        // 271 -> 272: no move direction vector or Walk sub-cell destination.
+        assert_eq!(super::SNAPSHOT_VERSION, 272);
     }
 
     #[test]
@@ -4085,9 +4088,6 @@ mod tests {
             Some(&live_terrain),
             None,
             &crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            crate::util::fixed_math::SIM_ZERO,
-            9,
-            60,
             &mut restored.interner,
             None,
             &mut sound_events,

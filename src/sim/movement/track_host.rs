@@ -607,15 +607,6 @@ impl Simulation {
                 locomotor.layer = target.layer_at(target.next_index);
             }
             target.next_index += 1;
-            if let Some(&(x, y)) = target.path.get(target.next_index) {
-                let (dx, dy, length) = crate::util::lepton::cell_delta_to_lepton_dir(
-                    i32::from(x) - i32::from(entity.position.rx),
-                    i32::from(y) - i32::from(entity.position.ry),
-                );
-                target.move_dir_x = dx;
-                target.move_dir_y = dy;
-                target.move_dir_len = length;
-            }
         }
     }
 

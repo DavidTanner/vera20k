@@ -171,15 +171,6 @@ pub struct MovementTarget {
     /// Maximum movement speed in leptons per second (from rules.ini Speed= value).
     /// 256 leptons = 1 cell. Fixed-point for deterministic multiplayer.
     pub speed: SimFixed,
-    /// Direction vector toward next cell in leptons: `dx_cells * 256`, `dy_cells * 256`.
-    /// Recomputed when `next_index` advances. Cardinal = (±256, 0) or (0, ±256),
-    /// diagonal = (±256, ±256).
-    pub move_dir_x: SimFixed,
-    /// Y component of the direction vector (see `move_dir_x`).
-    pub move_dir_y: SimFixed,
-    /// Lepton distance from current cell center to next cell center.
-    /// 256 for cardinal moves, ~362 for diagonal. Used to normalize advancement.
-    pub move_dir_len: SimFixed,
     /// Ultimate destination — preserved across 24-step segment replanning.
     /// When a path segment is exhausted before reaching this goal, the movement
     /// system auto-replans from the current position. `None` for short paths
@@ -354,6 +345,23 @@ pub struct FootPathQueue {
 }
 
 impl FootPathQueue {
+    /// The cells the remaining words step through from the reference cell.
+    #[cfg(test)]
+    pub(crate) fn remaining_cells(&self) -> Vec<(i16, i16)> {
+        let Some(mut cell) = self.reference_cell else {
+            return Vec::new();
+        };
+        self.remaining_directions()
+            .iter()
+            .filter_map(|&direction| {
+                let (dx, dy) =
+                    *crate::util::direction::DIRECTION_DELTAS.get(usize::from(direction))?;
+                cell = (cell.0 + dx as i16, cell.1 + dy as i16);
+                Some(cell)
+            })
+            .collect()
+    }
+
     /// Native queue emptiness tests the unconsumed head, not retained history.
     pub(crate) fn remaining_directions(&self) -> &[u8] {
         let suffix = &self.directions[usize::from(self.cursor).min(self.directions.len())..];
@@ -660,9 +668,6 @@ impl Default for MovementTarget {
             path_layers: Vec::new(),
             next_index: 0,
             speed: SIM_ZERO,
-            move_dir_x: SIM_ZERO,
-            move_dir_y: SIM_ZERO,
-            move_dir_len: SIM_ZERO,
             final_goal: None,
         }
     }

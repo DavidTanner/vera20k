@@ -138,11 +138,7 @@ fn forced_no_kidding_gates_match_native_walk_and_jumpjet_rows() {
             man.locomotor = Some(loco);
             for adapter in [false, true] {
                 let mut man = man.clone();
-                man.movement_target = adapter.then(|| MovementTarget {
-                    path: vec![(5, 5), (6, 5)],
-                    next_index: 1,
-                    ..Default::default()
-                });
+                man.movement_target = adapter.then(MovementTarget::default);
                 let before = serde_json::to_value(&man).unwrap();
                 let mut sim = sim_with(man);
                 let rng = sim.scenario_rng.state();
@@ -213,11 +209,7 @@ fn damage_gates_match_original_execution() {
             victim.navigation.nav_com = Some(NavTargetRef::cell(9, 9));
         }
         if flag("moving", false) {
-            victim.movement_target = Some(MovementTarget {
-                path: vec![(5, 5), (6, 5)],
-                next_index: 1,
-                ..Default::default()
-            });
+            victim.movement_target = Some(MovementTarget::default());
         }
         let owner = victim.owner();
         let type_ref = victim.type_ref();
