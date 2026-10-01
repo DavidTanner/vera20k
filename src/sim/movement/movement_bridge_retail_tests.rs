@@ -2174,31 +2174,34 @@ fn infantry_attack_moved_across_hills_high_bridge_crosses() {
 // ---------------------------------------------------------------------------
 // Repath after a block, ON the deck — matrix row T2-03.
 //
-// A blocked repath is reached when a mover's next step is occupied. It is
-// untested on a deck anywhere in the tree, and the row's question is whether
-// the repath it produces stays on the Bridge layer or silently drops the remaining path to
-// Ground — which on a high span means the route is re-planned against the
-// riverbed under the mover's feet.
+// A blocked repath is reached when a mover's next step is occupied. The row's
+// question is whether the repath it produces stays on the Bridge layer or
+// silently drops the remaining path to Ground — which on a high span means the
+// route is re-planned against the riverbed under the mover's feet.
 //
-// The blocker is *driven* onto the deck with its own ordinary Move rather than
-// spawned there. `spawn_object` has no bridge-deck term (matrix N-01: a unit
-// spawned on `BayOPigs (111,143)` gets `z=1, on_bridge=false` on a cell whose
-// deck is at 5, i.e. under the span), so a spawned blocker would be an
-// under-span obstacle and would settle nothing about the deck plane.
+// The block has to arise after the route is planned. A Unit's path search asks
+// the mover's own Can_Enter_Cell for every neighbour (`0x00429F54`), so a
+// friendly already parked on the deck prices its cell at code 6 and the first
+// route goes around it on another deck lane. The crosser is therefore ordered
+// first, over an empty deck; the blocker then drives in from the far bank and
+// parks on a deck cell of that route long before the crosser gets there.
 // ---------------------------------------------------------------------------
 
 /// Matrix row T2-03 — Drive, high intact, along, **bump / repath-after-block**.
 ///
-/// Two tanks, one span. The first is driven to a mid-span deck cell and left
-/// parked there; the second is then ordered across the same span, so its route
-/// runs into a stationary mover standing on the deck in front of it.
+/// Two tanks, one span. The crosser is ordered across while the deck is
+/// empty; the blocker then drives in from the far bank and parks three cells
+/// short of it, on the crosser's route, so the crosser runs into a stationary
+/// mover standing on the deck in front of it.
 ///
 /// What is asserted, in order of what each rules out:
 ///
-/// 1. The blocker genuinely reached the deck and stopped there at deck height —
-///    otherwise there is no deck-plane obstacle and the rest proves nothing.
-///    This is also the only observation in the project of a drive track that
-///    *terminates* on a deck cell (residual R-T105's trigger).
+/// 1. The crosser's first route runs through the park cell, and the blocker
+///    parked there, on the deck at deck height, while the crosser was still
+///    at least two cells short of it — otherwise there is no deck-plane
+///    obstacle on the route and the rest proves nothing. This is also an
+///    observation of a drive track that *terminates* on a deck cell (residual
+///    R-T105's trigger).
 /// 2. Every frame of the crosser obeys the native height model.
 /// 3. On every frame the crosser spends on a structural cell, no node of its
 ///    live `path_layers` that lands on a structural cell is `Ground`. This is
@@ -2229,72 +2232,20 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
         find_high_bridge_span(grid).unwrap_or_else(|| panic!("{map_file} exposes no span"))
     };
     let owner_name = prepare_commanding_house(&mut scenario);
-    let park_cell = span.deck[span.deck.len() / 2];
+    assert!(
+        span.deck.len() >= 6,
+        "{map_file}: a {}-cell deck leaves no room to park ahead of the crosser",
+        span.deck.len()
+    );
+    let park_index = span.deck.len() - 3;
+    let park_cell = span.deck[park_index];
     println!(
-        "span {:?}..{:?}, blocker parks mid-span at {park_cell:?}",
+        "span {:?}..{:?}, blocker parks at {park_cell:?}",
         span.deck.first(),
         span.deck.last(),
     );
 
-    // --- 1. Drive the blocker onto the deck and park it there. ---
-    let blocker = {
-        let SimRuntime {
-            simulation,
-            resources,
-        } = &mut scenario.runtime;
-        simulation
-            .spawn_object(
-                "MTNK",
-                &owner_name,
-                span.approach_a.0,
-                span.approach_a.1,
-                0,
-                &resources.rules,
-            )
-            .expect("blocker placed on the near approach")
-    };
-    {
-        let SimRuntime {
-            simulation,
-            resources,
-        } = &mut scenario.runtime;
-        simulation.resolve_type_handles(&resources.rules);
-    }
-    assert!(
-        issue_ordinary_move(&mut scenario, &owner_name, blocker, park_cell),
-        "the blocker's ordinary Move onto the deck at {park_cell:?} was refused"
-    );
-    let blocker_rows = record_until(&mut scenario, blocker, park_cell);
-    let blocker_last = *blocker_rows.last().expect("blocker recorded frames");
-    println!(
-        "blocker: {} frame(s), last {:?} z={} on_bridge={} structural={}",
-        blocker_rows.len(),
-        blocker_last.cell,
-        blocker_last.z,
-        blocker_last.on_bridge,
-        blocker_last.structural,
-    );
-    assert_eq!(
-        blocker_last.cell, park_cell,
-        "the blocker never reached the mid-span cell, so no deck-plane obstacle exists"
-    );
-    assert!(
-        blocker_last.structural && blocker_last.on_bridge,
-        "the blocker stopped on {park_cell:?} without being on the deck: {blocker_last:?}"
-    );
-    assert_eq!(
-        i16::from(blocker_last.z as i8),
-        i16::from(blocker_last.terrain_level as i8)
-            + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16,
-        "a track TERMINATING on a deck cell left the mover off deck height: {blocker_last:?}"
-    );
-    // Settle it: let the parked mover idle a while and confirm it stays put and
-    // stays at deck height, so it is an obstacle for the whole of the next run.
-    for _ in 0..30 {
-        scenario.tick();
-    }
-
-    // --- 2. Order the crosser into it. ---
+    // --- 1. Order the crosser across the empty deck. ---
     let crosser = {
         let SimRuntime {
             simulation,
@@ -2309,11 +2260,7 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
                 0,
                 &resources.rules,
             )
-            .or_else(|| {
-                let back = offset(span.approach_a, (-span.step.0, -span.step.1))?;
-                simulation.spawn_object("MTNK", &owner_name, back.0, back.1, 0, &resources.rules)
-            })
-            .expect("crosser placed behind the span")
+            .expect("crosser placed on the near approach")
     };
     {
         let SimRuntime {
@@ -2326,6 +2273,50 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
         issue_ordinary_move(&mut scenario, &owner_name, crosser, span.approach_b),
         "the crosser's ordinary Move across the span was refused"
     );
+    scenario.tick();
+    let planned = scenario
+        .sim()
+        .entities()
+        .get(crosser)
+        .and_then(|entity| entity.movement_target.as_ref())
+        .map(|target| target.path.clone())
+        .unwrap_or_default();
+    assert!(
+        planned.contains(&park_cell),
+        "the crosser's route over the empty deck misses {park_cell:?}: {planned:?}"
+    );
+
+    // --- 2. The blocker drives in from the far bank and parks on that route. ---
+    let far_bank = offset(span.approach_b, span.step).expect("a cell past the far approach");
+    let blocker = {
+        let SimRuntime {
+            simulation,
+            resources,
+        } = &mut scenario.runtime;
+        simulation
+            .spawn_object(
+                "MTNK",
+                &owner_name,
+                far_bank.0,
+                far_bank.1,
+                0,
+                &resources.rules,
+            )
+            .expect("blocker placed past the far approach")
+    };
+    {
+        let SimRuntime {
+            simulation,
+            resources,
+        } = &mut scenario.runtime;
+        simulation.resolve_type_handles(&resources.rules);
+    }
+    assert!(
+        issue_ordinary_move(&mut scenario, &owner_name, blocker, park_cell),
+        "the blocker's ordinary Move onto the deck at {park_cell:?} was refused"
+    );
+    // (tick, blocker z, on_bridge, structural, terrain level, crosser cell)
+    let mut blocker_parked: Option<(u64, u8, bool, bool, u8, (u16, u16))> = None;
 
     // --- 3. Record, watching the live path layers every frame. ---
     let mut rows: Vec<TickRow> = Vec::new();
@@ -2364,6 +2355,26 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
             prefix_z: facts.effective_cell_z_for_layer(loco_layer),
         };
         rows.push(row);
+        if blocker_parked.is_none()
+            && let Some(parked) = sim.entities().get(blocker).filter(|parked| {
+                (parked.position.rx, parked.position.ry) == park_cell
+                    && parked.movement_target.is_none()
+            })
+        {
+            let deck = sim
+                .path_grid()
+                .and_then(|grid| grid.cell(park_cell.0, park_cell.1))
+                .copied()
+                .expect("the park cell is on the path grid");
+            blocker_parked = Some((
+                sim.session.tick,
+                parked.position.z,
+                parked.on_bridge,
+                deck.bridge_structural,
+                deck.ground_level,
+                cell,
+            ));
+        }
 
         // The row's named check: every node of the live path that sits on a
         // stamped cell must be Bridge-layered. A repath that dropped the
@@ -2412,6 +2423,29 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
         last.cell,
     );
 
+    let (parked_tick, parked_z, parked_on_bridge, parked_structural, parked_level, crosser_then) =
+        blocker_parked.unwrap_or_else(|| panic!("the blocker never parked on {park_cell:?}"));
+    println!(
+        "blocker parked on {park_cell:?} at tick {parked_tick}: z={parked_z} \
+         on_bridge={parked_on_bridge}; the crosser was on {crosser_then:?}"
+    );
+    assert!(
+        parked_structural && parked_on_bridge,
+        "the blocker stopped on {park_cell:?} without being on the deck"
+    );
+    assert_eq!(
+        i16::from(parked_z as i8),
+        i16::from(parked_level as i8) + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16,
+        "a track TERMINATING on a deck cell left the mover off deck height"
+    );
+    assert!(
+        span.deck
+            .iter()
+            .position(|&deck_cell| deck_cell == crosser_then)
+            .is_none_or(|index| index + 2 <= park_index)
+            && crosser_then != span.approach_b,
+        "the blocker parked only when the crosser was already on {crosser_then:?}"
+    );
     let violations: Vec<&TickRow> = rows.iter().filter(|row| !row.holds_invariant()).collect();
     assert!(
         violations.is_empty(),
