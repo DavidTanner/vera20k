@@ -278,7 +278,7 @@ impl Simulation {
             .locomotor
             .as_mut()
             .ok_or("Walk refusal requires locomotor")?
-            .refuse_walk_animation();
+            .stop_movement_animation();
         if actor.category == EntityCategory::Infantry
             && actor
                 .mission_leaf

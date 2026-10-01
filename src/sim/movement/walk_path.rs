@@ -107,9 +107,20 @@ impl Simulation {
                 Ok(true)
             }
             FindPathResult::Failed => {
-                //75AFD3: after a precheck refusal (no receiver) or a core
-                //failure (the Infantry receiver already Stopped Walk), the
-                //locomotor's own zone recheck reads the retained destination.
+                //75AFD5 clears +36 before anything else. The head is null on
+                //this path (75AECD), so every failed exit's Stop clears it
+                //again and nothing reads it in between. 75AFD3: after a
+                //precheck refusal (no receiver) or a core failure (the
+                //Infantry receiver already Stopped Walk), the locomotor's own
+                //zone recheck reads the retained destination.
+                if let Some(locomotor) = self
+                    .substrate
+                    .entities
+                    .get_mut(id)
+                    .and_then(|actor| actor.locomotor.as_mut())
+                {
+                    locomotor.stop_movement_animation();
+                }
                 self.finish_failed_walk_process(id, rules, registry)?;
                 Ok(false)
             }

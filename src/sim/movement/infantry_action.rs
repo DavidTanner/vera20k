@@ -636,8 +636,9 @@ impl Simulation {
     /// an infantryman whose Doing owns its sequence.
     ///
     /// While the locomotor's `Is_Really_Moving_Now` (vtable `+0xA8`, called at
-    /// `0x00521161`) holds. Its base body (`0x004B4C50`) asks `Is_Moving_Now`,
-    /// so a Jumpjet outside States 0 and 2 (`0x0054D0D0`):
+    /// `0x00521161`, [`super::motion_query::is_really_moving_now`]) holds:
+    /// Walk's class byte +0x36, else the base body (`0x004B4C50`) asking
+    /// `Is_Moving_Now`, so a Jumpjet outside States 0 and 2 (`0x0054D0D0`):
     /// - A `JumpJet=` type flown by the Jumpjet locomotor (its class id against
     ///   `0x007E9AC0`) flies (Fly, 0x18) above a speed fraction of 0.8 and
     ///   hovers (Hover, 0x17) at or below it. The firing latch (`+0x68D`) holds
@@ -654,14 +655,8 @@ impl Simulation {
     /// Not run: the earlier movement recovery of `0x00520F40`
     /// (`0x00520F40..0x00521144`), whose work VERA's movement adapter does.
     ///
-    /// RESIDUAL (#955): this asks `Is_Moving_Now` for every locomotor. Walk
-    /// overrides `+0xA8` (`0x0075CB20`) with its class byte +0x36, whose
-    /// writers VERA ports only partly.
-    /// - Trigger: a Walk infantryman whose byte and `Is_Moving_Now` disagree,
-    ///   such as between steps, at zero speed or after a refused head.
-    /// - Effect: Walk or Crawl against Ready or Prone.
-    /// - Frequency: Walk infantry moves.
-    /// - Risk: the Doing sequence and its readers.
+    /// Original comparison: the 20 consumer rows of
+    /// `tools/spatial_oracle/infantry_movement_action.json`.
     pub(crate) fn infantry_movement_actions(&mut self, id: u64, rules: &RuleSet) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
@@ -672,7 +667,7 @@ impl Simulation {
         let Some(doing) = actor.mission_leaf.as_infantry().map(|leaf| leaf.doing()) else {
             return;
         };
-        let moving_now = super::motion_query::is_moving_now(
+        let moving_now = super::motion_query::is_really_moving_now(
             actor,
             Some(super::SpeedRules::new(
                 rules,

@@ -1,4 +1,14 @@
 //! Paid Walk75BFA9..75C0CB step, between admission/completion and placement.
+//!
+//! RESIDUAL: the gate in front of it is not ported. With the head still 17
+//! leptons or more away (0x75BD70), an owner under EMP (vt+0x37C, Techno
+//! 0x0070EFD0: +0x504 > 0) clears Walk +0x36 and Foot +0x68A and returns
+//! without stepping (0x75BF85..0x75BFA6).
+//! - Trigger: a walking infantryman under an EMP effect.
+//! - Effect: it keeps stepping, and its Walk sequence, instead of freezing.
+//! - Frequency: none with retail data: VERA has no EMP timer and no stock
+//!   weapon mounts EMPuls (`warhead_type.rs`).
+//! - Risk: modded EMP warheads.
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::pathfinding::PathGrid;

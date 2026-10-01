@@ -838,14 +838,21 @@ fn make_movement_target() -> MovementTarget {
     }
 }
 
-/// Install the retained Walk inputs consumed by actual Is_Moving_Now. A
-/// MovementTarget alone cannot select the Infantry locomotion action.
+/// Install the retained Walk +0x36 byte that `Is_Really_Moving_Now` answers
+/// (`0x0075CB20`): a moving man's head went through Process `0x0075BD25`; a
+/// stopped man was Stopped with no head (`0x0075ADEC`). A MovementTarget
+/// alone cannot select the Infantry locomotion action.
 fn set_infantry_walk_motion(sim: &mut crate::sim::world::Simulation, id: u64, moving: bool) {
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     let locomotor = actor.locomotor.as_mut().unwrap();
     let coord = moving.then(|| DriveCoord::cell(11, 10, 0));
     locomotor.set_step_head(coord);
     locomotor.set_walk_destination(coord);
+    if moving {
+        locomotor.begin_walk_motion();
+    } else {
+        locomotor.stop_walk();
+    }
     actor
         .foot_speed
         .set_speed_fraction(if moving { SimFixed::ONE } else { SIM_ZERO });
@@ -882,6 +889,31 @@ fn infantry_walk_action_uses_retained_locomotor_motion() {
     set_infantry_walk_motion(&mut sim, id, true);
     sim.infantry_movement_actions(id, &rules);
     assert_infantry_pose(&sim, id, 3, SequenceKind::Walk, 0);
+}
+
+/// `InfantryClass::Limbo @ 0x0051DF10` stops the locomotor's movement
+/// animation (`0x0051DF30`, Walk `0x0075CBC0` clears +0x36) and stores the
+/// water state's constructor sentinel (`0x0051DF38`) beside its prone and
+/// Doing stores, so the next locomotion action after Unlimbo starts from Ready.
+#[test]
+fn infantry_limbo_stops_walk_animation_and_resets_water_state() {
+    let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
+    set_infantry_walk_motion(&mut sim, id, true);
+    sim.infantry_movement_actions(id, &rules);
+    assert_infantry_pose(&sim, id, 3, SequenceKind::Walk, 0);
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    actor.mission_leaf.install_infantry_water_state_fixture(1);
+    actor.infantry.as_mut().unwrap().is_prone = true;
+    let _ = sim.techno_limbo(id);
+    let actor = sim.substrate.entities.get(id).unwrap();
+    assert_eq!(
+        actor.locomotor.as_ref().unwrap().walk_animation_moving(),
+        Some(false)
+    );
+    let leaf = actor.mission_leaf.as_infantry().unwrap();
+    assert_eq!(leaf.water_state(), 2);
+    assert_eq!(leaf.doing(), 0);
+    assert!(!actor.infantry.as_ref().unwrap().is_prone);
 }
 
 #[test]
