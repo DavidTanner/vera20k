@@ -17,6 +17,8 @@ use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 const OWNER: &str = "Americans";
 const MAP: u16 = 40;
 
+/// `[SHAD]` is an `[AircraftTypes]` entry here so tests reach the aircraft
+/// Unload slot; retail lists it under `[VehicleTypes]`, as `[HIND]` is here.
 fn rules() -> RuleSet {
     let ini = IniFile::from_str(
         "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=BFRT\n1=FV\n2=LCRF\n3=BGGY\n4=HIND\n\
@@ -995,8 +997,9 @@ fn unload_order_stops_a_driving_transport_where_it_is() {
 
 /// `AircraftClass::Mission_Unload` state 2 moves on to state 3 when the
 /// locomotor's Is_Moving (`0x0041549D`) is false; the order is not asked.
+/// The fixture's `[SHAD]` is an aircraft to reach this slot.
 #[test]
-fn landed_nighthawk_unload_asks_the_locomotor_not_the_order() {
+fn landed_aircraft_transport_unload_asks_the_locomotor_not_the_order() {
     let run = |setup: &dyn Fn(&mut crate::sim::game_entity::GameEntity)| {
         let mut fx = Fixture::new(|_, _| false);
         let shad = fx.spawn("SHAD", 20, 20, 0);
@@ -1021,7 +1024,7 @@ fn landed_nighthawk_unload_asks_the_locomotor_not_the_order() {
     assert_eq!(
         run(&|e| e.movement_target = Some(crate::sim::components::MovementTarget::default())),
         super::AIR_STATE_EJECT,
-        "an order alone does not hold a landed Nighthawk"
+        "an order alone does not hold a landed aircraft transport"
     );
     assert_eq!(
         run(&|e| {
