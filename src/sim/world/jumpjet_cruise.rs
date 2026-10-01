@@ -23,7 +23,10 @@
 //! the cell under the owner. State 4 admits a landing by the owner's own
 //! `Can_Enter_Cell` (`Simulation::mover_can_enter`, asked at `0x0054C66D` with
 //! no direction, height or source cell), and its refused landing runs
-//! `Stop_Moving` once the frame is committed.
+//! `Stop_Moving` once the frame is committed. A Unit owner's Update Mark has
+//! by then cleared the vehicle bit of the cell below, so while a parked
+//! vehicle holds that cell, the re-target picks it again and the owner hovers
+//! until it frees (`retail_dustbowl_night_hawk_hovers_over_a_tank_on_its_cell`).
 //!
 //! The host lends the world immutably to the states, so the scenario stream
 //! the scatters draw from is held outside the `Simulation` for the frame.
@@ -1408,13 +1411,24 @@ mod tests {
 
     /// On retail Dustbowl, a tank is placed on a Night Hawk's ordered cell
     /// while the Night Hawk descends onto it. The Night Hawk's own
-    /// `Can_Enter_Cell` refuses the landing. `Stop_Moving` then re-targets a
-    /// free neighbour, and it lands there, beside the tank. Before, a PathGrid
-    /// passability that ignored occupants stood in for the answer, and it
-    /// landed on the tank.
+    /// `Can_Enter_Cell` refuses the landing (`0x0054C66D`), so it never lands
+    /// on the tank. It does not land beside it either:
+    /// - Every Update outside the hold and the cruise takes the owner off the
+    ///   map (`0x0054D0FF..0x0054D12C`). `ObjectClass::Mark` clears `+0x74`
+    ///   (`0x005F5913`) before the layer query, which then answers Ground
+    ///   (`0x0054B8D0`).
+    /// - So `MapClass::Pick_Up`'s `RemoveContent` runs the Unit receiver
+    ///   (`0x0047EB62..0x0047EB89`, `0x00744210`) on the cell below. The Night
+    ///   Hawk is not listed there, but the receiver clears the tank's `0x20`.
+    /// - `Stop_Moving`'s search (`0x0054B5DF`) reads only that plane
+    ///   (`0x004834A0`), so it takes the tank's own cell.
+    ///
+    /// The Night Hawk hovers over the tank until it drives off, then lands
+    /// there. Established by instruction reading. Before #931 ported Update's
+    /// Mark bracket, the bit survived and the Night Hawk landed beside the tank.
     #[test]
     #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
-    fn retail_dustbowl_night_hawk_lands_beside_a_tank_on_its_cell() {
+    fn retail_dustbowl_night_hawk_hovers_over_a_tank_on_its_cell() {
         use super::super::jumpjet_infantry_tests::{retail_dustbowl_rocketeer, retail_frame};
         use crate::headless_scenario::HeadlessScenario;
         use crate::sim::command::{Command, CommandEnvelope};
@@ -1487,16 +1501,43 @@ mod tests {
         let tank = spawn(&mut scenario, "MTNK", landing);
         for _ in 0..200 {
             retail_frame(&mut scenario, Vec::new());
+            assert_ne!(phase(&scenario, hawk), jumpjet_flight::STATE_GROUND);
         }
-
-        assert_eq!(phase(&scenario, hawk), jumpjet_flight::STATE_GROUND);
+        assert_eq!(cell_of(&scenario, hawk), landing);
         assert_eq!(cell_of(&scenario, tank), landing);
-        let landed = cell_of(&scenario, hawk);
-        assert_ne!(landed, landing, "it does not land on the tank");
+        let sim = &scenario.runtime.simulation;
         assert!(
-            landed.0.abs_diff(landing.0) <= 1 && landed.1.abs_diff(landing.1) <= 1,
-            "it lands beside the refused cell, at {landed:?}"
+            sim.substrate
+                .occupancy
+                .contains_entity(landing.0, landing.1, tank)
         );
+        assert_eq!(
+            sim.substrate
+                .raw_cell_occupation
+                .ground_bits(landing.0, landing.1)
+                & 0x20,
+            0,
+            "the Night Hawk's Mark cleared the tank's bit"
+        );
+
+        let mut orders = vec![CommandEnvelope::new(
+            sim.interner.get("Americans").expect("house"),
+            sim.session.tick + 1,
+            Command::Move {
+                entity_id: tank,
+                target_rx: x + 12,
+                target_ry: y,
+                queue: false,
+            },
+        )];
+        let mut frames = 0;
+        while phase(&scenario, hawk) != jumpjet_flight::STATE_GROUND {
+            retail_frame(&mut scenario, std::mem::take(&mut orders));
+            frames += 1;
+            assert!(frames < 400, "the Night Hawk lands once the tank leaves");
+        }
+        assert_eq!(cell_of(&scenario, hawk), landing);
+        assert_ne!(cell_of(&scenario, tank), landing);
     }
 
     /// `g_HeightFactor`, read from the native startup chain, is the multiplier
