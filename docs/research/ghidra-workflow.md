@@ -275,21 +275,30 @@ Notes for readers:
 - **Still placeholders.** `ObjectTypeClass` (0x294 bytes) has only `pVtable` typed.
   `AircraftClass` (0x6D8 bytes) has its FootClass base and `pType`, none of its own
   fields.
-- **Receivers.** Since 2026-10-01 the `AbstractClass`, `ObjectClass`, `MissionClass`,
-  `RadioClass` and `TechnoClass` methods have typed receivers. 434 of the 494 functions
+- **Receivers.** Since 2026-10-01 the methods of `AbstractClass`, `ObjectClass`,
+  `MissionClass`, `RadioClass`, `TechnoClass`, `FootClass`, `UnitClass`,
+  `InfantryClass` and `AircraftClass` have typed receivers. 783 of the 898 functions
   with those name prefixes are `__thiscall` in their class namespace, so a decompile
   reads `TechnoClass::TechnoClass__IronCurtain(TechnoClass *this, ...)` and
   `this->IronCurtainTimer`. Each prototype declares the stack bytes its RETs pop;
   parameters nobody has checked are `undefined4`. Plates tagged `[receivers 2026-10-01]`
-  record four corrected prototypes. Every direct call to the TechnoClass and ObjectClass
-  `ReceiveDamage` now shows its seven arguments. The plates also say why 60 functions
-  stay untyped: COM methods take `this` on the stack, and some direct functions have no
-  caller evidence. The type-class methods are not typed yet, and few methods of the
-  techno subclasses are. A typed `this` is on 6 of the 140 `FootClass__` methods, 26 of
-  the 179 `BuildingClass__`, 3 of the 94 `UnitClass__` (as `MissionClass *` or
-  `TechnoClass *`), none of the 87 `InfantryClass__` and 3 of the 83 `AircraftClass__`
-  (as `MissionClass *`). Their decompiles still show raw offsets; look them up in
-  `FootClass`, `UnitTypeClass`, `InfantryTypeClass` or `AircraftTypeClass`.
+  record six corrected prototypes, among them the two `GetCursorForCell` of FootClass
+  and InfantryClass, which take no stack parameter. Every direct call to the TechnoClass
+  and ObjectClass `ReceiveDamage` now shows its seven arguments. The plates also say why
+  115 functions stay untyped:
+  - COM methods (primary-vtable slots 0–7) take `this` on the stack (`__stdcall`).
+  - Methods of a secondary interface receive the interface pointer, not the object.
+    The IUnknown adjustor thunks (`_adjustor<N>`) shift it on the stack and jump.
+    `What_Am_I`, `Fetch_ID` and `Create_ID` (+4) and AircraftClass's IFlyControl
+    methods (+0x6C0) take it as their first stack argument. The INoticeSink overrides
+    (+8) read it from ECX, which is the object + 8. The interface names are YRpp leads.
+  - Trampolines tail-jump through a vtable, and some direct functions have no usable
+    caller evidence.
+
+  Six vtable methods without a class prefix were outside both passes and are untyped:
+  0x4D9C60, 0x4E0150, 0x6FDD50, 0x709A90, 0x70A990 and 0x70AA60. The type-class methods
+  are not typed yet, and a typed `this` is on only 26 of the 179 `BuildingClass__`
+  methods. Their decompiles still show raw offsets.
 
 Plates tagged `[2026-10-01 BuildingTypeClass layout]`,
 `[2026-10-01 TechnoTypeClass layout]`, `[2026-10-01 UnitTypeClass layout]`,
