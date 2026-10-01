@@ -50,7 +50,7 @@ pub fn clear_navigation_for_entity(entity: &mut GameEntity) {
 
 /// A committed head comes from the active locomotor after world callbacks;
 /// the physical path and raw occupation metadata cannot reconstruct it.
-fn committed_movement_head(entity: &GameEntity) -> Option<(u16, u16)> {
+pub(super) fn committed_movement_head(entity: &GameEntity) -> Option<(u16, u16)> {
     let head = if entity.locomotor.as_ref()?.kind == LocomotorKind::Walk {
         entity.locomotor.as_ref()?.step_head()?
     } else {
@@ -62,69 +62,39 @@ fn committed_movement_head(entity: &GameEntity) -> Option<(u16, u16)> {
 /// Clear a destination while preserving only an already committed Drive/Ship
 /// segment. Shared by Stop and the MCV EventClass deploy handoff.
 pub fn stop_navigation_at_committed_head(e: &mut GameEntity) {
-    let committed_head = committed_path_head(e);
+    let committed_head = committed_movement_head(e);
     clear_navigation_for_entity(e);
     // Chain selection consumes the remaining native direction queue, which is
     // independent of the physical A* cursor. Stop must retire that abandoned
-    // suffix as well as truncate MovementTarget below. Keep the committed
+    // suffix. Keep the committed
     // retained selector/head and replay reference until the segment finishes.
     super::path_markers::exhaust_path_replay(&mut e.navigation.path_replay);
     retain_path_to_head(e, committed_head);
-}
-
-fn committed_path_head(e: &GameEntity) -> Option<((u16, u16), super::locomotor::MovementLayer)> {
-    committed_movement_head(e).map(|head_cell| {
-        let layer = e
-            .movement_target
-            .as_ref()
-            .and_then(|target| {
-                target
-                    .path
-                    .iter()
-                    .position(|&cell| cell == head_cell)
-                    .map(|index| target.layer_at(index))
-            })
-            .unwrap_or_else(|| e.movement_layer_or_ground());
-        (head_cell, layer)
-    })
 }
 
 /// Keep only physical movement already accepted by the locomotor. The caller
 /// owns destination/queue writes: explicit Attack's null setter does not clear
 /// NavQueue, whereas the pre-existing Stop command path does.
 pub(crate) fn retain_committed_movement(e: &mut GameEntity) {
-    let head = committed_path_head(e);
+    let head = committed_movement_head(e);
     retain_path_to_head(e, head);
 }
 
-fn retain_path_to_head(
-    e: &mut GameEntity,
-    committed_head: Option<((u16, u16), super::locomotor::MovementLayer)>,
-) {
-    let current_cell = (e.position.rx, e.position.ry);
-    let current_layer = e.movement_layer_or_ground();
-    let walk = e
-        .locomotor
-        .as_ref()
-        .is_some_and(|l| l.kind == LocomotorKind::Walk);
+fn retain_path_to_head(e: &mut GameEntity, committed_head: Option<(u16, u16)>) {
     match (committed_head, e.movement_target.as_mut()) {
-        // A Walk's paid head is its whole retained movement (Walk75BD29
-        // samples current XYZ against it); it keeps no route cells.
-        (Some(_), Some(_)) if walk => {}
-        // Stop clears the owner destination immediately, but an already
-        // committed Drive/Ship curve keeps only the current-to-head step.
-        // Removing every trailing A* entry prevents chaining toward the
-        // abandoned owner goal.
-        (Some((head_cell, head_layer)), Some(target)) => {
-            if current_cell == head_cell {
-                target.path = vec![head_cell];
-                target.path_layers = vec![head_layer];
-            } else {
-                target.path = vec![current_cell, head_cell];
-                target.path_layers = vec![current_layer, head_layer];
+        // A paid head is the whole retained movement: Walk75BD29 samples
+        // current XYZ against it, and a Drive/Ship curve finishes at its head
+        // with the Foot+5E0 queue the caller retired. The adapter keeps no
+        // route cells; a track's goal becomes its head, so the abandoned
+        // order goal no longer drives its speed.
+        (Some(head_cell), Some(target)) => {
+            let walk = e
+                .locomotor
+                .as_ref()
+                .is_some_and(|l| l.kind == LocomotorKind::Walk);
+            if !walk {
+                target.final_goal = Some(head_cell);
             }
-            target.next_index = 1;
-            target.final_goal = Some(head_cell);
         }
         _ => e.movement_target = None,
     }
@@ -311,25 +281,8 @@ pub(crate) fn issue_move_command_with_destination(
     // node. Keep its retained selector, cursor and head; anchor the new path
     // at that committed head cell.
     let current_cell = (entity.position.rx, entity.position.ry);
-    let in_flight_curve_head = committed_movement_head(entity);
-    let keep_in_flight_curve = in_flight_curve_head.is_some();
-    let (start_rx, start_ry) = in_flight_curve_head.unwrap_or(current_cell);
-    let current_layer = match in_flight_curve_head {
-        // The layer the body will be on at the curve head — from the accepted
-        // path while it still lists that node, else the current layer.
-        Some(head) => entity
-            .movement_target
-            .as_ref()
-            .and_then(|target| {
-                target
-                    .path
-                    .iter()
-                    .position(|&cell| cell == head)
-                    .map(|index| target.layer_at(index))
-            })
-            .unwrap_or_else(|| entity.movement_layer_or_ground()),
-        None => entity.movement_layer_or_ground(),
-    };
+    let (start_rx, start_ry) = committed_movement_head(entity).unwrap_or(current_cell);
+    let current_layer = entity.movement_layer_or_ground();
     // Derive movement_zone from the entity's locomotor — no parameter needed.
     let movement_zone: Option<MovementZone> = entity.locomotor.as_ref().map(|l| l.movement_zone);
     let speed_type = entity.locomotor.as_ref().map(|l| l.speed_type);
@@ -423,18 +376,16 @@ pub(crate) fn issue_move_command_with_destination(
         let entity_mut = entities.get_mut(entity_id);
         if let Some(entity_mut) = entity_mut {
             if let Some(ref mut movement) = entity_mut.movement_target {
-                let append_start = movement
-                    .path
-                    .last()
-                    .copied()
-                    .unwrap_or((start_rx, start_ry));
-                let append_layer = movement
-                    .path_layers
-                    .last()
-                    .copied()
-                    .unwrap_or(current_layer);
+                // The adapter keeps its goal, not its cells: the queued
+                // search starts where the previous order ends. RESIDUAL: a
+                // second append starts from the first order's goal, where the
+                // removed cell copy started from the first append's end; the
+                // search only gates acceptance (a Jumpjet object order queued
+                // twice), and its cells were never read.
+                let append_start = movement.final_goal.unwrap_or((start_rx, start_ry));
+                let append_layer = current_layer;
                 let zone_mz = movement_zone.unwrap_or(MovementZone::Normal);
-                let Some((appended, appended_layers)) = find_move_path(
+                let Some((appended, _)) = find_move_path(
                     PathfindingContext {
                         wall_tables: None,
                         path_grid: Some(grid),
@@ -463,21 +414,12 @@ pub(crate) fn issue_move_command_with_destination(
                     return false;
                 };
                 if appended.len() >= 2 {
-                    movement.path.extend_from_slice(&appended[1..]);
-                    movement
-                        .path_layers
-                        .extend_from_slice(&appended_layers[1..]);
                     movement.speed = speed;
                     entity_mut
                         .navigation
                         .path_runtime
                         .start_blocked(timing.binary_frame, 0);
                     entity_mut.navigation.path_runtime.path_blocked = false;
-                    debug_assert_eq!(
-                        movement.path.len(),
-                        movement.path_layers.len(),
-                        "path/path_layers desync after queue append"
-                    );
                 }
                 return true;
             }
@@ -551,7 +493,7 @@ pub(crate) fn issue_move_command_with_destination(
             _ => {}
         }
     }
-    let Some((path, path_layers)) = found else {
+    let Some((path, _)) = found else {
         let eb_count = merged_entity_blocks_ref.map_or(0, |s| s.len());
         log::warn!(
             "No path from ({},{}) to ({},{}) [entity_blocks={}, start_walkable={}, goal_walkable={}]",
@@ -588,29 +530,12 @@ pub(crate) fn issue_move_command_with_destination(
         path_desc,
     );
 
-    // A kept curve's head cell is a future node the body has not crossed into
-    // yet: the queue cursor starts ON it so the coordinate crossing consumes
-    // it, exactly as it would have consumed that node under the replaced path.
-    let head_not_yet_reached = keep_in_flight_curve && (start_rx, start_ry) != current_cell;
-    let first_target_index = if head_not_yet_reached { 0 } else { 1 };
-
-    // Attach the MovementTarget and update facing on the entity.
-    // All units start at full speed — acceleration/deceleration is disabled.
-    let movement: MovementTarget = MovementTarget {
-        path,
-        path_layers,
-        // Index 0 is the path anchor: the current position normally (first
-        // target is 1), the kept curve's still-unreached head when re-ordered
-        // mid-curve (the head itself is the first queued node).
-        next_index: first_target_index,
+    // Attach the order adapter. The search only admitted the order: the
+    // adapter keeps its goal and speed, not the found cells.
+    let movement = MovementTarget {
         speed,
         final_goal: Some(effective_target),
     };
-    debug_assert_eq!(
-        movement.path.len(),
-        movement.path_layers.len(),
-        "path/path_layers desync in initial MovementTarget"
-    );
     if let Some(entity_mut) = entities.get_mut(entity_id) {
         // A Walk never reaches this install: it returns from its setter arm
         // or from the queued append above.
@@ -739,10 +664,11 @@ pub(super) fn schedule_track_process(entity: &mut GameEntity, target: (u16, u16)
     prepare_destination_execution(entity, target, speed);
 }
 
-/// A Drive/Ship route the track terminal spent short of the retained
-/// locomotor destination (+34): the adapter keeps scheduling with an empty
-/// route, so the next Process_Movement reaches the no-queue arm (Drive
-/// 0x4B281C / Ship 0x6A1E75), in the same Process after the track end
+/// A track terminal that found the Foot+5E0 queue empty (Drive 0x4B280D
+/// compares it with -1) short of the retained locomotor
+/// destination (+34): the adapter keeps scheduling, so the next
+/// Process_Movement reaches the no-queue arm (Drive 0x4B281C / Ship
+/// 0x6A1E75), in the same Process after the track end
 /// (`track_continuation`) or on the next visit. With no destination left it
 /// retires.
 pub(super) fn spend_track_route(entity: &mut GameEntity) {
@@ -753,12 +679,6 @@ pub(super) fn spend_track_route(entity: &mut GameEntity) {
     };
     if destination.is_none() {
         entity.movement_target = None;
-        return;
-    }
-    if let Some(target) = entity.movement_target.as_mut() {
-        target.path.clear();
-        target.path_layers.clear();
-        target.next_index = 0;
     }
 }
 
@@ -770,7 +690,7 @@ pub(super) fn prepare_destination_execution(
     target: (u16, u16),
     speed: SimFixed,
 ) {
-    let committed_head = committed_path_head(entity);
+    let committed_head = committed_movement_head(entity);
     // Walk's goal is its locomotor destination (Walk+0x1C); its adapter
     // keeps no goal cell.
     let final_goal = (!entity

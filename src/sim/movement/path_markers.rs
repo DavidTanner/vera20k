@@ -979,7 +979,6 @@ mod tests {
         peer.navigation.path_replay.directions = vec![2, 2];
         peer.navigation.path_replay.cursor = 2;
         peer.movement_target = Some(crate::sim::components::MovementTarget {
-            path: vec![(5, 4), (6, 4), (7, 4)],
             ..Default::default()
         });
         assert_eq!(remaining_path_from_entity(&peer), ((5, 4), vec![]));

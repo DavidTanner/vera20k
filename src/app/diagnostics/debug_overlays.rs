@@ -330,15 +330,20 @@ pub(crate) fn build_path_overlay_instances(
         let Some(ref mt) = entity.movement_target else {
             continue;
         };
-        for (i, &(px, py)) in mt.path.iter().enumerate() {
+        // The Foot+5E0 queue from the current cell; the first is next.
+        let path = entity
+            .navigation
+            .path_replay
+            .cells_from((entity.position.rx, entity.position.ry));
+        for (i, &(px, py)) in path.iter().enumerate() {
             let z: u8 = state.height_map().get(&(px, py)).copied().unwrap_or(0);
             let (sx, sy) = terrain::iso_to_screen(px, py, z);
             if !in_view(sx, sy, TILE_WIDTH, TILE_HEIGHT, cam_x, cam_y, sw, sh, 60.0) {
                 continue;
             }
-            let tint: [f32; 3] = if i == mt.next_index {
+            let tint: [f32; 3] = if i == 0 {
                 NEXT_TINT
-            } else if i == mt.path.len() - 1 {
+            } else if i == path.len() - 1 {
                 GOAL_TINT
             } else {
                 PATH_TINT
@@ -356,7 +361,7 @@ pub(crate) fn build_path_overlay_instances(
         }
         // Also draw final_goal if it's not the last path step.
         if let Some(goal) = mt.final_goal {
-            let last = mt.path.last().copied().unwrap_or((0, 0));
+            let last = path.last().copied().unwrap_or((0, 0));
             if goal != last {
                 let z: u8 = state
                     .height_map()

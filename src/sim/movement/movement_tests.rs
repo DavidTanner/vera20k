@@ -214,11 +214,8 @@ fn test_drive_arrival_clears_navcom_same_tick() {
         ..Default::default()
     });
     e.movement_target = Some(MovementTarget {
-        path: vec![(0, 0)],
-        path_layers: vec![MovementLayer::Ground],
         // One live speed lepton plus residual7 pays the terminal point.
         speed: SimFixed::from_num(15),
-        next_index: 1,
         final_goal: Some((0, 0)),
         ..Default::default()
     });
@@ -1313,9 +1310,6 @@ fn test_friendly_passable_moving_unit_not_blocked() {
     b.lifecycle.in_limbo = false;
     b.lifecycle.cell_marked = true;
     b.movement_target = Some(MovementTarget {
-        path: vec![(4, 0), (5, 0), (6, 0)],
-        path_layers: vec![MovementLayer::Ground; 3],
-        next_index: 1,
         speed: SimFixed::from_num(1024),
         ..Default::default()
     });
@@ -1390,9 +1384,6 @@ fn test_enemy_unit_always_blocks_even_when_moving() {
     enemy.lifecycle.in_limbo = false;
     enemy.lifecycle.cell_marked = true;
     enemy.movement_target = Some(MovementTarget {
-        path: vec![(3, 0), (4, 0)],
-        path_layers: vec![MovementLayer::Ground; 2],
-        next_index: 1,
         speed: SimFixed::from_num(1024),
         ..Default::default()
     });
@@ -1780,9 +1771,6 @@ fn gsi_04_10_crusher_and_omnicrusher_never_enter_or_crush_a_terrain_object_cell(
         tank.locomotor = Some(locomotor);
         tank.drive_locomotion = Some(Default::default());
         tank.movement_target = Some(MovementTarget {
-            path: vec![(0, 0), (1, 0), (2, 0)],
-            path_layers: vec![MovementLayer::Ground; 3],
-            next_index: 1,
             speed: SimFixed::from_num(1024),
             final_goal: Some((2, 0)),
             ..Default::default()
@@ -1949,8 +1937,6 @@ fn gsi_06_13_fixture_mover(
     let layers = vec![MovementLayer::Ground; path.len()];
     e.movement_target = Some(MovementTarget {
         path,
-        path_layers: layers,
-        next_index: 1,
         speed: SimFixed::from_num(768),
         final_goal: Some(goal),
         ..Default::default()

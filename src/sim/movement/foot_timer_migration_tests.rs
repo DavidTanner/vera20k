@@ -155,9 +155,6 @@ fn install_stationary_path_request(sim: &mut Simulation) {
         reference_cell: Some((8, 8)),
     };
     entity.movement_target = Some(MovementTarget {
-        path: vec![(8, 8), (8, 7), (8, 6)],
-        path_layers: vec![MovementLayer::Ground; 3],
-        next_index: 1,
         final_goal: Some((8, 6)),
         speed: SIM_ZERO,
         ..Default::default()

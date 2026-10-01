@@ -380,17 +380,14 @@ impl Simulation {
                         }
                     }
                 }
-                // Retire only the completed path adapter before PerCell. The
+                // Retire only the completed order adapter before PerCell. The
                 // native terminal tail has no legacy finalizer/body-turn reset;
                 // a callback may install a new path that must survive this tail.
-                self.track_consume_reached_node(id);
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
                     if reached {
                         entity.movement_target = None;
-                    } else if entity
-                        .movement_target
-                        .as_ref()
-                        .is_some_and(|target| target.next_index >= target.path.len())
+                    } else if entity.movement_target.is_some()
+                        && entity.navigation.path_replay.remaining_directions().is_empty()
                     {
                         super::movement_commands::spend_track_route(entity);
                     }
@@ -475,7 +472,6 @@ impl Simulation {
                 .live_facing_sample(live.cursor)
                 .and_then(|point| point.transform(family, &live, live_head))
                 .map(|(_, facing)| facing);
-            self.track_consume_reached_node(id);
             self.track_place(
                 id,
                 DriveCoord {
@@ -553,7 +549,6 @@ impl Simulation {
                 return Ok(TrackPass::paid(moved));
             };
             call.finish_surviving_point(state);
-            self.track_consume_reached_node(id);
         }
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return Ok(TrackPass::paid(moved));
@@ -586,28 +581,6 @@ impl Simulation {
             self.track_place(id, chosen, cell(current), false, rules, registry, observe);
         }
         Ok(TrackPass::paid(moved))
-    }
-
-    fn track_consume_reached_node(&mut self, id: u64) {
-        let Some(entity) = self.substrate.entities.get_mut(id) else {
-            return;
-        };
-        let Some(target) = entity.movement_target.as_mut() else {
-            return;
-        };
-        if target.path.get(target.next_index).copied()
-            == Some((entity.position.rx, entity.position.ry))
-        {
-            // This compatibility cache follows the accepted path node being
-            // consumed. The shared native track host owns XYZ/OnBridge and
-            // list/raw occupation separately; ramps can legitimately disagree
-            // with this path layer. Publish before the last adapter is retired,
-            // because the next order uses this layer when no paid head remains.
-            if let Some(locomotor) = entity.locomotor.as_mut() {
-                locomotor.layer = target.layer_at(target.next_index);
-            }
-            target.next_index += 1;
-        }
     }
 
     fn track_occupation_enabled(&self, id: u64) -> bool {
@@ -736,15 +709,19 @@ impl Simulation {
                     grid.cell(previous_track_cell.0, previous_track_cell.1)
                         .zip(grid.cell(selected_cell.0, selected_cell.1))
                 }) {
-                    match super::movement_bridge::compute_bridge_transition(source, destination) {
-                        super::movement_bridge::BridgeTransition::Enter => {
-                            entity.on_bridge = true;
-                        }
-                        super::movement_bridge::BridgeTransition::Exit => {
-                            entity.on_bridge = false;
-                        }
-                        super::movement_bridge::BridgeTransition::NoChange => {}
-                    }
+                    use super::movement_bridge::{BridgeStateUpdate, BridgeTransition};
+                    let update =
+                        match super::movement_bridge::compute_bridge_transition(source, destination)
+                        {
+                            BridgeTransition::Enter => BridgeStateUpdate::Set,
+                            BridgeTransition::Exit => BridgeStateUpdate::Clear,
+                            BridgeTransition::NoChange => BridgeStateUpdate::Unchanged,
+                        };
+                    super::movement_bridge::apply_bridge_layer_state(
+                        &mut entity.locomotor,
+                        &mut entity.on_bridge,
+                        update,
+                    );
                 }
             }
         }

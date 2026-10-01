@@ -93,9 +93,6 @@ fn install_paid_track(sim: &mut Simulation, id: u64) {
         ..Default::default()
     });
     entity.movement_target = Some(MovementTarget {
-        path: vec![(x, y), (x, y - 1)],
-        path_layers: vec![MovementLayer::Ground; 2],
-        next_index: 1,
         speed: SimFixed::from_num(330),
         ..Default::default()
     });

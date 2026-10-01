@@ -31,9 +31,6 @@ fn mover(sim: &mut Simulation, kind: LocomotorKind) -> GameEntity {
     entity.body_facing.snap(0x0000, 0);
     entity.position.exact_z_leptons = Some(731);
     entity.movement_target = Some(MovementTarget {
-        path: vec![(3, 3), (3, 2), (3, 1)],
-        path_layers: vec![MovementLayer::Ground; 3],
-        next_index: 1,
         // Gives budget4 in both Drive's integer division and Ship's existing
         // fixed-point frame product (60 * fixed(1/15) truncates to3).
         speed: SimFixed::from_num(61),
@@ -572,8 +569,6 @@ fn fresh_walk_refusal_preserves_xyz_before_head_selection() {
     blocker.owner = sim.intern("Americans");
     blocker.type_ref = sim.intern("BLOCKER");
     blocker.movement_target = Some(MovementTarget {
-        path: vec![(3, 2), (4, 2)],
-        next_index: 1,
         speed: SimFixed::from_num(61),
         final_goal: Some((4, 2)),
         ..Default::default()
@@ -1028,8 +1023,6 @@ fn chained_mover(sim: &mut Simulation, kind: LocomotorKind) -> (GameEntity, Driv
     }
     entity.movement_target = Some(MovementTarget {
         path,
-        path_layers: vec![MovementLayer::Ground; 4],
-        next_index: 1,
         speed: SimFixed::from_num(128),
         final_goal: Some((5, 1)),
         ..Default::default()

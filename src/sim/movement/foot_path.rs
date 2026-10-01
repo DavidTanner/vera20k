@@ -567,8 +567,8 @@ impl Simulation {
                 actor.navigation.path_replay.reference_cell = Some(current);
                 Ok(Ok(false))
             }
-            Ok((path, layers)) => {
-                request.install_route(actor, path, layers);
+            Ok((path, _)) => {
+                request.install_route(actor, path);
                 Ok(Ok(true))
             }
             Err(MovePathFailure::Search(

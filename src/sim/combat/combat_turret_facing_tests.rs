@@ -1243,7 +1243,6 @@ fn gsi_08_14_idle_turret_returns_to_the_hull_without_a_navcom() {
     let rules = rules_with_mtnk_rot(100);
     sim.substrate.entities.get_mut(1).unwrap().movement_target =
         Some(crate::sim::components::MovementTarget {
-            path: vec![(5, 5), (9, 5)],
             ..Default::default()
         });
 

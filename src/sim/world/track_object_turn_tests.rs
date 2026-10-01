@@ -41,9 +41,6 @@ fn fixture() -> (Simulation, RuleSet) {
         ..Default::default()
     });
     entity.movement_target = Some(MovementTarget {
-        path: vec![(10, 10), (10, 9)],
-        path_layers: vec![MovementLayer::Ground; 2],
-        next_index: 1,
         speed: SimFixed::from_num(330),
         ..Default::default()
     });

@@ -730,9 +730,6 @@ fn hills_same_type_marker_downgrade_reaches_live_foot_search_and_cleanup() {
             Some(true)
         );
         actor.movement_target = Some(MovementTarget {
-            path: peer_path.clone(),
-            path_layers: vec![MovementLayer::Ground; peer_path.len()],
-            next_index: 1,
             ..Default::default()
         });
         install_path_replay(&mut actor.navigation.path_replay, peer_cell, &peer_path, 1);

@@ -159,17 +159,11 @@ pub struct BuildingDown {
 /// The order adapter a move order attaches (ground orders through
 /// `issue_move_command_with_destination`, Fly and Jumpjet orders through
 /// their own setters). A Walk keeps only its presence, which schedules its
-/// Process; Drive/Ship keep the path as the track host's layer cache; Fly and
-/// Jumpjet orders keep their goal.
+/// Process; Drive/Ship, Fly and Jumpjet orders also keep their goal. No order
+/// keeps route cells: a Foot's route is its Foot+5E0 queue
+/// (`navigation.path_replay`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MovementTarget {
-    /// Sequence of (rx, ry) cells from current position to goal (inclusive).
-    pub path: Vec<(u16, u16)>,
-    /// Spatial layer for each path step. Matches `path.len()`.
-    pub path_layers: Vec<MovementLayer>,
-    /// Index of the next cell to move toward in the path.
-    /// Starts at 1 (index 0 is the current position).
-    pub next_index: usize,
     /// Maximum movement speed in leptons per second (from rules.ini Speed= value).
     /// 256 leptons = 1 cell. Fixed-point for deterministic multiplayer.
     pub speed: SimFixed,
@@ -418,6 +412,24 @@ impl FootPathQueue {
                 let (dx, dy) =
                     *crate::util::direction::DIRECTION_DELTAS.get(usize::from(direction))?;
                 cell = (cell.0 + dx as i16, cell.1 + dy as i16);
+                Some(cell)
+            })
+            .collect()
+    }
+
+    /// The cells the remaining words step through from `start`, for
+    /// diagnostics (the debug path overlay and panel).
+    pub(crate) fn cells_from(&self, start: (u16, u16)) -> Vec<(u16, u16)> {
+        let mut cell = start;
+        self.remaining_directions()
+            .iter()
+            .filter_map(|&direction| {
+                let (dx, dy) =
+                    *crate::util::direction::DIRECTION_DELTAS.get(usize::from(direction))?;
+                cell = (
+                    cell.0.wrapping_add_signed(dx as i16),
+                    cell.1.wrapping_add_signed(dy as i16),
+                );
                 Some(cell)
             })
             .collect()
@@ -725,28 +737,9 @@ impl Default for DriveLocomotionRuntime {
 impl Default for MovementTarget {
     fn default() -> Self {
         Self {
-            path: Vec::new(),
-            path_layers: Vec::new(),
-            next_index: 0,
             speed: SIM_ZERO,
             final_goal: None,
         }
-    }
-}
-
-impl MovementTarget {
-    pub fn layer_at(&self, index: usize) -> MovementLayer {
-        debug_assert_eq!(
-            self.path.len(),
-            self.path_layers.len(),
-            "path/path_layers length mismatch: {} vs {}",
-            self.path.len(),
-            self.path_layers.len()
-        );
-        self.path_layers
-            .get(index)
-            .copied()
-            .unwrap_or(MovementLayer::Ground)
     }
 }
 

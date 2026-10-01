@@ -24,8 +24,6 @@ fn marked_probe_survives_modern_foot_search_and_mark_restoration() {
         let actor = sim.substrate.entities.get_mut(id).unwrap();
         actor.body_facing.snap(0x4000, frame);
         actor.movement_target = Some(MovementTarget {
-            path: vec![start],
-            path_layers: vec![crate::sim::movement::locomotor::MovementLayer::Ground],
             final_goal: Some(goal_cell),
             ..Default::default()
         });
