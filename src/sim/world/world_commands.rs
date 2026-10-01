@@ -2574,6 +2574,9 @@ impl Simulation {
                         rules,
                     )
                     .is_ok();
+                // Native 0x004C7420 makes this object the destination (see
+                // the residual above); the represented order stops instead.
+                self.assign_null_destination(entity_id, rules);
                 if issued {
                     if let Some(e) = self.substrate.entities.get_mut(entity_id) {
                         e.order_intent = Some(OrderIntent::Guard {
@@ -2586,6 +2589,9 @@ impl Simulation {
             }
             None => {
                 let _ = self.assign_target_represented(entity_id, None, rules);
+                // 0x004C7420: the event's NULL destination through the class
+                // setter (Infantry 0x0051AA40 stops Walk, keeping a paid head).
+                self.assign_null_destination(entity_id, rules);
                 if let Some(e) = self.substrate.entities.get_mut(entity_id) {
                     e.order_intent = Some(OrderIntent::Guard {
                         anchor_rx,

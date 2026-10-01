@@ -92,6 +92,11 @@ struct MovingContribution {
 /// tube entrance before its next Process enters the tube. Frequency: tunnel
 /// maps, one frame per entry. Risk: another owner's search that frame
 /// soft-blocks that cell (cost x8) instead of passing it.
+///
+/// RESIDUAL: the order adapter gates this read, but a Walk now finishes a
+/// paid head without one (an owner change, parasite release, Temporal
+/// freeze, Area Guard or Sticky refusal drops it beside the null setter), so
+/// that walker reads as stationary (code 6) until the head completes. #972.
 fn moving_next_cell(entity: &GameEntity) -> Option<(u16, u16)> {
     entity.movement_target.as_ref()?;
     let cell = (entity.position.rx, entity.position.ry);

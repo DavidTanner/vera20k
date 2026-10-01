@@ -7387,6 +7387,14 @@ fn walk_first_limbo_releases_head_but_repeated_limbo_preserves_new_claim() {
         None,
         None,
     );
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .locomotor
+        .as_mut()
+        .unwrap()
+        .set_walk_destination(Some(head));
     sim.techno_limbo(1);
     assert_eq!(
         sim.substrate.raw_cell_occupation.ground_bits(4, 4) & 0x1c,
@@ -7398,17 +7406,17 @@ fn walk_first_limbo_releases_head_but_repeated_limbo_preserves_new_claim() {
             .ground_infantry_owner(4, 4),
         None
     );
-    assert_eq!(
-        sim.substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .locomotor
-            .as_ref()
-            .unwrap()
-            .step_head(),
-        Some(head)
-    );
+    // Foot4DB260 then Locks Walk (75CB30): no destination or head survives
+    // to resume after Unlimbo.
+    let loco = sim
+        .substrate
+        .entities
+        .get(1)
+        .unwrap()
+        .locomotor
+        .as_ref()
+        .unwrap();
+    assert_eq!((loco.step_head(), loco.walk_destination()), (None, None));
     let other = sim.interner.intern("Russians");
     crate::sim::movement::walk_head::raw_at(
         &mut sim.substrate.raw_cell_occupation,

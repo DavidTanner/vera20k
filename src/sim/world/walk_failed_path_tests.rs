@@ -431,3 +431,31 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     assert!(e.navigation.nav_com.is_none());
     assert!(e.locomotor.as_ref().unwrap().walk_destination().is_none());
 }
+
+/// FootClass::Limbo (0x004DB260) runs Infantry +0x500 on the first Limbo:
+/// the receiver's +0x6DC answer is written and Walk Stop clears the moving
+/// byte, which the Lock that follows leaves alone.
+#[test]
+fn first_limbo_runs_the_infantry_stop_driver() {
+    let (mut sim, rules, _) = fixture();
+    human_house(&mut sim);
+    let id = engineer_at(&mut sim, &rules, (10, 10));
+    {
+        let cell = sim
+            .resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(10, 10)
+            .unwrap();
+        cell.yr_cell_land_type = 2;
+        cell.speed_costs.foot = Some(0);
+        cell.base_speed_costs.foot = Some(0);
+    }
+    order_walk(&mut sim, &rules, id, (11, 10));
+    let _ = sim.techno_limbo_with_rules(id, &rules);
+    let e = sim.substrate.entities.get(id).unwrap();
+    assert!(e.infantry.as_ref().unwrap().cell_entry_blocked);
+    let loco = e.locomotor.as_ref().unwrap();
+    assert_eq!((loco.walk_destination(), loco.step_head()), (None, None));
+    assert_eq!(loco.walk_is_moving(), Some(false));
+}

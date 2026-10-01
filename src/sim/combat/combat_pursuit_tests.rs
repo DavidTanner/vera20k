@@ -991,6 +991,97 @@ fn ordered_walk_attack_nulls_destination_but_preserves_paid_head_and_queues() {
     }
 }
 
+/// An owner change nulls the Walk destination through the class setter
+/// (0x007014E9) and drops the order adapter. Walk75AEC0 still runs on its
+/// paid head, so the man finishes that step instead of stalling mid-cell.
+#[test]
+fn owner_change_finishes_the_paid_walk_head() {
+    use crate::sim::command::Command;
+    let (mut sim, rules, actor, victim) = walk_pursuit_scene();
+    walk_command(
+        &mut sim,
+        &rules,
+        Command::Move {
+            entity_id: actor,
+            target_rx: 20,
+            target_ry: 10,
+            queue: false,
+        },
+    );
+    let head = wait_for_walk_head(&mut sim, &rules, actor);
+    let new_owner = sim.substrate.entities.get(victim).unwrap().owner();
+    sim.change_owner_with_rules(actor, new_owner, &rules);
+    let e = sim.substrate.entities.get(actor).unwrap();
+    assert!(e.movement_target.is_none());
+    assert_eq!(e.locomotor.as_ref().unwrap().walk_destination(), None);
+    assert_eq!(e.locomotor.as_ref().unwrap().step_head(), Some(head));
+    for _ in 0..80 {
+        walk_frame(&mut sim, &rules);
+        if sim
+            .substrate
+            .entities
+            .get(actor)
+            .unwrap()
+            .locomotor
+            .as_ref()
+            .unwrap()
+            .step_head()
+            .is_none()
+        {
+            break;
+        }
+    }
+    let e = sim.substrate.entities.get(actor).unwrap();
+    assert!(
+        e.locomotor.as_ref().unwrap().step_head().is_none(),
+        "paid head stalls"
+    );
+    assert_eq!(
+        (e.position.rx, e.position.ry),
+        ((head.x / 256) as u16, (head.y / 256) as u16)
+    );
+}
+
+/// The Area Guard MEGAMISSION gives a Foot the event's NULL destination
+/// (0x004C7420): a walking man stops at his paid head instead of walking on
+/// to the old destination.
+#[test]
+fn area_guard_nulls_the_walk_destination() {
+    use crate::sim::command::Command;
+    let (mut sim, rules, actor, _) = walk_pursuit_scene();
+    walk_command(
+        &mut sim,
+        &rules,
+        Command::Move {
+            entity_id: actor,
+            target_rx: 20,
+            target_ry: 10,
+            queue: false,
+        },
+    );
+    let head = wait_for_walk_head(&mut sim, &rules, actor);
+    walk_command(
+        &mut sim,
+        &rules,
+        Command::Guard {
+            entity_id: actor,
+            target_id: None,
+        },
+    );
+    let loco = sim
+        .substrate
+        .entities
+        .get(actor)
+        .unwrap()
+        .locomotor
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        (loco.walk_destination(), loco.step_head()),
+        (None, Some(head))
+    );
+}
+
 #[test]
 fn walk_null_setter_matches_original_caller_rows() {
     use crate::sim::components::{DriveCoord, FootPathQueue, MovementTarget, NavTargetRef};

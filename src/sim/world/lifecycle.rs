@@ -2507,6 +2507,23 @@ impl Simulation {
                 .expect("Ready is in the Doing table");
         }
         self.foot_neighbors_before_limbo(stable_id);
+        // Foot4DB260 dispatches vt+0x500 on the first Limbo (0x004DB2FB,
+        // outside the map editor) before +9C(0): Infantry 0x0051DAF0, whose
+        // Walk Stop clears the moving bytes Lock leaves.
+        // RESIDUAL: a Unit's or Aircraft's +0x500 (Foot 0x004D55C0, the
+        // locomotor's Stop_Moving) is not run here.
+        if let Some(rules) = context.rules()
+            && self
+                .substrate
+                .entities
+                .get(stable_id)
+                .is_some_and(|entity| {
+                    entity.category == EntityCategory::Infantry && !entity.lifecycle.in_limbo
+                })
+            && let Err(cause) = self.infantry_stop_driver(stable_id, rules, None)
+        {
+            log::debug!("infantry {stable_id} Limbo Stop_Driver: {cause}");
+        }
         self.release_track_occupation_before_foot_limbo(stable_id);
         // The legacy Drive lane keeps its own head-to and handoff projections
         // of that +9C(0) release; they leave with it on the first Limbo.
@@ -2521,6 +2538,15 @@ impl Simulation {
             );
         }
         self.release_walk_occupation_before_foot_limbo(stable_id);
+        // FootClass::Limbo (0x004DB260) then Locks the locomotor (+0xB0) on
+        // the first Limbo, so a boarded or stored man keeps no Walk
+        // destination or head to resume.
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id)
+            && !entity.lifecycle.in_limbo
+            && let Some(locomotor) = entity.locomotor.as_mut()
+        {
+            locomotor.walk_lock();
+        }
         self.release_teleport_occupation_before_foot_limbo(stable_id);
         self.release_jumpjet_occupation_before_foot_limbo(stable_id);
         self.release_foot_air_tracker_before_limbo(stable_id);

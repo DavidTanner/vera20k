@@ -946,12 +946,22 @@ fn prepare_movement_visit(
         }
         return None;
     }
-    // An ordinary idle Walk still executes 75BCE3. It has no route adapter,
-    // so it would otherwise be omitted from the mover visit.
-    if entity.is_active() && entity.movement_target.is_none() {
+    // Walk75AEC0 is the Process of every live Foot (FootClass::AI
+    // 0x004DA806..0x004DA877) and branches on its own head (+0x28) and
+    // destination (+0x1C): either one runs its step, neither the idle tail
+    // 75BCE3. An order adapter does not decide it, so a caller that drops
+    // the adapter beside a null setter (owner change, parasite release,
+    // Temporal freeze) still finishes the paid head.
+    let walk_route = entity.locomotor.as_ref().is_some_and(|loco| {
+        loco.kind == LocomotorKind::Walk
+            && (loco.step_head().is_some() || loco.walk_destination().is_some())
+    });
+    if entity.is_active() && entity.movement_target.is_none() && !walk_route {
         super::walk_step::finish_idle(entity);
     }
-    if entity.movement_target.is_none() && super::track_head::active_track_family(entity).is_none()
+    if entity.movement_target.is_none()
+        && !walk_route
+        && super::track_head::active_track_family(entity).is_none()
     {
         return None;
     }
