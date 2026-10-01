@@ -10,7 +10,10 @@
 //! terrain, overlays, alliances and rules at this point of the frame; debug
 //! builds compare the two on every read. Scatter, air and other direct moves
 //! do not come through here. A mover whose active locomotor is Teleport takes
-//! its class setter instead of a route: no pass moves a Teleport owner.
+//! its class setter instead of a route: no pass moves a Teleport owner. A
+//! Jumpjet's cell order likewise takes Foot's setter, whose `Move_To` flies
+//! it; an object order still takes the route, and the Jumpjet's `Process`
+//! hands its goal to `Move_To` (`apply_jumpjet_adapter_order`).
 //!
 //! Residual, carried over unchanged: the sites differ in what they hand the
 //! search, with no recorded native reason. The resumed-order, both miner and
@@ -49,9 +52,17 @@ impl Simulation {
     /// Issue `order` with the kept block sets and blocker plane, against the
     /// canonical path grid. Returns whether the mover accepted the
     /// destination; without a published grid nothing is issued. A mover on
-    /// Teleport takes its class setter ([`Self::teleport_destination`]).
+    /// Teleport takes its class setter ([`Self::teleport_destination`]), and
+    /// a Jumpjet's cell order takes Foot's
+    /// ([`Self::jumpjet_cell_destination`]), which ignores `queue`.
     pub(crate) fn issue_ground_move(&mut self, order: GroundMove, rules: Option<&RuleSet>) -> bool {
         if let Some(accepted) = self.teleport_destination(order.entity_id, order.target, rules) {
+            return accepted;
+        }
+        if order.object_destination.is_none()
+            && let Some(accepted) =
+                self.jumpjet_cell_destination(order.entity_id, order.target, order.speed, rules)
+        {
             return accepted;
         }
         let Some(grid) = self.path_grid_snapshot() else {
