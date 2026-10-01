@@ -32,6 +32,9 @@ use crate::sim::tiberium::{
 use crate::sim::timer::CdTimer;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53, X87Ordering};
 
+#[cfg(test)]
+mod queue_oracle_tests;
+
 /// The `1e-05` double at `0x007E3810` every tiberium percentage gate compares
 /// against (`CanGrowTiberium @ 0x00483620`, `CanSpreadTiberium @ 0x00483690`,
 /// `GrowthProcessor @ 0x00722F00`, `SpreadProcessor @ 0x00722440`).
@@ -239,13 +242,19 @@ impl NativeTiberiumQueue {
     }
 
     /// Entry-array counter (`+0x10C` / `+0xF0`).
-    #[cfg(test)]
-    pub fn array_len(&self) -> usize {
+    fn array_len(&self) -> usize {
         self.entries.len()
     }
 
     pub fn capacity(&self) -> u32 {
         self.capacity
+    }
+
+    /// Rebuilds reset the logical stores; retain their backing allocations.
+    fn reset_for_rebuild(&mut self, capacity: u32) {
+        self.entries.clear();
+        self.heap.truncate(1);
+        self.capacity = capacity;
     }
 
     /// Entries referenced by the heap, in heap slot order (slot 1 first).
@@ -568,9 +577,14 @@ impl OreGrowthState {
     /// `TiberiumClass::AddToGrowthQueue7235A0`: explicit receiver class,
     /// no overlay/type gate or dedupe, density-gated, one RNG on insert.
     /// The receiver survives Overlay construction refusal (tibtre.json).
+    #[allow(clippy::too_many_arguments)]
     pub fn add_native_growth_queue_cell(
         &mut self,
         overlay_grid: &OverlayGrid,
+        overlay_registry: &OverlayTypeRegistry,
+        tiberium_types: &TiberiumTypeRegistry,
+        resolved_terrain: Option<&ResolvedTerrainGrid>,
+        growth_enabled: bool,
         type_id: TiberiumTypeId,
         rx: u16,
         ry: u16,
@@ -578,11 +592,27 @@ impl OreGrowthState {
         rng: &mut SimRng,
     ) -> Option<NativeTiberiumQueueEntry> {
         let cell = overlay_grid.cell(rx, ry);
-        // `AddToGrowthQueue @ 0x007235A0`: the literal `OverlayData < 0x0B`
-        // gate; its array-counter rebuild trigger (`counter > capacity - 10`)
-        // remains deferred by OQ-38; long-running play can reach it.
+        // 7235C1..7235E2: density admission precedes the signed ARRAY-counter
+        // check, distinct from the processor's heap-count check. Rebuild does
+        // not repeat admission; the original request can duplicate a seed.
+        // Original execution/goldens: tools/spatial_oracle/ore_queue.{json,md}.
         if cell.overlay_data >= GROWTH_QUEUE_DENSITY_LIMIT {
             return None;
+        }
+        let class = self.native_tiberium.classes.get(type_id.0 as usize)?;
+        if class.growth.array_len() as i64
+            > i64::from(native_tiberium_queue_capacity(self.native_rect)) - 10
+        {
+            let cells = native_rebuild_cells(self.native_rect, overlay_grid);
+            self.rebuild_growth_queue_for_type(
+                type_id,
+                overlay_grid,
+                overlay_registry,
+                tiberium_types,
+                resolved_terrain,
+                growth_enabled,
+                &cells,
+            );
         }
         let class = self.native_tiberium.classes.get_mut(type_id.0 as usize)?;
         let entry = NativeTiberiumQueueEntry {
@@ -595,41 +625,6 @@ impl OreGrowthState {
         Some(entry)
     }
 
-    /// Native-shaped `AddToSpreadQueue @ 0x00722AF0`: `CanSpreadTiberium`
-    /// source gate (`source_has_object` is the cell's `FirstObject != 0`
-    /// test), bitmap-deduped, one RNG on insert. Its array-counter rebuild
-    /// trigger (`counter >= capacity - 0x14`) is recorded DRIFT (OQ-38).
-    #[allow(clippy::too_many_arguments)]
-    pub fn add_native_spread_queue_cell(
-        &mut self,
-        overlay_grid: &OverlayGrid,
-        overlay_registry: &OverlayTypeRegistry,
-        tiberium_types: &TiberiumTypeRegistry,
-        resolved_terrain: Option<&ResolvedTerrainGrid>,
-        source_has_object: bool,
-        rx: u16,
-        ry: u16,
-        native_frame: u32,
-        spread_enabled: bool,
-        rng: &mut SimRng,
-    ) -> Option<NativeTiberiumQueueEntry> {
-        let type_id =
-            current_tiberium_type(overlay_grid, overlay_registry, tiberium_types, rx, ry)?;
-        self.add_native_spread_queue_cell_for_type(
-            type_id,
-            overlay_grid,
-            overlay_registry,
-            tiberium_types,
-            resolved_terrain,
-            source_has_object,
-            rx,
-            ry,
-            native_frame,
-            spread_enabled,
-            rng,
-        )
-    }
-
     /// `AddToSpreadQueue @ 0x00722AF0` with an explicit receiver (`this`):
     /// `store_type` names the store and flag plane that take the cell, while
     /// `CanSpreadTiberium @ 0x00483690` admits the cell on its OWN class.
@@ -637,14 +632,15 @@ impl OreGrowthState {
     /// `AddToSpreadQueue` on every in-bounds neighbour, so a store may hold a
     /// cell of another class (a harvested gem queues its ore neighbours).
     #[allow(clippy::too_many_arguments)]
-    fn add_native_spread_queue_cell_for_type(
+    pub fn add_native_spread_queue_cell(
         &mut self,
         store_type: TiberiumTypeId,
         overlay_grid: &OverlayGrid,
         overlay_registry: &OverlayTypeRegistry,
         tiberium_types: &TiberiumTypeRegistry,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
-        source_has_object: bool,
+        source_object_cells: &BTreeSet<(u16, u16)>,
+        live_objects: Option<NativeCellObjectView<'_>>,
         rx: u16,
         ry: u16,
         native_frame: u32,
@@ -656,18 +652,36 @@ impl OreGrowthState {
             overlay_registry,
             tiberium_types,
             resolved_terrain,
-            source_has_object,
+            cell_has_native_object(source_object_cells, live_objects, (rx, ry)),
             rx,
             ry,
             spread_enabled,
         )?;
-        let class = self
-            .native_tiberium
-            .classes
-            .get_mut(store_type.0 as usize)?;
+        let class = self.native_tiberium.classes.get(store_type.0 as usize)?;
         if class.spread_bitmap.contains(&(rx, ry)) {
             return None;
         }
+        // 722B12..722B43: both admission and receiver bitmap precede the
+        // signed ARRAY-counter >= capacity-20 check. No post-rebuild dedupe:
+        // a newly seeded cell is appended again, with exactly one RNG draw.
+        // Original execution/goldens: tools/spatial_oracle/ore_queue.{json,md}.
+        if class.spread.array_len() as i64
+            >= i64::from(native_tiberium_queue_capacity(self.native_rect)) - 0x14
+        {
+            let cells = native_rebuild_cells(self.native_rect, overlay_grid);
+            let occupied_cells = native_occupied_cells(source_object_cells, live_objects);
+            self.rebuild_spread_queue_for_type(
+                store_type,
+                overlay_grid,
+                overlay_registry,
+                tiberium_types,
+                resolved_terrain,
+                &occupied_cells,
+                spread_enabled,
+                &cells,
+            );
+        }
+        let class = &mut self.native_tiberium.classes[store_type.0 as usize];
         let entry = NativeTiberiumQueueEntry {
             rx,
             ry,
@@ -883,7 +897,7 @@ impl OreGrowthState {
                         live_objects: object_view,
                         rng,
                         binary_frame: current_frame,
-                        growth_enabled: true,
+                        growth_enabled,
                         spread_enabled,
                         radar_dirty_cells: radar_dirty_cells.as_deref_mut(),
                         radar_dirty_generation: radar_dirty_generation.as_deref_mut(),
@@ -920,17 +934,14 @@ impl OreGrowthState {
                     class.growth.push(replacement);
                     class.growth_bitmap.insert((entry.rx, entry.ry));
                     stats.reinserted_entries += 1;
-                    let source_has_object = cell_has_native_object(
-                        source_object_cells,
-                        object_view,
-                        (entry.rx, entry.ry),
-                    );
                     self.add_native_spread_queue_cell(
+                        type_id,
                         overlay_grid,
                         overlay_registry,
                         tiberium_types,
                         resolved_terrain,
-                        source_has_object,
+                        source_object_cells,
+                        object_view,
                         entry.rx,
                         entry.ry,
                         current_frame,
@@ -1261,7 +1272,7 @@ impl OreGrowthState {
         let Some(class) = self.native_tiberium.classes.get_mut(type_id.0 as usize) else {
             return 0;
         };
-        class.growth = NativeTiberiumQueue::with_capacity(capacity);
+        class.growth.reset_for_rebuild(capacity);
         class.growth_bitmap.clear();
         let mut seeded = 0;
         for &(rx, ry) in cells {
@@ -1316,7 +1327,7 @@ impl OreGrowthState {
         }
         {
             let class = &mut self.native_tiberium.classes[type_id.0 as usize];
-            class.spread = NativeTiberiumQueue::with_capacity(capacity);
+            class.spread.reset_for_rebuild(capacity);
             class.spread_bitmap.clear();
         }
         let mut seeded = 0;
@@ -1410,13 +1421,14 @@ impl OreGrowthState {
             }
             let neighbor = (nx as u16, ny as u16);
             if self
-                .add_native_spread_queue_cell_for_type(
+                .add_native_spread_queue_cell(
                     removed_type,
                     overlay_grid,
                     overlay_registry,
                     tiberium_types,
                     resolved_terrain,
-                    cell_has_native_object(source_object_cells, live_objects, neighbor),
+                    source_object_cells,
+                    live_objects,
                     neighbor.0,
                     neighbor.1,
                     native_frame,
@@ -1555,7 +1567,7 @@ fn signed_abs_mod_plus_one(raw: u32, modulus: u32) -> i32 {
 /// `abs(raw) % 50 + frame`; the two differ only for the word `0x80000000`.
 fn processor_reinsert_priority(native_frame: u32, raw: u32) -> f32 {
     let remainder = (raw as i32).wrapping_rem(GROWTH_QUEUE_PRIORITY_WINDOW as i32);
-    (native_frame as i32).wrapping_add(remainder.wrapping_abs()) as f32
+    queue_priority_float((native_frame as i32).wrapping_add(remainder.wrapping_abs()))
 }
 
 fn current_tiberium_type(
@@ -1607,7 +1619,18 @@ fn count_native_spread_targets(
 /// arithmetic, stored as a float. `abs(0x80000000)` stays `i32::MIN`, whose
 /// remainder is `-48`.
 fn growth_queue_priority(native_frame: u32, raw: u32) -> f32 {
-    (native_frame as i32).wrapping_add(growth_queue_priority_delay(raw)) as f32
+    queue_priority_float((native_frame as i32).wrapping_add(growth_queue_priority_delay(raw)))
+}
+
+/// The enqueue and growth-reinsert `FILD/FSTP` stores use process RC_CHOP.
+/// Rust's nearest-rounded `as f32` changes heap ordering beyond 2^24 frames.
+/// Native boundary execution: tools/spatial_oracle/ore_queue.{json,md}.
+fn queue_priority_float(value: i32) -> f32 {
+    f32::from_bits(
+        X87Chop53::store_f32(X87Chop53::load_i32(value))
+            .expect("signed dword priorities fit finite f32")
+            .bits(),
+    )
 }
 
 fn growth_queue_priority_delay(raw: u32) -> i32 {
@@ -2034,6 +2057,10 @@ SpreadPercentage=.06
 
         let first = state.add_native_growth_queue_cell(
             &overlay_grid,
+            &overlay_registry,
+            &tiberium_types,
+            None,
+            true,
             TiberiumTypeId(0),
             1,
             1,
@@ -2042,6 +2069,10 @@ SpreadPercentage=.06
         );
         let second = state.add_native_growth_queue_cell(
             &overlay_grid,
+            &overlay_registry,
+            &tiberium_types,
+            None,
+            true,
             TiberiumTypeId(0),
             1,
             1,
@@ -2057,6 +2088,10 @@ SpreadPercentage=.06
         let before_reject_logical = rng.logical_state();
         let rejected = state.add_native_growth_queue_cell(
             &overlay_grid,
+            &overlay_registry,
+            &tiberium_types,
+            None,
+            true,
             TiberiumTypeId(0),
             2,
             1,
@@ -2086,6 +2121,77 @@ SpreadPercentage=.06
             before_reject_logical,
             "density-11 rejection preserves every logical RNG field"
         );
+    }
+
+    // Native enqueue admission precedes the array-counter check; accepted calls
+    // rebuild even when processors have drained every reference from the heap.
+    // Executable boundary goldens: tools/spatial_oracle/ore_queue.json.
+    #[test]
+    fn enqueue_growth_rebuilds_a_drained_heap_after_array_counter_threshold() {
+        let (_, registry, types) = tiberium_rebuild_fixture();
+        let mut grid = OverlayGrid::new(9, 9);
+        grid.place_overlay(4, 4, registry.id_for_name("TIB01").unwrap(), 3);
+        let mut state = make_state(9, 9);
+        state.reset_native_tiberium_classes_for_rect((4, 4), types.len(), 10);
+        let queue = &mut state.native_tiberium.classes[0].growth;
+        for _ in 0..55 {
+            queue.push(NativeTiberiumQueueEntry {
+                rx: 3,
+                ry: 3,
+                priority_bits: 0,
+            });
+            queue.pop_root();
+        }
+        assert!(queue.is_empty());
+        let mut rng = SimRng::new(1);
+        state.add_native_growth_queue_cell(
+            &grid,
+            &registry,
+            &types,
+            None,
+            true,
+            TiberiumTypeId(0),
+            4,
+            4,
+            100,
+            &mut rng,
+        );
+        assert!(state.native_tiberium.classes[0].growth.array_len() < 55);
+    }
+
+    #[test]
+    fn enqueue_spread_rebuilds_a_drained_heap_at_array_counter_threshold() {
+        let (_, registry, types) = tiberium_rebuild_fixture();
+        let mut grid = OverlayGrid::new(9, 9);
+        grid.place_overlay(4, 4, registry.id_for_name("TIB01").unwrap(), 3);
+        let mut state = make_state(9, 9);
+        state.reset_native_tiberium_classes_for_rect((4, 4), types.len(), 10);
+        let queue = &mut state.native_tiberium.classes[0].spread;
+        for _ in 0..44 {
+            queue.push(NativeTiberiumQueueEntry {
+                rx: 3,
+                ry: 3,
+                priority_bits: 0,
+            });
+            queue.pop_root();
+        }
+        assert!(queue.is_empty());
+        let mut rng = SimRng::new(1);
+        state.add_native_spread_queue_cell(
+            TiberiumTypeId(0),
+            &grid,
+            &registry,
+            &types,
+            None,
+            &BTreeSet::new(),
+            None,
+            4,
+            4,
+            100,
+            true,
+            &mut rng,
+        );
+        assert!(state.native_tiberium.classes[0].spread.array_len() < 44);
     }
 
     #[test]
@@ -2548,11 +2654,13 @@ SpreadPercentage=.06
         let mut rng = SimRng::new(11);
 
         let first = state.add_native_spread_queue_cell(
+            TiberiumTypeId(0),
             &overlay_grid,
             &overlay_registry,
             &tiberium_types,
             None,
-            false,
+            &BTreeSet::new(),
+            None,
             1,
             1,
             100,
@@ -2561,11 +2669,13 @@ SpreadPercentage=.06
         );
         let before_dedupe = rng.state();
         let second = state.add_native_spread_queue_cell(
+            TiberiumTypeId(0),
             &overlay_grid,
             &overlay_registry,
             &tiberium_types,
             None,
-            false,
+            &BTreeSet::new(),
+            None,
             1,
             1,
             100,
@@ -2573,11 +2683,13 @@ SpreadPercentage=.06
             &mut rng,
         );
         let disabled = state.add_native_spread_queue_cell(
+            TiberiumTypeId(0),
             &overlay_grid,
             &overlay_registry,
             &tiberium_types,
             None,
-            false,
+            &BTreeSet::new(),
+            None,
             1,
             1,
             100,
@@ -3192,11 +3304,13 @@ SpreadPercentage=.06
         let before = rng.state();
         assert_eq!(
             state.add_native_spread_queue_cell(
+                TiberiumTypeId(0),
                 &overlay_grid,
                 &overlay_registry,
                 &tiberium_types,
                 None,
-                true,
+                &occupied,
+                None,
                 5,
                 5,
                 100,

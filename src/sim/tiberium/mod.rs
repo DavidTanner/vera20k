@@ -363,6 +363,10 @@ pub fn place_tiberium(
         }
         ctx.ore_growth_state.add_native_growth_queue_cell(
             ctx.overlay_grid,
+            ctx.overlay_registry,
+            ctx.tiberium_types,
+            ctx.resolved_terrain,
+            ctx.growth_enabled,
             type_id,
             cell.0,
             cell.1,
@@ -397,17 +401,14 @@ pub fn place_tiberium(
     let new_data = view.overlay_data.wrapping_add(amount).min(11);
     ctx.overlay_grid.set_overlay_data(cell.0, cell.1, new_data);
     mark_place_tactical_dirty(ctx, cell);
-    let source_has_object = crate::sim::ore_growth::cell_has_native_object(
-        ctx.source_object_cells,
-        ctx.live_objects,
-        cell,
-    );
     ctx.ore_growth_state.add_native_spread_queue_cell(
+        type_id,
         ctx.overlay_grid,
         ctx.overlay_registry,
         ctx.tiberium_types,
         ctx.resolved_terrain,
-        source_has_object,
+        ctx.source_object_cells,
+        ctx.live_objects,
         cell.0,
         cell.1,
         ctx.binary_frame,
@@ -546,18 +547,9 @@ pub fn reduce_tiberium(
     // `TiberiumClass::RegisterForGrowth` @ 0x007235A0 at density 11 first.
     // Its `< 11` admission makes this live call a deliberate no-op: no queue
     // entry and no Scenario RNG draw are produced before the reduction.
-    if current == 11
-        && let (Some(grid), Some(rng)) = (ctx.overlay_grid.as_deref(), ctx.rng.as_deref_mut())
-    {
-        let _ = ctx.ore_growth_state.add_native_growth_queue_cell(
-            grid,
-            view.tiberium_type,
-            cell.0,
-            cell.1,
-            ctx.binary_frame,
-            rng,
-        );
-    }
+    // The rejected call also precedes the enqueue rebuild check, so its
+    // omission has no queue, timer or RNG effect (ore_queue.json reduction
+    // density-11 controls). No growth context is needed by reduction.
 
     // Native partial predicate is signed `amount < current + 1`. This makes a
     // density-11 request of 11 leave the overlay present at density zero, while
@@ -1521,11 +1513,15 @@ SpreadPercentage=.06
             overlay.place_overlay(5, 5, overlay_id, 3);
             let inserted = growth
                 .add_native_spread_queue_cell(
+                    overlay_registry
+                        .tiberium_type_for_overlay(&tiberium_types, overlay_id)
+                        .unwrap(),
                     &overlay,
                     &overlay_registry,
                     &tiberium_types,
                     None,
-                    false,
+                    &source_object_cells,
+                    None,
                     5,
                     5,
                     100,

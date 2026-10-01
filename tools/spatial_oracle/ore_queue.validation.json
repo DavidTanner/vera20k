@@ -1,0 +1,53 @@
+{
+  "scope": "OQ-38 enqueue array-counter rebuild follow-up; bounded original execution comparison, not whole-session ore parity",
+  "base_main": "6d2e4d28ee616914c33f6eb6fb53d230bf2714e8",
+  "gamemd_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "rust_source_sha256": {
+    "src/sim/ore_growth.rs": "f19615c28ad49d653a89f41f86eb9df27a4adb177da3d6a72cb8d881de4b67a3",
+    "src/sim/ore_growth/queue_oracle_tests.rs": "69f39197f9fc4d82e343b3da568072f3310339783903a7b4445ce7ed7c19a751",
+    "src/sim/tiberium/mod.rs": "54eaa6bd25a9176b16fb95fcdb0253b4e2a7b60a2f0c0bcdac624fd2f48d6dbd",
+    "src/sim/terrain_spawn.rs": "a441c085d7fe9d4a693ec8be6e5f59de338dc67331d4e5a19031c12845dec24f",
+    "src/sim/snapshot.rs": "caace060eda31d98b5403c80fae32bedc7ec9cc21779b3c534099934e5229732",
+    "src/sim/world/tibtre_oracle_tests.rs": "4ee3392e607319ca4aadfabbec643dbd376e31ea4c3f00e8a97dce6e59149e75"
+  },
+  "native_cases": {
+    "enqueue": 52,
+    "reduce_tiberium": 3,
+    "growth_processor": 5
+  },
+  "checks": {
+    "retail_lib": {
+      "command": "VERA20K_REQUIRE_RETAIL_INI=1 python -m tools.cargo_run -- test -p vera20k --lib",
+      "result": "9416 passed; 0 failed; 226 ignored",
+      "log_relative_to_checkout": ".local-audit/ore-queue/lib.log",
+      "log_sha256": "5a0cfedc8259b9e2c2ae4e8ded4ad8507c96680105315a6eaaa194f4f9fa1eac"
+    },
+    "retail_clippy": {
+      "command": "VERA20K_REQUIRE_RETAIL_INI=1 python -m tools.cargo_run -- clippy -p vera20k --lib",
+      "result": "exit 0; 728 warnings; 0 errors",
+      "log_relative_to_checkout": ".local-audit/ore-queue/clippy.log",
+      "log_sha256": "56cc2e53156418bff2dcbeabe37be5315fbaa6f3a4e3fcd6930a5940da586a97"
+    },
+    "python": {
+      "command": "python -m tools.run_tests",
+      "result": "436 tests; OK; 4 skipped",
+      "log_relative_to_checkout": ".local-audit/ore-queue/python-owner.log",
+      "log_sha256": "15656ef88b01692986bd79f08a6deb58e87ce362257522f2cc559ca0e37d76e2"
+    },
+    "native": {
+      "command": "RA2_DIR=<retail> python -m tools.spatial_oracle.ore_queue --check",
+      "result": "PASS: all 60 native outputs and provenance match",
+      "log_relative_to_checkout": ".local-audit/ore-queue/native-check.log",
+      "log_sha256": "fdad241cc7e070838aedec3b2589070e612f3fce916dcba097ecc7e08d8a3914"
+    }
+  },
+  "pre_fix_regression": "Both drained-heap enqueue counter-reset tests failed before implementation; both pass in final lib suite.",
+  "production_integration": "Full native Reduce/GrowthProcessor callers replayed through Rust owners; advance_tick forced Terrain test checks live Basic growth flag at rebuild; existing spawn/growth/harvest/refinery and snapshot regressions pass in lib suite.",
+  "sim_field_ratchet": "2589 writable fields; unchanged from main",
+  "unchanged_tibtre_payload_sha256": "e6e10bf4d6cd143469851bb2fedebe439501459feb8c2fbc6b5b06225c25ae4e",
+  "limits": [
+    "Prepared valid map and prior queue state; no multi-hour native history or whole Scenario startup comparison.",
+    "Synthetic percentages are exact 0.125/0 through the production reader; decimal INI parsing is not established by this queue fixture.",
+    "Other OQ-38 residuals and deferred VoxelAnim IsTiberium expiry/ring remain outside this enqueue chain."
+  ]
+}

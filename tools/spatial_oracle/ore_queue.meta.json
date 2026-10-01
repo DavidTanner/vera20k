@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Bounded original AddToGrowth7235A0/AddToSpread722AF0 enqueue-counter rebuilds, full RebuildGrowth7233A0/RebuildSpread7228B0, gates, reseeding order, duplicate append, cross-class receivers, timer retention and Scenario RNG continuation; three full Reduce_Tiberium480A80 caller controls and five complete GrowthProcessor722F00 calls through GrowTiberium483710/PlaceTiberium487190 and spread-counter rebuild admission.",
+  "assumptions": [
+    "Shared harvest_field/refinery_dock fixture: original Cell/Unit vtables, original Scenario seeder, declared successful Size4x4 diamond over the existing 32x32 backing table; CellIterator executes until first null.",
+    "Four synthetic TiberiumClass instances retain the shared fixture overlay registry (Riparius102..121, Cruentus27..38); MaxDensity12 and per-case percentage/Scenario gates, cell density/slope/occupancy are supplied data.",
+    "Adequate external entries/heap/bitmap stores, explicit append count and valid heap references represent prior queue state; initialization/allocator failure, whole Logic/map startup and actual long-session history are excluded.",
+    "Timer+4 padding is supplied zero; sentinel frame/duration values are compared for every class. X87 control0x0E7F comes from the shared fixture; signed frame wrap and >2^24 chopped FILD/FSTP boundaries execute. Four next_raw controls replace one seeded RNG data word before original Random::Next, including INT_MIN signed-absolute overflow; no draw return is hooked."
+  ],
+  "substitutions": [
+    "Shared fixture OS Interlocked imports and unused refinery presentation sinks remain. Reduce_Tiberium observers supply empty tactical rectangles, RecalcAttributes bare-land publication and radar/tactical dirtiness sinks. No ore admission, queue, rebuild, iterator or RNG return is substituted."
+  ],
+  "entry_points": {
+    "add_growth": "0x007235A0",
+    "add_spread": "0x00722AF0",
+    "rebuild_growth": "0x007233A0",
+    "rebuild_spread": "0x007228B0",
+    "can_grow": "0x00483620",
+    "can_spread": "0x00483690",
+    "iterator_init": "0x00578350",
+    "iterator_next": "0x00578290",
+    "capacity": "0x0042B1F0",
+    "bitmap_ordinal": "0x0042B1C0",
+    "reduce_tiberium": "0x00480A80",
+    "random": "0x0065C780",
+    "growth_processor": "0x00722F00",
+    "grow_tiberium": "0x00483710",
+    "place_tiberium": "0x00487190"
+  },
+  "source_normalized_lf_sha256": {
+    "producer": "573226133143def1796878802f789b239188d66e4a9d2677d3c92fc94a642786",
+    "harvest_field": "047fd5d2333dcee593d93edfa92a69debd6ad2f7b5a53029711f3dde17b5e087",
+    "refinery_dock": "4c657ce9ab3d924d08d55085408f89099712c7a77353e18be7161a7b1e459228"
+  },
+  "payload_sha256": "40f40ed7d6b70ee993a3056949fe5af06133975b3ab683e90d31db664cd9e140"
+}

@@ -605,3 +605,65 @@ fn tibtre_active_stage_survives_snapshot_and_removal_clears_its_owner() {
             .contains(&at)
     );
 }
+
+#[test]
+fn forced_terrain_enqueue_rebuild_uses_live_scenario_flags_through_advance_tick() {
+    use crate::sim::ore_growth::OreGrowthConfig;
+    let corpus = corpus();
+    // Retained active stage reaches the stock midpoint on its next due tick.
+    let (mut s, _) = fixture(
+        &json!({"seed":1, "stage":[10,0,0,0,1]}),
+        &corpus["retail_inputs"]["rows"][0],
+    );
+    s.sim.production.ore_growth_config = OreGrowthConfig::disabled();
+    let grid = s.sim.overlay_grid.as_mut().unwrap();
+    grid.place_overlay(10, 10, registry().id_for_name("TIB01").unwrap(), 2);
+    // Prepared drained-heap prestate models a valid long-running append array.
+    // Native admission/rebuild ordering and growth-off controls: ore_queue.json.
+    let capacity = crate::sim::ore_growth::native_tiberium_queue_capacity((16, 16));
+    let mut saved = serde_json::to_value(&s.sim.production.ore_growth_state).unwrap();
+    saved["native_tiberium"]["classes"][0]["growth"]["entries"] = json!(vec![
+        json!({"rx":10,"ry":10,"priority_bits":0});
+        (capacity - 9)
+            as usize
+    ]);
+    saved["native_tiberium"]["classes"][0]["growth"]["heap"] = json!([0]);
+    saved["native_tiberium"]["classes"][0]["growth_bitmap"] = json!([[10, 10]]);
+    s.sim.production.ore_growth_state = serde_json::from_value(saved).unwrap();
+    let path = s.sim.path_grid_snapshot();
+    s.sim
+        .advance_tick(&[], Some(&s.rules), path.as_deref(), Some(registry()), 67);
+    let saved = serde_json::to_value(&s.sim.production.ore_growth_state).unwrap();
+    let class = &saved["native_tiberium"]["classes"][0];
+    let entries = class["growth"]["entries"].as_array().unwrap();
+    assert_eq!(
+        entries.len(),
+        1,
+        "growth-off rebuild seeds nothing; forced new placement still appends"
+    );
+    let at = (
+        entries[0]["rx"].as_u64().unwrap() as u16,
+        entries[0]["ry"].as_u64().unwrap() as u16,
+    );
+    assert_ne!(at, (10, 10));
+    assert_eq!(
+        s.sim
+            .overlay_grid
+            .as_ref()
+            .unwrap()
+            .cell(at.0, at.1)
+            .overlay_data,
+        3
+    );
+    assert_eq!(class["growth_bitmap"], json!([[at.0, at.1]]));
+    assert_eq!(class["spread"]["entries"], json!([]));
+    assert_eq!(
+        s.sim
+            .overlay_grid
+            .as_ref()
+            .unwrap()
+            .cell(10, 10)
+            .overlay_data,
+        2
+    );
+}
