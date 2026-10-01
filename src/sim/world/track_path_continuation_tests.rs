@@ -322,7 +322,7 @@ fn deferred_restore_completes_toward_navcom_over_a_stale_destination() {
     e.navigation.nav_com = Some(NavTargetRef::cell(10, 13));
     e.navigation.pending_arrival_clear = true;
     sim.session.binary_frame = 101;
-    sim.complete_pending_order(id, Some(&rules));
+    sim.complete_pending_order(id, Some(&rules), None);
     let e = sim.substrate.entities.get(id).unwrap();
     let destination = e.drive_locomotion.as_ref().unwrap().destination.unwrap();
     assert_eq!((destination.x / 256, destination.y / 256), (10, 13));
@@ -349,7 +349,7 @@ fn deferred_order_with_a_retained_destination_reschedules_without_a_setter() {
     e.navigation.pending_arrival_clear = true;
     e.navigation.path_runtime.start_movement(100, 9);
     sim.session.binary_frame = 101;
-    sim.complete_pending_order(id, Some(&rules));
+    sim.complete_pending_order(id, Some(&rules), None);
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(
         e.movement_target.as_ref().unwrap().final_goal,
@@ -1143,7 +1143,10 @@ fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
     );
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(20, 10)));
-    assert!(e.navigation.pending_arrival_clear);
+    assert!(
+        !e.navigation.pending_arrival_clear,
+        "the setter ran; none is owed"
+    );
     let drive = e.drive_locomotion.as_ref().unwrap();
     let restored = drive.destination.unwrap();
     assert_eq!((restored.x / 256, restored.y / 256), (20, 10));
@@ -1336,6 +1339,110 @@ fn damaged_hover_unit_reaches_a_free_depot_pad() {
         "hover never docked: at {:?}, phase {:?}",
         (e.position.rx, e.position.ry),
         e.dock_state.as_ref().map(|s| s.phase)
+    );
+}
+
+const WALK_AND_HOVER: &str = "[HOV]\nStrength=300\nSpeed=6\nSpeedType=Hover\n\
+    MovementZone=Normal\nLocomotor={4A582742-9839-11d1-B709-00A024DDAFD1}\n\
+    [WLK]\nStrength=300\nSpeed=6\nSpeedType=Foot\nMovementZone=Normal\n\
+    Locomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n";
+
+fn walk_and_hover_fixture() -> (
+    Simulation,
+    RuleSet,
+    crate::map::overlay_types::OverlayTypeRegistry,
+) {
+    fixture_with_rules(&format!(
+        "{}{WALK_AND_HOVER}",
+        UNITS.replace("1=SHP\n", "1=SHP\n2=HOV\n3=WLK\n")
+    ))
+}
+
+fn advance_until_order_ends(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    id: u64,
+) -> (u16, u16) {
+    for _ in 0..900 {
+        sim.advance_tick(&[], Some(rules), None, Some(registry), 67);
+        let e = sim.substrate.entities.get(id).unwrap();
+        if e.navigation.nav_com.is_none() {
+            return (e.position.rx, e.position.ry);
+        }
+    }
+    let e = sim.substrate.entities.get(id).unwrap();
+    panic!("order never ended: at {:?}", (e.position.rx, e.position.ry));
+}
+
+/// A restore that could not reach the class setter (the entity-local target
+/// expiry restore) leaves the saved NavCom with the setter owed. Restore_Mission
+/// (0x004D8F80) calls vt+0x480(saved, 1): the Infantry setter for a Walk
+/// infantryman, Unit 0x741970 for a Hover or Walk Unit, whose Foot tail reaches
+/// Hover Move_To (0x00514D90) or Walk Move_To (0x0075ACB0). The owed call runs
+/// at the next Process entry and the object walks its restored order.
+#[test]
+fn owed_restore_setter_moves_walk_and_hover_objects_to_the_saved_order() {
+    for kind in ["HOV", "WLK", "ENGINEER"] {
+        let (mut sim, rules, registry) = walk_and_hover_fixture();
+        let id = sim
+            .spawn_object(kind, "Americans", 10, 10, 0, &rules)
+            .unwrap();
+        let e = sim.substrate.entities.get_mut(id).unwrap();
+        crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
+            e,
+            Some(NavTargetRef::cell(14, 12)),
+        );
+        e.navigation.pending_arrival_clear = true;
+        e.navigation.nav_queue = vec![NavTargetRef::cell(16, 12)];
+        sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
+        let e = sim.substrate.entities.get(id).unwrap();
+        assert!(!e.navigation.pending_arrival_clear, "{kind}");
+        // Unit 0x741970 clears NavQueue for clear_queue = 1; Infantry
+        // 0x0051AA40 and the Foot tail 0x004D94B0 never read NavQueue.
+        assert_eq!(
+            e.navigation.nav_queue.is_empty(),
+            kind != "ENGINEER",
+            "{kind}: NavQueue after the owed setter"
+        );
+        assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(14, 12)));
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .navigation
+            .nav_queue
+            .clear();
+        assert_eq!(
+            advance_until_order_ends(&mut sim, &rules, &registry, id),
+            (14, 12),
+            "{kind}"
+        );
+    }
+}
+
+/// Foot Enter_Idle_Mode's NavQueue arm (0x004D838E..0x004D83CA) calls
+/// vt+0x480(queue[0], 0) and then shifts the queue. For a Hover Unit the Unit
+/// setter runs in that call, so nothing is left owed.
+#[test]
+fn idle_mode_queue_head_runs_the_hover_unit_setter_in_the_same_call() {
+    let (mut sim, rules, _) = walk_and_hover_fixture();
+    let id = sim
+        .spawn_object("HOV", "Americans", 10, 10, 0, &rules)
+        .unwrap();
+    let e = sim.substrate.entities.get_mut(id).unwrap();
+    e.navigation.nav_queue = vec![NavTargetRef::cell(14, 12), NavTargetRef::cell(16, 12)];
+    sim.unit_enter_idle_mode(id, Some(&rules));
+    let e = sim.substrate.entities.get(id).unwrap();
+    assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(14, 12)));
+    assert_eq!(e.navigation.nav_queue, vec![NavTargetRef::cell(16, 12)]);
+    assert!(!e.navigation.pending_arrival_clear);
+    assert!(
+        e.locomotor
+            .as_ref()
+            .and_then(|loco| loco.hover_runtime())
+            .is_some_and(|hover| hover.is_moving()),
+        "Hover Move_To ran"
     );
 }
 

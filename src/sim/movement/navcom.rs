@@ -348,7 +348,8 @@ fn reset_drive_track_runtime(entity: &mut GameEntity) {
 /// waypoint into a fresh destination. Dying/limbo objects skip the clear
 /// entirely (only the ended track's aim point drops). A track that ends away
 /// from the owner destination (or a non-cell owner target) keeps the
-/// destination; the deferred process-entry pass repaths toward it next tick.
+/// destination; `Simulation::complete_pending_order` finishes it at the next
+/// Process entry.
 pub(super) fn finish_drive_navigation(
     entity: &mut GameEntity,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
@@ -422,8 +423,8 @@ pub(super) fn finish_drive_navigation(
 /// pair immediately, return the drive runtime to rest, and — only under a
 /// current Move mission (the native arrival gate) — advance the queued
 /// waypoint into a fresh destination. The path toward the fresh destination
-/// is built by the deferred process-entry pass at the top of the next
-/// movement tick, matching the native next-process track build.
+/// is built at the next Process entry (`Simulation::complete_pending_order`),
+/// matching the native next-process track build.
 fn finish_drive_arrival(
     entity: &mut GameEntity,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
@@ -449,8 +450,8 @@ fn finish_drive_arrival(
 
 /// Track/path execution finished away from the owner destination (or the
 /// owner target is not a plain cell): the owner keeps its destination, and
-/// the deferred pass at the top of the next movement tick rebuilds a path
-/// toward it — the drive locomotor's process-entry fallback. Arrivals AT the
+/// `Simulation::complete_pending_order` finishes it at the next Process
+/// entry — the drive locomotor's process-entry fallback. Arrivals AT the
 /// owner destination never come through here; they clear immediately via
 /// [`finish_drive_arrival`].
 pub(super) fn defer_drive_arrival_clear(entity: &mut GameEntity) -> bool {
@@ -460,28 +461,6 @@ pub(super) fn defer_drive_arrival_clear(entity: &mut GameEntity) -> bool {
     entity.navigation.pending_arrival_clear = true;
     reset_drive_track_runtime(entity);
     true
-}
-
-pub(super) fn process_pending_empty_drive_arrivals_in_order(
-    entities: &mut EntityStore,
-    ids: &[u64],
-) {
-    for &id in ids {
-        let Some(entity) = entities.get_mut(id) else {
-            continue;
-        };
-        if !entity.navigation.pending_arrival_clear {
-            continue;
-        }
-        if entity.movement_target.is_some()
-            || crate::sim::movement::track_head::committed_track_head(entity).is_some()
-        {
-            continue;
-        }
-        if entity.navigation.nav_queue.is_empty() {
-            set_destination_internal_null(entity);
-        }
-    }
 }
 
 fn drive_set_destination(
