@@ -389,9 +389,8 @@ impl Simulation {
             .entities
             .get(id)
             .ok_or("retired Drive/Ship fresh owner")?;
-        let desired = u16::from(direction) << 13;
-        if actor.body_facing_current(frame) != desired {
-            self.track_do_turn(id, desired);
+        if !fresh_heading_ready(actor.body_facing_current(frame), direction) {
+            self.track_do_turn(id, u16::from(direction) << 13);
             return Ok(false);
         }
         //4B345B..4B34D1: Mark0, Unit+1AC(cell, dir, height, 0, 1), Mark1.
@@ -1379,4 +1378,12 @@ impl FreshCall<'_> {
     fn with_args(&self, args: ProcessMovementArgs) -> Self {
         Self { args, ..*self }
     }
+}
+
+/// Drive 0x4B3408..0x4B3458 / Ship 0x6A2A57 twin: the fresh head needs the
+/// body facing exactly on the head direction's octant (`direction << 13`),
+/// with no tolerance; otherwise Process turns and returns. Original rows:
+/// tools/spatial_oracle/drive_fresh_turn.json.
+pub(super) fn fresh_heading_ready(body_facing: u16, direction: u8) -> bool {
+    body_facing == u16::from(direction) << 13
 }

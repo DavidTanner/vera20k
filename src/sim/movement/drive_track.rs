@@ -3460,18 +3460,6 @@ pub(crate) fn occupant_slot_a4_answers_true(
     occupant_can_use_track(track, path_head)
 }
 
-/// Select the appropriate RawTrack index from a TurnTrack.
-///
-/// Uses the short track variant for fast vehicles.
-#[cfg(test)]
-pub fn select_raw_track_index(turn: &TurnTrack, use_short: bool) -> u8 {
-    if use_short {
-        turn.short_track
-    } else {
-        turn.normal_track
-    }
-}
-
 /// Get the RawTrack metadata by index.
 pub fn raw_track_meta(index: u8) -> Option<&'static RawTrack> {
     RAW_TRACKS.get(index as usize)
@@ -3540,40 +3528,6 @@ pub fn select_drive_track(
     })
 }
 
-/// Synthesize the substitute selection used when pathfinding produces a turn
-/// too sharp for any precomputed curve (`select_drive_track` returned `None`).
-/// Returns the `cur_dir * 9` TurnTrack entry — RawTrack 1 (cardinals) or 2
-/// (diagonals) transformed for the unit's current facing. The unit drives
-/// forward in `current_facing` for one cell; the caller is responsible for
-/// consuming the impossible path step.
-///
-/// Returns `None` defensively if RawTrack 1 or 2 point data isn't loaded
-/// (never expected in normal operation — these are foundational tracks).
-#[cfg(test)]
-pub fn build_sharp_turn_fallback(current_facing: u8) -> Option<DriveTrackSelection> {
-    let cur_dir = facing_to_dir(current_facing);
-    let turn_index = cur_dir * FACING_DIRECTIONS + cur_dir; // cur_dir * 9
-    let turn_track = TURN_TRACKS.get(turn_index)?;
-    if turn_track.normal_track == 0 {
-        return None; // structurally impossible for cur_dir*9 entries; defensive
-    }
-    let raw_meta = RAW_TRACKS.get(turn_track.normal_track as usize)?;
-    let points = raw_track_points(turn_track.normal_track);
-    if points.is_empty() {
-        return None;
-    }
-    Some(DriveTrackSelection {
-        turn_track_index: turn_index,
-        raw_track_index: turn_track.normal_track,
-        entry_index: raw_meta.entry_index,
-        chain_index: raw_meta.chain_index,
-        occupation_handoff_point_index: raw_meta.occupation_handoff_point_index,
-        points_count: raw_meta.points_count,
-        target_facing: turn_track.target_facing,
-        flags: turn_track.flags,
-    })
-}
-
 // ---------------------------------------------------------------------------
 // Path-window track selection — the retail basis
 // ---------------------------------------------------------------------------
@@ -3583,9 +3537,6 @@ pub fn build_sharp_turn_fallback(current_facing: u8) -> Option<DriveTrackSelecti
 /// the two-node queue shift with a two-cell reserved head over the one-node
 /// shift with a one-cell head.
 pub const TURN_TRACK_TURNS_FLAG: u8 = 0x08;
-
-/// Facing units per direction octant (256 / 8).
-const OCTANT_FACING_STEP: u8 = 0x20;
 
 /// The fresh selector `to + from*8` (Drive 0x4B4016..0x4B4034, Ship
 /// 0x6A3642..0x6A3660): a null entry takes the straight `from*9` diagonal,
@@ -3601,124 +3552,6 @@ pub(crate) fn fresh_turn_index(from: u8, to: u8) -> usize {
     } else {
         turn_index
     }
-}
-
-/// Cell delta of each direction octant, `util::direction::DIRECTION_DELTAS`.
-const OCTANT_CELL_DELTA: [(i32, i32); FACING_DIRECTIONS] = crate::util::direction::DIRECTION_DELTAS;
-
-/// Direction octant of a one-cell path step. `None` for a null step.
-fn octant_from_cell_delta(dx: i32, dy: i32) -> Option<usize> {
-    crate::util::direction::direction_from_delta(dx.signum(), dy.signum()).map(usize::from)
-}
-
-/// A curve chosen from the path window, with the head cell it reserves.
-#[derive(Debug, Clone, Copy)]
-pub struct DriveTrackPlan {
-    /// The chosen TurnTrack/RawTrack pair.
-    pub selection: DriveTrackSelection,
-    /// Cell delta from the mover's current cell to the reserved head cell.
-    /// One cell for a non-turning curve, two for a `TURN_TRACK_TURNS_FLAG` curve.
-    pub head_dx: i32,
-    pub head_dy: i32,
-    /// Path nodes this curve spans: 1 for the one-node shift, 2 for the
-    /// two-node shift that a turning curve takes.
-    pub nodes: usize,
-}
-
-impl DriveTrackPlan {
-    /// True when the curve spans two path nodes.
-    #[cfg(test)]
-    pub fn spans_two_nodes(&self) -> bool {
-        self.nodes == 2
-    }
-}
-
-/// What the Drive/Ship selection step decided for this frame.
-#[derive(Debug, Clone, Copy)]
-pub enum DriveTrackDecision {
-    /// The body is not yet on the octant of the head path node. gamemd commands
-    /// the turn and returns without touching the path queue or taking a step;
-    /// the caller must install no curve and consume no node this frame.
-    TurnFirst {
-        /// Exact octant facing the body must reach before selection may run.
-        desired_facing: u8,
-    },
-    /// Install this curve.
-    Select(DriveTrackPlan),
-    /// No curve is available (degenerate step, or track point data missing).
-    Unavailable,
-}
-
-/// Choose the drive curve for a mover standing on its current cell with the
-/// path window `current -> current+from_delta -> +to_delta`.
-///
-/// gamemd indexes the turn table by the two leading *path* directions —
-/// `turn_index = path[1]_dir + path[0]_dir * 8` — never by the mover's body
-/// facing. A null curve falls back to `path[0]_dir * 9`, the straight run in
-/// the head node's own direction. The body facing enters only as the exact
-/// precondition below: an in-place turn is commanded whenever it differs from
-/// the head node's octant, and no curve is selected until it matches.
-///
-/// `to_delta` is `None` at the last step of a path, which gamemd normalises to
-/// `to := from` (its queue terminator).
-pub fn plan_drive_track_from_path(
-    body_facing: u16,
-    from_delta: (i32, i32),
-    to_delta: Option<(i32, i32)>,
-) -> DriveTrackDecision {
-    let Some(from_dir) = octant_from_cell_delta(from_delta.0, from_delta.1) else {
-        return DriveTrackDecision::Unavailable;
-    };
-
-    // Exact-facing precondition. Zero tolerance: gamemd compares the 16-bit
-    // facing against `path[0]_dir << 13`; do not truncate the live sample.
-    // Original gate and one-bit cases: drive_fresh_turn.json (4B3408).
-    let desired_facing = (from_dir as u8).wrapping_mul(OCTANT_FACING_STEP);
-    if body_facing != u16::from(desired_facing) << 8 {
-        return DriveTrackDecision::TurnFirst { desired_facing };
-    }
-
-    let to_dir = to_delta
-        .and_then(|(dx, dy)| octant_from_cell_delta(dx, dy))
-        .unwrap_or(from_dir);
-    let turn_index = fresh_turn_index(from_dir as u8, to_dir as u8);
-
-    let turn = &TURN_TRACKS[turn_index];
-    let raw_index = turn.normal_track;
-    if raw_index == 0 {
-        return DriveTrackDecision::Unavailable;
-    }
-    let Some(raw_meta) = RAW_TRACKS.get(raw_index as usize) else {
-        return DriveTrackDecision::Unavailable;
-    };
-    if raw_track_points(raw_index).is_empty() {
-        return DriveTrackDecision::Unavailable;
-    }
-
-    let two_node = turn.flags & TURN_TRACK_TURNS_FLAG != 0;
-    let (from_dx, from_dy) = OCTANT_CELL_DELTA[from_dir];
-    let (head_dx, head_dy) = if two_node {
-        let (to_dx, to_dy) = OCTANT_CELL_DELTA[to_dir];
-        (from_dx + to_dx, from_dy + to_dy)
-    } else {
-        (from_dx, from_dy)
-    };
-
-    DriveTrackDecision::Select(DriveTrackPlan {
-        selection: DriveTrackSelection {
-            turn_track_index: turn_index,
-            raw_track_index: raw_index,
-            entry_index: raw_meta.entry_index,
-            chain_index: raw_meta.chain_index,
-            occupation_handoff_point_index: raw_meta.occupation_handoff_point_index,
-            points_count: raw_meta.points_count,
-            target_facing: turn.target_facing,
-            flags: turn.flags,
-        },
-        head_dx,
-        head_dy,
-        nodes: if two_node { 2 } else { 1 },
-    })
 }
 
 /// Quantize a 0-255 facing to a direction index 0-7 (N, NE, E, SE, S, SW, W, NW).
