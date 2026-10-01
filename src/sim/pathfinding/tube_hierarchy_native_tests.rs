@@ -178,7 +178,9 @@ fn tube_hierarchy_generated_records_connect_full_and_local_precheck() {
             graph.zone_at(48, 32),
             MovementZone::Normal,
             &ZonePrecheckExclusions::default(),
+            None,
         )
+        .unwrap()
     };
     let mut hierarchy = build_zone_hierarchy(&base, Some(&terrain), &[], width, height);
     assert!(

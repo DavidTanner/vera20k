@@ -1914,6 +1914,60 @@ fn test_entity_blocks_fully_surrounded_no_path() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn original_hills_code2_clearing_queue_costs_match_the_existing_cost_owner() {
+    let packet: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/astar_hills_markers.json"
+    ))
+    .unwrap();
+    assert_eq!(packet["code_unchanged"], true);
+    let native = &packet["blocker_prestate"];
+    assert_eq!(native["on_bridge"], false);
+    let cell = (
+        native["coord"][0].as_u64().unwrap() as u16,
+        native["coord"][1].as_u64().unwrap() as u16,
+    );
+    let direction = native["supplied_queue"][0].as_u64().unwrap() as usize;
+    let delta = crate::util::direction::DIRECTION_DELTAS[direction];
+    let next = (
+        (i32::from(cell.0) + delta.0) as u16,
+        (i32::from(cell.1) + delta.1) as u16,
+    );
+    // The owner consumes its existing selected-layer next-cell projection.
+    // Hills production integration independently checks the live code2 and
+    // queue/marker/search route; this pins original429830 scalar arithmetic.
+    let mut blockers = LayeredEntityBlockMap::new();
+    blockers.insert(
+        MovementLayer::Ground,
+        cell,
+        EntityBlockEntry {
+            next_cell: Some(next),
+            cost_code: 2,
+            blocker_is_infantry: false,
+        },
+    );
+    let controls = packet["costs"].as_array().unwrap();
+    assert_eq!(controls.len(), 6);
+    for control in controls {
+        assert_eq!(control["concrete_class"], 2);
+        assert_eq!(control["original_cost_trace"]["candidate_marked"], false);
+        assert_eq!(control["rng_before"], control["rng_after"]);
+        let actual = compute_code2_multiplier(
+            control["urgency"].as_u64().unwrap() as u8,
+            cell,
+            MovementLayer::Ground,
+            &blockers,
+        );
+        assert_eq!(
+            f64::from(actual),
+            control["cost"].as_f64().unwrap(),
+            "native Foot+578={} urgency={}",
+            control["supplied_speed_f64_bits"],
+            control["urgency"]
+        );
+    }
+}
+
+#[test]
 fn code2_urgency_2_routes_around_blocker() {
     // Urgency=2 → 1000x multiplier, so A* should detour one cell off the direct row.
     let grid = PathGrid::new(10, 3);
@@ -2528,7 +2582,12 @@ fn astar_hierarchy_marker_follows_the_marked_straight_path() {
     )
     .expect("marked straight path should succeed");
 
-    assert_eq!(path, vec![(0, 0), (1, 0), (2, 0), (3, 0)]);
+    assert_eq!(
+        path.into_iter()
+            .map(|step| (step.rx, step.ry))
+            .collect::<Vec<_>>(),
+        vec![(0, 0), (1, 0), (2, 0), (3, 0)]
+    );
 }
 
 // ---------------------------------------------------------------------------

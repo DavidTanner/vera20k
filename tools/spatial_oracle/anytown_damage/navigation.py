@@ -16,7 +16,7 @@ class Navigation(Geometry):
  nav_snapshot=ConnectivityRepair.nav_snapshot
  graph_snapshot=HierarchyRepair.graph_snapshot
  dummy_snapshot=HierarchyRepair.dummy_snapshot
- def __init__(self,r,t,tiles,*,case=None,create_actor=True,actor_coord=(87,53),actor_height=4,admission_cells=None,stages=None,scenario_theater=None):
+ def __init__(self,r,t,tiles,*,case=None,create_actor=True,actor_coord=(87,53),actor_height=4,admission_cells=None,stages=None,scenario_theater=None,cell_inputs_only=False):
   self.create_actor=create_actor;self.actor_coord=actor_coord;self.actor_height=actor_height
   self.admission_cells=admission_cells if admission_cells is not None else [(87,53),(86,54),(87,54),(88,54),(87,55),(85,54),(89,54)]
   self.stages=stages;self.tile_count=t['count']
@@ -59,7 +59,15 @@ class Navigation(Geometry):
   assert sr.u32(u,0xA8ED38)==t['count']
   print('native cells and tile heads ready',flush=True)
   self.activity='initial_recalc';self.sweeps=[];self.trace.clear();self.writes.clear()
+  cell_rng_before={k:sr.rng_state(u,p) for k,p in self.rngs.items()}
   self.sweep()
+  if cell_inputs_only:
+   # Reuse the authentic Cell/type/TMP input producer without executing later
+   # Terrain placement, graph construction or actor setup. No native return is
+   # substituted to impose this fixture boundary.
+   self.cell_inputs_rng=dict(before=cell_rng_before,after={k:sr.rng_state(u,p) for k,p in self.rngs.items()})
+   self.initial_cells=self.cell_plane();self.trace.clear();self.writes.clear();self.pending.clear();self.reached={};self.activity='cell_inputs'
+   return
   self.activity='terrain_place';self.terrain_placement=[]
   u.mem_write(0xA8E988,dwords(0x7EB6D4,self.allocate(1024*4),1024,1,0,10))
   for key,name,line in sections['Terrain']:
@@ -72,7 +80,22 @@ class Navigation(Geometry):
   self.activity='final_recalc';self.final_tiberium_value=self.call(0x568BB0,args=(0,),count=80000000)
   print('native cell planes established',dict(self.counters),flush=True)
   self.initial_cells=self.cell_plane();self.trace.clear();self.writes.clear();self.pending.clear();self.reached={}
-  self.activity='connectivity';u.mem_write(MAP+0x18,bytes(13*4));u.mem_write(MAP+0x54,dwords(0,0,1,0,10))
+  self.finish_graphs();self.actor_constructor_before={k:sr.rng_state(u,p) for k,p in self.rngs.items()};self.trace.clear()
+  if self.create_actor:self.build_actor(r.mtnk)
+  self.actor_constructor=dict(before_rng=self.actor_constructor_before,after_rng={k:sr.rng_state(u,p) for k,p in self.rngs.items()},trace=list(self.trace));self.initial=self.state();print('native hierarchy established',[len(x['records']) for x in self.initial['graphs']],flush=True)
+  self.activity='bridge'
+ def finish_graphs(self,*,compute_bridge_records=False):
+  """Build original graphs over this VM's already-constructed Cell state.
+
+  This owner reuses its established vector caller-boundary headers and native
+  56C510/581F90/42C1C0 chain. It does not reconstruct Cells or bridge stamps.
+  """
+  u=self.uc;case=self.case
+  self.activity='connectivity';u.mem_write(MAP+0x18,bytes(13*4))
+  if compute_bridge_records:
+   from tools.spatial_oracle.bridge_records import compute_on_map
+   self.bridge_record_production=compute_on_map(self)
+  else:u.mem_write(MAP+0x54,dwords(0,0,1,0,10))
   for address in (0x49F0E0,0x49F190,0x49F2F0,0x49F2D0,0x49F280):self.call(address,count=10000)
   root=self.allocate(16);buckets=self.allocate(256*24);template=self.allocate(24);self.call(0x58AFF0,this=template,args=(0,0),count=1000);u.mem_write(template,dwords(0x7ED540));u.mem_write(template+16,dwords(0,20));u.mem_write(buckets,bytes(u.mem_read(template,24))*256);u.mem_write(root,dwords(buckets,0x56CB80,256,20));u.mem_write(MAP+0x14,dwords(root));self.call(0x56C510,count=60000000)
   print('native base graph established',self.nav_snapshot()['zone_count'],flush=True)
@@ -80,10 +103,7 @@ class Navigation(Geometry):
   for level in range(3):
    header=MAP+0x8C+level*24;self.call(0x58AE60,this=header,args=(0,0),count=1000);u.mem_write(header,dwords(0x7ED4A0));u.mem_write(header+16,dwords(0,w*h*4//(1<<(2*(level+1)))));buckets=self.allocate(256*24);root=self.allocate(16);u.mem_write(root,dwords(buckets,0x56CB80,256,20));u.mem_write(MAP+0x80+level*4,dwords(root));u.mem_write(buckets,bucket_template*256)
   for level in (2,1,0):self.call(0x581F90,args=(level,),count=80000000)
-  self.call(0x42C1C0,this=0x87E8B8,count=10000000);self.actor_constructor_before={k:sr.rng_state(u,p) for k,p in self.rngs.items()};self.trace.clear()
-  if self.create_actor:self.build_actor(r.mtnk)
-  self.actor_constructor=dict(before_rng=self.actor_constructor_before,after_rng={k:sr.rng_state(u,p) for k,p in self.rngs.items()},trace=list(self.trace));self.initial=self.state();print('native hierarchy established',[len(x['records']) for x in self.initial['graphs']],flush=True)
-  self.activity='bridge'
+  self.call(0x42C1C0,this=0x87E8B8,count=10000000)
  def sweep(self):
   self.call(0x578350);coords=[]
   while True:

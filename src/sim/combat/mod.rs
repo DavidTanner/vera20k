@@ -50,6 +50,7 @@ pub(crate) mod rof;
 pub mod smudge_dispatch;
 mod threat_mask;
 mod threat_posed;
+pub(crate) use threat_posed::live_threat_posed;
 pub(crate) mod threat_range;
 pub(crate) mod veterancy;
 pub(crate) mod world_receiver;

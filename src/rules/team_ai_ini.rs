@@ -70,7 +70,12 @@ impl TeamTypeIni {
     }
 
     fn overlay(&mut self, section: &IniSection, source: TeamAiDefinitionSource) {
-        self.fields.overlay(section);
+        // Original TeamType ReadINI6F1371..6F1391 passes retained +F2 to
+        // ReadBool5295F0. Preserve reached values through the shared INI
+        // projection so malformed later reads keep that field, rather than
+        // falling back to its constructor default. Executable controls:
+        // tools/spatial_oracle/astar_threat_inputs.json (team_readers).
+        self.fields.overlay_rules_pass(section);
         self.source = source;
     }
 }
@@ -1064,7 +1069,11 @@ mod tests {
             .iter()
             .find(|trigger| trigger.id == "0CAD0DCC-G")
             .expect("stock Allied Anti-Nuke trigger");
-        assert_eq!(anti_nuke.display_name, "Allied Anti-Nuke 1");
+        // Retail token0 ends in a space before the comma. Original41F5D3
+        // strtok7C9CC2 preserves it;41F5E5..41F60F copies the name without
+        // strtrim (the next reference token is trimmed at41F63E instead).
+        // Shared executable token controls: tools/rules_oracle/ini_token_readers.json.
+        assert_eq!(anti_nuke.display_name, "Allied Anti-Nuke 1 ");
         assert_eq!(anti_nuke.primary_team_type.as_deref(), Some("08DA125C-G"));
         assert_eq!(anti_nuke.owner, AiTriggerOwnerIni::All);
         assert_eq!(anti_nuke.tokens[3], "9");

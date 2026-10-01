@@ -69,6 +69,20 @@ pub(super) fn record_replay_diagnostic(
             })
         })
         .collect();
+    let retained_path_inputs = serde_json::json!({
+        "navigation_present":sim.zone_grid.is_some(),
+        "houses":sim.houses.iter().map(|(owner,house)| serde_json::json!({
+            "owner":sim.resolve(*owner),
+            "spatial_grid_all_zero":house.spatial_threat_values().iter().all(|&value|value==0),
+        })).collect::<Vec<_>>(),
+        "actors":actors.iter().map(|actor| serde_json::json!({
+            "id":actor.stable_id(),
+            "coefficient_bits":actor.navigation.path_threat_coefficient().bits(),
+            "cached_contribution":actor.cached_spatial_threat(),
+            "team_override":sim.team_script_vm.member_avoids_threats(actor.stable_id()),
+        })).collect::<Vec<_>>(),
+        "team_count":sim.team_script_vm.teams_in_order().count(),
+    });
     serde_json::to_writer(
         &mut *writer,
         &serde_json::json!({
@@ -81,7 +95,7 @@ pub(super) fn record_replay_diagnostic(
             "lifecycle_outputs_accumulated":format!("{:?}",sim.lifecycle_outputs),
             "rng":{"scenario":sim.scenario_rng.native_state_hex(),
                 "main":sim.main_rng.native_state_hex(),"mapgen":sim.mapgen_rng.native_state_hex()},
-            "draws":draws,
+            "draws":draws,"retained_path_inputs":retained_path_inputs,
         }),
     )
     .unwrap();
@@ -440,7 +454,18 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // which the state hash folded. Ceremony: main and this change, each with only
 // those fields dropped from the hash (probe not committed), printed the same
 // value for all three replay pins (bridge, global, slice 6). Previous: 0x7099_F3F4_CCAB_0F1E.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xEB54_33C6_1160_7535;
+// Historical retained-path integration compared all601 main7412/candidate
+// observations after omitting newly retained actor fields and RNG source
+// locations; gameplay observations matched and only hash composition moved.
+// That pre-#962/#963 candidate pin was 0xB252_83B6_7486_B760. The bounded Rust
+// receipt remains tools/spatial_oracle/astar_path_finishing_replay/receipt.json.
+// Main963 retained-path composition: the same-binary control reproduces
+// 0xEB54_33C6_1160_7535 by omitting only navigation history, House threat, Foot530
+// and cached Techno508 hash feeds. All601 control/current observations
+// match exactly except tick hashes, including full actor state and all
+// three RNG streams/draws/caller positions. The temporary gate was removed.
+// Rust-only receipt: tools/spatial_oracle/astar_path_finishing_replay/main963/receipt.json.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x8976_4F17_0FCF_A3FB;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -692,9 +717,14 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
 
     // ---- Record pass: build a ReplayLog through the live advance_tick path. ----
     let mut rec = Simulation::with_seed(HARNESS_SEED);
-    seed_scenario(&mut rec, &rules, &overlays);
     let mut diagnostic = replay_diagnostic_file("global");
-    record_replay_diagnostic(&mut diagnostic, &rec, None, &[], &[]);
+    let mut seed = || seed_scenario(&mut rec, &rules, &overlays);
+    let (_, seed_draws) = if diagnostic.is_some() {
+        crate::sim::rng::trace_draws(seed)
+    } else {
+        (seed(), Vec::new())
+    };
+    record_replay_diagnostic(&mut diagnostic, &rec, None, &[], &seed_draws);
     let mut log = ReplayLog::new(ReplayHeader {
         version: 1,
         pixel_conversion_bounds: rec.session.pixel_conversion_bounds,
@@ -1183,6 +1213,8 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
         .unwrap();
         let mut sim = Simulation::with_seed(DENSE_SEED);
         crate::sim::arena_fixture::supply_native_map(&mut sim);
+        // Source and loaded graphs both use the retained map/bounds inputs.
+        assert!(sim.rebuild_dynamic_navigation(&rules));
         let grid = (*sim.path_grid_snapshot().unwrap()).clone();
         sim.spawn_from_map(
             &[unit("Americans", "MTNK", 40, 5, EntityCategory::Unit)],
@@ -1248,8 +1280,28 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
             .sim;
         restored.retain_in_scenario_process_state_from(&sim);
         restored.restore_after_snapshot_load().unwrap();
-        // The map inputs come from the scenario, not the save.
-        crate::sim::arena_fixture::supply_native_map(&mut restored);
+        assert!(
+            restored
+                .zone_grid
+                .as_ref()
+                .unwrap()
+                .is_native_load_pending()
+        );
+        // Bind scenario terrain before original LoadContent's full hierarchy
+        // publication. A decoded saved base is not an active hierarchy.
+        restored.rebuild_caches_after_load(
+            sim.resolved_terrain.as_ref().unwrap().clone(),
+            sim.terrain_speed_config.clone(),
+            &rules,
+        );
+        assert!(restored.rebuild_dynamic_navigation(&rules));
+        assert!(
+            !restored
+                .zone_grid
+                .as_ref()
+                .unwrap()
+                .is_native_load_pending()
+        );
         for tick in 4..=35 {
             for world in [&mut sim, &mut restored] {
                 world.advance_tick(&[], Some(&rules), Some(&grid), None, HARNESS_TICK_MS);

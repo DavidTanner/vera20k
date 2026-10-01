@@ -302,7 +302,9 @@ impl FootPathRequest {
             Some(snap.movement_zone),
             Some(&blocks.1),
             None,
-            // One crush authority for every search; see `CrushCapability::of`.
+            //The admitted search prepares markers and applies native42AECA
+            //urgency downgrade through the live Foot provider.
+            //One crush authority for every search; see `CrushCapability::of`.
             super::MoverPathFacts::from_snapshot(snap, self.urgency),
             snap.allow_zone_hierarchy,
             foot_entry,

@@ -11,7 +11,7 @@ use super::PassengerRole;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::world::{
-    PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, Simulation,
+    PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, Simulation, UninitContext,
 };
 use crate::util::lepton;
 
@@ -187,8 +187,10 @@ fn restore_departure(
 
 /// Reveal a cargo passenger at an exit cell. The passenger's `sub_cell` and
 /// `facing` must already be written by the caller; its role is cleared here.
-/// The Reveal runs without rules, so the barrel elevation Unlimbo writes
-/// follow it here.
+/// The shared admitted Unlimbo owns barrel elevation, Techno6F6ED2 spatial
+/// threat publication and Foot4D72F4's type coefficient copy before departure
+/// queues its Move. Original reader/kernel and coefficient-copy execution:
+/// tools/spatial_oracle/astar_threat_inputs.json and astar_mtnk_inputs.json.
 pub(crate) fn reveal_unloaded_passenger(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -214,7 +216,7 @@ pub(crate) fn reveal_unloaded_passenger(
         ));
         passenger.passenger_role = PassengerRole::None;
     }
-    let outcome = sim.try_reveal_entity(
+    let outcome = sim.try_reveal_entity_with_context(
         passenger_id,
         RevealRequest {
             position: RevealPosition {
@@ -229,12 +231,10 @@ pub(crate) fn reveal_unloaded_passenger(
             placement: PlacementEvidence::MarkSucceeded,
             logic_eligible: true,
         },
+        UninitContext::with_rules(rules),
     );
     match outcome {
-        RevealOutcome::Revealed { .. } => {
-            sim.unlimbo_barrel_elevation(passenger_id, rules);
-            Ok(())
-        }
+        RevealOutcome::Revealed { .. } => Ok(()),
         other => Err(DepartureFailure::GroundReveal(other)),
     }
 }

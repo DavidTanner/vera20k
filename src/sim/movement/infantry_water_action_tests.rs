@@ -482,14 +482,21 @@ fn physical_wet_death_advances_in_logic_and_uninitializes_without_animation() {
     {
         let name = row["type_name"].as_str().unwrap();
         let (mut sim, id) = fixture(row, &rules, name);
-        sim.substrate
-            .entities
-            .get_mut(id)
-            .unwrap()
-            .lifecycle
-            .in_limbo = false;
-        // Supply the stationary wet actor's Logic registration separately
-        // from the constructor/DoAction receipts' excluded Unlimbo.
+        // This integration extends the constructor/DoAction receipt with an
+        // admitted stationary Unlimbo, including Techno+508 publication. The
+        // original action-only rows above still exclude water placement.
+        assert!(matches!(
+            sim.reveal_entity_with_rules(id, &rules),
+            crate::sim::world::RevealOutcome::Revealed { .. }
+        ));
+        assert!(
+            sim.substrate
+                .entities
+                .get(id)
+                .unwrap()
+                .cached_spatial_threat()
+                .is_some()
+        );
         sim.set_logic_order_for_test(vec![id]);
         sim.begin_infantry_death_sequence(
             id,

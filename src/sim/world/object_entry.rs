@@ -1199,6 +1199,22 @@ pub(crate) struct FootEntryReceiver<'a> {
 }
 
 impl FootEntryReceiver<'_> {
+    /// Shared56BCD0 read for this Foot's House. The map lookup and retained
+    /// grid remain with their owners; path consumers carry no second census.
+    pub(crate) fn house_threat(&self, coord: (i16, i16)) -> Result<i32, String> {
+        self.live
+            .sim
+            .house_threat_at_cell(self.mover.e.owner(), coord)
+    }
+    pub(crate) fn hierarchy_house_threat(&self, index: i32) -> Result<i32, String> {
+        self.live
+            .sim
+            .houses
+            .get(&self.mover.e.owner())
+            .ok_or("hierarchy threat requires a live House")?
+            .spatial_threat_at_padded_index(index)
+    }
+
     pub(crate) fn can_enter(
         &self,
         cell: Cell,

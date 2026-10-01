@@ -1126,9 +1126,13 @@ pub(crate) fn apply_skirmish_launch_alliances(
     sim: &mut Simulation,
     house_roster: &HouseRoster,
     session: &SkirmishLaunchSession,
+    rules: &RuleSet,
 ) {
     let slots = normalized_launch_slots(session);
-    sim.house_alliances = launch_alliance_map(house_roster, &slots, &session.mode);
+    sim.install_house_alliances(
+        launch_alliance_map(house_roster, &slots, &session.mode),
+        rules,
+    );
 }
 
 /// Test-only compatibility path for direct post-Fill launch fixtures.

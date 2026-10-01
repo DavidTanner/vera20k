@@ -9466,12 +9466,12 @@ fn stacking_cell_entry_verdict(
     }
 }
 
-/// MINIMAL TWO-MOVER CASE â€” no group order at all.
+/// Minimal two-mover case with independent destinations.
 ///
 /// Two vehicles are given INDEPENDENT Move commands with DIFFERENT targets,
 /// so each is a run of one and the group-destination distributor never runs.
-/// They are driven head-on through each other. Retail keeps ground vehicles
-/// strictly one-per-cell whether they are moving or stopped.
+/// They approach head-on. Measure separation and the bounded shared-cell
+/// episode through ordinary route selection and paid Drive curves.
 #[test]
 fn repro_two_moving_vehicles_pass_through_each_other() {
     let Some((mut sim, rules, grid)) = stacking_world(24) else {
@@ -9533,8 +9533,34 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
     let mut snapshots: Vec<String> = Vec::new();
     let mut closest_approach: Option<(i64, u64)> = None;
     let mut shared_cell_approach: Option<(u64, u64, i64, u64)> = None;
+    // Preserve the production route changes that select the subsequent Drive
+    // curves. The original finishing owner now supplies concrete CanEnter
+    // results; cell-occupancy presence alone no longer vetoes a shortcut.
+    let path_of = |sim: &Simulation, id| {
+        sim.substrate
+            .entities
+            .get(id)
+            .and_then(|e| e.movement_target.as_ref())
+            .map(|target| target.path.clone())
+            .unwrap_or_default()
+    };
+    let mut previous_paths = [path_of(&sim, west), path_of(&sim, east)];
+    let mut route_trace = vec![format!(
+        "initial west={:?} east={:?}",
+        previous_paths[0], previous_paths[1]
+    )];
     for tick in 0..400u64 {
         let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
+        for (index, id) in ids.iter().copied().enumerate() {
+            let path = path_of(&sim, id);
+            if path != previous_paths[index] {
+                route_trace.push(format!(
+                    "tick {tick} receiver {id} path {path:?}; {}",
+                    stacking_motion_state(&sim, id)
+                ));
+                previous_paths[index] = path;
+            }
+        }
         if let Some(gap) = stacking_gap(&sim, west, east)
             && closest_approach.is_none_or(|(best, _)| gap < best)
         {
@@ -9565,6 +9591,9 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
         }
     }
 
+    for row in &route_trace {
+        println!("    route: {row}");
+    }
     println!("west: {}", stacking_motion_state(&sim, west));
     println!("east: {}", stacking_motion_state(&sim, east));
     println!("shared ticks: {} -> {shared_ticks:?}", shared_ticks.len());
@@ -9630,7 +9659,17 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
     // Ratchets on the measured values, not native bounds; the bound is
     // printed.
     const VISIBLE_OVERLAP_LEPTONS: i64 = 108;
-    const SHARED_CELL_FLOOR_LEPTONS: i64 = 119;
+    // Original42ACF0 now downgrades a same-type/no-processed-peer requested
+    // urgency1 to0. Native execution pins that transition and the resulting
+    // clearing code2 cost1 rather than4 in astar_hills_markers.json. On main7412
+    // this fixture retained urgency1 and detoured at tick38. Holding only that
+    // value in the new marker owner exactly recovers main's path and127-lepton
+    // closest approach with no shared cells; native effective urgency instead
+    // selects the raw W/SW route and later shares one cell116 leptons apart.
+    // See astar_path_finishing_replay/marker_urgency for unchanged-binary
+    // causal transcripts. This floor remains a Rust regression ratchet, not a
+    // native two-vehicle world bound. The visible108 and one-tick limits remain.
+    const SHARED_CELL_FLOOR_LEPTONS: i64 = 116;
     const SHARED_CELL_TICKS: usize = 1;
     let bound = derived_min_transit_separation_leptons();
     let (gap, gap_tick) = closest_approach.expect("both movers sampled");

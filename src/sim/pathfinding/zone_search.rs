@@ -85,7 +85,8 @@ use super::{BlockerNeighborCounts, LayeredEntityBlockMap, MoverSearchFacts, Sear
 
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_hierarchy::{
-    ZoneLevelGraph, ZonePrecheckExclusions, ZonePrecheckOutcome, zone_precheck_flat,
+    ZoneLevelGraph, ZonePrecheckExclusions, ZonePrecheckOutcome, ZonePrecheckThreat,
+    zone_precheck_flat,
 };
 use super::zone_map::{ZoneGrid, ZoneId};
 use super::{
@@ -248,6 +249,7 @@ fn admit_zone_search<'a>(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     blocker_neighbor_counts: Option<&'a BlockerNeighborCounts>,
     query: &ZoneLadderQuery<'_>,
+    foot_entry: Option<&dyn super::SearchFootEntry>,
 ) -> Result<Option<HierarchyCorridor<'a>>, PathSearchFailure> {
     let entry = query.entry;
     if !can_use_reduced_zone_precheck(movement_zone) {
@@ -283,6 +285,19 @@ fn admit_zone_search<'a>(
         let goal_zone = zg
             .hierarchy_zone_at_native(0, entry.hierarchy_goal)
             .ok_or(PathSearchFailure::MissingHierarchyCell)?;
+        let padded_lookup = |index| {
+            foot_entry
+                .expect("provider present")
+                .hierarchy_house_threat(index)
+        };
+        let threat = foot_entry
+            .map(|provider| {
+                provider
+                    .finishing_threat_coefficient()
+                    .map(|coefficient| ZonePrecheckThreat::new(coefficient, &padded_lookup))
+            })
+            .transpose()
+            .map_err(PathSearchFailure::CellEntryUnavailable)?;
         return Ok(
             match zone_precheck_flat(
                 hierarchy,
@@ -290,7 +305,10 @@ fn admit_zone_search<'a>(
                 goal_zone,
                 movement_zone.unwrap_or(mz),
                 &ZonePrecheckExclusions::default(),
-            ) {
+                threat,
+            )
+            .map_err(PathSearchFailure::CellEntryUnavailable)?
+            {
                 ZonePrecheckOutcome::Passed(result) => {
                     let [marked_level0, ..] = result.marked;
                     Some(HierarchyCorridor {
@@ -426,6 +444,7 @@ pub(crate) fn find_path_zoned_marker(
         playfield_bounds,
     )
     .ok()
+    .map(|steps| steps.into_iter().map(|step| (step.rx, step.ry)).collect())
 }
 
 pub(crate) fn find_path_zoned_marker_detailed(
@@ -444,7 +463,7 @@ pub(crate) fn find_path_zoned_marker_detailed(
     facts: MoverSearchFacts<'_>,
     allow_zone_hierarchy: bool,
     playfield_bounds: Option<PlayfieldBounds>,
-) -> Result<Vec<(u16, u16)>, PathSearchFailure> {
+) -> Result<Vec<LayeredPathStep>, PathSearchFailure> {
     let entry = prepare_native_path_entry(
         zone_grid,
         resolved_terrain,
@@ -526,6 +545,7 @@ fn find_path_zoned_marker_inner(
         blocker_neighbor_counts,
     )
     .ok()
+    .map(|steps| steps.into_iter().map(|step| (step.rx, step.ry)).collect())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -544,7 +564,7 @@ fn find_flat_path_after_entry(
     marker_overlay: Option<&SearchMarkerOverlay>,
     facts: MoverSearchFacts<'_>,
     blocker_neighbor_counts: Option<&BlockerNeighborCounts>,
-) -> Result<Vec<(u16, u16)>, PathSearchFailure> {
+) -> Result<Vec<LayeredPathStep>, PathSearchFailure> {
     let goal_structural_bridge = resolved_terrain
         .and_then(|terrain| terrain.cell(goal.0, goal.1))
         .is_some_and(|cell| cell.bridge_facts.has_structural_bridge());
@@ -566,7 +586,24 @@ fn find_flat_path_after_entry(
             },
             entry,
         },
+        facts.foot_entry,
     )?;
+    //429C1A prepares the marker transaction only after42C900 has admitted
+    //the search. Keep its one owner borrowed through the cell A*.
+    let prepared = facts
+        .foot_entry
+        .map(|provider| provider.prepare_search_markers())
+        .transpose()
+        .map_err(PathSearchFailure::CellEntryUnavailable)?
+        .flatten();
+    let mut facts = facts;
+    if let Some((urgency, _)) = prepared.as_ref() {
+        facts.urgency = *urgency;
+    }
+    let marker_overlay = prepared
+        .as_ref()
+        .map(|(_, overlay)| &**overlay)
+        .or(marker_overlay);
     find_path_with_costs_marker(
         grid,
         start,
@@ -689,7 +726,22 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
             fallback_goal_layer: goal_layer,
             entry: &entry,
         },
+        facts.foot_entry,
     )?;
+    let prepared = facts
+        .foot_entry
+        .map(|provider| provider.prepare_search_markers())
+        .transpose()
+        .map_err(PathSearchFailure::CellEntryUnavailable)?
+        .flatten();
+    let mut facts = facts;
+    if let Some((urgency, _)) = prepared.as_ref() {
+        facts.urgency = *urgency;
+    }
+    let marker_overlay = prepared
+        .as_ref()
+        .map(|(_, overlay)| &**overlay)
+        .or(marker_overlay);
     find_layered_path_marker(
         grid,
         ground_blocks,

@@ -302,7 +302,7 @@ impl EntityStore {
     }
 
     /// Iterate all entities in deterministic stable_id order (immutable).
-    pub fn iter_sorted(&self) -> impl Iterator<Item = (u64, &GameEntity)> {
+    pub fn iter_sorted(&self) -> impl DoubleEndedIterator<Item = (u64, &GameEntity)> {
         self.entities.iter().map(|(&k, v)| (k, v.as_ref()))
     }
 
