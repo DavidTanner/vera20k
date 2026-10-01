@@ -2299,8 +2299,14 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
         .sim()
         .entities()
         .get(crosser)
-        .and_then(|entity| entity.movement_target.as_ref())
-        .map(|target| target.path.clone())
+        .filter(|entity| entity.movement_target.is_some())
+        // The route the first Process installed from the near approach.
+        .map(|entity| {
+            entity
+                .navigation
+                .path_replay
+                .installed_cells(span.approach_a)
+        })
         .unwrap_or_default();
     assert!(
         planned.contains(&park_cell),
