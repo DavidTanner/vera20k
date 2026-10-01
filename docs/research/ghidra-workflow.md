@@ -264,10 +264,20 @@ Notes for readers:
   the object built from it takes the key: `aCameoFile` and `pCameo`.
 - **Still placeholders.** `ObjectTypeClass` (0x294 bytes) has only `pVtable` typed, and
   `AircraftClass` (0x6D8 bytes) only `pType`.
-- **Receivers.** The receivers of the type-class methods are not typed yet. No
-  `UnitClass__` or `InfantryClass__` method has a typed `this`, and only 3 of the 83
-  `AircraftClass__` methods do (as `MissionClass *`). Most `TechnoClass__` methods still
-  take `void *this`. Their decompiles therefore still show raw offsets; look them up in
+- **Receivers.** Since 2026-10-01 the `AbstractClass`, `ObjectClass`, `MissionClass`,
+  `RadioClass` and `TechnoClass` methods have typed receivers. 434 of the 494 functions
+  with those name prefixes are `__thiscall` in their class namespace, so a decompile
+  reads `TechnoClass::TechnoClass__IronCurtain(TechnoClass *this, ...)` and
+  `this->IronCurtainTimer`. Each prototype declares the stack bytes its RETs pop;
+  parameters nobody has checked are `undefined4`. Plates tagged `[receivers 2026-10-01]`
+  record four corrected prototypes. Every direct call to the TechnoClass and ObjectClass
+  `ReceiveDamage` now shows its seven arguments. The plates also say why 60 functions
+  stay untyped: COM methods take `this` on the stack, and some direct functions have no
+  caller evidence. The type-class methods are not typed yet, and few methods of the
+  techno subclasses are. A typed `this` is on 6 of the 140 `FootClass__` methods, 26 of
+  the 179 `BuildingClass__`, 3 of the 94 `UnitClass__` (as `MissionClass *` or
+  `TechnoClass *`), none of the 87 `InfantryClass__` and 3 of the 83 `AircraftClass__`
+  (as `MissionClass *`). Their decompiles still show raw offsets; look them up in
   `TechnoClass`, `UnitTypeClass`, `InfantryTypeClass` or `AircraftTypeClass`.
 
 Plates tagged `[2026-10-01 BuildingTypeClass layout]`,
@@ -365,3 +375,15 @@ Checked 2026-10-01, struct tools:
   types, `sbyte` and the plain `pointer` type keep the name as given.
 - A retype clears the field name. Pass `new_name` to `modify_struct_field`;
   `modify_struct_field_type` always drops the name.
+
+Checked 2026-10-01 on a staging copy, receiver tools:
+
+- `set_function_this_type` needs a `__thiscall` or `__fastcall` convention first. It
+  moves the function into a class namespace named after the struct, and the auto
+  `this` then takes that struct. It leaves an explicit custom-storage `this` with its
+  old type. `set_function_prototype` applies dynamic storage, so run it first. No
+  endpoint moves a function back to the global namespace.
+- A `__thiscall` prototype must declare as many stack bytes as the function's RETs pop.
+  `(void)` on a `ret 0xC` function breaks the stack analysis of its callers. A custom
+  prototype that declares only `this` makes every direct caller's decompile drop the
+  arguments.
