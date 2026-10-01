@@ -41,6 +41,11 @@ Medium tanks use native bridge entrance markers and path finishing. The
 cover Hills ramp/deck travel, an underpass and retained navigation on restore;
 whole-bridge parity remains open.
 
+Hold the right mouse button and drag to fast-scroll. The camera keeps moving while
+the pointer stays displaced from where the press began. The
+[native comparisons](tools/input_oracle/README.md) cover stock drag behavior,
+offline input admission and camera request ordering.
+
 ## Running it
 
 You need Rust 1.88 or newer, a GPU with Vulkan, DirectX 12 or Metal, and the game installed.
