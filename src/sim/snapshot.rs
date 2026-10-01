@@ -780,7 +780,10 @@ use crate::sim::world::Simulation;
 // wall-refusal memo.
 // 271 -> 272: a movement target no longer saves its unread direction vector,
 // and a locomotor no longer saves the Walk lane's sub-cell destination.
-const SNAPSHOT_VERSION: u32 = 272;
+// 272 -> 273: Reveal commits every unit's and aircraft's Unlimbo Z, and the
+// Fly wrapper no longer rebuilds a missing one from the altitude cache. A v272
+// save can hold a revealed Fly aircraft without an exact Z. No fields change.
+const SNAPSHOT_VERSION: u32 = 273;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3683,7 +3686,8 @@ mod tests {
         // 269 -> 270: no lane speed ramp, bypasses or adapter flag on a move.
         // 270 -> 271: no lane wall-refusal memo on a move.
         // 271 -> 272: no move direction vector or Walk sub-cell destination.
-        assert_eq!(super::SNAPSHOT_VERSION, 272);
+        // 272 -> 273: Reveal commits every Unlimbo Z; no Fly rebuild.
+        assert_eq!(super::SNAPSHOT_VERSION, 273);
     }
 
     #[test]

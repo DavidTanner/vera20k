@@ -844,15 +844,28 @@ impl Simulation {
         }
         // Aircraft4143A8 follows successful Foot Unlimbo, including the dead
         // Techno success arm. Failed placement above must not promote +3D4.
-        // RESIDUAL: the tail's +0x6C9 latch for a first passenger
-        // (`0x004143F2..0x004143FC`) and its Secondary facing set to the
-        // Unlimbo direction (`0x00414403..0x00414417`) are not kept here.
-        // Trigger: every aircraft Unlimbo. Effect: no state keeps the latch
-        // (GetFireError's A1 Ammo gate never sees it), and an aircraft
-        // revealed again keeps its last Secondary (the constructor snaps it
-        // once). Frequency: every paradrop carrier; every relaunched spawn.
-        // Risk: an armed payload carrier, or a non-Fighter spawn's facing
-        // gate on relaunch.
+        // RESIDUAL: the class Unlimbo tails also write what VERA does not
+        // write here.
+        // - Both snap the Secondary (`+0x3A0`, a unit's turret) to the
+        //   Unlimbo direction (Aircraft `0x00414403..0x00414417`, Unit
+        //   `0x00737BBE..0x00737BD2`, FacingClass `0x004C9300`). Trigger: an
+        //   object revealed facing other than its constructor facing: factory
+        //   aircraft and vehicles (constructed facing 0), spawn launches,
+        //   transport unloads. Effect: its Secondary keeps its old facing and
+        //   turns from there. Risk: a facing-gated fire check.
+        // - The Unit resets its Stage (`0x00737BF5..0x00737C75`): value 0 and
+        //   rate 0, timer started for 0; a `SmallVisceroid=`/`LargeVisceroid=`
+        //   type instead takes a Scenario `RandomRanged(0, 29)` (`0x00737C47`)
+        //   as the value, with rate 1. Trigger: every Unit reveal. Effect: the
+        //   Stage keeps its earlier state; a miner revealed with its harvest
+        //   stage armed skips the re-arm at HarvesterLoadRate. The draw is
+        //   dormant: no retail type sets either key (RULESMD.INI by grep), and
+        //   VERA reads neither. Risk: hash-visible; a mod visceroid would
+        //   shift the Scenario stream.
+        // - The Aircraft +0x6C9 latch (`0x004143F2..0x004143FC`), set when a
+        //   first passenger rides at Unlimbo. Dormant: carriers take their
+        //   passengers after Unlimbo, and the paradrop writes the latch itself
+        //   (`0x0065E7B8`, `0x0065DCE9`), in the paradrop chain.
         if let Some(rules) = context.rules
             && let Some(entity) = self.substrate.entities.get_mut(stable_id)
         {

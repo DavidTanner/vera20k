@@ -245,9 +245,12 @@ fn aircraft_unlimbo_height_and_tail_match_original_runs() {
             assert_eq!(entity.position.exact_z_leptons, None, "{row}");
             continue;
         }
+        let z = row["unlimbo_coord"][2].as_i64().unwrap() as i32;
+        assert_eq!(entity.position.exact_z_leptons, Some(z), "{row}");
+        // The altitude cache mirrors the committed GetHeight.
         assert_eq!(
-            entity.position.exact_z_leptons,
-            Some(row["unlimbo_coord"][2].as_i64().unwrap() as i32),
+            entity.locomotor.as_ref().unwrap().altitude,
+            crate::util::fixed_math::SimFixed::from_num(z - int("ground")),
             "{row}"
         );
         let fraction = match row["speed_fraction_bits"].as_str().unwrap() {
