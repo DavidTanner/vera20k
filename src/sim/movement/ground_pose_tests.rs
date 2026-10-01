@@ -37,9 +37,6 @@ fn mover(sim: &mut Simulation, kind: LocomotorKind) -> GameEntity {
         // Gives budget4 in both Drive's integer division and Ship's existing
         // fixed-point frame product (60 * fixed(1/15) truncates to3).
         speed: SimFixed::from_num(61),
-        move_dir_x: SIM_ZERO,
-        move_dir_y: SimFixed::from_num(-256),
-        move_dir_len: SimFixed::from_num(256),
         final_goal: Some((3, 1)),
         ..Default::default()
     });
@@ -62,6 +59,22 @@ fn mover(sim: &mut Simulation, kind: LocomotorKind) -> GameEntity {
             entity.category = EntityCategory::Infantry;
             entity.is_voxel = false;
             entity.sub_cell = Some(0);
+            // Walk follows its Foot+5E0 route toward its destination; its
+            // adapter keeps no route cells.
+            entity.movement_target = Some(MovementTarget {
+                speed: SimFixed::from_num(61),
+                ..Default::default()
+            });
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .set_walk_destination(Some(DriveCoord::cell(3, 1, 0)));
+            entity.navigation.path_replay = crate::sim::components::FootPathQueue {
+                directions: vec![0, 0],
+                cursor: 0,
+                reference_cell: Some((3, 3)),
+            };
         }
         _ => unreachable!(),
     }
@@ -143,48 +156,23 @@ fn walk_rules() -> RuleSet {
 fn walk_tick(sim: &mut Simulation, terrain: &ResolvedTerrainGrid, grid: &PathGrid, frame: u32) {
     let rules = walk_rules();
     let (width, height) = (terrain.width(), terrain.height());
-    let size = (i32::from(width), i32::from(height));
-    let zones = crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_bridge_geometry(
-        grid,
-        terrain,
-        &[],
-        width,
-        height,
-        Some(size),
+    sim.resolved_terrain = Some(terrain.clone());
+    sim.zone_grid = Some(
+        crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_bridge_geometry(
+            grid,
+            terrain,
+            &[],
+            width,
+            height,
+            Some((i32::from(width), i32::from(height))),
+        ),
     );
-    let span = size.0.max(size.1);
-    super::movement_tick::tick_movement_object_with_grids(
-        &mut sim.substrate.entities,
-        1,
-        Some(grid),
-        &Default::default(),
-        &Default::default(),
-        &mut sim.substrate.occupancy,
-        &mut sim.substrate.cell_occupation,
-        &mut sim.substrate.raw_cell_occupation,
-        &mut sim.scenario_rng,
-        u64::from(frame),
-        frame,
-        Some(&zones),
-        Some(terrain),
-        None,
-        None,
-        Some(crate::sim::cell_rect::PlayfieldBounds {
-            base: size.0,
-            off_fc: -span,
-            off_100: -span,
-            off_104: span * 2,
-            off_108: span * 2,
-        }),
-        &crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-        SIM_ZERO,
-        9,
-        60,
-        &mut sim.interner,
-        Some(&rules),
-        &mut Vec::new(),
-        &mut Vec::new(),
-    );
+    crate::sim::arena_fixture::supply_native_map(sim);
+    sim.install_fixture_path_grid(Some(grid));
+    sim.session.tick = u64::from(frame);
+    sim.session.binary_frame = frame;
+    sim.process_ground_locomotor_stats_for_test(1, Some(&rules), None)
+        .expect("Walk fixture reaches the production object turn");
 }
 
 fn tick(sim: &mut Simulation, terrain: &ResolvedTerrainGrid, grid: &PathGrid, frame: u32) {
@@ -216,9 +204,6 @@ fn tick_with_rules(
         None,
         None,
         &crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-        SIM_ZERO,
-        9,
-        60,
         &mut sim.interner,
         rules,
         &mut Vec::new(),
@@ -542,28 +527,35 @@ fn walking_bridge_entry_commits_new_surface_and_object_list_plane() {
     let mut terrain = terrain();
     terrain.cell_mut(3, 3).unwrap().level = 4;
     terrain.cell_mut(3, 2).unwrap().slope_type = 2;
+    // Walk's admission and boundary read the Cell's structural bridge bit.
+    terrain.cell_mut(3, 2).unwrap().bridge_facts.raw_flags |= 0x100;
     let mut grid = PathGrid::from_resolved_terrain(&terrain);
     grid.set_bridge_cell_decoupled_for_test(3, 2, 0, true, true, 4, true);
     let mut sim = Simulation::new();
     let mut entity = mover(&mut sim, LocomotorKind::Walk);
     entity.position.z = 4;
     entity.position.sub_y = SimFixed::from_num(2);
-    entity.movement_target.as_mut().unwrap().path_layers = vec![
-        MovementLayer::Ground,
-        MovementLayer::Bridge,
-        MovementLayer::Bridge,
-    ];
-    let before = ground_pose::position_world_coord(&entity.position);
+    // A paid head on the deck cell north; this Process's step crosses the
+    // boundary (head admission is covered by the walk_prehead corpus).
+    entity
+        .locomotor
+        .as_mut()
+        .unwrap()
+        .set_step_head(Some(DriveCoord {
+            x: 3 * 256 + 128,
+            y: 2 * 256 + 128,
+            z: 4 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
+        }));
     insert(&mut sim, entity);
-    walk_tick(&mut sim, &terrain, &grid, 0);
-    let entity = sim.substrate.entities.get(1).unwrap();
-    assert_eq!(ground_pose::position_world_coord(&entity.position), before);
-    assert!(entity.locomotor.as_ref().unwrap().step_head().is_some());
-    // The next Process advances the paid step across the bridge boundary.
     walk_tick(&mut sim, &terrain, &grid, 1);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!((entity.position.rx, entity.position.ry), (3, 2));
     assert!(entity.on_bridge);
+    // Walk's layer is the OnBridge projection its next Find_Path starts from.
+    assert_eq!(
+        entity.locomotor.as_ref().unwrap().layer,
+        MovementLayer::Bridge
+    );
     let xy = ground_pose::position_world_xy(&entity.position);
     assert_eq!(
         entity.position.exact_z_leptons,
@@ -685,8 +677,6 @@ fn terminal_centre_height_commits_before_next_process_turn_without_finalizer() {
     target.path = vec![(3, 3), (4, 3)];
     target.path_layers = vec![MovementLayer::Ground; 2];
     target.final_goal = Some((4, 3));
-    target.move_dir_x = SimFixed::from_num(256);
-    target.move_dir_y = SIM_ZERO;
     target.speed = SimFixed::from_num(120);
     seed_track(
         &mut entity,

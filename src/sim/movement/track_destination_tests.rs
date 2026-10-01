@@ -759,7 +759,11 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
                 "{input}"
             );
             assert_eq!(
-                actor.movement_target.as_ref().unwrap().final_goal,
+                actor
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.walk_destination_cell())
+                    .or(actor.movement_target.as_ref().unwrap().final_goal),
                 Some((
                     goal_cell[0].as_u64().unwrap() as u16,
                     goal_cell[1].as_u64().unwrap() as u16

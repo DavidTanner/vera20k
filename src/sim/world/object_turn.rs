@@ -452,34 +452,22 @@ impl Simulation {
     /// The ordinary ground locomotor Process corridor, without Object/Techno AI.
     /// Infantry Scatter51D478 calls the active locomotor synchronously; its
     /// PerCell and boundary receivers must finish before Scatter returns.
+    #[cfg(test)]
+    pub(crate) fn process_ground_locomotor_stats_for_test(
+        &mut self,
+        stable_id: u64,
+        rules: Option<&RuleSet>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Result<movement::MovementTickStats, super::FrameAdvanceError> {
+        self.process_ground_locomotor_one(stable_id, rules, overlay_registry)
+            .map(|outcome| outcome.movement)
+    }
+
     pub(crate) fn process_ground_locomotor_one(
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) -> Result<GroundLocomotorOutcome, super::FrameAdvanceError> {
-        let timing = movement::MovementConfig::from_rules(rules);
-        self.process_ground_locomotor_with_config(stable_id, rules, overlay_registry, timing)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn process_ground_locomotor_with_config_for_test(
-        &mut self,
-        stable_id: u64,
-        rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-        timing: movement::MovementConfig,
-    ) -> Result<movement::MovementTickStats, super::FrameAdvanceError> {
-        self.process_ground_locomotor_with_config(stable_id, rules, overlay_registry, timing)
-            .map(|outcome| outcome.movement)
-    }
-
-    fn process_ground_locomotor_with_config(
-        &mut self,
-        stable_id: u64,
-        rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-        timing: movement::MovementConfig,
     ) -> Result<GroundLocomotorOutcome, super::FrameAdvanceError> {
         let sim = self;
         let one = [stable_id];
@@ -516,22 +504,14 @@ impl Simulation {
                 &mut sim.substrate.entities,
                 Some(&one),
                 current_grid.as_deref(),
-                &sim.terrain_costs,
                 &sim.house_alliances,
                 &mut sim.substrate.occupancy,
                 &mut sim.substrate.cell_occupation,
                 &mut sim.substrate.raw_cell_occupation,
                 &mut sim.scenario_rng,
-                sim.session.tick,
                 sim.session.binary_frame,
-                sim.zone_grid.as_ref(),
                 sim.resolved_terrain.as_ref(),
-                sim.overlay_grid.as_ref(),
-                overlay_registry,
                 sim.playfield_bounds,
-                timing.close_enough,
-                timing.path_delay_ticks,
-                timing.blockage_path_delay_ticks,
                 &mut sim.interner,
                 rules,
                 Some(&sim.type_handles),
@@ -576,8 +556,6 @@ impl Simulation {
                         sim,
                         movement::movement_tick::MoverReentry::FootPath(Box::new(request)),
                         rules,
-                        overlay_registry,
-                        timing,
                     );
                 }
             }
@@ -663,8 +641,6 @@ impl Simulation {
                 sim,
                 movement::movement_tick::MoverReentry::AfterTrackEnd(invocation.entity_id),
                 rules,
-                overlay_registry,
-                timing,
             );
             retry = true;
         }
@@ -690,9 +666,6 @@ impl Simulation {
             .merge(movement::movement_tick::finish_movement_pass(
                 pending_movement,
                 &mut sim.substrate.entities,
-                sim.session.binary_frame,
-                sim.resolved_terrain.as_ref(),
-                sim.path_grid.as_deref(),
                 &mut sim.movement_pass_cache,
             ));
         if let Some(tube_active) = movement_before {

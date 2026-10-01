@@ -225,7 +225,12 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // the Walk fixture fallback for native Walk admission. The RNG stream pins,
 // mission counters and per-frame replay equality are unchanged. Previous:
 // 0x9703_A2A8_E0FF_2C81.
-const SLICE6_BASELINE_HASH: u64 = 0xBB09_43C9_DBB1_8884;
+// 2026-10-01 Walk route owner (hash composition only): Walk keeps no
+// MovementTarget route cells and no locomotor sub-cell destination, both of
+// which the state hash folded. Ceremony: main and this change, each with only
+// those fields dropped from the hash (probe not committed), printed the same
+// value for all three replay pins (bridge, global, slice 6). Previous: 0xBB09_43C9_DBB1_8884.
+const SLICE6_BASELINE_HASH: u64 = 0x5BA5_F8CB_B5F7_2FF5;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

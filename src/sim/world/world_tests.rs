@@ -6330,13 +6330,7 @@ fn test_stop_command_clears_move_and_attack_intent() {
 
     if let Some(e) = sim.substrate.entities.get_mut(1) {
         e.movement_target = Some(MovementTarget {
-            path: vec![(4, 4), (5, 4)],
-            path_layers: vec![MovementLayer::Ground; 2],
-            next_index: 1,
             speed: SimFixed::from_num(1024),
-            move_dir_x: SimFixed::from_num(256),
-            move_dir_y: SIM_ZERO,
-            move_dir_len: SimFixed::from_num(256),
             ..Default::default()
         });
         e.attack_target = Some(AttackTarget::new(1));

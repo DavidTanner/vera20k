@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use super::locomotor::MovementLayer;
 use super::tick_movement_with_grids;
 use crate::map::entities::EntityCategory;
 use crate::rules::art_data::ArtRegistry;
@@ -18,7 +17,7 @@ use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::sim::rng::SimRng;
-use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+use crate::util::fixed_math::SimFixed;
 
 fn infantry_rules(crawls: bool) -> RuleSet {
     let rules_ini = IniFile::from_str(
@@ -65,13 +64,7 @@ fn prone_mover() -> GameEntity {
         .unwrap()
         .set_step_head(Some(crate::sim::components::DriveCoord::cell(1, 0, 0)));
     entity.movement_target = Some(MovementTarget {
-        path: vec![(0, 0), (1, 0)],
-        path_layers: vec![MovementLayer::Ground; 2],
-        next_index: 1,
         speed: SimFixed::from_num(165),
-        move_dir_x: SimFixed::from_num(256),
-        move_dir_y: SIM_ZERO,
-        move_dir_len: SimFixed::from_num(256),
         ..Default::default()
     });
     entity
@@ -105,9 +98,6 @@ fn advance_prone_mover(crawls: bool) -> SimFixed {
         None,
         None,
         &TerrainSpeedConfig::default(),
-        SIM_ZERO,
-        9,
-        60,
         &mut interner,
         Some(&rules),
         &mut sounds,

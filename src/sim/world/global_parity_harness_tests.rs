@@ -435,7 +435,12 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // change with only the two old order gates restored printed the previous value
 // and every RNG pin above (the probe patch was not committed). Previous:
 // 0xF066_BF94_338B_683B.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x7099_F3F4_CCAB_0F1E;
+// 2026-10-01 Walk route owner (hash composition only): Walk keeps no
+// MovementTarget route cells and no locomotor sub-cell destination, both of
+// which the state hash folded. Ceremony: main and this change, each with only
+// those fields dropped from the hash (probe not committed), printed the same
+// value for all three replay pins (bridge, global, slice 6). Previous: 0x7099_F3F4_CCAB_0F1E.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xEB54_33C6_1160_7535;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

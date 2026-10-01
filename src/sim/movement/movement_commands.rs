@@ -17,7 +17,7 @@ use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::pathfinding::{BlockerNeighborCounts, LayeredEntityBlockMap};
-use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+use crate::util::fixed_math::SimFixed;
 
 use super::PathfindingContext;
 use super::movement_path::{
@@ -103,53 +103,30 @@ fn retain_path_to_head(
 ) {
     let current_cell = (e.position.rx, e.position.ry);
     let current_layer = e.movement_layer_or_ground();
-    let walk_head = e.locomotor.as_ref().and_then(|l| {
-        (l.kind == LocomotorKind::Walk)
-            .then(|| l.step_head())
-            .flatten()
-    });
-    let committed_walk = walk_head.is_some();
-    // Stop clears the owner destination immediately, but an
-    // already committed Drive/Ship curve keeps only the
-    // current-to-head step. Removing every trailing A* entry
-    // prevents chaining or segment repath toward the abandoned
-    // owner goal.
-    if let (Some((head_cell, head_layer)), Some(target)) =
-        (committed_head, e.movement_target.as_mut())
-    {
-        if current_cell == head_cell {
-            target.path = vec![head_cell];
-            target.path_layers = vec![head_layer];
-            // Walk retirement is subcell-head completion, not cell equality.
-            target.next_index = usize::from(!committed_walk);
-            target.move_dir_x = SIM_ZERO;
-            target.move_dir_y = SIM_ZERO;
-            target.move_dir_len = SIM_ZERO;
-        } else {
-            target.path = vec![current_cell, head_cell];
-            target.path_layers = vec![current_layer, head_layer];
+    let walk = e
+        .locomotor
+        .as_ref()
+        .is_some_and(|l| l.kind == LocomotorKind::Walk);
+    match (committed_head, e.movement_target.as_mut()) {
+        // A Walk's paid head is its whole retained movement (Walk75BD29
+        // samples current XYZ against it); it keeps no route cells.
+        (Some(_), Some(_)) if walk => {}
+        // Stop clears the owner destination immediately, but an already
+        // committed Drive/Ship curve keeps only the current-to-head step.
+        // Removing every trailing A* entry prevents chaining toward the
+        // abandoned owner goal.
+        (Some((head_cell, head_layer)), Some(target)) => {
+            if current_cell == head_cell {
+                target.path = vec![head_cell];
+                target.path_layers = vec![head_layer];
+            } else {
+                target.path = vec![current_cell, head_cell];
+                target.path_layers = vec![current_layer, head_layer];
+            }
             target.next_index = 1;
-            let (dir_x, dir_y, dir_len) = crate::util::lepton::cell_delta_to_lepton_dir(
-                i32::from(head_cell.0) - i32::from(current_cell.0),
-                i32::from(head_cell.1) - i32::from(current_cell.1),
-            );
-            target.move_dir_x = dir_x;
-            target.move_dir_y = dir_y;
-            target.move_dir_len = dir_len;
+            target.final_goal = Some(head_cell);
         }
-        target.final_goal = Some(head_cell);
-        if let Some(head) = walk_head {
-            // Walk75BD29 samples current XYZ against the retained subcell
-            // head. A command must not redirect it to the cell center.
-            let current = super::ground_pose::position_world_coord(&e.position);
-            let dx = SimFixed::from_num(head.x.wrapping_sub(current.x));
-            let dy = SimFixed::from_num(head.y.wrapping_sub(current.y));
-            target.move_dir_x = dx;
-            target.move_dir_y = dy;
-            target.move_dir_len = crate::util::fixed_math::fixed_distance(dx, dy);
-        }
-    } else {
-        e.movement_target = None;
+        _ => e.movement_target = None,
     }
 }
 
@@ -330,11 +307,6 @@ pub(crate) fn issue_move_command_with_destination(
     // node. Keep its retained selector, cursor and head; anchor the new path
     // at that committed head cell.
     let current_cell = (entity.position.rx, entity.position.ry);
-    let committed_walk = locomotor_kind == Some(LocomotorKind::Walk)
-        && entity
-            .locomotor
-            .as_ref()
-            .is_some_and(|l| l.step_head().is_some());
     let in_flight_curve_head = committed_movement_head(entity);
     let keep_in_flight_curve = in_flight_curve_head.is_some();
     let (start_rx, start_ry) = in_flight_curve_head.unwrap_or(current_cell);
@@ -615,32 +587,9 @@ pub(crate) fn issue_move_command_with_destination(
     // A kept curve's head cell is a future node the body has not crossed into
     // yet: the queue cursor starts ON it so the coordinate crossing consumes
     // it, exactly as it would have consumed that node under the replaced path.
-    let head_not_yet_reached =
-        keep_in_flight_curve && (committed_walk || (start_rx, start_ry) != current_cell);
+    let head_not_yet_reached = keep_in_flight_curve && (start_rx, start_ry) != current_cell;
     let first_target_index = if head_not_yet_reached { 0 } else { 1 };
 
-    // Compute initial direction vector toward the first path step.
-    // No carry-forward needed — sub_x/sub_y already encode the entity's
-    // exact lepton position, so it continues from wherever it is.
-    let (dir_x, dir_y, dir_len) = if head_not_yet_reached {
-        // The first vector target is the kept curve's head itself — up to two
-        // cells out for a two-node curve — so use the Euclidean form in case
-        // the curve is torn down early and the vector step has to cover the
-        // multi-cell delta.
-        let dx = i32::from(start_rx) - i32::from(current_cell.0);
-        let dy = i32::from(start_ry) - i32::from(current_cell.1);
-        let dir_x = SimFixed::from_num(dx * 256);
-        let dir_y = SimFixed::from_num(dy * 256);
-        let dir_len = crate::util::fixed_math::fixed_distance(dir_x, dir_y);
-        (dir_x, dir_y, dir_len)
-    } else if path.len() >= 2 {
-        crate::util::lepton::cell_delta_to_lepton_dir(
-            path[1].0 as i32 - path[0].0 as i32,
-            path[1].1 as i32 - path[0].1 as i32,
-        )
-    } else {
-        (SIM_ZERO, SIM_ZERO, SIM_ZERO)
-    };
     // Attach the MovementTarget and update facing on the entity.
     // All units start at full speed — acceleration/deceleration is disabled.
     let movement: MovementTarget = MovementTarget {
@@ -651,11 +600,7 @@ pub(crate) fn issue_move_command_with_destination(
         // mid-curve (the head itself is the first queued node).
         next_index: first_target_index,
         speed,
-        move_dir_x: dir_x,
-        move_dir_y: dir_y,
-        move_dir_len: dir_len,
         final_goal: Some(effective_target),
-        ..Default::default()
     };
     debug_assert_eq!(
         movement.path.len(),
@@ -663,10 +608,8 @@ pub(crate) fn issue_move_command_with_destination(
         "path/path_layers desync in initial MovementTarget"
     );
     if let Some(entity_mut) = entities.get_mut(entity_id) {
-        let locomotor_kind = entity_mut
-            .locomotor
-            .as_ref()
-            .map(|locomotor| locomotor.kind);
+        // A Walk never reaches this install: it returns from its setter arm
+        // or from the queued append above.
         if let Some((reference, coord)) = object_destination {
             super::navcom::set_destination_internal_coord(
                 entity_mut,
@@ -675,21 +618,6 @@ pub(crate) fn issue_move_command_with_destination(
                 resolved_terrain,
                 timing.binary_frame,
             );
-        } else if locomotor_kind == Some(LocomotorKind::Walk) {
-            super::navcom::set_destination_internal_cell(
-                entity_mut,
-                effective_target,
-                resolved_terrain,
-                timing.binary_frame,
-            );
-        }
-        if locomotor_kind == Some(LocomotorKind::Walk) {
-            // Infantry51AD11 clears one live Foot path word. The accepted
-            // setter preserves its suffix/reference and NavQueue; Walk's first
-            // no-head Process requests FindPath75AFC5 later. See
-            // tools/spatial_oracle/walk_first_path.json. MovementTarget keeps
-            // the existing prepared physical path, without publishing it here.
-            entity_mut.navigation.path_replay.clear_live_head();
         }
         // Unit's accepted setter reaches Foot4D96C2..9707 just as Walk's
         // does. Preserve +64C; this is not a Foot constructor.
@@ -827,9 +755,6 @@ pub(super) fn spend_track_route(entity: &mut GameEntity) {
         target.path.clear();
         target.path_layers.clear();
         target.next_index = 0;
-        target.move_dir_x = SIM_ZERO;
-        target.move_dir_y = SIM_ZERO;
-        target.move_dir_len = SIM_ZERO;
     }
 }
 
@@ -842,13 +767,20 @@ pub(super) fn prepare_destination_execution(
     speed: SimFixed,
 ) {
     let committed_head = committed_path_head(entity);
+    // Walk's goal is its locomotor destination (Walk+0x1C); its adapter
+    // keeps no goal cell.
+    let final_goal = (!entity
+        .locomotor
+        .as_ref()
+        .is_some_and(|l| l.kind == LocomotorKind::Walk))
+    .then_some(target);
     entity.movement_target = Some(MovementTarget {
         speed,
-        final_goal: Some(target),
+        final_goal,
         ..Default::default()
     });
     if committed_head.is_some() {
         retain_path_to_head(entity, committed_head);
-        entity.movement_target.as_mut().unwrap().final_goal = Some(target);
+        entity.movement_target.as_mut().unwrap().final_goal = final_goal;
     }
 }

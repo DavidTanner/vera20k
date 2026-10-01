@@ -384,7 +384,7 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
         Some(DriveCoord::cell(rx, ry, 0))
     );
     assert!(
-        e.movement_target.as_ref().unwrap().path.is_empty(),
+        e.navigation.path_replay.remaining_directions().is_empty(),
         "first path belongs to Process"
     );
     assert_eq!(e.locomotor.as_ref().unwrap().step_head(), None);

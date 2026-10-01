@@ -771,7 +771,7 @@ pub struct AStarOptions<'a> {
     /// Hard-blocked cells on bridge layer. Goal exempt.
     pub bridge_blocks: Option<&'a BTreeSet<(u16, u16)>>,
     /// Code-2 blocker map: friendly-moving blocker's current cell → that
-    /// blocker's next cell (movement_target.path[next_index]). Used by the
+    /// blocker's next cell (`block_index::moving_next_cell`). Used by the
     /// cost function for the 10-hop chain walk (matches gamemd.exe
     /// AStar_compute_edge_cost). The map is denormalized so no EntityStore
     /// lookup is required inside A*.
