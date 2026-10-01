@@ -48,6 +48,54 @@ const KEY_SCROLL_SHIFT_MULTIPLIER: f32 = 2.5;
 /// catches it and the view lands on the map border in a single frame.
 const KEY_SCROLL_CTRL_CELL_SHIFT: u32 = 8;
 
+/// Uncommitted world-pixel scroll requests, owned by the camera controller.
+/// Native Scroll_Map (0x4A9840 -> 0x6D8530) accumulates a requested view;
+/// keyboard input at the end of Main_Tick survives until the next mouse poll
+/// and Tactical__AI commit. This is a request, not a second camera position.
+#[derive(Debug, Default)]
+pub(crate) struct PendingCameraScroll {
+    world_pixels: (f32, f32),
+}
+
+impl PendingCameraScroll {
+    fn request(&mut self, movement: (f32, f32)) {
+        self.world_pixels.0 += movement.0;
+        self.world_pixels.1 += movement.1;
+    }
+
+    fn is_idle(&self) -> bool {
+        self.world_pixels == (0.0, 0.0)
+    }
+
+    fn clear(&mut self) {
+        self.world_pixels = (0.0, 0.0);
+    }
+
+    /// Consume all requests in one clamp, as Tactical__AI does at 0x6D26F9.
+    /// Keeping this transaction together prevents opposing mouse/key requests
+    /// at a boundary from losing their outward component to an earlier clamp.
+    fn commit(
+        self,
+        current: (f32, f32),
+        mouse: (f32, f32),
+        clamp: impl FnOnce((f32, f32)) -> (f32, f32),
+    ) -> (f32, f32) {
+        clamp((
+            current.0 + self.world_pixels.0 + mouse.0,
+            current.1 + self.world_pixels.1 + mouse.1,
+        ))
+    }
+}
+
+/// An absolute view change replaces the committed and requested view together
+/// (SetViewToCoordInstant 0x6D6070, stores 0x6D613F..0x6D6153). Follow,
+/// bookmarks, minimap, loading and VERA zoom all enter through this owner.
+pub(crate) fn set_camera_position(state: &mut AppState, point: (f32, f32)) {
+    state.match_state.input.camera_x = point.0;
+    state.match_state.input.camera_y = point.1;
+    state.match_state.input.pending_camera_scroll.clear();
+}
+
 /// Minimum zoom level — zoomed out enough to see a large portion of the map.
 const MIN_ZOOM: f32 = 0.25;
 /// Maximum zoom level — zoomed in close to pixel-level detail.
@@ -252,6 +300,7 @@ pub(crate) fn edge_scroll_intent(
 pub(crate) fn camera_input_idle(state: &AppState) -> bool {
     let input = &state.match_state.input;
     input.keys_held.is_empty()
+        && input.pending_camera_scroll.is_idle()
         && !input.minimap_dragging
         && !input.tactical_mouse.captured
         && !input.tactical_mouse.left_held
@@ -416,8 +465,10 @@ impl ViewBookmarks {
 pub(crate) fn tactical_centre_cell(state: &AppState) -> (u16, u16) {
     let (tactical_w, tactical_h) =
         tactical_viewport_size_px(state.render_width(), state.render_height());
-    let world_x = state.match_state.input.camera_x + tactical_w as f32 / (2.0 * state.match_state.input.zoom_level);
-    let world_y = state.match_state.input.camera_y + tactical_h as f32 / (2.0 * state.match_state.input.zoom_level);
+    let world_x = state.match_state.input.camera_x
+        + tactical_w as f32 / (2.0 * state.match_state.input.zoom_level);
+    let world_y = state.match_state.input.camera_y
+        + tactical_h as f32 / (2.0 * state.match_state.input.zoom_level);
     crate::app::match_runtime::sim_tick::world_point_to_cell(
         world_x,
         world_y,
@@ -499,9 +550,8 @@ fn right_drag_threshold_crossed(
         || delta_y.abs() > drag_metric_y.saturating_mul(2) as f32
 }
 
-/// gamemd divides the anchor displacement by `ScrollRate + 1` and truncates, so
-/// a right drag held 100 px from its anchor with the stock rate moves the camera
-/// 25 px along that axis every frame.
+/// The stock rate multiplies the displacement by 1/4: a 100 px drag moves
+/// the camera 25 px per admitted game frame.
 const RIGHT_DRAG_RATE_BIAS: u32 = 1;
 
 /// Distance from a screen border, in pixels, inside which an anchor makes a
@@ -534,6 +584,13 @@ pub(crate) struct TacticalMouseState {
     pub(crate) right_threshold_crossed: bool,
     /// The right drag owns the camera (the band box did not win the race).
     right_pan_engaged: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RightDragPoll {
+    Idle,
+    CancelBandBox,
+    Pan,
 }
 
 impl TacticalMouseState {
@@ -618,11 +675,52 @@ impl TacticalMouseState {
         self.right_pan_engaged = false;
     }
 
+    /// WM_RBUTTONUP at 0x693397 tests the already-polled threshold, then
+    /// releases capture. Some(true) admits the caller's cancel/deselect ladder.
+    pub(crate) fn end_right_press(&mut self) -> Option<bool> {
+        self.right_held = false;
+        if !self.captured {
+            return None;
+        }
+        let cancel = !self.right_threshold_crossed;
+        self.release();
+        Some(cancel)
+    }
+
     /// True while the right button owns the per-frame mouse block. The left
     /// button is tested first in the original, so a band box in progress keeps
     /// the pan from running.
     fn right_drag_owns_frame(&self) -> bool {
         self.captured && self.right_held && !self.left_held
+    }
+
+    /// One admitted GScreen input poll: 0x692F30 -> 0x693440. Message edges
+    /// do not advance this latch; in particular, release never measures a drag.
+    fn poll_right_drag(
+        &mut self,
+        cursor: (f32, f32),
+        drag_metrics: (i32, i32),
+        band_box: bool,
+    ) -> RightDragPoll {
+        if !self.right_drag_owns_frame() {
+            return RightDragPoll::Idle;
+        }
+        self.right_threshold_crossed |= right_drag_threshold_crossed(
+            cursor.0 - self.right_anchor.0,
+            cursor.1 - self.right_anchor.1,
+            drag_metrics.0,
+            drag_metrics.1,
+        );
+        if !self.right_threshold_crossed {
+            return RightDragPoll::Idle;
+        }
+        if !self.right_pan_engaged {
+            if band_box {
+                return RightDragPoll::CancelBandBox;
+            }
+            self.right_pan_engaged = true;
+        }
+        RightDragPoll::Pan
     }
 }
 
@@ -632,7 +730,8 @@ impl TacticalMouseState {
 /// The displacement is measured from the **anchor**, not from the previous
 /// frame, so the gesture behaves like a joystick: the further the cursor sits
 /// from the press point, the faster the map slides, every frame the button is
-/// held. Both axes truncate toward zero, matching the original's float-to-long.
+/// held. The original uses a chopped reciprocal multiply, not division.
+/// Native identity and executable vectors: tools/input_oracle/README.md.
 fn right_drag_pan_step(
     anchor: (f32, f32),
     cursor: (f32, f32),
@@ -675,52 +774,68 @@ fn right_drag_pan_step(
         dy = dy.max(RIGHT_DRAG_EDGE_MIN_PX) * RIGHT_DRAG_EDGE_BOOST;
     }
 
-    let divisor = (scroll_rate + RIGHT_DRAG_RATE_BIAS) as f32;
-    ((dx as f32 / divisor).trunc(), (dy as f32 / divisor).trunc())
+    (
+        right_drag_axis_distance(dx, scroll_rate) as f32,
+        right_drag_axis_distance(dy, scroll_rate) as f32,
+    )
 }
 
-/// Drive the right-drag map pan for this frame.
-fn update_right_drag_pan(state: &mut AppState) {
-    if !state.match_state.input.tactical_mouse.right_drag_owns_frame() {
-        return;
-    }
-    let anchor = state.match_state.input.tactical_mouse.right_anchor;
-    let cursor = (state.match_state.input.cursor_x, state.match_state.input.cursor_y);
-    let (drag_metric_x, drag_metric_y) = system_drag_metrics_px();
-    if !state.match_state.input.tactical_mouse.right_threshold_crossed
-        && right_drag_threshold_crossed(
-            cursor.0 - anchor.0,
-            cursor.1 - anchor.1,
-            drag_metric_x,
-            drag_metric_y,
-        )
-    {
-        state.match_state.input.tactical_mouse.right_threshold_crossed = true;
-    }
-    if !state.match_state.input.tactical_mouse.right_threshold_crossed {
-        return;
-    }
-    if !state.match_state.input.tactical_mouse.right_pan_engaged {
-        // A live band box wins the race: the original cancels the drag instead
-        // of engaging the pan, and only engages on a later frame.
-        if state.match_state.input.selection_state.is_band_box_active() {
-            state.match_state.input.selection_state.cancel_drag();
-            return;
-        }
-        state.match_state.input.tactical_mouse.right_pan_engaged = true;
-    }
+/// 0x693440's method-zero reciprocal/product/ftol, reduced to integer math for
+/// the options owner's 0..6 rate range. With PC=53/chop, 1/d is exact for d=1,2,4
+/// and strictly below exact for d=3,5,6,7. At nonzero exact multiples the product
+/// therefore truncates one pixel short. Otherwise its error for i32 screen
+/// displacements is far below the smallest remainder (1/7), preserving quotient.
+/// See the native oracle's boundary vectors and bounded derivation; no host FPU
+/// mode or emulated x87 is needed for this presentation-only calculation.
+fn right_drag_axis_distance(displacement: i32, scroll_rate: u32) -> i32 {
+    debug_assert!(
+        scroll_rate <= 6,
+        "the live options owner projects rates to 0..6"
+    );
+    let divisor = i64::from(scroll_rate) + i64::from(RIGHT_DRAG_RATE_BIAS);
+    let displacement = i64::from(displacement);
+    let quotient = displacement / divisor;
+    let reciprocal_shortfall =
+        displacement != 0 && displacement % divisor == 0 && matches!(divisor, 3 | 5 | 6 | 7);
+    (quotient - i64::from(reciprocal_shortfall) * displacement.signum()) as i32
+}
 
+/// Poll the right-drag owner and return a request in world pixels. Committing
+/// and clamping the request belongs to the later Tactical__AI/pre-follow seam.
+fn poll_right_drag_pan(state: &mut AppState) -> (f32, f32) {
+    let cursor = (
+        state.match_state.input.cursor_x,
+        state.match_state.input.cursor_y,
+    );
+    match state.match_state.input.tactical_mouse.poll_right_drag(
+        cursor,
+        system_drag_metrics_px(),
+        state.match_state.input.selection_state.is_band_box_active(),
+    ) {
+        RightDragPoll::Idle => return (0.0, 0.0),
+        RightDragPoll::CancelBandBox => {
+            state.match_state.input.selection_state.cancel_drag();
+            return (0.0, 0.0);
+        }
+        RightDragPoll::Pan => {}
+    }
     let (dx, dy) = right_drag_pan_step(
-        anchor,
+        state.match_state.input.tactical_mouse.right_anchor,
         cursor,
         state.render_width() as f32,
         state.render_height() as f32,
-        state.match_state.match_presentation.in_game_options.scroll_rate,
+        state
+            .match_state
+            .match_presentation
+            .in_game_options
+            .scroll_rate,
     );
     // The pan distance is in window pixels. Stock YR has no world zoom, so the
     // divide is VERA-internal and exact at zoom 1.0.
-    state.match_state.input.camera_x += dx / state.match_state.input.zoom_level;
-    state.match_state.input.camera_y += dy / state.match_state.input.zoom_level;
+    (
+        dx / state.match_state.input.zoom_level,
+        dy / state.match_state.input.zoom_level,
+    )
 }
 
 /// Arrow-key scroll distance for this frame, in world pixels.
@@ -733,7 +848,8 @@ fn keyboard_scroll_distance(state: &AppState) -> f32 {
         (KEY_SCROLL_DISTANCE * KEY_SCROLL_SHIFT_MULTIPLIER).trunc()
     } else if crate::app::input::dispatch::is_ctrl_held(state) {
         let cells = state
-            .match_state.sim_runtime
+            .match_state
+            .sim_runtime
             .as_ref()
             .map(|rt| &rt.simulation)
             .map_or(0u32, |sim| u32::from(sim.fog.width.max(sim.fog.height)));
@@ -743,79 +859,134 @@ fn keyboard_scroll_distance(state: &AppState) -> f32 {
     }
 }
 
-/// Update camera position based on keyboard and mouse edge scrolling.
-pub(crate) fn update_camera(state: &mut AppState) {
-    let sw: f32 = state.render_width() as f32;
-    let sh: f32 = state.render_height() as f32;
-
+/// Main_Tick's keyboard requests run after logic (0x55DD42..0x55DD96), and
+/// remain pending until the next Tactical__AI commit with that frame's mouse.
+pub(crate) fn queue_keyboard_scroll(state: &mut AppState) {
     let key_distance = keyboard_scroll_distance(state);
+    let mut movement = (0.0, 0.0);
     if state
-        .match_state.input.keys_held
+        .match_state
+        .input
+        .keys_held
         .contains(&winit::keyboard::KeyCode::ArrowLeft)
     {
-        state.match_state.input.camera_x -= key_distance / state.match_state.input.zoom_level;
+        movement.0 -= key_distance / state.match_state.input.zoom_level;
     }
     if state
-        .match_state.input.keys_held
+        .match_state
+        .input
+        .keys_held
         .contains(&winit::keyboard::KeyCode::ArrowRight)
     {
-        state.match_state.input.camera_x += key_distance / state.match_state.input.zoom_level;
-    }
-    if state.match_state.input.keys_held.contains(&winit::keyboard::KeyCode::ArrowUp) {
-        state.match_state.input.camera_y -= key_distance / state.match_state.input.zoom_level;
+        movement.0 += key_distance / state.match_state.input.zoom_level;
     }
     if state
-        .match_state.input.keys_held
+        .match_state
+        .input
+        .keys_held
+        .contains(&winit::keyboard::KeyCode::ArrowUp)
+    {
+        movement.1 -= key_distance / state.match_state.input.zoom_level;
+    }
+    if state
+        .match_state
+        .input
+        .keys_held
         .contains(&winit::keyboard::KeyCode::ArrowDown)
     {
-        state.match_state.input.camera_y += key_distance / state.match_state.input.zoom_level;
+        movement.1 += key_distance / state.match_state.input.zoom_level;
     }
 
-    update_right_drag_pan(state);
-    // Each native scroll request reaches the clamp before the next source
-    // probes. Keep the current point valid before edge/coast preflight.
-    clamp_camera_to_playable_area(state, sw, sh);
+    state
+        .match_state
+        .input
+        .pending_camera_scroll
+        .request(movement);
+}
+
+/// Sample one native mouse input poll, returning world-pixel movement without
+/// committing the view. Main_Tick calls input before logic (0x55D8AB); captured
+/// right drag and uncaptured edge/coast are mutually exclusive in 0x692F30.
+pub(crate) fn poll_mouse_scroll(state: &mut AppState) -> (f32, f32) {
+    let sw = state.render_width() as f32;
+    let sh = state.render_height() as f32;
+    let right_drag = poll_right_drag_pan(state);
 
     // gamemd's edge scroll early-returns while any tactical mouse button holds
     // the capture, so the map is frozen for the whole of a band-box or
     // right-drag gesture. The minimap-drag inhibit is VERA-internal: gamemd's
     // minimap re-centres only on press, while this flag owns the gesture here.
-    if !state.match_state.input.tactical_mouse.captured && !state.match_state.input.minimap_dragging {
+    if !state.match_state.input.tactical_mouse.captured && !state.match_state.input.minimap_dragging
+    {
         let now = state.match_state.input.edge_scroll.radar_timer();
-        let scroll_rate = state.match_state.match_presentation.in_game_options.scroll_rate;
-        let active_direction =
-            edge_scroll_intent((state.match_state.input.cursor_x, state.match_state.input.cursor_y), sw as i32, sh as i32);
+        let scroll_rate = state
+            .match_state
+            .match_presentation
+            .in_game_options
+            .scroll_rate;
+        let active_direction = edge_scroll_intent(
+            (
+                state.match_state.input.cursor_x,
+                state.match_state.input.cursor_y,
+            ),
+            sw as i32,
+            sh as i32,
+        );
         let requested_direction =
             active_direction.or_else(|| state.match_state.input.edge_scroll.coasting_direction());
         let movement_allowed = requested_direction
             .is_none_or(|direction| camera_scroll_direction_allowed(state, direction, sw, sh));
-        let scroll_multiplier = state
-            .rules()
-            .map_or(DEFAULT_SCROLL_MULTIPLIER, |rules| {
-                rules.general.scroll_multiplier
-            });
+        let scroll_multiplier = state.rules().map_or(DEFAULT_SCROLL_MULTIPLIER, |rules| {
+            rules.general.scroll_multiplier
+        });
         let (dx, dy) = edge_scroll_step_with_context(
             &mut state.match_state.input.edge_scroll,
-            (state.match_state.input.cursor_x, state.match_state.input.cursor_y),
+            (
+                state.match_state.input.cursor_x,
+                state.match_state.input.cursor_y,
+            ),
             sw as i32,
             sh as i32,
             scroll_rate,
             scroll_multiplier,
-            state.match_state.match_presentation.in_game_gadgets.right_held,
+            state
+                .match_state
+                .match_presentation
+                .in_game_gadgets
+                .right_held,
             movement_allowed,
             now,
         );
         // The speed table is in window pixels. Stock YR has no world zoom, so
         // the divide is VERA-internal: it keeps the on-screen scroll rate
         // constant across VERA's zoom range and is exact at zoom 1.0.
-        state.match_state.input.camera_x += dx / state.match_state.input.zoom_level;
-        state.match_state.input.camera_y += dy / state.match_state.input.zoom_level;
+        return (
+            dx / state.match_state.input.zoom_level,
+            dy / state.match_state.input.zoom_level,
+        );
     }
+    right_drag
+}
 
-    clamp_camera_to_playable_area(state, sw, sh);
-
-    // Smoothly animate zoom_level toward zoom_target each frame.
-    animate_zoom(state);
+/// Tactical__AI commits the accumulated request before follow (0x6D26F9),
+/// clamping once against the current frame's authoritative LocalSize.
+pub(crate) fn commit_camera_scroll(state: &mut AppState, mouse: (f32, f32)) {
+    sync_playfield_presentation_bounds(state);
+    let current = (
+        state.match_state.input.camera_x,
+        state.match_state.input.camera_y,
+    );
+    let pending = std::mem::take(&mut state.match_state.input.pending_camera_scroll);
+    let point = pending.commit(current, mouse, |point| {
+        clamp_camera_point_for_state(
+            state,
+            point,
+            state.render_width() as f32,
+            state.render_height() as f32,
+        )
+    });
+    state.match_state.input.camera_x = point.0;
+    state.match_state.input.camera_y = point.1;
 }
 
 /// Smoothing factor for zoom animation. Each frame, zoom_level moves this
@@ -849,7 +1020,10 @@ pub(crate) fn apply_zoom(state: &mut AppState, delta_lines: f32) {
         state.match_state.input.cursor_x / z + state.match_state.input.camera_x,
         state.match_state.input.cursor_y / z + state.match_state.input.camera_y,
     ];
-    state.match_state.input.zoom_anchor_screen = [state.match_state.input.cursor_x, state.match_state.input.cursor_y];
+    state.match_state.input.zoom_anchor_screen = [
+        state.match_state.input.cursor_x,
+        state.match_state.input.cursor_y,
+    ];
     state.match_state.input.zoom_target = new_target;
 }
 
@@ -872,8 +1046,13 @@ pub(crate) fn animate_zoom(state: &mut AppState) {
     // Adjust camera so the anchor world point stays at the anchor screen position:
     //   anchor_world_x = anchor_screen_x / zoom + camera_x
     //   camera_x = anchor_world_x - anchor_screen_x / zoom
-    state.match_state.input.camera_x = state.match_state.input.zoom_anchor_world[0] - state.match_state.input.zoom_anchor_screen[0] / state.match_state.input.zoom_level;
-    state.match_state.input.camera_y = state.match_state.input.zoom_anchor_world[1] - state.match_state.input.zoom_anchor_screen[1] / state.match_state.input.zoom_level;
+    let point = (
+        state.match_state.input.zoom_anchor_world[0]
+            - state.match_state.input.zoom_anchor_screen[0] / state.match_state.input.zoom_level,
+        state.match_state.input.zoom_anchor_world[1]
+            - state.match_state.input.zoom_anchor_screen[1] / state.match_state.input.zoom_level,
+    );
+    set_camera_position(state, point);
 
     let sw = state.render_width() as f32;
     let sh = state.render_height() as f32;
@@ -1038,8 +1217,7 @@ pub(crate) fn center_camera_on_lepton_point(
         tactical_h as f32,
         state.match_state.input.zoom_level,
     );
-    state.match_state.input.camera_x = cx;
-    state.match_state.input.camera_y = cy;
+    set_camera_position(state, (cx, cy));
     clamp_camera_to_playable_area(state, sw, sh);
 }
 
@@ -1048,7 +1226,12 @@ pub(crate) fn center_camera_on_lepton_point(
 pub(crate) fn center_view_on_selection(state: &mut AppState) {
     let ordered = crate::app::input::dispatch::selected_stable_ids_in_order(state);
     let coords: Vec<(i32, i32, i32)> = {
-        let Some(sim) = state.match_state.sim_runtime.as_ref().map(|rt| &rt.simulation) else {
+        let Some(sim) = state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation)
+        else {
             return;
         };
         ordered
@@ -1142,8 +1325,7 @@ pub(crate) fn center_camera_on_cell(state: &mut AppState, rx: u16, ry: u16) {
         tactical_h as f32,
         state.match_state.input.zoom_level,
     );
-    state.match_state.input.camera_x = cx;
-    state.match_state.input.camera_y = cy;
+    set_camera_position(state, (cx, cy));
     clamp_camera_to_playable_area(state, sw, sh);
 }
 
@@ -1273,7 +1455,14 @@ fn camera_scroll_direction_allowed(
         state.match_state.input.camera_y + dy / state.match_state.input.zoom_level,
     );
     let clamped = clamp_camera_point_for_state(state, candidate, sw, sh);
-    requested_scroll_survives_clamp((state.match_state.input.camera_x, state.match_state.input.camera_y), clamped, direction)
+    requested_scroll_survives_clamp(
+        (
+            state.match_state.input.camera_x,
+            state.match_state.input.camera_y,
+        ),
+        clamped,
+        direction,
+    )
 }
 
 fn requested_scroll_survives_clamp(
@@ -1316,7 +1505,11 @@ pub(crate) fn right_drag_pan_cursor_state(state: &AppState) -> Option<Option<Scr
     // (the left release clears the capture, and the right release then skips its
     // own cleanup), leaving the pan cursor suppressing every other cursor for
     // the rest of the match.
-    if !state.match_state.input.tactical_mouse.right_drag_owns_frame()
+    if !state
+        .match_state
+        .input
+        .tactical_mouse
+        .right_drag_owns_frame()
         || !state.match_state.input.tactical_mouse.right_pan_engaged
     {
         return None;
@@ -1356,7 +1549,14 @@ fn blocked_mask_to_scroll_dir(mask: u8) -> Option<ScrollDir> {
 pub(crate) fn edge_scroll_cursor_state(state: &AppState) -> Option<(ScrollDir, bool)> {
     let sw = state.render_width() as f32;
     let sh = state.render_height() as f32;
-    let direction = edge_scroll_intent((state.match_state.input.cursor_x, state.match_state.input.cursor_y), sw as i32, sh as i32)?;
+    let direction = edge_scroll_intent(
+        (
+            state.match_state.input.cursor_x,
+            state.match_state.input.cursor_y,
+        ),
+        sw as i32,
+        sh as i32,
+    )?;
     Some((
         direction,
         !camera_scroll_direction_allowed(state, direction, sw, sh),
@@ -2232,3 +2432,7 @@ mod tests {
         assert!(mouse.press_may_arm(), "the byte is free again");
     }
 }
+
+#[cfg(test)]
+#[path = "fast_scroll_tests.rs"]
+mod fast_scroll_tests;
