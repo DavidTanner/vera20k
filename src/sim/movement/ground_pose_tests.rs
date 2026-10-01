@@ -1102,7 +1102,8 @@ fn stop_before_chain_keeps_committed_head_and_discards_abandoned_turn() {
             entity.locomotor = Some(locomotor);
         }
         // The N->NE segment has accepted two directions; E is still queued.
-        // Stop is the production helper also used by the MCV deploy handoff.
+        // The represented null destination. Units no longer reach it (every
+        // Unit takes the Unit setter), so these Drive/Ship rows pin the body only.
         super::movement_commands::stop_navigation_at_committed_head(&mut entity);
         let (stored, queue) = match kind {
             LocomotorKind::Drive => {

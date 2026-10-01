@@ -910,7 +910,8 @@ impl Simulation {
     /// nulls +34, so a track end cannot resume the old order, and a Jumpjet
     /// Unit takes it too, whose locomotor Stop re-targets the cell under it.
     /// Ordinary Walk Infantry uses51AA40, preserving human deploy refusal;
-    /// Walk Units use741970. Other receivers keep the represented NavCom writes.
+    /// every other Unit uses741970 too. Other receivers (Aircraft and a
+    /// Jumpjet or Teleport man) keep the represented NavCom writes.
     pub(crate) fn assign_null_destination(&mut self, id: u64, rules: Option<&RuleSet>) {
         let walk_category = self.substrate.entities.get(id).and_then(|actor| {
             actor
@@ -928,10 +929,14 @@ impl Simulation {
             {
                 super::retain_committed_movement(actor);
             }
-        } else if walk_category == Some(EntityCategory::Unit)
-            || self.unit_setter_receiver(id, rules)
-            || self.substrate.entities.get(id).is_some_and(jumpjet_unit)
+        } else if self
+            .substrate
+            .entities
+            .get(id)
+            .is_some_and(|actor| actor.category == EntityCategory::Unit)
         {
+            // Every Unit's vt+0x480 is 0x741970 (vtable 0x7F5C70), whatever
+            // its locomotor.
             self.set_unit_null_destination(id, rules);
         } else if let Some(actor) = self.substrate.entities.get_mut(id) {
             crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
