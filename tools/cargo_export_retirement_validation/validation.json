@@ -1,0 +1,37 @@
+{
+  "base": "/private/tmp/vera20k-export-retirement-smoke-5h0704rb",
+  "plan": "/private/tmp/vera20k-export-retirement-smoke-5h0704rb/plan.json",
+  "debug_dependency_count": 402,
+  "runs": [
+    {
+      "command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--retire-export-plan",
+        "/private/tmp/vera20k-export-retirement-smoke-5h0704rb/plan.json",
+        "--dry-run"
+      ],
+      "started_unix": 1790835914.747305,
+      "ended_unix": 1790835920.452896,
+      "exit_code": 0,
+      "stderr": "Waiting for another cargo_run owner...\n",
+      "output": "/private/tmp/vera20k-export-retirement-smoke-5h0704rb/dry-run.json"
+    },
+    {
+      "command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--retire-export-plan",
+        "/private/tmp/vera20k-export-retirement-smoke-5h0704rb/plan.json"
+      ],
+      "started_unix": 1790835920.4536269,
+      "ended_unix": 1790835922.977907,
+      "exit_code": 0,
+      "stderr": "",
+      "output": "/private/tmp/vera20k-export-retirement-smoke-5h0704rb/applied.json"
+    }
+  ],
+  "retained_binary_manifest_results_plan_and_debug_inputs_unchanged": true
+}

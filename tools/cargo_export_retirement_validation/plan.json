@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "checkout": "/Users/halvor/.codex/worktrees/bridge-native-damage/vera20k",
+  "export_root": "/private/tmp/vera20k-export-retirement-smoke-5h0704rb/exports",
+  "files": [
+    {
+      "file": "disposable-current-libtests",
+      "sha256": "09907141ed7906538f91a49691455cbeb8c43c342df8bd8d4991fb59aadfa1af",
+      "reason": "Disposable end-to-end retirement validation copy; original current validated label remains required and preserved",
+      "consumer_status": "reviewed-no-active-or-required-consumers",
+      "provenance": [
+        {
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-path-main965-final-tests-v1-20261001/manifest.json",
+          "sha256": "e56a681e05bcf2041394761cb5dc2923744d26bd956d8e99291c66b7a9918ed5"
+        }
+      ],
+      "results": [
+        {
+          "path": "/private/tmp/bridge-export-retirement-tests-root-refactor.log",
+          "sha256": "be7df631e6c70c180d024135a0045e8f6e9be4f1c72c7df824d84603bd312a03"
+        }
+      ],
+      "replacement": {
+        "label": "bridge-path-main965-final-tests-v1-20261001",
+        "file": "0/vera20k-182f054d6e106fa6",
+        "sha256": "09907141ed7906538f91a49691455cbeb8c43c342df8bd8d4991fb59aadfa1af",
+        "manifest_sha256": "e56a681e05bcf2041394761cb5dc2923744d26bd956d8e99291c66b7a9918ed5",
+        "purpose": "vera20k-libtest"
+      }
+    }
+  ]
+}

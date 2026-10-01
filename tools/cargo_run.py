@@ -387,7 +387,9 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument('--trim-cache', action='store_true', help='Trim owned compiler caches without building')
     mode.add_argument('--retire-label', action='append', metavar='LABEL',
                       help='Retire an exact saved build; repeat for multiple labels')
-    parser.add_argument('--dry-run', action='store_true', help='Preview trimming or label retirement')
+    mode.add_argument('--retire-export-plan', metavar='PLAN',
+                      help='Retire reviewed exact legacy Rust libtest exports from a pinned JSON plan')
+    parser.add_argument('--dry-run', action='store_true', help='Preview cache or saved/exported build retirement')
     parser.add_argument('--cache-gib', help='Total compiler cache budget (default/env: 32 GiB)')
     parser.add_argument('--incremental-gib', help='Incremental cache budget (default/env: 4 GiB)')
     parser.add_argument('--min-free-gib', help='Minimum volume free-space target (default/env: 16 GiB)')
@@ -404,10 +406,10 @@ def main(argv: list[str] | None = None) -> int:
             parser.error('--resolve requires --profile and accepts no Cargo arguments or --wait-seconds')
     elif options.profile or options.from_label is not None:
         parser.error('--profile and --from-label are only valid with --resolve')
-    if options.dry_run and not (options.trim_cache or options.retire_label):
-        parser.error('--dry-run requires --trim-cache or --retire-label')
-    if options.retire_label and (options.cargo or cache_options):
-        parser.error('--retire-label accepts no Cargo arguments or cache budgets')
+    if options.dry_run and not (options.trim_cache or options.retire_label or options.retire_export_plan):
+        parser.error('--dry-run requires --trim-cache, --retire-label or --retire-export-plan')
+    if (options.retire_label or options.retire_export_plan) and (options.cargo or cache_options):
+        parser.error('Retirement accepts no Cargo arguments or cache budgets')
     if options.trim_cache and options.cargo:
         parser.error('--trim-cache accepts no Cargo arguments')
     wait_seconds = 3600 if options.wait_seconds is None else options.wait_seconds
@@ -416,6 +418,11 @@ def main(argv: list[str] | None = None) -> int:
     args = options.cargo[1:] if options.cargo[:1] == ['--'] else options.cargo
     try:
         root = Path(git(Path.cwd(), 'rev-parse', '--show-toplevel')).resolve()
+        if options.retire_export_plan:
+            from tools._cargo_labels import retire_exports
+            receipt = retire_exports(root, Path(options.retire_export_plan), wait_seconds, dry_run=options.dry_run)
+            print(json.dumps(receipt, indent=2))
+            return 2 if receipt['errors'] else 0
         if options.retire_label:
             from tools._cargo_labels import retire
             receipt = retire(root, options.retire_label, wait_seconds, dry_run=options.dry_run)

@@ -135,11 +135,22 @@ never authorize deletion without fresh inventory and dependency checks. Automati
 cleanup failure reports its reason and permits Cargo; explicit trimming returns
 nonzero. See [retention validation](cargo_cache_validation.md).
 
-Saved builds have a separate, explicit lifecycle. Preview exact labels, then apply
-using the same command without `--dry-run`:
+Saved builds have a separate, explicit lifecycle. Default to unlabelled iteration;
+preserve only binaries needed for active comparisons, captures or debugging.
+Prefer release binaries for ordinary captures and label debug tests selectively.
+Evidence should reference the shared label, manifest, source/binary hashes and
+results instead of creating additional executable copies.
+
+After a validated chain merges, review its exact owned labels. Keep the final
+build and relevant control/debug binaries still required; archive manifests,
+checksums, results and native inputs through their evidence owners. Preview
+superseded labels, then apply the same exact selection without `--dry-run`, then
+trim rebuildable compiler caches:
 
 ```sh
 python -m tools.cargo_run --retire-label old-test-v1 --retire-label old-release-v1 --dry-run
+python -m tools.cargo_run --retire-label old-test-v1 --retire-label old-release-v1
+python -m tools.cargo_run --trim-cache
 ```
 
 Retirement never selects labels by age or glob and never touches their former
@@ -149,8 +160,35 @@ executables themselves are not backed up. Partial failures retain progress recei
 All selected labels are preflighted for hashes, unexpected content, links, shared
 hardlinks and open files. Linux/macOS require working `lsof`; unsupported platforms
 fail closed. Process visibility is limited to the invoking user; stop consumers
-launched outside the shared build owner before retiring their labels. Keep final
-and evidence-linked builds unless their retirement is explicitly intended.
+launched outside the shared build owner before retiring their labels. Never
+select by age or glob, touch another task's work, or delete active binaries,
+their required debugging/dependency files, source, assets or native evidence.
+External legacy copies of Rust binaries need a checked retirement owner; do not
+remove them with arbitrary `rm`. This review is manual: the runner has no
+GitHub-aware saved-build retirement. Automatic retention trims compiler caches.
+
+Legacy exported **Rust libtest** copies have an explicit, macOS-only retirement
+mode. Review an exact JSON plan, preview it, then apply that same plan:
+
+```sh
+python -m tools.cargo_run --retire-export-plan /absolute/canonical/export-plan.json --dry-run
+python -m tools.cargo_run --retire-export-plan /absolute/canonical/export-plan.json
+```
+
+The [export-plan contract](cargo_export_retirement.md) defines required fields.
+The mode never discovers files by age, glob or GitHub state and never runs old
+executables. It accepts only identified VERA Rust test harnesses in executable
+Mach-O images; PE/native gamemd, apps, scripts, assets, ambiguous/stripped images,
+links and shared hardlinks are rejected. Original ownership/results references
+and a same-checkout retained libtest replacement must be pinned by SHA-256.
+An explicit review must establish no active or required consumers. Missing debug
+inputs, inspection errors or changed replacements block deletion. Every selection
+preflights under the shared lock before any unlink. Original plan, identities,
+provenance/results references, replacement manifest and progress are durably
+recorded by the existing retirement owner in `owned-builds/label-retirements/`.
+Only exact selected executable files are unlinked; directories, dependency files,
+source, assets and native evidence remain. Old copies lacking pre-existing
+ownership records or debug inputs remain blocked; do not manufacture metadata.
 
 Each attempt writes `owned-builds/retention/<timestamp>-<id>.json`: selected and
 removed files, allocated/logical bytes removed, observed free-space change, errors
