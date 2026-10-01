@@ -6,9 +6,10 @@ behavior, demonstrated by active-retail comparisons and production validation.
 **0 / 3 objects certified.** The inventory is [object-completion.md](object-completion.md).
 
 Owned worktree `/Users/halvor/.codex/worktrees/object-completion/vera20k`, branch
-`feature/object-completion`, HEAD and freshly fetched origin/main
-`97ed33d447192ff1b2de524970247609ed2a183d`. Uncommitted work is the shared GI/GGI
-automatic Guard deployment chain, native comparator and tests; no commit or PR.
+`feature/object-completion`, based on freshly fetched origin/main
+`97ed33d447192ff1b2de524970247609ed2a183d`. The shared GI/GGI automatic Guard
+deployment chain, native comparator and tests are committed and pushed in
+`d0bc2212c2278b1c9bea66be2183aa3239dceaf4`. PR publication is the next action.
 Other checkouts, screenshots, refs and processes are preserved.
 
 Native SHA-256 `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`;
@@ -41,7 +42,8 @@ now describe the final generator, with their payload bytes unchanged.
 Final strict full lib suite: **9407 passed, 225 ignored**. Strict lib clippy
 completed successfully (733 repository warnings). Ratchet **2597 → 2597**,
 edited leaf formatting and diff checks pass. No code changes followed these full
-checks apart from native-address comments confirmed by the critic. The release map observation
+checks apart from native-address comments confirmed by the critic. Required Python
+tooling checks pass (435 tests, four skipped). The release map observation
 is VALID at250 exact steps: five stationary AI GIs27→28; three human GIs remain
 undeployed; one pursuing AI retains NavCom and refuses the producer. Metal GPU
 frame and full actor trajectories are retained at
@@ -51,7 +53,7 @@ Compact committed proof is `tools/spatial_oracle/infantry_auto_deploy.production
 The single fresh `gi_deploy_critic` found no logic/ownership defects, independently
 passed native100 and traced the live movement finalizer/callback connection.
 Its P3 native-address comment finding was checked against original disassembly
-and fixed. No repeat critic is required. Publication is ready; no commit/PR yet.
+and fixed. No repeat critic is required. Publication is ready.
 
 Capture profile is `tools/map_observation.infantry-auto-deploy.example.json`,
 Battle / retail AnyTown, 250 exact steps and ordinary AI starting GIs. Owned
@@ -59,7 +61,7 @@ ignored config has upscale=false. Build the normal release vera20k through
 cargo_run, then use tools.map_observation; inspect real actors' Doing27/28.
 Snapshot/runtime tests alone do not establish retail-map production reachability.
 
-Next safe actions: commit/publish this one mechanism and enable auto-merge. Confirm merge before
+Next safe actions: publish this one mechanism and enable auto-merge. Confirm merge before
 another implementation chain. Research ahead identifies Construction →
 Grand_Opening ordering/authority, then engineer repair and garrison/Hunt/Capture.
 AlreadyPlaced+6E4 gates first opening effects independently of capture argument;

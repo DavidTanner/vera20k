@@ -77,7 +77,8 @@ Final candidate validation: strict-retail full lib suite **9407 passed, 225
 ignored**, and strict-retail lib clippy completed successfully (repository warnings
 remain). The simulation field ratchet is **2597 → 2597**, and edited leaf-file
 formatting passes. Native automatic100, reader42 and preserved action355 outputs
-match checked original execution. Release-map production observation and one
+match checked original execution. The required Python tooling suite passes
+(435 tests, four skipped). Release-map production observation and one
 fresh critic are not object certificates. Release production observation is now
 valid: the ordinary Battle/AnyTown starting forces were advanced 250 exact steps
 through the app loader and Metal renderer. Five stationary computer-owned GIs
