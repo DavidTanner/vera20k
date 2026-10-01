@@ -153,7 +153,7 @@ body/shadow pairs. The shared read-only GPU blitter comparison and production
 Ground lowering/overlap checks passed on Apple M4/Metal. These checks establish
 their named boundaries, rather than full native game or image parity.
 
-Final library validation passed **9,407 tests, 0 failures, 226 ignored**, with
+Final library validation passed **9,412 tests, 0 failures, 226 ignored**, with
 mandatory retail INIs and archives. Clippy completed with 728 warnings and no
 errors; the Python suite passed 436 tests with four optional cases skipped.
 Leaf formatting, diff checks and the simulation-field ratchet passed.
@@ -171,8 +171,8 @@ ore; the live producer created density-3 cells at frames 331, 455 and 680, each
 prerequisite: the atlas preloaded resource art, but the runtime draw-name index
 registered only map-authored ore identities. A regression failed before the
 shared registration owner was extended to include every parsed resource type.
-The corrected release visibly draws the three new cells. Every recorded
-simulation frame and final fingerprint matches the preceding release; only
+The corrected release visibly draws the three new cells. All recorded terrain
+observations and initial/final fingerprints match the preceding release; only
 presentation pixels changed (146 pixels in the cleared-field endpoint).
 The raw retail/derived maps and BGRA files remain local, not in the repository.
 
@@ -186,6 +186,18 @@ to that new absolute path, retaining all other fields, then run the ordinary
 derived bytes, input hashes, cycle/placement observations and both release
 identities. This preparation changes authored input; it does not inject
 simulation state or create a parity golden.
+
+One fresh read-only critic independently inspected the original instructions and
+production consumers, finding no blocking stock-chain defect. The two minor
+documentation findings were corrected. The branch then integrated main
+`4ab3a4f5f67750527fd424e7ae26118200499222` without conflicts and passed the final
+library suite and clippy again. Release label `tibtre-native-integrated-20261001`
+pins code commit `dc5d208e7c3cba3d1a35013cf7e28ad453c6c248` and binary SHA-256
+`0a263e642f8a9d7f0aaf4c3d24951a0dc2a26290445551b029eb4ad4d88955d3`.
+Both refreshed 800-step observations validate and exactly match the preceding
+release's recorded observations, fingerprints and frame bytes. The receipt keeps
+both validation stages and all three release identities; subsequent changes only
+update documentation and evidence receipts.
 
 The existing OQ-38 enqueue-side growth/spread array-counter rebuild is still a
 long-run residual: reaching its capacity threshold can change queue membership,
