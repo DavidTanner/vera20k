@@ -676,7 +676,7 @@ fn erase_awards_price_each_cost_by_its_house() {
     );
     let mut sim = sim(9);
     for house in sim.houses.values_mut() {
-        house.project_country_cost_mults(&rules, &sim.interner);
+        house.project_country_mults(&rules, &sim.interner);
     }
     let tank = spawn(&mut sim, &rules, "HTNK", "Americans", 12, 10);
     let cleg = spawn(&mut sim, &rules, "CLEG", "Russians", 10, 10);

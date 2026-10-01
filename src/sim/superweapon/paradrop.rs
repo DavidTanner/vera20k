@@ -207,7 +207,14 @@ fn spawn_pdplane(
         .substrate
         .entities
         .get(pdplane_id)
-        .map(|plane| crate::sim::movement::order_speed(plane, rules.object(PDPLANE), Some(rules)))
+        .map(|plane| {
+            crate::sim::movement::order_speed(
+                plane,
+                rules.object(PDPLANE),
+                Some(rules),
+                &sim.houses,
+            )
+        })
         .unwrap_or(SimFixed::from_num(8));
     sim.issue_air_cell_destination(pdplane_id, (target_rx, target_ry), speed, Some(rules));
 

@@ -227,6 +227,7 @@ impl Simulation {
             entity,
             object,
             rules,
+            &self.houses,
             self.resolved_terrain.as_ref(),
             current_grid,
         );

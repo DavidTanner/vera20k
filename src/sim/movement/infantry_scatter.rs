@@ -324,7 +324,7 @@ impl Simulation {
         let navigation = super::foot_coordinate::navigation_coordinate(infantry, Some(terrain))?;
         let seed = ((navigation.x / 256) as i16, (navigation.y / 256) as i16);
         let on_bridge = infantry.on_bridge;
-        let speed = scatter_movement_speed(infantry, Some(rules), &self.interner);
+        let speed = scatter_movement_speed(infantry, Some(rules), &self.interner, &self.houses);
         let destination =
             super::scatter_cell::select_neighbor(seed, start, |candidate, direction| {
                 let terrain = self.resolved_terrain.as_ref().expect("retained map cells");
@@ -394,7 +394,7 @@ impl Simulation {
             .get(id)
             .ok_or("Scatter lost its infantryman")?;
         let kind = infantry.locomotor.as_ref().map(|loco| loco.active_kind());
-        let speed = scatter_movement_speed(infantry, Some(rules), &self.interner);
+        let speed = scatter_movement_speed(infantry, Some(rules), &self.interner, &self.houses);
         if kind == Some(LocomotorKind::Jumpjet) {
             if !self.issue_air_cell_destination(id, cell, speed, Some(rules)) {
                 return Err(
@@ -715,7 +715,7 @@ impl Simulation {
                 .entities
                 .get(id)
                 .ok_or("destination lost infantry actor")?;
-            scatter_movement_speed(infantry, Some(rules), &self.interner)
+            scatter_movement_speed(infantry, Some(rules), &self.interner, &self.houses)
         };
         self.assign_infantry_walk_destination(id, requested, speed, rules, registry)
     }

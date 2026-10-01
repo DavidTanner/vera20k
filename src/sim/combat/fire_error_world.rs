@@ -92,6 +92,7 @@ impl FireSubject<'_> {
             self.rules,
             &self.world.interner,
             &self.world.type_handles,
+            &self.world.houses,
         )
     }
 

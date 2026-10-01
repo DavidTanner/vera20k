@@ -795,6 +795,7 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                     e,
                     sim.object_type(e.type_ref(), rules),
                     Some(rules),
+                    &sim.houses,
                 )
             })
             .unwrap_or(crate::util::fixed_math::SimFixed::from_num(8));

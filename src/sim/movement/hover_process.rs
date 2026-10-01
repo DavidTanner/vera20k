@@ -231,6 +231,7 @@ impl Simulation {
             entity,
             self.object_type(entity.type_ref(), rules),
             rules.general.veteran_speed,
+            &self.houses,
         )
     }
 

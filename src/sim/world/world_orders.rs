@@ -312,7 +312,10 @@ impl Simulation {
                         .locomotor
                         .as_ref()
                         .is_some_and(|l| l.layer == MovementLayer::Air);
-                    (crate::sim::movement::order_speed(e, obj, rules), air)
+                    (
+                        crate::sim::movement::order_speed(e, obj, rules, &self.houses),
+                        air,
+                    )
                 })
                 .unwrap_or((ra2_speed_to_leptons_per_second(4), false));
 

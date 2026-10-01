@@ -397,6 +397,10 @@ fn advance_ordinary_mover(
     interner: &mut crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     type_handles: Option<&TypeHandleTable>,
+    houses: &std::collections::BTreeMap<
+        crate::sim::intern::InternedId,
+        crate::sim::house_state::HouseState,
+    >,
     effects: &mut MovementPassEffects,
     entry: VisitEntry,
 ) {
@@ -627,6 +631,7 @@ fn advance_ordinary_mover(
         entity,
         object,
         rules.map_or(1.0, |r| r.general.veteran_speed),
+        houses,
     );
     super::walk_step::advance(
         entity,
@@ -1110,6 +1115,7 @@ impl PendingMovementPass {
             &mut sim.interner,
             rules,
             Some(&sim.type_handles),
+            &sim.houses,
             &mut self.effects,
             entry,
         );
@@ -1171,6 +1177,10 @@ pub(crate) fn begin_movement(
     interner: &mut crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     type_handles: Option<&TypeHandleTable>,
+    houses: &std::collections::BTreeMap<
+        crate::sim::intern::InternedId,
+        crate::sim::house_state::HouseState,
+    >,
     caches: &mut MovementPassCache,
 ) -> PendingMovementPass {
     let grids = PassGrids {
@@ -1212,6 +1222,7 @@ pub(crate) fn begin_movement(
             interner,
             rules,
             type_handles,
+            houses,
             &mut effects,
             VisitEntry::Process,
         );
