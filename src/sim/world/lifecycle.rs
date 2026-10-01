@@ -440,26 +440,44 @@ impl Simulation {
         self.lifecycle_test_events.clear();
     }
 
-    /// Adapt the current level-based placement API to the native input Coord.Z.
-    /// Object Unlimbo 0x5F4EC0 passes its coordinate through the type's virtual
-    /// +0x6C (`0x005F4F88`). BuildingType 0x464A70 keeps the XY and takes the
-    /// floor there (`0x578080`) as the Z, with no deck, whatever the input Z.
-    /// UnitType 0x747EB0 / InfantryType 0x5247D0 clamp that input to the exact
-    /// ground surface before Object Unlimbo 0x5F4EC0 commits XYZ and Mark(PUT).
-    /// They do not add a bridge offset. Authored bridge placement supplies its
-    /// deck coordinate before that clamp; translate our coarse deck request here.
-    /// This coarse API cannot recover all raw authored inputs (notably Unit
-    /// input zero on negative terrain); the report records that caller residual.
-    /// See docs/research/RAMP_UNIT_HEIGHT_GHIDRA_REPORT.md.
-    fn grounded_reveal_z(
+    /// The Location Z Object Unlimbo 0x5F4EC0 commits (SetLocation at
+    /// `0x005F4FA8`), adapted from the level-based placement API. It passes its
+    /// input coordinate through the type's virtual +0x6C (`0x005F4F88`):
+    /// - BuildingType 0x464A70 keeps the XY and takes the floor there
+    ///   (`0x578080`) as the Z, with no deck, whatever the input Z.
+    /// - UnitType 0x747EB0 / InfantryType 0x5247D0 clamp that input to the
+    ///   exact ground surface, whatever the locomotor, and add no bridge
+    ///   offset. Authored bridge placement supplies its deck coordinate before
+    ///   that clamp; translate our coarse deck request here. This coarse API
+    ///   cannot recover all raw authored inputs (notably Unit input zero on
+    ///   negative terrain); the report records that caller residual. See
+    ///   docs/research/RAMP_UNIT_HEIGHT_GHIDRA_REPORT.md.
+    /// - AircraftType keeps the coordinate (`0x0041CF80`), whose Z
+    ///   AircraftClass::Unlimbo 0x414310 set first: a `MissileSpawn=` type
+    ///   keeps its input (`0x00414338`); one without Techno+3D4 (`0x00414342`)
+    ///   inside the playfield (`0x005785F0`) takes the floor (`0x00414361`);
+    ///   any other the floor plus its FlightLevel (type virtual +0xBC,
+    ///   `0x00414383`). Native comparison:
+    ///   tools/spatial_oracle/aircraft_unlimbo_height.json.
+    ///
+    /// A falling paradrop keeps its drop's Z. `None` keeps no exact Z, for:
+    /// - a missile or a tube owner, whose own state carries the height:
+    ///   VERA's Rocket model keeps the missile's in `rocket_state`, not in the
+    ///   Location (RESIDUAL: native keeps the input coordinate. Trigger: every
+    ///   spawned missile. Effect: its Unlimbo GetHeight reads 0, so the
+    ///   tail's speed fraction compares 0 with the FlightLevel; nothing else
+    ///   while only the model reads its height. Risk: a Location reader
+    ///   during the flight sees no exact Z);
+    /// - an Aircraft revealed without rules, which cannot read the type (the
+    ///   reveals that pass none reach no Aircraft in production);
+    /// - an object revealed without terrain (headless fixtures).
+    fn unlimbo_z(
         &self,
         stable_id: u64,
         position: RevealPosition,
         context: UninitContext<'_>,
     ) -> Option<i32> {
-        use crate::rules::locomotor_type::LocomotorKind;
         use crate::sim::movement::ground_pose::ground_surface_z_at;
-        use crate::sim::movement::locomotor::MovementLayer;
 
         let xy = [
             i32::from(position.rx)
@@ -476,26 +494,31 @@ impl Simulation {
             // object keeps the Z its drop gave it.
             return entity.position.exact_z_leptons;
         }
-        if entity.category == EntityCategory::Structure {
-            let terrain = context.terrain().or(self.resolved_terrain.as_ref())?;
-            return ground_surface_z_at(xy, false, Some(terrain), None);
-        }
-        if !matches!(
-            entity.category,
-            EntityCategory::Unit | EntityCategory::Infantry
-        ) || !entity.locomotor.as_ref().is_some_and(|loco| {
-            matches!(
-                loco.kind,
-                LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Ship
-            ) && loco.layer != MovementLayer::Air
-        }) || entity.low_bridge_tube_state.is_some()
-            || entity.rocket_state.is_some()
-        {
-            // These owners still carry their own altitude/coordinate state.
+        if entity.low_bridge_tube_state.is_some() || entity.rocket_state.is_some() {
             return None;
         }
         let terrain = context.terrain().or(self.resolved_terrain.as_ref())?;
         let ground_z = ground_surface_z_at(xy, false, Some(terrain), None)?;
+        match entity.category {
+            EntityCategory::Structure => return Some(ground_z),
+            EntityCategory::Aircraft => {
+                let rules = context.rules?;
+                let object = rules.object(self.interner.resolve(entity.type_ref()))?;
+                if object.missile_spawn {
+                    return None;
+                }
+                return Some(
+                    if !entity.is_mission_only()
+                        && self.reveal_position_is_in_playfield(position, context)
+                    {
+                        ground_z
+                    } else {
+                        ground_z.wrapping_add(object.flight_level(rules.general.flight_level))
+                    },
+                );
+            }
+            EntityCategory::Unit | EntityCategory::Infantry => {}
+        }
         let level = terrain
             .native_fixed_cell_index((xy[0] / 256) as i16, (xy[1] / 256) as i16)
             .map_or_else(
@@ -662,15 +685,16 @@ impl Simulation {
                 entity.on_bridge = on_bridge;
             }
         }
-        let exact_z = self.grounded_reveal_z(stable_id, position, context);
+        let exact_z = self.unlimbo_z(stable_id, position, context);
         // RESIDUAL: `ObjectClass::Unlimbo` sets this Location through
         // SetLocation (vt+0x1B4 at 0x005F4FA8, before its Mark(1) at
         // 0x005F4FB4), which for a Foot also runs the OpenTopped rider tail.
-        // VERA copies the parts, keeping no exact Z for an owner whose height
-        // still lives in its locomotor (`grounded_reveal_z`), so it cannot go
-        // through `foot_set_location` yet. Trigger: a loaded OpenTopped
-        // transport revealed away from its riders. Frequency: none known in
-        // retail. Effect: the riders keep their old Location.
+        // VERA copies the parts, keeping no exact Z for a missile or tube
+        // owner (`unlimbo_z`), so it cannot go through `foot_set_location`
+        // yet. Trigger: a loaded OpenTopped transport revealed away from its
+        // riders. Frequency: none known in retail. Effect: the riders keep
+        // their old Location.
+        let terrain = context.terrain().or(self.resolved_terrain.as_ref());
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             entity.position.rx = position.rx;
             entity.position.ry = position.ry;
@@ -678,6 +702,13 @@ impl Simulation {
             entity.position.exact_z_leptons = exact_z;
             entity.position.sub_x = position.sub_x;
             entity.position.sub_y = position.sub_y;
+            // The committed Location's GetHeight; a parachute keeps the
+            // altitude its drop gave it.
+            if exact_z.is_some() && entity.parachute_state.is_none() {
+                let height =
+                    crate::sim::movement::air_movement::current_fly_height(entity, terrain);
+                crate::sim::movement::ground_pose::mirror_height(entity, height);
+            }
         }
         if let Some(rules) = context.rules {
             self.reposition_building_anim_slots(stable_id, rules);
@@ -813,11 +844,46 @@ impl Simulation {
         }
         // Aircraft4143A8 follows successful Foot Unlimbo, including the dead
         // Techno success arm. Failed placement above must not promote +3D4.
+        // RESIDUAL: the class Unlimbo tails also write what VERA does not
+        // write here.
+        // - Both snap the Secondary (`+0x3A0`, a unit's turret) to the
+        //   Unlimbo direction (Aircraft `0x00414403..0x00414417`, Unit
+        //   `0x00737BBE..0x00737BD2`, FacingClass `0x004C9300`). Trigger: an
+        //   object revealed facing other than its constructor facing: factory
+        //   aircraft and vehicles (constructed facing 0), spawn launches,
+        //   transport unloads. Effect: its Secondary keeps its old facing and
+        //   turns from there. Risk: a facing-gated fire check.
+        // - The Unit resets its Stage (`0x00737BF5..0x00737C75`): value 0 and
+        //   rate 0, timer started for 0; a `SmallVisceroid=`/`LargeVisceroid=`
+        //   type instead takes a Scenario `RandomRanged(0, 29)` (`0x00737C47`)
+        //   as the value, with rate 1. Trigger: every Unit reveal. Effect: the
+        //   Stage keeps its earlier state; a miner revealed with its harvest
+        //   stage armed skips the re-arm at HarvesterLoadRate. The draw is
+        //   dormant: no retail type sets either key (RULESMD.INI by grep), and
+        //   VERA reads neither. Risk: hash-visible; a mod visceroid would
+        //   shift the Scenario stream.
+        // - The Aircraft +0x6C9 latch (`0x004143F2..0x004143FC`), set when a
+        //   first passenger rides at Unlimbo. Dormant: carriers take their
+        //   passengers after Unlimbo, and the paradrop writes the latch itself
+        //   (`0x0065E7B8`, `0x0065DCE9`), in the paradrop chain.
         if let Some(rules) = context.rules
             && let Some(entity) = self.substrate.entities.get_mut(stable_id)
         {
             let type_id = self.interner.resolve(entity.type_ref());
             entity.retain_aircraft_unlimbo_control(rules, type_id);
+            if entity.category == EntityCategory::Aircraft
+                && let Some(object) = rules.object(type_id)
+            {
+                let height = crate::sim::movement::air_movement::current_fly_height(
+                    entity,
+                    context.terrain().or(self.resolved_terrain.as_ref()),
+                );
+                entity.finish_aircraft_unlimbo(
+                    height,
+                    object.flight_level(rules.general.flight_level),
+                    self.session.binary_frame as i32,
+                );
+            }
         }
         if let Some(entity) = self.substrate.entities.get_mut(stable_id)
             && entity.category == EntityCategory::Infantry
@@ -1592,40 +1658,6 @@ impl Simulation {
         self.unmark_entity_remove(stable_id, UninitContext::default());
     }
 
-    /// Materialize the legacy split representation before its first Fly
-    /// producer visit. Exact Object coordinates are already physical Z and
-    /// cannot be reconstructed from a stale altitude cache at the wrapper tail.
-    /// Native4CDD1A reads current owner height after horizontal SetCoords;
-    /// conditional SetHeight calls (4CDE9D/4CDFB6) modify that value. The
-    /// equal-height alive branch4CDECA..4CE145 performs no height write.
-    fn materialize_legacy_fly_coordinate(&mut self, stable_id: u64) {
-        use crate::rules::locomotor_type::LocomotorKind;
-        use crate::sim::movement::locomotor::MovementLayer;
-
-        let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
-            return;
-        };
-        let Some(locomotor) = entity.locomotor.as_ref() else {
-            return;
-        };
-        if entity.position.exact_z_leptons.is_some()
-            || locomotor.layer != MovementLayer::Air
-            || locomotor.kind != LocomotorKind::Fly
-        {
-            return;
-        }
-        // The split altitude becomes a height over the live ground, as SetHeight
-        // writes it. Terrain only, like GetHeight, which reads it back.
-        let altitude = locomotor.altitude.to_num::<i32>();
-        crate::sim::movement::ground_pose::set_height(
-            &mut entity.position,
-            entity.on_bridge,
-            altitude,
-            self.resolved_terrain.as_ref(),
-            None,
-        );
-    }
-
     /// Run one production air-process visit with the active Fly
     /// remove-before/process/add-after cell-list transaction around it.
     pub(crate) fn tick_air_movement_with_cell_lists_one(
@@ -1660,8 +1692,6 @@ impl Simulation {
                             && locomotor.layer == MovementLayer::Air
                     })
             });
-        self.materialize_legacy_fly_coordinate(stable_id);
-
         // Fly4CD600, which Fly Process (`0x004CCB40`) calls every frame,
         // opens with a dead Fly's fall (`0x004CD67F`), which brackets its own
         // drop with Mark; reaching the ground ends it in the impact, which

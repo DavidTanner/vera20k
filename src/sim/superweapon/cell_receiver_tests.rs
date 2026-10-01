@@ -1005,12 +1005,13 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
             .unwrap()
             .cell_mut(x, y)
             .unwrap();
-        // Current bridge dispatcher admits impacts within one terrain level.
-        // Deck Z=4 and ground Z=3 exercise its actual collapse/DropIn path.
+        // Ground level 3 puts the deck at level 7 (Z 728), inside the
+        // dispatcher's height window, so the death exercises its actual
+        // collapse/DropIn path.
         cell.level = 3;
         cell.has_bridge_deck = cell.bridge_facts.has_structural_bridge();
         cell.bridge_walkable = cell.has_bridge_deck;
-        cell.bridge_deck_level = if cell.has_bridge_deck { 4 } else { 3 };
+        cell.bridge_deck_level = if cell.has_bridge_deck { 7 } else { 3 };
     }
     let facts = &mut sim
         .resolved_terrain
@@ -1027,14 +1028,14 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
     sim.bridge_state = Some(state);
     // Older deck recipient is visited only after the newer Infantry's callback.
     let tank = sim
-        .construct_object_limbo_at_height("MTNK", "Americans", 5, 5, 0, 4, &rules)
+        .construct_object_limbo_at_height("MTNK", "Americans", 5, 5, 0, 7, &rules)
         .unwrap();
     sim.substrate.entities.get_mut(tank).unwrap().on_bridge = true;
     sim.reveal(tank);
     // Keep it alive through the nested DeathWeapon without setting IC first.
     sim.substrate.entities.get_mut(tank).unwrap().health.current = 10_000;
     let boomer = sim
-        .construct_object_limbo_at_height("BOOM", "Americans", 5, 5, 0, 4, &rules)
+        .construct_object_limbo_at_height("BOOM", "Americans", 5, 5, 0, 7, &rules)
         .unwrap();
     sim.substrate.entities.get_mut(boomer).unwrap().on_bridge = true;
     sim.reveal(boomer);
@@ -1047,7 +1048,7 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
         vec![boomer, tank]
     );
     let unmarked = sim
-        .construct_object_limbo_at_height("MTNK", "Americans", 5, 5, 0, 4, &rules)
+        .construct_object_limbo_at_height("MTNK", "Americans", 5, 5, 0, 7, &rules)
         .unwrap();
     sim.substrate.entities.get_mut(unmarked).unwrap().on_bridge = true;
     launch_command(&mut sim, &rules, "IC", 5, 5);
@@ -1072,7 +1073,7 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
     let twin = sim.substrate.entities.get(unmarked).unwrap();
     assert!(twin.on_bridge && twin.lifecycle.in_limbo && !twin.lifecycle.cell_marked);
     assert_eq!(
-        twin.position.z, 4,
+        twin.position.z, 7,
         "unmarked deck coordinate is not a DropIn recipient"
     );
     assert_eq!(

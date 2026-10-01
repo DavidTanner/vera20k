@@ -1344,6 +1344,22 @@ impl GameEntity {
         }
     }
 
+    /// The rest of AircraftClass::Unlimbo's tail, after the retained +3D4
+    /// ([`Self::retain_aircraft_unlimbo_control`]): the Stage restarts at 0
+    /// with rate 1 (`0x0041441C..0x00414444`), then SetSpeedFraction
+    /// (vt+0x544, Foot `0x004D3710`) takes 1.0 when GetHeight (vt+0x1C8) is
+    /// the type's FlightLevel (vt+0xBC), else 0 (`0x0041444E..0x0041448A`).
+    /// Native comparison: tools/spatial_oracle/aircraft_unlimbo_height.json.
+    pub(crate) fn finish_aircraft_unlimbo(&mut self, height: i32, flight_level: i32, now: i32) {
+        self.stage.restart(0, now, 1);
+        let fraction = if height == flight_level {
+            crate::util::fixed_math::SIM_ONE
+        } else {
+            crate::util::fixed_math::SIM_ZERO
+        };
+        self.foot_speed.set_speed_fraction(fraction);
+    }
+
     /// Immutable storage key. Construction and snapshot decoding establish it.
     pub fn stable_id(&self) -> u64 {
         self.stable_id

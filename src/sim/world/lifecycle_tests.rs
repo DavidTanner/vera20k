@@ -589,13 +589,20 @@ fn a_revealed_building_takes_the_floor_at_its_location_as_its_z() {
     }
 }
 
+/// UnitType's Unlimbo coordinate adjustment (virtual +0x6C, `0x00747EB0`)
+/// clamps the input Z to the floor whatever the locomotor, so a Hover, Fly,
+/// Jumpjet, Rocket or Teleport unit starts on the floor as a Drive one does,
+/// and the altitude mirror takes the committed GetHeight, whatever it held.
+/// Ground=52 is the original-code result ramp_1_sub_128_128 in
+/// tools/ramp_height_vectors.json.
 #[test]
-fn grounded_ramp_reveal_preserves_independent_height_owners_and_headless_inputs() {
+fn every_unit_locomotor_takes_the_floor_clamp_at_unlimbo() {
     for kind in [
         LocomotorKind::Hover,
         LocomotorKind::Fly,
         LocomotorKind::Jumpjet,
         LocomotorKind::Rocket,
+        LocomotorKind::Teleport,
     ] {
         let mut sim = Simulation::new();
         install_common_raw_terrain(&mut sim, 8, 8, 0, None);
@@ -606,24 +613,27 @@ fn grounded_ramp_reveal_preserves_independent_height_owners_and_headless_inputs(
             .unwrap()
             .slope_type = 1;
         insert_entity(&mut sim, 1, EntityCategory::Unit);
-        sim.substrate.entities.get_mut(1).unwrap().locomotor =
-            Some(LocomotorState::for_test_kind(kind));
+        let mut locomotor = LocomotorState::for_test_kind(kind);
+        locomotor.altitude = SimFixed::from_num(500);
+        sim.substrate.entities.get_mut(1).unwrap().locomotor = Some(locomotor);
         assert!(matches!(
             sim.try_reveal_entity(1, common_raw_request(2, 2, 0, 128, 128)),
             RevealOutcome::Revealed { .. }
         ));
+        let unit = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(unit.position.exact_z_leptons, Some(52), "{kind:?}");
         assert_eq!(
-            sim.substrate
-                .entities
-                .get(1)
-                .unwrap()
-                .position
-                .exact_z_leptons,
-            None,
+            unit.locomotor.as_ref().unwrap().altitude,
+            SimFixed::from_num(0),
             "{kind:?}"
         );
     }
+}
 
+/// A reveal without terrain keeps no exact Z, and a falling object keeps
+/// the Z its drop gave it.
+#[test]
+fn grounded_reveal_keeps_headless_inputs_and_the_drop_z() {
     let mut sim = Simulation::new();
     insert_entity(&mut sim, 1, EntityCategory::Infantry);
     sim.substrate.entities.get_mut(1).unwrap().locomotor =
@@ -1721,24 +1731,32 @@ fn gsi_05_05_object_raw_occupation_uses_exact_sloped_ground_z_for_put_and_remove
 fn gsi_05_05_mapless_fly_uses_dummy_ground_then_bridge_height() {
     let mut sim = Simulation::new();
     install_fly_aircraft(&mut sim, 1, SimFixed::from_num(100));
-    {
-        let aircraft = sim.substrate.entities.get_mut(1).unwrap();
-        aircraft.on_bridge = true;
-        aircraft
-            .locomotor
-            .as_mut()
-            .unwrap()
-            .set_fly_target_height(100);
-    }
+    sim.substrate.entities.get_mut(1).unwrap().on_bridge = true;
     let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 2, 128, 128));
+    // A mapless reveal keeps no exact Z; SetHeight writes one over the Dummy
+    // cell's ground zero and the OnBridge deck.
+    sim.set_object_height_unmarked(1, 100);
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .position
+            .exact_z_leptons,
+        Some(416 + 100)
+    );
 
     sim.tick_air_movement_with_cell_lists_one(1, None, None);
 
-    let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
-        aircraft.position.exact_z_leptons,
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .position
+            .exact_z_leptons,
         Some(416 + 100),
-        "missing terrain uses native dummy-cell ground zero before OnBridge"
+        "Fly's GetHeight reads the same dummy ground back, so level flight writes nothing"
     );
 }
 
@@ -1817,11 +1835,8 @@ fn unlimbo_adds_a_high_flying_considered_aircraft_to_the_air_tracker() {
         let type_ref = sim.interner.intern("JJET");
         let entity = sim.substrate.entities.get_mut(30).unwrap();
         entity.type_ref = type_ref;
-        // Reveal leaves an air unit without an exact Z (#692), so its height
-        // is the altitude cache, as in `install_fly_aircraft`.
-        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
-        locomotor.altitude = SimFixed::from_num(416);
-        entity.locomotor = Some(locomotor);
+        // UnitType's floor clamp keeps the level-4 input, 416 leptons up.
+        entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Jumpjet));
 
         let _ = sim.try_reveal_entity_with_context(
             30,
@@ -5303,7 +5318,7 @@ fn assert_unallocated_expiry_retains_live_dummy_identity(through_receiver: bool)
     let target_id = sim.allocate_stable_id();
     insert_entity(&mut sim, target_id, EntityCategory::Unit);
     assert!(matches!(
-        sim.try_reveal_entity(target_id, request(8, 8, PlacementEvidence::MarkSucceeded)),
+        sim.try_reveal_entity(target_id, common_raw_request(8, 8, 0, 128, 64)),
         RevealOutcome::Revealed { .. }
     ));
 
@@ -7361,43 +7376,39 @@ fn walk_first_limbo_releases_head_but_repeated_limbo_preserves_new_claim() {
 }
 
 #[test]
-fn production_air_wrapper_keeps_fly_exact_producer_and_reads_live_dummy_for_legacy() {
-    for exact in [None, Some(731)] {
-        let mut sim = Simulation::new();
-        sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(1, 1, Vec::new()));
-        sim.resolved_terrain
-            .as_ref()
-            .unwrap()
-            .test_set_dummy_cell_level_slope(3, 1);
-        install_fly_aircraft(&mut sim, 1, SimFixed::from_num(125));
-        let e = sim.substrate.entities.get_mut(1).unwrap();
-        e.position.sub_x = SimFixed::from_num(64);
-        e.position.sub_y = SimFixed::from_num(192);
-        e.position.z = 99;
-        e.position.exact_z_leptons = exact;
-        e.on_bridge = true;
-        e.locomotor.as_mut().unwrap().set_fly_target_height(125);
-        let xy = crate::sim::movement::ground_pose::position_world_xy(&e.position);
-        let ground = crate::util::lepton::ground_height_leptons(3, 1, xy[0], xy[1]).unwrap();
-        let expected = exact.unwrap_or(ground + 416 + 125);
-        // Keep the physical height steady despite the stale controller cache.
-        e.locomotor
-            .as_mut()
-            .unwrap()
-            .set_fly_target_height((SimFixed::from_num(expected - ground - 416)).to_num::<i32>());
-        sim.tick_air_movement_with_cell_lists_one(1, None, None);
-        let e = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(e.position.exact_z_leptons, Some(expected));
-        assert_eq!(sim.foot_navigation_coordinate(1).unwrap().z, expected);
-        let dummy = sim
-            .resolved_terrain
-            .as_ref()
-            .unwrap()
-            .shared_cell_dummy()
-            .snapshot();
-        assert_eq!(dummy.level, 3);
-        assert_eq!(dummy.slope_type, 1);
-    }
+fn production_air_wrapper_keeps_fly_exact_producer_and_reads_live_dummy() {
+    let mut sim = Simulation::new();
+    sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(1, 1, Vec::new()));
+    sim.resolved_terrain
+        .as_ref()
+        .unwrap()
+        .test_set_dummy_cell_level_slope(3, 1);
+    install_fly_aircraft(&mut sim, 1, SimFixed::from_num(125));
+    let e = sim.substrate.entities.get_mut(1).unwrap();
+    e.position.sub_x = SimFixed::from_num(64);
+    e.position.sub_y = SimFixed::from_num(192);
+    e.position.z = 99;
+    e.position.exact_z_leptons = Some(731);
+    e.on_bridge = true;
+    let xy = crate::sim::movement::ground_pose::position_world_xy(&e.position);
+    let ground = crate::util::lepton::ground_height_leptons(3, 1, xy[0], xy[1]).unwrap();
+    // Keep the physical height steady despite the stale controller cache.
+    e.locomotor
+        .as_mut()
+        .unwrap()
+        .set_fly_target_height(731 - ground - 416);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
+    let e = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(e.position.exact_z_leptons, Some(731));
+    assert_eq!(sim.foot_navigation_coordinate(1).unwrap().z, 731);
+    let dummy = sim
+        .resolved_terrain
+        .as_ref()
+        .unwrap()
+        .shared_cell_dummy()
+        .snapshot();
+    assert_eq!(dummy.level, 3);
+    assert_eq!(dummy.slope_type, 1);
 }
 
 #[test]

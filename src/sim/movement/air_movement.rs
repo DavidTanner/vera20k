@@ -784,7 +784,7 @@ fn update_fly_height(
         });
     entity.position.exact_z_leptons = Some(output.world_z);
     entity.on_bridge = output.on_bridge;
-    loco.altitude = SimFixed::saturating_from_num(output.height);
+    super::ground_pose::mirror_height(entity, output.height);
 }
 
 #[cfg(test)]

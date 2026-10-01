@@ -136,9 +136,10 @@ pub(crate) fn put_location(position: &mut Position, coord: DriveCoord) {
 /// a new caller that sets a marked object's Location.
 ///
 /// RESIDUAL: the change test reads [`position_world_coord`], whose Z is the
-/// stored level when no exact Z is kept (an Air or Hover owner before it
-/// first moves). Only the rider copy depends on it; an extra copy changes
-/// nothing, and a Z-only change it misses leaves riders at the old Z.
+/// stored level when no exact Z is kept (a missile, a tube owner, or an
+/// object a bridge DropIn set down). Only the rider copy depends on it; an
+/// extra copy changes nothing, and a Z-only change it misses leaves riders
+/// at the old Z.
 ///
 /// [`open_topped_riders_follow`]: crate::sim::passenger::open_topped_riders_follow
 pub(crate) fn foot_set_location(
@@ -462,8 +463,7 @@ impl Simulation {
     ///
     /// It samples terrain only, as GetHeight ([`current_fly_height`]) does, so
     /// `SetHeight(GetHeight() + n)` round-trips without a map too. It also
-    /// keeps `LocomotorState.altitude` equal to the requested height, for the
-    /// readers that still take it as the object's height (#692).
+    /// mirrors the requested height ([`mirror_height`]).
     ///
     /// [`current_fly_height`]: super::air_movement::current_fly_height
     pub(crate) fn set_object_height_unmarked(&mut self, id: u64, height: i32) {
@@ -477,9 +477,14 @@ impl Simulation {
             self.resolved_terrain.as_ref(),
             None,
         );
-        if let Some(locomotor) = entity.locomotor.as_mut() {
-            locomotor.altitude =
-                crate::util::fixed_math::SimFixed::from_num(height.clamp(-32768, 32767));
-        }
+        mirror_height(entity, height);
+    }
+}
+
+/// Keep `LocomotorState.altitude` equal to the object's GetHeight, for the
+/// readers that still take it as the object's height (#692).
+pub(crate) fn mirror_height(entity: &mut crate::sim::game_entity::GameEntity, height: i32) {
+    if let Some(locomotor) = entity.locomotor.as_mut() {
+        locomotor.altitude = crate::util::fixed_math::SimFixed::saturating_from_num(height);
     }
 }
