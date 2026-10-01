@@ -229,9 +229,26 @@ Run Cargo through `python -m tools.cargo_run -- <cargo arguments>` from the chec
 It waits for other builds and serializes cooperating worktrees; do not compete with or
 kill a compile. Each run blocks every other session's Cargo until it finishes, so
 batch edits and run the narrowest command that answers your question.
-Use `--label <unique-name>` before `--` to preserve a build or
-`test --lib --no-run` executable with source and binary hashes. See the
+Default to unlabelled iteration. Use `--label <unique-name>` before `--` only
+for binaries needed for an active comparison, capture or debugging session.
+Prefer release builds for ordinary captures; preserve debug test binaries
+selectively. Evidence references the shared label, manifest, source/binary hashes
+and results; do not make extra executable copies. See the
 [tool index](tools/README.md) for cache locations and limits. Confirm fresh-worktree config/assets.
+
+After each validated chain merges, review its exact owned labels. Keep the final
+build and relevant control/debug binaries still required; archive manifests,
+checksums, results and native inputs through their evidence owners. Retire
+superseded labels with `--retire-label <exact-label> --dry-run`, then apply the
+same exact selection without `--dry-run`, then run `--trim-cache`. Never select by
+age or glob, touch another task's work, or delete active binaries, their required
+dependencies, source, assets or native evidence. External legacy copies of Rust
+binaries require a checked retirement owner, not arbitrary `rm`. Saved-label
+retirement is explicit; automatic retention trims rebuildable compiler caches.
+Before a large build, check the runner’s free-space result. If its minimum
+free-space target remains unmet, resolve the owned retention pressure before
+starting another large build; preserve required files and report any remaining
+shortfall.
 Format edited leaf files only (`rustfmt --edition 2024 <file>`), never crate-wide
 or recursive `mod.rs`. Coordinate snapshot versions/rebaselines; exclude others' WIP.
 

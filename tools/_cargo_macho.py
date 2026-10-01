@@ -54,7 +54,8 @@ def _path(name: bytes, kind: int) -> Path:
 
 
 def _thin(data: mmap.mmap, base: int, size: int,
-          architecture: tuple[int, int] | None = None) -> set[Path]:
+          architecture: tuple[int, int] | None = None,
+          *, require_executable: bool = False) -> set[Path]:
     _range(base, size, len(data), 'slice')
     if size < 4 or data[base:base + 4] not in _THIN:
         raise ValueError('Unsupported Mach-O slice magic')
@@ -66,6 +67,8 @@ def _thin(data: mmap.mmap, base: int, size: int,
         raise ValueError('Mach-O universal architecture/header mismatch')
     # Filesets contain nested images; old prebound/core formats are outside
     # this executable/object inspector's contract and must not appear empty.
+    if require_executable and filetype != 2:
+        raise ValueError(f'Mach-O export must be MH_EXECUTE, got {filetype}')
     if filetype not in {1, 2, 6, 7, 8, 10}:
         raise ValueError(f'Unsupported Mach-O file type: {filetype}')
     _range(header_size, command_bytes, size, 'load commands')
@@ -120,9 +123,10 @@ def _thin(data: mmap.mmap, base: int, size: int,
     return refs
 
 
-def dependencies(binary: Path) -> set[Path]:
+def dependencies(binary: Path, *, require_executable: bool = False) -> set[Path]:
     """Return every OSO/AST input; missing inputs are still returned.
 
+    require_executable rejects non-MH_EXECUTE files in every slice.
     Raises OSError/ValueError for unreadable, unsupported or malformed files.
     The caller owns the build lock and file-identity checks against mutation.
     """
@@ -134,7 +138,7 @@ def dependencies(binary: Path) -> set[Path]:
         with mmap.mmap(status, 0, access=mmap.ACCESS_READ) as data:
             magic = data[:4]
             if magic in _THIN:
-                return _thin(data, 0, len(data))
+                return _thin(data, 0, len(data), require_executable=require_executable)
             if magic not in _FAT:
                 raise ValueError('Unsupported Mach-O magic')
             endian, wide = _FAT[magic]
@@ -162,6 +166,6 @@ def dependencies(binary: Path) -> set[Path]:
             for offset, size, cpu, subtype in slices:
                 if offset < previous_end:
                     raise ValueError('Overlapping Mach-O universal slices')
-                refs.update(_thin(data, offset, size, (cpu, subtype)))
+                refs.update(_thin(data, offset, size, (cpu, subtype), require_executable=require_executable))
                 previous_end = offset + size
             return refs

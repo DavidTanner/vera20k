@@ -31,6 +31,24 @@ class CargoRunTests(unittest.TestCase):
         self.addCleanup(self.env.stop)
         os.environ.pop('CARGO_TARGET_DIR', None)
 
+    def test_export_retirement_routes_only_explicit_plan_without_building(self):
+        from tools import _cargo_labels
+        with patch.object(cargo_run, 'git', return_value=str(self.root)), \
+             patch.object(_cargo_labels, 'retire_exports', return_value={'state': 'planned', 'errors': []}) as retire, \
+             patch.object(cargo_run, 'run') as build, redirect_stdout(io.StringIO()):
+            self.assertEqual(cargo_run.main(['--retire-export-plan', '/plan.json', '--dry-run']), 0)
+            retire.assert_called_once_with(self.root, Path('/plan.json'), 3600, dry_run=True)
+            build.assert_not_called()
+        for arguments in (
+            ['--retire-export-plan', '/plan.json', '--label', 'another'],
+            ['--retire-export-plan', '/plan.json', '--cache-gib', '0'],
+            ['--retire-export-plan', '/plan.json', '--profile', 'debug'],
+            ['--retire-export-plan', '/plan.json', '--', 'build'],
+            ['--dry-run'],
+        ):
+            with self.subTest(arguments=arguments), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                cargo_run.main(arguments)
+
     def test_fingerprint_covers_dirty_deleted_and_untracked_sources(self):
         first = cargo_run.source_identity(self.root)
         (self.root / 'source.rs').write_text('second')

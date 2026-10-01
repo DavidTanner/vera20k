@@ -57,6 +57,19 @@ class MachODependenciesTests(unittest.TestCase):
         self.binary.write_bytes(data)
         return dependencies(self.binary)
 
+    def test_executable_requirement_checks_every_thin_and_universal_slice(self):
+        executable = thin()
+        dylib = bytearray(thin())
+        struct.pack_into('<I', dylib, 12, 6)
+        self.binary.write_bytes(executable)
+        self.assertEqual(dependencies(self.binary, require_executable=True), set())
+        for payload in (dylib, fat([(0x100000C, executable), (0x100000C, bytes(dylib))])):
+            self.binary.write_bytes(payload)
+            # Existing cache inspection retains support for libraries/objects.
+            self.assertEqual(dependencies(self.binary), set())
+            with self.assertRaisesRegex(ValueError, 'MH_EXECUTE'):
+                dependencies(self.binary, require_executable=True)
+
     def test_all_thin_encodings_include_missing_oso_and_ast(self):
         for wide in (False, True):
             for endian in ('<', '>'):

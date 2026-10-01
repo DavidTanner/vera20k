@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "date": "2026-10-01",
+  "scope": "macOS native Rust libtest disposable-copy retirement; original retained shared label preserved; no historical evidence executable removed",
+  "unit_tests": {
+    "passed": 69,
+    "skipped": 1,
+    "log": "focused-tests.log",
+    "total": 70
+  },
+  "native_validation": "Real nm, MH_EXECUTE/OSO/AST inspection, shared lock, lsof, exact dry-run/apply, durable receipt, retained hashes and402 debug input identities unchanged",
+  "files": {
+    "focused-tests.log": {
+      "sha256": "be7df631e6c70c180d024135a0045e8f6e9be4f1c72c7df824d84603bd312a03",
+      "bytes": 5246
+    },
+    "plan.json": {
+      "sha256": "e6b9ffb4859e106746e6c0f9479142953efafbde5b6b3427a21c3cc6ee8deb64",
+      "bytes": 1392
+    },
+    "dry-run.json": {
+      "sha256": "aee81bbf27c2cb03a1ae9be881a64bdd0713725a81df6c5d5ce1d5820e83aa5c",
+      "bytes": 203750
+    },
+    "validation.json": {
+      "sha256": "70a53feb74bba803ed9fab4afca7fb7759f1cb71b2ed4f7090fb3a5c89939098",
+      "bytes": 1252
+    },
+    "applied.json": {
+      "sha256": "ebfb401dabfc44a521913e8902fc5cc98e2ee666fc9139ba40326406ac297ed2",
+      "bytes": 204144
+    },
+    "final-focused-tests.log": {
+      "sha256": "f9c03d6dcc73a73f0df41eb70b5d06f64aa5db8b9652d2e302001f0a5596db82",
+      "bytes": 5246
+    },
+    "full-python-tests.log": {
+      "sha256": "59cea6ae93f3a0f4bacd2becdb8e26e8cb99741e2316bd4592cff7aaefe10b2a",
+      "bytes": 81815
+    },
+    "windows-initial-ci-failure.log.gz": {
+      "sha256": "745dfa655ed35659cb75e82b2fc5a382fb565cf8d42e21356f3bdd44aa6db89e",
+      "bytes": 19052
+    },
+    "windows-fixture-fix-focused.log": {
+      "sha256": "9c170144d766dc6b156450ed846c3262ed5911004ed9e22f8abd24410882d86f",
+      "bytes": 5246
+    }
+  },
+  "limitations": [
+    "Native smoke covers macOS only; export retirement fails closed on unsupported platforms",
+    "Pinned reviewed records are evidence, not cryptographic proof of the original compiler or reviewer",
+    "Historical binaries without provenance or with missing debug inputs remain blocked"
+  ],
+  "final_focused_tests": {
+    "passed": 69,
+    "skipped": 1,
+    "log": "final-focused-tests.log",
+    "total": 70
+  },
+  "full_python_tests": {
+    "passed": 420,
+    "skipped": 4,
+    "log": "full-python-tests.log",
+    "total": 424
+  },
+  "windows_initial_ci": {
+    "status": "failed",
+    "run_id": 36826491287,
+    "failures": 7,
+    "errors": 1,
+    "reason": "POSIX-only transaction fixtures ran on Windows; JSON-escaped checkout did not match opaque provenance text. A simulated Darwin symbol test also relied on host nm discovery. Production export retirement is unsupported on Windows and fails closed.",
+    "correction": "Match existing label-retirement POSIX fixture admission; retain Windows unsupported-format guard. Mock native nm discovery in simulated Darwin symbol test. No production deletion checks relaxed."
+  },
+  "windows_fixture_fix_focused": {
+    "total": 70,
+    "passed": 69,
+    "skipped": 1,
+    "log": "windows-fixture-fix-focused.log"
+  }
+}
