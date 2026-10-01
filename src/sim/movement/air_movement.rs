@@ -291,13 +291,13 @@ pub struct AirMovementTickStats {
     pub touched_down: bool,
 }
 
-/// Advance live Fly entities one tick.
+/// Advance one Fly object's Process visit.
 ///
 /// Handles altitude changes and horizontal movement. Air units move in
 /// straight lines at their speed, ignoring terrain and ground occupancy.
 pub fn tick_air_movement(
     entities: &mut EntityStore,
-    live_order: &[u64],
+    entity_id: u64,
     sim_tick: u64,
     binary_frame: u32,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
@@ -308,286 +308,259 @@ pub fn tick_air_movement(
 ) -> AirMovementTickStats {
     let mut stats = AirMovementTickStats::default();
 
-    // Collect air entity IDs that need processing.
-    let air_entity_ids: Vec<u64> = {
-        let fallback_order;
-        let entity_order: &[u64] = if live_order.is_empty() {
-            fallback_order = entities.keys_sorted();
-            &fallback_order
-        } else {
-            live_order
-        };
-        entity_order
-            .iter()
-            .copied()
-            .filter(|&id| {
-                entities.get(id).is_some_and(|e| {
-                    e.locomotor.as_ref().is_some_and(|loco| {
-                        // Jumpjets are driven by their own locomotor:
-                        // `world::jumpjet_cruise` runs `Process 0x0054AEC0`,
-                        // which owns their state, altitude, facing and speed.
-                        // This adapter must not touch them, or the two
-                        // authorities fight (an idle one used to cycle takeoff
-                        // and landing every 102 frames).
-                        loco.layer == MovementLayer::Air && loco.kind == LocomotorKind::Fly
-                    })
-                })
-            })
-            .collect()
+    // Jumpjets are driven by their own locomotor: `world::jumpjet_cruise`
+    // runs `Process 0x0054AEC0`, which owns their state, altitude, facing and
+    // speed. This adapter must not touch them, or the two authorities fight
+    // (an idle one used to cycle takeoff and landing every 102 frames).
+    let Some(entity) = entities.get_mut(entity_id).filter(|e| {
+        e.locomotor
+            .as_ref()
+            .is_some_and(|loco| loco.layer == MovementLayer::Air && loco.kind == LocomotorKind::Fly)
+    }) else {
+        return stats;
+    };
+    entity
+        .locomotor
+        .as_mut()
+        .unwrap()
+        .fly_runtime_mut()
+        .unwrap()
+        .prepare_process(entity.mission.effective());
+    ensure_fly_secondary_facing(entity);
+    // Process reaches its speed control (the target speed and the ramp)
+    // on every frame the Fly is moving (4CDA0B, IsMoving 4CCA90), from
+    // its ordinary path (4CD67F..4CD6A8) and its airborne crash path
+    // (4CD7A4) alike; only a crash's impact frame (unported) returns
+    // first. The writer and the ramp skip a dead owner themselves.
+    let speed_control = super::motion_query::is_moving(entity) == Some(true);
+
+    // --- Horizontal movement (facing-based, only when airborne) ---
+    // A dead (crashing) Fly takes Process's paid step exactly when IsMoving
+    // (`0x004CDA0B`) at its frozen speed and heading: Horizontal_Step, the
+    // landing trigger and the speed writer and ramp all need Health > 0
+    // (`0x004CCBE9`, `0x004CE3CA`, `0x004CE148`, `0x004CE444`). Evidence:
+    // `tools/spatial_oracle/aircraft_crash` `fall` rows.
+    let dead = entity.health.current == 0;
+    // Process returns at `0x004CDA10` when IsMoving is false, before the
+    // paid step and the height step. RESIDUAL: the gate is Process's for
+    // every Fly; a living one still reaches the legacy height step below
+    // while it stands still (its landing descent is not yet migrated to
+    // Process_Landing's callbacks), so only a dead Fly takes it here.
+    if dead && !speed_control {
+        return stats;
+    }
+    // The arrival retires the order adapter after the rest of Process, whose
+    // navigation request still reads it this frame.
+    let mut arrived_at_destination = false;
+    let has_movement: bool = if dead {
+        speed_control
+    } else {
+        entity.movement_target.is_some()
     };
 
-    let mut finished: Vec<u64> = Vec::new();
+    if has_movement {
+        let height = current_fly_height(entity, terrain);
+        let can_move: bool = dead
+            || entity
+                .locomotor
+                .as_ref()
+                .is_some_and(|l| height >= l.fly_target_height() / 2);
 
-    for &entity_id in &air_entity_ids {
-        let Some(entity) = entities.get_mut(entity_id) else {
-            continue;
-        };
-        entity
-            .locomotor
-            .as_mut()
-            .unwrap()
-            .fly_runtime_mut()
-            .unwrap()
-            .prepare_process(entity.mission.effective());
-        ensure_fly_secondary_facing(entity);
-        // Process reaches its speed control (the target speed and the ramp)
-        // on every frame the Fly is moving (4CDA0B, IsMoving 4CCA90), from
-        // its ordinary path (4CD67F..4CD6A8) and its airborne crash path
-        // (4CD7A4) alike; only a crash's impact frame (unported) returns
-        // first. The writer and the ramp skip a dead owner themselves.
-        let speed_control = super::motion_query::is_moving(entity) == Some(true);
-
-        // --- Horizontal movement (facing-based, only when airborne) ---
-        // A dead (crashing) Fly takes Process's paid step exactly when IsMoving
-        // (`0x004CDA0B`) at its frozen speed and heading: Horizontal_Step, the
-        // landing trigger and the speed writer and ramp all need Health > 0
-        // (`0x004CCBE9`, `0x004CE3CA`, `0x004CE148`, `0x004CE444`). Evidence:
-        // `tools/spatial_oracle/aircraft_crash` `fall` rows.
-        let dead = entity.health.current == 0;
-        // Process returns at `0x004CDA10` when IsMoving is false, before the
-        // paid step and the height step. RESIDUAL: the gate is Process's for
-        // every Fly; a living one still reaches the legacy height step below
-        // while it stands still (its landing descent is not yet migrated to
-        // Process_Landing's callbacks), so only a dead Fly takes it here.
-        if dead && !speed_control {
-            continue;
-        }
-        let has_movement: bool = if dead {
-            speed_control
-        } else {
-            entity.movement_target.is_some()
-        };
-
-        if has_movement {
-            let height = current_fly_height(entity, terrain);
-            let can_move: bool = dead
-                || entity
-                    .locomotor
-                    .as_ref()
-                    .is_some_and(|l| height >= l.fly_target_height() / 2);
-
-            if can_move {
-                let native_type_speed = rules_context
-                    .and_then(|(rules, interner)| rules.object(interner.resolve(entity.type_ref())))
-                    .map(|object| {
-                        crate::util::fixed_math::ra2_speed_to_leptons_per_frame(object.speed)
-                    })
-                    // Mapless/headless compatibility only; production rules
-                    // are authoritative even when an order cache is stale.
-                    .or_else(|| {
-                        entity
-                            .movement_target
-                            .as_ref()
-                            .map(|target| (target.speed / SimFixed::from_num(15)).to_num::<i32>())
-                    })
-                    .unwrap_or(0);
-                let speed = current_fly_speed(
-                    native_type_speed,
+        if can_move {
+            let native_type_speed = rules_context
+                .and_then(|(rules, interner)| rules.object(interner.resolve(entity.type_ref())))
+                .map(|object| crate::util::fixed_math::ra2_speed_to_leptons_per_frame(object.speed))
+                // Mapless/headless compatibility only; production rules
+                // are authoritative even when an order cache is stale.
+                .or_else(|| {
                     entity
-                        .locomotor
+                        .movement_target
                         .as_ref()
-                        .unwrap()
-                        .fly_runtime()
-                        .unwrap()
-                        .current_speed,
-                );
-                let destination = entity
+                        .map(|target| (target.speed / SimFixed::from_num(15)).to_num::<i32>())
+                })
+                .unwrap_or(0);
+            let speed = current_fly_speed(
+                native_type_speed,
+                entity
                     .locomotor
                     .as_ref()
                     .unwrap()
                     .fly_runtime()
-                    .expect("selected Fly mover")
-                    .destination();
-
-                // Compute distance to goal in leptons.
-                use fixed::types::I48F16;
-                let lep256 = I48F16::from_num(256);
-                let goal_lx = I48F16::from_num(destination.x);
-                let goal_ly = I48F16::from_num(destination.y);
-                let cur_lx = I48F16::from_num(entity.position.rx) * lep256
-                    + I48F16::from(entity.position.sub_x);
-                let cur_ly = I48F16::from_num(entity.position.ry) * lep256
-                    + I48F16::from(entity.position.sub_y);
-                let dlx = goal_lx - cur_lx;
-                let dly = goal_ly - cur_ly;
-                let dist_sq = dlx * dlx + dly * dly;
-                let dist = if dist_sq <= I48F16::ZERO {
-                    I48F16::ZERO
-                } else {
-                    let two = I48F16::from_num(2);
-                    let mut g = dist_sq / two;
-                    for _ in 0..20 {
-                        if g <= I48F16::ZERO {
-                            break;
-                        }
-                        g = (g + dist_sq / g) / two;
-                    }
-                    g
-                };
-                let dist_i32: i32 = dist.to_num::<i32>();
-
-                //4CDA3C..4CDB4C: full Primary.Current, integer Fly speed and
-                // final world-coordinate truncation using the shared table.
-                if speed > 0 {
-                    let current = super::ground_pose::position_world_xy(&entity.position);
-                    let proposed = crate::util::native_trig::facing_step_world_xy(
-                        current,
-                        entity.body_facing.current(binary_frame),
-                        speed,
-                    );
-                    // Existing placement boundary remains a separate residual:
-                    // native4CDB4C..4CDD07 applies map/owner-specific correction.
-                    // Keep the bounded adapter until those gates are migrated.
-                    // RESIDUAL: native places the result through
-                    // FootClass::SetLocation (vt+0x1B4 at 0x004CDD07); this
-                    // adapter writes XY only and skips its OpenTopped rider
-                    // tail. Dormant: retail rulesmd.ini makes only the Drive
-                    // BFRT OpenTopped=yes.
-                    const MAX_WORLD: i32 = 511 * 256 + 255;
-                    super::ground_pose::set_position_world_xy(
-                        &mut entity.position,
-                        [
-                            proposed[0].clamp(0, MAX_WORLD),
-                            proposed[1].clamp(0, MAX_WORLD),
-                        ],
-                    );
-                }
-
-                // Legacy arrival, standing in for Horizontal_Step's arrival
-                // arm (4CF4D2) and the Process landing trigger (4CE3C0) until
-                // they are ported: close enough AND speed near zero.
-                let arrived = !dead
-                    && dist_i32 < 128
-                    && entity
-                        .locomotor
-                        .as_ref()
-                        .and_then(LocomotorState::fly_runtime)
-                        .is_some_and(|fly| fly.current_speed < MIN_CREEP_SPEED);
-                if arrived {
-                    super::ground_pose::set_position_world_xy(
-                        &mut entity.position,
-                        [destination.x, destination.y],
-                    );
-                    finished.push(entity_id);
-                    stats.arrivals = stats.arrivals.saturating_add(1);
-                }
-            }
-        }
-
-        //4CDD75..4CDDD3 samples distance after XY placement and BEFORE vertical
-        // motion/landing drift. The later pitch writer consumes this same local.
-        let destination = entity
-            .locomotor
-            .as_ref()
-            .unwrap()
-            .fly_runtime()
-            .unwrap()
-            .destination();
-        let xy = super::ground_pose::position_world_xy(&entity.position);
-        let approach_distance = crate::sim::cell_kernel::native_xy_distance(
-            destination.x.wrapping_sub(xy[0]),
-            destination.y.wrapping_sub(xy[1]),
-        );
-
-        // Original vertical controller follows the committed XY. Object Z
-        // remains authoritative; loco.altitude is a bounded read cache only.
-        let phase_before = fly_mission_phase(entity, terrain);
-        update_fly_height(entity, terrain, rules_context);
-        if speed_control {
-            let facts = fly_speed_facts(entity, approach_distance, terrain, rules_context);
-            write_fly_target_speed(entity.locomotor.as_mut().unwrap(), &facts);
-        }
-        // Process4CCC15..4CCC49 requests navigation after movement/height and
-        // before phase callbacks. Destination choice is still the legacy
-        // adapter pending4CEFB0's docking/strafe migration. Its heading request
-        // now uses Primary.Set and native phase/readiness suppression.
-        let state = entity.locomotor.as_ref().unwrap().fly_runtime().unwrap();
-        let navigation = entity.movement_target.is_some()
-            && entity.locomotor.as_ref().unwrap().powered
-            && entity.health.current > 0
-            && !state.has_phase_callback()
-            && entity
-                .mission_leaf
-                .as_aircraft()
-                .is_none_or(|leaf| leaf.action_latch() == 0)
-            && current_fly_height(entity, terrain) > 0;
-        if navigation {
-            let destination = state.destination();
-            let xy = super::ground_pose::position_world_xy(&entity.position);
-            let dx = destination.x.wrapping_sub(xy[0]);
-            let dy = destination.y.wrapping_sub(xy[1]);
-            if dx != 0 || dy != 0 {
-                entity.body_facing.set(
-                    crate::util::direction_tables::facing16_from_delta(dx, dy),
-                    binary_frame,
-                );
-            }
-        }
-        let phase_after = fly_mission_phase(entity, terrain);
-        if phase_before != phase_after {
-            entity.push_debug_event(
-                sim_tick as u32,
-                DebugEventKind::PhaseChange {
-                    from: format!("{phase_before:?}"),
-                    to: format!("{phase_after:?}"),
-                    reason: "height target projection".into(),
-                },
+                    .unwrap()
+                    .current_speed,
             );
-        }
-
-        //4CE2E5..4CE3BA approach attitude. Only IsDropship produces Techno+2E8.
-        if let Some(object) =
-            rules_context.and_then(|(r, i)| r.object(i.resolve(entity.type_ref())))
-            && object.is_dropship
-            && entity.health.current > 0
-            && entity
+            let destination = entity
                 .locomotor
                 .as_ref()
-                .and_then(LocomotorState::fly_runtime)
-                .is_some_and(|fly| fly.current_speed > SIM_ZERO && !fly.taking_off())
-        {
-            entity.flight_attitude.approach(
-                approach_distance,
-                object.slowdown_distance,
-                object.pitch_angle,
-            );
-        }
+                .unwrap()
+                .fly_runtime()
+                .expect("selected Fly mover")
+                .destination();
 
-        if speed_control
-            && entity.health.current > 0
-            && let Some(state) = entity
-                .locomotor
-                .as_mut()
-                .and_then(LocomotorState::fly_runtime_mut)
-        {
-            ramp_fly_speed(state);
+            // Compute distance to goal in leptons.
+            use fixed::types::I48F16;
+            let lep256 = I48F16::from_num(256);
+            let goal_lx = I48F16::from_num(destination.x);
+            let goal_ly = I48F16::from_num(destination.y);
+            let cur_lx =
+                I48F16::from_num(entity.position.rx) * lep256 + I48F16::from(entity.position.sub_x);
+            let cur_ly =
+                I48F16::from_num(entity.position.ry) * lep256 + I48F16::from(entity.position.sub_y);
+            let dlx = goal_lx - cur_lx;
+            let dly = goal_ly - cur_ly;
+            let dist_sq = dlx * dlx + dly * dly;
+            let dist = if dist_sq <= I48F16::ZERO {
+                I48F16::ZERO
+            } else {
+                let two = I48F16::from_num(2);
+                let mut g = dist_sq / two;
+                for _ in 0..20 {
+                    if g <= I48F16::ZERO {
+                        break;
+                    }
+                    g = (g + dist_sq / g) / two;
+                }
+                g
+            };
+            let dist_i32: i32 = dist.to_num::<i32>();
+
+            //4CDA3C..4CDB4C: full Primary.Current, integer Fly speed and
+            // final world-coordinate truncation using the shared table.
+            if speed > 0 {
+                let current = super::ground_pose::position_world_xy(&entity.position);
+                let proposed = crate::util::native_trig::facing_step_world_xy(
+                    current,
+                    entity.body_facing.current(binary_frame),
+                    speed,
+                );
+                // Existing placement boundary remains a separate residual:
+                // native4CDB4C..4CDD07 applies map/owner-specific correction.
+                // Keep the bounded adapter until those gates are migrated.
+                // RESIDUAL: native places the result through
+                // FootClass::SetLocation (vt+0x1B4 at 0x004CDD07); this
+                // adapter writes XY only and skips its OpenTopped rider
+                // tail. Dormant: retail rulesmd.ini makes only the Drive
+                // BFRT OpenTopped=yes.
+                const MAX_WORLD: i32 = 511 * 256 + 255;
+                super::ground_pose::set_position_world_xy(
+                    &mut entity.position,
+                    [
+                        proposed[0].clamp(0, MAX_WORLD),
+                        proposed[1].clamp(0, MAX_WORLD),
+                    ],
+                );
+            }
+
+            // Legacy arrival, standing in for Horizontal_Step's arrival
+            // arm (4CF4D2) and the Process landing trigger (4CE3C0) until
+            // they are ported: close enough AND speed near zero.
+            let arrived = !dead
+                && dist_i32 < 128
+                && entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(LocomotorState::fly_runtime)
+                    .is_some_and(|fly| fly.current_speed < MIN_CREEP_SPEED);
+            if arrived {
+                super::ground_pose::set_position_world_xy(
+                    &mut entity.position,
+                    [destination.x, destination.y],
+                );
+                arrived_at_destination = true;
+                stats.arrivals = stats.arrivals.saturating_add(1);
+            }
         }
     }
 
-    for id in finished {
-        if let Some(entity) = entities.get_mut(id) {
-            entity.movement_target = None;
+    //4CDD75..4CDDD3 samples distance after XY placement and BEFORE vertical
+    // motion/landing drift. The later pitch writer consumes this same local.
+    let destination = entity
+        .locomotor
+        .as_ref()
+        .unwrap()
+        .fly_runtime()
+        .unwrap()
+        .destination();
+    let xy = super::ground_pose::position_world_xy(&entity.position);
+    let approach_distance = crate::sim::cell_kernel::native_xy_distance(
+        destination.x.wrapping_sub(xy[0]),
+        destination.y.wrapping_sub(xy[1]),
+    );
+
+    // Original vertical controller follows the committed XY. Object Z
+    // remains authoritative; loco.altitude is a bounded read cache only.
+    let phase_before = fly_mission_phase(entity, terrain);
+    update_fly_height(entity, terrain, rules_context);
+    if speed_control {
+        let facts = fly_speed_facts(entity, approach_distance, terrain, rules_context);
+        write_fly_target_speed(entity.locomotor.as_mut().unwrap(), &facts);
+    }
+    // Process4CCC15..4CCC49 requests navigation after movement/height and
+    // before phase callbacks. Destination choice is still the legacy
+    // adapter pending4CEFB0's docking/strafe migration. Its heading request
+    // now uses Primary.Set and native phase/readiness suppression.
+    let state = entity.locomotor.as_ref().unwrap().fly_runtime().unwrap();
+    let navigation = entity.movement_target.is_some()
+        && entity.locomotor.as_ref().unwrap().powered
+        && entity.health.current > 0
+        && !state.has_phase_callback()
+        && entity
+            .mission_leaf
+            .as_aircraft()
+            .is_none_or(|leaf| leaf.action_latch() == 0)
+        && current_fly_height(entity, terrain) > 0;
+    if navigation {
+        let destination = state.destination();
+        let xy = super::ground_pose::position_world_xy(&entity.position);
+        let dx = destination.x.wrapping_sub(xy[0]);
+        let dy = destination.y.wrapping_sub(xy[1]);
+        if dx != 0 || dy != 0 {
+            entity.body_facing.set(
+                crate::util::direction_tables::facing16_from_delta(dx, dy),
+                binary_frame,
+            );
         }
+    }
+    let phase_after = fly_mission_phase(entity, terrain);
+    if phase_before != phase_after {
+        entity.push_debug_event(
+            sim_tick as u32,
+            DebugEventKind::PhaseChange {
+                from: format!("{phase_before:?}"),
+                to: format!("{phase_after:?}"),
+                reason: "height target projection".into(),
+            },
+        );
+    }
+
+    //4CE2E5..4CE3BA approach attitude. Only IsDropship produces Techno+2E8.
+    if let Some(object) = rules_context.and_then(|(r, i)| r.object(i.resolve(entity.type_ref())))
+        && object.is_dropship
+        && entity.health.current > 0
+        && entity
+            .locomotor
+            .as_ref()
+            .and_then(LocomotorState::fly_runtime)
+            .is_some_and(|fly| fly.current_speed > SIM_ZERO && !fly.taking_off())
+    {
+        entity.flight_attitude.approach(
+            approach_distance,
+            object.slowdown_distance,
+            object.pitch_angle,
+        );
+    }
+
+    if speed_control
+        && entity.health.current > 0
+        && let Some(state) = entity
+            .locomotor
+            .as_mut()
+            .and_then(LocomotorState::fly_runtime_mut)
+    {
+        ramp_fly_speed(state);
+    }
+    if arrived_at_destination {
+        entity.movement_target = None;
     }
     stats
 }
@@ -888,65 +861,6 @@ mod tests {
         // Native MoveTo accepts a nonnull destination even at the owner cell.
         let e = sim.substrate.entities.get(1).expect("has entity");
         assert!(e.movement_target.is_some());
-    }
-
-    #[test]
-    fn air_movement_uses_live_object_order_not_stable_id_scan() {
-        fn build_entities() -> EntityStore {
-            let mut entities = EntityStore::new();
-            for id in [1, 2] {
-                let mut entity = GameEntity::test_default(id, "ORCA", "Americans", 10, 10);
-                let mut loco = make_fly_loco();
-
-                loco.set_fly_target_height(600);
-
-                entity.locomotor = Some(loco);
-                entities.insert(entity);
-            }
-            entities
-        }
-
-        let mut live_entities = build_entities();
-        let mut stable_entities = build_entities();
-
-        tick_air_movement(&mut live_entities, &[2], 0, 0, None, None);
-        tick_air_movement(&mut stable_entities, &[], 0, 0, None, None);
-
-        assert_eq!(
-            live_entities
-                .get(1)
-                .unwrap()
-                .locomotor
-                .as_ref()
-                .unwrap()
-                .altitude,
-            SIM_ZERO,
-            "stable-id-first air mover absent from live order must not tick"
-        );
-        assert!(
-            live_entities
-                .get(2)
-                .unwrap()
-                .locomotor
-                .as_ref()
-                .unwrap()
-                .altitude
-                > SIM_ZERO,
-            "live-order member must tick"
-        );
-        assert!(
-            [1, 2].iter().all(|&id| {
-                stable_entities
-                    .get(id)
-                    .unwrap()
-                    .locomotor
-                    .as_ref()
-                    .unwrap()
-                    .altitude
-                    > SIM_ZERO
-            }),
-            "empty live order: the stable-id fallback ticks every air mover"
-        );
     }
 
     fn make_fly_loco() -> LocomotorState {

@@ -13,7 +13,7 @@
 //! ## Dependency rules
 //! - Internal to sim/movement — called via re-export in mod.rs.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
@@ -405,7 +405,6 @@ fn advance_ordinary_mover(
     interner: &mut crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     type_handles: Option<&TypeHandleTable>,
-    prepared: &mut PreparedMovementPass,
     effects: &mut MovementPassEffects,
     entry: VisitEntry,
 ) {
@@ -414,7 +413,6 @@ fn advance_ordinary_mover(
         resolved_terrain,
         playfield_bounds,
     } = grids;
-    let PreparedMovementPass { tube_processed, .. } = prepared;
     let MovementPassEffects {
         stats,
         finished_entities,
@@ -591,7 +589,6 @@ fn advance_ordinary_mover(
                 )
                 .is_ok()
                 {
-                    tube_processed.insert(entity_id);
                     return;
                 }
             }
@@ -908,70 +905,43 @@ impl MovementPassCache {
     }
 }
 
-/// Owned results of the one-time pass preparation. No entity, terrain or map
-/// borrows escape into this state. Pending arrivals can change which objects
-/// are movers, and entry-active Tube objects remain excluded after completion.
-///
-/// This extraction preserves the existing dispatch order; ordinary stepping
-/// below still needs the native synchronous callback continuation.
+/// Owned state the visit lends to its path requests. No entity, terrain or
+/// map borrows escape into it.
 #[derive(Default)]
 struct PreparedMovementPass {
-    movers: Vec<u64>,
-    tube_processed: BTreeSet<u64>,
     held_block_sets: HeldBlockSets,
 }
 
-/// Perform the entry work once, before ordinary movers advance. In particular,
-/// resuming a point after a world callback must not call this again: it reaims
-/// destinations and runs Tube movement and pending arrivals.
+/// The visit's entry work, run once before the ordinary mover advances.
+/// Resuming after a world callback must not repeat it: it runs Tube movement
+/// and the idle Walk tail. Returns the owner of an object that still advances
+/// as an ordinary mover.
 #[allow(clippy::too_many_arguments)]
-fn prepare_movement_pass(
+fn prepare_movement_visit(
     entities: &mut EntityStore,
-    entity_order: &[u64],
+    entity_id: u64,
     grids: PassGrids<'_>,
-    alliances: &HouseAllianceMap,
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
     rng: &mut SimRng,
     native_frame: u32,
-    interner: &mut crate::sim::intern::StringInterner,
+    interner: &crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     stats: &mut MovementTickStats,
-    block_index: &mut OwnerBlockIndex,
     scatters: &mut super::scatter::ScatterRequests,
-) -> Result<PreparedMovementPass, String> {
-    let PassGrids {
-        path_grid,
-        resolved_terrain,
-        ..
-    } = grids;
-    for &entity_id in entity_order {
-        if let Some(entity) = entities.get_mut(entity_id) {
-            cell_occupation.reconcile_entity(entity, occupancy);
-        }
-    }
-    // Active TubeMovement owns the entire object turn. Capture this before any
-    // helper can mutate navigation state, because a successful final clears
-    // the payload but still must not resume ordinary processing this tick.
-    let tube_active_at_start: BTreeSet<u64> = entity_order
-        .iter()
-        .copied()
-        .filter(|&entity_id| {
-            entities
-                .get(entity_id)
-                .is_some_and(|entity| entity.low_bridge_tube_state.is_some())
-        })
-        .collect();
-
-    let mut tube_processed = tube_active_at_start;
-    if let Some(terrain) = resolved_terrain {
-        for &entity_id in entity_order {
-            if tube_movement::tick_active_tube_object(
+) -> Option<crate::sim::intern::InternedId> {
+    let entity = entities.get_mut(entity_id)?;
+    cell_occupation.reconcile_entity(entity, occupancy);
+    // Active TubeMovement owns the entire object turn, including the visit in
+    // which its final clears the payload.
+    if entity.low_bridge_tube_state.is_some() {
+        if let Some(terrain) = grids.resolved_terrain
+            && tube_movement::tick_active_tube_object(
                 entities,
                 entity_id,
                 terrain,
-                path_grid,
+                grids.path_grid,
                 occupancy,
                 cell_occupation,
                 raw_cell_occupation,
@@ -980,57 +950,23 @@ fn prepare_movement_pass(
                 rng,
                 native_frame,
                 scatters,
-            ) {
-                tube_processed.insert(entity_id);
-                stats.movers_total = stats.movers_total.saturating_add(1);
-            }
+            )
+        {
+            stats.movers_total = stats.movers_total.saturating_add(1);
         }
+        return None;
     }
-    // Collect movers in live object order: ground/bridge entities with a movement_target.
-    let mut movers: Vec<u64> = Vec::new();
-    let mut mover_owners: BTreeSet<crate::sim::intern::InternedId> = BTreeSet::new();
-    for &id in entity_order {
-        if let Some(entity) = entities.get_mut(id) {
-            // An ordinary idle Walk still executes75BCE3. It has no route
-            //adapter, so it would otherwise be omitted from this mover pass.
-            //Entry-active Tube movement owns its entire visit instead.
-            if !tube_processed.contains(&id)
-                && entity.is_active()
-                && entity.movement_target.is_none()
-            {
-                super::walk_step::finish_idle(entity);
-            }
-            if tube_processed.contains(&id)
-                || (entity.movement_target.is_none()
-                    && super::track_head::active_track_family(entity).is_none())
-                || entity.low_bridge_tube_state.is_some()
-            {
-                continue;
-            }
-            let layer = entity.movement_layer_or_ground();
-            if !matches!(layer, MovementLayer::Air | MovementLayer::Underground) {
-                movers.push(id);
-                mover_owners.insert(entity.owner());
-            }
-        }
+    // An ordinary idle Walk still executes 75BCE3. It has no route adapter,
+    // so it would otherwise be omitted from the mover visit.
+    if entity.is_active() && entity.movement_target.is_none() {
+        super::walk_step::finish_idle(entity);
     }
-    // Each mover owner's entity block sets for friendly-passable pathfinding
-    // during repath, as a build from the entities would give them now.
-    // RA2 optimization: moving friendly units are passable (code-2 dynamic cost);
-    // only stationary/enemy units hard-block. InternedId is Copy, so keys are cheap.
-    let held_block_sets: HeldBlockSets = mover_owners
-        .iter()
-        .map(|&owner_id| {
-            let lent = block_index.lend_current(owner_id, entities, alliances, interner, rules);
-            (owner_id, lent)
-        })
-        .collect();
-
-    Ok(PreparedMovementPass {
-        movers,
-        tube_processed,
-        held_block_sets,
-    })
+    if entity.movement_target.is_none() && super::track_head::active_track_family(entity).is_none()
+    {
+        return None;
+    }
+    let layer = entity.movement_layer_or_ground();
+    (!matches!(layer, MovementLayer::Air | MovementLayer::Underground)).then(|| entity.owner())
 }
 
 #[cfg(test)]
@@ -1056,106 +992,6 @@ pub(crate) fn tick_movement_with_grids(
     sound_events: &mut Vec<crate::sim::world::SimSoundEvent>,
     lifecycle_requests: &mut Vec<LifecycleRequest>,
 ) -> MovementTickStats {
-    tick_movement_with_grids_scoped(
-        entities,
-        live_order,
-        path_grid,
-        terrain_costs,
-        alliances,
-        occupancy,
-        cell_occupation,
-        raw_cell_occupation,
-        rng,
-        sim_tick,
-        native_frame,
-        zone_grid,
-        resolved_terrain,
-        None,
-        None,
-        playfield_bounds,
-        terrain_speed_config,
-        interner,
-        rules,
-        sound_events,
-        lifecycle_requests,
-    )
-}
-
-#[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn tick_movement_object_with_grids(
-    entities: &mut EntityStore,
-    entity_id: u64,
-    path_grid: Option<&PathGrid>,
-    terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
-    alliances: &HouseAllianceMap,
-    occupancy: &mut OccupancyGrid,
-    cell_occupation: &mut CellOccupationGrid,
-    raw_cell_occupation: &mut RawCellOccupationGrid,
-    rng: &mut SimRng,
-    sim_tick: u64,
-    native_frame: u32,
-    zone_grid: Option<&ZoneGrid>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    playfield_bounds: Option<PlayfieldBounds>,
-    terrain_speed_config: &TerrainSpeedConfig,
-    interner: &mut crate::sim::intern::StringInterner,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-    sound_events: &mut Vec<crate::sim::world::SimSoundEvent>,
-    lifecycle_requests: &mut Vec<LifecycleRequest>,
-) -> MovementTickStats {
-    tick_movement_with_grids_scoped(
-        entities,
-        Some(std::slice::from_ref(&entity_id)),
-        path_grid,
-        terrain_costs,
-        alliances,
-        occupancy,
-        cell_occupation,
-        raw_cell_occupation,
-        rng,
-        sim_tick,
-        native_frame,
-        zone_grid,
-        resolved_terrain,
-        overlay_grid,
-        overlay_registry,
-        playfield_bounds,
-        terrain_speed_config,
-        interner,
-        rules,
-        sound_events,
-        lifecycle_requests,
-    )
-}
-
-#[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-fn tick_movement_with_grids_scoped(
-    entities: &mut EntityStore,
-    live_order: Option<&[u64]>,
-    path_grid: Option<&PathGrid>,
-    terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
-    alliances: &HouseAllianceMap,
-    occupancy: &mut OccupancyGrid,
-    cell_occupation: &mut CellOccupationGrid,
-    raw_cell_occupation: &mut RawCellOccupationGrid,
-    rng: &mut SimRng,
-    sim_tick: u64,
-    native_frame: u32,
-    zone_grid: Option<&ZoneGrid>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    playfield_bounds: Option<PlayfieldBounds>,
-    terrain_speed_config: &TerrainSpeedConfig,
-    interner: &mut crate::sim::intern::StringInterner,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-    sound_events: &mut Vec<crate::sim::world::SimSoundEvent>,
-    lifecycle_requests: &mut Vec<LifecycleRequest>,
-) -> MovementTickStats {
     // This adapter owns only fixture assembly and result transfer. Runtime
     // state is moved, not mirrored; every entity reaches the production host.
     let mut sim = crate::sim::world::Simulation::new();
@@ -1172,7 +1008,6 @@ fn tick_movement_with_grids_scoped(
     sim.path_grid = path_grid.cloned().map(std::sync::Arc::new);
     sim.zone_grid = zone_grid.cloned();
     sim.resolved_terrain = resolved_terrain.cloned();
-    sim.overlay_grid = overlay_grid.cloned();
     sim.playfield_bounds = playfield_bounds;
     sim.terrain_speed_config = terrain_speed_config.clone();
     let order = live_order
@@ -1189,7 +1024,7 @@ fn tick_movement_with_grids_scoped(
             continue;
         }
         stats.merge(
-            sim.process_ground_locomotor_stats_for_test(id, rules, overlay_registry)
+            sim.process_ground_locomotor_stats_for_test(id, rules, None)
                 .expect("fixture reached an unsupported production movement receiver"),
         );
     }
@@ -1289,7 +1124,6 @@ impl PendingMovementPass {
             &mut sim.interner,
             rules,
             Some(&sim.type_handles),
-            &mut self.prepared,
             &mut self.effects,
             entry,
         );
@@ -1334,10 +1168,11 @@ impl PendingMovementPass {
     }
 }
 
+/// One object's ground movement visit, up to its first world callback.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn begin_movement_with_grids_scoped(
+pub(crate) fn begin_movement(
     entities: &mut EntityStore,
-    live_order: Option<&[u64]>,
+    entity_id: u64,
     path_grid: Option<&PathGrid>,
     alliances: &HouseAllianceMap,
     occupancy: &mut OccupancyGrid,
@@ -1351,35 +1186,18 @@ pub(crate) fn begin_movement_with_grids_scoped(
     rules: Option<&crate::rules::ruleset::RuleSet>,
     type_handles: Option<&TypeHandleTable>,
     caches: &mut MovementPassCache,
-) -> Result<PendingMovementPass, String> {
-    let mut stats = MovementTickStats::default();
-    if live_order.is_some_and(|order| order.is_empty()) {
-        // An explicitly supplied empty LogicVector is authoritative. It is not
-        // the test-wrapper signal for deriving stable-id order from storage.
-        return Ok(PendingMovementPass {
-            effects: MovementPassEffects::default(),
-            prepared: PreparedMovementPass::default(),
-        });
-    }
-    let fallback_order;
-    let entity_order: &[u64] = match live_order {
-        Some(order) => order,
-        None => {
-            fallback_order = entities.keys_sorted();
-            &fallback_order
-        }
-    };
+) -> PendingMovementPass {
     let grids = PassGrids {
         path_grid,
         resolved_terrain,
         playfield_bounds,
     };
-    let mut scatters = super::scatter::ScatterRequests::default();
-    let mut prepared = prepare_movement_pass(
+    let mut effects = MovementPassEffects::default();
+    let mut prepared = PreparedMovementPass::default();
+    let mover_owner = prepare_movement_visit(
         entities,
-        entity_order,
+        entity_id,
         grids,
-        alliances,
         occupancy,
         cell_occupation,
         raw_cell_occupation,
@@ -1387,17 +1205,16 @@ pub(crate) fn begin_movement_with_grids_scoped(
         native_frame,
         interner,
         rules,
-        &mut stats,
-        &mut caches.block_index,
-        &mut scatters,
-    )?;
-
-    let mut effects = MovementPassEffects {
-        stats,
-        scatters,
-        ..Default::default()
-    };
-    for entity_id in std::mem::take(&mut prepared.movers) {
+        &mut effects.stats,
+        &mut effects.scatters,
+    );
+    if let Some(owner) = mover_owner {
+        // The owner's entity block sets for friendly-passable pathfinding,
+        // as a build from the entities would give them now.
+        let lent = caches
+            .block_index
+            .lend_current(owner, entities, alliances, interner, rules);
+        prepared.held_block_sets.insert(owner, lent);
         advance_ordinary_mover(
             entities,
             entity_id,
@@ -1409,12 +1226,11 @@ pub(crate) fn begin_movement_with_grids_scoped(
             interner,
             rules,
             type_handles,
-            &mut prepared,
             &mut effects,
             VisitEntry::Process,
         );
     }
-    Ok(PendingMovementPass { effects, prepared })
+    PendingMovementPass { effects, prepared }
 }
 
 pub(crate) fn finish_movement_pass(

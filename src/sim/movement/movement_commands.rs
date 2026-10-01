@@ -166,14 +166,17 @@ impl DestinationTiming {
     }
 }
 
-/// Issue a move command and attach its MovementTarget execution request.
+/// Fixture shorthand for [`issue_move_command_with_destination`] without
+/// the Simulation's zones, terrain or blocker counts. Production orders go
+/// through `Simulation::issue_ground_move`.
 ///
 /// Walk, Drive and Ship destinations defer the path search to their first
 /// Process (the class setters never search). Other locomotors retain their
 /// command-time path adapter.
 ///
 /// `speed` is the movement speed in cells per second (from rules.ini Speed= value).
-pub fn issue_move_command(
+#[cfg(test)]
+pub(crate) fn issue_move_command(
     entities: &mut EntityStore,
     grid: &PathGrid,
     entity_id: u64,
@@ -204,6 +207,7 @@ pub fn issue_move_command(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn issue_move_command_with_layered(
     entities: &mut EntityStore,
     grid: &PathGrid,
