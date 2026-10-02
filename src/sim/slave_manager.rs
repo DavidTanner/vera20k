@@ -865,7 +865,15 @@ impl Simulation {
         owner.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(
             x as u16, y as u16,
         )));
-        crate::sim::production::begin_selling(self, rules, master, false);
+        // Original6B01E8 queues Selling only. Building's ready checks own
+        // Commence; Sell_Back's synchronous queue+Commence is a different caller.
+        let _ = self.mission_queue_exact(
+            master,
+            MissionId::from_known(MissionType::Selling),
+            0,
+            self.session.binary_frame,
+            &crate::sim::mission::authority::LiveReadyInputProvider { rules },
+        );
         self.set_manager_state(master, ManagerState::PackingUp, i32::MAX);
     }
 

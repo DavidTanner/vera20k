@@ -2,68 +2,14 @@
 //! belong to building_art and AnimStore; this finalizer owns no frame timer.
 
 use super::Simulation;
-use crate::rules::art_data::BuildingAnimKind;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::intern::InternedId;
-use crate::sim::production;
 
-pub(crate) fn finalize(
-    sim: &mut Simulation,
-    placed_building_owners: &[InternedId],
-    rules: Option<&RuleSet>,
-) {
-    let Some(rules) = rules else {
-        return;
-    };
-    for &owner in placed_building_owners {
-        let owner = sim.interner.resolve(owner).to_owned();
-        trigger_crane_anim(sim, rules, &owner);
-    }
-    // These are observations of synchronous Unit/Building producer calls.
-    // Replaying them here would delay constructor IDs, Logic visits and RNG.
+/// Drop observation packets after their synchronous producers have run.
+/// PLACE radio C owns the yard's Production8 animation at43CC4C; replaying
+/// it here would allocate another animation, IDs and RNG at the frame tail.
+pub(crate) fn finalize(sim: &mut Simulation) {
     sim.bale_events.clear();
     sim.bunker_wall_events.clear();
-}
-
-fn trigger_crane_anim(sim: &mut Simulation, rules: &RuleSet, owner: &str) {
-    let Some(producer) = production::active_producer_for_owner_category(
-        sim,
-        rules,
-        owner,
-        production::ProductionCategory::Building,
-    ) else {
-        return;
-    };
-    let id = producer.stable_id;
-    let Some(entity) = sim.entities().get(id) else {
-        return;
-    };
-    let name = sim.interner.resolve(entity.type_ref());
-    let Some(object) = rules.object(name) else {
-        return;
-    };
-    let Some(art) = rules.art().resolve_metadata_entry(name, &object.image) else {
-        return;
-    };
-    let slots: Vec<_> = art
-        .building_anims
-        .iter()
-        .filter(|config| {
-            matches!(
-                config.kind,
-                BuildingAnimKind::Active | BuildingAnimKind::Production
-            ) && config.loop_count >= 0
-        })
-        .map(|config| config.native_slot)
-        .collect();
-    let damaged = crate::sim::building_art::requested_damage_state(
-        entity.health,
-        object.strength,
-        rules.general.condition_yellow,
-    );
-    for slot in slots {
-        sim.set_building_anim_slot(id, slot, damaged, false, 0, rules);
-    }
 }
 
 fn at_or_below_condition_yellow(current: i32, strength: i32, yellow: f64) -> bool {
@@ -306,10 +252,16 @@ mod tests {
         assert_eq!(represented, 140);
     }
     fn insert_building(sim: &mut Simulation, id: u64, name: &str, rx: u16, ry: u16) {
-        let mut entity = GameEntity::test_default(id, name, "Americans", rx, ry);
+        let mut entity = GameEntity::test_default_of_category(
+            id,
+            name,
+            "Americans",
+            rx,
+            ry,
+            crate::map::entities::EntityCategory::Structure,
+        );
         entity.type_ref = sim.interner.intern(name);
         entity.owner = sim.interner.intern("Americans");
-        entity.category = crate::map::entities::EntityCategory::Structure;
         entity.health.current = 100;
         sim.entities_mut().insert(entity);
     }
@@ -500,7 +452,7 @@ mod tests {
             let mut sim = refinery_sim_with_bale();
             sim.entities_mut().get_mut(41).unwrap().health.current = row.input.current;
             begin_refinery_unload_gate(&mut sim, &rules, 41);
-            finalize(&mut sim, &[], Some(&rules));
+            finalize(&mut sim);
             let id = sim.entities().get(41).unwrap().building_anim_slots[10].unwrap();
             assert_eq!(
                 sim.interner.resolve(sim.anim(id).unwrap().type_id),
@@ -528,7 +480,7 @@ mod tests {
         let mut sim = refinery_sim_with_bale();
         sim.entities_mut().get_mut(41).unwrap().health.current = 50;
         begin_refinery_unload_gate(&mut sim, &rules, 41);
-        finalize(&mut sim, &[], Some(&rules));
+        finalize(&mut sim);
         assert!(sim.bale_events.is_empty());
         assert_eq!(sim.particle_systems().len(), 1);
         let building = sim.entities().get(41).unwrap();
@@ -542,7 +494,7 @@ mod tests {
         sim.bale_events[0].empty = true;
         begin_refinery_unload_gate(&mut sim, &rules, 41);
         end_refinery_unload_empty(&mut sim, &rules, 41);
-        finalize(&mut sim, &[], Some(&rules));
+        finalize(&mut sim);
         assert!(sim.bale_events.is_empty());
         assert_eq!(sim.particle_systems().len(), 1);
         assert_eq!(
@@ -551,7 +503,7 @@ mod tests {
         );
         assert_eq!(sim.anims().count(), 0);
         let hash = sim.state_hash();
-        finalize(&mut sim, &[], Some(&rules));
+        finalize(&mut sim);
         assert_eq!(hash, sim.state_hash());
     }
 }

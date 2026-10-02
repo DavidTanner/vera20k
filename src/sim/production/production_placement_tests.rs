@@ -1,7 +1,7 @@
 //! Building placement tests — verifies foundation overlap detection, placement validity,
 //! and per-owner placement pool management for the production system.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 
 use super::{
     BuildingPlacementError, ProductionCategory, credits_for_owner,
@@ -37,7 +37,7 @@ use super::tests::{
 
 fn stock_refinery_completion_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          0=CMIN\n\
          1=HARV\n\
@@ -49,14 +49,14 @@ fn stock_refinery_completion_rules() -> RuleSet {
          2=GAREFN\n\
          3=NAREFN\n\
          4=NAINDP\n\
-         [GACNST]\n\
+         [GACNST]\nOwner=Americans,Alliance,Russians,Soviet\n\
          Factory=BuildingType\n\
-         [NACNST]\n\
+         [NACNST]\nOwner=Americans,Alliance,Russians,Soviet\n\
          Factory=BuildingType\n\
-         [GAREFN]\n\
+         [GAREFN]\nOwner=Americans,Alliance,Russians,Soviet\nStrength=1000\n\
          Refinery=yes\nDockUnload=yes\n\
          FreeUnit=CMIN\n\
-         [NAREFN]\n\
+         [NAREFN]\nOwner=Americans,Alliance,Russians,Soviet\nStrength=1000\n\
          Refinery=yes\nDockUnload=yes\n\
          FreeUnit=HARV\n\
          [CMIN]\n\
@@ -131,7 +131,7 @@ fn set_ticks_until_completion(sim: &mut Simulation, stable_id: u64, ticks: u16) 
         .get_mut(stable_id)
         .expect("placed building should have BuildingUp");
     assert!(
-        building.building_up.is_some(),
+        building.building_up(),
         "placed building should have BuildingUp"
     );
     building.install_building_up(BuildingUp::completing_in_ticks(i32::from(ticks), now), now);
@@ -140,10 +140,10 @@ fn set_ticks_until_completion(sim: &mut Simulation, stable_id: u64, ticks: u16) 
 #[test]
 fn gap_operational_actual_placement_waits_for_build_up_and_next_building_turn() {
     let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
          [BuildingTypes]\n0=GACNST\n1=GAGAP\n\
-         [GACNST]\nFactory=BuildingType\nBaseNormal=yes\nPower=500\nStrength=1000\nFoundation=1x1\n\
-         [GAGAP]\nGapGenerator=yes\nGapRadiusInCells=10\nPowered=yes\nPower=-100\nStrength=600\nCost=1000\nFoundation=1x1\n[Clear]\nBuildable=yes\n",
+         [GACNST]\nOwner=Americans,Alliance,Russians,Soviet\nFactory=BuildingType\nBaseNormal=yes\nPower=500\nStrength=1000\nFoundation=1x1\n\
+         [GAGAP]\nOwner=Americans,Alliance,Russians,Soviet\nGapGenerator=yes\nGapRadiusInCells=10\nPowered=yes\nPower=-100\nStrength=600\nCost=1000\nFoundation=1x1\n[Clear]\nBuildable=yes\n",
     )).unwrap();
     let mut sim = placement_sim();
     sim.fog.width = 64;
@@ -161,14 +161,7 @@ fn gap_operational_actual_placement_waits_for_build_up_and_next_building_turn() 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let grid = PathGrid::new(64, 64);
     let id = ready_and_place(&mut sim, &rules, "Americans", "GAGAP", 12, 10);
-    assert!(
-        sim.substrate
-            .entities
-            .get(id)
-            .unwrap()
-            .building_up
-            .is_some()
-    );
+    assert!(sim.substrate.entities.get(id).unwrap().building_up());
     sim.set_logic_order_for_test(vec![1, id]);
     sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(
@@ -181,14 +174,7 @@ fn gap_operational_actual_placement_waits_for_build_up_and_next_building_turn() 
     assert!(!sim.fog.is_cell_gap_covered(viewer, 12, 10));
     set_ticks_until_completion(&mut sim, id, 1);
     sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
-    assert!(
-        sim.substrate
-            .entities
-            .get(id)
-            .unwrap()
-            .building_up
-            .is_none()
-    );
+    assert!(!sim.substrate.entities.get(id).unwrap().building_up());
     assert!(
         !sim.fog.is_cell_gap_covered(viewer, 12, 10),
         "late completion is not a gap writer"
@@ -360,20 +346,20 @@ fn install_refinery_test_terrain(sim: &mut Simulation) {
 
 fn naval_yard_placement_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n\
          0=GACNST\n\
          1=GAYARD\n\
-         [GACNST]\n\
+         [GACNST]\nOwner=Americans,Alliance,Russians,Soviet\n\
          Strength=1000\n\
          Armor=wood\n\
          Foundation=2x2\n\
          BaseNormal=yes\n\
          Factory=BuildingType\n\
          Adjacent=12\n\
-         [GAYARD]\n\
+         [GAYARD]\nOwner=Americans,Alliance,Russians,Soviet\n\
          Strength=1500\n\
          Armor=concrete\n\
          Foundation=1x1\n\
@@ -391,20 +377,20 @@ fn naval_yard_placement_rules() -> RuleSet {
 
 fn build_off_ally_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n\
          0=GACNST\n\
          1=GAPOWR\n\
-         [GACNST]\n\
+         [GACNST]\nOwner=Americans,Alliance,Russians,Soviet\n\
          Strength=1000\n\
          Armor=wood\n\
          Foundation=2x2\n\
          BaseNormal=yes\n\
          Factory=BuildingType\n\
          EligibileForAllyBuilding=yes\n\
-         [GAPOWR]\n\
+         [GAPOWR]\nOwner=Americans,Alliance,Russians,Soviet\n\
          Strength=750\n\
          Armor=wood\n\
          Foundation=2x2\n\
@@ -419,7 +405,7 @@ fn build_off_ally_rules() -> RuleSet {
 
 fn ground_occupant_placement_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          0=E1\n\
          [VehicleTypes]\n\
          0=MTNK\n\
@@ -436,13 +422,13 @@ fn ground_occupant_placement_rules() -> RuleSet {
          [MTNK]\n\
          Strength=300\n\
          Armor=heavy\n\
-         [GACNST]\n\
+         [GACNST]\nOwner=Americans,Alliance,Russians,Soviet\n\
          Strength=1000\n\
          Armor=wood\n\
          Foundation=2x2\n\
          BaseNormal=yes\n\
          Factory=BuildingType\n\
-         [GAPOWR]\n\
+         [GAPOWR]\nOwner=Americans,Alliance,Russians,Soviet\n\
          Strength=750\n\
          Armor=wood\n\
          Foundation=2x2\n\
@@ -476,7 +462,7 @@ fn gsi_04_07_wall_placement_contract() -> (RuleSet, OverlayTypeRegistry) {
          0=GASAND\n\
          1=CYCL\n\
          2=GAWALL\n\
-         [GACNST]\n\
+         [GACNST]\nOwner=Americans,Alliance,Russians,Soviet\n\
          Factory=BuildingType\n\
          Strength=1000\n\
          Armor=wood\n\
@@ -559,26 +545,26 @@ fn ready_building(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_id: &
 
 fn stock_power_contract_rules() -> RuleSet {
     let fixture = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n\
          0=GACNST\n\
          1=GAPOWR\n\
          2=AMRADR\n\
-         [GACNST]\n\
+         [GACNST]\nOwner=Americans,Alliance,Russians,Soviet\n\
          Strength=1000\n\
          Armor=concrete\n\
          Adjacent=2\n\
          Power=0\n\
          Factory=BuildingType\n\
-         [GAPOWR]\n\
+         [GAPOWR]\nOwner=Americans,Alliance,Russians,Soviet\n\
          BuildCat=Power\n\
          Strength=750\n\
          Armor=wood\n\
          Adjacent=2\n\
          Power=200\n\
-         [AMRADR]\n\
+         [AMRADR]\nOwner=Americans,Alliance,Russians,Soviet\n\
          BuildCat=Tech\n\
          Strength=600\n\
          Armor=steel\n\
@@ -787,14 +773,7 @@ fn placed_gapowr_completion(human: bool) -> (u32, Option<u32>) {
     for _ in 0..80 {
         let frame = sim.session.binary_frame;
         sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
-        if sim
-            .substrate
-            .entities
-            .get(placed)
-            .unwrap()
-            .building_up
-            .is_none()
-        {
+        if !sim.substrate.entities.get(placed).unwrap().building_up() {
             completed = Some(frame);
             break;
         }
@@ -873,7 +852,7 @@ fn stock_gapowr_placement_restores_power_and_radar_during_buildup() {
         })
         .expect("production command should place stock GAPOWR");
     assert!(
-        placed.building_up.is_some(),
+        placed.building_up(),
         "power recovery must occur while the placement buildup is still active"
     );
 
@@ -884,7 +863,7 @@ fn stock_gapowr_placement_restores_power_and_radar_during_buildup() {
     sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     assert!(
         sim.substrate.entities.values().any(|entity| {
-            entity.owner == americans && entity.type_ref == gapowr && entity.building_up.is_some()
+            entity.owner == americans && entity.type_ref == gapowr && entity.building_up()
         }),
         "GAPOWR must still be in its visible buildup during reassessment"
     );
@@ -1010,17 +989,30 @@ fn stock_refinery_free_unit_spawns_on_building_up_completion_once() {
         sim.substrate
             .entities
             .get(refinery_id)
-            .is_some_and(|entity| entity.building_up.is_some())
+            .is_some_and(|entity| entity.building_up())
     );
     assert!(unit_ids(&sim, "Americans", "CMIN").is_empty());
 
     let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
-    assert!(completion.spawned_entities);
+    let building = sim.substrate.entities.get(refinery_id).unwrap();
+    assert!(
+        completion.spawned_entities,
+        "completion frame{}: mission={:?}/{:?}, status={}, ready={}, body={:?}, stage={:?}, placed={}, free_units={:?}",
+        sim.session.binary_frame - 1,
+        building.mission.current(),
+        building.mission.queued(),
+        building.mission.handler_state(),
+        building.building_ready_latch(),
+        building.building_body_state(),
+        building.native_stage(),
+        building.building_actually_placed,
+        unit_ids(&sim, "Americans", "CMIN")
+    );
     assert!(
         sim.substrate
             .entities
             .get(refinery_id)
-            .is_some_and(|entity| entity.building_up.is_none())
+            .is_some_and(|entity| !entity.building_up())
     );
     assert_eq!(unit_ids(&sim, "Americans", "CMIN").len(), 1);
 
@@ -1104,20 +1096,21 @@ fn refinery_whose_primary_cell_clears_its_footprint_keeps_the_primary_cell_and_f
     // and the nearby search never runs. Stock has no 1x1 refinery; this exists to
     // pin the order of the two mechanisms, not a shipping configuration.
     let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          0=MODHARV\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n\
          0=GACNST\n\
          1=MODPROC\n\
-         [GACNST]\n\
+         [GACNST]\nFactory=BuildingType\nOwner=Americans,Alliance,Russians,Soviet\nStrength=1000\n\
          Foundation=2x2\n\
-         [MODPROC]\n\
+         [MODPROC]\nOwner=Americans,Alliance,Russians,Soviet\nStrength=1000\n\
          Refinery=yes\nDockUnload=yes\n\
          FreeUnit=MODHARV\n\
          Foundation=1x1\n\
          [MODHARV]\n\
+         Strength=600\n\
          Harvester=yes\n\
          Dock=MODPROC\n\
          Speed=4\n[Clear]\nBuildable=yes\n",
@@ -1425,20 +1418,21 @@ fn simultaneous_refinery_completions_preserve_stable_id_order() {
 #[test]
 fn modded_refinery_completion_uses_free_unit_from_rules() {
     let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          0=MODHARV\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n\
          0=GACNST\n\
          1=MODPROC\n\
-         [GACNST]\n\
+         [GACNST]\nFactory=BuildingType\nOwner=Americans,Alliance,Russians,Soviet\nStrength=1000\n\
          Foundation=2x2\n\
-         [MODPROC]\n\
+         [MODPROC]\nOwner=Americans,Alliance,Russians,Soviet\nStrength=1000\n\
          Refinery=yes\nDockUnload=yes\n\
          FreeUnit=MODHARV\n\
          Foundation=3x3\n\
          [MODHARV]\n\
+         Strength=600\n\
          Harvester=yes\n\
          Dock=MODPROC\n\
          Speed=4\n[Clear]\nBuildable=yes\n",
@@ -1461,19 +1455,20 @@ fn modded_refinery_completion_uses_free_unit_from_rules() {
 #[test]
 fn refinery_without_free_unit_spawns_nothing_on_completion() {
     let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          0=MODHARV\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n\
          0=GACNST\n\
          1=MODPROC\n\
-         [GACNST]\n\
+         [GACNST]\nFactory=BuildingType\nOwner=Americans,Alliance,Russians,Soviet\nStrength=1000\n\
          Foundation=2x2\n\
-         [MODPROC]\n\
+         [MODPROC]\nOwner=Americans,Alliance,Russians,Soviet\nStrength=1000\n\
          Refinery=yes\nDockUnload=yes\n\
          Foundation=3x3\n\
          [MODHARV]\n\
+         Strength=600\n\
          Harvester=yes\n\
          Dock=MODPROC\n\
          Speed=4\n[Clear]\nBuildable=yes\n",
@@ -1487,6 +1482,14 @@ fn refinery_without_free_unit_spawns_nothing_on_completion() {
     set_ticks_until_completion(&mut sim, refinery_id, 1);
 
     let completion = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
+    assert!(
+        !sim.substrate
+            .entities
+            .get(refinery_id)
+            .unwrap()
+            .building_up(),
+        "the no-FreeUnit control must actually complete construction"
+    );
     assert!(!completion.spawned_entities);
     assert!(unit_ids(&sim, "Americans", "MODHARV").is_empty());
 }
@@ -1665,7 +1668,7 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
             entity.type_ref == gapowr
                 && entity.position.rx == 12
                 && entity.position.ry == 10
-                && entity.building_up.is_some()
+                && entity.building_up()
         }));
     }
 }
@@ -2590,6 +2593,9 @@ fn build_off_ally_enabled_accepts_allied_eligible_provider() {
     let rules = build_off_ally_rules();
 
     spawn_structure(&mut sim, 1, "Alliance", "GACNST", 10, 10);
+    // PLACE still needs this house's producer; only its radius comes from
+    // the nearby ally. Keep the own yard outside this placement's build area.
+    spawn_structure(&mut sim, 2, "Americans", "GACNST", 50, 50);
     mark_allied(&mut sim, "Americans", "Alliance");
     ready_building(&mut sim, &rules, "Americans", "GAPOWR");
 
@@ -2610,6 +2616,7 @@ fn build_off_ally_disabled_rejects_allied_eligible_provider() {
 
     sim.session.game_options.build_off_ally = false;
     spawn_structure(&mut sim, 1, "Alliance", "GACNST", 10, 10);
+    spawn_structure(&mut sim, 2, "Americans", "GACNST", 50, 50);
     mark_allied(&mut sim, "Americans", "Alliance");
     ready_building(&mut sim, &rules, "Americans", "GAPOWR");
 
@@ -2629,6 +2636,7 @@ fn build_off_ally_requires_eligibile_for_ally_building() {
     let rules = build_off_ally_rules();
 
     spawn_structure(&mut sim, 1, "Alliance", "GAPOWR", 10, 10);
+    spawn_structure(&mut sim, 2, "Americans", "GACNST", 50, 50);
     mark_allied(&mut sim, "Americans", "Alliance");
     ready_building(&mut sim, &rules, "Americans", "GAPOWR");
 
@@ -2988,11 +2996,10 @@ fn cycle_active_producer_rotates_matching_factories() {
         ProductionCategory::Vehicle,
     ));
     assert_eq!(
-        sim.production
-            .active_producer_by_owner
-            .get(&sim.interner.intern("Americans"))
-            .and_then(|categories| categories.get(&ProductionCategory::Vehicle))
-            .copied(),
+        sim.production.primary_factory(
+            sim.interner.intern("Americans"),
+            ProductionCategory::Vehicle
+        ),
         Some(3)
     );
     assert!(cycle_active_producer_for_owner_category(
@@ -3002,11 +3009,10 @@ fn cycle_active_producer_rotates_matching_factories() {
         ProductionCategory::Vehicle,
     ));
     assert_eq!(
-        sim.production
-            .active_producer_by_owner
-            .get(&sim.interner.intern("Americans"))
-            .and_then(|categories| categories.get(&ProductionCategory::Vehicle))
-            .copied(),
+        sim.production.primary_factory(
+            sim.interner.intern("Americans"),
+            ProductionCategory::Vehicle
+        ),
         Some(5)
     );
 }
@@ -3020,10 +3026,8 @@ fn blocked_active_war_factory_does_not_spawn_from_second_factory() {
     spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
     spawn_structure(&mut sim, 2, "Americans", "GAWEAP", 30, 30);
     let americans = sim.interner.intern("Americans");
-    sim.production.active_producer_by_owner.insert(
-        americans,
-        BTreeMap::from([(ProductionCategory::Vehicle, 1)]),
-    );
+    sim.production
+        .set_primary_factory_for_test(americans, ProductionCategory::Vehicle, 1);
 
     grid.set_blocked(12, 11, true);
     sim.install_fixture_path_grid(Some(&grid));
@@ -3103,10 +3107,8 @@ fn spawn_routing_prefers_active_producer_when_available() {
     spawn_structure(&mut sim, 3, "Americans", "GAWEAP", 10, 10);
     spawn_structure(&mut sim, 5, "Americans", "GAWEAP", 30, 30);
     let americans = sim.interner.intern("Americans");
-    sim.production.active_producer_by_owner.insert(
-        americans,
-        BTreeMap::from([(ProductionCategory::Vehicle, 5)]),
-    );
+    sim.production
+        .set_primary_factory_for_test(americans, ProductionCategory::Vehicle, 5);
 
     let spawn = find_spawn_cell_for_owner(
         &mut sim,
@@ -3186,7 +3188,7 @@ fn sell_back_admits_by_control_buildup_and_firestorm_wall() {
     let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
          [BuildingTypes]\n0=GAPOWR\n1=GAFWLL\n\
-         [GAPOWR]\nCost=800\nStrength=750\n\
+         [GAPOWR]\nOwner=Americans,Alliance,Russians,Soviet\nCost=800\nStrength=750\n\
          [GAFWLL]\nCost=100\nStrength=100\nFirestormWall=yes\n",
     ))
     .expect("sale admission rules should parse");
@@ -3235,11 +3237,22 @@ fn sell_back_admits_by_control_buildup_and_firestorm_wall() {
     assert!(sell_back(&mut sim, &rules, 1, SellOrder::Player));
     assert!(selling(&sim));
     assert!(!can_sell_building(&sim, &rules, 1));
-    let sale = sim.substrate.entities.get(1).unwrap().building_down;
+    let sale = sim
+        .substrate
+        .entities
+        .get(1)
+        .unwrap()
+        .mission
+        .dispatch_timer();
     assert!(sell_back(&mut sim, &rules, 1, SellOrder::Player));
     assert_eq!(clicks(&sim), 2, "the repeated order clicks");
     assert_eq!(
-        sim.substrate.entities.get(1).unwrap().building_down,
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .mission
+            .dispatch_timer(),
         sale,
         "the sale is not restarted"
     );
@@ -3468,18 +3481,18 @@ fn retained_wall_plane_placement_reaches_fixed_stride_alias() {
 fn a_placed_slave_refinery_waits_out_its_build_up_in_the_deployed_state() {
     use crate::sim::slave_manager::ManagerState;
     let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n0=SLAV\n[VehicleTypes]\n[AircraftTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n0=SLAV\n[VehicleTypes]\n[AircraftTypes]\n\
          [BuildingTypes]\n0=GACNST\n1=YAREFN\n\
-         [GACNST]\nFactory=BuildingType\n\
+         [GACNST]\nOwner=Americans,Alliance,Russians,Soviet\nStrength=1000\nFactory=BuildingType\n\
          [SLAV]\nStrength=125\nSpeed=3\nSlaved=yes\nStorage=4\n\
-         [YAREFN]\nStrength=2000\nEnslaves=SLAV\nSlavesNumber=5\nFoundation=2x2\n[Clear]\nBuildable=yes\n",
+         [YAREFN]\nOwner=Americans,Alliance,Russians,Soviet\nStrength=2000\nEnslaves=SLAV\nSlavesNumber=5\nFoundation=2x2\n[Clear]\nBuildable=yes\n",
     ))
     .expect("slave refinery rules");
     let mut sim = placement_sim();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 14, 20);
     let refinery = ready_and_place(&mut sim, &rules, "Americans", "YAREFN", 16, 20);
     let entity = sim.substrate.entities.get(refinery).unwrap();
-    assert!(entity.building_up.is_some(), "placed buildings build up");
+    assert!(entity.building_up(), "placed buildings build up");
     let manager = entity
         .slave_manager
         .as_ref()

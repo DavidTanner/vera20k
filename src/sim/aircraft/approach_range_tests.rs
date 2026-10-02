@@ -69,15 +69,19 @@ fn fixture(row: &Value) -> (Simulation, RuleSet) {
         ),
         kind => {
             let building = kind == "building";
-            let mut target = GameEntity::test_default(
+            let mut target = GameEntity::test_default_of_category(
                 2,
                 if building { "BUILDING" } else { "TARGET" },
                 "Soviet",
                 10,
                 10,
+                if building {
+                    EntityCategory::Structure
+                } else {
+                    EntityCategory::Unit
+                },
             );
             if building {
-                target.category = EntityCategory::Structure;
                 target.foundation = foundation.name.to_owned();
                 assert_eq!(
                     serde_json::json!([foundation.width, foundation.height]),

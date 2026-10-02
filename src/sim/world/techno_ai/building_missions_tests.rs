@@ -725,8 +725,14 @@ fn retail_building_mission_inputs() {
         .filter_map(|id| rules.object(id))
         .collect();
     let armed = |obj: &crate::rules::object_type::ObjectType| {
-        let mut entity = GameEntity::test_default(1, &obj.id, "Americans", 1, 1);
-        entity.category = EntityCategory::Structure;
+        let entity = GameEntity::test_default_of_category(
+            1,
+            &obj.id,
+            "Americans",
+            1,
+            1,
+            EntityCategory::Structure,
+        );
         combat_weapon::is_armed(&entity, obj)
     };
     let cleared: BTreeSet<&str> = buildings

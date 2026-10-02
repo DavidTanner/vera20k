@@ -222,8 +222,14 @@ fn unit_receiver_does_not_read_its_own_motion() {
 /// (`0x005F43A0`, `RET 0xC`): a building takes the call and nothing happens.
 #[test]
 fn building_receiver_is_the_object_no_op() {
-    let mut building = GameEntity::test_default(1, "GAREFN", "Allies", 5, 5);
-    building.category = EntityCategory::Structure;
+    let building = GameEntity::test_default_of_category(
+        1,
+        "GAREFN",
+        "Allies",
+        5,
+        5,
+        EntityCategory::Structure,
+    );
     let before = serde_json::to_value(&building).unwrap();
     let mut sim = Simulation::new();
     sim.substrate.entities.insert(building);

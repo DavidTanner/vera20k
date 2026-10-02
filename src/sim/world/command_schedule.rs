@@ -124,7 +124,7 @@ impl Simulation {
         cmd: &CommandEnvelope,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) -> (bool, bool, Option<InternedId>) {
+    ) -> (bool, bool) {
         let cmd_owner_str = self.interner.resolve(cmd.owner).to_string();
         let applied =
             self.apply_command_with_overlays(&cmd_owner_str, &cmd.payload, rules, overlay_registry);
@@ -135,7 +135,7 @@ impl Simulation {
         let spawned_entity = synchronous_deploy
             || placed_building_owner.is_some()
             || applied && matches!(cmd.payload, Command::LaunchSuperWeapon { .. });
-        (applied, spawned_entity, placed_building_owner)
+        (applied, spawned_entity)
     }
 
     pub(super) fn successful_non_wall_placement_owner(
@@ -464,8 +464,7 @@ impl Simulation {
     /// Apply all due tail commands in HouseClass registration
     /// order. Each house preserves insertion order within the normal and
     /// staged-megamission streams. Returns
-    /// `(executed_commands, spawned_entities,
-    /// successful_non_wall_placement_owners)`. A sale or undeploy order only
+    /// `(executed_commands, spawned_entities)`. A sale or undeploy order only
     /// starts the Selling mission: the building leaves the map at its last
     /// visit (`Simulation::visit_building_down`).
     pub(super) fn apply_due_commands(
@@ -474,10 +473,9 @@ impl Simulation {
         rules: Option<&RuleSet>,
         execute_tick: u64,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) -> (usize, bool, Vec<InternedId>) {
+    ) -> (usize, bool) {
         let mut executed_commands = 0usize;
         let mut spawned_entities = false;
-        let mut placed_building_owners = Vec::new();
 
         for owner in self.due_command_house_order(commands, execute_tick) {
             for command in commands.iter().filter(|command| {
@@ -486,10 +484,8 @@ impl Simulation {
                     && !Self::command_uses_frame_ingress(&command.payload)
                     && !Self::command_uses_megamission(&command.payload)
             }) {
-                let (_, spawned, placed_owner) =
-                    self.apply_one_due_command(command, rules, overlay_registry);
+                let (_, spawned) = self.apply_one_due_command(command, rules, overlay_registry);
                 spawned_entities |= spawned;
-                placed_building_owners.extend(placed_owner);
                 executed_commands += 1;
             }
 
@@ -504,15 +500,13 @@ impl Simulation {
                 .collect::<Vec<_>>();
             self.adjust_staged_megamission_destinations(&mut staged, rules, overlay_registry);
             for command in &staged {
-                let (_, spawned, placed_owner) =
-                    self.apply_one_due_command(command, rules, overlay_registry);
+                let (_, spawned) = self.apply_one_due_command(command, rules, overlay_registry);
                 spawned_entities |= spawned;
-                placed_building_owners.extend(placed_owner);
                 executed_commands += 1;
             }
         }
 
-        (executed_commands, spawned_entities, placed_building_owners)
+        (executed_commands, spawned_entities)
     }
 }
 

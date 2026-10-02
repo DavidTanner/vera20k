@@ -1758,19 +1758,31 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
         };
         sim.substrate.entities.insert(passenger);
 
-        let mut listener = GameEntity::test_default(30, "LISTENER", "Americans", 8, 5);
+        let mut listener = GameEntity::test_default_of_category(
+            30,
+            "LISTENER",
+            "Americans",
+            8,
+            5,
+            EntityCategory::Structure,
+        );
         listener.owner = owner;
         listener.type_ref = sim.interner.intern("LISTENER");
-        listener.category = EntityCategory::Structure;
         listener.is_voxel = false;
         listener.health.current = 300;
         sim.substrate.entities.insert(listener);
         let _ = sim.reveal(30);
 
-        let mut nested_fatal = GameEntity::test_default(31, "LISTENER", "Americans", 8, 5);
+        let mut nested_fatal = GameEntity::test_default_of_category(
+            31,
+            "LISTENER",
+            "Americans",
+            8,
+            5,
+            EntityCategory::Structure,
+        );
         nested_fatal.owner = owner;
         nested_fatal.type_ref = sim.interner.intern("LISTENER");
-        nested_fatal.category = EntityCategory::Structure;
         nested_fatal.is_voxel = false;
         nested_fatal.health.current = 107;
         sim.substrate.entities.insert(nested_fatal);
@@ -2140,12 +2152,18 @@ fn gsi_04_11_missile_outer_anim_precedes_per_cell_ore_reduction() {
 #[test]
 fn uninit_removes_all_structure_foundation_cells() {
     let mut sim = Simulation::new();
-    let mut structure = GameEntity::test_default(10, "GAPOWR", "Americans", 4, 5);
+    let mut structure = GameEntity::test_default_of_category(
+        10,
+        "GAPOWR",
+        "Americans",
+        4,
+        5,
+        EntityCategory::Structure,
+    );
     // Entity ids must come from the Simulation's own interner — test_default interns
     // into the thread-local test interner, which sim code never resolves against.
     structure.owner = sim.interner.intern("Americans");
     structure.type_ref = sim.interner.intern("GAPOWR");
-    structure.category = EntityCategory::Structure;
     structure.foundation = "2x2".to_string();
     sim.substrate.entities.insert(structure);
     sim.reveal(10);
@@ -3036,9 +3054,15 @@ fn a_sonic_wave_aims_at_a_buildings_foundation_centre() {
     let mut firer = GameEntity::test_default(firer_id, "DLPH", "Americans", 2, 2);
     firer.owner = sim.interner.intern("Americans");
     firer.type_ref = sim.interner.intern("DLPH");
-    let mut target = GameEntity::test_default(target_id, "TARGET", "Russians", 10, 10);
+    let mut target = GameEntity::test_default_of_category(
+        target_id,
+        "TARGET",
+        "Russians",
+        10,
+        10,
+        EntityCategory::Structure,
+    );
     target.type_ref = sim.interner.intern("TARGET");
-    target.category = EntityCategory::Structure;
     target.foundation = "3x3".to_string();
     sim.substrate.entities.insert(firer);
     sim.substrate.entities.insert(target);
@@ -3922,10 +3946,16 @@ fn gsi_05_16_a_captured_insignificant_garrison_does_not_keep_its_house_alive() {
     let civilian = insert_passive_house_with_counts(&mut sim, "Neutral", 0, 0);
     let player = insert_house_with_counts(&mut sim, "Americans", 0, 1);
     let enemy = insert_house_with_counts(&mut sim, "Russians", 1, 0);
-    let mut garrison = GameEntity::test_default(1, "CAGAS01", "Neutral", 10, 10);
+    let mut garrison = GameEntity::test_default_of_category(
+        1,
+        "CAGAS01",
+        "Neutral",
+        10,
+        10,
+        EntityCategory::Structure,
+    );
     garrison.owner = civilian;
     garrison.type_ref = sim.interner.intern("CAGAS01");
-    garrison.category = EntityCategory::Structure;
     garrison.tracking_facts = crate::sim::house_tracking::TrackingFacts::insignificant_for_test();
     sim.substrate.entities.insert(garrison);
     sim.update_house_tracking(1, crate::sim::house_tracking::HouseTracking::add_tracking);
@@ -7602,7 +7632,7 @@ fn test_undeploy_conyard_spawns_mcv() {
 
     // Clear building_up so we can undeploy (can't undeploy during construction).
     if let Some(e) = sim.substrate.entities.get_mut(yard_id) {
-        e.building_up = None;
+        e.finish_building_construction_for_test();
         e.selected = true;
     }
 
@@ -7623,12 +7653,7 @@ fn test_undeploy_conyard_spawns_mcv() {
         "ConYard should still exist during undeploy animation"
     );
     assert!(
-        sim.substrate
-            .entities
-            .get(yard_id)
-            .unwrap()
-            .building_down
-            .is_some(),
+        sim.substrate.entities.get(yard_id).unwrap().building_down(),
         "ConYard should have building_down component"
     );
 
@@ -7873,10 +7898,16 @@ fn test_layered_astar_can_traverse_bridge_after_unrelated_rebuild() {
 /// Insert a revealed, occupancy-marked 2x2 structure owned by `Americans`.
 #[cfg(test)]
 fn insert_revealed_structure(sim: &mut Simulation, id: u64, rx: u16, ry: u16) {
-    let mut s = GameEntity::test_default(id, "GAPOWR", "Americans", rx, ry);
+    let mut s = GameEntity::test_default_of_category(
+        id,
+        "GAPOWR",
+        "Americans",
+        rx,
+        ry,
+        EntityCategory::Structure,
+    );
     s.owner = sim.interner.intern("Americans");
     s.type_ref = sim.interner.intern("GAPOWR");
-    s.category = EntityCategory::Structure;
     s.foundation = "2x2".to_string();
     sim.substrate.entities.insert(s);
     sim.reveal(id);
@@ -8010,8 +8041,14 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
     sim.interner = crate::sim::intern::test_interner();
     let owner_id = sim.interner.intern("Americans");
     for (id, rx, ry) in [(1u64, 10u16, 10u16), (2u64, 20u16, 20u16)] {
-        let mut bld = GameEntity::test_default(id, "GAPOWR", "Americans", rx, ry);
-        bld.category = EntityCategory::Structure;
+        let mut bld = GameEntity::test_default_of_category(
+            id,
+            "GAPOWR",
+            "Americans",
+            rx,
+            ry,
+            EntityCategory::Structure,
+        );
         bld.foundation = "2x2".to_string();
         bld.health = Health { current: 750 };
         sim.substrate.entities.insert(bld);
@@ -8038,7 +8075,7 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
         sim.substrate
             .entities
             .get(1)
-            .is_some_and(|plant| plant.building_down.is_some()),
+            .is_some_and(|plant| plant.building_down()),
         "the sale packs the plant up"
     );
 
@@ -8098,8 +8135,8 @@ fn combat_death_after_its_repair_visit_is_freed_at_end_of_tick() {
     atk.body_facing.snap(0x4000, 0);
     atk.health = Health { current: 300 };
     // Damaged, auto-repairing enemy building MTNK destroys this tick at Phase 5.
-    let mut bld = GameEntity::test_default(2, "TARGB", "Russia", 7, 5);
-    bld.category = EntityCategory::Structure;
+    let mut bld =
+        GameEntity::test_default_of_category(2, "TARGB", "Russia", 7, 5, EntityCategory::Structure);
     bld.foundation = "1x1".to_string();
     bld.health = Health { current: 50 };
     bld.repairing = true;

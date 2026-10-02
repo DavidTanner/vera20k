@@ -1304,7 +1304,11 @@ fn a_building_mid_construction_cannot_be_captured() {
             0,
         );
     assert!(!sim.can_capture(yuri, plant, &rules));
-    sim.substrate.entities.get_mut(plant).unwrap().building_up = None;
+    sim.substrate
+        .entities
+        .get_mut(plant)
+        .unwrap()
+        .finish_building_construction_for_test();
     assert!(sim.can_capture(yuri, plant, &rules));
 }
 

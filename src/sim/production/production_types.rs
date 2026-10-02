@@ -176,7 +176,7 @@ impl BuildOption {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProductionState {
     pub ready_by_owner: BTreeMap<InternedId, VecDeque<InternedId>>,
-    pub active_producer_by_owner: BTreeMap<InternedId, BTreeMap<ProductionCategory, u64>>,
+    active_producer_by_owner: BTreeMap<InternedId, BTreeMap<ProductionCategory, u64>>,
     pub next_enqueue_order: u64,
     /// Ore growth/spread configuration resolved from merged INI sources.
     pub ore_growth_config: OreGrowthConfig,
@@ -205,6 +205,70 @@ pub struct ProductionState {
     /// per-step charge runs against the real wallet via
     /// `step_all` at the Phase-7 head, before the house tail (C1).
     pub factory_shadow: FactoryRegistry,
+}
+
+impl ProductionState {
+    // Native primary is per Factory RTTI/Naval, so both building sidebar tabs
+    // use the same BuildingType primary. No second primary on the Defense tab.
+    fn primary_category(category: ProductionCategory) -> ProductionCategory {
+        if category == ProductionCategory::Defense {
+            ProductionCategory::Building
+        } else {
+            category
+        }
+    }
+    pub(crate) fn primary_factory(
+        &self,
+        owner: InternedId,
+        category: ProductionCategory,
+    ) -> Option<u64> {
+        self.active_producer_by_owner
+            .get(&owner)?
+            .get(&Self::primary_category(category))
+            .copied()
+    }
+    pub(super) fn set_primary_factory(
+        &mut self,
+        owner: InternedId,
+        category: ProductionCategory,
+        id: u64,
+    ) {
+        self.active_producer_by_owner
+            .entry(owner)
+            .or_default()
+            .insert(Self::primary_category(category), id);
+    }
+    /// Clear the native primary byte without choosing a replacement. Unlimbo
+    /// and ChangeOwner write it; destruction removes its retained identity.
+    /// Limbo preserves the byte, while FindFactory filters the limbo object.
+    pub(crate) fn clear_primary_factory(&mut self, id: u64) {
+        for categories in self.active_producer_by_owner.values_mut() {
+            categories.retain(|_, value| *value != id);
+        }
+        self.active_producer_by_owner
+            .retain(|_, categories| !categories.is_empty());
+    }
+    pub(crate) fn retain_primary_factory_links(&mut self, live: &std::collections::BTreeSet<u64>) {
+        for categories in self.active_producer_by_owner.values_mut() {
+            categories.retain(|_, id| live.contains(id));
+        }
+        self.active_producer_by_owner
+            .retain(|_, categories| !categories.is_empty());
+    }
+    pub(crate) fn primary_factory_entries(
+        &self,
+    ) -> impl Iterator<Item = (&InternedId, &BTreeMap<ProductionCategory, u64>)> {
+        self.active_producer_by_owner.iter()
+    }
+    #[cfg(test)]
+    pub(crate) fn set_primary_factory_for_test(
+        &mut self,
+        owner: InternedId,
+        category: ProductionCategory,
+        id: u64,
+    ) {
+        self.set_primary_factory(owner, category, id);
+    }
 }
 
 impl Default for ProductionState {

@@ -35,8 +35,8 @@ pub use self::factory::{
     PRODUCTION_STEPS, PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, SpecialItem, StepOutcome,
     TimeToBuildInputs, category_for_object, time_to_build,
 };
-pub use self::factory_lifecycle::{cancel_by_type_for_owner, enqueue_by_type, suspend_production};
 pub(crate) use self::factory_lifecycle::{FactoryRestoreError, validate_restored_factory_state};
+pub use self::factory_lifecycle::{cancel_by_type_for_owner, enqueue_by_type, suspend_production};
 pub use self::production_economy::is_harvester_type;
 pub use self::production_placement::{
     active_producer_for_owner_category, cycle_active_producer_for_owner_category,
@@ -48,7 +48,12 @@ pub use self::production_queue::{
     power_balance_for_owner, queue_view_for_owner, ready_buildings_for_owner,
     theoretical_power_for_owner, tick_production, tick_production_with_overlay_registry,
 };
-pub(crate) use self::production_refinery::spawn_completed_refinery_free_units;
+pub(crate) use self::production_refinery::spawn_building_free_unit;
+#[cfg(test)]
+pub(crate) use self::production_repair::repair_step_cost;
+pub use self::production_repair::{RepairControl, toggle_repair};
+pub(crate) use self::production_repair::{can_repair_building, update_repair_and_power};
+pub use self::production_sell::{SellOrder, can_sell_building, sell_back};
 pub(crate) use self::production_sell::{
     archive_less_sale, begin_selling, eject_destruction_garrison_with_context,
     sell_building_occupants, sell_complete, sell_stage_one, sell_stage_zero, type_refund,
@@ -56,11 +61,6 @@ pub(crate) use self::production_sell::{
 };
 #[cfg(test)]
 pub(crate) use self::production_sell::{eject_destruction_garrison, sell_building_now_for_test};
-pub use self::production_repair::{RepairControl, toggle_repair};
-pub(crate) use self::production_repair::{can_repair_building, update_repair_and_power};
-#[cfg(test)]
-pub(crate) use self::production_repair::repair_step_cost;
-pub use self::production_sell::{SellOrder, can_sell_building, sell_back};
 pub use self::production_spawn::find_spawn_cell_for_owner;
 pub use self::production_tech::{
     building_base_foundation_cells, building_footprint_cells, building_movement_blocking_cells,
@@ -72,14 +72,14 @@ pub use self::war_factory_exit::tick_war_factory_exit_contacts;
 
 // Re-exports for external consumers (files outside production/ that previously
 // imported private submodules directly).
-pub(crate) use self::can_build::{CanBuild, can_build, has_factory};
+pub(crate) use self::can_build::{CanBuild, can_build, find_factory, initialize_factory_primary};
 pub(crate) use self::factory_ai::{detach_all as detach_building_factory, factory_ai};
-pub(crate) use self::wall_placement::stamp_wall_with_autofill;
-pub(in crate::sim) use self::factory_lifecycle::revalidate_and_step_factories;
 #[cfg(test)]
 pub(in crate::sim) use self::factory_lifecycle::construct_active_factory_fixture;
+pub(in crate::sim) use self::factory_lifecycle::revalidate_and_step_factories;
 pub(in crate::sim) use self::production_queue::credits_entry_for_owner;
 pub(in crate::sim) use self::production_spawn::produced_unit_unlimbo_entry_at_resolved_cell;
+pub(crate) use self::wall_placement::stamp_wall_with_autofill;
 
 #[cfg(test)]
 #[path = "production_tests.rs"]

@@ -991,6 +991,12 @@ impl Simulation {
             }
             self.append_live_build_const(stable_id);
             self.append_house_base_building(stable_id);
+            if let Some(rules) = context.rules() {
+                // Unlimbo44119C clears this object's retained primary before
+                //448070 asks the owning house for another live primary.
+                self.production.clear_primary_factory(stable_id);
+                crate::sim::production::initialize_factory_primary(self, stable_id, rules);
+            }
             self.refresh_waypoint_edge_from_committed_structure(stable_id);
             self.mark_building_base_reservation_with_arg(stable_id, false, context);
             self.fill_base_plan_from_successful_building_unlimbo(stable_id);
@@ -4165,6 +4171,17 @@ impl Simulation {
     }
 
     fn finalize_and_remove_common(&mut self, stable_id: u64) {
+        if self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category == EntityCategory::Structure)
+        {
+            // Building destructor43BD27 releases the construction SoundClass
+            //(+6A0) before the delegated Techno destructor removes tracking.
+            self.sound_events
+                .push(super::SimSoundEvent::ObjectSoundReleased { owner: stable_id });
+        }
         // The Techno destructors (`0x0041410B`, `0x0043BF34`, `0x00517E2E`,
         // `0x00735816`) call Remove_Tracking.
         self.update_house_tracking(

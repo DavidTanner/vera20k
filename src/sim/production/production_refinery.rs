@@ -33,59 +33,56 @@ const FREE_UNIT_FALLBACK_ATTEMPTS: [NearbySearchOptions; 2] = [
     },
 ];
 
-/// Spawn configured refinery FreeUnits for buildings whose build-up completed
-/// this tick. The input order is the deterministic completion order.
-pub(crate) fn spawn_completed_refinery_free_units(
+/// Original Grand_Opening446AA9's FreeUnit tail. It runs inline for one
+/// building, so its constructor and Unlimbo are visible to subsequent Logic
+/// visits. ScenarioInit/capture gates belong to the caller.
+///
+/// Residual: the human stored-price300 gate (446AF2..446B10) is not retained
+/// by the existing production object owner. Retail reach requires a refinery
+/// with a nonpositive miner Cost_Of (26 Industrial Plants). Its old late
+/// completion caller also omitted this gate; no basic construction type has
+/// FreeUnit. The original spatial FreeUnit corpus bounds placement below.
+pub(crate) fn spawn_building_free_unit(
     sim: &mut Simulation,
-    completed_building_ids: &[u64],
+    stable_id: u64,
     rules: &RuleSet,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
-    let mut any_spawned = false;
-
-    for &stable_id in completed_building_ids {
-        let Some((owner_id, type_ref, rx, ry, width, height)) = ({
-            let entity = sim.substrate.entities.get(stable_id);
-            entity.and_then(|entity| {
-                if entity.category != EntityCategory::Structure || entity.dying {
-                    return None;
-                }
-                let (width, height) = foundation_dimensions(&entity.foundation);
-                Some((
-                    entity.owner(),
-                    entity.type_ref(),
-                    entity.position.rx,
-                    entity.position.ry,
-                    width,
-                    height,
-                ))
-            })
-        }) else {
-            continue;
-        };
-
-        // These allocations occur only for completed buildings, not every tick.
-        // They end immutable interner borrows before spawn_object mutates sim.
-        let owner = sim.interner.resolve(owner_id).to_owned();
-        let building_type_id = sim.interner.resolve(type_ref).to_owned();
-        any_spawned |= try_spawn_refinery_free_unit(
-            sim,
-            rules,
-            stable_id,
-            &owner,
-            &building_type_id,
-            rx,
-            ry,
-            width,
-            height,
-            overlay_registry,
-        );
-    }
-
-    any_spawned
+    let Some((owner_id, type_ref, rx, ry, width, height)) =
+        sim.substrate.entities.get(stable_id).and_then(|entity| {
+            if entity.category != EntityCategory::Structure || entity.dying {
+                return None;
+            }
+            let (width, height) = foundation_dimensions(&entity.foundation);
+            Some((
+                entity.owner(),
+                entity.type_ref(),
+                entity.position.rx,
+                entity.position.ry,
+                width,
+                height,
+            ))
+        })
+    else {
+        return false;
+    };
+    let owner = sim.interner.resolve(owner_id).to_owned();
+    let building_type_id = sim.interner.resolve(type_ref).to_owned();
+    try_spawn_building_free_unit(
+        sim,
+        rules,
+        stable_id,
+        &owner,
+        &building_type_id,
+        rx,
+        ry,
+        width,
+        height,
+        overlay_registry,
+    )
 }
 
-fn try_spawn_refinery_free_unit(
+fn try_spawn_building_free_unit(
     sim: &mut Simulation,
     rules: &RuleSet,
     building_id: u64,
@@ -97,11 +94,7 @@ fn try_spawn_refinery_free_unit(
     height: u16,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
-    if !rules.is_refinery_type(building_type_id) {
-        return false;
-    }
-
-    let Some(free_unit_type) = rules.refinery_free_unit(building_type_id) else {
+    let Some(free_unit_type) = rules.building_free_unit(building_type_id) else {
         return false;
     };
     let free_unit_type = free_unit_type.to_owned();

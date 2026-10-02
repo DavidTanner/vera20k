@@ -60,6 +60,15 @@ pub(super) fn dispatch_sim_sound_events(
     // Convert sim sound events to app-layer sound events for playback.
     for sim_event in events {
         let app_event: GameSoundEvent = match sim_event {
+            SimSoundEvent::ObjectSoundStarted {
+                owner,
+                sound_id,
+                world,
+            } => GameSoundEvent::AnimationStarted {
+                anim_id: owner,
+                sound_id: sim.interner.resolve(sound_id).to_string(),
+                source: Some(anim_world_sound_source(world)),
+            },
             SimSoundEvent::AnimationStarted {
                 anim_id,
                 sound_id,

@@ -477,7 +477,6 @@ impl ReadyFactoryObject {
 
     /// Building Unlimbo/build-up/superweapon effects precede factory release.
     pub(super) fn release_after_placement(self, sim: &mut Simulation, rules: &RuleSet) -> bool {
-        record_last_built(sim, rules, self.owner, self.type_id);
         consume_ready_building(sim, rules, self.owner, self.type_id, self.category)
     }
 

@@ -121,6 +121,22 @@ pub(crate) fn produce_cash_on_owner_change(
     }
 }
 
+///445FA5..445FC8: every admitted Grand_Opening rearms a nonzero delay,
+/// including the already-placed capture arm. Zero leaves the prior timer.
+pub(crate) fn produce_cash_on_grand_opening(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+    let delay = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+        .map_or(0, |object| object.produce_cash_delay);
+    if delay != 0
+        && let Some(entity) = sim.substrate.entities.get_mut(id)
+    {
+        entity.produce_cash_timer = CdTimer::started(sim.session.binary_frame as i32, delay);
+    }
+}
+
 /// `BuildingClass::Update @ 0x0043FD2C..0x0043FDD6`, the ProduceCash block:
 /// fire test on the `+0x6D0` timer (see [`produce_cash_fires`]),
 /// re-arm with `ProduceCashDelay`, skip when the owner's HouseType is
@@ -482,8 +498,10 @@ mod tests {
         let oil = sim
             .spawn_object("CAOILD", "Neutral", 10, 10, 0, &rules)
             .expect("derrick spawns");
-        let constructed = sim.substrate.entities.get(oil).unwrap().produce_cash_timer;
-        assert_eq!(constructed.duration(), 0, "constructor timer is dead");
+        let opened = sim.substrate.entities.get(oil).unwrap().produce_cash_timer;
+        // spawn_object includes Unlimbo/Grand_Opening. Original445F80 arms
+        // the type's delay even for a passive house; ProduceCash gates payout.
+        assert_eq!(opened.duration(), 100, "opening arms the delay");
 
         // Owned by the passive house nothing is ever paid.
         run_ticks(&mut sim, &rules, 120);
@@ -532,8 +550,8 @@ mod tests {
             assert_eq!(pair[1].0 - pair[0].0, 99, "re-armed period is Delay - 1");
         }
 
-        // Re-capture from a non-passive owner: no startup grant, the timer
-        // keeps its cadence for the new owner.
+        // Re-capture from a non-passive owner grants no startup cash.
+        // Grand_Opening(captured) re-arms the delay for the new owner.
         let before = credits(&sim, soviets);
         sim.change_owner_with_rules(oil, soviets, &rules);
         assert_eq!(credits(&sim, soviets), before);

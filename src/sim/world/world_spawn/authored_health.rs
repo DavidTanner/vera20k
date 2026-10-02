@@ -91,7 +91,8 @@ impl Simulation {
                 strength,
             );
         }
-        let (id, outcome) = self.unlimbo_constructed_parent(id, position, rules, overlay_registry);
+        let (id, outcome) =
+            self.unlimbo_constructed_parent(id, position, rules, overlay_registry, true);
         if !building
             && matches!(outcome, RevealOutcome::Revealed { .. })
             && let Some(rules) = rules

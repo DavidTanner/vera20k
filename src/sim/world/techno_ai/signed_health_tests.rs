@@ -30,10 +30,10 @@ fn original_selfheal_tail_and_192_height_rows_retain_art_and_mark_smoke() {
         rules.general.condition_yellow = 0.5;
         let mut sim = Simulation::new();
         assert_eq!(sim.allocate_stable_id(), 1);
-        let mut entity = GameEntity::test_default(1, "SIGNED", "A", 2, 2);
+        let mut entity =
+            GameEntity::test_default_of_category(1, "SIGNED", "A", 2, 2, EntityCategory::Structure);
         entity.type_ref = sim.interner.intern("SIGNED");
         entity.owner = sim.interner.intern("A");
-        entity.category = EntityCategory::Structure;
         entity.health.current = input["current"].as_i64().unwrap() as i32;
         entity.building_damage_state_active = input["old_flag"].as_u64().unwrap_or(1) == 1;
         if let Some(xy) = input["xy"].as_array() {
@@ -217,10 +217,16 @@ fn building_damage_fire_runs_before_yellow_crossing_selfheal() {
     rules.general.repair_rate_minutes = 1.0;
     let mut sim = Simulation::new();
     let id = sim.allocate_stable_id();
-    let mut building = GameEntity::test_default(id, "B", "A", 2, 2);
+    let mut building = GameEntity::test_default_of_category(
+        id,
+        "B",
+        "A",
+        2,
+        2,
+        crate::map::entities::EntityCategory::Structure,
+    );
     building.type_ref = sim.interner.intern("B");
     building.owner = sim.interner.intern("A");
-    building.category = crate::map::entities::EntityCategory::Structure;
     building.health.current = 50;
     sim.substrate.entities.insert(building);
     sim.reveal(id);

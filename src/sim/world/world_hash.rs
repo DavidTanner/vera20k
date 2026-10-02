@@ -926,7 +926,7 @@ impl Simulation {
                 type_id.hash(hasher);
             }
         }
-        for (owner, categories) in &self.production.active_producer_by_owner {
+        for (owner, categories) in self.production.primary_factory_entries() {
             owner.hash(hasher);
             for (category, sid) in categories {
                 category.hash(hasher);
@@ -1275,8 +1275,8 @@ impl Simulation {
             b"techno-stage-v264".hash(hasher);
             entity.native_stage().hash(hasher);
             entity.native_crush_immunity().hash(hasher);
-            entity.building_up.hash(hasher);
-            entity.building_down.hash(hasher);
+            b"building-body-v277".hash(hasher);
+            entity.hash_building_body(hasher);
             entity.native_unique_id.hash(hasher);
             if let Some(manager) = entity.slave_manager.as_ref() {
                 b"slave-manager-v209".hash(hasher);

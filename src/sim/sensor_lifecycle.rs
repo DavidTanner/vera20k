@@ -558,7 +558,7 @@ mod tests {
         sim.spawn_object_at_height("NAPOWR", "Soviet", 30, 40, 0, 0, &rules)
             .unwrap();
         let id = sim
-            .spawn_object_at_height("NAPSIS", "Soviet", 40, 40, 0, 0, &rules)
+            .spawn_object_limbo_at_height("NAPSIS", "Soviet", 40, 40, 0, 0, &rules)
             .unwrap();
         let owner = sim.substrate.entities.get(id).unwrap().owner;
         assert!(
@@ -574,15 +574,20 @@ mod tests {
             .get_mut(id)
             .unwrap()
             .install_building_up(BuildingUp::completing_in_ticks(1, 0), 0);
-        sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert!(
-            sim.substrate
-                .entities
-                .get(id)
-                .unwrap()
-                .building_up
-                .is_none()
+            sim.reveal_constructed_object_at_height(
+                id,
+                40,
+                40,
+                0,
+                0,
+                crate::sim::world::PlacementEvidence::EvaluateMark,
+                &rules,
+            )
+            .is_some()
         );
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
+        assert!(!sim.substrate.entities.get(id).unwrap().building_up());
         assert!(sim.fog.has_sensor_for_house(owner, 54, 40));
         assert!(!sim.fog.has_sensor_for_house(owner, 55, 40));
         sim.techno_limbo_with_rules(id, &rules);

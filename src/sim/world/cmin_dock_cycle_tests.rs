@@ -444,15 +444,25 @@ fn selling_the_refinery_mid_unload_hands_the_chrono_miner_to_harvest() {
         .resolve(s.sim.substrate.entities.get(refinery).unwrap().type_ref())
         .to_string();
     s.rules.set_buildup_control_for_test(&type_id, [0, 25, 2]);
-    assert!(crate::sim::production::sell_back(
-        &mut s.sim,
-        &s.rules,
-        refinery,
-        crate::sim::production::SellOrder::Player
-    ));
+    let sale_order = crate::sim::command::CommandEnvelope::new(
+        s.sim.substrate.entities.get(refinery).unwrap().owner(),
+        s.sim.session.tick + 1,
+        crate::sim::command::Command::SellBuilding {
+            entity_id: refinery,
+        },
+    );
     // The order stands for this frame's event (`EventClass::Execute`); the
     // frame's own Selling mission does not visit yet.
-    step(&mut s);
+    let overlay = crate::sim::tiberium::test_support::overlay_registry();
+    let grid = s.sim.path_grid_snapshot();
+    let tick = s.sim.advance_tick(
+        &[sale_order],
+        Some(&s.rules),
+        grid.as_deref(),
+        Some(overlay),
+        67,
+    );
+    assert_eq!(tick.executed_commands, 1);
     assert!(
         s.sim
             .substrate

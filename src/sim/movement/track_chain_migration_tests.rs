@@ -134,8 +134,14 @@ fn assert_old_chain_continues(sim: &Simulation) {
 #[test]
 fn production_chain_code3_opens_gate_without_consuming_the_queue() {
     let (mut sim, rules, invocation) = chain_fixture(false);
-    let mut gate = GameEntity::test_default(100, "GAGATE_A", "Americans", CANDIDATE.0, CANDIDATE.1);
-    gate.category = EntityCategory::Structure;
+    let mut gate = GameEntity::test_default_of_category(
+        100,
+        "GAGATE_A",
+        "Americans",
+        CANDIDATE.0,
+        CANDIDATE.1,
+        EntityCategory::Structure,
+    );
     gate.building_gate = Some(BuildingGateRuntime::default());
     gate.lifecycle.object_alive = true;
     gate.lifecycle.in_limbo = false;

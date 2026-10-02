@@ -587,6 +587,10 @@ pub struct ObjectType {
     pub crush_sound: Option<String>,
     /// Sound ID played when this unit deploys (e.g. GI sandbag-up).
     pub deploy_sound: Option<String>,
+    /// BuildingType+E6C ctor45DE64=-1. ReadINI460738..46078B exact
+    /// BuildupSound/ReadString128 retains the prior index when absent, empty
+    /// or unknown; RuleSet::bind_type_sound_references resolves SOUNDMD.
+    pub buildup_sound: Option<String>,
     /// Sound ID played when this unit undeploys.
     pub undeploy_sound: Option<String>,
     /// InfantryType+EA4/+EA8: ctor523748/52374E sets both to -1.
@@ -981,7 +985,8 @@ pub struct ObjectType {
     /// `BuildingType+0x408`; native `none`/`<none>` therefore remain `None`.
     pub undeploys_into: Option<String>,
     /// Raw 8-bit facing required before a unit can deploy into this building type.
-    /// Parsed from building-side `DeployFacing=` as INI value << 5; default is 0x80.
+    /// BuildingType+EDC, read at460C6C..460C86: `DeployFacing=` <<5; default0x80.
+    /// This is separate from the immutable BuildingType+ED8 below.
     pub deploy_facing: u8,
     /// Whether this building is a construction yard. Enables ConYard-only MCV repack gates.
     pub construction_yard: bool,
@@ -1715,6 +1720,13 @@ fn native_minutes_to_ticks(value: f32) -> u32 {
 }
 
 impl ObjectType {
+    /// BuildingType+ED8 is initialized to zero at45DEE6 and has no active-YR
+    /// reader/write override. Construction449AFE and Selling449DAA/449DE9
+    /// use this raw byte, shifted8, to reset FacingClass's two direction words.
+    /// DeployFacing lives separately at+EDC. Keep this invariant with the type
+    /// metadata instead of adding a configurable or per-instance copy.
+    pub const BUILDING_FACING: u8 = 0;
+
     /// Native TechnoType virtual+BC (717800), used by Fly takeoff4CF9F2
     /// and Aircraft Unlimbo414383. Zero and other negatives are literal.
     pub fn flight_level(&self, general_flight_level: i32) -> i32 {
@@ -2132,6 +2144,7 @@ impl ObjectType {
             voice_special_attack: first_sound("VoiceSpecialAttack"),
             crush_sound: section.read_name("CrushSound", 0x80).map(str::to_owned),
             deploy_sound: section.read_name("DeploySound", 0x80).map(str::to_owned),
+            buildup_sound: None,
             undeploy_sound: section.read_name("UndeploySound", 0x80).map(str::to_owned),
             enter_water_sound: None,
             leave_water_sound: None,

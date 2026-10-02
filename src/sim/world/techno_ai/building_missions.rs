@@ -5,17 +5,17 @@
 //!   one after it (`0x0043FF91..0x0043FFB4`): with `+0x6DD` set, a successful
 //!   Commence of the queued mission clears the byte
 //!   ([`Simulation::mission_building_ready_commence`]). The first also needs
-//!   BState (`+0x534`) out of 0, the construction body; a build-up's frames
-//!   run in the late region (`sim::building_construction`) and never reach
-//!   either check, and a sale past its stage 1 refuses every queue, so VERA
-//!   has no state in which the BState test decides.
+//!   BState (`+0x534`) out of 0, the construction body. UpdateAnimation
+//!   (`0x004509D0`) steps the one body StageClass before these checks;
+//!   construction and sale consume its shared ready byte.
 //! - `MissionClass::AI` (`0x005B3060`, called at `0x006FA655`): when the
 //!   dispatch timer (`+0xC8`) is due and Health is above zero, the current
 //!   mission's handler runs and its return is the next delay
 //!   (`0x005B32F2..0x005B3302`). Guard and Sticky run Mission_Guard
 //!   (`0x004496B0`, dispatch table `0x005B34E8`), Area Guard too (`0x00449A40`
 //!   jumps to it), Attack runs Mission_Attack (`0x0044ACF0`), Selling runs
-//!   Sell ([`Simulation::visit_building_down`]), and a mission the building
+//!   Sell ([`Simulation::visit_building_down`]), Construction runs
+//!   [`mission_construction`] (`0x00449A50`), and a mission the building
 //!   has no handler for, or none, a MissionClass stub (450 frames).
 //! - the Gattling block after the Techno AI (`0x0043FE5B..0x0043FF8B`): the
 //!   idle decay of a Gattling type and its turret-animation steps
@@ -117,19 +117,12 @@
 //!   other type on its OK and REARM arms; VERA's building voxel presentation
 //!   (`emit_building_turret_vxl`) draws frame 0. Presentation only; its own
 //!   presentation chain (#757).
-//! - Status 0's `Begin_Mode(1)` (`0x0044995D`): the idle body, presentation.
 //! - Dormant with retail data: the SAM arm (`0x0044AD07`, `SAM=` unset), the
 //!   upgrade arm (`0x0044B2BC`, no `PowersUpBuilding=`), Mission_Guard's
 //!   SuperWeapon gate (`0x00449716..0x00449753`, no armed type sets
 //!   `SuperWeapon=`), the waypoint-planning hook (`0x0044AFB1`, VERA has no
 //!   planning mode) and BuildingClass::SetTarget's TickTank/Artillary
 //!   undeploy (`0x00443C07..0x00443C54`, neither key set).
-//! - `+0x6DD` has two more homes, `BuildingUp::done` and `BuildingDown::done`
-//!   (`sim::components`), each written and read only by its own build-up or
-//!   sale; a finished build-up queues and commences Guard itself
-//!   (`Simulation::tick_building_up`) where the ready check after the Techno
-//!   AI would. No player-visible effect while each byte has one reader.
-//!   Later owner: Mission_Construction's frames moving into this dispatch.
 //!
 //! ## Dependency rules
 //! - Part of sim/; sim/ never depends on render/, ui/, sidebar/, audio/, net/.
@@ -162,48 +155,47 @@ const STUPID_GUARD_DELAY: i32 = 100;
 const ACTIVE_ANIM_SLOT: u8 = 3;
 const SPECIAL_ANIM_SLOT: u8 = 10;
 
-/// One of Update's two ready checks (module doc).
-/// `BuildingClass::UpdateAnimation` (`0x004509D0`, called unconditionally at
-/// `0x0043FE22`) for a building idle in BState 1, whose control (`{0, 1, 0}`)
-/// has rate 0 and never steps: without a turret (HasTurret `0x004527D0`:
-/// `Turret=`, Type `+0xCA1`, or a turreted upgrade, which retail never has)
-/// the no-step frame sets `+0x6DD` whatever the mission (`0x0045114F` ->
-/// `0x00451175` -> `0x00451205` -> `0x00451218`). A turreted building sets it
-/// only under Construction or Selling, and a build-up's or sale's frames
-/// belong to `sim::building_construction`. The animation's other effects
-/// (anim stages, damage-state art) have their own owners.
-pub(super) fn idle_animation_ready_latch(sim: &mut Simulation, id: u64, rules: Option<&RuleSet>) {
-    let Some(rules) = rules else {
-        return;
-    };
+///4509D0 runs once before Techno AI. The native type/control owner decides
+/// Stage/ready, including idle and sale; neither mission steps its own clock.
+pub(super) fn update_animation(sim: &mut Simulation, id: u64, rules: Option<&RuleSet>) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
-    if entity.mission_leaf.as_building().is_none()
-        || entity.building_up.is_some()
-        || entity.building_down.is_some()
-        || sim
-            .object_type(entity.type_ref(), rules)
-            .is_none_or(|object| object.has_turret)
-    {
+    let Some(rules) = rules else {
         return;
-    }
+    };
+    let Some(object) = sim.object_type(entity.type_ref(), rules) else {
+        return;
+    };
+    let has_turret = object.has_turret;
+    let archive_less_sale =
+        crate::sim::production::archive_less_sale(rules.into(), &object.id, entity);
+    let now = sim.session.binary_frame as i32;
+    let options = &sim.session.game_options;
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
-        entity.mission_leaf.set_building_ready_latch(1);
+        entity.advance_building_body(now, archive_less_sale, has_turret, options);
     }
 }
 
-pub(super) fn ready_commence(sim: &mut Simulation, id: u64) {
-    if sim
-        .substrate
-        .entities
-        .get(id)
-        .is_none_or(|entity| entity.building_up.is_some())
+///43FE27's first check requires BState!=0;43FF91's second does not.
+pub(super) fn ready_commence(sim: &mut Simulation, id: u64, before_techno: bool) {
+    if before_techno
+        && sim
+            .substrate
+            .entities
+            .get(id)
+            .is_none_or(|entity| entity.in_construction_bstate())
     {
         return;
     }
-    let now = sim.session.binary_frame;
-    let _ = sim.mission_building_ready_commence(id, now);
+    let _ = sim.mission_building_ready_commence(id, sim.session.binary_frame);
+}
+
+pub(super) fn apply_queued_body(sim: &mut Simulation, id: u64) {
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity
+            .apply_queued_building_body(sim.session.binary_frame as i32, &sim.session.game_options);
+    }
 }
 
 /// `MissionClass::AI` (`0x005B3060`) for a building (module doc).
@@ -216,42 +208,33 @@ pub(super) fn dispatch(
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
-    // A build-up's Construction mission belongs to its late-region owner.
-    if entity.building_up.is_some() {
+    let current = entity.mission.current().known();
+    let now = sim.session.binary_frame;
+    if !entity.mission.dispatch_timer().due(now) || !mission_handlers_run(sim, id) {
         return;
     }
-    let current = entity.mission.current().known();
     if current == Some(MissionType::Selling) {
-        // Sell returns 1 on every visit, so its dispatch is due on every frame
-        // after the one that commenced it; the visit owns that frame test.
+        // Sell shares the same dispatch timer and Health gate as Construction.
         sim.visit_building_down(id, rules, ctx.overlay_registry);
         return;
     }
     let Some(rules) = rules else {
         return;
     };
-    let now = sim.session.binary_frame;
-    if !entity.mission.dispatch_timer().due(now) || !mission_handlers_run(sim, id) {
-        return;
-    }
     let delay = match current {
         Some(MissionType::Guard | MissionType::Sticky | MissionType::AreaGuard) => {
             mission_guard(sim, id, rules)
         }
         Some(MissionType::Attack) => mission_attack(sim, id, rules, ctx),
+        Some(MissionType::Construction) => mission_construction(sim, id, rules, ctx),
         Some(MissionType::Unload) => match mission_unload(sim, id, rules, ctx) {
             Some(delay) => delay,
             None => return,
         },
-        // BuildingClass's own Construction (`0x00449A50`), Repair
-        // (`0x0044B780`), Missile (`0x0044C980`) and Open (`0x0044E440`) keep
+        // BuildingClass's own Repair (`0x0044B780`), Missile (`0x0044C980`)
+        // and Open (`0x0044E440`) keep
         // their existing owners.
-        Some(
-            MissionType::Construction
-            | MissionType::Repair
-            | MissionType::Missile
-            | MissionType::Open,
-        ) => return,
+        Some(MissionType::Repair | MissionType::Missile | MissionType::Open) => return,
         // Every other slot of the building's table, and no mission (above
         // `0x1F`, `0x005B30BB`), is a MissionClass stub.
         _ => DEFAULT_MISSION_DELAY,
@@ -259,6 +242,80 @@ pub(super) fn dispatch(
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity.mission.write_dispatch_epilogue(now as i32, delay);
     }
+}
+
+/// Original449A50, with the native first-contact calls (vt27465ACB0),
+/// queued body handoff and shared445F80 opening, inside this object's visit.
+fn mission_construction(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    ctx: ObjectAiCtx<'_>,
+) -> i32 {
+    use crate::sim::building_construction::BuildingBodyMode;
+    use crate::sim::radio::{RadioMessage, transmit_to_contact};
+    let Some(entity) = sim.substrate.entities.get(id) else {
+        return 1;
+    };
+    let status = entity.mission.handler_state();
+    let now = sim.session.binary_frame;
+    if status == 0 {
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .begin_building_body(BuildingBodyMode::Construction, now as i32);
+        transmit_to_contact(sim, id, RadioMessage::DockApproach, Some(rules));
+        let sound = sim
+            .substrate
+            .entities
+            .get(id)
+            .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+            .and_then(|object| object.buildup_sound.as_deref())
+            .or(rules.general.construction_sound.as_deref());
+        if let Some(sound) = sound {
+            let sound_id = sim.interner.intern(sound);
+            if let Some(world) = sim.anim_owner_coords(id) {
+                sim.sound_events
+                    .push(crate::sim::world::SimSoundEvent::ObjectSoundStarted {
+                        owner: id,
+                        sound_id,
+                        world,
+                    });
+            }
+        }
+        if let Some(entity) = sim.substrate.entities.get_mut(id) {
+            entity.mission.set_handler_state(1);
+        }
+    } else if status == 1 && entity.building_ready_latch() != 0 {
+        transmit_to_contact(sim, id, RadioMessage::DockArrived, Some(rules));
+        transmit_to_contact(sim, id, RadioMessage::Break, Some(rules));
+        if let Some(entity) = sim.substrate.entities.get_mut(id) {
+            entity.begin_building_body(BuildingBodyMode::Idle, now as i32);
+        }
+        sim.grand_opening(id, false, false, rules, ctx.overlay_registry);
+        let facing = sim
+            .substrate
+            .entities
+            .get(id)
+            .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+            .filter(|object| !object.laser_fence)
+            .map(|_| crate::rules::object_type::ObjectType::BUILDING_FACING);
+        if let Some(entity) = sim.substrate.entities.get_mut(id) {
+            crate::sim::mission::authority::queue_entity_mission_deferred(
+                entity,
+                MissionId::from_known(MissionType::Guard),
+            );
+            if let Some(facing) = facing {
+                entity.body_facing.snap(u16::from(facing) << 8, now);
+            }
+        }
+        //465AF0 clears the shared type's loaded Buildup cache in native; VERA
+        //keeps immutable retail metadata, while drawing reads BState/Stage.
+        sim.sound_events
+            .push(crate::sim::world::SimSoundEvent::ObjectSoundReleased { owner: id });
+    }
+    1
 }
 
 /// `BuildingClass::Mission_Unload` (`0x0044D880`). A building with
@@ -365,6 +422,10 @@ fn mission_guard(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
         && let Some(entity) = sim.substrate.entities.get_mut(id)
     {
         // `0x0044995D..0x00449966`: the idle body, then status 1.
+        entity.begin_building_body(
+            crate::sim::building_construction::BuildingBodyMode::Idle,
+            sim.session.binary_frame as i32,
+        );
         entity.mission.set_handler_state(1);
     }
     // `0x004499BB..0x00449A36`: Rate for a depot, three times it otherwise.
@@ -1081,3 +1142,11 @@ mod prism_tests;
 #[cfg(test)]
 #[path = "building_gattling_tests.rs"]
 mod gattling_tests;
+
+#[cfg(test)]
+#[path = "building_construction_tests.rs"]
+mod construction_tests;
+
+#[cfg(test)]
+#[path = "building_opening_oracle_tests.rs"]
+mod opening_oracle_tests;

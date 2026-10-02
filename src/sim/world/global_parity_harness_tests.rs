@@ -478,7 +478,14 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // stop is not established until 0x4B0828 is ported. The order now moves tank 4
 // one cell toward tank 6, and tank 4 still dies inside the run. Main/MapGen
 // are unchanged. Previous: 0x8976_4F17_0FCF_A3FB.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xC355_1AAB_44B6_0A29;
+// 2026-10-02 Building body has one retained owner (hash composition):
+// same-binary control restores only the former two absent Up/Down
+// folds and reproduces the preceding pin. All819 control/current
+// boundaries match after only tick hashes are omitted: full actors,
+// commands, lifecycle/Logic and three RNG streams/draws/callers.
+// Rust-only receipt: tools/spatial_oracle/building_construction_replay/receipt.json.
+// Previous: 0xC3551AAB44B60A29. Native proof is the separate construction corpus.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x82E9_0C5A_A33D_9A44;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

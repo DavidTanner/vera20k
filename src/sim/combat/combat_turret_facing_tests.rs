@@ -788,8 +788,14 @@ fn a_building_barrel_turns_through_mission_attack_not_the_sweep() {
     // one on Attack turns toward its target on its dispatch.
     let mut sim = Simulation::new();
     // Armed type; the CATEGORY is what routes facing ownership.
-    let mut tower = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
-    tower.category = crate::map::entities::EntityCategory::Structure;
+    let mut tower = GameEntity::test_default_of_category(
+        1,
+        "MTNK",
+        "Americans",
+        5,
+        5,
+        crate::map::entities::EntityCategory::Structure,
+    );
     tower.mission_leaf = crate::sim::mission::MissionLeafState::for_entity_category(
         crate::map::entities::EntityCategory::Structure,
     );
@@ -1251,13 +1257,8 @@ fn gsi_08_14_idle_turret_returns_to_the_hull_without_a_navcom() {
         .get_mut(1)
         .unwrap()
         .navigation
-        .path_replay = crate::sim::movement::fixture_path_replay(&[
-        (5, 5),
-        (6, 5),
-        (7, 5),
-        (8, 5),
-        (9, 5),
-    ]);
+        .path_replay =
+        crate::sim::movement::fixture_path_replay(&[(5, 5), (6, 5), (7, 5), (8, 5), (9, 5)]);
 
     let result = run_combat_direct(&mut sim, &rules);
     assert_eq!(
@@ -1425,8 +1426,14 @@ fn gsi_08_14_building_turret_holds_its_last_aim() {
     // construction and sell paths: a building turret never swings back to a
     // "body" heading, because a building has no hull.
     let mut sim = Simulation::new();
-    let mut tower = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
-    tower.category = crate::map::entities::EntityCategory::Structure;
+    let mut tower = GameEntity::test_default_of_category(
+        1,
+        "MTNK",
+        "Americans",
+        5,
+        5,
+        crate::map::entities::EntityCategory::Structure,
+    );
     tower.mission_leaf = crate::sim::mission::MissionLeafState::for_entity_category(
         crate::map::entities::EntityCategory::Structure,
     );
@@ -1501,8 +1508,14 @@ TurretAnimIsVoxel={}\n\n\
     fn fires_at_offset(voxel: bool, rot: i32, offset: u16) -> bool {
         let rules = tower_rules(voxel, rot);
         let mut sim = Simulation::new();
-        let mut tower = GameEntity::test_default(1, "GTGCAN", "Americans", 5, 5);
-        tower.category = crate::map::entities::EntityCategory::Structure;
+        let mut tower = GameEntity::test_default_of_category(
+            1,
+            "GTGCAN",
+            "Americans",
+            5,
+            5,
+            crate::map::entities::EntityCategory::Structure,
+        );
         tower.lifecycle.in_limbo = false;
         tower.body_facing = FacingClass::new(facing_from_5_5_to_5_9().wrapping_add(offset), rot);
         tower.attack_target = Some(AttackTarget::new(2));

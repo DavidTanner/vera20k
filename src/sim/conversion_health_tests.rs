@@ -161,7 +161,7 @@ fn undeploy(sim: &mut Simulation, rules: &RuleSet, building: u64, into: &str) ->
         .entities
         .get_mut(building)
         .unwrap()
-        .building_up = None;
+        .finish_building_construction_for_test();
     assert!(sim.undeploy_building(building, rules));
     sim.substrate
         .entities
@@ -244,14 +244,7 @@ fn all_four_conversion_callers_preserve_results_above_u16() {
     for _ in 0..32 {
         sim.advance_tick(&[], Some(&rules), None, None, 22);
     }
-    assert!(
-        sim.substrate
-            .entities
-            .get(yard)
-            .unwrap()
-            .building_up
-            .is_none()
-    );
+    assert!(!sim.substrate.entities.get(yard).unwrap().building_up());
     assert!(sim.undeploy_building(yard, &rules));
     sim.substrate
         .entities
@@ -323,7 +316,7 @@ fn mcv_building_slots_wait_for_completion_and_use_converted_health() {
     let destination = sim.entities().get(destination_id).unwrap();
     assert_eq!(destination.health.current, 250);
     assert_eq!(destination.techno_ctor_random_word, constructor_word);
-    assert!(destination.building_up.is_some());
+    assert!(destination.building_up());
     assert!(!destination.building_actually_placed);
     assert!(destination.building_anim_slots.iter().all(Option::is_none));
     assert_eq!(sim.substrate.anims.len(), 0);
@@ -334,7 +327,7 @@ fn mcv_building_slots_wait_for_completion_and_use_converted_health() {
         sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     let destination = sim.entities().get(destination_id).unwrap();
-    assert!(destination.building_up.is_none());
+    assert!(!destination.building_up());
     assert!(destination.building_actually_placed);
     let anim = sim
         .anim(destination.building_anim_slots[18].unwrap())

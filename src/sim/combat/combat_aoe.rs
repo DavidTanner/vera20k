@@ -1715,8 +1715,14 @@ mod tests {
         let mut interner = test_interner();
         let warhead_ref = interner.intern("BlastWH");
         let mut entities = EntityStore::new();
-        let mut building = GameEntity::test_default(1, "BUILD", "Neutral", 5, 5);
-        building.category = EntityCategory::Structure;
+        let mut building = GameEntity::test_default_of_category(
+            1,
+            "BUILD",
+            "Neutral",
+            5,
+            5,
+            EntityCategory::Structure,
+        );
         building.health.current = 300;
         entities.insert(building);
         let mut occupancy = OccupancyGrid::new();
@@ -2780,10 +2786,16 @@ mod tests {
             source.owner = soviet;
             source.type_ref = mtnk;
             entities.insert(source);
-            let mut hut = GameEntity::test_default(2, "CABHUT", "CivilianHouse", 5, 5);
+            let mut hut = GameEntity::test_default_of_category(
+                2,
+                "CABHUT",
+                "CivilianHouse",
+                5,
+                5,
+                EntityCategory::Structure,
+            );
             hut.owner = civilian;
             hut.type_ref = cabhut;
-            hut.category = EntityCategory::Structure;
             hut.health.current = 2000;
             entities.insert(hut);
 
@@ -3053,10 +3065,16 @@ mod tests {
         immune.attack_target = Some(AttackTarget::new(1));
         entities.insert(immune);
 
-        let mut building = GameEntity::test_default(5, "BUILD", "SovietHouse", 5, 5);
+        let mut building = GameEntity::test_default_of_category(
+            5,
+            "BUILD",
+            "SovietHouse",
+            5,
+            5,
+            EntityCategory::Structure,
+        );
         building.owner = soviet;
         building.type_ref = building_type;
-        building.category = EntityCategory::Structure;
         building.health.current = 1000;
         building.attack_target = Some(AttackTarget::new(1));
         entities.insert(building);
@@ -4017,8 +4035,14 @@ mod tests {
         unit.position.sub_y = CELL_CENTER_LEPTON;
         entities.insert(unit);
 
-        let mut building = GameEntity::test_default(30, "BLDG", "Americans", 5, 5);
-        building.category = EntityCategory::Structure;
+        let building = GameEntity::test_default_of_category(
+            30,
+            "BLDG",
+            "Americans",
+            5,
+            5,
+            EntityCategory::Structure,
+        );
         entities.insert(building);
 
         let mut air = GameEntity::test_default(10, "AIR", "Americans", 5, 5);

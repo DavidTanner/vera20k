@@ -125,14 +125,14 @@ fn the_cell_the_mcv_stood_on_ends_as_a_yard_cell() {
 }
 
 /// The yard an MCV deploys into in frame D builds up from its type's Buildup
-/// control and completes at D + 1 + (count - 1) * rate: Deploy's ready byte
-/// commences the queued Construction mission in D and its first visit is D+1
-/// (`sim::building_construction`); the tactical capture ledger pins this
-/// route.
+/// control. The conversion removes the current Logic object; the compacting
+/// cursor skips its appended yard that frame. Its first visit at D+1 promotes
+/// Construction after the body; the first handler at D+2 begins the raw clock.
+/// Original construction route rows pin the subsequent 29x1 completion.
 #[test]
 fn a_deployed_yard_completes_its_buildup_after_the_conversion_frame() {
     let (mut sim, mut rules, id) = fixture("SMCV", 0, 5, 4);
-    rules.set_buildup_control_for_test("YARD", [0, 31, 1]);
+    rules.set_buildup_control_for_test("YARD", [0, 29, 1]);
     tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
     let mut converted = None;
     let mut completed = None;
@@ -146,14 +146,14 @@ fn a_deployed_yard_completes_its_buildup_after_the_conversion_frame() {
             .find(|e| !e.dying && e.category == EntityCategory::Structure);
         if let Some(yard) = yard {
             converted.get_or_insert(frame);
-            if yard.building_up.is_none() {
+            if !yard.building_up() {
                 completed = Some(frame);
                 break;
             }
         }
     }
     let converted = converted.expect("the MCV converts");
-    assert_eq!(completed, Some(converted + 1 + 30));
+    assert_eq!(completed, Some(converted + 2 + 28));
 }
 
 #[test]
@@ -1226,12 +1226,7 @@ fn retail_dustbowl_a_computer_without_its_yard_sells_off_and_hunts() {
     assert!(!left.is_empty(), "something to sell");
     for id in left {
         assert!(
-            sim.substrate
-                .entities
-                .get(id)
-                .unwrap()
-                .building_down
-                .is_some(),
+            sim.substrate.entities.get(id).unwrap().building_down(),
             "building {id} sells"
         );
     }

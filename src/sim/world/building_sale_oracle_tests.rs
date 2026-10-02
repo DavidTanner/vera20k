@@ -194,7 +194,7 @@ fn crew_scene(input: &Value) -> (SlaveScene, Vec<u64>) {
     }
     production::begin_selling(sim, rules, refinery, false);
     let building = sim.substrate.entities.get_mut(refinery).unwrap();
-    assert!(building.building_down.is_some(), "the sale commenced");
+    assert!(building.building_down(), "the sale commenced");
     building.mission.set_handler_state(1);
     sim.scenario_rng = SimRng::new(seed);
     sim.sound_events.clear();
@@ -350,7 +350,7 @@ fn replay_crew_row(row: &Value) {
         "{context}: Sell's stage"
     );
     assert_eq!(
-        u64::from(building.building_down.unwrap().done),
+        u64::from(building.building_ready_latch()),
         row["building"]["done"].as_u64().unwrap(),
         "{context}: +0x6DD"
     );
@@ -449,14 +449,18 @@ fn sales_through_the_frame_visit_on_the_original_frames() {
                 .filter(|event| matches!(event, SimSoundEvent::StructureSold { .. }))
                 .count()
         };
-        assert!(production::sell_back(
-            &mut s.sim,
-            &s.rules,
-            building,
-            production::SellOrder::Player
-        ));
+        let sale_order = crate::sim::command::CommandEnvelope::new(
+            s.sim.substrate.entities.get(building).unwrap().owner(),
+            s.sim.session.tick + 1,
+            crate::sim::command::Command::SellBuilding {
+                entity_id: building,
+            },
+        );
         let mut completed = false;
-        for frame in std::iter::once(&row["order"]).chain(row["frames"].as_array().unwrap()) {
+        for (index, frame) in std::iter::once(&row["order"])
+            .chain(row["frames"].as_array().unwrap())
+            .enumerate()
+        {
             let now = frame["frame"].as_i64().unwrap_or(0);
             let context = format!("{name} frame {now}");
             if input["sell_again_at"].as_i64() == Some(now) {
@@ -468,8 +472,20 @@ fn sales_through_the_frame_visit_on_the_original_frames() {
                 ));
             }
             let grid = s.sim.path_grid_snapshot();
-            s.sim
-                .advance_tick(&[], Some(&s.rules), grid.as_deref(), Some(overlay), 67);
+            let commands = if index == 0 {
+                std::slice::from_ref(&sale_order)
+            } else {
+                &[]
+            };
+            let tick =
+                s.sim
+                    .advance_tick(commands, Some(&s.rules), grid.as_deref(), Some(overlay), 67);
+            if index == 0 {
+                assert_eq!(
+                    tick.executed_commands, 1,
+                    "{context}: native SELL event tail"
+                );
+            }
             if frame["converts"] == true {
                 assert!(
                     s.sim.substrate.entities.get(building).is_none(),
@@ -486,7 +502,7 @@ fn sales_through_the_frame_visit_on_the_original_frames() {
                 "{context}: Sell stage"
             );
             assert_eq!(
-                entity.building_down.map_or(0, |down| u64::from(down.done)),
+                u64::from(entity.building_ready_latch()),
                 frame["done"].as_u64().unwrap_or(0),
                 "{context}: +0x6DD"
             );
@@ -509,14 +525,15 @@ const AI_SALE_SKIPPED: &[&str] = &["s_tagged"];
 /// computer order. A row that stopped at the computer's auto-repair start
 /// (`0x004506B2`) takes no sale in either; the building is not AI-repairable,
 /// so that start draws nothing (`building_repair_oracle_tests` replays it).
-/// VERA keeps a build-up in `building_up` without the Construction mission:
-/// a row's Construction is a build-up that completes on the next frame.
+/// The row supplies the native current and queued missions directly; no
+/// separate buildup flag substitutes for the Construction selector.
 #[test]
 fn the_computers_low_credit_sale_matches_the_original_admission() {
     let mission = |name: &Value| match name.as_str().unwrap_or("none") {
         "guard" => MissionId::from_known(MissionType::Guard),
         "selling" => MissionId::from_known(MissionType::Selling),
-        "none" | "construction" => MissionId::NONE,
+        "construction" => MissionId::from_known(MissionType::Construction),
+        "none" => MissionId::NONE,
         other => panic!("mission {other}"),
     };
     let mut compared = 0;

@@ -427,8 +427,14 @@ mod map_wall_owner_candidate_tests {
         ry: u16,
         foundation: &str,
     ) -> GameEntity {
-        let mut entity = GameEntity::test_default(stable_id, type_id, owner, rx, ry);
-        entity.category = EntityCategory::Structure;
+        let mut entity = GameEntity::test_default_of_category(
+            stable_id,
+            type_id,
+            owner,
+            rx,
+            ry,
+            EntityCategory::Structure,
+        );
         entity.foundation = foundation.to_string();
         entity.lifecycle.object_alive = true;
         entity.lifecycle.cell_marked = true;

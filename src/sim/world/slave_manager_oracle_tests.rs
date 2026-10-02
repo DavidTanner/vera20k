@@ -252,9 +252,8 @@ pub(super) fn row_scene_edited(
         sim.spawn_object("GAOREP", "Americans", 16, 16, 0, rules)
             .expect("footprint blocker");
     }
-    // VERA publishes neither the Construction mission nor a BState: a
-    // building that builds up carries `building_up`, which stands for both
-    // (`GameEntity::constructing_or_selling`, `slave_manager_step`).
+    // Supply the original body state and mission through their owners.
+    // Construction and BState0 are distinct inputs to the manager.
     let owner_mission = input["owner_mission"].as_str().unwrap_or("guard");
     if owner_mission == "construction" || input["bstate"].as_i64() == Some(0) {
         sim.substrate
@@ -267,7 +266,7 @@ pub(super) fn row_scene_edited(
             );
     }
     let owner_mission = match owner_mission {
-        "construction" => MissionType::Guard,
+        "construction" => MissionType::Construction,
         other => mission(other),
     };
     // The MissionClass start frame (`+0xC0`) the row supplies.
@@ -513,8 +512,8 @@ fn compare_state(s: &SlaveScene, row: &Value, context: &str) {
             "{context}: owner deploy pending"
         );
     }
-    // The refinery: the Selling a relocation queues (`+0xB4`) is VERA's
-    // started undeploy (`building_down`), and its ArchiveTarget. The
+    // The refinery: the relocation's queued Selling selector (`+0xB4`),
+    // independent of an already-current Selling mission, and its ArchiveTarget. The
     // relocation's `+0x4F8` (the undeploy voice's silencer) has no VERA
     // counterpart (`slave_manager::relocate_refinery`).
     if !native["building"].is_null() && holder == s.refinery {
@@ -526,7 +525,7 @@ fn compare_state(s: &SlaveScene, row: &Value, context: &str) {
             other => panic!("{context}: refinery queued mission {other}"),
         };
         assert_eq!(
-            refinery.building_down.is_some(),
+            refinery.mission.queued().known() == Some(MissionType::Selling),
             queued,
             "{context}: refinery Selling (undeploy)"
         );

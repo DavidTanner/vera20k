@@ -230,10 +230,16 @@ mod tests {
     }
 
     fn structure(sim: &mut Simulation, id: u64, type_id: &str, owner: &str, cx: u16) {
-        let mut e = GameEntity::test_default(id, type_id, owner, cx, 5);
+        let mut e = GameEntity::test_default_of_category(
+            id,
+            type_id,
+            owner,
+            cx,
+            5,
+            EntityCategory::Structure,
+        );
         e.type_ref = sim.interner.intern(type_id);
         e.owner = sim.interner.intern(owner);
-        e.category = EntityCategory::Structure;
         e.lifecycle.in_limbo = false;
         e.lifecycle.cell_marked = true;
         sim.substrate.entities.insert(e);

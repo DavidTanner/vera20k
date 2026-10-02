@@ -165,6 +165,14 @@ impl Simulation {
         }
         // BuildingClass::Init_Managers, from the constructor (`0x0043BB29`):
         // no Buildup SHP clears the AI sale byte (`0x00442CBC`).
+        if category == EntityCategory::Structure
+            && let Some(rules) = rules
+        {
+            ge.bind_building_construction_control(rules.buildup_control(&obj.id));
+            if matches!(origin, ComponentOrigin::Authored { .. }) {
+                ge.initialize_building_idle_body(self.session.binary_frame as i32);
+            }
+        }
         ge.ai_sellable = category == EntityCategory::Structure
             && rules.is_some_and(|rules| rules.has_buildup(&obj.id));
         if should_construct_locomotor(category, obj) {
