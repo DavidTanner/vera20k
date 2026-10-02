@@ -959,6 +959,9 @@ pub struct GeneralRules {
     /// AudioVisual/SinkingSound -> Rules+208 (6699C8); constructor665940
     /// stores -1. Used only when the sinking type has no resolved sound.
     pub sinking_sound: Option<String>,
+    /// Rules+6C8 ctor665FE2=-1; AudioVisual Construction at66A97F..66A9B7
+    /// uses ReadString128/Find7514D0 and keeps the prior index on invalid input.
+    pub construction_sound: Option<String>,
     /// `[AudioVisual] BombTickingSound=` (`RulesClass+0x20C`): the looping
     /// tick at a bombed object (`BombListClass::UpdateAll @ 0x00438BF0`).
     pub bomb_ticking_sound: Option<String>,
@@ -1764,6 +1767,7 @@ impl Default for GeneralRules {
             impact_water_sound: None,
             impact_land_sound: None,
             sinking_sound: None,
+            construction_sound: None,
             bomb_ticking_sound: None,
             bomb_attach_sound: None,
             damage_delay_minutes: 1.0,
@@ -2608,6 +2612,7 @@ impl GeneralRules {
                 .map(str::to_owned),
             // Constructor -1 until the fixed SOUNDMD catalog resolves it.
             sinking_sound: None,
+            construction_sound: None,
             bomb_ticking_sound,
             bomb_attach_sound,
             warp_in: AnimRef {
@@ -3237,8 +3242,15 @@ impl RuleSet {
         self.general.sinking_sound = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "SinkingSound"));
+        self.general.construction_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "Construction"));
         for object in &mut self.object_list {
             let section = ini.section(&object.id);
+            if object.category == crate::rules::object_type::ObjectCategory::Building {
+                object.buildup_sound = section
+                    .and_then(|section| sounds.read_rules_reference(section, "BuildupSound"));
+            }
             object.sinking_sound =
                 section.and_then(|section| sounds.read_rules_reference(section, "SinkingSound"));
             object.voice_sinking =
@@ -4605,12 +4617,11 @@ impl RuleSet {
             .is_some_and(|obj| obj.refinery)
     }
 
-    /// Resolve a refinery's free starter unit if both the refinery and the unit exist.
-    pub fn refinery_free_unit(&self, structure_id: &str) -> Option<&str> {
+    /// Resolve BuildingType FreeUnit, read by Grand_Opening446AA9. The native
+    /// tail does not require Refinery; the type reader has already allocated
+    /// a referenced UnitType, including names absent from VehicleTypes.
+    pub fn building_free_unit(&self, structure_id: &str) -> Option<&str> {
         let obj = self.object_case_insensitive(structure_id)?;
-        if !obj.refinery {
-            return None;
-        }
         let free_unit = obj.free_unit.as_deref()?;
         let resolved = self.object_case_insensitive(free_unit)?;
         Some(resolved.id.as_str())
@@ -6303,7 +6314,7 @@ MutateWarhead=MyMutate\n\
 
         assert!(rules.is_refinery_type("modproc"));
         assert!(!rules.is_refinery_type("FAKEREF"));
-        assert_eq!(rules.refinery_free_unit("MODPROC"), Some("MODHARV"));
+        assert_eq!(rules.building_free_unit("MODPROC"), Some("MODHARV"));
         assert!(rules.harvester_can_dock_at("modharv", "MODPROC"));
         assert!(!rules.harvester_can_dock_at("modharv", "GAREFN"));
     }
@@ -6327,7 +6338,7 @@ MutateWarhead=MyMutate\n\
         let rules = RuleSet::from_ini(&ini).expect("Should parse");
 
         assert!(rules.is_refinery_type("MODPROC"));
-        assert_eq!(rules.refinery_free_unit("MODPROC"), Some("UNKNOWN"));
+        assert_eq!(rules.building_free_unit("MODPROC"), Some("UNKNOWN"));
         assert!(
             rules.type_handle("UNKNOWN").is_some(),
             "native Find_Or_Allocate constructs the referenced UnitType"

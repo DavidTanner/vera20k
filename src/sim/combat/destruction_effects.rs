@@ -156,9 +156,15 @@ impl Simulation {
             reverse: false,
             ..AnimClassSpawnDescriptor::new(type_id, rx, ry, sub_x, sub_y, z)
         };
-        if let Err(error) =
-            self.spawn_anim_at_world_with_draws(rules, descriptor, spawn.coord, spawn.draws)
-        {
+        if let Err(error) = self.spawn_anim_at_world_with_constructor(
+            rules,
+            descriptor,
+            spawn.coord,
+            spawn.draws.map_or(
+                crate::sim::anim_class::AnimConstructorInput::Runtime,
+                crate::sim::anim_class::AnimConstructorInput::Preconsumed,
+            ),
+        ) {
             log::debug!(
                 "death anim [{}] did not construct: {error}",
                 self.interner.resolve(type_id)

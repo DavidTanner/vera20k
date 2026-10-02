@@ -2182,8 +2182,14 @@ mod tests {
         );
         infantry.locomotor.as_mut().unwrap().layer = MovementLayer::Air;
         entities.insert(infantry);
-        let mut building = GameEntity::test_default(2, "CABHUT", "Neutral", 5, 5);
-        building.category = EntityCategory::Structure;
+        let building = GameEntity::test_default_of_category(
+            2,
+            "CABHUT",
+            "Neutral",
+            5,
+            5,
+            EntityCategory::Structure,
+        );
         entities.insert(building);
         let mut grid = OccupancyGrid::new();
         grid.add(

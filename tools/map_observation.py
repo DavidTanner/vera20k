@@ -23,21 +23,25 @@ from tools.tactical_certification.core import (
 from tools.tactical_certification.profile import load_contract, reject_denied_environment
 
 ROOT = Path(__file__).resolve().parents[1]
-RUN_SCHEMA = 'vera20k.map-observation-run.v4'
+RUN_SCHEMA = 'vera20k.map-observation-run.v5'
+TRAJECTORY_RUN_SCHEMA = 'vera20k.map-observation-run.v4'
 PRIOR_RUN_SCHEMA = 'vera20k.map-observation-run.v3'
 LEGACY_CLOCK_RUN_SCHEMA = 'vera20k.map-observation-run.v2'
 LEGACY_RUN_SCHEMA = 'vera20k.map-observation-run.v1'
-CHILD_SCHEMA = 'vera20k.map-observation.v4'
+CHILD_SCHEMA = 'vera20k.map-observation.v5'
+TRAJECTORY_CHILD_SCHEMA = 'vera20k.map-observation.v4'
 PRIOR_CHILD_SCHEMA = 'vera20k.map-observation.v3'
 LEGACY_CHILD_SCHEMA = 'vera20k.map-observation.v2'
 CLOCK_POLICY = 'map-exact-step-presentation-v1'
-OBSERVATION_POLICY = 'map-ordinary-command-observation-v1'
+OBSERVATION_POLICY = 'map-ordinary-command-observation-v2'
+TRAJECTORY_OBSERVATION_POLICY = 'map-ordinary-command-observation-v1'
 PROFILE_V1 = 'vera20k.map-observation-profile.v1'
 PROFILE_V2 = 'vera20k.map-observation-profile.v2'
 MAX_OBSERVATION_SAMPLES = 100_000
 MAX_RECEIPT_BYTES = 128 * 1024 * 1024
 ORDER_VARIANTS = frozenset(('Move', 'Stop', 'Attack', 'ForceAttack', 'Guard',
                             'DeployMcv', 'ForceAttackCell'))
+PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
 EXTENSION_FIELDS = frozenset(('commands', 'observe_owners', 'camera_cell', 'terrain_cells'))
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
 
@@ -194,7 +198,7 @@ def _coordinate(value: Any, label: str, *, leptons: bool = False) -> list[int]:
             for index, item in enumerate(coordinate)]
 
 
-def _profile_extensions(profile: Mapping[str, Any]) -> None:
+def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool = True) -> None:
     """Check diagnostic syntax/budgets; Rust still owns Command/launch admission."""
     schema = profile.get('schema_version')
     if schema not in (PROFILE_V1, PROFILE_V2):
@@ -222,7 +226,8 @@ def _profile_extensions(profile: Mapping[str, Any]) -> None:
         # Preserve the existing serde Command payload opaquely. Rust validates
         # exact argument fields/types; this wrapper does not translate orders.
         payload = require_object(command.get('payload'), f'{label}.payload')
-        if len(payload) != 1 or next(iter(payload)) not in ORDER_VARIANTS:
+        variants = ORDER_VARIANTS | (PRODUCTION_VARIANTS if production_commands else frozenset())
+        if len(payload) != 1 or next(iter(payload)) not in variants:
             raise ValidationError(f'{label}.payload is outside ordinary order coverage')
     owners = require_array(profile.get('observe_owners', []), 'profile.observe_owners')
     if len(owners) > 30:
@@ -271,11 +276,104 @@ def _target_reference(value: Any, label: str, *, navigation: bool = False) -> No
         raise ValidationError(f'{label} has an unknown target reference tag')
 
 
-def _actor(value: Any, label: str) -> tuple[int, str]:
+def _timer(value: Any, label: str) -> None:
+    timer = require_object(value, label)
+    require_exact_keys(timer, ('start_frame', 'duration'), label)
+    for key in timer:
+        _bounded_int(timer[key], f'{label}.{key}', -(1 << 31), (1 << 31) - 1)
+
+
+def _building(value: Any, label: str) -> int:
+    building = require_object(value, label)
+    require_exact_keys(building, ('body_state', 'queued_body_state', 'construction_control',
+                                  'stage', 'ready_latch', 'actually_placed', 'last_operational',
+                                  'animation_slots'), label)
+    for key in ('body_state', 'queued_body_state'):
+        if building[key] is not None:
+            _bounded_int(building[key], f'{label}.{key}', -(1 << 31), (1 << 31) - 1)
+    control = require_array(building['construction_control'], f'{label}.construction_control')
+    if len(control) != 3:
+        raise ValidationError(f'{label}.construction_control must have exactly three entries')
+    for index, number in enumerate(control):
+        _bounded_int(number, f'{label}.construction_control[{index}]', -(1 << 31), (1 << 31) - 1)
+    stage = require_object(building['stage'], f'{label}.stage')
+    require_exact_keys(stage, ('value', 'changed', 'timer', 'rate', 'increment'), f'{label}.stage')
+    for key in ('value', 'rate', 'increment'):
+        _bounded_int(stage[key], f'{label}.stage.{key}', -(1 << 31), (1 << 31) - 1)
+    _bounded_int(stage['changed'], f'{label}.stage.changed', 0, 255)
+    _timer(stage['timer'], f'{label}.stage.timer')
+    _bounded_int(building['ready_latch'], f'{label}.ready_latch', 0, 255)
+    for key in ('actually_placed', 'last_operational'):
+        if type(building[key]) is not bool:
+            raise ValidationError(f'{label}.{key} must be a boolean')
+    slots = require_array(building['animation_slots'], f'{label}.animation_slots')
+    previous = -1
+    for index, value in enumerate(slots):
+        slot_label = f'{label}.animation_slots[{index}]'
+        slot = require_object(value, slot_label)
+        require_exact_keys(slot, ('slot', 'anim_id', 'animation'), slot_label)
+        number = _bounded_int(slot['slot'], f'{slot_label}.slot', 0, 20)
+        if number <= previous:
+            raise ValidationError(f'{slot_label}.slot is repeated or out of order')
+        previous = number
+        identity = _bounded_int(slot['anim_id'], f'{slot_label}.anim_id', 1, (1 << 64) - 1)
+        if slot['animation'] is None:
+            continue  # A retained slot with no live Anim is explicit evidence.
+        anim_label = f'{slot_label}.animation'
+        anim = require_object(slot['animation'], anim_label)
+        require_exact_keys(anim, ('stable_id', 'native_id', 'type_id', 'interned_type_id',
+                                 'physical_leptons', 'in_logic_vector', 'owner_entity',
+                                 'building_slot', 'runtime'), anim_label)
+        require_value(anim['stable_id'], identity, f'{anim_label}.stable_id')
+        _bounded_int(anim['native_id'], f'{anim_label}.native_id', -(1 << 31), (1 << 31) - 1)
+        if not require_string(anim['type_id'], f'{anim_label}.type_id'):
+            raise ValidationError(f'{anim_label}.type_id is empty')
+        _bounded_int(anim['interned_type_id'], f'{anim_label}.interned_type_id', 0, (1 << 32) - 1)
+        _coordinate(anim['physical_leptons'], f'{anim_label}.physical_leptons', leptons=True)
+        if type(anim['in_logic_vector']) is not bool:
+            raise ValidationError(f'{anim_label}.in_logic_vector must be a boolean')
+        if anim['owner_entity'] is not None:
+            _bounded_int(anim['owner_entity'], f'{anim_label}.owner_entity', 1, (1 << 64) - 1)
+        if anim['building_slot'] is not None:
+            owner_slot = require_array(anim['building_slot'], f'{anim_label}.building_slot')
+            if len(owner_slot) != 2:
+                raise ValidationError(f'{anim_label}.building_slot must contain owner and slot')
+            _bounded_int(owner_slot[0], f'{anim_label}.building_slot[0]', 1, (1 << 64) - 1)
+            _bounded_int(owner_slot[1], f'{anim_label}.building_slot[1]', 0, 20)
+        runtime = require_object(anim['runtime'], f'{anim_label}.runtime')
+        require_exact_keys(runtime, ('current_frame', 'frame_step', 'delay_remaining', 'rate_reload',
+                                     'frame_timer', 'loop_remaining', 'first_ai_guard',
+                                     'constructor_reverse', 'inactive', 'paused'), f'{anim_label}.runtime')
+        for key in ('current_frame', 'frame_step'):
+            _bounded_int(runtime[key], f'{anim_label}.runtime.{key}', -(1 << 31), (1 << 31) - 1)
+        for key in ('delay_remaining', 'rate_reload'):
+            _bounded_int(runtime[key], f'{anim_label}.runtime.{key}', 0, (1 << 16) - 1)
+        _bounded_int(runtime['loop_remaining'], f'{anim_label}.runtime.loop_remaining', 0, 255)
+        _timer(runtime['frame_timer'], f'{anim_label}.runtime.frame_timer')
+        for key in ('first_ai_guard', 'constructor_reverse', 'inactive', 'paused'):
+            if type(runtime[key]) is not bool:
+                raise ValidationError(f'{anim_label}.runtime.{key} must be a boolean')
+    return len(slots)
+
+
+def _rule_types(value: Any) -> None:
+    for index, value in enumerate(require_array(value, 'observations.rule_types')):
+        label = f'observations.rule_types[{index}]'
+        row = require_object(value, label)
+        require_exact_keys(row, ('type_id', 'interned_id', 'category'), label)
+        if not require_string(row['type_id'], f'{label}.type_id'):
+            raise ValidationError(f'{label}.type_id is empty')
+        _bounded_int(row['interned_id'], f'{label}.interned_id', 0, (1 << 32) - 1)
+        if row['category'] not in ('Infantry', 'Unit', 'Aircraft', 'Structure'):
+            raise ValidationError(f'{label}.category is unknown')
+
+
+def _actor(value: Any, label: str, *, building_state: bool = True) -> tuple[int, str]:
     actor = require_object(value, label)
     require_exact_keys(actor, ('stable_id', 'owner', 'type_id', 'category', 'cell',
                               'physical_leptons', 'on_bridge', 'health', 'active',
-                              'in_limbo', 'dying', 'mission', 'target', 'archive', 'nav', 'foot'), label)
+                              'in_limbo', 'dying', 'mission', 'target', 'archive', 'nav', 'foot',
+                              *(('building',) if building_state else ())), label)
     identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
     owner = require_string(actor['owner'], f'{label}.owner')
     if not owner or not require_string(actor['type_id'], f'{label}.type_id'):
@@ -283,6 +381,11 @@ def _actor(value: Any, label: str) -> tuple[int, str]:
     category = actor['category']
     if category not in ('Unit', 'Infantry', 'Aircraft', 'Structure'):
         raise ValidationError(f'{label}.category is unknown')
+    if building_state:
+        if category == 'Structure':
+            _building(actor['building'], f'{label}.building')
+        else:
+            require_value(actor['building'], None, f'{label}.building')
     _coordinate(actor['cell'], f'{label}.cell')
     _coordinate(actor['physical_leptons'], f'{label}.physical_leptons', leptons=True)
     _bounded_int(actor['health'], f'{label}.health', -(1 << 31), (1 << 31) - 1)
@@ -366,11 +469,16 @@ def _terrain(value: Any, expected_cell: Any, label: str) -> None:
             raise ValidationError(f'{label}.{key} must be a boolean')
 
 
-def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, Any]) -> dict[str, Any]:
+def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, Any], *,
+                  building_state: bool = True) -> dict[str, Any]:
     label = 'observations'
     observations = require_object(value, label)
-    require_exact_keys(observations, ('policy', 'owners', 'commands', 'frames'), label)
-    require_value(observations['policy'], OBSERVATION_POLICY, f'{label}.policy')
+    require_exact_keys(observations, ('policy', 'owners', 'commands', 'frames',
+                                     *(('rule_types',) if building_state else ())), label)
+    require_value(observations['policy'], OBSERVATION_POLICY if building_state else
+                  TRAJECTORY_OBSERVATION_POLICY, f'{label}.policy')
+    if building_state:
+        _rule_types(observations['rule_types'])
     owners = profile.get('observe_owners', [])
     _require_equal(observations['owners'], owners, f'{label}.owners')
     commands = require_array(observations['commands'], f'{label}.commands')
@@ -413,7 +521,7 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
         previous_id = 0
         for index, value in enumerate(actors):
             actor_label = f'{row_label}.actors[{index}]'
-            identity, owner = _actor(value, actor_label)
+            identity, owner = _actor(value, actor_label, building_state=building_state)
             if identity <= previous_id:
                 raise ValidationError(f'{actor_label}.stable_id is repeated or out of order')
             if identity not in seen and owner not in owners:
@@ -434,6 +542,9 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
         for index, (value, expected) in enumerate(zip(terrain, expected_cells)):
             _terrain(value, expected, f'{row_label}.terrain[{index}]')
         sample_count += len(actors) + len(missing) + len(terrain)
+        if building_state:
+            sample_count += sum(len(actor['building']['animation_slots']) for actor in actors
+                                if actor['category'] == 'Structure')
         if sample_count > MAX_OBSERVATION_SAMPLES:
             raise ValidationError('observations exceeds its retained sample budget')
     require_value(previous_ms, final['total_simulation_ms'], 'observations final total_simulation_ms')
@@ -442,20 +553,22 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
 
 def validate_capture(directory: Path, profile: Mapping[str, Any],
                      identities: Mapping[str, Mapping[str, Any]], *,
-                     legacy_clock: bool = False, prior_observations: bool = False) -> _Capture:
+                     legacy_clock: bool = False, prior_observations: bool = False,
+                     prior_trajectory: bool = False) -> _Capture:
     """Check child semantics/bytes against independently checked input identities.
 
     Identities describe original runtime paths. Retained copies have their own real
     snapshots; offline callers check their bytes before passing these identities.
     """
-    _profile_extensions(profile)
+    _profile_extensions(profile, production_commands=not (legacy_clock or prior_observations or prior_trajectory))
     if (legacy_clock or prior_observations) and profile['schema_version'] != PROFILE_V1:
         raise ValidationError('historical child schemas require profile v1')
     require_directory(directory, 'child output')
     manifest_snapshot, manifest = load_json_file(directory / 'capture.json', 'capture manifest',
                                                 maximum_length=MAX_RECEIPT_BYTES)
     expected_schema = (LEGACY_CHILD_SCHEMA if legacy_clock else
-                       PRIOR_CHILD_SCHEMA if prior_observations else CHILD_SCHEMA)
+                       PRIOR_CHILD_SCHEMA if prior_observations else
+                       TRAJECTORY_CHILD_SCHEMA if prior_trajectory else CHILD_SCHEMA)
     require_value(manifest.get('schema_version'),
                   expected_schema, 'schema_version')
     if manifest.get('status') != 'COMPLETE':
@@ -527,7 +640,8 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
             raise ValidationError('historical child cannot declare v4 observations/camera')
         observations = None
     else:
-        observations = _observations(manifest.get('observations'), profile, final)
+        observations = _observations(manifest.get('observations'), profile, final,
+                                     building_state=not prior_trajectory)
         camera = require_object(render.get('camera'), 'render.camera')
         require_exact_keys(camera, ('requested_cell', 'top_left', 'zoom'), 'render.camera')
         _require_equal(camera['requested_cell'], profile.get('camera_cell'), 'render.camera.requested_cell')
@@ -667,13 +781,15 @@ def _load_run(directory: Path, allow_legacy_inputs: bool,
                                          maximum_length=MAX_RECEIPT_BYTES)
     schema = report.get('schema_version')
     legacy = schema == LEGACY_RUN_SCHEMA
-    if schema not in (RUN_SCHEMA, PRIOR_RUN_SCHEMA, LEGACY_CLOCK_RUN_SCHEMA, LEGACY_RUN_SCHEMA):
+    if schema not in (RUN_SCHEMA, TRAJECTORY_RUN_SCHEMA, PRIOR_RUN_SCHEMA,
+                      LEGACY_CLOCK_RUN_SCHEMA, LEGACY_RUN_SCHEMA):
         raise ValidationError(f'unsupported observation wrapper schema: {schema!r}')
     if legacy and not allow_legacy_inputs:
         raise ValidationError('legacy run v1 has no sealed config/contract copies; '
                               'use --allow-legacy-inputs to revalidate the original files')
     legacy_clock = schema in (LEGACY_CLOCK_RUN_SCHEMA, LEGACY_RUN_SCHEMA)
     prior_observations = schema == PRIOR_RUN_SCHEMA
+    prior_trajectory = schema == TRAJECTORY_RUN_SCHEMA
     if legacy_clock and not allow_legacy_clock:
         raise ValidationError('legacy wall-clock evidence requires --allow-legacy-clock; '
                               'it has no deterministic presentation schedule')
@@ -724,7 +840,8 @@ def _load_run(directory: Path, allow_legacy_inputs: bool,
                         '--output', str(directory / 'child-output')]
     _require_equal(report.get('command'), expected_command, 'run.command')
     checked = validate_capture(directory / 'child-output', profile, identities,
-                               legacy_clock=legacy_clock, prior_observations=prior_observations)
+                               legacy_clock=legacy_clock, prior_observations=prior_observations,
+                               prior_trajectory=prior_trajectory)
     _require_equal(report.get('capture'), checked.evidence, 'run.capture')
     logs = require_object(report.get('logs'), 'run.logs')
     snapshots = [run_snapshot, *inputs.values(), contract.snapshot, profile_snapshot,
@@ -801,6 +918,8 @@ def compare_runs(before: Path, after: Path, *,
         if ('observations' in left.capture.evidence) != ('observations' in right.capture.evidence):
             raise ValidationError('observation policies differ between child generations')
         if 'observations' in left.capture.evidence:
+            if left.capture.evidence['observations']['policy'] != right.capture.evidence['observations']['policy']:
+                raise ValidationError('observation policies differ between child generations')
             compared_fields += ('observations', 'camera')
         differences = [difference for name in compared_fields
                        for difference in _differences(left.capture.evidence[name],
@@ -844,7 +963,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         parser.add_argument('--allow-legacy-inputs', action='store_true')
         parser.add_argument('--allow-legacy-clock', action='store_true',
-                            help='Allow offline wall-clock v2 children; not comparable with v3')
+                            help='Allow offline wall-clock v2 children; not comparable with diagnostic-clock children')
         if operation == 'validate':
             parser.add_argument('--run', type=Path, required=True)
         else:

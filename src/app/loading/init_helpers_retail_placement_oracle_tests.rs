@@ -508,7 +508,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
     assert_eq!(rules.object("GAPOWR").unwrap().strength, 750);
     assert!(placed.lifecycle.cell_marked);
     assert!(placed.in_logic_vector);
-    assert!(placed.building_up.is_some());
+    assert!(placed.building_up());
     let placed_id = placed.stable_id;
     assert_eq!(
         placed_id, held_id,
@@ -549,7 +549,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         sim.substrate
             .entities
             .get(placed_id)
-            .is_some_and(|entity| entity.building_up.is_some()),
+            .is_some_and(|entity| entity.building_up()),
         "power must be live during the visible buildup"
     );
 }

@@ -55,7 +55,7 @@ pub(crate) fn fire_blocked(entity: &crate::sim::game_entity::GameEntity) -> bool
 
     // A building still playing its build-up runs its Construction
     // mission, not Mission_Attack.
-    if entity.building_up.is_some() {
+    if entity.building_up() {
         return true;
     }
     false

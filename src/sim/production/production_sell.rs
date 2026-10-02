@@ -221,10 +221,11 @@ pub(crate) fn begin_selling(sim: &mut Simulation, rules: &RuleSet, id: u64, unde
     let Some(entity) = sim.substrate.entities.get_mut(id) else {
         return;
     };
-    if entity.mission.current() != selling || entity.building_down.is_some() {
+    if entity.mission.current() != selling {
         return;
     }
-    entity.install_building_down(BuildingDown::commenced(control, now as i32, undeploy_order));
+    entity.bind_building_construction_control(control);
+    entity.install_building_down(BuildingDown::commenced(now as i32, undeploy_order));
 }
 
 /// `BuildingClass::CanSell @ 0x004494C0` (vt+0x98), which the sell cursor
@@ -244,7 +245,7 @@ pub fn can_sell_building(sim: &Simulation, rules: &RuleSet, id: u64) -> bool {
     };
     let buildup_sale = rules.has_buildup(&object.id)
         && !entity.in_construction_bstate()
-        && entity.building_up.is_none()
+        && !entity.building_up()
         && !matches!(
             entity.mission.effective().known(),
             Some(MissionType::Selling | MissionType::Construction)
@@ -268,20 +269,21 @@ pub(super) fn undeploys(rules: &RuleSet, object: &crate::rules::object_type::Obj
 
 /// UpdateAnimation's archive-less sale (`0x00451186..0x004511DF`): an
 /// `UndeploysInto=` building with no ArchiveTarget completes its pack-up at
-/// stage `0x17`.
+/// stage `0x17` only while its effective mission is Selling (4511C7..4511DD).
 pub(crate) fn archive_less_sale(
     rules: Option<&RuleSet>,
     type_id: &str,
     entity: &crate::sim::game_entity::GameEntity,
 ) -> bool {
-    rules.is_some_and(|rules| undeploy_target(rules, type_id).is_some()) && !sale_archive(entity)
+    entity.building_down()
+        && rules.is_some_and(|rules| undeploy_target(rules, type_id).is_some())
+        && !sale_archive(entity)
 }
 
 /// The building's ArchiveTarget (`+0x218`); the player's undeploy order
 /// stands for the click that sets one.
 fn sale_archive(entity: &crate::sim::game_entity::GameEntity) -> bool {
-    entity.archive_target().is_some()
-        || entity.building_down.is_some_and(|down| down.undeploy_order)
+    entity.archive_target().is_some() || entity.sale_is_undeploy_order()
 }
 
 /// Sell's undeploy test (`0x0044A8DF`, `0x0044A7CF`, `0x00449CEA`): an
@@ -383,7 +385,7 @@ pub(crate) fn sell_stage_one(
     let now = sim.session.binary_frame as i32;
     if let Some(building) = sim.substrate.entities.get_mut(id) {
         let mut status = building.mission.handler_state();
-        if building.building_down.is_some() {
+        if building.building_down() {
             building.begin_building_pack_up_stage_two(&mut status, now);
         }
         building.mission.set_handler_state(status);
@@ -890,7 +892,7 @@ pub(crate) fn sell_building_now_for_test(sim: &mut Simulation, rules: &RuleSet, 
             .substrate
             .entities
             .get(id)
-            .is_none_or(|building| building.building_down.is_none())
+            .is_none_or(|building| !building.building_down())
     {
         return false;
     }
@@ -1198,8 +1200,14 @@ mod tests {
             crate::sim::house_state::HouseState::new(americans, 0, None, true, 0, 10),
         );
 
-        let mut building = GameEntity::test_default(building_id, type_id, "Americans", 10, 10);
-        building.category = EntityCategory::Structure;
+        let mut building = GameEntity::test_default_of_category(
+            building_id,
+            type_id,
+            "Americans",
+            10,
+            10,
+            EntityCategory::Structure,
+        );
         building.foundation = "2x2".to_string();
         building.owner = americans;
         building.type_ref = sim.interner.intern(type_id);
@@ -1662,8 +1670,14 @@ mod tests {
     }
 
     fn insert_structure(sim: &mut Simulation, id: u64, type_id: &str, owner: &str) {
-        let mut entity = GameEntity::test_default(id, type_id, owner, 10, 10);
-        entity.category = EntityCategory::Structure;
+        let mut entity = GameEntity::test_default_of_category(
+            id,
+            type_id,
+            owner,
+            10,
+            10,
+            EntityCategory::Structure,
+        );
         entity.owner = sim.interner.intern(owner);
         entity.type_ref = sim.interner.intern(type_id);
         sim.substrate.entities.insert(entity);

@@ -74,16 +74,16 @@ fn slave_master_admission_reaches_head_selection_in_the_same_object_turn() {
             0,
         ));
         if later_blocker {
-            let mut b = crate::sim::game_entity::GameEntity::test_default(
+            let mut b = crate::sim::game_entity::GameEntity::test_default_of_category(
                 100,
                 "CABHUT",
                 "Americans",
                 16,
                 15,
+                EntityCategory::Structure,
             );
             b.owner = sim.intern("Americans");
             b.type_ref = sim.intern("CABHUT");
-            b.category = EntityCategory::Structure;
             sim.substrate.entities.insert(b);
             sim.substrate.occupancy.add(
                 16,

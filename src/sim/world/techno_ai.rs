@@ -651,9 +651,9 @@ fn techno_ai_shell(
                 sim.update_building_absorb_anim(id, rules);
                 sim.update_building_storage_anims(id, rules);
             }
-            building_missions::idle_animation_ready_latch(sim, id, rules);
+            building_missions::update_animation(sim, id, rules);
             // The ready check after UpdateAnimation (`0x0043FE27`).
-            building_missions::ready_commence(sim, id);
+            building_missions::ready_commence(sim, id, true);
             if let Some(rules) = rules
                 && !techno_common_steps(sim, id, rules, ctx.overlay_registry)
             {
@@ -685,7 +685,8 @@ fn techno_ai_shell(
                 building_missions::gattling_idle(sim, id, rules);
             }
             // The ready check after the Techno AI (`0x0043FF91`).
-            building_missions::ready_commence(sim, id);
+            building_missions::ready_commence(sim, id, false);
+            building_missions::apply_queued_body(sim, id);
             // ProcessDelayedFire (`0x004400F4`), then
             // BuildingClass::UpdateRepairAndPower (`0x004401B6`): the
             // computer's low-credit sale or auto-repair start, then the

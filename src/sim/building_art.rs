@@ -64,23 +64,31 @@ impl Simulation {
         }
     }
 
-    /// OnConstructionComplete445F80/446183 initializes Idle18 before Active3..6.
-    /// The native ActuallyPlaced byte makes this allocation one-shot. A fresh
-    /// refinery uses its retained four-slot storage to select Active3..6.
-    pub(crate) fn initialize_completed_building_anims(&mut self, id: u64, rules: &RuleSet) {
+    /// Original Grand_Opening445F80. First-opening effects depend on6E4,
+    /// independently of the capture argument. Captures of already placed
+    /// buildings still rearm ProduceCash and apply activation/house effects.
+    pub(crate) fn grand_opening(
+        &mut self,
+        id: u64,
+        captured: bool,
+        scenario_initialization: bool,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
         if entity.category != crate::map::entities::EntityCategory::Structure
-            || entity.building_actually_placed
-            || entity.building_up.is_some()
+            || (entity.building_actually_placed && !captured)
         {
             return;
         }
         let Some(object) = rules.object(self.interner.resolve(entity.type_ref())) else {
             return;
         };
+        let first_opening = !entity.building_actually_placed;
         let refinery = object.refinery;
+        let powered = object.powered;
         let damaged = requested_damage_state(
             entity.health,
             object.strength,
@@ -90,7 +98,8 @@ impl Simulation {
             .passenger_role
             .cargo()
             .is_some_and(|cargo| !cargo.passengers.is_empty());
-        if !refinery {
+        crate::sim::credit_income::produce_cash_on_grand_opening(self, id, rules);
+        if first_opening && !refinery {
             for slot in [18, 3, 4, 5, 6] {
                 self.set_building_anim_slot(
                     id,
@@ -102,16 +111,28 @@ impl Simulation {
                 );
             }
         }
-        if refinery {
+        if first_opening && refinery {
             self.initialize_refinery_storage_anim(id, rules);
         }
-        if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.building_actually_placed = true;
+        if first_opening && let Some(entity) = self.substrate.entities.get_mut(id) {
+            entity.mission_leaf.set_building_ready_latch(1);
         }
         //4467D0 applies the initial Powered policy even before the first
         //operational-edge restoration. New constructors therefore pause here.
-        if object.powered {
+        if powered {
             self.apply_building_anim_power(id, false, rules);
+        }
+        //446A61/446A6E/446A77/446A84: VERA's production options, power and
+        //radar are derived from the same house/entity owners instead of dirty
+        //flags. Publishing placement here makes all following visits see it.
+        if let Some(entity) = self.substrate.entities.get_mut(id) {
+            entity.building_actually_placed = true;
+        }
+        self.add_building_sensor_array_if_powered(id, rules);
+        self.announce_super_weapon_building_complete(id, rules);
+        if !captured && !scenario_initialization {
+            self.mission_spawned_entities |=
+                crate::sim::production::spawn_building_free_unit(self, id, rules, registry);
         }
     }
     fn building_anim_config(
@@ -226,14 +247,7 @@ impl Simulation {
         descriptor.delay = delay;
         descriptor.loop_count = 1;
         descriptor.draw_flags = 0x1600;
-        let spawned = if self.native_unique_ids.is_some() {
-            let native_id = self
-                .next_native_load_id()
-                .expect("installed native identity cursor");
-            self.spawn_load_anim_at_world(rules, descriptor, world, native_id)
-        } else {
-            self.spawn_anim_at_world(rules, descriptor, world)
-        };
+        let spawned = self.spawn_anim_at_world(rules, descriptor, world);
         let new_id = match spawned {
             Ok(new_id) => new_id,
             Err(error) => {
@@ -612,10 +626,16 @@ pub(crate) fn slot_test_fixture() -> (Simulation, RuleSet, u64) {
     rules.install_art_data(art);
     let mut sim = Simulation::new();
     let id = sim.allocate_stable_id();
-    let mut entity = GameEntity::test_default(id, "B", "A", 2, 2);
+    let mut entity = GameEntity::test_default_of_category(
+        id,
+        "B",
+        "A",
+        2,
+        2,
+        crate::map::entities::EntityCategory::Structure,
+    );
     entity.type_ref = sim.interner.intern("B");
     entity.owner = sim.interner.intern("A");
-    entity.category = crate::map::entities::EntityCategory::Structure;
     entity.health.current = 100;
     sim.substrate.entities.insert(entity);
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
@@ -877,10 +897,10 @@ mod slot_tests {
     #[test]
     fn construction_initializes_real_slot_once_and_health_write_retains_it() {
         let (mut sim, rules, id) = slot_test_fixture();
-        sim.initialize_completed_building_anims(id, &rules);
+        sim.grand_opening(id, false, true, &rules, None);
         let old = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
         sim.entities_mut().get_mut(id).unwrap().health.current = 25;
-        sim.initialize_completed_building_anims(id, &rules);
+        sim.grand_opening(id, false, true, &rules, None);
         assert_eq!(
             sim.entities().get(id).unwrap().building_anim_slots[3],
             Some(old)

@@ -2,8 +2,7 @@
 //! building controls. Original identities: constructor6F2B5E..6F2B81;
 //! Techno6FABC4..6FAC31; Building4509DE..450A38. Native Building steps before
 //! its Techno AI and skips the latter block; other classes step after Mission
-//! dispatch. VERA retains late Construction and mission-dispatch Sell calls;
-//! their early Building Update scheduling remains a separate required chain.
+//! dispatch. Construction and Selling read that same early Building clock.
 //!
 //! Native evidence: tools/spatial_oracle/anytown_damage/foot_missions.json
 //! ground_firing_receipt and stage_clock_receipt (36 original Techno/Building

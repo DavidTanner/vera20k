@@ -242,10 +242,16 @@ mod tests {
         let mut interner = StringInterner::new();
         let owner = interner.intern("Owner");
         let mut entities = EntityStore::new();
-        let mut master = GameEntity::test_default(1, "MASTER", "Owner", 4, 4);
+        let mut master = GameEntity::test_default_of_category(
+            1,
+            "MASTER",
+            "Owner",
+            4,
+            4,
+            EntityCategory::Structure,
+        );
         master.owner = owner;
         master.type_ref = interner.intern("MASTER");
-        master.category = EntityCategory::Structure;
         let slav = interner.intern("SLAV");
         // An existing manager that does not hold the slave refuses it.
         master.slave_manager = Some(SlaveManager::new(slav, [None; 0], 0, 0, 0));

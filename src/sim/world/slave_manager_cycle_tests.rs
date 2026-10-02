@@ -174,8 +174,7 @@ fn a_refinery_building_up_keeps_its_slaves_inside() {
         .entities
         .get(s.master)
         .unwrap()
-        .building_up
-        .is_some()
+        .building_up()
     {
         assert!(frames < 40, "the build-up ends");
         frame(&mut s);
@@ -763,7 +762,7 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
     // Built up (`building_up` done), as `undeploy_building` requires, and
     // elite: the unit takes the refinery's VeterancyClass (`0x0044A058`).
     let refinery = sim.substrate.entities.get_mut(yarefn).unwrap();
-    refinery.building_up = None;
+    refinery.finish_building_construction_for_test();
     crate::sim::combat::veterancy::set_elite(refinery);
     assert!(sim.undeploy_building(yarefn, &rules), "undeploy to SMIN");
     sim.substrate
@@ -836,7 +835,7 @@ fn a_refinery_whose_ore_runs_out_packs_up_and_moves_to_the_next_field() {
         frame(&mut s);
         let sim = &s.scene.sim;
         if let Some(refinery) = sim.substrate.entities.get(first)
-            && refinery.building_down.is_some()
+            && refinery.building_down()
             && !packed
         {
             packed = true;
@@ -991,7 +990,7 @@ fn an_attacker_of_a_packing_refinery_takes_the_slave_miner() {
         .entities
         .get_mut(refinery)
         .unwrap()
-        .building_up = None;
+        .finish_building_construction_for_test();
     let mut expected = SimRng::new(seed);
     while expected.logical_state() != sim.scenario_rng.logical_state() {
         let _ = expected.next_u32();

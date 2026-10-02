@@ -295,6 +295,13 @@ struct MovementSoundProbe {
 /// Pure data — no audio library dependency. Drained by the app layer each frame.
 #[derive(Debug, Clone)]
 pub enum SimSoundEvent {
+    /// Voc7509E0 on the object's handle (Building+6A0 for Construction).
+    /// The existing app/audio handle owner performs looping updates and release.
+    ObjectSoundStarted {
+        owner: u64,
+        sound_id: InternedId,
+        world: crate::sim::anim_class::AnimWorldCoord,
+    },
     /// Constructor-time animation start/report sound, keyed to object identity.
     AnimationStarted {
         anim_id: crate::sim::anim_class::AnimId,
@@ -4492,6 +4499,9 @@ impl Simulation {
             //swap. This order differs from Techno Limbo's sight-then-gap.
             self.remove_building_gap_before_limbo(stable_id);
             self.fog.release_entity_sight(stable_id);
+            // Original4483A6 clears PrimaryFactory before the old-house
+            //teardown.448C69 initializes it after the delegated owner swap.
+            self.production.clear_primary_factory(stable_id);
         }
         // FootClass::ChangeOwner @ 0x004DBED0 removes from the deposited old
         // owner and adds to the new owner before later readers observe it.
@@ -4659,6 +4669,12 @@ impl Simulation {
         // read the type and skips it.
         if let Some(rules) = rules {
             self.change_owner_mission_half(stable_id, rules);
+            if category == EntityCategory::Structure {
+                crate::sim::production::initialize_factory_primary(self, stable_id, rules);
+                //448CEF: Grand_Opening(1) also runs on an already placed
+                //building; its6E4 gate prevents repeating first-opening slots.
+                self.grand_opening(stable_id, true, false, rules, None);
+            }
         }
         // `FootClass::ChangeOwner @ 0x004DBF13..0x004DBF32`: a Foot given to
         // a human house leaves its team.
@@ -5656,7 +5672,11 @@ impl Simulation {
     /// (`Type+0x16F0 != -1`) reports itself. Only the owner-independent half
     /// lives here; the listener gates (local player, `IsAlliedWith(PlayerPtr)`,
     /// `[0xA8B538]`, `GameMode`, `AuxBuilding` ownership) are the app's.
-    fn announce_super_weapon_building_complete(&mut self, stable_id: u64, rules: &RuleSet) {
+    pub(crate) fn announce_super_weapon_building_complete(
+        &mut self,
+        stable_id: u64,
+        rules: &RuleSet,
+    ) {
         let Some((owner, type_ref)) = self
             .substrate
             .entities
@@ -5675,43 +5695,6 @@ impl Simulation {
         let sw_type = self.interner.intern(&section);
         self.sound_events
             .push(SimSoundEvent::SuperWeaponDetected { owner, sw_type });
-    }
-
-    /// Advance every build-up one frame (`sim::building_construction`) and
-    /// return the buildings whose Construction mission completed.
-    fn tick_building_up(&mut self) -> Vec<u64> {
-        let now = self.session.binary_frame as i32;
-        let options = &self.session.game_options;
-        let keys = self.substrate.entities.keys_sorted();
-        let mut finished: Vec<u64> = Vec::new();
-        for &sid in &keys {
-            // Construction and deconstruction are the building's missions,
-            // which hold while it is warped (`GameEntity::ai_frozen`).
-            if let Some(entity) = self.substrate.entities.get_mut_if(sid, |entity| {
-                entity.building_up.is_some() && !entity.ai_frozen()
-            }) && entity.advance_building_up(now, options)
-                == crate::sim::building_construction::ConstructionFrame::Complete
-            {
-                finished.push(sid);
-            }
-        }
-        for &sid in &finished {
-            if let Some(entity) = self.substrate.entities.get_mut(sid) {
-                entity.finish_building_up(now);
-                // Mission_Construction's completing visit queues Guard
-                // (`0x00449AE2`) and the ready check after the Techno AI
-                // commences it on the `+0x6DD` the build-up's last frame set
-                // (`0x0043FF91..0x0043FFAD`), which leaves the byte clear.
-                crate::sim::mission::authority::queue_entity_mission_deferred(
-                    entity,
-                    crate::sim::mission::MissionId::from_known(
-                        crate::sim::mission::MissionType::Guard,
-                    ),
-                );
-            }
-            let _ = self.mission_commence_exact(sid, now as u32);
-        }
-        finished
     }
 
     /// The Selling mission's visit in the building's own LogicVector slot
@@ -5740,7 +5723,7 @@ impl Simulation {
             };
             // The visit is the Selling mission's handler; Assign_Mission
             // (which Selling does not refuse) can end it early.
-            if entity.building_down.is_none()
+            if !entity.building_down()
                 || entity.mission.current().known()
                     != Some(crate::sim::mission::MissionType::Selling)
                 || entity.ai_frozen()
@@ -5749,27 +5732,17 @@ impl Simulation {
             {
                 return;
             }
-            let archive_less_sale = production::archive_less_sale(
-                rules,
-                self.interner.resolve(entity.type_ref()),
-                entity,
-            );
-            let options = &self.session.game_options;
             let Some(entity) = self.substrate.entities.get_mut(sid) else {
                 return;
             };
             let mut status = entity.mission.handler_state();
-            let visit = entity.advance_building_down(&mut status, now, archive_less_sale, options);
-            if visit != PackUpFrame::NoVisit {
-                entity.mission.set_handler_state(status);
-                entity.mission.write_dispatch_epilogue(now, 1);
-            }
+            let visit = entity.advance_building_down(&mut status);
+            entity.mission.set_handler_state(status);
+            entity.mission.write_dispatch_epilogue(now, 1);
             visit
         };
         // Every visit stops a repair first (`ToggleRepair(0)`, `0x00449C41`).
-        if visit != PackUpFrame::NoVisit
-            && let Some(rules) = rules
-        {
+        if let Some(rules) = rules {
             production::toggle_repair(self, rules, sid, production::RepairControl::Stop);
         }
         let spawned = match visit {
@@ -5779,7 +5752,7 @@ impl Simulation {
             }
             PackUpFrame::StageOne => production::sell_stage_one(self, rules, overlay_registry, sid),
             PackUpFrame::Complete => production::sell_complete(self, rules, overlay_registry, sid),
-            PackUpFrame::NoVisit | PackUpFrame::Waiting => false,
+            PackUpFrame::Waiting => false,
         };
         if spawned {
             self.mission_spawned_entities = true;
@@ -5799,7 +5772,6 @@ impl Simulation {
         execute_tick: u64,
         executed_commands: &mut usize,
         spawned_entities: &mut bool,
-        placed_building_owners: &mut Vec<InternedId>,
     ) -> bool {
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::Houses);
@@ -5823,31 +5795,13 @@ impl Simulation {
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::DefeatProcessed);
         }
 
-        // --- Phase 9: Building animations + cleanup ---
-        // DEPENDS ON: production (newly placed buildings start build-up).
-        let completed_buildings = self.tick_building_up();
-        if let Some(rules) = rules {
-            for &stable_id in &completed_buildings {
-                self.initialize_completed_building_anims(stable_id, rules);
-                self.allocate_building_light(stable_id, rules);
-                self.add_building_sensor_array_if_powered(stable_id, rules);
-                self.announce_super_weapon_building_complete(stable_id, rules);
-            }
-            *spawned_entities |= production::spawn_completed_refinery_free_units(
-                self,
-                &completed_buildings,
-                rules,
-                overlay_registry,
-            );
-        }
         // EventClass dispatch is a Main_Tick tail rung: the complete live
         // Logic walk observes frame N's pre-command state, so an accepted
         // command first changes that object's AI behavior on frame N+1.
-        let (executed, spawned, placed_owners) =
+        let (executed, spawned) =
             self.apply_due_commands(commands, rules, execute_tick, overlay_registry);
         *executed_commands += executed;
         *spawned_entities |= spawned;
-        placed_building_owners.extend(placed_owners);
 
         // Main_Tick returns immediately on a terminal result. The wrapping
         // frame commit, pacing tail, and pending-delete drain are all skipped
@@ -6130,7 +6084,6 @@ impl Simulation {
         let mut executed_commands = 0usize;
         let mut spawned_entities = false;
         let mut destroyed_structure = false;
-        let mut placed_building_owners = Vec::new();
         // Every phase below reads the canonical `path_grid` at its point of
         // use, so a mid-frame republish is visible to the next reader.
         // No command-boundary drain: command-applied deaths (sell, MCV/slave
@@ -6522,7 +6475,6 @@ impl Simulation {
             execute_tick,
             &mut executed_commands,
             &mut spawned_entities,
-            &mut placed_building_owners,
         );
         spawned_entities |= std::mem::take(&mut self.mission_spawned_entities);
         self.frame_overlay_updates = self.finalize_frame_overlays_and_navigation(
@@ -6560,7 +6512,7 @@ impl Simulation {
             animation::tick_voxel_animations(self.entities_mut());
             animation::tick_harvest_overlays(self.entities_mut());
         }
-        building_anim::finalize(self, &placed_building_owners, rules);
+        building_anim::finalize(self);
         #[cfg(debug_assertions)]
         self.debug_assert_logic_membership_consistent();
         #[cfg(debug_assertions)]

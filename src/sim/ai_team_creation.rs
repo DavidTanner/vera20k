@@ -57,7 +57,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::SuperWeaponKind;
 use crate::rules::team_ai_ini::TeamAiDefinitionSource;
 use crate::sim::intern::InternedId;
-use crate::sim::production::has_factory;
+use crate::sim::production::find_factory;
 use crate::sim::team_script_vm::{
     TeamAiTriggerDefinition, TeamAiTriggerOwner, TeamMemberTypeIdentity, TeamTypeDefinition,
 };
@@ -668,7 +668,7 @@ fn factories_admit(
                     entry.member_type.category,
                     sim.interner.resolve(entry.member_type.id),
                 )
-                .is_some_and(|obj| has_factory(sim, rules, owner, obj, true, false))
+                .is_some_and(|obj| find_factory(sim, rules, owner, obj, true, false).is_some())
         })
 }
 

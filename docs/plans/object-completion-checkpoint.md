@@ -1,69 +1,129 @@
-# Object completion goal: current checkpoint
+# Object completion goal: checkpoint
 
-The 2026-10-01 `/goal` authorizes implementation, validated PR publication and
-auto-merge. Done requires three ordinary-match objects with no unresolved required
-behavior, demonstrated by active-retail comparisons and production validation.
-**0 / 3 objects certified.** The inventory is [object-completion.md](object-completion.md).
+The2026-10-01 `/goal` authorizes implementation, validated PR publication and
+auto-merge. DONE requires three whole ordinary-match objects without unresolved
+required behavior, demonstrated by native comparisons and production validation.
+**0 / 3 objects certified.** See [the inventory](object-completion.md).
 
-Owned worktree `/Users/halvor/.codex/worktrees/object-completion/vera20k`, branch
-`feature/object-completion`, based on freshly fetched origin/main
-`97ed33d447192ff1b2de524970247609ed2a183d`. The shared GI/GGI automatic Guard
-deployment chain, native comparator and tests are committed and pushed in
-`d0bc2212c2278b1c9bea66be2183aa3239dceaf4`. PR publication is the next action.
-Other checkouts, screenshots, refs and processes are preserved.
+## Ownership and native identity
 
-Native SHA-256 `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`;
-Ghidra explicit program `gamemd.exe`, x86:LE:32 base00400000. Additive mode
-`tools.spatial_oracle.infantry_deploy_action --automatic-guard` executes 90
-original Guard/Sticky/AreaGuard admission/caller controls and ten real deployed
-weapon-selection/range/cleanup controls. Supplied prior state, empty scans and
-one shim-only AreaGuard case are explicit limits. Existing payloads remain intact.
+Owned checkout: `/Users/halvor/.codex/worktrees/object-completion/vera20k`.
+Branch: `feature/native-building-opening`; base/fetched main
+`6a7c20a7b24cd3e5f6c1e9dce66d3a400d643eaf`.
+Recovery stash `76d4729166e4cab62bccbb2d4c372362c028da37` is retained after
+reapplying construction WIP over main. Preserve other tasks' files/refs/processes.
+All Cargo uses `python -m tools.cargo_run`; do not edit nonignored source while
+owned Cargo is pending. Snapshot278 includes main terrain277 and private
+construction state. Telemetry v5/policy v2 preserves the old v4 receipt pair.
 
-Implementation uses MissionCom, HouseState, MissionLeaf, Walk Stop, the existing
-DoAction/Stage/completion owners and the existing CanFireAt/InRange owner.
-No new simulation field or countdown. Signed deadline/count and Stop-before-latch
-order are compared. Deployed retention now checks selected weapon range and the
-existing JumpJet idle gate. Human Attack uses the same corrected receiver.
+Active-retail gamemd SHA256:
+`1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`.
+Ghidra explicit `gamemd.exe`, x86:LE:32/base00400000. Original instructions,
+active callers and production retail readers govern scope. No native golden is
+derived from Rust or hand calculation.
 
-Focused strict-retail automatic_deploy_oracle_tests: **3 passed**, including all
-90 producer controls, pending-byte hash/snapshot/paid-head completion and retail
-E1/GGI bound SimRuntime Deploy27 → Deployed28 with human E1/E2 negative controls.
-The prior 43-test mission-handler run passed 42 tests, including ten range rows;
-its producer failure was supplied-fixture state and is fixed by the above run.
-An earlier focused production test reproduced the missing automatic producer.
-Repeated supplied-fixture corrections made raw Walk state, GameSpeed0, wide
-coordinates, IdleActionTimer words and Rules IdleActionFrequency0 explicit.
-They did not substitute gameplay returns or author expected values.
+## Merged mechanism
 
-Release asset reader built and 43 actual AnyTown production INI receipts saved
-beside the native corpus; the first35 agree with initial Hills queries. Native
-automatic100, reader42 and preserved action355 checks passed; inherited sidecars
-now describe the final generator, with their payload bytes unchanged.
-Final strict full lib suite: **9407 passed, 225 ignored**. Strict lib clippy
-completed successfully (733 repository warnings). Ratchet **2597 → 2597**,
-edited leaf formatting and diff checks pass. No code changes followed these full
-checks apart from native-address comments confirmed by the critic. Required Python
-tooling checks pass (435 tests, four skipped). The release map observation
-is VALID at250 exact steps: five stationary AI GIs27→28; three human GIs remain
-undeployed; one pursuing AI retains NavCom and refuses the producer. Metal GPU
-frame and full actor trajectories are retained at
-`/Users/halvor/Documents/vera20k-dev/evidence/object-completion/gi-auto-deploy-20261001-jci-y3sk`.
-The durable repeat MATCHes all250-step trajectories/fingerprints and GPU bytes.
-Compact committed proof is `tools/spatial_oracle/infantry_auto_deploy.production.json`.
-The single fresh `gi_deploy_critic` found no logic/ownership defects, independently
-passed native100 and traced the live movement finalizer/callback connection.
-Its P3 native-address comment finding was checked against original disassembly
-and fixed. No repeat critic is required. Publication is ready.
+[GI/GGI automatic deployment #988](https://github.com/YuriPlanet/vera20k/pull/988)
+merged at4ab3a4f5f67750527fd424e7ae26118200499222. Native automatic100,
+reader42/action355, strict full9407, clippy733 warnings, Python435/four skips,
+field ratchet2597 unchanged, release250-step Battle/AnyTown repeat MATCH and one
+fresh critic establish its bounded mechanism. Whole GI/GGI lifecycle stays open.
+Durable evidence: `/Users/halvor/Documents/vera20k-dev/evidence/object-completion/gi-auto-deploy-20261001-jci-y3sk`.
 
-Capture profile is `tools/map_observation.infantry-auto-deploy.example.json`,
-Battle / retail AnyTown, 250 exact steps and ordinary AI starting GIs. Owned
-ignored config has upscale=false. Build the normal release vera20k through
-cargo_run, then use tools.map_observation; inspect real actors' Doing27/28.
-Snapshot/runtime tests alone do not establish retail-map production reachability.
+## Current mechanism and review
 
-Next safe actions: publish this one mechanism and enable auto-merge. Confirm merge before
-another implementation chain. Research ahead identifies Construction →
-Grand_Opening ordering/authority, then engineer repair and garrison/Hunt/Capture.
-AlreadyPlaced+6E4 gates first opening effects independently of capture argument;
-an unplaced capture can take them. Stored production price+300, owner counters,
-rechecks, FreeUnit and cleanup are required shared prerequisites, not solved here.
+Ordinary GACNST/GAPOWR/GAPILE Construction → Grand_Opening runs inside the
+individual live object visit. MissionCom owns mission/status/cadence, MissionLeaf
+owns ready, Stage owns timing, and private BuildingBody owns current/queued body
+and immutable control. The late pass and duplicate countdown/crane producers are
+removed; affected production/power/repair/combat/presentation/save/hash consumers
+use those owners. PLACE reuses FindFactory/primary and real first-contact radio.
+Shared Slave Miner relocation queues Selling without synchronous Commence.
+
+Native comparison: six joined routes through completion/C+1, seven factory and
+two primary controls; separate18 primitive routes/five mission slices exercise
+ordinary Rust object AI. Joined payload SHA256
+`62e31e63c49350afa9be3ffefafe158a7ae4423a898c3614e80b0506b7889ae3`.
+Original primitive payload/meta are preserved. Prior Building/House/map admission,
+allocator/cache/file IO and four drawing calls are supplied boundaries; full
+Building constructor/Unlimbo, Techno AI and Logic/House scheduler are excluded.
+Stock opening leaves FreeUnit/cash/healing/purifier/Helipad branches inactive.
+
+The one fresh construction critic finished; no repeat pass is required. All three
+confirmed findings are corrected: constructor-only BuildingType+ED8 facing0 is
+separate from DeployFacing+EDC128; the native Helipad export uses+16CB; every live
+building/twinkle and authored-load Anim uses one full421EA0 constructor, retaining
+assigned identities and preconsumed death-debris draws. Both native regressions
+failed before the fixes. All290 joined snapshots compare both facing words;134
+assigned-identity Bouncer entries compare full RNG/body bits against the existing
+158 native constructor rows. This resolves the duplicate-path scope of#854.
+Construction partially corrects#819 and PLACE/primary partially corrects#841;
+remaining issue items stay open.
+
+## Current validation and publication
+
+The corrected candidate passes **9420 strict-retail lib tests, zero failures,
+226 ignored** (68.59s); strict lib clippy succeeds with732 repository warnings.
+Python full459/four skips passes after the path portability fix, as do14 focused
+normal and14 optimized replay checks. Original/joined construction and Bouncer native
+checks reproduce. Field ratchet2575 vs2589 on main (14 fewer writable sim fields).
+Edited leaf formatting and diff checks remain required before commit.
+
+Three prior replay hash pins were attributed to removal of absent Up/Down hash
+feeds. The preserved same-binary control matches all819 complete boundaries after
+removing only state_hash, including actors/commands/Logic/lifecycle/full RNG and
+ordered draws. Gate is removed; committed strict receipt checker passes. This is
+Rust hash composition evidence, not native replay parity.
+
+Durable construction parent:
+`/Users/halvor/Documents/vera20k-dev/evidence/object-completion/building-opening-20261002-fcfvmu1h`.
+Corrected full logs: `review-strict-lib-final.log`,
+`review-strict-clippy-final.log`, `review-python-full.log` and `review-native-*.log`.
+The final normal release label is `object-building-opening-release-v2-20261002`,
+binary SHA256 `1c27a395d0d36df45446a191f34eb09c42dcf5019e421e92fe1d1646261814c5`.
+The1450-step capture and repeat are VALID; all steps/fingerprints/final Metal
+bytes MATCH. The final frame was inspected and the committed production receipt
+now describes v2. Final state hash4488350905966924341 reflects the native facing
+correction; transition/command observations and GPU bytes are unchanged from v1.
+All113 edited Rust files pass nonrecursive formatting checks; diff check and the
+field ratchet pass. Only import ordering/whitespace changed after full Rust checks.
+Commit11ff5a87244b5ad995cf877bda6a10b4706b9c85 is published in
+[PR#992](https://github.com/YuriPlanet/vera20k/pull/992), attached with auto-merge
+enabled. All Rust checks and macOS/Linux Python checks passed; Windows found
+that the saved replay receipt's POSIX producer paths were interpreted with the
+checking host's path syntax. The checker now accepts recorded POSIX and Windows
+absolute paths independently of the checking host. Focused regression coverage
+includes Windows drive/UNC paths and rejects relative paths in either syntax;
+the absolute-path test failed before this fix. This tools-only follow-up needs
+no repeated Rust tests or critic pass. Confirm merge before publishing the next
+chain. After merge, dry-run exact owned label retirement, preserving final
+release/native/hash evidence.
+
+Final v2 observations: yard1402 deploy14/open43/operational44; plant1410
+allocated71/placed651/open701/operational702 (active slot1460→1461);
+barracks1465 allocated721/placed1101/open1152/operational1153. Its unchanged
+AI counter1115 is ordinary multi-House live-vector behavior, so timings are
+observations, not native goldens. Crane slots expire771/1221. GI1521 exits1269.
+All1450 steps/fingerprints/final Metal bytes repeat MATCH. Reproduction profile
+is `tools/map_observation.building-opening.example.json`; receipt
+`tools/spatial_oracle/building_construction.production.json` describes the final v2 candidate.
+
+## Next native research and residuals
+
+Engineer → damaged allied GAPOWR repair/consume is the next ordinary chain.
+Read-only audit identifies click/MegaMission/Walk/PerCell producers, shared
+EngineerRepair701410, exact sound read, damage ART, full-HP terminal Scatter and
+teardown. Native ConditionGreen is forced1.0, not an INI key. The agent's joined
+prototype stays external until this construction PR is published. Tagged event1
+and consumed-engineer event48 need a larger live Tag/Trigger receiver; existing
+Tag oracle coverage is not a production receiver and cannot certify ENGINEER.
+
+Native power research shows ordinary opening sets House power dirty and does not
+need the repair-sample fix. Later paid repair retains Building+544 HP and marks
+House dirty on the next sample: VERA's unconditional recomputation publishes it
+one frame early. Native dirty-gate/health-output proof is saved under
+`power-recheck-research` in the evidence parent. Complete that separate health /
+House-power / factory-radar-EVA consumer chain before a whole-object certificate.
+GI garrison/Hunt/Capture, building sale/death/capture/undeploy and infantry factory
+output remain required object residuals. Three whole objects are still unfinished.

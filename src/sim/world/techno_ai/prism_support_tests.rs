@@ -880,7 +880,7 @@ fn prism_cadence_matches_the_original() {
                 let native_events = native["events"].as_array().unwrap();
                 let native_event = |kind: &str| native_events.iter().find(|event| event[0] == kind);
 
-                ready_commence(&mut fixture.sim, id);
+                ready_commence(&mut fixture.sim, id, true);
                 let entity = fixture.sim.substrate.entities.get(id).unwrap();
                 let timer_before = entity.mission.dispatch_timer();
                 let mission_before = entity.mission.current();
@@ -940,7 +940,7 @@ fn prism_cadence_matches_the_original() {
                 recruits += usize::from(recruit.is_some());
                 arms += usize::from(arm);
 
-                ready_commence(&mut fixture.sim, id);
+                ready_commence(&mut fixture.sim, id, false);
                 let beaming = matches!(
                     pending_after[&id],
                     Some(PendingBuildingFire {

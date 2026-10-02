@@ -451,8 +451,14 @@ mod tests {
     }
 
     fn make_building(id: u64, type_ref: &str, owner: &str, hp: i32) -> GameEntity {
-        let mut e = GameEntity::test_default(id, type_ref, owner, 10, 10);
-        e.category = EntityCategory::Structure;
+        let mut e = GameEntity::test_default_of_category(
+            id,
+            type_ref,
+            owner,
+            10,
+            10,
+            EntityCategory::Structure,
+        );
         e.health = Health { current: hp };
         e.lifecycle.in_limbo = false;
         e.lifecycle.cell_marked = true;

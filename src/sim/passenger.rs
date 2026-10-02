@@ -350,7 +350,7 @@ pub fn can_dock_occupier_garrison(
     if !building_obj.can_be_occupied {
         return false;
     }
-    if building.building_up.is_some() || building.building_down.is_some() {
+    if building.building_up() || building.building_down() {
         return false;
     }
     if let Some(grid) = path_grid {
@@ -1069,8 +1069,14 @@ ConditionYellow=50%
         let stable_id = sim.allocate_stable_id();
         let owner_id = sim.interner.intern(owner_str);
         let type_id = sim.interner.intern(type_ref);
-        let mut ge = GameEntity::test_default(stable_id, type_ref, owner_str, rx, ry);
-        ge.category = EntityCategory::Structure;
+        let mut ge = GameEntity::test_default_of_category(
+            stable_id,
+            type_ref,
+            owner_str,
+            rx,
+            ry,
+            EntityCategory::Structure,
+        );
         ge.mission_leaf =
             crate::sim::mission::leaf::MissionLeafState::for_entity_category(ge.category);
         ge.owner = owner_id;
@@ -1913,11 +1919,16 @@ ConditionYellow=50%
                 .entities
                 .get_mut(bldg)
                 .expect("building exists");
-            building.install_building_down(crate::sim::components::BuildingDown::commenced(
-                [0, 30, 1],
-                0,
-                false,
-            ));
+            building.bind_building_construction_control([0, 30, 1]);
+            crate::sim::mission::authority::queue_entity_mission_deferred(
+                building,
+                crate::sim::mission::MissionId::from_known(
+                    crate::sim::mission::MissionType::Selling,
+                ),
+            );
+            crate::sim::mission::authority::commence_entity_mission(building, 0);
+            building
+                .install_building_down(crate::sim::components::BuildingDown::commenced(0, false));
 
             assert!(
                 !can_enter_garrison_fixture(&sim, &rules, pax, bldg),

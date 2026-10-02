@@ -161,13 +161,7 @@ impl Simulation {
             );
             descriptor.draw_flags = ORE_TWINKLE_DRAW_FLAGS;
             descriptor.loop_count = ORE_TWINKLE_LOOP_ARG;
-            let native_unique_id = match self.native_unique_ids.as_mut() {
-                Some(cursor) => cursor.next_id(),
-                // Compatibility fixtures without a fresh-load cursor mirror the
-                // runtime `spawn_anim` identity scheme.
-                None => self.substrate.next_stable_object_id as i32,
-            };
-            match self.spawn_load_anim_at_world(
+            match self.spawn_anim_at_world(
                 rules,
                 descriptor,
                 AnimWorldCoord {
@@ -175,7 +169,6 @@ impl Simulation {
                     y: world_y,
                     z: world_z,
                 },
-                native_unique_id,
             ) {
                 Ok(_) => receipt.spawned += 1,
                 Err(error) => {

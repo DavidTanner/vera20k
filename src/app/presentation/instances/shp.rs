@@ -29,7 +29,6 @@ use crate::render::tactical_draw_plan::{BlitPolicy, BuildingPieceKind, SpriteEnc
 use crate::render::unit_atlas::{UnitSpriteKey, VxlLayer, canonical_turret_facing};
 use crate::rules::house_colors::HouseColorIndex;
 use crate::sim::animation;
-use crate::sim::components::BuildingUp;
 
 /// Sort keys of the bodies that currently own a parachute canopy, by entity id.
 ///
@@ -197,60 +196,93 @@ pub(crate) fn build_shp_instances(
         // starts, and a pack-up until Sell's stage 1 starts the animation
         // again (`Begin_Mode(0)`).
         let is_building_up: bool = entity.category == EntityCategory::Structure
-            && entity.building_up.is_some()
+            && !entity.building_down()
             && entity.in_construction_bstate();
         let is_building_down: bool = entity.category == EntityCategory::Structure
-            && entity.building_down.is_some()
+            && entity.building_down()
             && entity.in_construction_bstate();
         // The construction animation's stage is the Buildup frame drawn,
         // reversed while selling (`BuildingClass::GetCurrentFrame`'s BState 0
         // arm, `sim::building_art::body_frame`).
-        let make_frame = |anim: &crate::sim::components::BuildupStage, selling: bool| {
+        let make_frame = |selling: bool| {
             let make_key: String = format!("{}_MAKE", type_str);
             let total_make_frames: u16 =
                 atlas.make_frame_counts.get(&make_key).copied().unwrap_or(0);
             if total_make_frames == 0 {
                 return (0, None);
             }
-            let stage = if selling {
-                let end = anim.control[0].wrapping_add(anim.control[1]);
-                end.wrapping_sub(entity.construction_stage_value())
-                    .wrapping_sub(1)
-            } else {
-                entity.construction_stage_value()
-            };
+            let control = entity.building_construction_control();
+            let stage = crate::sim::building_art::body_frame(
+                crate::sim::building_art::BodyFrameInput {
+                    state: 0,
+                    base_frame: entity.construction_stage_value(),
+                    selling,
+                    buildup: [control[0], control[1]],
+                    laser_frame: None,
+                    firestorm_frame: None,
+                    gate_stages: None,
+                    occupants: None,
+                    tech_level: 0,
+                    ordinary: [[0, 1]; 4],
+                },
+                entity.health,
+                1,
+                0.5,
+                0.25,
+            );
             let frame = stage.clamp(0, i32::from(total_make_frames) - 1) as u16;
             (frame, Some(make_key))
         };
         let (shp_frame, make_type_id): (u16, Option<String>) = if is_building_up {
-            let bu: &BuildingUp = entity.building_up.as_ref().expect("checked above");
-            make_frame(&bu.anim, false)
+            make_frame(false)
         } else if is_building_down {
-            let bd = entity.building_down.as_ref().expect("checked above");
-            make_frame(&bd.anim, true)
+            make_frame(true)
         } else {
             match entity.category {
                 EntityCategory::Structure => {
                     let obj = state.rules().and_then(|r| r.object(type_str));
-                    let frame = if let Some(obj) = obj.filter(|o| o.can_be_occupied) {
+                    let frame = if let Some(obj) = obj {
                         let occupant_count = entity
                             .passenger_role
                             .cargo()
                             .map(|c| c.count())
                             .unwrap_or(0);
-                        let tech_level = obj.tech_level;
                         let (cy, cr) = state
                             .rules()
                             .map(|r| (r.general.condition_yellow, r.general.condition_red))
                             .unwrap_or((0.5, 0.25));
-                        building_frame_index(
-                            occupant_count,
-                            entity.health.current,
+                        let art = art_reg.and_then(|registry| {
+                            registry.resolve_metadata_entry(type_str, &obj.image)
+                        });
+                        // The completed body shares GetCurrentFrame43EF90 with
+                        // receiver health comparisons. In particular Idle's
+                        // damaged frame is base+1, including the first frame
+                        // after Construction; it is not always body frame0.
+                        let frame = crate::sim::building_art::body_frame(
+                            crate::sim::building_art::BodyFrameInput {
+                                state: entity.building_body_state().unwrap_or(1),
+                                base_frame: entity.construction_stage_value(),
+                                laser_frame: obj.laser_fence.then_some(0),
+                                firestorm_frame: obj.firestorm_wall.then_some(0),
+                                gate_stages: obj
+                                    .gate
+                                    .then_some(art.map_or(9, |entry| entry.building_gate_stages)),
+                                occupants: obj.can_be_occupied.then_some(occupant_count as i32),
+                                tech_level: obj.tech_level,
+                                selling: entity.building_down(),
+                                buildup: [0, 1],
+                                ordinary: art.map_or([[0, 1]; 4], |entry| {
+                                    entry
+                                        .building_body_ranges
+                                        .map(|[start, count, _]| [start, count])
+                                }),
+                            },
+                            entity.health,
                             obj.strength,
-                            tech_level,
                             cy,
                             cr,
-                        )
+                        );
+                        u16::try_from(frame).unwrap_or(0)
                     } else {
                         0
                     };
@@ -964,31 +996,6 @@ fn resolve_infantry_shp_frame(
     Some(animation::infantry_facing_slot(facing))
 }
 
-/// Completed `CanBeOccupied` body frame: native GetCurrentFrame 0x0043EF90.
-/// Building+0x534 is the animation state, not damage: Guard selects state 1
-/// (0x0044995D), while construction selects state 0. Build-up/down are handled
-/// before this caller. Native caller evidence and Unicorn rerun commands live
-/// in tools/garrison_oracle/body_frame.py; its body_frame.json native outputs
-/// are checked by completed_garrison_body_frames_match_native_oracle below.
-/// Civilian red-health occupied art collapses frame 3 to frame 1.
-fn building_frame_index(
-    occupant_count: u32,
-    health_current: i32,
-    strength: i32,
-    tech_level: i32,
-    condition_yellow: f64,
-    condition_red: f64,
-) -> u16 {
-    crate::sim::building_art::occupied_body_frame(
-        occupant_count,
-        health_current,
-        strength,
-        tech_level,
-        condition_yellow,
-        condition_red,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1007,10 +1014,10 @@ mod tests {
             );
         }
     }
-    use super::building_frame_index;
     use super::shp_body_tint;
     use crate::map::entities::EntityCategory;
     use crate::map::lighting::CellLightGrid;
+    use crate::sim::building_art::occupied_body_frame;
 
     #[test]
     fn gsi_13_10_shp_selector_keeps_unit_and_infantry_extras_distinct() {
@@ -1041,36 +1048,36 @@ mod tests {
 
     #[test]
     fn civilian_empty_healthy_returns_0() {
-        assert_eq!(building_frame_index(0, 100, 100, -1, 0.5, 0.25), 0);
+        assert_eq!(occupied_body_frame(0, 100, 100, -1, 0.5, 0.25), 0);
     }
 
     #[test]
     fn civilian_empty_yellow_tier_returns_0() {
         // ratio = 0.4: below ConditionYellow but above ConditionRed.
         // Yellow gate is `tech_level > 0` — fails for civilian, so no +1.
-        assert_eq!(building_frame_index(0, 40, 100, -1, 0.5, 0.25), 0);
+        assert_eq!(occupied_body_frame(0, 40, 100, -1, 0.5, 0.25), 0);
     }
 
     #[test]
     fn civilian_empty_red_tier_returns_1() {
-        assert_eq!(building_frame_index(0, 20, 100, -1, 0.5, 0.25), 1);
+        assert_eq!(occupied_body_frame(0, 20, 100, -1, 0.5, 0.25), 1);
     }
 
     #[test]
     fn civilian_occupied_healthy_bstate_formula_returns_2() {
-        assert_eq!(building_frame_index(1, 100, 100, -1, 0.5, 0.25), 2);
+        assert_eq!(occupied_body_frame(1, 100, 100, -1, 0.5, 0.25), 2);
     }
 
     #[test]
     fn civilian_occupied_yellow_tier_returns_2() {
         // Same yellow-gate behavior as empty case.
-        assert_eq!(building_frame_index(1, 40, 100, -1, 0.5, 0.25), 2);
+        assert_eq!(occupied_body_frame(1, 40, 100, -1, 0.5, 0.25), 2);
     }
 
     #[test]
     fn civilian_occupied_red_tier_collapses_to_1() {
         // base=2 (occupied) + 1 (red) = 3 → collapse rule → 1.
-        assert_eq!(building_frame_index(1, 20, 100, -1, 0.5, 0.25), 1);
+        assert_eq!(occupied_body_frame(1, 20, 100, -1, 0.5, 0.25), 1);
     }
 
     // Buildable (TechLevel >= 1) — TS-era "buildable garrisonable" structures
@@ -1078,23 +1085,23 @@ mod tests {
 
     #[test]
     fn buildable_empty_healthy_returns_0() {
-        assert_eq!(building_frame_index(0, 100, 100, 5, 0.5, 0.25), 0);
+        assert_eq!(occupied_body_frame(0, 100, 100, 5, 0.5, 0.25), 0);
     }
 
     #[test]
     fn buildable_empty_yellow_tier_returns_1() {
-        assert_eq!(building_frame_index(0, 40, 100, 5, 0.5, 0.25), 1);
+        assert_eq!(occupied_body_frame(0, 40, 100, 5, 0.5, 0.25), 1);
     }
 
     #[test]
     fn buildable_occupied_healthy_returns_2() {
-        assert_eq!(building_frame_index(1, 100, 100, 5, 0.5, 0.25), 2);
+        assert_eq!(occupied_body_frame(1, 100, 100, 5, 0.5, 0.25), 2);
     }
 
     #[test]
     fn buildable_occupied_red_tier_returns_3() {
         // No civilian collapse (tech_level != -1).
-        assert_eq!(building_frame_index(1, 20, 100, 5, 0.5, 0.25), 3);
+        assert_eq!(occupied_body_frame(1, 20, 100, 5, 0.5, 0.25), 3);
     }
 
     // Edge cases.
@@ -1102,7 +1109,7 @@ mod tests {
     #[test]
     fn zero_over_zero_selects_damaged_body_frame() {
         // Native masked 0/0 is unordered and TEST AH,41 enters the damage arm.
-        assert_eq!(building_frame_index(0, 0, 0, -1, 0.5, 0.25), 1);
+        assert_eq!(occupied_body_frame(0, 0, 0, -1, 0.5, 0.25), 1);
     }
 
     #[test]
@@ -1110,7 +1117,7 @@ mod tests {
         for row in crate::sim::health_ratio_fixture::rows() {
             for expected in &row.output.occupied_body_frames {
                 assert_eq!(
-                    building_frame_index(
+                    occupied_body_frame(
                         expected.occupants,
                         row.input.current,
                         row.input.strength,
@@ -1127,15 +1134,15 @@ mod tests {
 
     #[test]
     fn building_frame_keeps_signed_health_and_live_strength_width() {
-        assert_eq!(building_frame_index(0, 70_000, 100_000, 5, 0.5, 0.25), 0);
-        assert_eq!(building_frame_index(0, 70_000, 200_000, 5, 0.5, 0.25), 1);
-        assert_eq!(building_frame_index(0, -1, 100_000, 5, 0.5, 0.25), 1);
+        assert_eq!(occupied_body_frame(0, 70_000, 100_000, 5, 0.5, 0.25), 0);
+        assert_eq!(occupied_body_frame(0, 70_000, 200_000, 5, 0.5, 0.25), 1);
+        assert_eq!(occupied_body_frame(0, -1, 100_000, 5, 0.5, 0.25), 1);
     }
 
     #[test]
     fn boundary_at_condition_red_inclusive() {
         // ratio == ConditionRed exactly → red_tier fires (<=).
-        assert_eq!(building_frame_index(0, 25, 100, -1, 0.5, 0.25), 1);
+        assert_eq!(occupied_body_frame(0, 25, 100, -1, 0.5, 0.25), 1);
     }
 
     #[test]
@@ -1149,7 +1156,7 @@ mod tests {
         for case in cases {
             let n = |key: &str| case[key].as_i64().unwrap();
             assert_eq!(
-                building_frame_index(
+                occupied_body_frame(
                     n("occupants") as u32,
                     n("health") as i32,
                     2000,

@@ -287,11 +287,7 @@ impl FireSubject<'_> {
                 .mission_leaf
                 .as_infantry()
                 .map_or(-1, |leaf| leaf.doing()),
-            effective_mission: if firer.building_up.is_some() {
-                0x12
-            } else {
-                firer.mission.effective().raw()
-            },
+            effective_mission: firer.mission.effective().raw(),
             delayed_fire_counter: firer
                 .pending_building_fire
                 .map_or(0, |pending| pending.remaining_ticks),

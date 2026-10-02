@@ -106,8 +106,14 @@ fn building_navigation_reaches_drive_and_ship_terminal_callbacks() {
             rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
                 "[PAD]\nFoundation=3x3\nDockingOffset0=-256,0,0\nDockingOffset1=0,0,0\nDockingOffset2=256,0,0\n",
             )));
-            let mut building = GameEntity::test_default(2, "PAD", "Americans", 8, 8);
-            building.category = EntityCategory::Structure;
+            let mut building = GameEntity::test_default_of_category(
+                2,
+                "PAD",
+                "Americans",
+                8,
+                8,
+                EntityCategory::Structure,
+            );
             building.foundation = "3x3".into();
             building.radio_contacts.set_capacity(3);
             for id in [100, 101, if contacted { 1 } else { 102 }] {

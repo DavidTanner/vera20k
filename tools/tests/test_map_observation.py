@@ -44,6 +44,8 @@ class MapObservationTests(unittest.TestCase):
         }
         self.frame = bytes(range(16))
         self.actor_frames = {}
+        self.rule_types = [{'type_id': name, 'interned_id': identity, 'category': 'Structure'}
+                           for name, identity in [('GACNST', 40), ('GAPOWR', 41), ('GAPILE', 42)]]
         self.terrain_frames = {}
         self.change = lambda manifest: None
         self.result = ChildResult(42, 0, False, b'child output\n', b'', ())
@@ -108,6 +110,7 @@ class MapObservationTests(unittest.TestCase):
                            'missing_actor_ids': sorted(seen - current_ids), 'terrain': deepcopy(terrain)})
         manifest['observations'] = {
             'policy': observation.OBSERVATION_POLICY, 'owners': self.profile.get('observe_owners', []),
+            'rule_types': deepcopy(self.rule_types),
             'commands': [{'ordinal': index, 'issue_after_step': request['issue_after_step'],
                           'issued_simulation_tick': request['issue_after_step'],
                           'envelope_execute_tick': request['issue_after_step'],
@@ -136,10 +139,27 @@ class MapObservationTests(unittest.TestCase):
                         'dispatch_timer': {'start_frame': 0, 'delay': 15}},
             'target': {'Entity': 8}, 'archive': {'Cell': [87, 53]},
             'nav': {'Object': {'id': 9}},
-            'foot': {'retarget_after_stop_688': False, 'firing_sequence_latch_68d': 0,
+            'foot': None if category == 'Structure' else {
+                     'retarget_after_stop_688': False, 'firing_sequence_latch_68d': 0,
                      'infantry_doing': 0 if category == 'Infantry' else None,
                      'navigation_leptons': [22400, 13696, 416], 'navigation_unavailable': None},
+            'building': MapObservationTests.building(identity) if category == 'Structure' else None,
         }
+
+    @staticmethod
+    def building(owner=1):
+        return {'body_state': 1, 'queued_body_state': -1, 'construction_control': [0, 25, 2],
+                'stage': {'value': 0, 'changed': 0, 'rate': 0, 'increment': 1,
+                          'timer': {'start_frame': 50, 'duration': 0}},
+                'ready_latch': 1, 'actually_placed': True, 'last_operational': False,
+                'animation_slots': [{'slot': 3, 'anim_id': 100,
+                    'animation': {'stable_id': 100, 'native_id': 10, 'type_id': 'GAPOWR_A',
+                        'interned_type_id': 80, 'physical_leptons': [22400, 13696, 416],
+                        'in_logic_vector': True, 'owner_entity': None, 'building_slot': [owner, 3],
+                        'runtime': {'current_frame': 0, 'frame_step': 1, 'delay_remaining': 0,
+                            'rate_reload': 4, 'frame_timer': {'start_frame': 50, 'duration': 4},
+                            'loop_remaining': 255, 'first_ai_guard': False,
+                            'constructor_reverse': False, 'inactive': False, 'paused': False}}}]}
 
     @staticmethod
     def unallocated_cell(coordinate):
@@ -171,6 +191,116 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(transcript['frames'][0]['actors'][0]['nav'], {'Object': {'id': 9}})
         self.assertEqual(report['capture']['camera']['requested_cell'], [87, 53])
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def production_profile(self):
+        self.scripted_profile()
+        self.profile['commands'] = [
+            {'issue_after_step': 0, 'owner': 'Computer1', 'payload': {'QueueProduction': {'type_id': 41}}},
+            {'issue_after_step': 2, 'owner': 'Computer1',
+             'payload': {'PlaceReadyBuilding': {'type_id': 41, 'rx': 87, 'ry': 53}}}]
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.actor_frames = {step: [self.actor(category='Structure')] for step in range(4)}
+        for actors in self.actor_frames.values():
+            actors[0]['type_id'] = 'GAPOWR'
+
+    def test_production_commands_use_recorded_handles_and_keep_building_animation_state(self):
+        self.production_profile()
+        self.actor_frames[3][0]['building']['last_operational'] = True
+        self.actor_frames[3][0]['building']['animation_slots'][0]['anim_id'] = 101
+        self.actor_frames[3][0]['building']['animation_slots'][0]['animation']['stable_id'] = 101
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['schema_version'], 'vera20k.map-observation-run.v5')
+        observed = report['capture']['observations']
+        self.assertEqual(observed['rule_types'], self.rule_types)
+        self.assertEqual([row['payload'] for row in observed['commands']],
+                         [row['payload'] for row in self.profile['commands']])
+        self.assertEqual(observed['frames'][3]['actors'][0]['building'],
+                         self.actor_frames[3][0]['building'])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_building_and_rule_handle_receipts_reject_wrong_types_or_unknown_fields(self):
+        self.production_profile()
+        changes = [lambda m: m['observations'].pop('rule_types'),
+                   lambda m: m['observations']['rule_types'][0].update(interned_id=True),
+                   lambda m: m['observations']['rule_types'][0].update(category='Unknown'),
+                   lambda m: m['observations']['rule_types'][0].update(type_id=''),
+                   lambda m: m['observations']['rule_types'][0].update(extra=0)]
+        building_changes = [lambda b: b.update(body_state=True),
+                            lambda b: b.update(ready_latch=256),
+                            lambda b: b.update(actually_placed=1),
+                            lambda b: b['stage']['timer'].update(start_frame=1.5),
+                            lambda b: b['stage'].update(changed=False),
+                            lambda b: b.update(construction_control=[0, 25]),
+                            lambda b: b['animation_slots'][0].update(slot=21),
+                            lambda b: b['animation_slots'].append(deepcopy(b['animation_slots'][0])),
+                            lambda b: b['animation_slots'][0]['animation'].update(stable_id=101),
+                            lambda b: b['animation_slots'][0]['animation']['runtime'].update(first_ai_guard=0),
+                            lambda b: b['animation_slots'][0]['animation']['runtime'].update(rate_reload=65536),
+                            lambda b: b['animation_slots'][0]['animation']['runtime'].update(loop_remaining=-1)]
+        changes += [lambda m, change=change: change(m['observations']['frames'][1]['actors'][0]['building'])
+                    for change in building_changes]
+        for index, change in enumerate(changes):
+            with self.subTest(index=index):
+                self.output = self.root / f'building-state-invalid-{index}'
+                self.change = change
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_missing_live_animation_is_explicit_and_slots_count_towards_sample_budget(self):
+        self.production_profile()
+        self.actor_frames[1][0]['building']['animation_slots'][0]['animation'] = None
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertIsNone(report['capture']['observations']['frames'][1]['actors'][0]
+                          ['building']['animation_slots'][0]['animation'])
+        self.output = self.root / 'bounded-building-slots'
+        # Four actor + four terrain + four occupied-slot observations.
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 11):
+            self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_comparison_includes_rule_handles_and_animation_lifetime_and_runtime(self):
+        self.production_profile()
+        before = self.valid_capture('building-before')
+        self.change = lambda m: m['observations']['frames'][1]['actors'][0]['building'] \
+            ['animation_slots'][0]['animation']['runtime'].update(current_frame=1)
+        after = self.valid_capture('building-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual([row['field'] for row in report['differences']],
+                         ['observations.frames[1].actors[0].building.animation_slots[0].animation.runtime.current_frame'])
+        self.change = lambda m: m['observations']['rule_types'][0].update(interned_id=70)
+        after = self.valid_capture('rule-handle-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual([row['field'] for row in report['differences']],
+                         ['observations.rule_types[0].interned_id'])
+
+    def test_v5_building_and_terrain_resource_receipts_validate_and_compare_together(self):
+        self.production_profile()
+        cell = self.unallocated_cell([87, 53])
+        cell.update(overlay={'id': None, 'density': 3},
+                    terrain_object={'name': 'TIBTRE02', 'frame': 10, 'active': True})
+        self.terrain_frames[1] = [cell]
+        before = self.valid_capture('building-terrain-before')
+        checked = observation.validate_run(before)
+        self.assertEqual(checked['status'], 'VALID', checked['errors'])
+        frame = checked['capture']['observations']['frames'][1]
+        self.assertEqual(frame['actors'][0]['building'], self.actor_frames[1][0]['building'])
+        self.assertEqual(frame['terrain'], [cell])
+
+        def change(manifest):
+            frame = manifest['observations']['frames'][1]
+            frame['actors'][0]['building']['animation_slots'][0]['animation'] \
+                ['runtime']['frame_timer']['duration'] = 5
+            frame['terrain'][0]['overlay']['density'] = 4
+
+        self.change = change
+        after = self.valid_capture('building-terrain-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual([row['field'] for row in report['differences']], [
+            'observations.frames[1].actors[0].building.animation_slots[0].animation.runtime.frame_timer.duration',
+            'observations.frames[1].terrain[0].overlay.density'])
 
     def test_profile_version_order_field_types_and_budgets_are_checked_before_spawn(self):
         profile = deepcopy(self.profile)
@@ -235,6 +365,16 @@ class MapObservationTests(unittest.TestCase):
             bad['overlay'][key] = value
             with self.assertRaises(observation.ValidationError):
                 observation._terrain(bad, [74, 32], 'terrain')
+        for key in ('overlay', 'terrain_object'):
+            bad = deepcopy(cell)
+            bad.pop(key)
+            with self.assertRaises(observation.ValidationError):
+                observation._terrain(bad, [74, 32], 'terrain')
+        cell['overlay'] = None
+        cell['terrain_object'] = {'name': 'TREE01', 'frame': None, 'active': None}
+        observation._terrain(cell, [74, 32], 'terrain')
+        cell['terrain_object'] = None
+        observation._terrain(cell, [74, 32], 'terrain')
 
     def test_actor_history_retains_capture_and_disappearance_without_rebinding(self):
         self.scripted_profile()
@@ -629,12 +769,103 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(report['presentation_clock']['policy'], observation.CLOCK_POLICY)
         self.assertNotIn('observations', report['capture'])
         self.assertEqual((run / 'run.json').read_bytes(), original)
-        current = self.valid_capture('current-v4')
+        current = self.valid_capture('current-v5')
         report = observation.compare_runs(run, current)
         self.assertEqual(report['status'], 'INVALID')
         self.assertIn('observation policies differ', report['errors'][0])
         self.edit_json(manifest, lambda value: value.update(observations={'policy': observation.OBSERVATION_POLICY}))
         self.assertEqual(observation.validate_run(run)['status'], 'INVALID')
+
+    def make_historical_trajectory(self, run):
+        manifest = run / 'child-output/capture.json'
+
+        def observations(document):
+            trajectory = document['observations']
+            trajectory['policy'] = observation.TRAJECTORY_OBSERVATION_POLICY
+            trajectory.pop('rule_types')
+            for frame in trajectory['frames']:
+                for actor in frame['actors']:
+                    actor.pop('building')
+
+        def convert_child(document):
+            document['schema_version'] = observation.TRAJECTORY_CHILD_SCHEMA
+            observations(document)
+
+        self.edit_json(manifest, convert_child)
+
+        def convert_wrapper(document):
+            document['schema_version'] = observation.TRAJECTORY_RUN_SCHEMA
+            observations(document['capture'])
+            document['capture']['manifest'].update(byte_length=manifest.stat().st_size,
+                                                   sha256=sha256_bytes(manifest.read_bytes()))
+
+        self.edit_json(run / 'run.json', convert_wrapper)
+
+    def test_historical_v4_trajectory_validates_unchanged_and_compares_only_same_policy(self):
+        self.scripted_profile()
+        before = self.valid_capture('historical-v4-before')
+        after = self.valid_capture('historical-v4-after')
+        self.make_historical_trajectory(before)
+        self.make_historical_trajectory(after)
+        originals = {path: path.read_bytes() for path in
+                     (before / 'run.json', before / 'child-output/capture.json')}
+        report = observation.validate_run(before)
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertNotIn('rule_types', report['capture']['observations'])
+        self.assertNotIn('building', report['capture']['observations']['frames'][0]['actors'][0])
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MATCH', report['errors'])
+        current = self.valid_capture('current-building-state')
+        report = observation.compare_runs(before, current)
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertIn('observation policies differ', report['errors'][0])
+        for path, raw in originals.items():
+            self.assertEqual(path.read_bytes(), raw)
+
+    def test_historical_v4_retains_optional_terrain_resource_fields_unchanged(self):
+        self.scripted_profile()
+        cell = self.unallocated_cell([87, 53])
+        cell.update(overlay={'id': 102, 'density': 3},
+                    terrain_object={'name': 'TREE01', 'frame': None, 'active': None})
+        self.terrain_frames[1] = [cell]
+        before = self.valid_capture('historical-v4-terrain-before')
+        after = self.valid_capture('historical-v4-terrain-after')
+        for run in (before, after):
+            self.make_historical_trajectory(run)
+        paths = [run / name for run in (before, after)
+                 for name in ('run.json', 'child-output/capture.json')]
+        originals = {path: path.read_bytes() for path in paths}
+        report = observation.validate_run(before)
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['observations']['frames'][1]['terrain'], [cell])
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MATCH', report['errors'])
+        for path, raw in originals.items():
+            self.assertEqual(path.read_bytes(), raw)
+
+    def test_historical_v4_rejects_v5_fields_and_production_commands(self):
+        self.scripted_profile()
+        for index, change in enumerate((
+                lambda m: m['observations'].update(rule_types=self.rule_types),
+                lambda m: m['observations']['frames'][0]['actors'][0].update(building=None))):
+            run = self.valid_capture(f'historical-v4-smuggle-{index}')
+            self.make_historical_trajectory(run)
+            self.edit_json(run / 'child-output/capture.json', change)
+            self.assertEqual(observation.validate_run(run)['status'], 'INVALID')
+        self.production_profile()
+        run = self.valid_capture('historical-v4-production')
+        self.make_historical_trajectory(run)
+        report = observation.validate_run(run)
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertIn('outside ordinary order coverage', report['errors'][0])
+
+    def test_wrapper_v5_requires_child_v5_and_new_trajectory_fields(self):
+        for index, change in enumerate((
+                lambda m: m.update(schema_version=observation.TRAJECTORY_CHILD_SCHEMA),
+                lambda m: m['observations'].update(policy=observation.TRAJECTORY_OBSERVATION_POLICY))):
+            self.output = self.root / f'v5-generation-mismatch-{index}'
+            self.change = change
+            self.assertEqual(self.run_capture()['status'], 'INVALID')
 
     def test_map_receipt_read_and_write_limits_are_explicit(self):
         # Small overrides exercise both bounded paths without allocating 128 MiB.

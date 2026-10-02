@@ -462,8 +462,14 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
         let mut sim = Simulation::with_seed(0x418C);
         let mut plane = GameEntity::test_default(1, plane_type, "Americans", 40, 40);
         if airfield {
-            let mut pad = GameEntity::test_default(2, "AIRF", "Americans", 20, 40);
-            pad.category = EntityCategory::Structure;
+            let mut pad = GameEntity::test_default_of_category(
+                2,
+                "AIRF",
+                "Americans",
+                20,
+                40,
+                EntityCategory::Structure,
+            );
             // Construction stamps the type's `Foundation=2x2`.
             pad.foundation = "2x2".to_string();
             pad.lifecycle.in_limbo = false;

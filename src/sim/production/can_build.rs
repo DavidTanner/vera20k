@@ -202,29 +202,19 @@ fn build_limit(
     }
 }
 
-/// Whether `ObjectTypeClass::FindFactory @ 0x005F7900` finds a factory for
-/// `obj` among `owner`'s buildings (`HouseClass+0x6C`), with its first
-/// argument set (no aircraft dock test): a building out of limbo whose
-/// `Factory=` makes the type's class, online (`+0x660`) when
-/// `require_online`, neither selling nor about to (`Get_Mission` and the
-/// queued mission `+0xB4` are not Selling), answered above zero by
-/// [`can_build`] with both flags when `require_can_build`, sharing a house
-/// with the type (`Get_Ownable @ 0x00711EC0` of both), and naval exactly
-/// when the type is a naval Unit (`+0xCCE`).
-///
-/// Every caller only tests for null, so the primary factory's preference
-/// (`+0x3D3`) is not needed.
-pub(crate) fn has_factory(
+/// Original ObjectType5F7900, scanned in House+6C insertion order. A first
+/// eligible primary wins; without one, return the last eligible building.
+/// Human PLACE4FB1DA retains this transient identity through its radio/release
+/// path. Existing null-test callers consume this same result.
+pub(crate) fn find_factory(
     sim: &Simulation,
     rules: &RuleSet,
     owner: InternedId,
     obj: &ObjectType,
     require_online: bool,
     require_can_build: bool,
-) -> bool {
-    let Some(house) = sim.houses.get(&owner) else {
-        return false;
-    };
+) -> Option<u64> {
+    let house = sim.houses.get(&owner)?;
     let factory_type = match obj.category {
         ObjectCategory::Infantry => FactoryType::InfantryType,
         ObjectCategory::Vehicle => FactoryType::UnitType,
@@ -235,14 +225,17 @@ pub(crate) fn has_factory(
     let ownable = get_ownable(obj, rules, game_mode_nonzero);
     let selling = MissionId::from_known(MissionType::Selling);
     let naval_unit = obj.category == ObjectCategory::Vehicle && obj.naval;
-    house.base_projection.buildings().iter().any(|&id| {
+    let primary_category = super::production_tech::production_category_for_object(obj);
+    let primary = sim.production.primary_factory(owner, primary_category);
+    let mut candidate = None;
+    for &id in house.base_projection.buildings() {
         let Some(building) = sim.substrate.entities.get(id) else {
-            return false;
+            continue;
         };
         let Some(building_type) = sim.object_type(building.type_ref(), rules) else {
-            return false;
+            continue;
         };
-        !building.lifecycle.in_limbo
+        if !building.lifecycle.in_limbo
             && building_type.factory == Some(factory_type)
             && (!require_online || building.building_online())
             && building.mission.effective() != selling
@@ -251,7 +244,56 @@ pub(crate) fn has_factory(
                 || can_build(sim, rules, building.owner(), obj, true, true) == CanBuild::Yes)
             && ownable & get_ownable(building_type, rules, game_mode_nonzero) != 0
             && building_type.naval == naval_unit
-    })
+        {
+            candidate = Some(id);
+            if primary == Some(id) {
+                break;
+            }
+        }
+    }
+    candidate
+}
+
+/// Building448070, called from admitted Unlimbo4411B1 and ChangeOwner448C69:
+/// preserve an existing live non-limbo primary of matching Factory/Naval;
+/// otherwise make this building primary. This is the lifecycle producer, not
+/// the fallback choice returned by FindFactory.
+pub(crate) fn initialize_factory_primary(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+    let Some(building) = sim.substrate.entities.get(id) else {
+        return;
+    };
+    if building.category != EntityCategory::Structure || building.lifecycle.in_limbo {
+        return;
+    }
+    let Some(ty) = sim.object_type(building.type_ref(), rules) else {
+        return;
+    };
+    let Some(factory) = ty.factory else {
+        return;
+    };
+    let category = match factory {
+        FactoryType::InfantryType => super::ProductionCategory::Infantry,
+        FactoryType::UnitType if ty.naval => super::ProductionCategory::Ship,
+        FactoryType::UnitType => super::ProductionCategory::Vehicle,
+        FactoryType::AircraftType => super::ProductionCategory::Aircraft,
+        FactoryType::BuildingType => super::ProductionCategory::Building,
+    };
+    let owner = building.owner();
+    let current = sim.production.primary_factory(owner, category);
+    let keep = current
+        .and_then(|primary| sim.substrate.entities.get(primary))
+        .is_some_and(|candidate| {
+            !candidate.lifecycle.in_limbo
+                && candidate.owner() == owner
+                && sim
+                    .object_type(candidate.type_ref(), rules)
+                    .is_some_and(|candidate_type| {
+                        candidate_type.factory == Some(factory) && candidate_type.naval == ty.naval
+                    })
+        });
+    if !keep {
+        sim.production.set_primary_factory(owner, category, id);
+    }
 }
 
 /// `TechnoTypeClass::Get_Ownable @ 0x00711EC0` (vtable `+0x70` of every

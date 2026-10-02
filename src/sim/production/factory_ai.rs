@@ -20,7 +20,7 @@
 //! - Then, for a house whose Production latch is set (`+0x1EE`) and a
 //!   building neither building up nor selling (`Get_Mission` 0x12/0x13; a
 //!   yard whose build-up ends this frame already reads Guard, as the repair
-//!   step does, [`constructing_or_selling`]): a
+//!   step does, `GameEntity::constructing_or_selling`): a
 //!   factory whose wait is over with no rate or stopped is abandoned; with
 //!   no factory, a house holding more than 10 credits makes one for its
 //!   choice (`Suggest_New_Object @ 0x004FBD80`) and starts it
@@ -74,7 +74,6 @@ use crate::sim::world::Simulation;
 use super::factory::{FactoryHolder, PRODUCTION_STEPS};
 use super::factory_lifecycle::{record_last_built, settle_abandoned, start_active_production};
 use super::production_queue::deliver_produced_object;
-use super::production_repair::constructing_or_selling;
 use super::production_spawn::{
     ProductionDeliveryKind, ProductionSpawnSelection, free_helipad_cell,
     spawn_selection_at_producer,
@@ -103,7 +102,7 @@ pub(crate) fn factory_ai(
         .houses
         .get(&owner)
         .is_some_and(|house| house.ai_activation.production);
-    if !production || constructing_or_selling(sim, entity) {
+    if !production || entity.constructing_or_selling() {
         return;
     }
     if sim

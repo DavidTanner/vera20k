@@ -554,8 +554,14 @@ mod tests {
     #[test]
     fn the_cancelled_lift_is_the_drawn_lift() {
         let building = |exact_z: Option<i32>, level: u8| {
-            let mut entity = GameEntity::test_default(1, "GAPOWR", "Americans", 5, 5);
-            entity.category = EntityCategory::Structure;
+            let mut entity = GameEntity::test_default_of_category(
+                1,
+                "GAPOWR",
+                "Americans",
+                5,
+                5,
+                EntityCategory::Structure,
+            );
             entity.position.exact_z_leptons = exact_z;
             entity.position.z = level;
             entity

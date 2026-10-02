@@ -206,10 +206,16 @@ mod tests {
             let rules = &configs[&(capacity, source == "silo")];
             let mut sim = Simulation::new();
             let id = sim.allocate_stable_id();
-            let mut entity = GameEntity::test_default(id, "B", "A", 2, 2);
+            let mut entity = GameEntity::test_default_of_category(
+                id,
+                "B",
+                "A",
+                2,
+                2,
+                crate::map::entities::EntityCategory::Structure,
+            );
             entity.type_ref = sim.interner.intern("B");
             entity.owner = sim.interner.intern("A");
-            entity.category = crate::map::entities::EntityCategory::Structure;
             entity.health.current = current;
             entity.lifecycle.in_limbo = false;
             entity.building_damage_state_active = current <= 50;
@@ -235,7 +241,7 @@ mod tests {
             };
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if source == "initial" {
-                    sim.initialize_completed_building_anims(id, rules);
+                    sim.grand_opening(id, false, true, rules, None);
                 } else {
                     sim.update_building_storage_anims(id, rules);
                 }

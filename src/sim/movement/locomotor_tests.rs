@@ -232,6 +232,7 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         crush_sound: None,
         deploy_sound: None,
         undeploy_sound: None,
+        buildup_sound: None,
         packup_sound: None,
         leave_transport_sound: None,
         chrono_in_sound: None,

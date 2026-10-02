@@ -828,23 +828,33 @@ impl Simulation {
         descriptor: AnimClassSpawnDescriptor,
         world_coord: AnimWorldCoord,
     ) -> Result<AnimId, AnimSpawnError> {
-        self.spawn_anim_at_world_with_draws(rules, descriptor, world_coord, None)
+        self.spawn_anim_at_world_with_constructor(
+            rules,
+            descriptor,
+            world_coord,
+            AnimConstructorInput::Runtime,
+        )
     }
 
-    /// [`Self::spawn_anim_at_world`] for a producer that already took the
-    /// constructor's draws at its native point (the death debris loop).
-    pub(crate) fn spawn_anim_at_world_with_draws(
+    /// One port of Anim421EA0 for runtime and authored-load producers. An
+    /// assigned identity skips only42203D; preconsumed death-debris input also
+    /// retains draws already taken at that producer's native boundary.
+    pub(crate) fn spawn_anim_at_world_with_constructor(
         &mut self,
         rules: &RuleSet,
         descriptor: AnimClassSpawnDescriptor,
         world_coord: AnimWorldCoord,
-        draws: Option<AnimConstructorDraws>,
+        constructor: AnimConstructorInput,
     ) -> Result<AnimId, AnimSpawnError> {
         // Anim42203D assigns before registry insertion and RandomRate4221F5.
         // Death debris may already have constructed at its pick/draw boundary.
-        let native_unique_id = draws
-            .and_then(|draws| draws.native_unique_id)
-            .unwrap_or_else(|| self.next_native_runtime_id());
+        let native_unique_id = match constructor {
+            AnimConstructorInput::AssignedIdentity(id) => id,
+            AnimConstructorInput::Preconsumed(draws) => draws
+                .native_unique_id
+                .unwrap_or_else(|| self.next_native_runtime_id()),
+            AnimConstructorInput::Runtime => self.next_native_runtime_id(),
+        };
         let type_name = self
             .interner
             .resolve(descriptor.type_name)
@@ -912,17 +922,19 @@ impl Simulation {
         // scheduler anim ever existed in a shipped build.
         let previous = self.substrate.anims.insert(object);
         debug_assert!(previous.is_none());
-        let draws = match draws {
-            Some(draws) => draws,
-            None => match anim_constructor_draws(&config, world_coord, &mut self.scenario_rng) {
-                Ok(draws) => draws,
-                Err(error) => {
-                    // VERA's explicit unsupported-arithmetic failure precedes
-                    // Reveal. The original constructor ID remains spent.
-                    self.substrate.anims.remove(stable_id);
-                    return Err(AnimSpawnError::LaunchOutOfDomain(type_name, error));
+        let draws = match constructor {
+            AnimConstructorInput::Preconsumed(draws) => draws,
+            AnimConstructorInput::Runtime | AnimConstructorInput::AssignedIdentity(_) => {
+                match anim_constructor_draws(&config, world_coord, &mut self.scenario_rng) {
+                    Ok(draws) => draws,
+                    Err(error) => {
+                        // VERA's explicit unsupported-arithmetic failure precedes
+                        // Reveal. The original constructor ID remains spent.
+                        self.substrate.anims.remove(stable_id);
+                        return Err(AnimSpawnError::LaunchOutOfDomain(type_name, error));
+                    }
                 }
-            },
+            }
         };
         let rate_reload = self.anim_rate(&config, draws.random_rate);
         let frame_timer =
@@ -937,102 +949,6 @@ impl Simulation {
         registered.bounce = draws.bounce;
         // Native registry insertion precedes Reveal, and Reveal precedes the
         // delay-zero constructor-time Start call.
-        self.reveal_anim(stable_id, Some(rules));
-        if descriptor.delay == 0 {
-            self.anim_start(stable_id, &config, rules, None);
-        }
-        Ok(stable_id)
-    }
-
-    /// Fresh-authored-load Anim constructor with an already-assigned native
-    /// identity. The object is present in the Anim registry before the optional
-    /// Scenario `RandomRate` draw, matching `AnimClass::Constructor`.
-    pub(crate) fn spawn_load_anim_at_world(
-        &mut self,
-        rules: &RuleSet,
-        descriptor: AnimClassSpawnDescriptor,
-        world_coord: AnimWorldCoord,
-        native_unique_id: i32,
-    ) -> Result<AnimId, AnimSpawnError> {
-        let type_name = self
-            .interner
-            .resolve(descriptor.type_name)
-            .to_ascii_uppercase();
-        let config = rules
-            .art()
-            .anim_runtime_config(&type_name)
-            .cloned()
-            .ok_or(AnimSpawnError::MissingType(descriptor.type_name))?;
-        let (effective_end, effective_loop_end) = effective_bounds(&type_name, &config)?;
-        let reverse = descriptor.reverse || config.reverse;
-        let stop_sound_id = config
-            .stop_sound
-            .as_deref()
-            .map(|sound| self.interner.intern(sound));
-        let stable_id = self.allocate_stable_id();
-        if self.substrate.anims.contains_key(stable_id)
-            || self.substrate.entities.contains(stable_id)
-        {
-            return Err(AnimSpawnError::DuplicateId(stable_id));
-        }
-        let object = AnimObject {
-            stable_id,
-            native_unique_id,
-            type_id: descriptor.type_name,
-            remap_color: None,
-            world_coord,
-            draw_flags: descriptor.draw_flags,
-            z_adjust: descriptor.z_adjust,
-            effective_end,
-            effective_loop_end,
-            runtime: AnimRuntime {
-                current_frame: if reverse {
-                    effective_loop_end.wrapping_sub(1)
-                } else {
-                    0
-                },
-                frame_step: if reverse { -1 } else { 1 },
-                delay_remaining: descriptor.delay,
-                rate_reload: 0,
-                frame_timer: CdTimer::default(),
-                loop_remaining: native_loop_remaining(config.loop_count, descriptor.loop_count),
-                first_ai_guard: true,
-                constructor_reverse: descriptor.reverse,
-                inactive: false,
-                paused: false,
-            },
-            draw_runtime: descriptor.draw_runtime,
-            use_cell_drawer: descriptor.use_cell_drawer,
-            terrain_attached: descriptor.terrain_attached,
-            in_logic_vector: false,
-            owner_entity: None,
-            building_slot: None,
-            damage_fire_slot: None,
-            start_sound_active: false,
-            stop_sound_id,
-            display: AnimDisplayState {
-                marked_on_map: false,
-                y_sort_adjust: config.y_sort_adjust,
-            },
-            bounce: None,
-        };
-        // The insert must run in every build profile: wrapped in
-        // `debug_assert!` it was compiled out of release binaries and no
-        // scheduler anim ever existed in a shipped build.
-        let previous = self.substrate.anims.insert(object);
-        debug_assert!(previous.is_none());
-
-        let rate_reload = self.choose_anim_rate(&config);
-        let frame_timer =
-            CdTimer::started(self.session.binary_frame as i32, i32::from(rate_reload));
-        let registered = self
-            .substrate
-            .anims
-            .get_mut(stable_id)
-            .expect("load Anim remains registered across RandomRate");
-        registered.runtime.rate_reload = rate_reload;
-        registered.runtime.frame_timer = frame_timer;
-
         self.reveal_anim(stable_id, Some(rules));
         if descriptor.delay == 0 {
             self.anim_start(stable_id, &config, rules, None);
@@ -2342,6 +2258,16 @@ pub struct AnimConstructorDraws {
     pub bounce: Option<BounceState>,
 }
 
+/// Transient entry state for the single Anim constructor; never simulation
+/// state. Fresh map loading may already own the Abstract ID, while death debris
+/// may have crossed both identity and RNG boundaries before registry admission.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum AnimConstructorInput {
+    Runtime,
+    AssignedIdentity(i32),
+    Preconsumed(AnimConstructorDraws),
+}
+
 /// Take the constructor's draws for an anim of `config` at `coord`.
 ///
 /// RESIDUAL: the `IsMeteor=` arm (`0x004222FF`: three draws at `0x0042230B`,
@@ -3470,7 +3396,12 @@ mod tests {
         let after_draws = sim.scenario_rng.logical_state();
         let next_constructor = sim.next_native_runtime_id();
         let id = sim
-            .spawn_anim_at_world_with_draws(&rules, descriptor, coord, Some(draws))
+            .spawn_anim_at_world_with_constructor(
+                &rules,
+                descriptor,
+                coord,
+                AnimConstructorInput::Preconsumed(draws),
+            )
             .unwrap();
         assert_eq!(sim.anim(id).unwrap().native_unique_id, native_unique_id);
         assert_eq!(
@@ -3499,7 +3430,12 @@ mod tests {
         first.terrain_attached = true;
         first.use_cell_drawer = true;
         let first_id = sim
-            .spawn_load_anim_at_world(&rules, first, world, 1_010_001)
+            .spawn_anim_at_world_with_constructor(
+                &rules,
+                first,
+                world,
+                AnimConstructorInput::AssignedIdentity(1_010_001),
+            )
             .expect("first authored load Anim");
         let keep_id = sim
             .spawn_anim_object(&rules, runtime_descriptor(keep_type, 0))
@@ -3508,7 +3444,12 @@ mod tests {
         second.terrain_attached = true;
         second.use_cell_drawer = true;
         let second_id = sim
-            .spawn_load_anim_at_world(&rules, second, world, 1_010_002)
+            .spawn_anim_at_world_with_constructor(
+                &rules,
+                second,
+                world,
+                AnimConstructorInput::AssignedIdentity(1_010_002),
+            )
             .expect("second authored load Anim");
 
         assert_eq!(sim.anim(first_id).unwrap().native_unique_id, 1_010_001);
@@ -3812,6 +3753,7 @@ mod tests {
         .unwrap();
         let rows = golden["ctor"].as_array().unwrap();
         assert!(rows.len() >= 150);
+        let mut assigned_identity_rows = 0;
         for row in rows {
             let input = &row["input"];
             let rate = input["random_rate"]
@@ -3886,7 +3828,57 @@ mod tests {
                 native["clamp_bits"].as_u64().unwrap(),
                 "{input}"
             );
+            // Exercise the assigned-identity constructor through the real ART
+            // reader wherever its %f conversion preserves the supplied native
+            // doubles. The body above was compared to the executed constructor,
+            // so the former fresh-load/live-slot entry must retain that same
+            // body and full RNG state, rather than taking only RandomRate.
+            if ["elasticity", "max_xy", "min_z"].iter().all(|key| {
+                let value = input[*key].as_f64().unwrap();
+                f64::from(value as f32) == value
+            }) {
+                assigned_identity_rows += 1;
+                let rules = runtime_rules(
+                    &format!(
+                        "[T]\nBouncer=yes\n{rate}Elasticity={}\nMaxXYVel={}\nMinZVel={}\nEnd=2\n",
+                        input["elasticity"], input["max_xy"], input["min_z"],
+                    ),
+                    &[("T", 2)],
+                );
+                let mut sim = Simulation::with_seed(input["seed"].as_u64().unwrap());
+                let type_id = sim.interner.intern("T");
+                let native_id = sim.next_native_runtime_id();
+                let id = sim
+                    .spawn_anim_at_world_with_constructor(
+                        &rules,
+                        runtime_descriptor(type_id, 0),
+                        AnimWorldCoord {
+                            x: at(0),
+                            y: at(1),
+                            z: at(2),
+                        },
+                        AnimConstructorInput::AssignedIdentity(native_id),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    sim.scenario_rng.native_state_hex(),
+                    row["rng_after"].as_str().unwrap(),
+                    "{input}: assigned-identity constructor draws"
+                );
+                let anim = sim.anim(id).unwrap();
+                assert_eq!(anim.native_unique_id, native_id);
+                assert_eq!(
+                    sim.native_unique_ids.as_ref().unwrap().current_raw() as i32,
+                    native_id
+                );
+                assert_eq!(
+                    anim.bounce,
+                    Some(body),
+                    "{input}: assigned-identity native body"
+                );
+            }
         }
+        assert_eq!(assigned_identity_rows, 134);
     }
 
     /// A stock-shaped debris chunk (`DBRIS1LG` numbers, `MaxXYVel` cut to 0.5
