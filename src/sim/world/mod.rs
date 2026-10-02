@@ -67,8 +67,9 @@ mod substrate;
 mod techno_ai;
 #[cfg(test)]
 pub(crate) use techno_ai::ObjectAiCtx;
+pub(crate) use techno_ai::dispatch_foot_mission;
+pub(crate) use techno_ai::foot_enter_idle_mode_selection;
 pub(crate) use techno_ai::foot_unlimbo_idle_mode;
-pub(crate) use techno_ai::harvester_enter_idle_mode_selector;
 pub(crate) use techno_ai::queue_foot_enter_idle_mode;
 pub(crate) use techno_ai::team_leader_greatest_threat;
 mod command_schedule;
@@ -4847,7 +4848,7 @@ impl Simulation {
     ///   `Assign_Target(0)` and `Enter_Idle_Mode(0, 1)` (`+0x484`), which
     ///   reads the NEW owner:
     ///   - a war or chrono miner takes the Unit leaf's harvester arm
-    ///     ([`harvester_enter_idle_mode_selector`]): Harvest for the new owner,
+    ///     (`Simulation::unit_enter_idle_mode`): Harvest for the new owner,
     ///     Guard when that owner is human and the miner stands off ore, and
     ///     nothing while in radio contact (a miner docked at its refinery) or
     ///     while the Guard above is still only queued (a miner caught
@@ -4908,11 +4909,6 @@ impl Simulation {
             && current == Some(MissionType::Unload)
             && object.is_some_and(|object| object.weapons_factory);
         let in_limbo = entity.lifecycle.in_limbo;
-        let is_dispatchable_miner = category == EntityCategory::Unit
-            && entity
-                .miner
-                .as_ref()
-                .is_some_and(|m| m.kind != crate::sim::miner::MinerKind::Slave);
         let now = self.session.binary_frame;
         let readiness = crate::sim::mission::authority::LiveReadyInputProvider { rules };
         let rescue = self.substrate.entities.get(stable_id).is_some_and(|e| {
@@ -4947,20 +4943,10 @@ impl Simulation {
         }
         let _ = self.assign_target_represented(stable_id, None, Some(rules));
         match category {
-            EntityCategory::Unit if is_dispatchable_miner => {
-                if let Some(selector) =
-                    harvester_enter_idle_mode_selector(self, stable_id, rules, false)
-                {
-                    let _ = self.mission_queue_exact(
-                        stable_id,
-                        MissionId::from_known(selector),
-                        0,
-                        now,
-                        &readiness,
-                    );
-                }
+            EntityCategory::Unit => {
+                self.unit_enter_idle_mode(stable_id, Some(rules), false);
             }
-            EntityCategory::Unit | EntityCategory::Infantry => {
+            EntityCategory::Infantry => {
                 queue_foot_enter_idle_mode(self, stable_id, rules);
             }
             EntityCategory::Structure => {
@@ -6636,6 +6622,9 @@ pub(crate) mod tests;
 #[path = "smudge_integration_tests.rs"]
 mod smudge_integration_tests;
 
+#[cfg(test)]
+#[path = "harvest_attack_return_oracle_tests.rs"]
+mod harvest_attack_return_oracle_tests;
 #[cfg(test)]
 #[path = "harvest_field_oracle_tests.rs"]
 mod harvest_field_oracle_tests;

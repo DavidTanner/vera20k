@@ -108,6 +108,7 @@ fn dock_rules() -> RuleSet {
          1=OTHERPROC\n\
          [MODHARV]\n\
          Name=Mod Harvester\n\
+         Strength=600\n\
          Harvester=yes\n\
          Dock=MODPROC\n\
          Speed=4\n\
@@ -168,6 +169,16 @@ fn spawn_miner(sim: &mut Simulation, sid: u64, kind: MinerKind, rx: u16, ry: u16
     ge.miner = Some(Miner::new(kind, &MinerConfig::default(), 0));
     ge.lifecycle.in_limbo = false;
     sim.substrate.entities.insert(ge);
+    if kind != MinerKind::Slave {
+        // Direct insertion skips stock miner Unlimbo's idle/Commence. Supply
+        // its actual committed mission before exercising the shared dispatcher.
+        sim.mission_assign_exact(
+            sid,
+            crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Harvest),
+            sim.session.binary_frame,
+        )
+        .unwrap();
+    }
     // A playfield holding the 64x64 fixture (Is_Cell_Harvestable's first gate).
     sim.playfield_bounds
         .get_or_insert(crate::map::playfield::PlayfieldBounds {

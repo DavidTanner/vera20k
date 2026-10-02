@@ -18,8 +18,9 @@ mod building_missions;
 mod building_retaliation;
 mod mission_handlers;
 mod target_scan;
+pub(crate) use mission_handlers::dispatch_foot_mission;
+pub(crate) use mission_handlers::foot_enter_idle_mode_selection;
 pub(crate) use mission_handlers::foot_unlimbo_idle_mode;
-pub(crate) use mission_handlers::harvester_enter_idle_mode_selector;
 pub(crate) use mission_handlers::queue_foot_enter_idle_mode;
 pub(crate) use target_scan::team_leader_greatest_threat;
 
@@ -624,8 +625,7 @@ fn techno_ai_shell(
             if let Some(rules) = rules
                 && mission_handlers_run(sim, id)
             {
-                outcome.bridge_state_changed |=
-                    dispatch_supported_foot_mission_cadence(sim, id, rules, ctx);
+                outcome.bridge_state_changed |= dispatch_foot_mission(sim, id, rules, ctx);
             }
             passive_acquire_step(sim, id, rules, ctx);
             if let Some(rules) = rules {
@@ -1551,20 +1551,11 @@ fn unit_techno_bracket(
     mission_counter_step(sim, id);
     // Mission_Dispatch position: the absorbed handler bodies run here,
     // timer-gated, ending with the verified post-handler epilogue write
-    // (start = current frame, delay = handler return). Harvest (the miner
-    // FSM) is the first absorbed handler; Move/Guard are Track A2.
+    // (start = current frame, delay = handler return). One committed-selector
+    // match routes Harvest, Attack and the other represented Foot handlers.
     if mission_handlers_run(sim, id) {
-        if let (Some(rules), Some(config)) = (rules, ctx.miner_config) {
-            crate::sim::miner::dispatch_harvest_for_object(
-                sim,
-                rules,
-                config,
-                ctx.overlay_registry,
-                id,
-            );
-        }
         if let Some(rules) = rules {
-            dispatch_supported_foot_mission_cadence(sim, id, rules, ctx);
+            dispatch_foot_mission(sim, id, rules, ctx);
         }
     }
     // `UnitClass::AI @ 0x007361A9..0x007361E9`: a draining Floating Disc
@@ -3913,7 +3904,6 @@ mod tests {
         let base = MissionHandlerInput {
             category: EntityCategory::Infantry,
             mission: Some(MissionType::Attack),
-            harvester_miner: false,
             depot_dock_state: false,
             refinery_dock_miner: false,
             timer_due: true,
@@ -4013,7 +4003,6 @@ mod tests {
         let base = MissionHandlerInput {
             category: EntityCategory::Infantry,
             mission: Some(MissionType::Attack),
-            harvester_miner: false,
             depot_dock_state: false,
             refinery_dock_miner: false,
             timer_due: true,

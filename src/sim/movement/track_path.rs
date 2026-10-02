@@ -622,7 +622,7 @@ impl Simulation {
             return false;
         }
         super::navcom::foot_stop_moving(actor);
-        self.track_enter_idle_mode(id, Some(rules))
+        self.unit_enter_idle_mode(id, Some(rules), false)
     }
 
     /// The outer Process stop at a same-cell Cell NavCom (0x4B066C..0x4B06D2)
@@ -637,7 +637,7 @@ impl Simulation {
             self.set_unit_null_destination(id, rules, None);
         } else {
             super::navcom::foot_stop_moving(actor);
-            self.track_enter_idle_mode(id, rules);
+            self.unit_enter_idle_mode(id, rules, false);
         }
         self.retire_idle_track_adapter(id);
     }

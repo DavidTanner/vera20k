@@ -206,7 +206,9 @@ pub(super) fn row_scene_with(input: &Value, edit: impl FnOnce(&mut String, &mut 
             let (x, y) = cell(archive);
             entity.set_archive_target(Some(TargetKind::Cell(x, y)));
         }
-        entity.miner.as_mut().unwrap().harvesting = input["harvesting"] == true;
+        if let Some(miner) = entity.miner.as_mut() {
+            miner.harvesting = input["harvesting"] == true;
+        }
     }
     s.sim.scenario_rng = SimRng::new(input["seed"].as_u64().unwrap_or(1));
     s
@@ -232,7 +234,7 @@ fn cell_state(s: &Scene, at: (u16, u16)) -> Value {
 }
 
 /// Every compared field, in the oracle's names.
-fn compare_state(s: &Scene, row: &Value, context: &str) {
+pub(super) fn compare_state(s: &Scene, row: &Value, context: &str) {
     let native = &row["state"];
     for ore in row["input"]["ore"].as_array().unwrap() {
         let at = (
@@ -281,7 +283,6 @@ fn compare_state(s: &Scene, row: &Value, context: &str) {
         "{context}: Scenario RNG cursors"
     );
     let entity = s.sim.substrate.entities.get(s.miner).unwrap();
-    let miner = entity.miner.as_ref().unwrap();
     let nav = match entity.navigation.nav_com {
         Some(NavTargetRef::Cell { rx, ry }) => serde_json::json!([rx, ry]),
         None => Value::Null,
@@ -294,11 +295,6 @@ fn compare_state(s: &Scene, row: &Value, context: &str) {
         Some(other) => panic!("{context}: archive {other:?}"),
     };
     assert_eq!(archive, native["archive"], "{context}: ArchiveTarget");
-    assert_eq!(
-        u64::from(miner.harvesting),
-        native["harvesting"].as_u64().unwrap(),
-        "{context}: Unit+0x6D2"
-    );
     let stage = entity.native_stage();
     assert_eq!(
         serde_json::json!([
@@ -310,10 +306,17 @@ fn compare_state(s: &Scene, row: &Value, context: &str) {
         native["stage"],
         "{context}: StageClass"
     );
+    assert_eq!(
+        u64::from(entity.miner.as_ref().is_some_and(|miner| miner.harvesting)),
+        native["harvesting"].as_u64().unwrap(),
+        "{context}: Unit+0x6D2"
+    );
     let count = |kind| {
-        miner
-            .cargo
-            .iter()
+        entity
+            .miner
+            .as_ref()
+            .into_iter()
+            .flat_map(|miner| &miner.cargo)
             .filter(|bale| bale.resource_type == kind)
             .count() as f64
     };
@@ -456,12 +459,15 @@ fn mission_harvest_states_zero_and_one_match_the_original_dispatch() {
         compare_reach(&s, row, &context);
         let config = crate::sim::miner::MinerConfig::from_rules(&s.rules);
         let frame = s.sim.session.binary_frame;
-        crate::sim::miner::dispatch_harvest_for_object(
+        crate::sim::world::dispatch_foot_mission(
             &mut s.sim,
-            &s.rules,
-            &config,
-            Some(registry()),
             s.miner,
+            &s.rules,
+            crate::sim::world::ObjectAiCtx {
+                miner_config: Some(&config),
+                overlay_registry: Some(registry()),
+                ..Default::default()
+            },
         );
         let entity = s.sim.substrate.entities.get(s.miner).unwrap();
         let timer = entity.mission.dispatch_timer();

@@ -932,7 +932,6 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
         },
         ..Default::default()
     });
-    entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
     sim.substrate.entities.insert(entity);
     assert!(matches!(
         sim.reveal_entity_with_rules(1, &rules),
@@ -951,6 +950,14 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
         y: 12 * 256,
         z: 0,
     };
+    // Unlimbo runs Foot idle's speed(0) receiver. This force-track fixture's
+    // paid speed is prior state at Force_Track, after ordinary placement.
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .foot_speed
+        .set_speed_fraction(SimFixed::lit("0.25"));
     assert!(sim.force_drive_track(1, 0x47, head));
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));

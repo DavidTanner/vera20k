@@ -178,7 +178,7 @@ impl Simulation {
                 .expect("same Process_Movement owner");
             clear_track_head(actor);
             if mission == Some(MissionType::Move) {
-                return Ok(self.track_enter_idle_mode(id, Some(call.rules)));
+                return Ok(self.unit_enter_idle_mode(id, Some(call.rules), false));
             }
             return Ok(false);
         }

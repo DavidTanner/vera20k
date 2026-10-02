@@ -107,6 +107,21 @@ clocks. The clock does not change simulation scheduling or provide evidence for
 native pixels, audio playback, menus or outcome timing. Full-frame comparison
 remains exact: no radar masks, channel tolerances or skipped pixels are applied.
 
+## War Miner Attack return observation
+
+[`map_observation.war-miner-attack.example.json`](map_observation.war-miner-attack.example.json)
+uses stock Russia/Battle/AnyTown, ordinary MCV deployment and building production,
+and the refinery's free War Miner. At step2500 it ForceAttacks a stationary
+friendly conscript. Actor and terrain samples show Attack, combat target removal,
+the idle return and later ore consumption. The conscript belongs to the local
+house and remains stationary. The command bypasses UI click resolution,
+using the existing synchronized command scheduler.
+
+Numeric handles are tied to that launch and should be rechecked after population
+changes. This observes production behavior; it does not certify native combat,
+scheduler, RNG or rendering parity. See the [mission ownership notes](../src/sim/miner/README.md)
+and [original executable packet](spatial_oracle/harvest_attack_return.md).
+
 ## Natural ore-spread observation
 
 [`map_observation.ore-spread.example.json`](map_observation.ore-spread.example.json)

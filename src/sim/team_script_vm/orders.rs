@@ -141,7 +141,7 @@ impl Simulation {
             .map(|entity| entity.category)
         {
             Some(EntityCategory::Unit) => {
-                self.unit_enter_idle_mode(id, Some(rules));
+                self.unit_enter_idle_mode(id, Some(rules), false);
             }
             Some(EntityCategory::Infantry) => {
                 crate::sim::world::queue_foot_enter_idle_mode(self, id, rules);

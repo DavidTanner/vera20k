@@ -885,7 +885,7 @@ fn idle_receiver_cancels_burst_through_the_shared_target_setter() {
             entity.passively_acquired_target = true;
             entity.weapon_burst.complete_shot(2);
             entity.navigation.nav_com = has_destination.then(|| NavTargetRef::cell(12, 10));
-            sim.track_enter_idle_mode(1, None);
+            sim.unit_enter_idle_mode(1, None, false);
             let entity = sim.substrate.entities.get(1).unwrap();
             assert_eq!(entity.weapon_burst.index(), i32::from(has_destination));
             assert_eq!(entity.passively_acquired_target, has_destination);
