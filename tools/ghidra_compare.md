@@ -17,8 +17,13 @@ The HTTP adapter follows GhidraMCP **5.14.2**: `/decompile_function`,
 `/get_xrefs_to`, `/get_function_by_address` and `/get_function_pcode`. An
 incompatible or malformed response is an incomplete read, not an empty result.
 Confirm each server's program path, binary SHA-256, x86 language and image base
-before using it. `--before-program` and `--after-program` are required; the tool
-never uses a mutable current-program selection. The client does not attest the
+before using it. For GhidraMCP 5.14.2 headless, pass the `name` returned by
+`/list_open_programs` (for example `gamemd.exe`) to the read API, not its project
+`path` (`/gamemd.exe`). Check that the name uniquely identifies the intended
+program and that `/get_metadata?program=gamemd.exe` resolves it before comparing.
+The server's project-loading argument separately uses the project path.
+`--before-program` and `--after-program` are required; the tool never uses a
+mutable current-program selection. The client does not attest the
 server's loaded bytes. Native frame bytes are independently checked through the
 shared oracle owner against SHA-256
 `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`.
@@ -44,8 +49,8 @@ Replace the example addresses and program selectors with your actual plan:
 
 ```sh
 python -m tools.ghidra_compare decompile \
-  --before-url http://127.0.0.1:8089 --before-program /gamemd.exe \
-  --after-url http://127.0.0.1:8090 --after-program /gamemd.exe \
+  --before-url http://127.0.0.1:8089 --before-program gamemd.exe \
+  --after-url http://127.0.0.1:8090 --after-program gamemd.exe \
   --plan plan.json --computed --out decompile-comparison.json
 ```
 
@@ -120,8 +125,8 @@ entries are not frame targets. No machine-local census is loaded implicitly.
 
 ```sh
 python -m tools.ghidra_compare frames \
-  --before-url http://127.0.0.1:8089 --before-program /gamemd.exe \
-  --after-url http://127.0.0.1:8090 --after-program /gamemd.exe \
+  --before-url http://127.0.0.1:8089 --before-program gamemd.exe \
+  --after-url http://127.0.0.1:8090 --after-program gamemd.exe \
   --census before.jsonl --address 0x00401000 --out frame-comparison.json
 ```
 
@@ -182,6 +187,18 @@ attempts blocked. They cover incomplete reads on either/both sides, pagination,
 thunks and virtual callers, warning identities, member-address expressions,
 write-role counterexamples, stack equations and CLI receipts. They do not
 certify a live Ghidra installation or regenerate native goldens.
+
+A separate end-to-end check on 2026-10-03 used disposable copies of the
+2026-10-02 11:39:36 and 12:18:23 saved projects with Ghidra 12.1.2, JDK 21 and
+GhidraMCP 5.14.2. Both exports contained 19,889 internal functions; every exported
+field in the after census matched the retained census. Four changed functions
+and 12 sampled callers decompiled without read errors. A separate check of
+`0x00445880` reproduced the retained `extraout_EDX` regression. Five frame reads
+completed with four pre-existing write-mapping findings and no new regressions;
+their 1,964 function-body bytes matched the pinned native image on each side.
+An invalid program selector returned exit 2 with explicit read errors. This
+checks the real export/HTTP workflow within that sample, not the entire database.
+Source backup checksums were unchanged; temporary servers and copies were removed.
 
 ## Migration provenance
 
