@@ -25,20 +25,20 @@ impl Simulation {
         config: &BuildingAnimConfig,
     ) -> Option<crate::sim::anim_class::AnimWorldCoord> {
         let entity = self.substrate.entities.get(id)?;
-        let raw = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
-        // The same object Z the damage fires anchor to (`anim_owner_world_coords`).
-        let z = crate::sim::movement::ground_pose::object_world_z_leptons(
+        let location = crate::sim::movement::ground_pose::object_location(
             entity,
             self.resolved_terrain.as_ref(),
         );
+        let (base, _) =
+            crate::sim::movement::ground_pose::building_render_order_parts(location, false, false);
         let (dx, dy) = self
             .session
             .pixel_conversion_bounds
             .offset_to_leptons(config.x, config.y);
         Some(crate::sim::anim_class::AnimWorldCoord {
-            x: raw.x.wrapping_sub(128).wrapping_add(dx),
-            y: raw.y.wrapping_sub(128).wrapping_add(dy),
-            z,
+            x: base.x.wrapping_add(dx),
+            y: base.y.wrapping_add(dy),
+            z: base.z,
         })
     }
 
@@ -894,6 +894,61 @@ mod slot_tests {
         sim.process_pending_delete();
         assert!(sim.anim(anim).is_none());
         assert_eq!(sim.entities().get(id).unwrap().building_anim_slots[3], None);
+    }
+
+    /// Whole original ObjectUnInit5F65F0 retains ordinary slot3 and its
+    /// live Anim (owner+CC=0, inactive+19B=0). BuildingDestructor43BDC5
+    /// calls ClearAnimSlot451E40(-2) only at deferred scalar destruction.
+    /// Executed control: ordinary-building-destruction-research/continuation-1
+    /// cleanup-registered-output.json, gamemd SHA1cdd1180e49024fb.
+    #[test]
+    fn building_uninit_retains_ordinary_slots_until_scalar_destruction() {
+        let (mut sim, rules, id) = slot_test_fixture();
+        let anim_id = sim
+            .set_building_anim_slot(id, 3, false, false, 0, &rules)
+            .unwrap();
+        let before_rng = (
+            sim.main_rng.logical_state(),
+            sim.scenario_rng.logical_state(),
+            sim.mapgen_rng.logical_state(),
+        );
+        let before_logic = sim.logic_order().to_vec();
+        sim.uninit_with_rules(id, &rules);
+
+        let building = sim.entities().get(id).expect("deferred Building");
+        assert!(!building.lifecycle.object_alive);
+        assert!(building.lifecycle.in_limbo);
+        assert_eq!(building.building_anim_slots[3], Some(anim_id));
+        let anim = sim.anim(anim_id).expect("slot survives Building UnInit");
+        assert_eq!(anim.owner_entity, None);
+        assert_eq!(anim.building_slot, Some((id, 3)));
+        assert!(anim.in_logic_vector);
+        assert!(!anim.runtime.inactive);
+        assert_eq!(sim.logic_order(), before_logic);
+        assert_eq!(
+            (
+                sim.main_rng.logical_state(),
+                sim.scenario_rng.logical_state(),
+                sim.mapgen_rng.logical_state()
+            ),
+            before_rng
+        );
+        assert!(sim.substrate.pending_delete.contains(&id));
+        assert!(!sim.substrate.pending_delete.contains(&anim_id));
+
+        sim.process_pending_delete();
+        assert!(sim.entities().get(id).is_none());
+        assert!(sim.anim(anim_id).is_none());
+        assert!(!sim.logic_order().contains(&anim_id));
+        assert!(!sim.substrate.pending_delete.contains(&anim_id));
+        assert_eq!(
+            (
+                sim.main_rng.logical_state(),
+                sim.scenario_rng.logical_state(),
+                sim.mapgen_rng.logical_state()
+            ),
+            before_rng
+        );
     }
     #[test]
     fn construction_initializes_real_slot_once_and_health_write_retains_it() {

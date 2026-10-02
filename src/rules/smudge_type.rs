@@ -45,18 +45,23 @@ impl SmudgeTypeRegistry {
             if by_name.contains_key(&name_upper) {
                 continue;
             }
-            let Some(section) = ini.section(source_name) else {
-                continue;
-            };
-            let crater: bool = section.read_bool("Crater", false);
-            let burn: bool = section.read_bool("Burn", false);
+            // Rules668E19 -> FindOrAllocate6B5910 registers every declaration
+            // before ReadTypeData679BF9 ignores a false ReadINI return. The
+            // stock native comparison retains 46 types, including 22 legacy
+            // empty-header defaults (Smudge ctor6B5269..6B5294).
+            // Evidence: building_death_anims_joined_stock_smudges.json.
+            let section = ini.section(source_name);
+            let crater: bool = section.is_some_and(|s| s.read_bool("Crater", false));
+            let burn: bool = section.is_some_and(|s| s.read_bool("Burn", false));
             // ReadInt over the constructor's 1 (`0x006B5281`, `0x006B573F`,
             // `0x006B5759`). RESIDUAL: native keeps the int unclamped; VERA
             // clamps it into 1..=255. Retail sizes are 1 and 2.
-            let width: u8 = section.read_int("Width", 1).clamp(1, 255) as u8;
-            let height: u8 = section.read_int("Height", 1).clamp(1, 255) as u8;
+            let width: u8 = section.map_or(1, |s| s.read_int("Width", 1)).clamp(1, 255) as u8;
+            let height: u8 = section.map_or(1, |s| s.read_int("Height", 1)).clamp(1, 255) as u8;
             // ObjectTypeClass `Image=`, ReadString 0x19 (`0x005F933B`).
-            let image_name: Option<String> = section.read_name("Image", 0x19).map(str::to_string);
+            let image_name: Option<String> = section
+                .and_then(|s| s.read_name("Image", 0x19))
+                .map(str::to_string);
 
             let id: u16 = types.len() as u16;
             by_name.insert(name_upper.clone(), id);
@@ -133,10 +138,13 @@ mod tests {
     }
 
     #[test]
-    fn missing_section_skipped() {
+    fn declared_type_survives_absent_read_ini_section() {
         let ini = parse_ini("[SmudgeTypes]\n1=DOES_NOT_EXIST\n");
         let reg = SmudgeTypeRegistry::from_rules_ini(&ini);
-        assert_eq!(reg.len(), 0);
+        let def = reg.get(0).unwrap();
+        assert_eq!(def.name, "DOES_NOT_EXIST");
+        assert!(!def.crater && !def.burn);
+        assert_eq!((def.width, def.height), (1, 1));
     }
 
     #[test]

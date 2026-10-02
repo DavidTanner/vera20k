@@ -1032,7 +1032,7 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
         let _ = expected.next_u32();
     }
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
-    assert!(sim.discard_constructed_limbo(parent_id));
+    assert!(sim.discard_constructed_limbo(parent_id, Some(&rules)));
     assert!(sim.substrate.entities.is_empty());
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 }
@@ -1319,7 +1319,7 @@ fn techno_constructor_spawn_manager_pool_draws_parent_then_children_and_cancels_
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 
     let after_constructor = sim.scenario_rng.logical_state();
-    assert!(sim.discard_constructed_limbo(parent_id));
+    assert!(sim.discard_constructed_limbo(parent_id, Some(&rules)));
     assert!(sim.substrate.entities.is_empty());
     assert_eq!(sim.scenario_rng.logical_state(), after_constructor);
 }
@@ -1364,7 +1364,7 @@ fn techno_constructor_slave_manager_pool_draws_parent_then_children_and_cancels_
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 
     let after_constructor = sim.scenario_rng.logical_state();
-    assert!(sim.discard_constructed_limbo(parent_id));
+    assert!(sim.discard_constructed_limbo(parent_id, Some(&rules)));
     assert!(sim.substrate.entities.is_empty());
     assert_eq!(sim.scenario_rng.logical_state(), after_constructor);
 }
@@ -1795,7 +1795,7 @@ fn techno_constructor_failed_reveal_keeps_one_draw_and_reuses_identity() {
     assert_eq!(held.native_unique_id, 1001);
     assert_eq!(sim.native_unique_ids.as_ref().unwrap().current_raw(), 1001);
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
-    assert!(sim.discard_constructed_limbo(stable_id));
+    assert!(sim.discard_constructed_limbo(stable_id, Some(&rules)));
     assert!(sim.substrate.entities.get(stable_id).is_none());
 }
 

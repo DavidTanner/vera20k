@@ -289,7 +289,7 @@ impl Simulation {
         if balloon_hover {
             self.fire_death_weapon(id, rules, overlay_registry);
         } else {
-            self.unit_death_explosion_now(rules, id);
+            self.unit_death_explosion(rules, id, &mut Vec::new());
         }
         self.sound_events
             .push(super::SimSoundEvent::ObjectSoundReleased { owner: id });

@@ -191,14 +191,6 @@ fn anims(sim: &Simulation) -> Vec<(String, AnimWorldCoord, u16, u32, i32)> {
         .collect()
 }
 
-/// The consequence boundary's admission of the recorded death anims.
-fn admit(sim: &mut Simulation, rules: &RuleSet, recorded: Vec<ExplosionEffect>) {
-    for effect in recorded {
-        let spawn = effect.death.expect("a death producer's record");
-        sim.admit_death_anim(rules, effect.shp_name, spawn);
-    }
-}
-
 fn pick(rng: &mut SimRng, list: &[&str]) -> String {
     list[(rng.next_u32() % list.len() as u32) as usize].to_string()
 }
@@ -220,7 +212,6 @@ fn a_destroyed_building_explodes_per_foundation_cell_then_plays_its_destroy_anim
         sim.building_destruction_anims(&rules, plant, &mut recorded, |_, request| {
             marks.push(request)
         });
-        admit(&mut sim, &rules, recorded);
 
         let mut expected = Vec::new();
         for (rx, ry) in crate::sim::crew_survival::foundation_cells(10, 20, "2x2") {
@@ -275,7 +266,6 @@ fn a_single_destroy_anim_still_draws_and_no_lists_draw_nothing() {
     let mut replay = sim.scenario_rng.clone();
     let mut recorded = Vec::new();
     sim.building_destruction_anims(&rules, hall, &mut recorded, |_, _| {});
-    admit(&mut sim, &rules, recorded);
     let _pick = replay.next_u32();
     assert_eq!(sim.scenario_rng.state(), replay.state());
     assert_eq!(anims(&sim).len(), 1);
@@ -305,7 +295,6 @@ fn a_dying_vehicle_plays_its_explosion_then_its_destroy_anim() {
         let mut replay = sim.scenario_rng.clone();
         let mut recorded = Vec::new();
         sim.unit_death_explosion(&rules, unit, &mut recorded);
-        admit(&mut sim, &rules, recorded);
         let explosion = pick(&mut replay, &["EXPA", "EXPB", "EXPC"]);
         let destroy = pick(&mut replay, &["DESTA"]);
         assert_eq!(
@@ -344,7 +333,6 @@ fn an_exploding_vehicle_with_ammo_dies_with_its_last_explosion() {
             let mut replay = sim.scenario_rng.clone();
             let mut recorded = Vec::new();
             sim.unit_death_explosion(&rules, unit, &mut recorded);
-            admit(&mut sim, &rules, recorded);
             let picked = pick(&mut replay, &["EXPA", "EXPB", "EXPC"]);
             let expected = if last { "EXPC".to_string() } else { picked };
             let played: Vec<_> = anims(&sim).into_iter().map(|anim| anim.0).collect();
@@ -367,7 +355,6 @@ fn a_dying_aircraft_plays_one_explosion_and_no_destroy_anim() {
     let mut replay = sim.scenario_rng.clone();
     let mut recorded = Vec::new();
     sim.aircraft_death_explosion(&rules, jet, &mut recorded);
-    admit(&mut sim, &rules, recorded);
     let explosion = pick(&mut replay, &["EXPA", "EXPB"]);
     let played: Vec<_> = anims(&sim).into_iter().map(|anim| anim.0).collect();
     assert_eq!(played, vec![explosion]);
@@ -490,6 +477,29 @@ fn a_killed_building_draws_its_death_anims_before_its_survivors() {
 
         assert_eq!(anims(&sim), expected, "seed {seed}");
         assert_eq!(sim.scenario_rng.state(), replay.state(), "seed {seed}");
+        // Whole original Building442230 -> Techno701900 -> 4415F0 creates
+        // each debris/footprint Anim before SpawnSurvivors442D90 and the
+        // Infantry517A50 constructor. Full RNG consumption alone cannot
+        // establish this native identity/Logic order.
+        let death_anim_ids: Vec<_> = sim.substrate.anims.iter().map(|(id, _)| *id).collect();
+        let logic = sim.logic_order();
+        for survivor in sim.substrate.entities.values().filter(|entity| {
+            !before.contains(&entity.stable_id())
+                && entity.category == crate::map::entities::EntityCategory::Infantry
+        }) {
+            let survivor_slot = logic
+                .iter()
+                .position(|id| *id == survivor.stable_id())
+                .unwrap();
+            assert!(
+                death_anim_ids.iter().all(|id| {
+                    *id < survivor.stable_id()
+                        && logic.iter().position(|live| live == id).unwrap() < survivor_slot
+                }),
+                "seed {seed}: death Anim constructors precede survivor {}",
+                survivor.stable_id()
+            );
+        }
         let crew: Vec<_> = sim
             .substrate
             .entities

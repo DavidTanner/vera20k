@@ -81,6 +81,8 @@ mod world_spawn;
 #[cfg(test)]
 mod aircraft_deployment_tests;
 #[cfg(test)]
+mod building_fatal_lifecycle_tests;
+#[cfg(test)]
 mod crash_tests;
 #[cfg(test)]
 mod damage_consequence_tests;
@@ -976,6 +978,12 @@ pub struct Simulation {
     ///683560's post-read Scenario reinitialization. See native_id_snapshot.
     /// Runtime constructors consume this continuation before class admission.
     pub(crate) native_unique_ids: Option<crate::sim::native_identity::NativeUniqueIdCursor>,
+    /// Call-scoped DWORD A8E7AC. Crew escape raises this nesting counter
+    /// through Unlimbo, Scatter and the immediate Walk Process; cell-entry
+    /// and placement consumers read the same owner. Restored before the
+    /// caller returns, so frame-boundary saves/checksums never retain it.
+    #[serde(skip)]
+    scenario_init_priority_depth: u32,
     /// `MapClass+0x134` (`0x0087F91C`) analogue: the wrapping signed total that
     /// authored `ScenarioClass::Full_Init @ 0x00686B20` stores from
     /// `InitCellAttributes(0)`'s value-only `Get_Tiberium_Value` pass. No active
@@ -1657,6 +1665,7 @@ fn dispatch_smudge_inline(
     radar_dirty_cells: &mut Vec<(u16, u16)>,
     radar_dirty_generation: &mut u64,
     tactical_dirty_cells: &mut Vec<(u16, u16)>,
+    construction: &mut crate::sim::smudge_grid::SmudgeConstruction<'_>,
 ) {
     let (Some(smudge_grid), Some(overlay_grid), Some(terrain)) =
         (smudge_grid, overlay_grid, terrain)
@@ -1679,8 +1688,8 @@ fn dispatch_smudge_inline(
         radar_dirty_generation,
         tactical_dirty_cells,
     };
-    crate::sim::combat::smudge_dispatch::drain_smudge_spawn_requests(
-        std::slice::from_ref(request),
+    crate::sim::combat::smudge_dispatch::dispatch_smudge_request(
+        request,
         rules.art(),
         &rules.smudge_types,
         smudge_grid,
@@ -1689,6 +1698,7 @@ fn dispatch_smudge_inline(
         raw_occupation,
         &mut tiberium,
         scenario_rng,
+        Some(construction),
     );
 }
 
@@ -3042,6 +3052,7 @@ impl Simulation {
             main_rng: SimRng::new(seed),
             mapgen_rng: SimRng::new(0),
             native_unique_ids: None,
+            scenario_init_priority_depth: 0,
             authored_tiberium_value_total: None,
             post_load_particle_system_constructed: false,
             native_map_tubes: crate::map::tubes::NativeMapTubesState::default(),
@@ -3256,6 +3267,13 @@ impl Simulation {
     ) {
         let binary_frame = self.session.binary_frame;
         let spread_enabled = self.production.ore_growth_config.spreads;
+        let priority = self.scenario_init_priority_active();
+        let mut construction = crate::sim::smudge_grid::SmudgeConstruction::new(
+            &mut self.substrate.next_stable_object_id,
+            &self.substrate.entities,
+            &mut self.native_unique_ids,
+            priority,
+        );
         dispatch_smudge_inline(
             &request,
             rules,
@@ -3274,7 +3292,16 @@ impl Simulation {
             &mut self.radar_terrain_dirty_cells,
             &mut self.radar_terrain_dirty_generation,
             &mut self.tactical_dirty_cells,
+            &mut construction,
         );
+        if let Some(id) = construction.constructed_id() {
+            // Full SmudgeCtor6B4A50 retires after its Mark/Place, before the
+            // producer can make another RNG draw or construct the next object.
+            self.uninit_with_context(
+                id,
+                lifecycle::UninitContext::new(Some(rules), overlay_registry),
+            );
+        }
         self.flush_smudge_dirty();
     }
 
@@ -3959,25 +3986,10 @@ impl Simulation {
     /// `ScenarioClass::NextUniqueID @ 0x0068BCB0`; individual stores therefore
     /// must not own independent counters.
     pub(crate) fn allocate_stable_id(&mut self) -> u64 {
-        let id = self.substrate.next_stable_object_id;
-        // Test fixtures insert objects with hand-picked ids without advancing
-        // the allocator; production always allocates. Skip those ids so a
-        // fixture's first bullet cannot collide with its own units.
-        #[cfg(test)]
-        let id = {
-            let mut id = id;
-            while self.substrate.entities.contains(id) {
-                id += 1;
-            }
-            id
-        };
-        #[cfg(not(test))]
-        debug_assert!(
-            !self.substrate.entities.contains(id),
-            "stable id {id} is already live"
-        );
-        self.substrate.next_stable_object_id = id.saturating_add(1);
-        id
+        ObjectSubstrate::allocate_stable_id(
+            &mut self.substrate.next_stable_object_id,
+            &self.substrate.entities,
+        )
     }
 
     pub(crate) fn admit_projectile(
@@ -4353,7 +4365,7 @@ impl Simulation {
     /// native order; only the identity and the registration happen here.
     pub(crate) fn admit_death_debris(
         &mut self,
-        spawns: Vec<crate::sim::voxel_anim::VoxelDebrisSpawn>,
+        spawns: impl IntoIterator<Item = crate::sim::voxel_anim::VoxelDebrisSpawn>,
     ) {
         for spawn in spawns {
             let stable_id = self.allocate_stable_id();
@@ -6615,11 +6627,11 @@ mod harvest_attack_return_oracle_tests;
 #[path = "harvest_field_oracle_tests.rs"]
 mod harvest_field_oracle_tests;
 #[cfg(test)]
-#[path = "refinery_dock_oracle_tests.rs"]
-mod refinery_dock_oracle_tests;
-#[cfg(test)]
 #[path = "refinery_dock_continuation_tests.rs"]
 mod refinery_dock_continuation_tests;
+#[cfg(test)]
+#[path = "refinery_dock_oracle_tests.rs"]
+mod refinery_dock_oracle_tests;
 #[cfg(test)]
 #[path = "refinery_dock_retail_tests.rs"]
 mod refinery_dock_retail_tests;

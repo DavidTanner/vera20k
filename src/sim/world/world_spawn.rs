@@ -479,7 +479,7 @@ impl Simulation {
             let (stable_id, outcome) =
                 self.unlimbo_authored_techno(ge, map_ent.health, rules, overlay_registry);
             if !matches!(outcome, RevealOutcome::Revealed { .. }) {
-                self.discard_constructed_limbo(stable_id);
+                self.discard_constructed_limbo(stable_id, rules);
                 continue;
             }
             if let Some(ruleset) = rules {
@@ -589,7 +589,7 @@ impl Simulation {
             )
             .is_none()
         {
-            self.discard_constructed_limbo(stable_id);
+            self.discard_constructed_limbo(stable_id, Some(rules));
             return None;
         }
         Some(stable_id)
@@ -803,7 +803,7 @@ impl Simulation {
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
             // This convenience path owns its transient constructor result.
             // Held production objects use the separate limbo/retry boundary.
-            self.discard_constructed_limbo(stable_id);
+            self.discard_constructed_limbo(stable_id, Some(rules));
             return Ok(None);
         }
         self.initialize_cloak_after_unlimbo(stable_id, rules);
@@ -1036,11 +1036,15 @@ impl Simulation {
     /// limbo. The stable ID and constructor RNG draw stay spent, while the
     /// transient store and its tracking are undone exactly once (the
     /// destructor's Remove_Tracking).
-    pub(crate) fn discard_constructed_limbo(&mut self, stable_id: u64) -> bool {
-        if !self.substrate.entities.contains(stable_id) {
+    pub(crate) fn discard_constructed_limbo(
+        &mut self,
+        stable_id: u64,
+        rules: Option<&RuleSet>,
+    ) -> bool {
+        let Some(entity) = self.substrate.entities.get(stable_id) else {
             return false;
-        }
-        self.release_house_base_tracking(stable_id);
+        };
+        debug_assert!(entity.lifecycle.in_limbo && !entity.lifecycle.cell_marked);
         let spawn_children = self
             .substrate
             .entities
@@ -1061,19 +1065,17 @@ impl Simulation {
             .and_then(|entity| entity.slave_manager.as_ref())
             .map(|manager| manager.slaves().collect::<Vec<_>>())
             .unwrap_or_default();
-        self.update_house_tracking(
+        // Factory cancel and rejected constructors invoke the same scalar
+        // destructor as the late drain, without UnInit or loss bookkeeping.
+        // Reuse that owner for Building43BCF0 sound/expiry/Anim/power cleanup
+        // and delegated Techno Remove_Tracking, rather than a manual store drop.
+        self.finalize_and_remove_common(
             stable_id,
-            crate::sim::house_tracking::HouseTracking::remove_tracking,
+            super::lifecycle::UninitContext::new(rules, None),
         );
-        let entity = self
-            .substrate
-            .entities
-            .remove(stable_id)
-            .expect("constructor object existence checked above");
-        debug_assert!(entity.lifecycle.in_limbo && !entity.lifecycle.cell_marked);
         for child_id in spawn_children.into_iter().chain(slave_children) {
             if self.substrate.entities.contains(child_id) {
-                let discarded = self.discard_constructed_limbo(child_id);
+                let discarded = self.discard_constructed_limbo(child_id, rules);
                 debug_assert!(discarded, "constructor-owned child must remain in limbo");
             }
         }
@@ -1616,7 +1618,7 @@ impl Simulation {
         let (new_sid, outcome) =
             self.unlimbo_after_constructor_managers(destination, Some(rules), registry);
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
-            self.discard_constructed_limbo(new_sid);
+            self.discard_constructed_limbo(new_sid, Some(rules));
             return false;
         }
         // 0x0073971F: OVER_OUT to radio contact 0.
@@ -1852,7 +1854,7 @@ impl Simulation {
             false,
         );
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
-            self.discard_constructed_limbo(new_sid);
+            self.discard_constructed_limbo(new_sid, Some(rules));
             self.uninit_with_rules(sid, rules);
             return;
         }

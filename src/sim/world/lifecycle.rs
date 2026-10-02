@@ -312,7 +312,7 @@ pub(crate) enum LifecycleOutput {
 }
 
 #[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LifecycleTestEvent {
     RevealLimboCleared,
     RevealCoordinatesCommitted,
@@ -383,6 +383,20 @@ pub(crate) enum LifecycleTestEvent {
         listener_id: u64,
         target_alive: bool,
         target_in_limbo: bool,
+    },
+    /// Native stock constructor/UnInit/scalar-dtor expiry comparison. Captures
+    /// the shared dispatch boundary, including readiness and pending order.
+    SmudgeExpiryBoundary {
+        stable_id: u64,
+        native_id: i32,
+        native_cursor: u32,
+        object_alive: bool,
+        in_limbo: bool,
+        health: i32,
+        location: [i32; 3],
+        pending: Vec<u64>,
+        generic_objects: Vec<u64>,
+        rng: [String; 3],
     },
     ProjectilePointerExpiredVisited {
         expired_id: u64,
@@ -2058,6 +2072,13 @@ impl Simulation {
             Some(ObjectKind::Projectile)
         } else if self.waves.get(stable_id).is_some() {
             Some(ObjectKind::Wave)
+        } else if self
+            .smudge_grid
+            .as_ref()
+            .and_then(|grid| grid.object(stable_id))
+            .is_some()
+        {
+            Some(ObjectKind::Smudge)
         } else if self.substrate.entities.contains(stable_id) {
             Some(ObjectKind::Entity)
         } else {
@@ -2070,6 +2091,7 @@ impl Simulation {
     /// single dispatch the registration/removal contract reads through.
     fn logic_membership_flag(&self, stable_id: u64, kind: ObjectKind) -> bool {
         match kind {
+            ObjectKind::Smudge => false,
             ObjectKind::Anim => self
                 .substrate
                 .anims
@@ -2111,6 +2133,7 @@ impl Simulation {
     /// the flag through.
     fn set_logic_membership_flag(&mut self, stable_id: u64, kind: ObjectKind, member: bool) {
         match kind {
+            ObjectKind::Smudge => assert!(!member, "Smudge {stable_id} never joins Logic"),
             ObjectKind::Anim => {
                 if let Some(anim) = self.substrate.anims.get_mut(stable_id) {
                     anim.in_logic_vector = member;
@@ -2162,6 +2185,9 @@ impl Simulation {
         let Some(kind) = kind else {
             return false;
         };
+        if kind == ObjectKind::Smudge {
+            return false;
+        }
         if self.substrate.logic.try_push(stable_id).is_err() {
             return false;
         }
@@ -3015,10 +3041,11 @@ impl Simulation {
     }
 
     fn run_represented_uninit_pre_hook(&mut self, stable_id: u64) {
-        self.clear_all_building_anim_slots(stable_id);
         // Object UnInit5F6616 expires damage-fire owners before Building's
         // destructor43BDE0 destroys the remaining slot Anims. Do not run the
         // recovery path here: it converts coordinates and stops sounds early.
+        // Ordinary21slots have no Anim owner+CC and survive this broadcast;
+        // Building43BDC5 clears them only at deferred scalar destruction.
         self.record_destruction_once(stable_id);
         crate::sim::docking::bunker_link::break_links_on_despawn(self, stable_id);
         #[cfg(test)]
@@ -3163,7 +3190,11 @@ impl Simulation {
                 + self.substrate.anims.len()
                 + self.substrate.particle_systems.len()
                 + self.projectiles.len()
-                + self.waves.len(),
+                + self.waves.len()
+                + self
+                    .smudge_grid
+                    .as_ref()
+                    .map_or(0, |grid| grid.object_count()),
         );
         listeners.extend(
             self.substrate
@@ -3193,6 +3224,9 @@ impl Simulation {
                 .iter()
                 .map(|(&stable_id, _)| (stable_id, ObjectKind::Wave)),
         );
+        if let Some(grid) = &self.smudge_grid {
+            listeners.extend(grid.objects().map(|(id, _)| (id, ObjectKind::Smudge)));
+        }
         // Each store yields its IDs in order: the run-adaptive stable sort
         // merges those runs instead of sorting from scratch.
         listeners.sort_by_key(|&(stable_id, _)| stable_id);
@@ -3358,9 +3392,10 @@ impl Simulation {
     /// Techno70F770 and the identical PointerExpired7079D1..7A28 arm
     /// shorten the passive targeting timer (+180/+188), never weapon rearm.
     /// The native priority bracket A8E7AC suppresses both the draw and write.
-    pub(crate) fn shorten_passive_scan_timer(&mut self, id: u64, priority_bracket: bool) -> bool {
+    /// Original controls: infantry_deploy_action.json's reload rows.
+    pub(crate) fn shorten_passive_scan_timer(&mut self, id: u64) -> bool {
         let now = self.session.binary_frame;
-        if priority_bracket
+        if self.scenario_init_priority_active()
             || self
                 .substrate
                 .entities
@@ -3447,7 +3482,7 @@ impl Simulation {
         // duration`) skips the block entirely, which `remaining()`'s clamp to 0
         // reproduces.
         if clears_current_target {
-            self.shorten_passive_scan_timer(listener_id, false);
+            self.shorten_passive_scan_timer(listener_id);
         }
         if (drops_contact || drops_passenger)
             && let Some(listener) = self.substrate.entities.get_mut(listener_id)
@@ -3662,7 +3697,13 @@ impl Simulation {
     /// has temporarily lent that grid through UninitContext. The remaining arms
     /// read the object's liveness, health and mission from the same world.
     fn notify_pointer_expired(&mut self, expired_id: u64, context: UninitContext<'_>) {
-        if !self.substrate.entities.contains(expired_id) {
+        if !self.substrate.entities.contains(expired_id)
+            && self
+                .smudge_grid
+                .as_ref()
+                .and_then(|grid| grid.object(expired_id))
+                .is_none()
+        {
             return;
         }
 
@@ -3745,27 +3786,75 @@ impl Simulation {
             expired_health,
             expired_is_selling,
             expired_owner,
-        )) = self.substrate.entities.get(expired_id).map(|expired| {
-            // High-flying objects expire to null (the target's vt+0x54 at
-            // `0x00468562`); lower objects preserve their cell.
-            let high_flying = crate::sim::movement::air_movement::is_high_flying(
-                expired,
-                context.terrain().or(self.resolved_terrain.as_ref()),
-                context.rules().map(|rules| (rules, &self.interner)),
-            );
-            (
-                object_get_coords_cell(expired),
-                high_flying,
-                expired.lifecycle.object_alive,
-                expired.health.current,
-                expired.mission.current().known()
-                    == Some(crate::sim::mission::MissionType::Selling),
-                Some(expired.owner()),
-            )
-        })
+        )) = self
+            .substrate
+            .entities
+            .get(expired_id)
+            .map(|expired| {
+                // High-flying objects expire to null (the target's vt+0x54 at
+                // `0x00468562`); lower objects preserve their cell.
+                let high_flying = crate::sim::movement::air_movement::is_high_flying(
+                    expired,
+                    context.terrain().or(self.resolved_terrain.as_ref()),
+                    context.rules().map(|rules| (rules, &self.interner)),
+                );
+                (
+                    object_get_coords_cell(expired),
+                    high_flying,
+                    expired.lifecycle.object_alive,
+                    expired.health.current,
+                    expired.mission.current().known()
+                        == Some(crate::sim::mission::MissionType::Selling),
+                    Some(expired.owner()),
+                )
+            })
+            .or_else(|| {
+                let smudge = self.smudge_grid.as_ref()?.object(expired_id)?;
+                let location = smudge.location();
+                let cell = u16::try_from(crate::util::lepton::lepton_to_cell(location.x))
+                    .ok()
+                    .zip(u16::try_from(crate::util::lepton::lepton_to_cell(location.y)).ok());
+                Some((
+                    cell,
+                    false,
+                    smudge.object_alive(),
+                    smudge.health(),
+                    false,
+                    None,
+                ))
+            })
         else {
             return;
         };
+
+        #[cfg(test)]
+        if let Some(smudge) = self
+            .smudge_grid
+            .as_ref()
+            .and_then(|grid| grid.object(expired_id))
+        {
+            let location = smudge.location();
+            self.trace_lifecycle_for_test(LifecycleTestEvent::SmudgeExpiryBoundary {
+                stable_id: expired_id,
+                native_id: smudge.native_unique_id(),
+                native_cursor: self.native_unique_ids.as_ref().unwrap().current_raw(),
+                object_alive: smudge.object_alive(),
+                in_limbo: smudge.in_limbo(),
+                health: smudge.health(),
+                location: [location.x, location.y, location.z],
+                pending: self.substrate.pending_delete.clone(),
+                generic_objects: self
+                    .removal_listener_order()
+                    .into_iter()
+                    .map(|(id, _)| id)
+                    .collect(),
+                rng: [
+                    self.scenario_rng.native_state_hex(),
+                    self.main_rng.native_state_hex(),
+                    self.mapgen_rng.native_state_hex(),
+                ],
+            });
+        }
 
         // `BulletClass::PointerExpired @ 0x004684E0` performs the packed
         // `MapClass::Get_CellClass @ 0x005657A0` lookup only for a matching
@@ -3800,6 +3889,11 @@ impl Simulation {
                 }
                 ObjectKind::Projectile => self.projectiles.get(listener_id).is_some(),
                 ObjectKind::Wave => self.waves.get(listener_id).is_some(),
+                ObjectKind::Smudge => self
+                    .smudge_grid
+                    .as_ref()
+                    .and_then(|grid| grid.object(listener_id))
+                    .is_some(),
                 ObjectKind::VoxelAnim | ObjectKind::Terrain => false,
             };
             if !present {
@@ -3813,6 +3907,12 @@ impl Simulation {
                     .entities
                     .get(expired_id)
                     .map(|target| (target.lifecycle.object_alive, target.lifecycle.in_limbo))
+                    .or_else(|| {
+                        self.smudge_grid
+                            .as_ref()?
+                            .object(expired_id)
+                            .map(|object| (object.object_alive(), object.in_limbo()))
+                    })
                     .unwrap_or((false, true));
                 self.trace_lifecycle_for_test(LifecycleTestEvent::UninitRemovalListenerVisited {
                     expired_id,
@@ -3980,6 +4080,24 @@ impl Simulation {
     }
 
     pub(crate) fn uninit_with_context(&mut self, stable_id: u64, context: UninitContext<'_>) {
+        if self
+            .smudge_grid
+            .as_ref()
+            .and_then(|grid| grid.object(stable_id))
+            .is_some()
+        {
+            // Whole Smudge6B4A50 -> ObjectUnInit5F65F0: expiry5F661B,
+            // then Conceal's Detach_All5F5316 while alive1/limbo0/marked0.
+            // SmudgeMark(0) writes no cell data. Only afterwards is this
+            // object limbo/dead and appended to the shared pending queue.
+            self.notify_pointer_expired(stable_id, context);
+            self.notify_pointer_expired(stable_id, context);
+            self.smudge_grid.as_mut().unwrap().finish_uninit(stable_id);
+            self.substrate.pending_delete.push(stable_id);
+            #[cfg(test)]
+            self.trace_lifecycle_for_test(LifecycleTestEvent::PendingDeleteQueued { stable_id });
+            return;
+        }
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
             return;
         };
@@ -4066,6 +4184,13 @@ impl Simulation {
     }
 
     fn pending_object_is_ready(&self, stable_id: u64) -> bool {
+        if let Some(smudge) = self
+            .smudge_grid
+            .as_ref()
+            .and_then(|grid| grid.object(stable_id))
+        {
+            return !smudge.object_alive();
+        }
         if let Some(entity) = self.substrate.entities.get(stable_id) {
             return !entity.lifecycle.object_alive;
         }
@@ -4090,7 +4215,25 @@ impl Simulation {
         true
     }
 
-    fn finalize_and_remove_common(&mut self, stable_id: u64) {
+    /// Shared physical destructor owner, used by deferred retirement and
+    /// constructor-complete limbo disposal. Neither caller repeats UnInit or
+    /// books a loss here. Rules stay available to synchronous expiry receivers.
+    pub(super) fn finalize_and_remove_common(
+        &mut self,
+        stable_id: u64,
+        context: UninitContext<'_>,
+    ) {
+        if self
+            .smudge_grid
+            .as_ref()
+            .and_then(|grid| grid.object(stable_id))
+            .is_some()
+        {
+            // Scalar Smudge6B4FA0 sends its third removed=true expiry at
+            //6B4FC6 before leaving Smudge/Object registries. Place's cells
+            // survive this destructor and Building Mark(0).
+            self.notify_pointer_expired(stable_id, context);
+        }
         if self
             .substrate
             .entities
@@ -4101,6 +4244,32 @@ impl Simulation {
             //(+6A0) before the delegated Techno destructor removes tracking.
             self.sound_events
                 .push(super::SimSoundEvent::ObjectSoundReleased { owner: stable_id });
+            // Building43BD67 broadcasts removed=true after sound release,
+            // even when a limbo object never reached UnInit. The original
+            // constructed-cancel controls execute this under Factory's
+            // A8E7AC bracket; the ordinary late drain repeats it after UnInit.
+            self.notify_pointer_expired(stable_id, context);
+            // Building43BDC5 -> ClearAnimSlot451E40(-2) synchronously deletes
+            // ordinary21slots, then43BDE0 destroys the distinct eight fire
+            // Anims, before Techno tracking removal43BF34. Whole original
+            // UnInit/drain control: building_death_anims joined evidence,
+            // gamemd SHA1cdd1180e49024fbda8ad568caac2e86e.
+            self.clear_all_building_anim_slots(stable_id);
+            self.clear_building_damage_fire_slots(stable_id, None);
+            // Active-frame Building43BEF5..43BF11 compares Health+6C with
+            // the retained AI sample+544 after its slot/fire destructors.
+            // A mismatch dirties power only, without publishing a sample or
+            // touching radar, before Remove_Tracking43BF34. Original joined
+            // building_death_anims: normal fatal0/38 versus direct0/0.
+            let unsampled_owner = self.substrate.entities.get(stable_id).and_then(|entity| {
+                entity
+                    .building_power_health_sample()
+                    .filter(|sample| *sample != entity.health.current)
+                    .map(|_| entity.owner())
+            });
+            if let Some(owner) = unsampled_owner {
+                self.invalidate_house_power(owner, false);
+            }
         }
         // The Techno destructors (`0x0041410B`, `0x0043BF34`, `0x00517E2E`,
         // `0x00735816`) call Remove_Tracking.
@@ -4123,7 +4292,6 @@ impl Simulation {
             self.destroy_anim_with_context(anim, None);
         }
         self.destroy_building_light(stable_id);
-        self.clear_building_damage_fire_slots(stable_id, None);
         if self.substrate.anims.contains_key(stable_id) {
             self.clear_damage_fire_anim_reference(stable_id);
             self.conceal_anim(stable_id);
@@ -4158,6 +4326,10 @@ impl Simulation {
                 .push(LifecycleOutput::LineTrailDetached { stable_id });
         }
         let wave = self.waves.remove(stable_id);
+        let smudge = self
+            .smudge_grid
+            .as_mut()
+            .and_then(|grid| grid.finalize_remove(stable_id));
         if let Some(wave) = wave.as_ref()
             && let Some(owner_id) = wave.owner_id
             && self.active_wave_links.get(&owner_id) == Some(&stable_id)
@@ -4181,6 +4353,7 @@ impl Simulation {
                 + usize::from(terrain.is_some())
                 + usize::from(projectile.is_some())
                 + usize::from(wave.is_some())
+                + usize::from(smudge.is_some())
                 <= 1,
             "object id {stable_id} was removed from multiple stores"
         );
@@ -4221,7 +4394,7 @@ impl Simulation {
                 .pending_delete
                 .retain(|&queued| queued != stable_id);
             self.release_slave_links_at_destruction(stable_id, rules, registry);
-            self.finalize_and_remove_common(stable_id);
+            self.finalize_and_remove_common(stable_id, UninitContext::new(rules, registry));
         }
     }
 

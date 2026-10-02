@@ -489,7 +489,7 @@ class JoinedFixture:
     FirstContact/Transmit/receivers, Anim allocation/constructor/Unlimbo/Start/AI
     and scalar deletion/destructors execute. No gameplay call is answered.
     """
-    def __init__(self, inputs, seed=31):
+    def __init__(self, inputs, seed=31, *, arena_size=0x200000):
         from tools.spatial_oracle.refinery_dock import make_dock_fixture, HOUSE
         from tools.rules_oracle.bridge_anim_lists import HEAP
         from tools.spatial_oracle.building_slot_replacement import VECTORS
@@ -507,8 +507,11 @@ class JoinedFixture:
             u.mem_write(address, bytes(inputs.u.mem_read(address, size)))
         u.mem_write(0x8871E0, dwords(inputs.rules))
         self.types, self.rules = inputs.types, inputs.rules
-        u.mem_map(JOINED_MEMORY, 0x200000)
+        if arena_size < 0x200000 or arena_size % 0x1000:
+            raise ValueError('Joined arena must be page-aligned and at least 2MiB')
+        u.mem_map(JOINED_MEMORY, arena_size)
         self.heap = JOINED_MEMORY + 0x20000
+        self.heap_end = JOINED_MEMORY + arena_size
         self.vbuf = JOINED_MEMORY + 0x8000
         self.events, self.draws, self.advances, self.pending = [], [], [], []
         self.allocations, self.executed = [], set()
@@ -562,6 +565,13 @@ class JoinedFixture:
         u.reg_write(UC_X86_REG_EAX, value & 0xFFFFFFFF)
         u.reg_write(UC_X86_REG_EIP, self.read32(sp))
         u.reg_write(UC_X86_REG_ESP, sp + 4 + cleanup)
+
+    def allocate(self, size):
+        """One arena owner for fixture priors and original operator-new calls."""
+        pointer = self.heap
+        self.heap += (size + 15) & ~15
+        assert self.heap < self.heap_end
+        return pointer
 
     def anim_type_identity(self, pointer):
         # AbstractType ctor410812/41088D..4108B7 retains the canonical ID in
@@ -627,9 +637,8 @@ class JoinedFixture:
             self.events.append(dict(event='presentation_boundary', address=pc, frame=frame))
             self.ret(cleanup=PRESENTATION[pc])
         elif pc == 0x7C8E17:
-            size, pointer = self.read32(sp + 4), self.heap
-            self.heap += (size + 15) & ~15
-            assert self.heap < JOINED_MEMORY + 0x200000
+            size = self.read32(sp + 4)
+            pointer = self.allocate(size)
             self.allocations.append(dict(pointer=pointer, size=size, frame=frame))
             self.ret(pointer)
         elif pc == 0x7C8B3D:

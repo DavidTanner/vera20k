@@ -122,6 +122,195 @@ fn factory_constructor_start_cancel_and_promotion_own_scenario_words() {
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 }
 
+/// Original Factory4C9C70 constructs GAPOWR750/sample544=0 in limbo.
+/// Abandon4C9FF0 -> scalar459F20 -> Building43BCF0 runs under A8E7AC=1;
+/// 43BF11 dirties power alone, with no UnInit/loss/deferred deletion or RNG.
+/// Source: building_death_anims constructed-cancel original controls,
+/// active gamemd SHA1cdd1180e49024fbda8ad568caac2e86e.
+#[test]
+fn cancelled_constructor_building_runs_shared_destructor_without_uninit() {
+    use crate::sim::power_system::PowerState;
+    use serde_json::{Value, json};
+
+    // Retained physical scenario layers, parsed by the production reader.
+    let corpus: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/building_death_anims_limbo_cancel.json"
+    ))
+    .unwrap();
+    let mut ini = IniFile::from_str("[BuildingTypes]\n0=GAPOWR\n[VehicleTypes]\n0=MTNK\n");
+    for layer in corpus["death_layers"].as_array().unwrap() {
+        if let Some(sections) = layer["physical_input_sections"].as_object() {
+            let mut text = String::new();
+            for (section, keys) in sections {
+                if let Some(keys) = keys.as_object() {
+                    text.push_str(&format!("[{section}]\n"));
+                    for (key, value) in keys {
+                        text.push_str(&format!("{key}={}\n", value.as_str().unwrap()));
+                    }
+                }
+            }
+            ini.merge(&IniFile::from_str(&text));
+        }
+    }
+    let rules = RuleSet::from_ini(&ini).unwrap();
+    assert_eq!(corpus["controls"].as_array().unwrap().len(), 5);
+    for control in corpus["controls"].as_array().unwrap() {
+        let cancellation = control["boundaries"].as_array().unwrap().last().unwrap();
+        let before = &cancellation["before"];
+        let after = &cancellation["after"];
+        let mut sim = Simulation::with_seed(control["input"]["seed"].as_u64().unwrap());
+        let owner = sim.intern("Americans");
+        sim.houses.insert(
+            owner,
+            crate::sim::house_state::HouseState::new(
+                owner,
+                0,
+                None,
+                control["input"]["owner_human"].as_bool().unwrap(),
+                5000,
+                10,
+            ),
+        );
+        arm_build_via(
+            &mut sim,
+            &rules,
+            "Americans",
+            "GAPOWR",
+            ProductionCategory::Building,
+            0,
+        );
+        let object = sim
+            .production
+            .factory_shadow
+            .view(owner, ProductionCategory::Building)
+            .unwrap()
+            .object
+            .unwrap()
+            .entity_id
+            .unwrap();
+        let building = sim.substrate.entities.get(object).unwrap();
+        let ctor = control["boundaries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|boundary| boundary["label"] == "held_ctor_complete_gapowr")
+            .unwrap();
+        assert_eq!(
+            i64::from(building.health.current),
+            ctor["state"]["building"]["health"].as_i64().unwrap()
+        );
+        assert_eq!(
+            i64::from(building.building_power_health_sample().unwrap()),
+            ctor["state"]["building"]["sampled_health"]
+                .as_i64()
+                .unwrap()
+        );
+        assert!(building.lifecycle.in_limbo && !building.lifecycle.cell_marked);
+        assert!(!building.in_logic_vector);
+        if control["input"]["equal_sample_control"] == true {
+            // Same isolated health-sampling rung as the native equality control;
+            // a held product receives no normal AI turn.
+            sim.sample_building_health_for_house_update(object);
+        }
+        let observer = if control["input"]["targeted_observer_control"] == true {
+            // Explicit callback prior, not player acquisition of a limbo target.
+            // Only matching Target, active45 timer and constructor Techno state
+            // are required by the compared expiry arm; Unlimbo is not compared.
+            let observer = sim
+                .construct_object_limbo_at_height("MTNK", "Americans", 10, 11, 0, 0, &rules)
+                .unwrap();
+            sim.assign_target_represented(
+                observer,
+                Some(crate::sim::combat::TargetKind::Entity(object)),
+                Some(&rules),
+            )
+            .unwrap();
+            Some(observer)
+        } else {
+            None
+        };
+        assert_eq!(
+            i64::from(
+                sim.substrate
+                    .entities
+                    .get(object)
+                    .unwrap()
+                    .building_power_health_sample()
+                    .unwrap()
+            ),
+            before["building"]["sampled_health"].as_i64().unwrap()
+        );
+        let mut state = serde_json::to_value(PowerState::default()).unwrap();
+        state["power_dirty"] = json!(before["house"]["dirty"][0] == 1);
+        state["radar_dirty"] = json!(before["house"]["dirty"][1] == 1);
+        sim.power_states
+            .insert(owner, serde_json::from_value(state).unwrap());
+        // The native reader fixture also has an admitted plant and MTNK. Adopt
+        // its declared pre-cancel full cursors; their construction is outside
+        // this selected-field cancellation comparison.
+        sim.scenario_rng =
+            SimRng::from_native_state_hex_for_test(before["rng"]["scenario"].as_str().unwrap());
+        sim.main_rng =
+            SimRng::from_native_state_hex_for_test(before["rng"]["main"].as_str().unwrap());
+        sim.mapgen_rng =
+            SimRng::from_native_state_hex_for_test(before["rng"]["mapgen"].as_str().unwrap());
+        sim.session.binary_frame = before["frame"].as_u64().unwrap() as u32;
+
+        assert!(cancel_by_type_for_owner(
+            &mut sim,
+            &rules,
+            "Americans",
+            "GAPOWR",
+            false
+        ));
+        assert!(sim.substrate.entities.get(object).is_none());
+        let state = serde_json::to_value(&sim.power_states[&owner]).unwrap();
+        assert_eq!(
+            state["power_dirty"],
+            after["house"]["dirty"][0] == 1,
+            "43BF11 unsampled/equal ctor health"
+        );
+        assert_eq!(
+            state["radar_dirty"],
+            after["house"]["dirty"][1] == 1,
+            "destructor preserves radar dirty"
+        );
+        assert_eq!(sim.houses[&owner].tracking.buildings(), 0);
+        assert_eq!(sim.houses[&owner].stats.units_lost(), 0);
+        assert_eq!(sim.houses[&owner].stats.buildings_lost(), 0);
+        assert!(sim.substrate.pending_delete.is_empty());
+        assert!(!sim.scenario_init_priority_active());
+        for (name, rng) in [
+            ("scenario", &sim.scenario_rng),
+            ("main", &sim.main_rng),
+            ("mapgen", &sim.mapgen_rng),
+        ] {
+            assert_eq!(
+                rng.native_state_hex(),
+                after["rng"][name].as_str().unwrap(),
+                "cancel full {name} state"
+            );
+        }
+        if let Some(observer) = observer {
+            let actor = sim.substrate.entities.get(observer).unwrap();
+            assert!(actor.attack_target.is_none(), "43BD67 expiry clears Target");
+            assert_eq!(
+                [
+                    i64::from(actor.passive_scan_timer.start_frame),
+                    i64::from(actor.passive_scan_timer.duration)
+                ],
+                [
+                    after["observer"]["passive_scan_timer"][0].as_i64().unwrap(),
+                    after["observer"]["passive_scan_timer"][2].as_i64().unwrap()
+                ],
+                "A8E7AC preserves the active passive scan timer"
+            );
+        }
+        assert!(sim.sound_events.iter().any(|event| matches!(event,
+        SimSoundEvent::ObjectSoundReleased { owner } if *owner == object)));
+    }
+}
+
 /// `HouseClass::CanBuild @ 0x004F7870` caps a type's TechLevel at the
 /// house's own (`HouseClass+0x1D4`), which the match options set.
 #[test]

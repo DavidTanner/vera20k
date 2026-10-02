@@ -378,7 +378,7 @@ pub(crate) fn detach_all(sim: &mut Simulation, rules: Option<&RuleSet>, building
                 .abandon_building_factory(building)
                 .and_then(|abandoned| abandoned.entity_id);
             if let Some(object) = object {
-                let _ = sim.discard_constructed_limbo(object);
+                let _ = sim.discard_constructed_limbo(object, rules);
             }
         }
     }

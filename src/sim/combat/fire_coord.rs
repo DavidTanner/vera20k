@@ -274,13 +274,18 @@ fn fire_coordinate_base<'r>(
     // location. The building FLH arm used to start from the un-shifted
     // location, which put every stock defence's shot 128 leptons off on both
     // axes.
-    let base_shift = if snap.category == EntityCategory::Structure {
-        128
-    } else {
-        0
+    let location = crate::sim::components::DriveCoord {
+        x: i32::from(snap.rx) * 256 + snap.sub_x.to_num::<i32>(),
+        y: i32::from(snap.ry) * 256 + snap.sub_y.to_num::<i32>(),
+        z: source_z,
     };
-    let source_x = (i32::from(snap.rx) * 256 + snap.sub_x.to_num::<i32>()).wrapping_sub(base_shift);
-    let source_y = (i32::from(snap.ry) * 256 + snap.sub_y.to_num::<i32>()).wrapping_sub(base_shift);
+    let base = if snap.category == EntityCategory::Structure {
+        crate::sim::movement::ground_pose::building_render_order_parts(location, false, false).0
+    } else {
+        location
+    };
+    let source_x = base.x;
+    let source_y = base.y;
 
     let body_facing16 = snap.hull_facing.current(binary_frame);
     let aim_facing16 = snap

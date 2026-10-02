@@ -26,6 +26,18 @@
 //! natively; `Find_Path` answered with the one-step route), replayed by
 //! `building_sale_oracle_tests`.
 //!
+//! Escapes retain one call-scoped DWORD A8E7AC owner through Unlimbo,
+//! Scatter and synchronous Walk: fatal crew443141..443288, absorbed
+//! passengers442EDE..442FFC, dying unit passengers738030..7381A8. Sale
+//! crew instead lowers it44A74E before Scatter44A768 and raises it only
+//! for QueueMove44A76E..44A794. First building placement has explicit
+//! priority=false; Unlimbo reads the live counter for its second placement.
+//! The shared entry owner preserves the independent raw-owner and earlier
+//! Building/wall gates. Original comparisons are in
+//! `tools/spatial_oracle/infantry_scatter_entry_priority.json` and the joined
+//! fatal `building_death_anims_joined.json`; the latter includes original
+//! CRT48E480 initialization of the five89E9F0 subcell offsets.
+//!
 //! RESIDUALS:
 //! - A second SpawnSurvivors after Limbo: DestructionEffects arms the death
 //!   timer (`+0x528`) at 0 for an `Explodes=` type (TechnoType `+0xD15`) or a
@@ -77,21 +89,6 @@
 //!     grounds it under its XY. Effect: a few leptons of height until it
 //!     moves. Frequency: a transport dying off-centre on a slope.
 //!
-//!   - The `[0x00A8E7AC]` bracket (`0x00738030..0x007381A1`, and
-//!     SpawnSurvivors' `0x00442EDE..0x00443288`) stays raised through
-//!     Scatter's immediate Walk Process. Of the flag's 292 references,
-//!     triaged by function, that Process reaches two reads, both in
-//!     `InfantryClass::Can_Enter_Cell`: a cell
-//!     outside the usable map area (`0x0051C144`, else code 7) and a
-//!     non-allied occupant, which the bracket counts as allied
-//!     (`0x0051C58D`, else 5, 6 or, for an unarmed mover, 7). VERA's Process
-//!     runs both unbracketed. The flag's gated auto-fire re-arm
-//!     (`0x0070F79E`) is out of reach: only the Deploy end of
-//!     `DoType_Sequencer` (`0x00520B57`) and the Teleport timer
-//!     (`0x00719C29`) call it. Trigger: a Scatter destination (an adjacent
-//!     cell) holding an enemy object, or off the usable area. Effect: that
-//!     escapee's first path. Frequency: uncommon. Risk: its route and walk
-//!     draws. Reading only: the oracle answers the Walk Process.
 //!   - The selection hand-over reads `HouseClass::IsHumanPlayer
 //!     @ 0x0050B6F0` as "owned by the local player". That is its skirmish
 //!     arm. In a campaign it admits any house with IsHuman (`+0x1EC`) or
@@ -113,9 +110,10 @@
 //!     an open-topped transport dying with a passenger of another house.
 //!     Frequency: rare. Risk: that escapee's Doing.
 //!
-//!   Each escapee spends Scatter's RandomRanged(0,4) and then its immediate
-//!   Walk Process's draws (the head's RandomRanged(0,3) from the centre
-//!   spot); the priority placement and the kill paths draw nothing.
+//!   Each escapee spends Scatter's RandomRanged(0,4). Immediate Walk can
+//!   place a center request ordinarily; a raised A8E7AC suppresses that draw.
+//!   Initialized48E480 offsets and explicit center/corner controls are
+//!   retained in the crew-priority evidence; cold offsets are superseded.
 //! - A crewman on a cell the path grid marks unwalkable loses its Scatter
 //!   destination in the immediate Process (the movement owner refuses a
 //!   blocked start cell); only seen with a building placed partly on such
@@ -123,13 +121,9 @@
 //! - House IsToDie (`+0x1F6`, set by `0x004FC980`): VERA has no resign
 //!   countdown, so it never suppresses the survivor roll. Frequency: only a
 //!   resigning house's buildings.
-//! - A survivor's Doing right after Unlimbo decides whether Scatter's table
-//!   gate admits it (`0x0051D1AA`); VERA's fresh infantry passes it. Needs a
-//!   breakpoint on `0x0051D0D0` with a survivor.
-//! - The Unlimbo usable-area arm: a vehicle crewman whose cell lies outside
-//!   the usable map area places with priority (no occupancy test, no draw;
-//!   `0x0051E06B`, `0x00578460`); VERA always runs the ordinary placement.
-//!   Trigger: a vehicle dying on the unusable map rim. Rare.
+//! - Original whole GAPOWR fatal/517A50/51DFF0 controls establish fresh E1
+//!   Doing=-1 and Scatter admission at51D1AA. Different preexisting passenger
+//!   Doing states remain bounded by their own Scatter controls.
 //! - HijackerType (Unit `+0x338`): VERA has no hijacking, so the always-exit
 //!   hijacker arm is unreachable.
 //! - The crewman takes the vehicle's tag (`0x006E57C0`/`0x005F5B50`): VERA
@@ -203,13 +197,15 @@ fn crew_escapes(roll: u32, crew_escape: NativeF64Bits) -> bool {
 enum CrewUnlimbo {
     /// An infantryman on the floor: PlaceInfantryInCell on the ground plane at
     /// `request` inside `cell`, then the chosen spot on the cell floor `z`.
-    /// `priority` is the caller's `[0x00A8E7AC]` bracket, which selects the
-    /// priority arm (no occupancy test, no draw, `0x00481437`).
+    /// A building caller places first with explicit priority=false. Unlimbo
+    /// then places the returned coordinate using the live A8E7AC counter;
+    /// that second priority placement spends no draw. Vehicle crew and
+    /// passengers enter directly through Unlimbo instead.
     Place {
         cell: (u16, u16),
         z: u8,
         request: (SimFixed, SimFixed),
-        priority: bool,
+        caller_places_first: bool,
     },
     /// A coordinate above the floor (`0x0051E01B`), or any Unit's: no
     /// placement and no draw; the object keeps the exact coordinate and the
@@ -404,47 +400,58 @@ impl Simulation {
         cell: (u16, u16),
         c4_source: Option<u64>,
     ) -> bool {
-        let Some(id) = self.construct_crew(rules, crew, owner, self.survivor_unlimbo(cell)) else {
+        let unlimbo = self.survivor_unlimbo(cell);
+        let (_, _, z) = unlimbo.cell_level();
+        let Some(id) = self.construct_crew_limbo(rules, crew, owner, cell, z) else {
             return false;
         };
-        let strength = rules.object(crew).map_or(0, |object| object.strength);
-        let health = self.scenario_rng.next_range_i32_inclusive(5, strength);
-        self.set_crew_health(id, health);
-        self.scatter_crew(rules, registry, id);
-
-        // `HouseClass::IsAlliedWith(object) @ 0x004F9AF0` on the building owner.
-        let owner_name = self.interner.resolve(owner);
-        let enemy_planter = c4_source.filter(|&planter| {
-            self.substrate.entities.get(planter).is_some_and(|planter| {
-                !crate::map::houses::is_allied_with(
-                    &self.house_alliances,
-                    owner_name,
-                    self.interner.resolve(planter.owner()),
-                )
-            })
-        });
-        let mission = if enemy_planter.is_some() {
-            MissionType::Attack
-        } else if self.owner_is_human(owner) {
-            MissionType::Move
-        } else {
-            MissionType::Hunt
-        };
-        self.queue_crew_mission(id, mission);
-        if let Some(planter) = enemy_planter {
-            // Infantry vt+0x3C8 (`0x0051B1F0`) over TechnoClass::Assign_Target.
-            let target = Some(crate::sim::combat::TargetKind::Entity(planter));
-            let commits = crate::sim::mission::concrete_effects::assign_target_commits(
-                &self.substrate.entities,
-                target,
-            );
-            if let Some(survivor) = self.substrate.entities.get_mut(id) {
-                crate::sim::mission::concrete_effects::represented_assign_target_admitted(
-                    survivor, target, commits,
-                );
+        //443141 raises A8E7AC after the constructor and before the caller's
+        //ordinary481180. It remains raised through Scatter/Walk and the
+        //mission queue, and is decremented at443288, including failed exits.
+        self.with_scenario_init_priority(|sim| {
+            if !sim.unlimbo_crew(rules, id, unlimbo, None) {
+                sim.discard_constructed_limbo(id, Some(rules));
+                return false;
             }
-        }
-        true
+            let strength = rules.object(crew).map_or(0, |object| object.strength);
+            let health = sim.scenario_rng.next_range_i32_inclusive(5, strength);
+            sim.set_crew_health(id, health);
+            sim.scatter_crew(rules, registry, id);
+
+            // `HouseClass::IsAlliedWith(object) @ 0x004F9AF0` on the building owner.
+            let owner_name = sim.interner.resolve(owner);
+            let enemy_planter = c4_source.filter(|&planter| {
+                sim.substrate.entities.get(planter).is_some_and(|planter| {
+                    !crate::map::houses::is_allied_with(
+                        &sim.house_alliances,
+                        owner_name,
+                        sim.interner.resolve(planter.owner()),
+                    )
+                })
+            });
+            let mission = if enemy_planter.is_some() {
+                MissionType::Attack
+            } else if sim.owner_is_human(owner) {
+                MissionType::Move
+            } else {
+                MissionType::Hunt
+            };
+            sim.queue_crew_mission(id, mission);
+            if let Some(planter) = enemy_planter {
+                // Infantry vt+0x3C8 (`0x0051B1F0`) over TechnoClass::Assign_Target.
+                let target = Some(crate::sim::combat::TargetKind::Entity(planter));
+                let commits = crate::sim::mission::concrete_effects::assign_target_commits(
+                    &sim.substrate.entities,
+                    target,
+                );
+                if let Some(survivor) = sim.substrate.entities.get_mut(id) {
+                    crate::sim::mission::concrete_effects::represented_assign_target_admitted(
+                        survivor, target, commits,
+                    );
+                }
+            }
+            true
+        })
     }
 
     /// The absorbed passengers' exit, shared by SpawnSurvivors' Phase A
@@ -518,70 +525,74 @@ impl Simulation {
         else {
             return;
         };
-        if infantry {
-            let cell = cell.map_or(RawCellKey::Dummy, |(x, y)| RawCellKey::Real(x, y));
-            let _overwritten = bump_crush::place_infantry_in_native_cell(
-                &self.substrate.raw_cell_occupation,
-                cell,
-                MovementLayer::Ground,
-                SimFixed::from_num(SURVIVOR_REQUEST_X),
-                SimFixed::from_num(SURVIVOR_REQUEST_Y),
-                &mut self.scenario_rng,
-            );
-        }
-        let Some(building) = self.substrate.entities.get(building_id) else {
-            return;
-        };
-        let owner = building.owner();
-        let on_bridge = building.on_bridge;
-        // `0x00442F3C..0x00442F63`: the building's `+0x388` Current() as a
-        // rounded DirType is the Unlimbo direction.
-        let frame = self.session.binary_frame;
-        let facing = building.body_facing_dir(frame);
-        let position = building.position.clone();
-        let sub_cell =
-            infantry.then(|| bump_crush::priority_sub_cell(position.sub_x, position.sub_y));
-        // The dying building's expiry broadcast already cleared the
-        // passenger's transporter link; the cargo list still held it.
-        if let Some(entity) = self.substrate.entities.get_mut(passenger) {
-            entity.passenger_role = crate::sim::passenger::PassengerRole::None;
-            entity.on_bridge = on_bridge;
-            entity.sub_cell = sub_cell;
-        }
-        let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(sub_cell);
-        let revealed = !no_survivor
-            && matches!(
-                self.try_reveal_entity_with_context(
-                    passenger,
-                    RevealRequest {
-                        position: RevealPosition {
-                            rx: position.rx,
-                            ry: position.ry,
-                            z: position.z,
-                            sub_x,
-                            sub_y,
+        //SpawnSurvivors442EDE..442FFC/Selling44A47A..44A589: the bracket includes
+        //the caller's placement, Unlimbo, Scatter/Walk and failed deletion.
+        self.with_scenario_init_priority(|sim| {
+            if infantry {
+                let cell = cell.map_or(RawCellKey::Dummy, |(x, y)| RawCellKey::Real(x, y));
+                let _overwritten = bump_crush::place_infantry_in_native_cell(
+                    &sim.substrate.raw_cell_occupation,
+                    cell,
+                    MovementLayer::Ground,
+                    SimFixed::from_num(SURVIVOR_REQUEST_X),
+                    SimFixed::from_num(SURVIVOR_REQUEST_Y),
+                    &mut sim.scenario_rng,
+                );
+            }
+            let Some(building) = sim.substrate.entities.get(building_id) else {
+                return;
+            };
+            let owner = building.owner();
+            let on_bridge = building.on_bridge;
+            // `0x00442F3C..0x00442F63`: the building's `+0x388` Current() as a
+            // rounded DirType is the Unlimbo direction.
+            let frame = sim.session.binary_frame;
+            let facing = building.body_facing_dir(frame);
+            let position = building.position.clone();
+            let sub_cell =
+                infantry.then(|| bump_crush::priority_sub_cell(position.sub_x, position.sub_y));
+            // The dying building's expiry broadcast already cleared the
+            // passenger's transporter link; the cargo list still held it.
+            if let Some(entity) = sim.substrate.entities.get_mut(passenger) {
+                entity.passenger_role = crate::sim::passenger::PassengerRole::None;
+                entity.on_bridge = on_bridge;
+                entity.sub_cell = sub_cell;
+            }
+            let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(sub_cell);
+            let revealed = !no_survivor
+                && matches!(
+                    sim.try_reveal_entity_with_context(
+                        passenger,
+                        RevealRequest {
+                            position: RevealPosition {
+                                rx: position.rx,
+                                ry: position.ry,
+                                z: position.z,
+                                sub_x,
+                                sub_y,
+                            },
+                            placement: PlacementEvidence::MarkSucceeded,
+                            logic_eligible: true,
                         },
-                        placement: PlacementEvidence::MarkSucceeded,
-                        logic_eligible: true,
-                    },
-                    UninitContext::with_rules(rules),
-                ),
-                RevealOutcome::Revealed { .. }
-            );
-        if !revealed {
-            self.uninit_with_rules(passenger, rules);
-            return;
-        }
-        // Unlimbo's body snap (`0x006F6DAA`) follows the successful Reveal.
-        if let Some(entity) = self.substrate.entities.get_mut(passenger) {
-            entity.body_facing.snap(u16::from(facing) << 8, frame);
-        }
-        if infantry {
-            self.scatter_crew(rules, registry, passenger);
-        }
-        if !self.owner_is_human(owner) {
-            self.queue_crew_mission(passenger, MissionType::Hunt);
-        }
+                        UninitContext::with_rules(rules),
+                    ),
+                    RevealOutcome::Revealed { .. }
+                );
+            if !revealed {
+                sim.uninit_with_rules(passenger, rules);
+                return;
+            }
+            // Unlimbo's body snap (`0x006F6DAA`) follows the successful Reveal.
+            if let Some(entity) = sim.substrate.entities.get_mut(passenger) {
+                entity.body_facing.snap(u16::from(facing) << 8, frame);
+            }
+            if infantry {
+                sim.scatter_crew(rules, registry, passenger);
+            }
+            if !sim.owner_is_human(owner) {
+                sim.queue_crew_mission(passenger, MissionType::Hunt);
+            }
+        });
     }
 
     /// The crew block of `UnitClass::ReceiveDamage` (`0x007381BC..0x0073838A`),
@@ -649,7 +660,7 @@ impl Simulation {
                 cell: (position.rx, position.ry),
                 z: position.z,
                 request: (position.sub_x, position.sub_y),
-                priority: false,
+                caller_places_first: false,
             }
         };
 
@@ -809,79 +820,83 @@ impl Simulation {
             return;
         }
 
-        // `0x00738047..0x0073809F`: the unit's XY at the Z of its cell's
-        // CellClass::GetCoords (`0x00486840`, the floor at the cell centre),
-        // or on a bridge the unit's own coordinate.
-        let terrain = self.resolved_terrain.as_ref();
-        let path_grid = self.path_grid();
-        let level = terrain
-            .and_then(|terrain| terrain.cell(rx, ry))
-            .map_or(0, |cell| cell.level);
-        let coord_z = if on_bridge {
-            location.z
-        } else {
-            let centre = [i32::from(rx) * 256 + 128, i32::from(ry) * 256 + 128];
-            ground_surface_z_at(centre, false, terrain, path_grid).unwrap_or(location.z)
-        };
-        let floor = ground_surface_z_at([location.x, location.y], false, terrain, path_grid);
-        let unlimbo = if infantry && floor == Some(coord_z) {
-            CrewUnlimbo::Place {
-                cell: (rx, ry),
-                z: level,
-                request: (sub_x, sub_y),
-                priority: true,
-            }
-        } else {
-            CrewUnlimbo::Exact {
-                rx,
-                ry,
-                z: if on_bridge { unit_z } else { level },
-                sub_x,
-                sub_y,
-                on_bridge,
-            }
-        };
-        if let Some(locomotor) = self
-            .substrate
-            .entities
-            .get_mut(passenger)
-            .and_then(|entity| entity.locomotor.as_mut())
-        {
-            locomotor.layer = MovementLayer::Ground;
-        }
-        // `0x007380EC..0x007380F4`: a refused Unlimbo kills.
-        if !self.unlimbo_crew(rules, passenger, unlimbo, Some(facing)) {
-            self.record_kill_and_uninit(passenger, dying.attacker, rules);
-            return;
-        }
-
-        // `0x00738104..0x0073812A`: Assign_Target(NULL).
-        if open_topped
-            && passenger_owner != unit_owner
-            && let Some(entity) = self.substrate.entities.get_mut(passenger)
-        {
-            crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
-        }
-        // `0x00738130..0x0073813D`: Scatter(&EmptyCoord, 1, 0).
-        if infantry {
-            self.scatter_crew(rules, registry, passenger);
-        }
-        // `0x00738143..0x0073816E`: a computer passenger joins the unit's Team
-        // (`TeamClass::Add_Member @ 0x006EA500`), or Hunts without one.
-        if !self.owner_is_human(passenger_owner) {
-            match self.team_script_vm.team_for_member(unit_id) {
-                Some((team_id, _)) => {
-                    self.team_add_member(team_id, passenger, false, rules, registry);
+        //738030..7381A8: preserve the counter through every successful or
+        //failed Unlimbo exit, including Scatter's immediate Walk Process.
+        self.with_scenario_init_priority(|sim| {
+            // `0x00738047..0x0073809F`: the unit's XY at the Z of its cell's
+            // CellClass::GetCoords (`0x00486840`, the floor at the cell centre),
+            // or on a bridge the unit's own coordinate.
+            let terrain = sim.resolved_terrain.as_ref();
+            let path_grid = sim.path_grid();
+            let level = terrain
+                .and_then(|terrain| terrain.cell(rx, ry))
+                .map_or(0, |cell| cell.level);
+            let coord_z = if on_bridge {
+                location.z
+            } else {
+                let centre = [i32::from(rx) * 256 + 128, i32::from(ry) * 256 + 128];
+                ground_surface_z_at(centre, false, terrain, path_grid).unwrap_or(location.z)
+            };
+            let floor = ground_surface_z_at([location.x, location.y], false, terrain, path_grid);
+            let unlimbo = if infantry && floor == Some(coord_z) {
+                CrewUnlimbo::Place {
+                    cell: (rx, ry),
+                    z: level,
+                    request: (sub_x, sub_y),
+                    caller_places_first: false,
                 }
-                None => self.queue_crew_mission(passenger, MissionType::Hunt),
+            } else {
+                CrewUnlimbo::Exact {
+                    rx,
+                    ry,
+                    z: if on_bridge { unit_z } else { level },
+                    sub_x,
+                    sub_y,
+                    on_bridge,
+                }
+            };
+            if let Some(locomotor) = sim
+                .substrate
+                .entities
+                .get_mut(passenger)
+                .and_then(|entity| entity.locomotor.as_mut())
+            {
+                locomotor.layer = MovementLayer::Ground;
             }
-        }
-        // `0x00738174..0x00738180`: Select (vtable `+0x14C`).
-        if dying.selected_by_player
-            && let Some(entity) = self.substrate.entities.get_mut(passenger)
-        {
-            entity.selected = true;
-        }
+            // `0x007380EC..0x007380F4`: a refused Unlimbo kills.
+            if !sim.unlimbo_crew(rules, passenger, unlimbo, Some(facing)) {
+                sim.record_kill_and_uninit(passenger, dying.attacker, rules);
+                return;
+            }
+
+            // `0x00738104..0x0073812A`: Assign_Target(NULL).
+            if open_topped
+                && passenger_owner != unit_owner
+                && let Some(entity) = sim.substrate.entities.get_mut(passenger)
+            {
+                crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
+            }
+            // `0x00738130..0x0073813D`: Scatter(&EmptyCoord, 1, 0).
+            if infantry {
+                sim.scatter_crew(rules, registry, passenger);
+            }
+            // `0x00738143..0x0073816E`: a computer passenger joins the unit's Team
+            // (`TeamClass::Add_Member @ 0x006EA500`), or Hunts without one.
+            if !sim.owner_is_human(passenger_owner) {
+                match sim.team_script_vm.team_for_member(unit_id) {
+                    Some((team_id, _)) => {
+                        sim.team_add_member(team_id, passenger, false, rules, registry);
+                    }
+                    None => sim.queue_crew_mission(passenger, MissionType::Hunt),
+                }
+            }
+            // `0x00738174..0x00738180`: Select (vtable `+0x14C`).
+            if dying.selected_by_player
+                && let Some(entity) = sim.substrate.entities.get_mut(passenger)
+            {
+                entity.selected = true;
+            }
+        });
     }
 
     /// `new InfantryClass(type, Owner)` (the TechnoClass constructor's
@@ -897,7 +912,7 @@ impl Simulation {
         let (rx, ry, z) = unlimbo.cell_level();
         let id = self.construct_crew_limbo(rules, crew, owner, (rx, ry), z)?;
         if !self.unlimbo_crew(rules, id, unlimbo, None) {
-            self.discard_constructed_limbo(id);
+            self.discard_constructed_limbo(id, Some(rules));
             return None;
         }
         Some(id)
@@ -939,12 +954,39 @@ impl Simulation {
         let (sub_cell, sub_x, sub_y, on_bridge) = match unlimbo {
             CrewUnlimbo::Place {
                 cell,
-                request,
-                priority,
+                mut request,
+                caller_places_first,
                 ..
             } => {
                 debug_assert!(infantry, "only an infantryman places in a cell");
-                let spot = if priority {
+                if caller_places_first {
+                    let Some(spot) = bump_crush::place_infantry_in_cell(
+                        &self.substrate.raw_cell_occupation,
+                        cell.0,
+                        cell.1,
+                        MovementLayer::Ground,
+                        request.0,
+                        request.1,
+                        &mut self.scenario_rng,
+                    ) else {
+                        return false;
+                    };
+                    request = crate::util::lepton::subcell_lepton_offset(Some(spot));
+                }
+                //51E027 reads A8E7AC. Off the usable area51E06B raises the
+                //explicit placement byte too; neither priority arm draws.
+                let outside_usable_area = self
+                    .resolved_terrain
+                    .as_ref()
+                    .zip(self.playfield_bounds)
+                    .is_some_and(|(terrain, bounds)| {
+                        !crate::sim::cell_rect::retained_cell_is_in_playfield(
+                            terrain.native_cell_identity((cell.0 as i16, cell.1 as i16)),
+                            Some(bounds),
+                            terrain,
+                        )
+                    });
+                let spot = if self.scenario_init_priority_active() || outside_usable_area {
                     bump_crush::priority_sub_cell(request.0, request.1)
                 } else {
                     let Some(spot) = bump_crush::place_infantry_in_cell(
@@ -1018,7 +1060,7 @@ impl Simulation {
                 SimFixed::from_num(SURVIVOR_REQUEST_X),
                 SimFixed::from_num(SURVIVOR_REQUEST_Y),
             ),
-            priority: false,
+            caller_places_first: true,
         }
     }
 
@@ -1077,15 +1119,25 @@ impl Simulation {
             let Some(id) = self.construct_crew_limbo(rules, &crew, owner, cells[0], 0) else {
                 continue;
             };
-            let pick = self.scenario_rng.next_range_i32_inclusive(0, last);
-            let cell = cells[pick as usize];
-            if !self.unlimbo_crew(rules, id, self.survivor_unlimbo(cell), None) {
-                self.discard_constructed_limbo(id);
-                continue;
+            //44A65E..44A74E: the cell pick, ordinary caller placement and
+            //priority Unlimbo run raised. Sale crew Scatter44A768 is outside
+            //that bracket; only QueueMove is rebracketed44A76E..44A794.
+            let escaped = self.with_scenario_init_priority(|sim| {
+                let pick = sim.scenario_rng.next_range_i32_inclusive(0, last);
+                let cell = cells[pick as usize];
+                if !sim.unlimbo_crew(rules, id, sim.survivor_unlimbo(cell), None) {
+                    sim.discard_constructed_limbo(id, Some(rules));
+                    return false;
+                }
+                true
+            });
+            if escaped {
+                self.scatter_crew(rules, registry, id);
+                self.with_scenario_init_priority(|sim| {
+                    sim.queue_crew_mission(id, MissionType::Move)
+                });
+                spawned = true;
             }
-            self.scatter_crew(rules, registry, id);
-            self.queue_crew_mission(id, MissionType::Move);
-            spawned = true;
         }
         spawned
     }

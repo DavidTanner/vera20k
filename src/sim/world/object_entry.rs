@@ -23,6 +23,10 @@ use crate::sim::{movement::locomotor::MovementLayer, occupancy::CellObjectMember
 #[path = "unit_entry_tests.rs"]
 mod unit_entry_tests;
 
+#[cfg(test)]
+#[path = "infantry_entry_priority_tests.rs"]
+mod infantry_entry_priority_tests;
+
 /// The +1AC decision reads live simulation state without borrowing the bridge
 /// publisher. Native Map lookups still stamp the canonical shared Dummy through
 /// its existing interior-mutable owner, in the same order as movement/repair.
@@ -356,6 +360,91 @@ mod tests {
             .unwrap()
             .native_cell_identity((16, 15));
         (sim, rules, cell)
+    }
+
+    #[test]
+    fn infantry_usable_area_admission_is_independent_of_game_mode() {
+        // Original51BF90 has no A8B238 read. Executed counter0/mode0/1
+        // controls both return7 for this otherwise-clear unusable rim.
+        let (mut sim, rules, _) = crate::sim::world::entry_test_fixture::fixture();
+        let mut mover = GameEntity::test_default(90, "ENGINEER", "Americans", 15, 15);
+        mover.owner = sim.intern("Americans");
+        mover.type_ref = sim.intern("ENGINEER");
+        mover.category = EntityCategory::Infantry;
+        mover.in_playfield = true;
+        sim.substrate.entities.insert(mover);
+        sim.playfield_bounds = Some(
+            crate::map::playfield::PlayfieldBounds::from_normalized_local_size(16, 0, 0, 1, 1),
+        );
+        let cell = sim
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .native_cell_identity((16, 15));
+        for mode in [false, true] {
+            sim.session.game_mode_nonzero = mode;
+            assert_eq!(
+                sim.foot_entry_receiver(90, &rules, None)
+                    .unwrap()
+                    .can_enter(
+                        cell,
+                        crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+                    ),
+                Ok(7),
+                "mode {mode} cannot bypass Infantry51C13A..51C161",
+            );
+        }
+    }
+
+    #[test]
+    fn nested_escape_priority_restores_the_callers_cell_admission() {
+        let (mut sim, rules, _) = crate::sim::world::entry_test_fixture::fixture();
+        let mut mover = GameEntity::test_default(90, "ENGINEER", "Americans", 15, 15);
+        mover.owner = sim.intern("Americans");
+        mover.type_ref = sim.intern("ENGINEER");
+        mover.category = EntityCategory::Infantry;
+        mover.in_playfield = true;
+        sim.substrate.entities.insert(mover);
+        sim.playfield_bounds = Some(
+            crate::map::playfield::PlayfieldBounds::from_normalized_local_size(16, 0, 0, 1, 1),
+        );
+        let cell = sim
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .native_cell_identity((16, 15));
+        let probe = |sim: &Simulation| {
+            sim.foot_entry_receiver(90, &rules, None)
+                .unwrap()
+                .can_enter(
+                    cell,
+                    crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+                )
+        };
+        let rng_before = [
+            sim.scenario_rng.logical_state(),
+            sim.main_rng.logical_state(),
+            sim.mapgen_rng.logical_state(),
+        ];
+        assert_eq!(probe(&sim), Ok(7));
+        sim.with_scenario_init_priority(|sim| {
+            assert_eq!(probe(sim), Ok(0));
+            sim.with_scenario_init_priority(|sim| assert_eq!(probe(sim), Ok(0)));
+            assert_eq!(probe(sim), Ok(0), "nested return retains the outer bracket");
+        });
+        assert_eq!(
+            probe(&sim),
+            Ok(7),
+            "outer return restores ordinary admission"
+        );
+        assert_eq!(
+            [
+                sim.scenario_rng.logical_state(),
+                sim.main_rng.logical_state(),
+                sim.mapgen_rng.logical_state(),
+            ],
+            rng_before,
+        );
     }
 
     fn unit_probe(
@@ -1251,6 +1340,24 @@ impl FootEntryReceiver<'_> {
 }
 
 impl Simulation {
+    /// Native A8E7AC INC/DEC bracket, including nested escape callbacks.
+    /// SpawnSurvivors443141..443288 and passenger escape738030..7381A1
+    /// keep this raised through Scatter's immediate Walk/cell queries.
+    pub(crate) fn with_scenario_init_priority<T>(
+        &mut self,
+        action: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let prior = self.scenario_init_priority_depth;
+        self.scenario_init_priority_depth = prior.wrapping_add(1);
+        let result = action(self);
+        self.scenario_init_priority_depth = prior;
+        result
+    }
+
+    pub(crate) fn scenario_init_priority_active(&self) -> bool {
+        self.scenario_init_priority_depth != 0
+    }
+
     /// The live Infantry or Unit receiver `id`, for repeated +1AC queries
     /// against one unchanged world (a Find_Path search).
     pub(crate) fn foot_entry_receiver<'a>(
@@ -1396,11 +1503,16 @@ fn classify_foot_entry<'a>(
             MovementLayer::Ground
         }
     };
-    //Unit73F34C / Infantry51C13A: mode0 alone checks the retained Cell.
+    //Unit73F34C checks only in mode0. Infantry51C13A..161 has no game-mode
+    //read: it skips when3D5 is false or the call-scoped A8E7AC is nonzero.
     //Unit still performs the read/+320 when3D5 is false; Infantry skips it.
     //578540 consumes the pointer directly, without578460's extra lookup.
-    let boundary_refused = !live.sim.session.game_mode_nonzero
-        && (!infantry || e.in_playfield)
+    let check_boundary = if infantry {
+        e.in_playfield && !live.sim.scenario_init_priority_active()
+    } else {
+        !live.sim.session.game_mode_nonzero
+    };
+    let boundary_refused = check_boundary
         && !crate::sim::cell_rect::retained_cell_is_in_playfield(
             cell,
             live.sim.playfield_bounds,
@@ -1670,6 +1782,10 @@ fn classify_foot_entry<'a>(
         {
             return Ok(0);
         }
+        //Infantry51C579..58D's occupant-list alliance override is local to
+        //this gate. Earlier Building/wall checks and the later raw-owner
+        //query use actual House alliances, including during crew escape.
+        let allied = allied || (infantry && live.sim.scenario_init_priority_active());
         if !allied {
             if b.cloak.as_ref().is_some_and(|s| s.state == 2) {
                 entry_result = entry_result.max(1);

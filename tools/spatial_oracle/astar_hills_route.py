@@ -19,7 +19,7 @@ from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_ESP
 from tools.native_oracle import NATIVE_SHA256, provenance, run_checked
 from tools.spatial_oracle import astar_hills_bridge_inputs as inputs
 from tools.spatial_oracle.map_queries import dwords, packed
-from tools.spatial_oracle.anytown_damage.navigation import MAP, sr
+from tools.spatial_oracle.anytown_damage.navigation import MAP, Navigation, sr
 
 
 def sha(raw):
@@ -40,11 +40,7 @@ class Route:
         self.navigation = m.nav_snapshot()
         self.graphs = m.graph_snapshot()
         m.activity = 'pathfinder_setup'
-        # Reuse naval_head_producer's original constructor/resize boundary.
-        m.call(0x49F3A0, this=0, count=10000)
-        m.call(0x42A6D0, this=0x87E8B8, count=1000000)
-        m.call(0x42AC00, this=0x87E8B8, args=(MAP + 0xEC,), count=1000000)
-        m.call(0x42C1C0, this=0x87E8B8, count=10000000)
+        Navigation.setup_pathfinder(m.call)
         self.after_setup = states(m)
         m, u = self.m, self.m.uc
         before = states(m)

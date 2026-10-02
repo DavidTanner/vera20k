@@ -165,7 +165,7 @@ fn spawn_pdplane(
         &mut sim.scenario_rng,
     );
     let Some(edge_cell) = edge_cell else {
-        let _ = sim.discard_constructed_limbo(pdplane_id);
+        let _ = sim.discard_constructed_limbo(pdplane_id, Some(rules));
         log::warn!("Paradrop spawn: native edge helper lacks MapClass authority");
         return false;
     };
@@ -234,7 +234,7 @@ fn spawn_pdplane(
         )
         .is_none()
     {
-        let _ = sim.discard_constructed_limbo(pdplane_id);
+        let _ = sim.discard_constructed_limbo(pdplane_id, Some(rules));
         log::warn!(
             "Paradrop spawn: carrier '{}' rejected edge ({},{})",
             PDPLANE,

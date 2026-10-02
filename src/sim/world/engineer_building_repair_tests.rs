@@ -50,30 +50,10 @@ fn coord(value: &Value) -> DriveCoord {
     }
 }
 
-fn native_rng(value: &Value) -> SimRng {
-    let hex = value.as_str().expect("original Random buffer");
-    let bytes: Vec<u8> = hex
-        .as_bytes()
-        .chunks_exact(2)
-        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
-        .collect();
-    assert_eq!(bytes.len(), 0x3f4);
-    assert_eq!(&bytes[1..4], &[0, 0, 0]);
-    let word = |offset: usize| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
-    // Reuse the RNG owner's persisted representation. Native padding has no
-    // Rust authority; every logical byte, cursor and table word is retained.
-    serde_json::from_value(json!({
-        "disabled": bytes[0], "index_a": word(4) as i32,
-        "index_b": word(8) as i32,
-        "state": (12..0x3f4).step_by(4).map(word).collect::<Vec<_>>(),
-    }))
-    .unwrap()
-}
-
 fn install_rng(sim: &mut Simulation, native: &Value) {
-    sim.main_rng = native_rng(&native["main"]);
-    sim.mapgen_rng = native_rng(&native["mapgen"]);
-    sim.scenario_rng = native_rng(&native["scenario"]);
+    sim.main_rng = SimRng::from_native_state_hex_for_test(native["main"].as_str().unwrap());
+    sim.mapgen_rng = SimRng::from_native_state_hex_for_test(native["mapgen"].as_str().unwrap());
+    sim.scenario_rng = SimRng::from_native_state_hex_for_test(native["scenario"].as_str().unwrap());
 }
 
 fn assert_rng(sim: &Simulation, native: &Value, boundary: &str) {

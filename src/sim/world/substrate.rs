@@ -71,6 +71,7 @@ pub(crate) enum ObjectKind {
     Terrain,
     Projectile,
     Wave,
+    Smudge,
     Entity,
 }
 
@@ -146,6 +147,26 @@ pub(crate) struct ObjectSubstrate {
 }
 
 impl ObjectSubstrate {
+    /// Sole stable-ID allocator, also used while a constructor borrows the
+    /// map and other disjoint substrate fields. Native numeric IDs have their
+    /// separate Scenario cursor; every Rust object shares this namespace.
+    pub(crate) fn allocate_stable_id(counter: &mut u64, entities: &EntityStore) -> u64 {
+        let id = *counter;
+        // Fixtures may insert entities directly without advancing the cursor.
+        #[cfg(test)]
+        let id = {
+            let mut id = id;
+            while entities.contains(id) {
+                id += 1;
+            }
+            id
+        };
+        #[cfg(not(test))]
+        debug_assert!(!entities.contains(id), "stable id {id} is already live");
+        *counter = id.saturating_add(1);
+        id
+    }
+
     /// Fresh substrate for a new world. Counters start at 1 (0 is a reserved
     /// sentinel), matching the pre-consolidation `Simulation::new` initializers.
     pub(crate) fn new() -> Self {

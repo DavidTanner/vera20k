@@ -184,8 +184,9 @@ impl DamageConsequences {
         }
 
         world.admit_death_debris(std::mem::take(&mut effects.voxel_debris));
-        // Explosion animations from the completed receiver transaction.
-        // `AnimClass` instances, not legacy world effects: only the real
+        // Explicit callback-disabled fixtures retain their effect packets;
+        // production death producers already admitted each birth inline.
+        // Remaining effects are `AnimClass` instances, not legacy world effects: only the real
         // constructor reaches `AnimClass::Start @ 0x00424CE0`, which is what
         // plays the art type's `Report=`/`StartSound=`, and only the real
         // AnimType carries its `Translucent=` and `Rate=`.

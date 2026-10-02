@@ -169,7 +169,7 @@ pub(super) fn start_active_production(
         .factory_shadow
         .link_active_entity(holder, stable_id);
     if linked != Some(stable_id) {
-        let _ = sim.discard_constructed_limbo(stable_id);
+        let _ = sim.discard_constructed_limbo(stable_id, Some(rules));
         return None;
     }
     let time_to_build = time_to_build(&time_to_build_inputs(sim, rules, owner_id, category, obj));
@@ -206,7 +206,12 @@ pub(super) fn settle_abandoned(
         }
     }
     if let Some(entity_id) = abandoned.entity_id {
-        let discarded = sim.discard_constructed_limbo(entity_id);
+        // Original4CA0E3..4CA109 brackets the scalar destructor, including
+        // Building43BD67 pointer expiry. Its listener timers cannot draw under
+        // A8E7AC; preserve the caller's bracket through the shared destructor.
+        let discarded = sim.with_scenario_init_priority(|sim| {
+            sim.discard_constructed_limbo(entity_id, Some(rules))
+        });
         debug_assert!(
             discarded,
             "AbandonProduction destroys the held limbo object"
@@ -337,11 +342,14 @@ pub(super) fn active_entity_id(
 }
 fn discard_active_factory_entity(
     sim: &mut Simulation,
+    rules: &RuleSet,
     owner_id: InternedId,
     category: ProductionCategory,
 ) {
     if let Some(stable_id) = active_entity_id(sim, owner_id, category) {
-        let discarded = sim.discard_constructed_limbo(stable_id);
+        let discarded = sim.with_scenario_init_priority(|sim| {
+            sim.discard_constructed_limbo(stable_id, Some(rules))
+        });
         debug_assert!(
             discarded,
             "factory-held object must remain in limbo until delivery"
@@ -457,7 +465,7 @@ pub(super) fn refund_failed_delivery(
     if let Some(type_id) = type_id {
         refund_abandoned(sim, rules, owner, type_id, 0);
     }
-    discard_active_factory_entity(sim, owner, category);
+    discard_active_factory_entity(sim, rules, owner, category);
     advance_after_delivery(sim, rules, owner, category);
 }
 
@@ -483,7 +491,7 @@ impl ReadyFactoryObject {
     /// Primary and autofill overlays are already stamped when the constructor
     /// identity is consumed. Ready removal and successor construction follow.
     pub(super) fn consume_after_wall_stamp(self, sim: &mut Simulation, rules: &RuleSet) -> bool {
-        let _ = sim.discard_constructed_limbo(self.entity_id);
+        let _ = sim.discard_constructed_limbo(self.entity_id, Some(rules));
         record_last_built(sim, rules, self.owner, self.type_id);
         consume_ready_building(sim, rules, self.owner, self.type_id, self.category)
     }

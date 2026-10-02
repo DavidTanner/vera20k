@@ -166,7 +166,6 @@ const LEPTONS_PER_CELL: i32 = crate::util::lepton::LEPTONS_PER_CELL_I32;
 /// producers already wrote 104-frame leptons.
 const LEVEL_HEIGHT_LEPTONS: i32 = crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
 const TRAILER_DRAW_FLAGS: u32 = 0x600;
-const BUILDING_RENDER_ORIGIN_LEPTONS: i32 = 128;
 const DAMAGE_FIRE_SLOT_COUNT: usize = 8;
 
 /// Pure YR `AnimClass_UpdateBouncePhysics` directional-frame projection.
@@ -1679,112 +1678,107 @@ impl Simulation {
         if active == prior_state {
             return;
         }
-        if let Some(entity) = self.substrate.entities.get_mut(building_id) {
-            entity.damage_fire_state_active = active;
-        }
         if !active {
             self.clear_building_damage_fire_slots(building_id, Some(rules));
-            return;
+        } else if !rules.general.damage_fire_types.is_empty() {
+            let type_count = rules.general.damage_fire_types.len();
+            let mut type_index = self
+                .scenario_rng
+                .next_range_u32_inclusive(0, type_count.saturating_sub(1) as u32)
+                as usize;
+            let offsets = rules
+                .art()
+                .get(&image)
+                .map(|entry| entry.damage_fire_offsets.clone())
+                .unwrap_or_default();
+            let (foundation_w, foundation_h) =
+                crate::rules::foundation::foundation_dimensions(&foundation);
+            let foundation_sum = i32::from(foundation_w).wrapping_add(i32::from(foundation_h));
+            let location = crate::sim::movement::ground_pose::object_location(
+                self.substrate.entities.get(building_id).unwrap(),
+                self.resolved_terrain.as_ref(),
+            );
+            let (base, _) = crate::sim::movement::ground_pose::building_render_order_parts(
+                location, false, false,
+            );
+
+            for slot in 0..DAMAGE_FIRE_SLOT_COUNT {
+                let occupied = self
+                    .substrate
+                    .entities
+                    .get(building_id)
+                    .and_then(|entity| entity.damage_fire_anim_ids[slot]);
+                if occupied.is_some() {
+                    break;
+                }
+                let Some(offset) = offsets.get(slot).copied() else {
+                    break;
+                };
+                let fire_name = &rules.general.damage_fire_types[type_index].name;
+                let fire_type = self.interner.intern(fire_name);
+                let descriptor = AnimClassSpawnDescriptor {
+                    type_name: fire_type,
+                    rx: position.rx,
+                    ry: position.ry,
+                    sub_x: position.sub_x,
+                    sub_y: position.sub_y,
+                    z: position.z,
+                    delay: 0,
+                    loop_count: 1,
+                    draw_flags: TRAILER_DRAW_FLAGS,
+                    z_adjust: 0,
+                    reverse: false,
+                    use_cell_drawer: false,
+                    terrain_attached: false,
+                    draw_runtime: AnimDrawRuntime::default(),
+                };
+                let world = AnimWorldCoord {
+                    x: base.x.wrapping_add(offset.world_dx),
+                    y: base.y.wrapping_add(offset.world_dy),
+                    z: base.z,
+                };
+                let anim_id = self
+                    .spawn_anim_at_world(rules, descriptor, world)
+                    .expect("validated stock damage-fire animation must spawn");
+                // Original43C0D0/43C1EB retains only the Building5C8 slot.
+                // The constructor leaves Anim+CC null: absolute coordinates
+                // and the expiry listener do not require Object attachment.
+                self.anim_mut_by_id(anim_id)
+                    .expect("new damage fire")
+                    .damage_fire_slot = Some((building_id, slot as u8));
+                if let Some(entity) = self.substrate.entities.get_mut(building_id) {
+                    entity.damage_fire_anim_ids[slot] = Some(anim_id);
+                }
+
+                let scaled = offset
+                    .pixel_y
+                    .wrapping_sub(foundation_sum.wrapping_mul(15))
+                    .wrapping_mul(3);
+                let z_adjust = (scaled >> 1).wrapping_sub(10).min(0);
+                let effective_end = self
+                    .substrate
+                    .anims
+                    .get(anim_id)
+                    .map_or(0, |anim| anim.effective_end);
+                let frame = if effective_end > 0 {
+                    self.scenario_rng
+                        .next_range_u32_inclusive(0, effective_end.wrapping_sub(1) as u32)
+                        as i32
+                } else {
+                    0
+                };
+                self.set_anim_frame_and_z_adjust(anim_id, frame, z_adjust);
+                type_index += 1;
+                if type_index == type_count {
+                    type_index = 0;
+                }
+            }
         }
-
-        let type_count = rules.general.damage_fire_types.len();
-        if type_count == 0 {
-            return;
-        }
-        let mut type_index = self
-            .scenario_rng
-            .next_range_u32_inclusive(0, type_count.saturating_sub(1) as u32)
-            as usize;
-        let offsets = rules
-            .art()
-            .get(&image)
-            .map(|entry| entry.damage_fire_offsets.clone())
-            .unwrap_or_default();
-        let (foundation_w, foundation_h) =
-            crate::rules::foundation::foundation_dimensions(&foundation);
-        let foundation_sum = i32::from(foundation_w).wrapping_add(i32::from(foundation_h));
-        let base_x = i32::from(position.rx)
-            .wrapping_mul(LEPTONS_PER_CELL)
-            .wrapping_add(position.sub_x.to_num::<i32>())
-            .wrapping_sub(BUILDING_RENDER_ORIGIN_LEPTONS);
-        let base_y = i32::from(position.ry)
-            .wrapping_mul(LEPTONS_PER_CELL)
-            .wrapping_add(position.sub_y.to_num::<i32>())
-            .wrapping_sub(BUILDING_RENDER_ORIGIN_LEPTONS);
-        // The building's own Z, so the attached fire's stored delta is zero
-        // in Z, as it always was.
-        let base_z = self
-            .anim_owner_coords(building_id)
-            .map_or(0, |owner| owner.z);
-
-        for slot in 0..DAMAGE_FIRE_SLOT_COUNT {
-            let occupied = self
-                .substrate
-                .entities
-                .get(building_id)
-                .and_then(|entity| entity.damage_fire_anim_ids[slot]);
-            if occupied.is_some() {
-                return;
-            }
-            let Some(offset) = offsets.get(slot).copied() else {
-                return;
-            };
-            let fire_name = &rules.general.damage_fire_types[type_index].name;
-            let fire_type = self.interner.intern(fire_name);
-            let descriptor = AnimClassSpawnDescriptor {
-                type_name: fire_type,
-                rx: position.rx,
-                ry: position.ry,
-                sub_x: position.sub_x,
-                sub_y: position.sub_y,
-                z: position.z,
-                delay: 0,
-                loop_count: 1,
-                draw_flags: TRAILER_DRAW_FLAGS,
-                z_adjust: 0,
-                reverse: false,
-                use_cell_drawer: false,
-                terrain_attached: false,
-                draw_runtime: AnimDrawRuntime::default(),
-            };
-            let world = AnimWorldCoord {
-                x: base_x.wrapping_add(offset.world_dx),
-                y: base_y.wrapping_add(offset.world_dy),
-                z: base_z,
-            };
-            let anim_id = self
-                .spawn_anim_at_world(rules, descriptor, world)
-                .expect("validated stock damage-fire animation must spawn");
-            self.set_anim_owner_object(anim_id, Some(building_id), rules);
-            self.anim_mut_by_id(anim_id)
-                .expect("new damage fire")
-                .damage_fire_slot = Some((building_id, slot as u8));
-            if let Some(entity) = self.substrate.entities.get_mut(building_id) {
-                entity.damage_fire_anim_ids[slot] = Some(anim_id);
-            }
-
-            let scaled = offset
-                .pixel_y
-                .wrapping_sub(foundation_sum.wrapping_mul(15))
-                .wrapping_mul(3);
-            let z_adjust = (scaled >> 1).wrapping_sub(10).min(0);
-            let effective_end = self
-                .substrate
-                .anims
-                .get(anim_id)
-                .map_or(0, |anim| anim.effective_end);
-            let frame = if effective_end > 0 {
-                self.scenario_rng
-                    .next_range_u32_inclusive(0, effective_end.wrapping_sub(1) as u32)
-                    as i32
-            } else {
-                0
-            };
-            self.set_anim_frame_and_z_adjust(anim_id, frame, z_adjust);
-            type_index += 1;
-            if type_index == type_count {
-                type_index = 0;
-            }
+        // Original43FC92 calls the producer (or43FCA4 recovery) before
+        // 43FCBE stores5E8, including a producer's early slot/type exit.
+        // Native replay: building_death_anims_joined.json, full target AI.
+        if let Some(entity) = self.substrate.entities.get_mut(building_id) {
+            entity.damage_fire_state_active = active;
         }
     }
 
@@ -2634,7 +2628,7 @@ mod tests {
     }
 
     #[test]
-    fn building_uninit_expires_fires_before_destructor_destroy_and_survives_save() {
+    fn building_uninit_expires_attached_fires_before_destructor_destroy_and_survives_save() {
         let (mut sim, rules, building_id) = damage_fire_fixture(false);
         sim.substrate
             .entities
@@ -2648,6 +2642,11 @@ mod tests {
             .get(building_id)
             .unwrap()
             .damage_fire_anim_ids;
+        // This is the explicit attached-owner expiry control, as in the
+        // native eight-slot corpus. The ordinary fire producer leavesCC0.
+        for id in ids.into_iter().flatten() {
+            sim.set_anim_owner_object(id, Some(building_id), &rules);
+        }
         let coords: Vec<_> = ids
             .iter()
             .flatten()
@@ -4449,6 +4448,7 @@ mod tests {
             .unwrap()
             .damage_fire_anim_ids[0]
             .unwrap();
+        sim.set_anim_owner_object(anim_id, Some(building_id), &rules);
         assert_eq!(sim.anim(anim_id).unwrap().owner_entity, Some(building_id));
 
         assert!(sim.expire_anim_owner_reference(anim_id, building_id));
@@ -4536,6 +4536,7 @@ mod tests {
             .unwrap()
             .damage_fire_anim_ids[0]
             .expect("slot zero");
+        sim.set_anim_owner_object(anim_id, Some(building_id), &rules);
         let before = sim.anim_absolute_coord(anim_id).expect("attached anim");
         let stored_before = sim.anim(anim_id).unwrap().world_coord;
 
@@ -4631,6 +4632,7 @@ mod tests {
             .unwrap()
             .damage_fire_anim_ids[0]
             .expect("slot zero");
+        sim.set_anim_owner_object(anim_id, Some(building_id), &rules);
         let before = sim.anim_absolute_coord(anim_id).expect("attached anim");
 
         sim.substrate
@@ -4678,15 +4680,14 @@ mod tests {
                 .all(Option::is_none)
         );
         let first_anim = sim.anim(first).unwrap();
-        assert_eq!(first_anim.owner_entity, Some(building_id));
+        assert_eq!(first_anim.owner_entity, None);
         assert_eq!(
             sim.interner.resolve(first_anim.type_id),
             type_names[expected_types[0]]
         );
         assert_eq!(first_anim.runtime.current_frame, expected_frames[0]);
-        // `AnimClass::SetOwnerObject @ 0x00424B50` stores the coordinate
-        // owner-relative; `GetCoords @ 0x00422BE0` resolves it back. The
-        // absolute is what the draw and the sound see, and it is unchanged.
+        // Original43C0D0 stores absolute coordinates and leaves ctor+CC0.
+        // Its Building5C8 slot/listener is independent of Object attachment.
         assert_eq!(
             sim.anim_absolute_coord(first).unwrap(),
             AnimWorldCoord {
@@ -4698,15 +4699,15 @@ mod tests {
         assert_eq!(
             first_anim.world_coord,
             AnimWorldCoord {
-                x: 2450 - 3072,
-                y: 2653 - 3072,
+                x: 2450,
+                y: 2653,
                 z: 0
             },
-            "stored coordinate is the owner-relative delta native writes"
+            "damage fires retain absolute coordinates"
         );
         assert_eq!(first_anim.z_adjust, -192);
         let second_anim = sim.anim(second).unwrap();
-        assert_eq!(second_anim.owner_entity, Some(building_id));
+        assert_eq!(second_anim.owner_entity, None);
         assert_eq!(
             sim.interner.resolve(second_anim.type_id),
             type_names[expected_types[1]]
@@ -4723,11 +4724,11 @@ mod tests {
         assert_eq!(
             second_anim.world_coord,
             AnimWorldCoord {
-                x: 3140 - 3072,
-                y: 2594 - 3072,
+                x: 3140,
+                y: 2594,
                 z: 0
             },
-            "stored coordinate is the owner-relative delta native writes"
+            "damage fires retain absolute coordinates"
         );
         assert_eq!(second_anim.z_adjust, -136);
         assert_eq!(

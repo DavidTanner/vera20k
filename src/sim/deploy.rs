@@ -194,7 +194,7 @@ impl Simulation {
                 .set_infantry_deploy_crush_immunity(u8::from(completed_doing == 27));
         }
         if completed_doing == 27 {
-            self.shorten_passive_scan_timer(id, false);
+            self.shorten_passive_scan_timer(id);
         }
         Ok(())
     }

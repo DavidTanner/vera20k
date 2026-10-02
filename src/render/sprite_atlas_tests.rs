@@ -350,11 +350,66 @@ fn deploy_targets_get_the_same_keys_as_placed_structures() {
         HashSet::from([0, 1, 2, 3]),
         "occupancy frame swap"
     );
-    assert_eq!(frames("GACNST"), HashSet::from([0]), "a structure body");
+    assert_eq!(
+        frames("GACNST"),
+        HashSet::from([0, 1]),
+        "native healthy and damaged completed structure bodies"
+    );
     assert_eq!(
         frames("E1"),
         HashSet::from([0, 1]),
         "the Infantry records are bounded by the selected SHP"
+    );
+}
+
+#[test]
+fn ordinary_building_atlas_retains_native_completed_health_frames() {
+    // The production draw path uses GetCurrentFrame43EF90 for completed
+    // buildings. Retain every ordinary idle frame reached by original native
+    // execution, including the damaged body needed before fatal damage.
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/building_body_transition.json"
+    ))
+    .unwrap();
+    let mut needed = HashSet::new();
+    let color = HouseColorIndex(2);
+    insert_object_keys(
+        &mut needed,
+        "GAPOWR",
+        EntityCategory::Structure,
+        color,
+        None,
+        None,
+    );
+    let mut compared = 0;
+    for row in fixture["rows"].as_array().unwrap() {
+        let input = &row["input"];
+        if input["state"] != 1
+            || input["base_frame"] != 0
+            || ["gate", "laser_fence", "firestorm_wall", "can_be_occupied"]
+                .into_iter()
+                .any(|flag| input[flag] != false)
+        {
+            continue;
+        }
+        for field in ["before_frame", "after_frame"] {
+            let frame = u16::try_from(row["output"][field].as_u64().unwrap()).unwrap();
+            assert!(
+                needed.contains(&ShpSpriteKey {
+                    palette_context: ShpPaletteContext::Legacy,
+                    type_id: "GAPOWR".to_string(),
+                    facing: 0,
+                    frame,
+                    house_color: color,
+                }),
+                "native completed body frame {frame} is missing: {row}"
+            );
+            compared += 1;
+        }
+    }
+    assert!(
+        compared > 0,
+        "ordinary native frame controls must be compared"
     );
 }
 

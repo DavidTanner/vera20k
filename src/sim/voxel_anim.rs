@@ -383,34 +383,38 @@ pub struct VoxelDebrisSpawn {
     pub object: VoxelAnimObject,
 }
 
-/// One SHP debris anim the death block asks the world to construct.
+/// One SHP debris selection retained by a numeric comparison fixture.
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShpDebrisSpawn {
     /// Index into the source list the row names.
     pub index: usize,
     pub source: ShpDebrisSource,
-    /// The constructor's own draws, taken right after this row's pick as
-    /// native constructs each piece before picking the next (`0x00702566`);
-    /// `None` when the name has no bound anim type.
-    pub draws: Option<crate::sim::anim_class::AnimConstructorDraws>,
 }
 
-/// The AnimClass constructor a piece's pick feeds: given the row's list and
-/// index, take the constructor's draws.
-pub type ShpDebrisConstructor<'a> = dyn FnMut(
-        ShpDebrisSource,
-        usize,
-        &mut SimRng,
-    ) -> Result<Option<crate::sim::anim_class::AnimConstructorDraws>, NativeX87Error>
-    + 'a;
+/// The same ordered death block runs against its live world or a numeric
+/// comparison fixture. The host owns the Scenario stream and constructs each
+/// selected piece before the next pick, including Anim Start's callbacks.
+pub trait DeathDebrisHost {
+    fn rng(&mut self) -> &mut SimRng;
+    fn construct_anim(
+        &mut self,
+        source: ShpDebrisSource,
+        index: usize,
+    ) -> Result<(), NativeX87Error>;
+    fn admit_voxel(&mut self, spawn: &VoxelDebrisSpawn);
+}
 
-/// Everything one death throws, in native emission order.
+/// Everything a numeric fixture selects. The live host admits pieces inline
+/// without retaining a second, unused collection.
+#[cfg(test)]
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DeathDebris {
     pub voxels: Vec<VoxelDebrisSpawn>,
     pub anims: Vec<ShpDebrisSpawn>,
 }
 
+#[cfg(test)]
 impl DeathDebris {
     pub fn is_empty(&self) -> bool {
         self.voxels.is_empty() && self.anims.is_empty()
@@ -542,12 +546,10 @@ pub fn throw_death_debris(
     data: &DebrisTypeData<'_>,
     owner_house: Option<InternedId>,
     origin: IVec3,
-    rng: &mut SimRng,
-    construct_anim: &mut ShpDebrisConstructor<'_>,
-) -> Result<DeathDebris, NativeX87Error> {
-    let mut out = DeathDebris::default();
+    host: &mut impl DeathDebrisHost,
+) -> Result<(), NativeX87Error> {
     if data.max_debris <= 0 {
-        return Ok(out);
+        return Ok(());
     }
     // `Random__RandomRanged` sorts reversed bounds and consumes no draw when
     // they coincide; `next_range_i32_inclusive` models that helper directly.
@@ -558,7 +560,9 @@ pub fn throw_death_debris(
     // `MinDebris == MaxDebris - 1` (`(0,1)`, `(1,2)`, three at `(2,3)`), which
     // is a coincident span costing no draw, and none is higher — so only a
     // modded rules file inverts it.
-    let mut budget = rng.next_range_i32_inclusive(data.min_debris, data.max_debris - 1);
+    let mut budget = host
+        .rng()
+        .next_range_i32_inclusive(data.min_debris, data.max_debris - 1);
 
     if !data.debris_types.is_empty() && budget > 0 {
         let mut index = 0usize;
@@ -576,7 +580,7 @@ pub fn throw_death_debris(
             // entry faults there. Every stock `DebrisMaximums=` line is 4 or 6,
             // so only a modded rules file reaches the floor.
             let divisor = maximum.saturating_add(1).max(1) as u32;
-            let mut count = rng.next_raw_abs_modulo(divisor) as i32;
+            let mut count = host.rng().next_raw_abs_modulo(divisor) as i32;
             if count >= budget {
                 count = budget;
             }
@@ -584,7 +588,7 @@ pub fn throw_death_debris(
                 && let Some((type_id, voxel_type)) = data.debris_types[index]
             {
                 for _ in 0..count {
-                    out.voxels.push(VoxelDebrisSpawn {
+                    let spawn = VoxelDebrisSpawn {
                         type_id,
                         object: spawn_debris_piece(
                             UNASSIGNED_STABLE_ID,
@@ -592,9 +596,10 @@ pub fn throw_death_debris(
                             voxel_type,
                             owner_house,
                             origin,
-                            rng,
+                            host.rng(),
                         )?,
-                    });
+                    };
+                    host.admit_voxel(&spawn);
                 }
             }
             budget -= count;
@@ -611,13 +616,11 @@ pub fn throw_death_debris(
 
     if data.debris_anim_count > 0 {
         for _ in 0..budget.max(0) {
-            let index = rng.next_range_i32_inclusive(0, data.debris_anim_count as i32 - 1) as usize;
-            let draws = construct_anim(ShpDebrisSource::TypeDebrisAnims, index, rng)?;
-            out.anims.push(ShpDebrisSpawn {
-                index,
-                source: ShpDebrisSource::TypeDebrisAnims,
-                draws,
-            });
+            let index = host
+                .rng()
+                .next_range_i32_inclusive(0, data.debris_anim_count as i32 - 1)
+                as usize;
+            host.construct_anim(ShpDebrisSource::TypeDebrisAnims, index)?;
         }
     } else if data.debris_types.is_empty() {
         // No count gate here, unlike the arm above: `0x007024D2` tests only
@@ -630,18 +633,15 @@ pub fn throw_death_debris(
         // the name with `.get()` and drops the row rather than inventing one.
         // Stock authors 20 entries, so only a modded rules file reaches it.
         for _ in 0..budget.max(0) {
-            let index =
-                rng.next_range_i32_inclusive(0, data.metallic_debris_count as i32 - 1) as usize;
-            let draws = construct_anim(ShpDebrisSource::RulesMetallicDebris, index, rng)?;
-            out.anims.push(ShpDebrisSpawn {
-                index,
-                source: ShpDebrisSource::RulesMetallicDebris,
-                draws,
-            });
+            let index = host
+                .rng()
+                .next_range_i32_inclusive(0, data.metallic_debris_count as i32 - 1)
+                as usize;
+            host.construct_anim(ShpDebrisSource::RulesMetallicDebris, index)?;
         }
     }
 
-    Ok(out)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -678,15 +678,36 @@ mod tests {
         }
     }
 
+    struct NumericDebrisHost<'a> {
+        rng: &'a mut SimRng,
+        receipt: DeathDebris,
+    }
+
+    impl DeathDebrisHost for NumericDebrisHost<'_> {
+        fn rng(&mut self) -> &mut SimRng {
+            self.rng
+        }
+        fn construct_anim(
+            &mut self,
+            source: ShpDebrisSource,
+            index: usize,
+        ) -> Result<(), NativeX87Error> {
+            self.receipt.anims.push(ShpDebrisSpawn { index, source });
+            Ok(())
+        }
+        fn admit_voxel(&mut self, spawn: &VoxelDebrisSpawn) {
+            self.receipt.voxels.push(spawn.clone());
+        }
+    }
+
     fn throw(input: &DebrisTypeData<'_>, rng: &mut SimRng) -> DeathDebris {
-        throw_death_debris(
-            input,
-            None,
-            IVec3::new(1280, 2560, 0),
+        let mut host = NumericDebrisHost {
             rng,
-            &mut |_, _, _| Ok(None),
-        )
-        .expect("the debris block stays inside the verified x87 domain")
+            receipt: DeathDebris::default(),
+        };
+        throw_death_debris(input, None, IVec3::new(1280, 2560, 0), &mut host)
+            .expect("the debris block stays inside the verified x87 domain");
+        host.receipt
     }
 
     #[test]
