@@ -107,6 +107,39 @@ class HashCompositionReplayTests(unittest.TestCase):
         for path, data in originals.items():
             self.assertEqual(path.read_bytes(), data)
 
+    def use_unit_deploy_gate(self):
+        self.receipt['gate']['environment'] = 'VERA20K_DIAGNOSTIC_LEGACY_UNIT_DEPLOY_HASH'
+        for mode in ('control', 'current'):
+            def change(document):
+                document['legacy_unit_deploy_hash'] = document.pop('legacy_building_hash')
+                document['exit_code'] = 0
+            self.rewrite_json(f'{mode}.execution.json', change)
+        self.save_receipt()
+
+    def test_unit_deploy_gate_requires_its_own_field_and_two_passing_runs(self):
+        self.use_unit_deploy_gate()
+        self.assertEqual(self.check()['execution_exit_codes'], {'control': 0, 'current': 0})
+        for mode in ('control', 'current'):
+            self.rewrite_json(f'{mode}.execution.json', lambda doc: doc.update(exit_code=101))
+            with self.assertRaisesRegex(ValueError, 'execution exit'):
+                self.check()
+            self.rewrite_json(f'{mode}.execution.json', lambda doc: doc.update(exit_code=0))
+        self.rewrite_json('current.execution.json',
+                          lambda doc: doc.update(legacy_unit_deploy_hash='1'))
+        with self.assertRaisesRegex(ValueError, 'gate identity differs'):
+            self.check()
+        self.rewrite_json('current.execution.json',
+                          lambda doc: doc.update(legacy_unit_deploy_hash=None,
+                                                 legacy_building_hash=None))
+        with self.assertRaises(ValueError):
+            self.check()
+
+    def test_unknown_gate_is_rejected_without_weakening_historical_contract(self):
+        self.receipt['gate']['environment'] = 'VERA20K_DIAGNOSTIC_UNRECORDED_HASH'
+        self.save_receipt()
+        with self.assertRaisesRegex(ValueError, 'not a supported hash-composition control'):
+            self.check()
+
     def test_actor_rng_draw_and_caller_changes_reject_after_valid_input_rehash(self):
         changes = (
             lambda row: row['entities'][0].update(health=124),

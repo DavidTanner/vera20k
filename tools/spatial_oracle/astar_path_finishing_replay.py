@@ -38,6 +38,10 @@ REPLAY_OBSERVATION_FIELDS = (
     "retained_path_inputs",
 )
 HASH_COMPOSITION_NORMALIZATION = ["tick_result.state_hash only"]
+HASH_COMPOSITION_GATE_FIELDS = {
+    "VERA20K_DIAGNOSTIC_LEGACY_BUILDING_HASH": "legacy_building_hash",
+    "VERA20K_DIAGNOSTIC_LEGACY_UNIT_DEPLOY_HASH": "legacy_unit_deploy_hash",
+}
 MAX_RETAINED_INPUT_BYTES = 128 * 1024 * 1024
 
 
@@ -158,13 +162,15 @@ def _composition_u64(value, label: str) -> int:
 
 
 def check_hash_composition(receipt_path: Path) -> dict:
-    """Attribute a recorded Building hash fold using one unchanged Rust binary.
+    """Attribute recorded hash folds using one unchanged Rust binary.
 
     Fixture names, row counts and incoming pins come from the receipt. The only
     comparison projection is the existing tick-hash removal; no old actor fields,
     RNG caller positions or retained gameplay inputs are normalized. Execution
-    receipts use the recorded producer's explicit legacy_building_hash field;
-    inherited process environment is neither required nor exposed.
+    receipts name the recorded producer's explicit diagnostic gate field;
+    inherited process environment is neither required nor exposed. The Unit
+    deployment control switches only the expected final pins, so both runs must
+    pass. Historical Building receipts retain their original exit contract.
     """
     receipt_path = receipt_path.resolve()
     receipt_snapshot = require_regular_file(receipt_path, "hash-composition receipt")
@@ -191,7 +197,10 @@ def check_hash_composition(receipt_path: Path) -> dict:
     gate = _composition_object(receipt["gate"], "gate", ("file", "sha256", "environment"),
                                ("effect", "removal_required_before_final_checks"))
     require_sha256(gate["sha256"], "gate.sha256")
-    require_value(gate["environment"], "VERA20K_DIAGNOSTIC_LEGACY_BUILDING_HASH", "gate.environment")
+    gate_environment = require_string(gate["environment"], "gate.environment")
+    if gate_environment not in HASH_COMPOSITION_GATE_FIELDS:
+        raise ValueError("gate.environment is not a supported hash-composition control")
+    gate_field = HASH_COMPOSITION_GATE_FIELDS[gate_environment]
     if "effect" in gate:
         require_string(gate["effect"], "gate.effect")
     if "removal_required_before_final_checks" in gate:
@@ -267,14 +276,14 @@ def check_hash_composition(receipt_path: Path) -> dict:
         execution = _composition_object(
             parse_json_bytes(retained(run["receipt_file"], f"runs.{mode}.receipt_file"), f"{mode} execution"),
             f"{mode} execution", ("schema_version", "mode", "command", "cwd", "exit_code", "seconds",
-                                  "binary_sha256", "binary_unchanged", "source_sha256", "legacy_building_hash"))
+                                  "binary_sha256", "binary_unchanged", "source_sha256", gate_field))
         require_value(execution["schema_version"], 1, f"{mode} execution.schema_version")
         require_value(execution["mode"], mode, f"{mode} execution.mode")
         if (execution["binary_sha256"] != binary["sha256"]
                 or execution["source_sha256"] != binary["source_sha256"]
                 or execution["binary_unchanged"] is not True):
             raise ValueError(f"{mode}: execution binary/source identity differs")
-        if type(execution["legacy_building_hash"]) is not type(enabled) or execution["legacy_building_hash"] != enabled:
+        if type(execution[gate_field]) is not type(enabled) or execution[gate_field] != enabled:
             raise ValueError(f"{mode}: execution gate identity differs")
         command = require_array(execution["command"], f"{mode}.command")
         if not command or any(not require_string(argument, f"{mode}.command argument") for argument in command):
@@ -290,7 +299,10 @@ def check_hash_composition(receipt_path: Path) -> dict:
         if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
             raise ValueError(f"{mode}: execution seconds must be finite and nonnegative")
         exit_code = require_int(execution["exit_code"], f"{mode}.exit_code")
-        if exit_code not in ((0,) if mode == "control" else (0, 101)):
+        allowed_exits = ((0, 101) if mode == "current"
+                         and gate_environment == "VERA20K_DIAGNOSTIC_LEGACY_BUILDING_HASH"
+                         else (0,))
+        if exit_code not in allowed_exits:
             raise ValueError(f"{mode}: execution exit is outside the recorded Rust test attribution")
         executions[mode] = execution
     for field in ("command", "cwd"):

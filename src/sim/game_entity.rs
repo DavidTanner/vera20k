@@ -27,7 +27,6 @@ use crate::sim::components::{
     VoxelAnimation,
 };
 use crate::sim::debug_event_log::{DebugEventKind, DebugEventLog};
-use crate::sim::deploy::DeployPhase;
 use crate::sim::docking::aircraft_dock::AircraftAmmo;
 use crate::sim::docking::building_dock::DockState;
 use crate::sim::intern::InternedId;
@@ -452,9 +451,9 @@ pub struct GameEntity {
     /// at `0x00739827`) and their readers are not ported.
     barrel_elevation: crate::sim::movement::FacingClass,
     /// Persistent FootClass body-animation counter (`FootClass+0x538`).
-    /// Unit SHP drawing takes the walk-frame remainder from this counter; it
-    /// advances on absolute binary-frame cadence and never resets on a visual
-    /// Stand/Walk transition.
+    /// Unit SHP and voxel drawing reduce this against the selected model's
+    /// frame count. It advances on absolute binary-frame cadence and never
+    /// resets on a visual transition or deployment.
     #[serde(default)]
     pub body_frame_counter: u32,
     /// Owning player/faction name (e.g., "Americans", "Soviet") — interned for zero-cost clones.
@@ -1111,11 +1110,10 @@ pub struct GameEntity {
     /// bunker. Drives entry admission → install.
     #[serde(default)]
     pub bunker_runtime: Option<crate::sim::docking::bunker_install::BunkerRuntime>,
-    /// Distinct Unit deployment controller, advanced by tick_deploy_state.
-    /// Infantry deployment is its private MissionLeaf Doing and native Stage;
-    /// neither the Infantry command nor its AI writes this controller.
-    #[serde(default)]
-    pub deploy_state: Option<DeployPhase>,
+    /// Techno+130/+134, both cleared by the Techno constructor. Animation ownership
+    /// and the Jumpjet landing request survive independently of Unit6E0..6E2.
+    deploy_anim: Option<crate::sim::anim_class::AnimId>,
+    landing_for_deploy: bool,
     /// Unit+0x68C: runtime Deploy continuation, not the type's DeployToFire.
     /// Writers/readers are owned by sim::mcv_deploy (gamemd 0x007393C0).
     #[serde(default)]
@@ -1247,6 +1245,7 @@ pub struct GameEntity {
 }
 
 mod construction_stage;
+mod simple_deploy;
 
 impl GameEntity {
     pub(crate) const fn cached_spatial_threat(&self) -> Option<i32> {
@@ -1761,7 +1760,8 @@ impl GameEntity {
             bunker_link: BunkerLink::None,
             building_gate: None,
             bunker_runtime: None,
-            deploy_state: None,
+            deploy_anim: None,
+            landing_for_deploy: false,
             mcv_deploy_pending: false,
             infantry: if category == EntityCategory::Infantry {
                 Some(InfantryRuntime::new())
@@ -2028,19 +2028,25 @@ impl GameEntity {
         if self.category == EntityCategory::Infantry {
             self.infantry_deploy_doing()
         } else {
-            self.deploy_state.is_some()
+            self.mission_leaf.as_unit().is_some_and(|leaf| {
+                leaf.deployed() != 0
+                    || leaf.deploy_begin_active() != 0
+                    || leaf.deploy_reverse_active() != 0
+            })
         }
     }
 
-    /// Whether this entity has finished deploying and is in the stationary
-    /// Deployed phase (not transitioning).
+    /// Native deployed state. Unit6E0 remains set during reverse animation;
+    /// consumers needing the transition exclusion also read unit_deploying().
     pub fn is_fully_deployed(&self) -> bool {
         if self.category == EntityCategory::Infantry {
             self.mission_leaf
                 .as_infantry()
                 .is_some_and(|leaf| (28..=30).contains(&leaf.doing()))
         } else {
-            matches!(self.deploy_state, Some(DeployPhase::Deployed))
+            self.mission_leaf
+                .as_unit()
+                .is_some_and(|leaf| leaf.deployed() != 0)
         }
     }
 

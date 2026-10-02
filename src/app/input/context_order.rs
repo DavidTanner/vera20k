@@ -1317,6 +1317,18 @@ pub(crate) fn try_queue_context_order_at_screen_point(
     finish_order(state, queued, speaker_id)
 }
 
+/// The data capability shared by self-click, self-hover and the deploy key.
+/// `UnitClass::What_Action_OnObject @ 0x0074000B` admits `IsSimpleDeployer`
+/// to the deploy action; `CanDeploySlashUnload @ 0x00700E81` reads that same
+/// UnitType flag. Deploy/undeploy transitions do not remove the capability.
+/// The simulation owns command admission and the deployment lifecycle.
+pub(super) fn is_simple_deploy_unit(
+    entity: &crate::sim::game_entity::GameEntity,
+    object: &crate::rules::object_type::ObjectType,
+) -> bool {
+    entity.category == EntityCategory::Unit && object.is_simple_deployer
+}
+
 /// The command a click on the one selected object issues when it clicks
 /// itself. `TechnoClass::What_Action_OnObject` returns ACTION_SELF only when
 /// the target is the acting object, exactly one object is selected
@@ -1327,9 +1339,10 @@ pub(crate) fn try_queue_context_order_at_screen_point(
 /// path does that.
 ///
 /// VERA picks the command from the clicked object's own capabilities. The
-/// class overrides' post-processing of ACTION_SELF (`UnitClass` `0x0073FD50`,
-/// `InfantryClass` `0x0051E3B0`, `BuildingClass` `0x00447210`) is not ported,
-/// and the cursor decides its self-hover separately (refactor issue #605).
+/// class overrides' full post-processing of ACTION_SELF (`UnitClass`
+/// `0x0073FD50`, `InfantryClass` `0x0051E3B0`, `BuildingClass` `0x00447210`)
+/// is not ported. Simple-deployer capability is shared with the cursor and
+/// deploy key; the other self-hover capabilities remain separate (issue #605).
 fn self_click_command(
     sim: &crate::sim::world::Simulation,
     rules: &crate::rules::ruleset::RuleSet,
@@ -1375,6 +1388,13 @@ fn self_click_command(
     }
     if let Some(cmd) = super::transport_orders::transport_unload_command(entity, obj) {
         return Some(cmd);
+    }
+    if obj.is_some_and(|object| is_simple_deploy_unit(entity, object)) {
+        return sim
+            .can_simple_deploy(target.stable_id, rules)
+            .then_some(Command::DeployMcv {
+                entity_id: target.stable_id,
+            });
     }
     obj.is_some_and(|o| o.deploys_into.is_some() || o.deployer)
         .then_some(Command::DeployMcv {
@@ -2215,6 +2235,89 @@ mod tests {
         assert_eq!(click(&[mcv, gi], mcv), None, "a group click selects");
         assert_eq!(click(&[gi], other_gi), None, "not the selected object");
         assert_eq!(click(&[enemy_mcv], enemy_mcv), None, "not the player's");
+    }
+
+    /// Retail SCHP has IsSimpleDeployer without DeploysInto/Deployer. Native
+    /// Unit WhatAction74000B and CanDeploy700E81 still offer its deploy action,
+    /// including while the deploy animation owns the visible body.
+    #[test]
+    fn retail_siege_chopper_self_click_and_cursor_offer_the_same_deploy_action() {
+        let Some(battle) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
+            return;
+        };
+        let rules = &battle.rules;
+        let object = rules.object("SCHP").expect("retail Siege Chopper");
+        assert!(object.is_simple_deployer);
+        assert!(object.deploys_into.is_none());
+        assert!(!object.deployer);
+        let mut sim = Simulation::new();
+        let id = sim
+            .spawn_object_limbo_at_height("SCHP", "Americans", 10, 10, 0, 0, rules)
+            .expect("retail Siege Chopper builds");
+        let owner = sim.interner.get("Americans").unwrap();
+        let hover = HoverTargetKindWithId {
+            kind: HoverTargetKind::FriendlyUnit,
+            stable_id: id,
+        };
+        for (deployed, begin, reverse) in [
+            (false, false, false),
+            (false, true, false),
+            (true, false, false),
+            (true, false, true),
+        ] {
+            sim.entities_mut()
+                .get_mut(id)
+                .unwrap()
+                .set_unit_simple_deploy_for_test(deployed, begin, reverse);
+            assert_eq!(
+                self_click_command(&sim, rules, owner, &[id], Some(&hover)),
+                Some(Command::DeployMcv { entity_id: id }),
+            );
+            assert_eq!(
+                crate::app::input::cursor::capability_cursor_for_hover(
+                    &sim,
+                    &[id],
+                    Some(id),
+                    &hover,
+                    Some(rules),
+                    None,
+                ),
+                crate::app::types::CursorFeedbackKind::Deploy,
+            );
+        }
+        assert_eq!(
+            self_click_command(&sim, rules, owner, &[id, id + 1], Some(&hover)),
+            None,
+            "a group self-click remains selection"
+        );
+        sim.entities_mut()
+            .get_mut(id)
+            .unwrap()
+            .low_bridge_tube_state = Some(
+            crate::sim::movement::tube_movement::LowBridgeTubeMovementState {
+                tube_id: crate::map::tube_facts::TubeId(0),
+                cursor: 0,
+                target: crate::sim::components::DriveCoord::cell(10, 10, 0),
+            },
+        );
+        assert_eq!(
+            self_click_command(&sim, rules, owner, &[id], Some(&hover)),
+            None
+        );
+        let feedback = crate::app::input::cursor::capability_cursor_for_hover(
+            &sim,
+            &[id],
+            Some(id),
+            &hover,
+            Some(rules),
+            None,
+        );
+        assert_eq!(feedback, crate::app::types::CursorFeedbackKind::NoDeploy);
+        assert_eq!(
+            crate::app::input::cursor::cursor_id_for_feedback(feedback),
+            Some(crate::app::types::CursorId::NoDeploy),
+            "native action30 must display the blocked deploy cursor"
+        );
     }
 
     /// The click side of the bomb actions: an Engineer's DisarmBomb and a

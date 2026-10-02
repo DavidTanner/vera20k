@@ -275,6 +275,7 @@ pub(crate) enum CursorFeedbackKind {
     MinimapMove,
     /// Deploy/undeploy cursor — shown when a Deployer unit hovers over itself.
     Deploy,
+    NoDeploy,
     /// Enter cursor — garrison, capture, board transport, sabotage.
     Enter,
     /// Engineer action28 damage cursor. Its uncommon authored-threshold

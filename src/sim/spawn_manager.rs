@@ -507,8 +507,9 @@ fn step_ready_docked(
     {
         return;
     }
-    // A deployed parent does not launch (native reads owner+0x6AD).
-    if owner.deploy_state.is_some() {
+    // SpawnManager6B737C reads Foot+6AD, the locomotor-swap latch,
+    // independent of Unit deployment6E0..6E2.
+    if owner.foot_locomotor_swap_active {
         return;
     }
 

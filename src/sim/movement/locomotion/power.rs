@@ -19,8 +19,6 @@
 //!
 //! | edge | direction | wired in |
 //! |---|---|---|
-//! | deploy begins | off | the deploy command |
-//! | undeploy completes | on | the deploy state machine |
 //! | a destination is accepted (command-time adapter locomotors) | on | the move-command entry |
 //! | bunker sell/death release4593A0 | on | `docking::bunker_link::release_sell_destroy` |
 //! | bunker normal release4595C0 | on | `docking::bunker_link::release_normal` |
@@ -92,34 +90,6 @@ mod tests {
         assert!(!state.is_powered());
         state.power_on();
         assert!(state.is_powered());
-    }
-
-    /// The deploy pair, end to end through the production state machine:
-    /// beginning a deploy powers the locomotor off, and the undeploy completing
-    /// powers it back on. These are the only two edges wired that can *reach*
-    /// the powered-off state, so if this test stops holding the flag is inert.
-    #[test]
-    fn undeploy_completing_powers_the_locomotor_back_on() {
-        use crate::sim::deploy::{DeployPhase, tick_deploy_state};
-        use crate::sim::entity_store::EntityStore;
-        use crate::sim::game_entity::GameEntity;
-
-        let mut entities = EntityStore::default();
-        let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
-        let mut loco = LocomotorState::for_test_kind(LocomotorKind::Hover);
-        loco.power_off();
-        entity.locomotor = Some(loco);
-        entity.deploy_state = Some(DeployPhase::Undeploying { ticks_remaining: 1 });
-        entities.insert(entity);
-
-        tick_deploy_state(&mut entities);
-
-        let entity = entities.get(1).expect("entity");
-        assert_eq!(entity.deploy_state, None, "undeploy completed");
-        assert!(
-            entity.locomotor.as_ref().expect("locomotor").is_powered(),
-            "undeploy completing must power the locomotor back on"
-        );
     }
 
     /// Powering off is not a stop: the native setters touch the flag and nothing

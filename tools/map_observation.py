@@ -368,12 +368,42 @@ def _rule_types(value: Any) -> None:
             raise ValidationError(f'{label}.category is unknown')
 
 
+def _unit(value: Any, label: str) -> None:
+    unit = require_object(value, label)
+    require_exact_keys(unit, ('deployed_6e0', 'deploying_6e1', 'undeploying_6e2',
+                              'landing_for_deploy_134', 'deploy_anim_130', 'stage_f8',
+                              'body_counter_538'), label)
+    for key in ('deployed_6e0', 'deploying_6e1', 'undeploying_6e2'):
+        _bounded_int(unit[key], f'{label}.{key}', 0, 255)
+    if type(unit['landing_for_deploy_134']) is not bool:
+        raise ValidationError(f'{label}.landing_for_deploy_134 must be a boolean')
+    _bounded_int(unit['stage_f8'], f'{label}.stage_f8', -(1 << 31), (1 << 31) - 1)
+    _bounded_int(unit['body_counter_538'], f'{label}.body_counter_538', 0, (1 << 32) - 1)
+    if unit['deploy_anim_130'] is None:
+        return
+    anim_label = f'{label}.deploy_anim_130'
+    anim = require_object(unit['deploy_anim_130'], anim_label)
+    require_exact_keys(anim, ('stable_id', 'live'), anim_label)
+    _bounded_int(anim['stable_id'], f'{anim_label}.stable_id', 1, (1 << 64) - 1)
+    if anim['live'] is None:
+        return  # A retained identity with no live Anim remains an observation.
+    live_label = f'{anim_label}.live'
+    live = require_object(anim['live'], live_label)
+    require_exact_keys(live, ('type_id', 'frame', 'owner_entity'), live_label)
+    if not require_string(live['type_id'], f'{live_label}.type_id'):
+        raise ValidationError(f'{live_label}.type_id is empty')
+    _bounded_int(live['frame'], f'{live_label}.frame', -(1 << 31), (1 << 31) - 1)
+    if live['owner_entity'] is not None:
+        _bounded_int(live['owner_entity'], f'{live_label}.owner_entity', 1, (1 << 64) - 1)
+
+
 def _actor(value: Any, label: str, *, building_state: bool = True) -> tuple[int, str]:
     actor = require_object(value, label)
     require_exact_keys(actor, ('stable_id', 'owner', 'type_id', 'category', 'cell',
                               'physical_leptons', 'on_bridge', 'health', 'active',
                               'in_limbo', 'dying', 'mission', 'target', 'archive', 'nav', 'foot',
-                              *(('building',) if building_state else ())), label)
+                              *(('building',) if building_state else ()),
+                              *(('unit',) if 'unit' in actor else ())), label)
     identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
     owner = require_string(actor['owner'], f'{label}.owner')
     if not owner or not require_string(actor['type_id'], f'{label}.type_id'):
@@ -386,6 +416,11 @@ def _actor(value: Any, label: str, *, building_state: bool = True) -> tuple[int,
             _building(actor['building'], f'{label}.building')
         else:
             require_value(actor['building'], None, f'{label}.building')
+    if 'unit' in actor:
+        if category == 'Unit':
+            _unit(actor['unit'], f'{label}.unit')
+        else:
+            require_value(actor['unit'], None, f'{label}.unit')
     _coordinate(actor['cell'], f'{label}.cell')
     _coordinate(actor['physical_leptons'], f'{label}.physical_leptons', leptons=True)
     _bounded_int(actor['health'], f'{label}.health', -(1 << 31), (1 << 31) - 1)

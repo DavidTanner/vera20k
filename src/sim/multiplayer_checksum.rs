@@ -365,7 +365,7 @@ mod tests {
     };
     use crate::map::entities::EntityCategory;
     use crate::rules::particle_system_type::ParticleSystemTypeId;
-    use crate::sim::anim_class::{AnimDrawRuntime, AnimObject, AnimRuntime, AnimWorldCoord};
+    use crate::sim::anim_class::{AnimObject, AnimRuntime, AnimWorldCoord};
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::InternedId;
     use crate::sim::particles::ParticleSystem;
@@ -384,17 +384,12 @@ mod tests {
     const FAMILY_COUNT: usize = 6;
 
     fn test_anim(stable_id: u64, native_unique_id: i32, x: i32, y: i32) -> AnimObject {
-        AnimObject {
+        AnimObject::new_unattached_for_test(
             stable_id,
             native_unique_id,
-            type_id: InternedId::from_index(0),
-            world_coord: AnimWorldCoord { x, y, z: 0 },
-            draw_flags: 0,
-            z_adjust: 0,
-            remap_color: None,
-            effective_end: 1,
-            effective_loop_end: 1,
-            runtime: AnimRuntime {
+            InternedId::from_index(0),
+            AnimWorldCoord { x, y, z: 0 },
+            AnimRuntime {
                 current_frame: 0,
                 frame_step: 1,
                 delay_remaining: 0,
@@ -406,18 +401,7 @@ mod tests {
                 inactive: false,
                 paused: false,
             },
-            draw_runtime: AnimDrawRuntime::default(),
-            use_cell_drawer: false,
-            terrain_attached: false,
-            in_logic_vector: false,
-            owner_entity: None,
-            building_slot: None,
-            damage_fire_slot: None,
-            start_sound_active: false,
-            stop_sound_id: None,
-            display: Default::default(),
-            bounce: None,
-        }
+        )
     }
 
     fn test_projectile(origin: ProjectileCoord) -> ProjectileSpawn {

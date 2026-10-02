@@ -35,7 +35,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::LandType;
 use crate::rules::warhead_type::WarheadType;
 use crate::rules::weapon_type::WeaponType;
-use crate::sim::deploy::DeployPhase;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::{InternedId, StringInterner};
@@ -984,7 +983,7 @@ pub(crate) fn attacker_facts(entity: &GameEntity, obj: &ObjectType) -> AttackerF
         // Infantry5218F3..52190B reads Doing27..30, as predicate522510. The
         // separate Unit deployment controller has no Infantry writer.
         TechnoKind::Infantry => entity.infantry_deploy_doing(),
-        TechnoKind::Unit => matches!(entity.deploy_state, Some(DeployPhase::Deployed)),
+        TechnoKind::Unit => entity.is_fully_deployed(),
         TechnoKind::Aircraft | TechnoKind::Building => false,
     };
     let is_occupied_building = kind == TechnoKind::Building
@@ -3066,9 +3065,9 @@ IsLocomotor=yes
         // Vehicles: only the finished Deployed flag.
         let mut siege = GameEntity::test_default(2, "HTNK", "Americans", 1, 1);
         siege.category = EntityCategory::Unit;
-        siege.deploy_state = Some(DeployPhase::Deploying { ticks_remaining: 3 });
+        siege.set_unit_simple_deploy_for_test(false, true, false);
         assert!(!attacker_facts(&siege, ggi_obj).deploy_fire_active);
-        siege.deploy_state = Some(DeployPhase::Deployed);
+        siege.set_unit_simple_deploy_for_test(true, false, false);
         assert!(attacker_facts(&siege, ggi_obj).deploy_fire_active);
         // The gunner slot is the transport's; `+0x82` is the rider's own.
         siege.weapon_override = Some(WeaponOverride::IfvSlot(3));

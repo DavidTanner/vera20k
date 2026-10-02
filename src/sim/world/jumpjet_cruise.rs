@@ -43,9 +43,8 @@
 //!   owner's cell occupation bit (`+0xF0` at `0x0054C731`: a Unit's
 //!   `0x007441B0` sets `0x20`; the orders' `+0xF4`, `0x00744210`, clears it),
 //!   so a second Jumpjet can pick a cell another is landing in.
-//! - `Process`'s owner `+0x90` dispatch gate, `RulesClass+0x48`'s deploy
-//!   facing, owner `+0x134` and the `JumpJetTurn=` hold facing are
-//!   unmodelled.
+//! - `Process`'s owner `+0x90` dispatch gate and the `JumpJetTurn=` hold
+//!   facing remain unmodelled. DeployDir/+134 use the shared deployment owner.
 //!
 //! A Health-0
 //! wreck whose kill found no cell to re-target (its search failed at the map's
@@ -456,14 +455,16 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     }
 
     fn deploy_latched(&self) -> bool {
-        // Owner `+0x134` has no VERA equivalent yet.
-        false
+        self.sim
+            .substrate
+            .entities
+            .get(self.stable_id)
+            .is_some_and(|entity| entity.landing_for_deploy())
     }
 
     fn deploy_facing(&self) -> Option<u16> {
-        // `RulesClass+0x48` is not read yet, so a simple deployer keeps its
-        // heading instead of turning to the deploy facing.
-        None
+        self.rules
+            .map(|rules| u16::from(rules.general.deploy_dir as u8) << 8)
     }
 
     fn touchdown(&mut self) {
@@ -689,6 +690,15 @@ impl Simulation {
             moving = false;
             // `0x0054CA12`: touchdown ends a crash the latch never caught.
             entity.crashing = false;
+            // Jumpjet54CA75 clears the shared landing-for-deploy byte only
+            // for a Unit with DeployToLand.
+            if entity.category == EntityCategory::Unit
+                && rules
+                    .and_then(|rules| rules.object(self.interner.resolve(entity.type_ref())))
+                    .is_some_and(|object| object.deploy_to_land)
+            {
+                entity.set_landing_for_deploy(false);
+            }
         }
         let arrived = effects.touched_down || ended_cruise;
 
