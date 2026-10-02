@@ -428,7 +428,7 @@ fn what_action_on_cell(
 /// `What_Action_OnObject` to determine the cursor for the entire group.
 ///
 /// Priority (highest first):
-/// 1. Deployer self-hover: selected unit IS the hovered entity and has Deployer=yes.
+/// 1. Deployer self-hover: the selected object itself has a deploy capability.
 /// 2. SabotageCursor: selected unit has SabotageCursor=yes hovering an enemy structure.
 /// 3. Engineer capturing: selected Engineer hovering capturable enemy building.
 /// 4. Engineer repairing: selected Engineer hovering damaged friendly building.
@@ -453,14 +453,21 @@ pub(super) fn capability_cursor_for_hover(
 
     // 1. Deployer self-hover — the cursor is over the selected unit itself.
     //    Show the deploy cursor for units with Deployer=yes (e.g. GGI, Guardian GI)
-    //    OR units with DeploysInto= set (e.g. MCV → ConYard).  In the original game
-    //    both kinds show the deploy cursor when hovering over themselves.
+    //    OR units with DeploysInto= (MCV → ConYard) or IsSimpleDeployer=yes
+    //    (Siege Chopper). Each shows the deploy cursor over itself.
     //    gamemd gates its self-click actions on a selection of exactly one.
     if selected.len() == 1 && selected[0] == hover.stable_id {
         let entity = sim.entities().get(selected[0]);
         let obj =
             entity.and_then(|e| rules.and_then(|r| r.object(sim.interner.resolve(e.type_ref()))));
-        if let Some(obj) = obj {
+        if let (Some(entity), Some(obj)) = (entity, obj) {
+            if super::context_order::is_simple_deploy_unit(entity, obj) {
+                return if rules.is_some_and(|rules| sim.can_simple_deploy(hover.stable_id, rules)) {
+                    CursorFeedbackKind::Deploy
+                } else {
+                    CursorFeedbackKind::NoDeploy
+                };
+            }
             if obj.deployer || obj.deploys_into.is_some() {
                 // DRIFT, recorded not fixed: this branch does not see the order
                 // modifier, so Alt over a deployer's own body still shows the
@@ -1091,6 +1098,7 @@ pub(crate) fn cursor_id_for_feedback(kind: CursorFeedbackKind) -> Option<CursorI
         CursorFeedbackKind::IvanBomb => Some(CursorId::IvanBomb),
         CursorFeedbackKind::DisarmBomb => Some(CursorId::Disarm),
         CursorFeedbackKind::Deploy => Some(CursorId::Deploy),
+        CursorFeedbackKind::NoDeploy => Some(CursorId::NoDeploy),
         CursorFeedbackKind::RepairMode(valid) => Some(if valid {
             CursorId::Repair
         } else {

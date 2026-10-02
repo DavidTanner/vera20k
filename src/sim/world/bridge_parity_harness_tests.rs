@@ -279,12 +279,19 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // All819 complete current/control boundaries match except tick hashes,
 // including House/Factory state and three full RNG streams/draws/callers.
 // Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
-// Shared Techno Door hash composition: omitting only its new hash feed
-// restored all three preceding replay pins with behavior/RNG checks green.
-// The feed is restored; this remains a Rust regression, not a native golden.
-// Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-// Previous: 0xE3FD_9DD3_63C9_8F82.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xD60E_65B0_93E4_A502;
+// 2026-10-02 Unit deployment/body ownership: snapshot280 replaces the legacy
+// DeployPhase hash with Techno130/134, adds Unit6E0, and advances the existing
+// Foot538 counter for voxel Units. Route, height and RNG tripwires above the
+// final assertion remain unchanged. The same-binary hash control reproduces
+// incoming E3FD9DD363C98F82; all 201 off/on boundaries differ only in tick hash.
+// Receipt: tools/spatial_oracle/unit_simple_deploy_replay/receipt.json.
+// This is Rust attribution; unit_simple_deploy separately pins native cadence.
+// Shared Techno Door hash composition after main339b57d18 integration:
+// one diagnostic binary restores incoming F6E02080D0BE29C1 when only the Door
+// hash feed is omitted. Behavior and RNG assertions reach the final pin in
+// both modes. The temporary control is removed; native expected values stay
+// unchanged. Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xC666_E760_E83F_FF72;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

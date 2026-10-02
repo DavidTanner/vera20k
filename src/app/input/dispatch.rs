@@ -2302,7 +2302,7 @@ fn queue_stop_for_selected(state: &mut AppState) {
 }
 
 /// Deploy or undeploy selected entities. KeyD toggles:
-/// - Selected unit with `DeploysInto` → `Command::DeployMcv` (MCV → ConYard)
+/// - Selected unit with `DeploysInto` or `IsSimpleDeployer` → `Command::DeployMcv`
 /// - Selected structure with `UndeploysInto` → `Command::UndeployBuilding` (ConYard → MCV)
 fn queue_deploy_undeploy_for_selected(state: &mut AppState) {
     let selected_ids = selected_stable_ids_in_order(state);
@@ -2319,51 +2319,59 @@ fn queue_deploy_undeploy_for_selected(state: &mut AppState) {
     }
     let owner: String = preferred_local_owner(state).unwrap_or_else(|| "Americans".to_string());
     // Collect commands first to avoid borrow conflict with schedule_command.
-    let mut commands: Vec<Command> = Vec::new();
-    {
-        let rules = state.rules();
-        for &entity_id in &selected_ids {
-            let Some(entity) = sim.entities().get(entity_id) else {
-                continue;
-            };
-            let obj = rules.and_then(|r| r.object(sim.interner.resolve(entity.type_ref())));
-            match entity.category {
-                crate::map::entities::EntityCategory::Structure => {
-                    // Garrisoned building → evacuate occupants.
-                    if obj.map_or(false, |o| o.can_be_occupied)
-                        && entity.passenger_role.cargo().is_some_and(|c| !c.is_empty())
-                    {
-                        commands.push(Command::UnloadPassengers {
-                            transport_id: entity_id,
-                        });
-                    } else if rules.is_some_and(|rules| {
-                        sim.should_show_undeploy_building_command(entity_id, rules)
-                    }) {
-                        commands.push(Command::UndeployBuilding { entity_id });
-                    }
-                }
-                crate::map::entities::EntityCategory::Infantry => {
-                    // Deploy-fire infantry (GI, GuardianGI, etc.) → toggle deploy.
-                    if obj.map_or(false, |o| o.deploy_fire) {
-                        commands.push(Command::ToggleInfantryDeploy { entity_id });
-                    }
-                }
-                _ => {
-                    // A loaded transport (APC, Flak Track, IFV, BFRT, LCAC,
-                    // Nighthawk) unloads on the deploy key.
-                    if let Some(cmd) =
-                        super::transport_orders::transport_unload_command(entity, obj)
-                    {
-                        commands.push(cmd);
-                    } else if obj.map_or(false, |o| o.deploys_into.is_some()) {
-                        commands.push(Command::DeployMcv { entity_id });
-                    }
-                }
-            }
-        }
-    }
+    let commands: Vec<Command> = selected_ids
+        .iter()
+        .filter_map(|&entity_id| deploy_key_command(sim, state.rules(), entity_id))
+        .collect();
     for cmd in commands {
         schedule_command(state, &owner, cmd);
+    }
+}
+
+/// The deploy key's per-object decision, in selection order. The command's
+/// historical `DeployMcv` wire name also carries a SimpleDeployer toggle.
+fn deploy_key_command(
+    sim: &crate::sim::world::Simulation,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    entity_id: u64,
+) -> Option<Command> {
+    let entity = sim.entities().get(entity_id)?;
+    let obj = rules.and_then(|rules| rules.object(sim.interner.resolve(entity.type_ref())));
+    match entity.category {
+        EntityCategory::Structure => {
+            // Garrisoned building → evacuate occupants.
+            if obj.is_some_and(|object| object.can_be_occupied)
+                && entity
+                    .passenger_role
+                    .cargo()
+                    .is_some_and(|cargo| !cargo.is_empty())
+            {
+                Some(Command::UnloadPassengers {
+                    transport_id: entity_id,
+                })
+            } else {
+                rules
+                    .is_some_and(|rules| {
+                        sim.should_show_undeploy_building_command(entity_id, rules)
+                    })
+                    .then_some(Command::UndeployBuilding { entity_id })
+            }
+        }
+        EntityCategory::Infantry => obj
+            .is_some_and(|object| object.deploy_fire)
+            .then_some(Command::ToggleInfantryDeploy { entity_id }),
+        _ => {
+            // A loaded transport (including aircraft) keeps the unload action.
+            super::transport_orders::transport_unload_command(entity, obj).or_else(|| {
+                let object = obj?;
+                let deployable = if super::context_order::is_simple_deploy_unit(entity, object) {
+                    rules.is_some_and(|rules| sim.can_simple_deploy(entity_id, rules))
+                } else {
+                    object.deploys_into.is_some()
+                };
+                deployable.then_some(Command::DeployMcv { entity_id })
+            })
+        }
     }
 }
 
@@ -2741,6 +2749,103 @@ fn jump_camera_to_base(state: &mut AppState) {
         crate::app::input::camera::center_camera_on_cell(state, wp.rx, wp.ry);
     } else {
         log::info!("H: no base or start waypoint found");
+    }
+}
+
+#[cfg(test)]
+mod deploy_key_tests {
+    use super::deploy_key_command;
+    use crate::rules::ini_parser::IniFile;
+    use crate::rules::ruleset::RuleSet;
+    use crate::sim::command::Command;
+    use crate::sim::passenger::{PassengerCargo, PassengerRole};
+    use crate::sim::world::Simulation;
+
+    #[test]
+    fn simple_deployer_key_preserves_infantry_and_loaded_transport_actions() {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[VehicleTypes]\n0=HELI\n1=TRANSPORT\n2=PLAIN\n\
+             [AircraftTypes]\n0=AIRCRAFT\n[InfantryTypes]\n0=GI\n\
+             [HELI]\nIsSimpleDeployer=yes\n\
+             [TRANSPORT]\nIsSimpleDeployer=yes\nPassengers=5\n\
+             [PLAIN]\nDeployer=yes\n\
+             [AIRCRAFT]\nIsSimpleDeployer=yes\n\
+             [GI]\nIsSimpleDeployer=yes\nDeployFire=yes\nDeployer=yes\n",
+        ))
+        .expect("deploy key rules");
+        let mut sim = Simulation::new();
+        let mut spawn = |type_id| {
+            sim.spawn_object_limbo_at_height(type_id, "Americans", 10, 10, 0, 0, &rules)
+                .expect("the deploy key fixture builds")
+        };
+        let heli = spawn("HELI");
+        let transport = spawn("TRANSPORT");
+        let plain = spawn("PLAIN");
+        let aircraft = spawn("AIRCRAFT");
+        let infantry = spawn("GI");
+        let mut cargo = PassengerCargo::new(5, 0);
+        cargo.board(999, 1);
+        sim.entities_mut()
+            .get_mut(transport)
+            .unwrap()
+            .passenger_role = PassengerRole::Transport { cargo };
+
+        assert_eq!(
+            deploy_key_command(&sim, Some(&rules), heli),
+            Some(Command::DeployMcv { entity_id: heli })
+        );
+        assert_eq!(
+            deploy_key_command(&sim, Some(&rules), transport),
+            Some(Command::UnloadPassengers {
+                transport_id: transport
+            })
+        );
+        assert_eq!(
+            deploy_key_command(&sim, Some(&rules), infantry),
+            Some(Command::ToggleInfantryDeploy {
+                entity_id: infantry
+            })
+        );
+        assert_eq!(deploy_key_command(&sim, Some(&rules), aircraft), None);
+        assert_eq!(deploy_key_command(&sim, Some(&rules), plain), None);
+        sim.entities_mut()
+            .get_mut(heli)
+            .unwrap()
+            .low_bridge_tube_state = Some(
+            crate::sim::movement::tube_movement::LowBridgeTubeMovementState {
+                tube_id: crate::map::tube_facts::TubeId(0),
+                cursor: 0,
+                target: crate::sim::components::DriveCoord::cell(10, 10, 0),
+            },
+        );
+        assert_eq!(deploy_key_command(&sim, Some(&rules), heli), None);
+    }
+
+    #[test]
+    fn retail_siege_chopper_deploy_key_uses_the_existing_command_in_both_directions() {
+        let Some(battle) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
+            return;
+        };
+        let rules = &battle.rules;
+        let mut sim = Simulation::new();
+        let id = sim
+            .spawn_object_limbo_at_height("SCHP", "Americans", 10, 10, 0, 0, rules)
+            .expect("the retail Siege Chopper builds");
+        for (deployed, begin, reverse) in [
+            (false, false, false),
+            (false, true, false),
+            (true, false, false),
+            (true, false, true),
+        ] {
+            sim.entities_mut()
+                .get_mut(id)
+                .unwrap()
+                .set_unit_simple_deploy_for_test(deployed, begin, reverse);
+            assert_eq!(
+                deploy_key_command(&sim, Some(rules), id),
+                Some(Command::DeployMcv { entity_id: id }),
+            );
+        }
     }
 }
 

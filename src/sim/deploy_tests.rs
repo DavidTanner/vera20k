@@ -11,7 +11,6 @@ use crate::sim::base_plan::{BasePlanNode, pack_base_plan_cell};
 use crate::sim::combat::{AttackTarget, TargetKind};
 use crate::sim::command::Command;
 use crate::sim::components::Health;
-use crate::sim::deploy::DeployPhase;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseAiActivationLatches;
 use crate::sim::world::{SimSoundEvent, Simulation};
@@ -1310,10 +1309,7 @@ pub(crate) fn assert_native_deploy_state(sim: &Simulation, id: u64, row: &serde_
         sounds, native_sounds,
         "{name}: admitted native sound requests"
     );
-    assert_eq!(
-        actor.deploy_state, None,
-        "{name}: no competing Infantry countdown"
-    );
+    assert!(actor.mission_leaf.as_unit().is_none());
 }
 
 /// The current native Guard producer's ordinary stationary case, reached
@@ -1347,7 +1343,7 @@ fn guard_auto_deploy_reaches_the_native_action_from_infantry_ai() {
         sim.sound_events.as_slice(),
         [SimSoundEvent::EntityDeployed { .. }]
     ));
-    assert_eq!(actor.deploy_state, None);
+    assert!(actor.mission_leaf.as_unit().is_none());
 }
 
 #[test]
@@ -1504,7 +1500,7 @@ fn synchronized_deploy_queues_unload_before_handler_action_and_sound() {
     let locomotor = actor.locomotor.as_ref().unwrap();
     assert!(locomotor.walk_destination().is_none());
     assert_eq!(locomotor.walk_is_moving(), Some(false));
-    assert_eq!(actor.deploy_state, None);
+    assert!(actor.mission_leaf.as_unit().is_none());
     assert!(sim.sound_events.is_empty());
     // InfantryAI51BF03's Ready/Commence position promotes the stopped
     // actor's queue before dispatch may visit Mission_Unload51F6E0.
@@ -1537,24 +1533,4 @@ fn synchronized_deploy_queues_unload_before_handler_action_and_sound() {
         sim.sound_events.as_slice(),
         [SimSoundEvent::EntityDeployed { .. }]
     ));
-}
-
-#[test]
-fn deployment_countdown_is_unit_only() {
-    let corpus: serde_json::Value = serde_json::from_str(include_str!(
-        "../../tools/spatial_oracle/infantry_mission_unload.json"
-    ))
-    .unwrap();
-    let (mut sim, _rules, id) = native_deploy_fixture(&corpus[0]);
-    let actor = sim.substrate.entities.get_mut(id).unwrap();
-    actor.deploy_state = Some(DeployPhase::Deploying { ticks_remaining: 1 });
-    // Legacy loaded Infantry controller data has no authority over Doing/Stage.
-    crate::sim::deploy::tick_deploy_state(&mut sim.substrate.entities);
-    let actor = sim.substrate.entities.get(id).unwrap();
-    assert_eq!(actor.mission_leaf.as_infantry().unwrap().doing(), 0);
-    assert_eq!(actor.native_stage().value(), 7);
-    assert_eq!(
-        actor.deploy_state,
-        Some(DeployPhase::Deploying { ticks_remaining: 1 })
-    );
 }

@@ -203,8 +203,8 @@ impl JumpjetRuntime {
     /// (`0x0054B451`), and lifts a descent back into the climb at
     /// `JumpjetHeight=` (`0x0054B455..0x0054B467`).
     ///
-    /// Not modelled: the lift's owner `+0x134` clear (`0x0054B46D`), which
-    /// VERA has no field for (`world::jumpjet_cruise` reads it as clear).
+    /// The host clears the same landing-for-deploy byte134 at54B46D
+    /// before the lift ends Unload; the runtime owns only locomotion state.
     pub(crate) fn move_to(
         &mut self,
         request: DriveCoord,
@@ -600,6 +600,10 @@ impl Simulation {
         let outcome =
             self.run_jumpjet_order(id, rules, |runtime, host| runtime.move_to(request, host))?;
         if outcome.lifted {
+            self.substrate
+                .entities
+                .get_mut(id)?
+                .set_landing_for_deploy(false);
             self.jumpjet_lift_ends_unload(id, rules);
         }
         Some(outcome)
@@ -665,6 +669,9 @@ impl Simulation {
             Some(StopOutcome::Idle) => true,
             Some(StopOutcome::Retargeted(moved)) => {
                 if moved.lifted {
+                    if let Some(entity) = self.substrate.entities.get_mut(id) {
+                        entity.set_landing_for_deploy(false);
+                    }
                     self.jumpjet_lift_ends_unload(id, rules);
                 }
                 true
@@ -809,8 +816,9 @@ impl Simulation {
     /// A cell order to a Jumpjet Unit or Infantry, whichever route gave it:
     /// Foot's setter (`0x004D94B0`: the NavCom at `0x004D9510`, then the
     /// locomotor's `Move_To` with the cell's `GetCoords` at `0x004D965D`) and
-    /// Foot's timer tail (`0x004D96C2`). A Unit keeps the Fly adapter's power
-    /// and warp gates. `None` when `id` is not a Jumpjet Unit or Infantry.
+    /// Foot's timer tail (`0x004D96C2`). Units enter their class destination
+    /// owner, including its deployment refusal and existing power/warp gates.
+    /// `None` when `id` is not a Jumpjet Unit or Infantry.
     ///
     /// RESIDUAL: before Foot's setter, Infantry's (`0x0051AA40`) swaps the
     /// Jumpjet of a `JumpJet=` infantry that is not moving for a Walk
@@ -845,10 +853,18 @@ impl Simulation {
         if !jumpjet {
             return None;
         }
-        if entity.category == EntityCategory::Unit
-            && !super::air_movement::fly_coordinate_admitted(entity)
-        {
-            return Some(false);
+        if entity.category == EntityCategory::Unit {
+            // Every Unit caller uses the one class setter, including its
+            // deployment refusal and Foot admission/timer tail. That owner
+            // dispatches directly to Jumpjet Move_To, so this is not recursive.
+            return Some(rules.is_some_and(|rules| {
+                self.set_unit_destination(
+                    id,
+                    crate::sim::components::NavTargetRef::cell(target.0, target.1),
+                    rules,
+                    true,
+                )
+            }));
         }
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return Some(false);

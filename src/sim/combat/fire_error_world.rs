@@ -270,7 +270,7 @@ impl FireSubject<'_> {
                 }),
             navcom: firer.navigation.nav_com.is_some(),
             moving_faster_than_tenth: firer.foot_speed.above_tenth(),
-            deploying: unit_deploying(firer),
+            deploying: firer.unit_deploying(),
             tethered: firer.dock_entered_with.is_some(),
             radio_link: match radio_link {
                 None => RadioLink::None,
@@ -356,7 +356,7 @@ impl FireSubject<'_> {
                         bunkered: entity.bunker_link.installed_in().is_some(),
                         health: entity.health.current,
                         parasite_lock_until: entity.parasite_launch_lock as i32,
-                        deploying: unit_deploying(entity),
+                        deploying: entity.unit_deploying(),
                         ..TargetFacts::default()
                     },
                     TargetTypeFacts {
@@ -875,18 +875,6 @@ impl WorldQuery<'_, '_> {
             )
         })
     }
-}
-
-/// `0x00746DB0`: a Unit deploying or undeploying (`+0x6E1`/`+0x6E2`).
-fn unit_deploying(entity: &GameEntity) -> bool {
-    entity.category == EntityCategory::Unit
-        && matches!(
-            entity.deploy_state,
-            Some(
-                crate::sim::deploy::DeployPhase::Deploying { .. }
-                    | crate::sim::deploy::DeployPhase::Undeploying { .. }
-            )
-        )
 }
 
 #[cfg(test)]

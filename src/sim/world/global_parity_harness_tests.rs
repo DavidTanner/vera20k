@@ -511,12 +511,19 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // All819 complete current/control boundaries match except tick hashes,
 // including House/Factory state and three full RNG streams/draws/callers.
 // Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
-// Shared Techno Door hash composition: omitting only its new hash feed
-// restored all three preceding replay pins with behavior/RNG checks green.
-// The feed is restored; this remains a Rust regression, not a native golden.
-// Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-// Previous: 0x851C_57C5_76CA_991A.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x4274_E333_51E6_E7C0;
+// 2026-10-02 Unit deployment/body ownership: snapshot280 replaces the legacy
+// DeployPhase hash with Techno130/134, adds Unit6E0, and advances the existing
+// Foot538 counter for voxel Units. The 13-shot duel, surviving tank health,
+// mission transitions and RNG pins remain unchanged. The same-binary hash
+// control reproduces incoming 851C57C576CA991A; all 601 off/on boundaries differ
+// only in tick hash. tools/spatial_oracle/unit_simple_deploy_replay/receipt.json
+// records this Rust attribution; unit_simple_deploy separately pins native cadence.
+// Shared Techno Door hash composition after main339b57d18 integration:
+// one diagnostic binary restores incoming C86F736CE95687B3 when only the Door
+// hash feed is omitted. Behavior and RNG assertions reach the final pin in
+// both modes. The temporary control is removed; native expected values stay
+// unchanged. Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB6FF_0072_0C60_9F26;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

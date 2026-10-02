@@ -397,6 +397,7 @@ fn hash_mission_com(mission: &crate::sim::mission::MissionCom, hasher: &mut impl
 fn hash_mission_leaf(leaf: &crate::sim::mission::MissionLeafState, hasher: &mut impl Hasher) {
     if let Some(unit) = leaf.as_unit() {
         0u8.hash(hasher);
+        unit.deployed().hash(hasher);
         unit.deploy_begin_active().hash(hasher);
         unit.deploy_reverse_active().hash(hasher);
         unit.tracker_byte_18().hash(hasher);
@@ -1633,20 +1634,7 @@ impl Simulation {
                 0x4d435644u32.hash(hasher);
                 entity.mcv_deploy_pending.hash(hasher);
             }
-            match entity.deploy_state {
-                None => 0u8.hash(hasher),
-                Some(crate::sim::deploy::DeployPhase::Deploying { ticks_remaining }) => {
-                    1u8.hash(hasher);
-                    ticks_remaining.hash(hasher);
-                }
-                Some(crate::sim::deploy::DeployPhase::Deployed) => {
-                    2u8.hash(hasher);
-                }
-                Some(crate::sim::deploy::DeployPhase::Undeploying { ticks_remaining }) => {
-                    3u8.hash(hasher);
-                    ticks_remaining.hash(hasher);
-                }
-            }
+            entity.hash_deploy_attachment(hasher);
 
             if let Some(infantry) = entity.infantry {
                 1u8.hash(hasher);

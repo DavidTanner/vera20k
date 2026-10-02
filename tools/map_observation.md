@@ -173,7 +173,117 @@ the source and executable identities, frame hashes, changed-pixel bounds and
 test results. The step3745 frame immediately before dumping is byte-identical.
 Original runs, raw frames, profiles, native disassembly and logs are retained
 in the receipt's local evidence archive; executables remain with the shared
-build owner. The deployed Siege Chopper image and aircraft shadows remain open.
+build owner. Siege Chopper deployment is tracked separately below; aircraft
+shadows remain open.
+
+## Siege Chopper deployment observation
+
+[`map_observation.siege-chopper.example.json`](map_observation.siege-chopper.example.json)
+uses a normal Russia/Battle launch and an authored map containing one local SCHP.
+It keeps stock rules and assets. The ordinary command schedule moves actor 1 to
+(50,50) at step 10, issues `DeployMcv` at steps 200 and 500, then moves it back to
+(48,48) at step 650. The legacy command name also carries simple deployment and
+undeployment. The run ends at step 750. An enqueue receipt establishes neither
+admission nor completion; this route also bypasses self-click and deploy-key input.
+
+Create the map and a profile copy from the checkout, using new absolute paths.
+The existing fixture owner supplies the map encoding and clear Temperate terrain;
+the edits below author map objects and Houses without changing rules or runtime
+state. This is the portable recipe retained in the local evidence archive's
+`captures/fixture-reproduction.md`.
+
+```sh
+python - /absolute/evidence/siege-chopper.map /absolute/evidence/siege-profile.json <<'PYGEN'
+from pathlib import Path
+import json, re, sys
+from tools.render_depth_fixture import build_fixture, pack_lcw
+
+map_path, profile_path = map(Path, sys.argv[1:])
+assert all(path.is_absolute() and not path.exists() for path in (map_path, profile_path))
+mission = build_fixture(walls_only=True)
+mission = mission.replace('Name=Depth Continuation - Walls and Cliff',
+                          'Name=Siege Chopper Deployment Observation')
+mission = mission.replace('Americans', 'VERA-OBSERVER')
+mission = mission.replace('Country=VERA-OBSERVER', 'Country=Russians')
+sections = {
+    'Structures': '',
+    'Infantry': '',
+    'Units': '0=VERA-OBSERVER,SCHP,256,48,48,64,Guard,None,0,-1,0,-1,1,1',
+    'OverlayPack': pack_lcw(bytes([255]) * 262144),
+    'OverlayDataPack': pack_lcw(bytes(262144)),
+}
+for name, body in sections.items():
+    mission, count = re.subn(
+        r'(?ms)^\[' + re.escape(name) + r'\]\n.*?(?=^\[|\Z)',
+        lambda match: f'[{name}]\n{body}\n\n', mission)
+    assert count == 1, (name, count)
+map_path.write_text(mission, encoding='ascii')
+profile = json.loads(Path('tools/map_observation.siege-chopper.example.json').read_text())
+profile['launch']['selected_map_file'] = str(map_path)
+profile_path.write_text(json.dumps(profile, indent=2) + '\n')
+PYGEN
+```
+
+The recorded map SHA-256 is
+`40972558716058e1f0f5b1481824457b5643bc5425e3fa3a09689abe7f1d5cf9`.
+Recheck L0 actor IDs after changing any launch or fixture input. The recorded
+fixture has SCHP 1 at (48,48) and an opposing MCV far away; it does not induce
+combat. Run the copied profile with the build, environment and path requirements
+at the start of this document. Retain a full cycle first, then choose phase
+captures from its observed trajectory. For a shorter capture, set `ticks` to the
+chosen completed step and keep only commands whose `issue_after_step < ticks`.
+Each run retains the final GPU frame; earlier trajectory rows alone are not images.
+
+New actor rows include optional `unit` observations: raw deployment bytes
+`deployed_6e0`, `deploying_6e1`, `undeploying_6e2`, the landing request
+`landing_for_deploy_134`, owner `stage_f8`, persistent `body_counter_538`, and
+`deploy_anim_130`. The last is null or contains the retained stable ID and a
+nullable `live` body with type, frame and owner identity. A retained ID with no
+live Anim stays explicit. Non-Unit rows use null. The wrapper checks types and
+ranges, accepts older rows without this extension and preserves them unchanged;
+it does not turn these values into gameplay or parity assertions.
+
+The baseline ignores the two deploy inputs and still draws the flying SCHP at
+step 400. The candidate release loads the fixture through the production app
+and draws each phase below. All eight wrapper receipts are valid; each phase
+trajectory matches the corresponding prefix of the full cycle.
+
+| Phase to inspect | Actual completed step and retained GPU frame |
+| --- | --- |
+| Airborne SCHP before deployment | 190; SCHP visible at Z=500 |
+| Landing requested by deployment | 230; SCHP visible at Z=230, landing request set |
+| Forward SCHPDEPL with the unit body hidden | 300; attached animation frame 5 visible |
+| Deployed SCHD body | 400; deployed flag set, animation reference cleared |
+| Reverse SCHPDEPL with the unit body hidden | 550; attached reverse animation frame 5 visible |
+| SCHP returned to flight | 640; SCHP visible at Z=500 before the later Move order |
+
+The [validation receipt](map_observation.siege-chopper.validation.json) records
+source/build/map/profile identities, every retained frame hash and inspected
+image, and the exact transition steps. Landing starts at 202, touchdown clears
+the request at 253, forward animation starts at 254, and deployed state begins
+at 345. Reverse animation starts at 502, undeployment assigns its nearby
+destination at 584, and automatic flight restores Z=500 at 635. The final Move
+reaches (48,48) by 750. A repeated full cycle matches all 751 observation rows,
+initial/final fingerprints and final BGRA bytes exactly.
+
+The first candidate exposed a missing atlas refresh: its simulation advanced
+the transition but the selected palette frames were absent, making SCHPDEPL
+invisible. The final build uses the existing atlas owner to service live Anim
+palette demands on committed ticks. Against that failed rendering candidate,
+all eight runs retain identical simulation observations and fingerprints; only
+the forward/reverse frames change, each by 1,561 pixels inside the chopper's
+bounds. Both candidates and the baseline remain in the local evidence archive.
+These are production observations; no gamemd raster comparison is claimed.
+
+The [native evidence](spatial_oracle/unit_simple_deploy.md) covers the original
+transition and Stage bodies, Jumpjet handler branches, deployment admission,
+body selection and selected-HVA frame arithmetic. Its
+[fixture limits](spatial_oracle/unit_simple_deploy.meta.json) describe supplied
+callbacks and the component timeline; they do not establish a full native flight
+or world scheduler. Aircraft shadows, type-specific custom palettes,
+viewer-dependent disguise palette selection, the forced Magnetron source and
+EMP admission remain outside this stock observation. Full native animation
+lifetime, audio playback and raster parity are also unclaimed.
 
 ## Natural ore-spread observation
 

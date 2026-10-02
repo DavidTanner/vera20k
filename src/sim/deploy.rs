@@ -1,69 +1,93 @@
-//! Infantry deployment actions and the separate Unit deployment countdown.
+//! Infantry deployment actions and the shared Unit DEPLOY event receiver.
 //!
 //! Infantry's Doing and shared Techno Stage own its sequence. The completion
 //! receiver applies the independent crush byte and passive-scan timer effects,
-//! including when its requested next action refuses. Unit deployment retains
-//! its existing controller; it does not advance an Infantry clock.
+//! including when its requested next action refuses. Unit simple deployment
+//! uses its Mission leaf, the same Techno Stage and attached AnimClass.
 
-use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{TargetKind, combat_weapon};
-use crate::sim::entity_store::EntityStore;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::world::{SimSoundEvent, Simulation};
 
-/// Existing Unit deployment control. Infantry uses Doing27..31 instead.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum DeployPhase {
-    Deploying { ticks_remaining: u16 },
-    Deployed,
-    Undeploying { ticks_remaining: u16 },
-}
-
-/// Advance only the existing Unit deployment countdown. The native Infantry
-/// sequencer520AE0 observes the object's shared Stage during its own AI visit.
-pub fn tick_deploy_state(entities: &mut EntityStore) {
-    for id in entities.keys_sorted() {
-        let Some(entity) = entities.get_mut_if(id, |entity| {
-            entity.category == EntityCategory::Unit
-                && matches!(
-                    entity.deploy_state,
-                    Some(DeployPhase::Deploying { .. } | DeployPhase::Undeploying { .. })
-                )
-                && !entity.ai_frozen()
-        }) else {
-            continue;
-        };
-        match entity.deploy_state {
-            Some(DeployPhase::Deploying { ticks_remaining }) if ticks_remaining > 1 => {
-                entity.deploy_state = Some(DeployPhase::Deploying {
-                    ticks_remaining: ticks_remaining - 1,
-                });
+/// Event9 DEPLOY4C778A..4C7812. MCV conversion and simple deployment
+/// share this event; each concrete Mission_Unload branch owns its effects.
+pub(crate) fn issue_order(sim: &mut Simulation, id: u64, rules: &RuleSet) -> bool {
+    if !sim.substrate.entities.get(id).is_some_and(|e| {
+        e.lifecycle.object_alive
+            && !e.lifecycle.in_limbo
+            && e.dock_entered_with.is_none()
+            && (crate::sim::mcv_deploy::is_mcv(sim, e, rules)
+                || crate::sim::unit_simple_deploy::is_simple_deployer(sim, e, rules))
+    }) {
+        return false;
+    }
+    // Event9 4C771C..4C7756 checks the current cell's slope before the
+    // Techno70C620 terrain projection query. It does not test health/dying.
+    // EMP504 has no active state producer in this engine yet.
+    if let Some(terrain) = sim.resolved_terrain.as_ref() {
+        let actor = sim.substrate.entities.get(id).expect("admitted Unit");
+        if !actor.on_bridge {
+            let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+            let [x, y] = crate::sim::movement::ground_pose::position_world_xy(&actor.position);
+            if cells.ground_fields(cells.lookup_world(x, y)).1 == 0
+                && crate::sim::movement::ground_pose::terrain_projection_differs(&cells, [x, y])
+            {
+                return false;
             }
-            Some(DeployPhase::Deploying { .. }) => {
-                entity.deploy_state = Some(DeployPhase::Deployed);
-            }
-            Some(DeployPhase::Undeploying { ticks_remaining }) if ticks_remaining > 1 => {
-                entity.deploy_state = Some(DeployPhase::Undeploying {
-                    ticks_remaining: ticks_remaining - 1,
-                });
-            }
-            Some(DeployPhase::Undeploying { .. }) => {
-                entity.deploy_state = None;
-                if let Some(locomotor) = entity.locomotor.as_mut() {
-                    locomotor.power_on();
-                }
-            }
-            Some(DeployPhase::Deployed) | None => {}
         }
     }
+    //4C7768..4C7774 follows the projection query and its map lookup effects.
+    if matches!(
+        sim.substrate
+            .entities
+            .get(id)
+            .expect("admitted Unit")
+            .mission
+            .current()
+            .known(),
+        Some(MissionType::Construction | MissionType::Selling)
+    ) {
+        return false;
+    }
+    // `0x004C778A..0x004C77DE`: the event is ignored while the Unit's cell
+    // holds a WeaponsFactory= building (Cell_Building `0x0047C520`; VERA's
+    // foundation scan stands in), so an MCV still leaving its factory stays.
+    let (rx, ry) = {
+        let entity = sim.substrate.entities.get(id).unwrap();
+        (entity.position.rx, entity.position.ry)
+    };
+    if crate::sim::credit_income::building_at_cell(sim, rx, ry)
+        .and_then(|building| sim.substrate.entities.get(building))
+        .and_then(|building| sim.object_type(building.type_ref(), rules))
+        .is_some_and(|kind| kind.weapons_factory)
+    {
+        return false;
+    }
+    sim.run_dock_teardown(id, crate::sim::mission::retask::DockTeardown::All);
+    // Event DEPLOY: the Unit's class setter takes a null destination
+    // (`0x004C77F8`, Unit `0x00741970`) and its class target setter a null
+    // target (`0x004C7804`) before Queue_Mission(Unload) (`0x004C7812`).
+    // Queue's same-mission guard keeps the handler and timer on a repeated D.
+    sim.assign_null_destination(id, Some(rules), None);
+    let _ = sim.assign_target_represented(id, None, Some(rules));
+    let entity = sim.substrate.entities.get_mut(id).unwrap();
+    entity.order_intent = None;
+    sim.mission_queue_exact(
+        id,
+        MissionId::from_known(MissionType::Unload),
+        0,
+        sim.session.binary_frame,
+        &crate::sim::mission::authority::EntityReadyInputProvider,
+    )
+    .is_ok()
 }
 
 impl Simulation {
-    /// Do_Action51D939..51D9CF requests DeploySound/UndeploySound after
-    /// admission and before Doing51D9D2 and the Stage restart. The action owner
-    /// calls this receiver only for an admitted, changed action.
-    pub(crate) fn emit_infantry_deploy_action_sound(
+    /// Shared DeploySound/UndeploySound receiver. Infantry Do_Action51D939
+    /// requests it for an admitted changed action; Unit739AC0/739CD0 request
+    /// it on each admitted updater visit.
+    pub(crate) fn emit_deploy_action_sound(
         &mut self,
         id: u64,
         requested: i32,
@@ -79,7 +103,7 @@ impl Simulation {
             .ok_or("deployment sound receiver retired")?;
         let object = self
             .object_type(actor.type_ref(), rules)
-            .ok_or("deployment sound requires the Infantry type")?;
+            .ok_or("deployment sound requires the object type")?;
         let sound = if requested == 27 {
             object.deploy_sound.as_deref()
         } else {

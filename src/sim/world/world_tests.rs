@@ -915,7 +915,7 @@ fn assert_gsi_13_10_shp_unit(entity: &GameEntity) {
     assert_eq!(entity.category, EntityCategory::Unit);
     assert!(
         !entity.is_voxel,
-        "SHP Unit must enter the non-voxel cadence path"
+        "SHP Unit must retain its SHP drawing representation"
     );
     assert!(entity.animation.is_some());
     assert!(entity.voxel_animation.is_none());
@@ -925,7 +925,10 @@ fn assert_gsi_13_10_vxl_unit(entity: &GameEntity) {
     assert_eq!(entity.category, EntityCategory::Unit);
     assert!(entity.is_voxel);
     assert!(entity.animation.is_none());
-    assert!(entity.voxel_animation.is_some());
+    assert!(
+        entity.voxel_animation.is_none(),
+        "Unit voxel drawing shares the persistent Foot body counter"
+    );
 }
 
 /// FootClass::AI asks every Foot's locomotor `Is_Moving_Now`
@@ -6769,14 +6772,14 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
 
 #[test]
 fn gsi_13_06_shp_counter_admission_uses_only_tube_state_at_unit_ai_entry() {
-    assert!(shp_vehicle_counter_admitted(false));
-    assert!(!shp_vehicle_counter_admitted(true));
+    assert!(unit_body_counter_admitted(false));
+    assert!(!unit_body_counter_admitted(true));
 
     let tube_active_at_entry = false;
     let tube_armed_during_ordinary_foot_visit = true;
     assert!(tube_armed_during_ordinary_foot_visit);
     assert!(
-        shp_vehicle_counter_admitted(tube_active_at_entry),
+        unit_body_counter_admitted(tube_active_at_entry),
         "post-Process tube state must not retroactively suppress this Foot visit"
     );
 }

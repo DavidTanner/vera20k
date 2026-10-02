@@ -799,9 +799,12 @@ use crate::sim::world::Simulation;
 // single MissionLeaf ready byte. Building persists private body/queued mode
 // and type control, without BuildingUp's duplicate mission/clock/latch or
 // BuildingDown's duplicate ready/timer. Factory primary state is lifecycle-owned.
-//279 ->280: every Techno saves one DoorClass; Gate Open/handler status come
-//from MissionCom rather than a second gate mission/transition state.
-const SNAPSHOT_VERSION: u32 = 280;
+// 279 -> 280: Unit deployment uses private6E0..6E2 and retained Techno
+// animation/landing state, removing the independent deployment countdown.
+// Anim palettes also retain either a color scheme or the creation-time House.
+// 280 -> 281: every Techno saves one shared DoorClass; Gate Open/handler
+// status come from MissionCom rather than a second gate mission/transition.
+const SNAPSHOT_VERSION: u32 = 281;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3760,7 +3763,10 @@ mod tests {
         // 278 -> 279: native Building health sample; dirty House assessment,
         // retained House discovery/capture notifications and Engineer identity;
         // and its anchored power-blackout clock/radar projection.
-        assert_eq!(super::SNAPSHOT_VERSION, 280);
+        // 279 -> 280: Unit deploy flags, Techno animation/landing ownership and
+        // the animation's retained palette source replace the legacy countdown.
+        // 280 -> 281: one shared Techno Door and MissionCom-owned Gate phases.
+        assert_eq!(super::SNAPSHOT_VERSION, 281);
     }
 
     #[test]

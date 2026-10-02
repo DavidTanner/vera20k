@@ -110,6 +110,7 @@ pub(crate) mod door;
 pub mod gate_runtime;
 pub mod infantry;
 pub(crate) mod mcv_deploy;
+pub(crate) mod unit_simple_deploy;
 
 // --- Persistent cell occupancy ---
 pub mod cell_kernel;

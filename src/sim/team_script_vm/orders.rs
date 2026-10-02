@@ -6,17 +6,16 @@
 //! `Enter_Idle_Mode` (`vt+0x484`) and `Set_ArchiveTarget` (`0x0070C610`).
 //!
 //! RESIDUALS:
-//! - `Set_Destination` for an aircraft (`0x0041AA80`), a Walk unit, a
-//!   Jumpjet unit, or a Jumpjet infantryman is not given. VERA has no class
-//!   setter for the aircraft, Walk-unit and Jumpjet-infantry receivers. The
-//!   Unit setter's cell arm reaches Jumpjet Move_To, but this caller keeps
-//!   to `unit_setter_receiver`. Trigger: such a member in a team ordered to move or to
+//! - `Set_Destination` for an aircraft (`0x0041AA80`) is not given. Unit
+//!   callers, including Jumpjet, use the shared class setter; Infantry uses
+//!   its class setter and retains that owner's Jumpjet limitations.
+//!   Trigger: an aircraft member in a team ordered to move or to
 //!   join up. Effect: it stays where it is and never joins, so a team of
 //!   them never finishes action 53 or 54 (`Coordinate_Move`) and passes
 //!   action 0 without attacking.
-//!   Frequency: 24 retail AIMD TeamTypes hold ORCA, DISK, SHAD, JUMPJET,
-//!   ZEP, SCHP, BEAG or V3ROCKET members; all run action 0 and 16 also run
-//!   53 or 54. Downstream: a stuck team keeps its members and its `Max=`
+//!   Frequency: the previously counted 24 retail AIMD teams mixed Aircraft
+//!   and now-supported Unit members, so that count no longer bounds this gap.
+//!   Downstream: a stuck aircraft team keeps its members and its `Max=`
 //!   slot.
 //! - `Enter_Idle_Mode` for an aircraft (`0x004176F0`) is not ported; see
 //!   [`Simulation::team_member_enter_idle_mode`].

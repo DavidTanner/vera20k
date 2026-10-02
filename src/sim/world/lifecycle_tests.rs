@@ -1877,17 +1877,12 @@ fn unlimbo_adds_a_high_flying_considered_aircraft_to_the_air_tracker() {
 
 fn insert_anim(sim: &mut Simulation, stable_id: u64, inactive: bool) {
     let type_id = sim.interner.intern("TESTANIM");
-    let anim = AnimObject {
+    let anim = AnimObject::new_unattached_for_test(
         stable_id,
-        native_unique_id: stable_id as i32,
+        stable_id as i32,
         type_id,
-        world_coord: AnimWorldCoord { x: 0, y: 0, z: 0 },
-        draw_flags: 0,
-        z_adjust: 0,
-        remap_color: None,
-        effective_end: 1,
-        effective_loop_end: 1,
-        runtime: AnimRuntime {
+        AnimWorldCoord { x: 0, y: 0, z: 0 },
+        AnimRuntime {
             current_frame: 0,
             frame_step: 1,
             delay_remaining: 0,
@@ -1899,18 +1894,7 @@ fn insert_anim(sim: &mut Simulation, stable_id: u64, inactive: bool) {
             inactive,
             paused: false,
         },
-        draw_runtime: crate::sim::anim_class::AnimDrawRuntime::default(),
-        use_cell_drawer: false,
-        terrain_attached: false,
-        in_logic_vector: false,
-        owner_entity: None,
-        building_slot: None,
-        damage_fire_slot: None,
-        start_sound_active: false,
-        stop_sound_id: None,
-        display: Default::default(),
-        bounce: None,
-    };
+    );
     assert!(sim.substrate.anims.insert(anim).is_none());
 }
 

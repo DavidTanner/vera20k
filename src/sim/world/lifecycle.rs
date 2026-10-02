@@ -4108,6 +4108,16 @@ impl Simulation {
         self.bomb_defuse(stable_id);
         self.team_script_vm.object_deleted(stable_id);
         self.release_house_base_tracking(stable_id);
+        // Techno destructor6F467F..6F4691 UnInits its retained deploy Anim.
+        // Pointer-expiry may already have cleared it through the Anim owner.
+        if let Some(anim) = self
+            .substrate
+            .entities
+            .get_mut(stable_id)
+            .and_then(|entity| entity.take_deploy_anim())
+        {
+            self.destroy_anim_with_context(anim, None);
+        }
         self.destroy_building_light(stable_id);
         self.clear_building_damage_fire_slots(stable_id, None);
         if self.substrate.anims.contains_key(stable_id) {

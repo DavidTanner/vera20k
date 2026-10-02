@@ -902,14 +902,14 @@ impl Simulation {
     }
 
     /// Whether the Unit setter (`0x741970`) is represented for `id` as the
-    /// team and harvest callers use it: a Drive, Ship, Hover or Walk receiver, or a
-    /// `Teleporter=` Unit whatever its active locomotor. Its cell arm
-    /// ([`Self::set_unit_destination`]) also reaches Jumpjet Move_To.
+    /// team, harvest and undeploy callers use it: a Drive, Ship, Hover, Walk
+    /// or Jumpjet receiver, or a `Teleporter=` Unit whatever its locomotor.
     pub(crate) fn unit_setter_receiver(&self, id: u64, rules: Option<&RuleSet>) -> bool {
         self.substrate.entities.get(id).is_some_and(|actor| {
             track_unit(actor)
                 || hover_unit(actor)
                 || walk_unit(actor)
+                || jumpjet_unit(actor)
                 || teleporter_unit(self, actor, rules)
         })
     }
@@ -927,13 +927,12 @@ impl Simulation {
     /// - The Foot tail (0x4D94B0) writes NavCom and calls the active
     ///   locomotor's Move_To — Drive/Ship ([`prepare_track_destination`]),
     ///   Teleport ([`teleport_move_to`]), Jumpjet
-    ///   ([`Self::issue_air_cell_destination`], which writes the NavCom and
-    ///   the timers itself), Hover ([`hover_move_to`]) or Walk
+    ///   ([`Self::jumpjet_move_to`]), Hover ([`hover_move_to`]) or Walk
     ///   ([`set_walk_destination_coord`]) — unless Foot+0x6AC skips it once.
     ///
     /// Returns false for a receiver without a represented Move_To or a
-    /// refused destination. Jumpjet still uses its Cell adapter; its non-cell
-    /// Move_To remains required bridge work.
+    /// refused destination. Foot4D9628 calls the destination's +4C coordinate
+    /// virtual for both Cell and Object targets before Jumpjet54B1C0.
     ///
     /// [`prepare_track_destination`]: super::movement_commands::prepare_track_destination
     /// [`teleport_move_to`]: super::teleport_movement::teleport_move_to
@@ -962,6 +961,20 @@ impl Simulation {
         {
             return true;
         }
+        let actor = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .expect("same Unit setter");
+        actor.setter_force_reassign = false;
+        //741A96..741ACD, after the same-NavCom guard: deployment refuses
+        // through Foot4DF0D0, which clears NavCom, not locomotor movement.
+        // Techno+2B0 can exempt6E0; its Magnetron lift source has no producer
+        // here and remains a separate lifecycle residual (not Foot+6AD).
+        if actor.is_deployed() {
+            super::navcom::foot_stop_moving(actor);
+            return false;
+        }
         let Some(info) = self.resolve_move_info(id, Some(rules)) else {
             return false;
         };
@@ -971,7 +984,6 @@ impl Simulation {
                 .entities
                 .get_mut(id)
                 .expect("same setter actor");
-            actor.setter_force_reassign = false;
             super::movement_commands::clear_destination_path_head(actor);
             // Unit7422D9..7423CD: queued Approach passes false, skips the
             // queue-clear dispatch, and consumes its first entry afterward.
@@ -1003,8 +1015,20 @@ impl Simulation {
         });
         let adapter_route = if skip_move_to {
             None
-        } else if let Some(cell) = requested_cell.filter(|_| jumpjet) {
-            Some(self.issue_air_cell_destination(id, cell, info.speed, Some(rules)))
+        } else if jumpjet {
+            let actor = self.substrate.entities.get_mut(id).expect("same Jumpjet");
+            if super::air_movement::fly_coordinate_admitted(actor)
+                && self.resolved_terrain.is_some()
+            {
+                super::navcom::publish_nav_com(actor, requested);
+                let accepted = self
+                    .jumpjet_move_to(id, coord.expect("captured destination +4C"), Some(rules))
+                    .is_some();
+                self.publish_jumpjet_destination(id, info.speed);
+                Some(accepted)
+            } else {
+                Some(false)
+            }
         } else {
             None
         };
@@ -1170,8 +1194,7 @@ impl Simulation {
     ///   FootClass::AI tail ends again once it is stopped.
     ///
     /// Residual (not represented): the BalloonHover arm (0x741983), the
-    /// deploy-byte early return (0x741AA3..0x741ABD), the +2B0 linked-object
-    /// branch (0x742E3A) and the unpowered-locomotor PowerOn (0x742F48).
+    /// +2B0 linked-object branches (0x741ABD /0x742E3A) and the unpowered-locomotor PowerOn (0x742F48).
     /// A Jumpjet Stop's failed search retains the caller's overlay context
     /// for synchronous damage; callers without that context retain their
     /// existing damage-closure limitation.
@@ -1192,6 +1215,11 @@ impl Simulation {
         let teleporter = teleporter_unit(self, actor, rules);
         if let Some(actor) = self.substrate.entities.get_mut(id) {
             actor.setter_force_reassign = false;
+            //741A96..741ACD; same native owner as the non-null setter.
+            if actor.is_deployed() {
+                super::navcom::foot_stop_moving(actor);
+                return false;
+            }
         }
         if teleporter && let Some(rules) = rules {
             let _ = self.unit_teleporter_arm(id, None, rules);

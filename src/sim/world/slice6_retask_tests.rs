@@ -263,12 +263,19 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // All819 complete current/control boundaries match except tick hashes,
 // including House/Factory state and three full RNG streams/draws/callers.
 // Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
-// Shared Techno Door hash composition: omitting only its new hash feed
-// restored all three preceding replay pins with behavior/RNG checks green.
-// The feed is restored; this remains a Rust regression, not a native golden.
-// Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-// Previous: 0x1AD1_4029_10CE_62D8.
-const SLICE6_BASELINE_HASH: u64 = 0x9FBB_EE3B_9E78_FC73;
+// 2026-10-02 Unit deployment/body ownership: snapshot280 replaces the legacy
+// DeployPhase hash with Techno130/134, adds Unit6E0, and advances the existing
+// Foot538 counter for voxel Units. Mission, health and all three RNG pins
+// remain unchanged. The same-binary hash control reproduces incoming
+// 1AD1402910CE62D8; all 17 off/on boundaries differ only in tick hash. Receipt:
+// tools/spatial_oracle/unit_simple_deploy_replay/receipt.json. This is Rust
+// attribution; unit_simple_deploy separately pins native body cadence.
+// Shared Techno Door hash composition after main339b57d18 integration:
+// one diagnostic binary restores incoming B20E11E0579BC4E4 when only the Door
+// hash feed is omitted. Behavior and RNG assertions reach the final pin in
+// both modes. The temporary control is removed; native expected values stay
+// unchanged. Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+const SLICE6_BASELINE_HASH: u64 = 0xA739_CF89_5070_DB7A;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

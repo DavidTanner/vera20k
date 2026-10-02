@@ -820,9 +820,13 @@ pub struct ObjectType {
     /// Immutable `[AI] AIBaseSpacing` snapshot for Building types that execute
     /// the native base-reservation writer. `None` is the exact writer gate.
     pub base_reservation_spacing: Option<i32>,
-    /// Alternative VXL model displayed while unloading at a refinery (UnloadingClass= in rules.ini).
-    /// e.g. HARV uses HORV (harvester without ore bin), CMIN uses CMON.
+    /// Alternative voxel model while unloading at a refinery or fully deployed.
+    /// HARV uses HORV, CMIN uses CMON, and SCHP uses SCHD (UnloadingClass=).
     pub unloading_class: Option<String>,
+    /// TechnoType+6BC, ctor711175=null; rules714729 ReadString128 after
+    /// UnloadingClass. Empty/missing retains the prior pointer. AnimType
+    /// FindOrAllocate428B80 owns registration, before the InitialAmmo read.
+    pub deploying_anim: Option<String>,
     /// Ammo count for aircraft. -1 = unlimited (default), 0+ = finite.
     /// Aircraft with finite ammo return to a helipad/airfield to reload after depleting.
     pub ammo: i32,
@@ -2241,6 +2245,9 @@ impl ObjectType {
             hidden_occupancy: BuildingHiddenOccupancyProfile::default(),
             base_reservation_spacing: None,
             unloading_class: section.read_name("UnloadingClass", 0x80).map(str::to_owned),
+            deploying_anim: section
+                .read_type_name("DeployingAnim", 0x80)
+                .map(str::to_owned),
             ammo: section.read_int("Ammo", -1),
             initial_ammo: section.read_int("InitialAmmo", -1),
 
@@ -4960,5 +4967,61 @@ mod tests {
             (8, 16),
             "8 stock sections author Jumpjet* keys and all 8 carry both mis-cased keys"
         );
+    }
+}
+
+#[cfg(test)]
+mod simple_deploy_reader_tests {
+    use crate::rules::{
+        ini_parser::IniFile,
+        native_processing::{RulesLayerKind, RulesLayerStack},
+        ruleset::RuleSet,
+    };
+    #[test]
+    fn simple_deploy_keys_match_native_reader_history() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/unit_simple_deploy.json"
+        ))
+        .unwrap();
+        let base = "[VehicleTypes]\n0=SCHP\n[SCHP]\nIsSimpleDeployer=yes\nDeployToLand=yes\n[AudioVisual]\nDeployDir=2\n";
+        for row in corpus["readers"]["deploy_dir"].as_array().unwrap() {
+            // The native reader fixture can supply an empty cached value;
+            // physical INI loading omits that entry before ReadInteger. It is
+            // not the same input as an authored `DeployDir=` line.
+            if row["raw"].as_str() == Some("") {
+                continue;
+            }
+            let mut layers = RulesLayerStack::new(IniFile::from_str(base));
+            let patch = row["raw"]
+                .as_str()
+                .map_or("[AudioVisual]\n".to_owned(), |value| {
+                    format!("[AudioVisual]\nDeployDir={value}\n")
+                });
+            layers.push(RulesLayerKind::Scenario, IniFile::from_str(&patch));
+            let rules = RuleSet::from_rules_layers(&layers).unwrap();
+            assert_eq!(
+                i64::from(rules.general.deploy_dir),
+                row["native_raw"].as_i64().unwrap(),
+                "{row}"
+            );
+        }
+        let mut layers = RulesLayerStack::new(IniFile::from_str(base));
+        for row in corpus["readers"]["deploying_anim_history"]
+            .as_array()
+            .unwrap()
+        {
+            let patch = row["raw"].as_str().map_or("[SCHP]\n".to_owned(), |value| {
+                format!("[SCHP]\nDeployingAnim={value}\n")
+            });
+            layers.push(RulesLayerKind::Scenario, IniFile::from_str(&patch));
+            let rules = RuleSet::from_rules_layers(&layers).unwrap();
+            let object = rules.object("SCHP").unwrap();
+            assert_eq!(
+                object.deploying_anim.as_deref(),
+                row["native_name"].as_str(),
+                "{row}"
+            );
+            assert!(object.is_simple_deployer && object.deploy_to_land);
+        }
     }
 }
