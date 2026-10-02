@@ -419,7 +419,7 @@ impl Simulation {
                     entity.navigation.path_replay.clear_live_head();
                     entity.navigation.pending_arrival_clear = false;
                     if entity.mission.current().known() == Some(MissionType::Move) {
-                        let returns = self.track_enter_idle_mode(id, rules);
+                        let returns = self.unit_enter_idle_mode(id, rules, false);
                         observe(self, id, TrackWorldEvent::Arrival);
                         if returns {
                             return Ok(TrackPass::aborted(moved));
@@ -1051,16 +1051,18 @@ impl Simulation {
             < 2 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS)
     }
 
-    /// `UnitClass::Enter_Idle_Mode(0, 1)` (vt+0x484) from a class caller:
-    /// the refinery dock's Mission_Enter refusal (`0x004D92E2`) and
-    /// Mission_Unload's lost contact (`0x0073DEF2`).
-    pub(crate) fn unit_enter_idle_mode(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
-        self.track_enter_idle_mode(id, rules)
-    }
-
-    /// Bounded Unit738970 receiver. Existing idle selectors cover ordinary
-    /// human vehicles/miners; deploy/radio/AI arms remain receiver residuals.
-    pub(super) fn track_enter_idle_mode(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
+    /// Unit EnterIdle738970(first_arg,1), shared by mission exits, initial
+    /// placement, and locomotor/radio callers. The first argument skips the
+    /// human harvester land check when nonzero. Native executable controls:
+    /// tools/spatial_oracle/harvest_attack_return.json, track_destination.json
+    /// and foot_enter_idle.json. Foot planning-path and saved AttackMove state
+    /// remain separate residuals; ordinary Attack clears those saved inputs.
+    pub(crate) fn unit_enter_idle_mode(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        skip_human_land_check: bool,
+    ) -> bool {
         // Foot4D82D9 -> Techno709A54 lets a held Temporal target go first.
         self.temporal_release_if_warping(id);
         let Some(entity) = self.substrate.entities.get_mut(id) else {
@@ -1144,6 +1146,8 @@ impl Simulation {
         let saved_base_return = ended_drive || queued_cell.is_some();
         let has_destination = entity.navigation.nav_com.is_some();
         let current = entity.mission.current().known();
+        let effective = entity.mission.effective().known();
+        let category = entity.category;
         let miner = rules
             .and_then(|rules| rules.object(self.interner.resolve(entity.type_ref())))
             .is_some_and(|object| object.harvester || object.weeder);
@@ -1152,27 +1156,35 @@ impl Simulation {
         if !has_destination && !miner && entity.mcv_deploy_pending {
             return saved_base_return;
         }
+        //73899E..7389AB: Wait28 suppresses only the Unit tail after Foot.
+        if effective == Some(MissionType::Deliberate) {
+            return saved_base_return;
+        }
         let selection = if has_destination {
             Some(MissionType::Move)
         } else if miner {
-            rules.and_then(|rules| {
-                crate::sim::world::harvester_enter_idle_mode_selector(self, id, rules, false)
-            })
+            rules.and_then(|rules| harvester_idle_selection(self, id, rules, skip_human_land_check))
         } else {
-            Some(MissionType::Guard)
+            rules.map_or(Some(MissionType::Guard), |rules| {
+                crate::sim::world::foot_enter_idle_mode_selection(
+                    rules, category, current, false, effective,
+                )
+            })
         };
         if selection.is_some() && !has_destination {
-            if let Some(entity) = self.substrate.entities.get_mut(id) {
-                // Unit738AF5/738C75 calls the virtual target setter before
-                // the Guard/Harvest queue; clearing only Target loses its
-                // retained burst reset (Techno6FCF5B).
-                crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
-            }
+            // Unit738AF5/738C75 calls Target(NULL) then Destination(NULL,1)
+            // before its queue gate. Use the shared concrete setter owners,
+            // including retained burst, movement, and Teleporter side effects.
+            let _ = self.assign_target_represented(id, None, rules);
+            self.assign_null_destination(id, rules);
         }
         // Unit738CFA..D12 suppresses assignment only after preceding writes.
         let selection = selection.filter(|_| {
             !matches!(
-                current,
+                self.substrate
+                    .entities
+                    .get(id)
+                    .and_then(|actor| actor.mission.current().known()),
                 Some(
                     MissionType::Patrol
                         | MissionType::AreaGuard
@@ -1200,7 +1212,7 @@ impl Simulation {
         if entity.navigation.nav_com.is_some() || entity.attack_target.is_some() {
             return false;
         }
-        self.track_enter_idle_mode(id, rules)
+        self.unit_enter_idle_mode(id, rules, false)
     }
 }
 
@@ -1211,3 +1223,85 @@ mod tests;
 #[cfg(test)]
 #[path = "track_force_tests.rs"]
 mod force_tests;
+
+/// The no-destination harvester selector of `UnitClass::Enter_Idle_Mode @
+/// 0x00738970`, for a unit whose `Harvester=`/`Weeder=` flag
+/// (`UnitType+0xE0E`/`+0xE0F`) is set. Returns the mission the body commits
+/// through `Queue_Mission(selector, 0)` (`+0x1E8` = 0x005B35E0), or `None`
+/// on one of the harvester arm's early returns (nothing assigned).
+///
+/// Body, decompiled 2026-09-06:
+/// - `RadioClass::In_Radio_Contact` ⇒ return (nothing assigned);
+/// - current (`+0xAC`) or queued (`+0xB4`) == Harvest(10) ⇒ return;
+/// - selector = Harvest; when the FIRST explicit argument is 0 AND the OWNER passes
+///   `HouseClass::IsControlledByHuman @ 0x0050B730`: the cell under the unit
+///   (`MapClass::Get_CellClass_At_Coord`) has `LandType` (`CellClass+0xEC`)
+///   ≠ 5 (Tiberium; 0xB Weeds for a Weeder) ⇒ selector = Guard(5). An AI
+///   house always takes Harvest; so does every caller passing first explicit argument 1
+///   (`TechnoClass::Unlimbo @ 0x006F6E2A` calls `+0x484(1, 1)`, which is why
+///   a freshly built miner always leaves the factory on Harvest);
+/// - `Assign_Target(0)` (`+0x3C8`), `Assign_Destination(0, 1)` (`+0x480`) —
+///   the callers own those writes;
+/// - the concrete Unit receiver clears target and destination before its tail
+///   gate on current {Patrol25, AreaGuard11, Unload16, Eaten9}.
+///
+/// The concrete receiver is `Simulation::unit_enter_idle_mode`; callers use
+/// it for the Foot base, installed destination, setter and queue effects. This
+/// pure selector stays local to that receiver.
+///
+/// `skip_human_land_check` is the FIRST explicit argument != 0.
+/// Original738970 loads caller arg1 into BL; miner gate738C0A tests BL.
+/// Decompiler parameter numbering included implicit this. Terminal +484(0,1)
+/// therefore retains the human land check.
+fn harvester_idle_selection(
+    sim: &Simulation,
+    id: u64,
+    rules: &RuleSet,
+    skip_human_land_check: bool,
+) -> Option<MissionType> {
+    let entity = sim.substrate.entities.get(id)?;
+    if !entity.radio_contacts.is_empty() {
+        return None;
+    }
+    let current = entity.mission.current().known();
+    if current == Some(MissionType::Harvest)
+        || entity.mission.queued() == MissionId::from_known(MissionType::Harvest)
+    {
+        return None;
+    }
+    let human = !skip_human_land_check
+        && sim
+            .houses
+            .get(&entity.owner())
+            .is_none_or(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero));
+    let weeder = sim
+        .object_type(entity.type_ref(), rules)
+        .is_some_and(|obj| !obj.harvester && obj.weeder);
+    let wanted_land = if weeder {
+        crate::rules::terrain_rules::LandType::Weeds
+    } else {
+        crate::rules::terrain_rules::LandType::Tiberium
+    };
+    let land_matches = cell_land_type_is(sim, entity.position.rx, entity.position.ry, wanted_land);
+    Some(if human && !land_matches {
+        MissionType::Guard
+    } else {
+        MissionType::Harvest
+    })
+}
+
+/// `CellClass+0xEC` (`LandType`) of one cell: the resolved terrain's land
+/// type, which the overlay recompute keeps current when ore is placed or
+/// removed. Without resolved terrain no cell has a land type.
+fn cell_land_type_is(
+    sim: &Simulation,
+    rx: u16,
+    ry: u16,
+    wanted: crate::rules::terrain_rules::LandType,
+) -> bool {
+    sim.resolved_terrain.as_ref().is_some_and(|terrain| {
+        terrain
+            .cell(rx, ry)
+            .is_some_and(|cell| cell.land_type == wanted.as_index())
+    })
+}

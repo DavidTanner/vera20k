@@ -38,7 +38,10 @@
 //!   unconditionally. Completion tests ordered ratio >= 1, including signed
 //!   Strength and masked division by zero; unordered does not complete.
 //! - **Reply 10 to the waiter**: `Mission_Enter` 0x004D92D0 sends BREAK and
-//!   calls `Enter_Idle_Mode` (+0x484 = 0x00738970 → Guard for a plain unit).
+//!   calls `Enter_Idle_Mode` (+0x484 = 0x00738970). BREAK preserves NavCom,
+//!   so an installed destination selects Move before the harvester arm.
+//!   Without NavCom, plain units select Guard; Harvester=yes units select
+//!   Harvest unless a human owner stands off ore.
 //! - **Release of a repaired occupant** is the building's repair mission
 //!   (`BuildingClass::MissionRepairAndProduce` 0x0044B780, 0x0044C2AE..C4B0 and
 //!   0x0044BD5E..): on `0x1C` reply 0x21 the occupant gets `Queue_Mission(Move)`,
@@ -616,12 +619,12 @@ pub(crate) fn mission_enter_dispatch(sim: &mut Simulation, rules: &RuleSet, id: 
             // Temporal warp clears) answers 10 before any other test.
             // 0x0043C824..C842: a linked sender whose 0x22 answers 10 (ratio
             // >= 1.0) gets 10 back. Mission_Enter then BREAKs and calls
-            // Enter_Idle_Mode(0, 1) at 0x004D92E2 (Guard for a plain unit,
-            // 0x00738970; a Harvester=yes unit takes the harvester arm:
-            // Harvest, or Guard for a human owner standing off ore — with the
-            // depot contact already broken, the arm's radio gate only sees a
-            // refinery link). The unit leaves Enter; the epilogue draw below
-            // still happens.
+            // Enter_Idle_Mode(0, 1) at 0x004D92E2. BREAK preserves NavCom;
+            // Unit idle 0x00738A34 selects Move for that destination before
+            // its Harvester=yes branch. Without NavCom it selects Guard for
+            // a plain unit, or the human-land/AI harvester mission. Executed
+            // controls: harvest_attack_return.json depot_break_* rows.
+            // The unit leaves Enter; the epilogue draw below still happens.
             if !online || linked && repair_is_complete(hp, strength) {
                 break_depot_contact(sim, id, dock_building_id);
                 leave = true;
@@ -648,7 +651,7 @@ pub(crate) fn mission_enter_dispatch(sim: &mut Simulation, rules: &RuleSet, id: 
                 }
                 // 0x004D945C: Enter_Idle_Mode; the entry stays.
                 None => {
-                    enter_idle_mode(sim, rules, id);
+                    sim.unit_enter_idle_mode(id, Some(rules), false);
                     return epilogue(sim, rules, id, now);
                 }
             }
@@ -665,27 +668,9 @@ pub(crate) fn mission_enter_dispatch(sim: &mut Simulation, rules: &RuleSet, id: 
             unit.dock_state = None;
             unit.movement_target = None;
         }
-        enter_idle_mode(sim, rules, id);
+        sim.unit_enter_idle_mode(id, Some(rules), false);
     }
     epilogue(sim, rules, id, now)
-}
-
-/// `Enter_Idle_Mode(0, 1)` (vt+0x484): Guard for a plain unit
-/// (`0x00738970`), the harvester arm for a `Harvester=yes` unit.
-fn enter_idle_mode(sim: &mut Simulation, rules: &RuleSet, id: u64) {
-    let is_miner = sim
-        .substrate
-        .entities
-        .get(id)
-        .is_some_and(|unit| unit.miner.is_some());
-    let selector = if is_miner {
-        crate::sim::world::harvester_enter_idle_mode_selector(sim, id, rules, false)
-    } else {
-        Some(MissionType::Guard)
-    };
-    if let Some(selector) = selector {
-        queue_mission(sim, id, MissionId::from_known(selector), 0);
-    }
 }
 
 /// The Mission_Enter epilogue: `ftol(Rate*900) + RandomRanged(0,2)`, every
@@ -1828,6 +1813,8 @@ mod tests {
         assert!(order_repair(&mut sim, &rules, 1));
         tick(&mut sim, &rules);
         assert!(linked(&sim, 1));
+        let nav = sim.substrate.entities.get(1).unwrap().navigation.nav_com;
+        assert!(nav.is_some());
         sim.substrate.entities.get_mut(DEPOT).unwrap().temporal =
             crate::sim::temporal::TemporalState::warped_by_for_test(999);
         let due = {
@@ -1857,12 +1844,17 @@ mod tests {
                 .mission
                 .queued()
                 .known(),
-            Some(MissionType::Guard)
+            Some(MissionType::Move)
+        );
+        assert_eq!(
+            sim.substrate.entities.get(1).unwrap().navigation.nav_com,
+            nav
         );
     }
 
     /// A linked unit that is already at full health answers 0x22 with 10, so
-    /// its own probe returns 10: BREAK + Enter_Idle_Mode (Guard), no scatter.
+    /// its own probe returns 10: BREAK + Enter_Idle_Mode retains NavCom and
+    /// queues Move, with no scatter.
     #[test]
     fn linked_full_health_waiter_breaks_and_goes_idle_on_its_next_probe() {
         let (mut sim, rules) = setup(2);
@@ -1871,6 +1863,8 @@ mod tests {
         }
         tick(&mut sim, &rules);
         assert!(linked(&sim, 1));
+        let nav = sim.substrate.entities.get(1).unwrap().navigation.nav_com;
+        assert!(nav.is_some());
         sim.substrate.entities.get_mut(1).unwrap().health.current = 300;
         let due = {
             let ds = sim
@@ -1899,7 +1893,11 @@ mod tests {
                 .mission
                 .queued()
                 .known(),
-            Some(MissionType::Guard)
+            Some(MissionType::Move)
+        );
+        assert_eq!(
+            sim.substrate.entities.get(1).unwrap().navigation.nav_com,
+            nav
         );
         // The slot is free for the next waiter's probe.
         let due2 = {
@@ -2067,12 +2065,10 @@ mod tests {
         assert_eq!(harvest_cursor(&sim, MINER), cursor_at_order);
     }
 
-    /// Single writer, directly: on a due frame the Harvest handler declines a
-    /// miner on Enter with a depot dock state (timer and cursor untouched),
-    /// and the object-AI visit then writes the timer exactly once with the
-    /// Enter epilogue.
+    /// The common selector routes a miner on Enter to the depot body, with
+    /// one cadence draw and one timer write; no Harvest cursor step runs.
     #[test]
-    fn harvest_handler_declines_miner_on_enter_with_depot_dock_state() {
+    fn miner_on_enter_with_depot_dock_state_has_one_dispatch_writer() {
         let (mut sim, rules) = setup(0);
         const MINER: u64 = 7;
         spawn_damaged_miner(&mut sim, MINER, 14, 11);
@@ -2095,19 +2091,6 @@ mod tests {
         // Jump to the due frame.
         sim.session.binary_frame = (start + delay) as u32;
         let now = sim.session.binary_frame;
-        let before = dispatch_timer(&sim, MINER);
-        let cursor = harvest_cursor(&sim, MINER);
-        let rng_before = sim.scenario_rng.state();
-        let cfg = miner_cfg();
-        crate::sim::miner::dispatch_harvest_for_object(&mut sim, &rules, &cfg, None, MINER);
-        assert_eq!(
-            dispatch_timer(&sim, MINER),
-            before,
-            "Harvest handler declined"
-        );
-        assert_eq!(harvest_cursor(&sim, MINER), cursor);
-        assert_eq!(sim.scenario_rng.state(), rng_before);
-
         let mut shadow = sim.clone_scenario_rng();
         visit_units_with_harvest(&mut sim, &rules);
         shadow.next_range_u32_inclusive(0, 2);
@@ -2147,7 +2130,8 @@ mod tests {
     /// the harvester arm of `Enter_Idle_Mode @ 0x00738970` after the BREAK
     /// (`FootClass::Mission_Enter` 0x004D92E2, args (0, 1)): Harvest for a
     /// non-human house regardless of land, Guard for a human house standing
-    /// off ore. Plain units keep the Guard exit.
+    /// off ore. This fixture has no NavCom; an installed destination selects
+    /// Move first for both plain units and harvesters.
     #[test]
     fn linked_full_health_miner_waiter_takes_the_harvester_idle_arm() {
         use crate::sim::miner::{Miner, MinerConfig, MinerKind};
@@ -2159,7 +2143,7 @@ mod tests {
                 let owner_id = sim.interner.intern("Americans");
                 sim.houses.get_mut(&owner_id).unwrap().is_human = true;
             }
-            spawn_entity(&mut sim, 1, "MTNK", EntityCategory::Unit, 14, 11, 300);
+            spawn_entity(&mut sim, 1, "HARV", EntityCategory::Unit, 14, 11, 600);
             {
                 let unit = sim.substrate.entities.get_mut(1).unwrap();
                 unit.miner = Some(Miner::new(MinerKind::War, &MinerConfig::default(), 0));

@@ -380,7 +380,7 @@ pub(super) struct MinerSnapshot {
     /// dispatch entry, committed back through it at dispatch commit.
     pub(super) state: MinerState,
     /// Handler return value: frames until the next dispatch, written into the
-    /// mission dispatch timer by the commit (the native post-handler epilogue).
+    /// common mission dispatcher after the handler effects are committed.
     pub(super) dispatch_delay: i32,
     /// Buffered miner state change events — flushed to entity at commit.
     pub(super) debug_events: Vec<(String, String)>,
@@ -431,19 +431,15 @@ pub(super) fn build_miner_snapshot(
 }
 
 /// Commit one dispatched snapshot back to the entity: miner mutations, the
-/// FSM cursor of record (`MissionCom::handler_state`), the post-handler
-/// dispatch-timer epilogue (verified host shape: start = current frame,
-/// delay = handler return), buffered debug events, and the render-side
+/// FSM cursor of record (`MissionCom::handler_state`), buffered debug events,
+/// and the render-side
 /// harvest-visual flags (the former global-tick Phases 3/4/4b for one object).
-pub(super) fn commit_miner_snapshot(sim: &mut Simulation, snap: &MinerSnapshot, now: u32) {
+pub(super) fn commit_miner_snapshot(sim: &mut Simulation, snap: &MinerSnapshot) {
     let Some(entity) = sim.substrate.entities.get_mut(snap.entity_id) else {
         return;
     };
     entity.miner = Some(snap.miner.clone());
     entity.mission.set_handler_state(snap.state.cursor());
-    entity
-        .mission
-        .write_dispatch_epilogue(now as i32, snap.dispatch_delay);
     for (from, to) in &snap.debug_events {
         entity.push_debug_event(
             sim.session.tick as u32,
@@ -538,12 +534,15 @@ pub(super) fn tick_miners_test_walk(
         live_order
     };
     for id in keys {
-        super::harvest_mission::dispatch_harvest_for_object(
+        crate::sim::world::dispatch_foot_mission(
             sim,
-            rules,
-            config,
-            overlay_registry,
             id,
+            rules,
+            crate::sim::world::ObjectAiCtx {
+                miner_config: Some(config),
+                overlay_registry,
+                ..Default::default()
+            },
         );
     }
 }
@@ -1945,6 +1944,15 @@ mod harvest_scan_dispatch_tests {
         ge.miner = Some(Miner::new(MinerKind::War, &MinerConfig::default(), 0));
         ge.mission.set_handler_state(MinerState::SearchOre.cursor());
         sim.substrate.entities.insert(ge);
+        // Direct insertion skips Unlimbo's class idle/commencement. A Harvest
+        // fixture must supply that committed selector; the Miner component
+        // alone no longer bypasses MissionClass dispatch.
+        sim.mission_assign_exact(
+            MINER_ID,
+            crate::sim::mission::MissionId::from_known(MissionType::Harvest),
+            sim.session.binary_frame,
+        )
+        .unwrap();
         sim.substrate.next_stable_object_id = MINER_ID + 1;
         // A playfield holding the 64x64 fixture (Is_Cell_Harvestable's first gate).
         sim.playfield_bounds

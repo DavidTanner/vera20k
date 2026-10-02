@@ -110,7 +110,7 @@ pub(crate) fn mission_enter(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i
                 _ => false,
             };
             if !nav_is_mover {
-                sim.unit_enter_idle_mode(id, Some(rules));
+                sim.unit_enter_idle_mode(id, Some(rules), false);
             }
             let _ = sim.mission_commence_exact(id, now);
         }
@@ -131,7 +131,7 @@ pub(crate) fn mission_enter(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i
             if reply != RadioResponse::Roger && !tethered {
                 // 0x004D92CE..0x004D92E8.
                 radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules));
-                sim.unit_enter_idle_mode(id, Some(rules));
+                sim.unit_enter_idle_mode(id, Some(rules), false);
             } else if !pop_nav_queue(sim, rules, id) {
                 teleporter_reassign(sim, rules, id);
             }
@@ -215,7 +215,7 @@ pub(crate) fn mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64) -> 
     };
     // A 0x0073DEE0: without any radio contact the unload is abandoned.
     if entity.radio_contacts.is_empty() {
-        sim.unit_enter_idle_mode(id, Some(rules));
+        sim.unit_enter_idle_mode(id, Some(rules), false);
         set_unload_latch(sim, rules, id, false);
         stop_if_moving(sim, id);
         commence_if_ready(sim, rules, id);

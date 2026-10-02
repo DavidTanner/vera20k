@@ -57,6 +57,40 @@ fn bales_at(s: &Scene, cell: (u16, u16)) -> Option<u8> {
     overlay.overlay_id.map(|_| overlay.overlay_data)
 }
 
+/// Unit MissionAttack7447A0 -> Foot4D4DC0 -> Unit EnterIdle738970(0,1):
+/// a targetless Attack queues Harvest on ore and Guard on human clear land.
+/// The normal Unit host promotes that queue with a fresh handler cursor;
+/// it must never interpret Attack's cursor as a Harvest FSM state.
+#[test]
+fn war_miner_without_a_target_leaves_attack_through_its_idle_hook() {
+    use crate::sim::mission::{MissionId, MissionType};
+
+    for (ore, expected) in [
+        (serde_json::json!([[15, 15, 0, 0, 3]]), MissionType::Harvest),
+        (serde_json::json!([]), MissionType::Guard),
+    ] {
+        let mut s = field((15, 15), ore);
+        let now = s.sim.session.binary_frame;
+        s.sim
+            .mission_assign_exact(s.miner, MissionId::from_known(MissionType::Attack), now)
+            .unwrap();
+        s.sim
+            .substrate
+            .entities
+            .get_mut(s.miner)
+            .unwrap()
+            .mission
+            .set_handler_state(MinerState::Harvest.cursor());
+
+        frame(&mut s);
+
+        let miner = s.sim.substrate.entities.get(s.miner).unwrap();
+        assert_eq!(miner.mission.current().known(), Some(expected));
+        assert_eq!(miner.mission.handler_state(), 0, "Commence resets cursor");
+        assert_eq!(miner.miner.as_ref().unwrap().cargo.len(), 0);
+    }
+}
+
 /// On ore at once: the first dispatch arms the stage (state 0's literal rate
 /// 2) and each later bale comes one gate (9 steps of `HarvesterLoadRate` 2,
 /// plus the dispatch-before-tick frame) after the last. A cell of density 2
@@ -303,4 +337,196 @@ fn a_harvest_order_on_a_cutting_miner_keeps_state_one_and_cuts_on_arrival() {
         Some(4),
         "the first cell kept its ore"
     );
+}
+
+/// Physical RULESMD, fixed ARTMD, Battle override and AnyTown scenario through
+/// the production source/reader owner. The existing 33x33 field fixture supplies
+/// clear terrain and two owned refineries; this is a frame integration test,
+/// not a whole-map native comparison.
+#[test]
+fn retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission() {
+    use crate::map::overlay_types::OverlayTypeRegistry;
+    use crate::sim::command::Command;
+    use crate::sim::house_state::HouseState;
+    use crate::sim::mission::{MissionId, MissionType};
+
+    for (on_ore, expected) in [(true, MissionType::Harvest), (false, MissionType::Guard)] {
+        let Some(retail) =
+            crate::rules::retail_ini_fixture::retail_battle_rules_for_map("XMP03T4.MAP")
+        else {
+            return;
+        };
+        let registry = OverlayTypeRegistry::from_ini(&retail.processed_rules, None);
+        let harv = retail.rules.object("HARV").unwrap();
+        assert!(harv.harvester && !harv.weeder);
+        assert_eq!(harv.primary.as_deref(), Some("20mmRapid"));
+
+        let mut s = super::refinery_dock_oracle_tests::scene_with(
+            &serde_json::json!({
+                "mission": "harvest", "status": 0, "linked": false,
+                "miner_cell": [15, 15], "unlimbo_at_cell": true,
+            }),
+            retail.rules,
+            &retail.processed_rules,
+        );
+        s.sim.production.ore_growth_config = OreGrowthConfig::disabled();
+        let retail_order = |s: &mut Scene, command: Command| {
+            assert!(s.sim.apply_command_with_overlays(
+                "Americans",
+                &command,
+                Some(&s.rules),
+                Some(&registry),
+            ));
+        };
+        if on_ore {
+            let ore = registry.id_for_name("TIB01").unwrap();
+            let grid = s.sim.overlay_grid.as_mut().unwrap();
+            grid.place_overlay(15, 15, ore, 10);
+            grid.recalculate_runtime_cell(
+                s.sim.resolved_terrain.as_mut().unwrap(),
+                &registry,
+                (15, 15),
+            );
+        } else {
+            let miner_id = s.miner;
+            retail_order(
+                &mut s,
+                Command::Stop {
+                    entity_id: miner_id,
+                },
+            );
+        }
+        let step = |s: &mut Scene| {
+            let grid = s.sim.path_grid_snapshot();
+            s.sim
+                .advance_tick(&[], Some(&s.rules), grid.as_deref(), Some(&registry), 67);
+        };
+        for _ in 0..60 {
+            step(&mut s);
+            if !on_ore
+                || !s
+                    .sim
+                    .substrate
+                    .entities
+                    .get(s.miner)
+                    .unwrap()
+                    .miner
+                    .as_ref()
+                    .unwrap()
+                    .cargo
+                    .is_empty()
+            {
+                break;
+            }
+        }
+        let bales = s
+            .sim
+            .substrate
+            .entities
+            .get(s.miner)
+            .unwrap()
+            .miner
+            .as_ref()
+            .unwrap()
+            .cargo
+            .len();
+        assert_eq!(bales, usize::from(on_ore), "initial field gate");
+        let ore_before = bales_at(&s, (15, 15));
+        let enemy = s.sim.interner.intern("Russians");
+        s.sim
+            .houses
+            .insert(enemy, HouseState::new(enemy, 1, None, true, 0, 10));
+        let victim = s
+            .sim
+            .spawn_object("E1", "Russians", 20, 15, 0, &s.rules)
+            .unwrap();
+        s.sim
+            .mission_assign_exact(
+                victim,
+                MissionId::from_known(MissionType::Sleep),
+                s.sim.session.binary_frame,
+            )
+            .unwrap();
+        let initial_health = s.sim.substrate.entities.get(victim).unwrap().health.current;
+        let miner_id = s.miner;
+        retail_order(
+            &mut s,
+            Command::Attack {
+                attacker_id: miner_id,
+                target_id: victim,
+            },
+        );
+
+        let mut damaged = false;
+        let mut returned = false;
+        for _ in 0..400 {
+            step(&mut s);
+            if let Some(target) = s.sim.substrate.entities.get(victim) {
+                damaged |= target.health.current < initial_health;
+            }
+            let miner = s.sim.substrate.entities.get(s.miner).unwrap();
+            if miner.mission.current().known() == Some(MissionType::Attack) {
+                assert_eq!(
+                    miner.miner.as_ref().unwrap().cargo.len(),
+                    bales,
+                    "Attack does not harvest"
+                );
+                assert_eq!(
+                    bales_at(&s, (15, 15)),
+                    ore_before,
+                    "Attack leaves the field alone"
+                );
+                assert!(
+                    !miner.miner.as_ref().unwrap().harvesting,
+                    "Unit AI clears OREGATH before fire"
+                );
+            } else if !s.sim.substrate.entities.contains(victim) {
+                assert_eq!(miner.mission.current().known(), Some(expected));
+                returned = true;
+                break;
+            }
+        }
+        assert!(
+            damaged,
+            "stock 20mmRapid fired through the production combat host"
+        );
+        assert!(
+            returned,
+            "target cleanup reaches the stock harvester idle hook: miner {:?}, victim {:?}",
+            s.sim.substrate.entities.get(s.miner).map(|e| (
+                e.mission.current(),
+                e.mission.queued(),
+                e.navigation.nav_com,
+                e.attack_target.as_ref().map(|t| t.target),
+            )),
+            s.sim.substrate.entities.get(victim).map(|e| (
+                e.health.current,
+                e.dying,
+                e.is_object_alive(),
+                e.infantry_sprite_pose(),
+            )),
+        );
+        if on_ore {
+            let mut resumed = false;
+            for _ in 0..60 {
+                step(&mut s);
+                if s.sim
+                    .substrate
+                    .entities
+                    .get(s.miner)
+                    .unwrap()
+                    .miner
+                    .as_ref()
+                    .unwrap()
+                    .cargo
+                    .len()
+                    > bales
+                {
+                    resumed = true;
+                    break;
+                }
+            }
+            assert!(resumed, "promoted Harvest cuts another bale");
+        }
+    }
 }

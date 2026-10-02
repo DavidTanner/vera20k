@@ -580,12 +580,15 @@ fn mission_harvest_teleporter_arms_match_the_original_dispatch() {
         let mut stream = s.sim.scenario_rng.clone();
         let config = crate::sim::miner::MinerConfig::from_rules(&s.rules);
         let frame = s.sim.session.binary_frame;
-        crate::sim::miner::dispatch_harvest_for_object(
+        crate::sim::world::dispatch_foot_mission(
             &mut s.sim,
-            &s.rules,
-            &config,
-            Some(crate::sim::tiberium::test_support::overlay_registry()),
             s.miner,
+            &s.rules,
+            crate::sim::world::ObjectAiCtx {
+                miner_config: Some(&config),
+                overlay_registry: Some(crate::sim::tiberium::test_support::overlay_registry()),
+                ..Default::default()
+            },
         );
         let entity = s.sim.substrate.entities.get(s.miner).unwrap();
         let timer = entity.mission.dispatch_timer();

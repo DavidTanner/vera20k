@@ -34,10 +34,11 @@ mod infantry_fire_oracle_tests;
 /// Each represented handler calls the existing movement/combat owners for its
 /// side effects. Ordinary Unit Cell Attack calls Foot Approach before the
 /// mission cadence draw and the same object's movement/fire slots. Harvest
-/// has its own full handler and epilogue, so miners are excluded to avoid a
-/// second write. Unrepresented acquisition and approach branches remain
+/// returns its delay through this same epilogue. The committed selector alone
+/// chooses the handler for miners as for every other Foot. Unrepresented
+/// acquisition and approach branches remain
 /// explicit residuals rather than guessed AI.
-pub(super) fn dispatch_supported_foot_mission_cadence(
+pub(crate) fn dispatch_foot_mission(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
@@ -49,7 +50,10 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         let Some(entity) = sim.substrate.entities.get(id) else {
             return bridge_changed;
         };
-        if entity.dying {
+        // Mission5B306C..5B30AC admits only an alive, positive-health receiver.
+        // Pin direct receiver calls as well as the enclosing object-AI host:
+        // harvest_attack_return.json dead_source / zero_health_source.
+        if entity.dying || !entity.is_object_alive() || !super::mission_handlers_run(sim, id) {
             return bridge_changed;
         }
         let category = entity.category;
@@ -57,41 +61,7 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
             return bridge_changed;
         }
         let mission = entity.mission.current().known();
-        // A miner's dispatch is owned by the absorbed Harvest handler, which
-        // writes its own epilogue — except on Guard, which the Harvest handler
-        // now declines. That is the native split: a vehicle on Guard enters the
-        // harvester Guard override (`UnitClass::Mission_Guard @ 0x00740810`,
-        // the human chrono arms live on the Unit Guard arm below), which
-        // layers the slave/refinery checks and then tail-calls the same
-        // FootClass Guard handler every other unit uses; a vehicle on Harvest
-        // enters the Harvest handler. Exactly one of the two runs, so the
-        // timer keeps a single writer.
-        //
-        // Move is the other split: a player Move order puts the miner on
-        // `UnitClass::Mission_Move` (slot `+0x22C` = 0x00740A90, tail
-        // `FootClass::Mission_Move @ 0x004D4200`), whose arrival
-        // `Enter_Idle_Mode(0,1)` at 0x004D4242 returns a harvester to Harvest
-        // (or Guard) — see `harvester_enter_idle_mode_evaluation`; the same
-        // slot is also entered from the owner change (0x00701849) and the
-        // depot's repaired-BREAK exit (0x004D92E2). The Harvest handler
-        // declines Move for the same single-writer reason.
-        //
-        // Enter with a repair-depot `DockState` is the third split: a
-        // harvester ordered to a depot (`Command::RepairAtDepot`) dispatches
-        // through `FootClass::Mission_Enter @ 0x004D9290` exactly like every
-        // other Foot object — `UnitClass`'s vtable `0x007F5C70 + 0x240` =
-        // `0x007F5EB0` holds `0x004D9290` (`read_memory`, 2026-09-06), so the
-        // Unit leaf does not override the slot, and `UnitClass::Mission_Harvest
-        // @ 0x0073E5E0` is only reached when the committed selector is
-        // Harvest(10). The Harvest handler declines Enter-with-depot for the
-        // same single-writer reason (`harvest_mission.rs`).
         let depot_dock_state = crate::sim::docking::building_dock::depot_owns_enter(entity);
-        let miner_enter_depot = mission == Some(MissionType::Enter) && depot_dock_state;
-        // A harvester's refinery dock runs the native Enter and Unload
-        // handlers (`miner::refinery_dock`); the Harvest handler declines
-        // both selectors, so the timer keeps one writer. A miner boarding a
-        // transport keeps VERA's passenger boarding flow, as every other unit
-        // does.
         let refinery_dock_miner = !depot_dock_state
             && matches!(
                 mission,
@@ -102,20 +72,6 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                 crate::sim::passenger::PassengerRole::Boarding { .. }
             )
             && crate::sim::miner::native_dock_miner(sim, id);
-        // A Slave Miner's Miner component is VERA's order marker, not a
-        // harvester: it dispatches as the plain Unit it is natively (its
-        // Harvest prologue runs in `miner::dispatch_harvest_for_object`).
-        let harvester_miner = entity
-            .miner
-            .as_ref()
-            .is_some_and(|miner| miner.kind != crate::sim::miner::MinerKind::Slave);
-        if harvester_miner
-            && !miner_enter_depot
-            && !refinery_dock_miner
-            && !matches!(mission, Some(MissionType::Guard) | Some(MissionType::Move))
-        {
-            return bridge_changed;
-        }
         // `FootClass::Mission_Move @ 0x004D4200` keeps its cadence while the
         // NavCom is set (`0x004D4203`) or the locomotor's `Is_Moving` holds
         // (`0x004D422A`); the order itself is not an input.
@@ -124,7 +80,6 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         MissionHandlerInput {
             category,
             mission,
-            harvester_miner,
             depot_dock_state,
             refinery_dock_miner,
             timer_due: entity.mission.dispatch_timer().due(now),
@@ -156,6 +111,20 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
 
     let mut infantry_guard_handled = false;
     let evaluation = match (input.category, input.mission) {
+        // Unit vtable7F5C70+238 -> MissionHarvest73E5E0. No other mission
+        // can reach this body or interpret its committed handler cursor.
+        (EntityCategory::Unit, Some(MissionType::Harvest)) => {
+            let Some(delay) = crate::sim::miner::mission_harvest(
+                sim,
+                rules,
+                ctx.miner_config,
+                ctx.overlay_registry,
+                id,
+            ) else {
+                return bridge_changed;
+            };
+            MissionHandlerEvaluation::cadence(delay)
+        }
         // `FootClass::Mission_Move` is the native named location for this
         // handler-return cadence; movement execution remains in movement/.
         // **Infantry take a leaf override first, and VERA does not model it.**
@@ -180,10 +149,11 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                     rules,
                     MissionType::Move,
                 ))
-            } else if input.category == EntityCategory::Unit && input.harvester_miner {
-                // The same arrival hook, harvester arm of
-                // `UnitClass::Enter_Idle_Mode @ 0x00738970`.
-                harvester_enter_idle_mode_evaluation(sim, id, rules)
+            } else if input.category == EntityCategory::Unit {
+                // Foot4D4242 calls Unit738970(0,1), then returns1. Use the
+                // same receiver as Attack, locomotion and refinery/depot exits.
+                sim.unit_enter_idle_mode(id, Some(rules), false);
+                MissionHandlerEvaluation::cadence(1)
             } else {
                 // The arrival branch. `FootClass::Mission_Move` calls the class
                 // arrival hook and returns one frame; the hook is the ONLY
@@ -206,7 +176,7 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                 {
                     MissionHandlerEvaluation::cadence(1)
                 } else {
-                    move_arrival_evaluation(rules, input)
+                    infantry_move_arrival_evaluation(rules, input)
                 }
             }
         }
@@ -307,7 +277,6 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                 delay,
                 clear_stale_attack_target: input.has_attack_target
                     && attack_target_is_stale(sim, id),
-                clear_attack_target: false,
                 queue,
             }
         }
@@ -332,8 +301,15 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                 // Foot4D4E72 -> Techno709A54 releases a held Temporal victim
                 // before the cadence draw at4D4EA6. Stop only clears TarCom;
                 // this due Attack dispatch owns the release.
-                sim.temporal_release_if_warping(id);
-                foot_enter_idle_mode_queue(rules, input)
+                if input.category == EntityCategory::Unit {
+                    // Unit738970 owns the Foot base, harvester selector,
+                    // concrete setters and deferred queue before this draw.
+                    sim.unit_enter_idle_mode(id, Some(rules), false);
+                    None
+                } else {
+                    sim.temporal_release_if_warping(id);
+                    foot_enter_idle_mode_queue(rules, input)
+                }
             };
             let cadence = jittered_mission_cadence(sim, rules, MissionType::Attack);
             let delay = if foot_dispatch_in_cadence_band(sim, rules, id) {
@@ -349,7 +325,6 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                 // it stood at entry and fires on the next one.
                 clear_stale_attack_target: input.has_attack_target
                     && attack_target_is_stale(sim, id),
-                clear_attack_target: false,
                 queue: idle_queue,
             }
         }
@@ -500,7 +475,6 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                 delay,
                 clear_stale_attack_target: input.has_attack_target
                     && attack_target_is_stale(sim, id),
-                clear_attack_target: false,
                 queue,
             }
         }
@@ -690,17 +664,11 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         evaluation
     };
 
-    if evaluation.clear_stale_attack_target || evaluation.clear_attack_target {
-        if evaluation.clear_attack_target {
-            // EnterIdle738AF5/738C75 and the Foot arrival hook dispatch the
-            // receiver's class target setter before any mission queue call.
-            let _ = sim.assign_target_represented(id, None, Some(rules));
-        } else {
-            if let Some(entity) = sim.substrate.entities.get_mut(id) {
-                // A missing handle is expiry cleanup, not Assign_Target(NULL).
-                entity.attack_target = None;
-            }
-        }
+    if evaluation.clear_stale_attack_target
+        && let Some(entity) = sim.substrate.entities.get_mut(id)
+    {
+        // A missing handle is expiry cleanup, not Assign_Target(NULL).
+        entity.attack_target = None;
     }
     if let Some(queued_mission) = evaluation.queue {
         let _ = sim.mission_queue_exact(
@@ -727,10 +695,6 @@ pub(super) struct MissionHandlerInput {
     /// and every out-of-range id take the switch's default arm rather than
     /// being skipped.
     pub(super) mission: Option<MissionType>,
-    /// The object carries the miner component (`Harvester=`/`Weeder=` type
-    /// flags `UnitTypeClass+0xE0E`/`+0xE0F`): its Move arrival takes the
-    /// harvester arm of `UnitClass::Enter_Idle_Mode`.
-    pub(super) harvester_miner: bool,
     /// The object holds a repair-depot `DockState`: its Enter dispatch is
     /// `building_dock::mission_enter_dispatch`.
     pub(super) depot_dock_state: bool,
@@ -774,9 +738,6 @@ pub(super) struct MissionHandlerInput {
 pub(super) struct MissionHandlerEvaluation {
     delay: i32,
     clear_stale_attack_target: bool,
-    /// The handler itself dropped the shoot-at target (the arrival hook's
-    /// `Assign_Target(NULL)`), as opposed to the stale-handle cleanup above.
-    clear_attack_target: bool,
     queue: Option<MissionType>,
 }
 
@@ -785,7 +746,6 @@ impl MissionHandlerEvaluation {
         Self {
             delay,
             clear_stale_attack_target: false,
-            clear_attack_target: false,
             queue: None,
         }
     }
@@ -794,7 +754,6 @@ impl MissionHandlerEvaluation {
         Self {
             delay,
             clear_stale_attack_target: false,
-            clear_attack_target: false,
             queue: Some(mission),
         }
     }
@@ -877,198 +836,26 @@ fn infantry_automatic_guard_delay(
     jittered_mission_cadence(sim, rules, mission)
 }
 
-/// The Move handler's arrival hook, reduced to the parts VERA can commit.
-///
-/// `UnitClass`'s override, ordinary-vehicle arm: drop the shoot-at target,
-/// clear the destination, then queue **Guard**. `InfantryClass`'s override: a
-/// live target queues **Attack** and the target is *kept*; otherwise Guard —
-/// and the whole infantry selector is skipped when the *current* mission's
-/// control entry carries `Zombie=` or `Paralyzed=` (both absent from `[Move]`,
-/// so on this path they never fire; they are read anyway because the gate is on
-/// the object's own mission slot and a later caller may arrive on another one).
-///
-/// The destination clear is a no-op here by construction — this branch is only
-/// taken when nothing is moving or queued, which is exactly the state
-/// `Set_Destination(NULL, true)` produces.
-///
-/// Deliberately NOT represented, each recorded rather than guessed:
-/// - the vehicle Unload / Harvest arms and the Area-Guard promotion, which key
-///   off house-threat, deploy and harvester type fields VERA does not model;
-/// - the infantry Guard-vs-Area-Guard choice, same reason — the ordinary arm
-///   for a player-controlled infantryman with no veteran self-heal ability is
-///   Guard, which is what this returns;
-/// - the vehicle suppression byte that skips the queue entirely (its writer is
-///   UNKNOWN, so modelling it would be inventing a gate);
-/// - the base hook's NavQueue pop and locomotor piggyback unwind. These are
-///   **not** early returns that suppress the selector — that reading was wrong.
-///   `FootClass::Enter_Idle_Mode` @ `0x004D82B0` pops `[this+0x598]` /
-///   `[this+0x58C]`, calls `Assign_Destination(next, 0)` and returns 1, but both
-///   leaves discard that return for control flow (`0x00738970` assigns it to a
-///   local and then unconditionally calls `+0x4AC`; `0x0051CBA0` the same).
-///   Waypointed movement continues because the pop **installs a destination**,
-///   so the leaf then reads `[this+0x5A4] != 0` and picks Move(2) on its own.
-///   Both are inert here — `nav_queue` has no production writer and the
-///   piggyback unwind runs in the movement phase — but a future NavQueue writer
-///   must pop *before* the selector reads the destination, not restore an early
-///   return that does not exist.
-pub(super) fn move_arrival_evaluation(
+/// Infantry51CBA0's represented Move-arrival selection. Units call the
+/// existing concrete Unit idle receiver instead. AreaGuard/ability and the
+/// Infantry-specific capture/sabotage arms remain with their later chains.
+fn infantry_move_arrival_evaluation(
     rules: &RuleSet,
     input: MissionHandlerInput,
 ) -> MissionHandlerEvaluation {
-    let infantry = input.category == EntityCategory::Infantry;
-    if infantry {
-        let frozen = rules
-            .mission_control
-            .entry(MissionType::Move)
-            .is_some_and(|entry| entry.zombie || entry.paralyzed);
-        if frozen {
-            return MissionHandlerEvaluation::cadence(1);
-        }
-        let next = if input.has_attack_target {
-            MissionType::Attack
-        } else {
-            MissionType::Guard
-        };
-        return MissionHandlerEvaluation::queue(1, next);
-    }
-    MissionHandlerEvaluation {
-        delay: 1,
-        clear_stale_attack_target: false,
-        clear_attack_target: true,
-        queue: Some(MissionType::Guard),
-    }
-}
-
-/// The harvester arm of `UnitClass::Enter_Idle_Mode @ 0x00738970` (vtable
-/// `+0x484`), reached from the Move handler's arrival branch.
-///
-/// Callers a player Move order on a war/chrono miner reaches (all verified by
-/// `search_instructions CALL [+0x484]`, 85 sites): `FootClass::Mission_Move @
-/// 0x004D4200` at 0x004D4242 — `NavCom == 0 && !Is_Moving && Queued == -1 ⇒
-/// Enter_Idle_Mode(0,1); return 1` — and the locomotor IDLE event
-/// `DriveLocomotionClass::Process @ 0x004B0763` (destination reached with an
-/// empty NavQueue: `Stop_Moving`, then `Enter_Idle_Mode(0,1)`). Both land in
-/// the same body; the Unit slot `0x00740A90` only precedes the Foot body
-/// with its deploy latches. The selector itself is
-/// [`harvester_enter_idle_mode_selector`], shared with the other stock
-/// callers of the same slot (owner change, depot exit).
-///
-/// So a human's miner moved onto bare ground parks on Guard (the harvester
-/// Guard override's chrono arms or a player order put it back); moved onto
-/// ore it resumes Harvest from state 0. The whole arm draws no RNG; the
-/// `Mission_Move` caller returns 1. VERA commits through the queue like
-/// [`move_arrival_evaluation`] (promoted by the next Ready-to-Commence step,
-/// which zeroes the Harvest cursor exactly as native's `+0xBC = 0`).
-fn harvester_enter_idle_mode_evaluation(
-    sim: &Simulation,
-    id: u64,
-    rules: &RuleSet,
-) -> MissionHandlerEvaluation {
-    let Some(selector) = harvester_enter_idle_mode_selector(sim, id, rules, false) else {
+    let frozen = rules
+        .mission_control
+        .entry(MissionType::Move)
+        .is_some_and(|entry| entry.zombie || entry.paralyzed);
+    if frozen {
         return MissionHandlerEvaluation::cadence(1);
-    };
-    MissionHandlerEvaluation {
-        delay: 1,
-        clear_stale_attack_target: false,
-        clear_attack_target: true,
-        queue: Some(selector),
     }
-}
-
-/// The no-destination harvester selector of `UnitClass::Enter_Idle_Mode @
-/// 0x00738970`, for a unit whose `Harvester=`/`Weeder=` flag
-/// (`UnitType+0xE0E`/`+0xE0F`) is set. Returns the mission the body commits
-/// through `Queue_Mission(selector, 0)` (`+0x1E8` = 0x005B35E0), or `None`
-/// on one of its early returns (nothing assigned).
-///
-/// Body, decompiled 2026-09-06:
-/// - `RadioClass::In_Radio_Contact` ⇒ return (nothing assigned);
-/// - current (`+0xAC`) or queued (`+0xB4`) == Harvest(10) ⇒ return;
-/// - selector = Harvest; when the FIRST explicit argument is 0 AND the OWNER passes
-///   `HouseClass::IsControlledByHuman @ 0x0050B730`: the cell under the unit
-///   (`MapClass::Get_CellClass_At_Coord`) has `LandType` (`CellClass+0xEC`)
-///   ≠ 5 (Tiberium; 0xB Weeds for a Weeder) ⇒ selector = Guard(5). An AI
-///   house always takes Harvest; so does every caller passing first explicit argument 1
-///   (`TechnoClass::Unlimbo @ 0x006F6E2A` calls `+0x484(1, 1)`, which is why
-///   a freshly built miner always leaves the factory on Harvest);
-/// - `Assign_Target(0)` (`+0x3C8`), `Assign_Destination(0, 1)` (`+0x480`) —
-///   the callers own those writes;
-/// - tail gate: current ∉ {Patrol 0x19, AreaGuard 0xB, Unload 0x10, Eaten 9}
-///   ⇒ `+0x1E8(selector, 0)`.
-///
-/// Stock callers of the slot on a miner and where VERA runs them: the Move
-/// arrival (`FootClass::Mission_Move` 0x004D4242, [`harvester_enter_idle_mode_evaluation`]);
-/// `TechnoClass::ChangeOwner @ 0x00701849` after the house swap
-/// (`Simulation::change_owner_harvester_idle_arm`); `FootClass::Mission_Enter
-/// @ 0x004D92E2` after a depot's "already repaired" BREAK
-/// (`building_dock::mission_enter_dispatch`). The destination-installed
-/// branch (`NavCom != 0 ⇒ Move`) is not modelled here: every VERA caller
-/// reaches the selector with the destination already cleared.
-///
-/// `skip_human_land_check` is the FIRST explicit argument != 0.
-/// Original738970 loads caller arg1 into BL; miner gate738C0A tests BL.
-/// Decompiler parameter numbering included implicit this. Terminal +484(0,1)
-/// therefore retains the human land check.
-pub(crate) fn harvester_enter_idle_mode_selector(
-    sim: &Simulation,
-    id: u64,
-    rules: &RuleSet,
-    skip_human_land_check: bool,
-) -> Option<MissionType> {
-    let entity = sim.substrate.entities.get(id)?;
-    if !entity.radio_contacts.is_empty() {
-        return None;
-    }
-    let current = entity.mission.current().known();
-    if current == Some(MissionType::Harvest)
-        || entity.mission.queued() == MissionId::from_known(MissionType::Harvest)
-    {
-        return None;
-    }
-    if matches!(
-        current,
-        Some(MissionType::Patrol)
-            | Some(MissionType::AreaGuard)
-            | Some(MissionType::Unload)
-            | Some(MissionType::Eaten)
-    ) {
-        return None;
-    }
-    let human = !skip_human_land_check
-        && sim
-            .houses
-            .get(&entity.owner())
-            .is_none_or(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero));
-    let weeder = sim
-        .object_type(entity.type_ref(), rules)
-        .is_some_and(|obj| !obj.harvester && obj.weeder);
-    let wanted_land = if weeder {
-        crate::rules::terrain_rules::LandType::Weeds
+    let next = if input.has_attack_target {
+        MissionType::Attack
     } else {
-        crate::rules::terrain_rules::LandType::Tiberium
-    };
-    let land_matches = cell_land_type_is(sim, entity.position.rx, entity.position.ry, wanted_land);
-    Some(if human && !land_matches {
         MissionType::Guard
-    } else {
-        MissionType::Harvest
-    })
-}
-
-/// `CellClass+0xEC` (`LandType`) of one cell: the resolved terrain's land
-/// type, which the overlay recompute keeps current when ore is placed or
-/// removed. Without resolved terrain no cell has a land type.
-fn cell_land_type_is(
-    sim: &Simulation,
-    rx: u16,
-    ry: u16,
-    wanted: crate::rules::terrain_rules::LandType,
-) -> bool {
-    sim.resolved_terrain.as_ref().is_some_and(|terrain| {
-        terrain
-            .cell(rx, ry)
-            .is_some_and(|cell| cell.land_type == wanted.as_index())
-    })
+    };
+    MissionHandlerEvaluation::queue(1, next)
 }
 
 /// The idle-mode selector reached from the Attack handler's no-target exit.
@@ -1077,11 +864,11 @@ fn cell_land_type_is(
 /// that says so" virtual, and both leaf overrides on this path — the Infantry
 /// one and the Unit one — begin by running the base arrival hook and then pick
 /// a replacement selector. VERA already models the *arrival* entry into it as
-/// [`move_arrival_evaluation`]; this is the same virtual entered from the other
+/// [`infantry_move_arrival_evaluation`]; this is the same virtual entered from the other
 /// direction, so only the arms that differ are re-derived here.
 ///
-/// Reached only with no shoot-at target, so the two leaves agree on the whole
-/// remaining selection and it collapses to one function:
+/// Infantry and legacy shared callers use this selector. Unit mission exits
+/// now call the concrete Unit receiver, including its harvester branch:
 /// - **a destination is installed** → `Move`. Both leaves take it; the Infantry
 ///   one substitutes Capture or Sabotage when that is the effective selector,
 ///   which cannot happen from the Attack handler.
@@ -1103,17 +890,17 @@ fn cell_land_type_is(
 ///   excludes `Unload` and `Eaten`) — the tail gate that skips the assign.
 ///
 /// Deliberately NOT represented, recorded rather than guessed:
-/// - the head gate both leaves share, an early return on a Foot field whose
-///   writer and meaning are UNKNOWN. Modelling it would be inventing a gate;
-///   leaving it out can only make the selector run where the original skipped
-///   it, and the skip case is unidentified.
+/// - retained AttackMove: +4AC calls Foot4DF1C0, testing saved MegaMission
+///   +5C4 against -1. The legacy OrderIntent path lacks that native field;
+///   ordinary Attack clears the saved mission in native4DF1A0. This residual
+///   belongs to retained AttackMove rather than the ordinary Attack chain.
 /// - the `Area Guard` arm of the no-destination branch. Its inputs are now
 ///   identified: the GUARD_AREA ability (`HasAbility(0x10)` at `0x0051CD4B`),
 ///   Type+0xD39 `DefaultToGuardArea` (`0x0051CD5A`, Unit `0x00738B96`), team
 ///   membership, and for AI houses CurrentIQ against Rules+0x1440 plus the
 ///   slave links. Porting it is its own mechanism (recorded in
 ///   `combat/parasite.rs`); until then this commits `Guard`, consistent with
-///   [`move_arrival_evaluation`].
+///   [`infantry_move_arrival_evaluation`].
 /// - the AI-only sub-arms, which need a live team and a house-threat field.
 pub(super) fn foot_enter_idle_mode_queue(
     rules: &RuleSet,
@@ -1172,7 +959,7 @@ pub(crate) fn queue_foot_enter_idle_mode(sim: &mut Simulation, id: u64, rules: &
 ///   Trigger: every computer-built infantryman and vehicle, and every dog.
 ///   Effect: they hold their ground instead of covering an area.
 /// - a Harvester or Weeder vehicle takes its own arm (`0x00738BD8`,
-///   [`harvester_enter_idle_mode_selector`]).
+///   `Simulation::unit_enter_idle_mode`).
 /// - an unarmed vehicle's Unload arm (`0x00738A7C..0x00738AAF`: `+0x3D4`,
 ///   `Passengers=` and cargo, outside a team) is not taken; it gets Guard.
 ///   Trigger: an unarmed transport leaving the factory loaded. Effect: it
@@ -1188,30 +975,25 @@ pub(crate) fn foot_unlimbo_idle_mode(sim: &mut Simulation, id: u64, rules: &Rule
     if !vehicle && entity.category != EntityCategory::Infantry {
         return;
     }
-    let miner = vehicle
-        && sim
-            .object_type(entity.type_ref(), rules)
-            .is_some_and(|kind| kind.harvester || kind.weeder);
-    // `0x00738A34`: a NavCom wins before either arm.
-    let selection = if miner && entity.navigation.nav_com.is_none() {
-        // Unlimbo's first argument is 1, so a miner skips the human land check.
-        harvester_enter_idle_mode_selector(sim, id, rules, true)
-    } else {
-        foot_enter_idle_mode_selection(
-            rules,
-            entity.category,
-            entity.mission.current().known(),
-            entity.navigation.nav_com.is_some(),
-            entity.mission.effective().known(),
-        )
-    };
+    if vehicle {
+        sim.unit_enter_idle_mode(id, Some(rules), true);
+        sim.mission_host_promote(id, sim.session.binary_frame, rules);
+        return;
+    }
+    let selection = foot_enter_idle_mode_selection(
+        rules,
+        entity.category,
+        entity.mission.current().known(),
+        entity.navigation.nav_com.is_some(),
+        entity.mission.effective().known(),
+    );
     if let Some(mission) = selection {
         let now = sim.session.binary_frame;
         let _ = sim.mission_assign_exact(id, MissionId::from_known(mission), now);
     }
 }
 
-fn foot_enter_idle_mode_selection(
+pub(crate) fn foot_enter_idle_mode_selection(
     rules: &RuleSet,
     category: EntityCategory,
     mission: Option<MissionType>,
@@ -1372,14 +1154,7 @@ fn foot_enter_idle_mode_selection(
 /// infantryman scans and fights where retail captures or undeploys.
 /// Frequency: every Hunt dispatch of those infantry. Downstream risk: one RNG
 /// draw per dispatch that retail does not make.
-/// RESIDUAL — **a miner never reaches this body at all**, because the miner
-/// exclusion at the head of [`dispatch_supported_foot_mission_cadence`] admits
-/// only Guard. Retail's four `StupidHunt=yes` miners (`CMIN`, `SMIN`, `YHVR`,
-/// and the `SAPC` transport) would take the idle arm and re-arm on
-/// `Rate + RandomRanged(0, 2)`; VERA leaves their timer alone. Trigger: a Chaos
-/// Drone on a miner. Frequency: uncommon, and the visible effect is nil either
-/// way — a `StupidHunt` type does nothing on Hunt in retail either. Downstream
-/// risk: one missing draw per dispatch.
+
 fn evaluate_foot_hunt(
     sim: &mut Simulation,
     id: u64,
@@ -1782,7 +1557,7 @@ fn evaluate_foot_area_guard(
 /// `CALL 0x00521320; CMP EAX,-1; JNZ` returns that value directly, and only
 /// `-1` falls through to the Foot body. `0x00521320` owns infantry deploy and
 /// undeploy on Guard. Its deployed reacquire, nonnegative UndeployDelay and
-/// immune self-fire arms run in [`dispatch_supported_foot_mission_cadence`].
+/// immune self-fire arms run in [`dispatch_foot_mission`].
 /// Their actual -1 sentinel reaches this shared Foot continuation afterward.
 ///
 /// Its undeployed producer runs in [`infantry_automatic_guard_delay`], with
@@ -2437,7 +2212,7 @@ mod harvester_guard_override_tests {
     }
 
     fn dispatch(sim: &mut Simulation, rules: &RuleSet) {
-        dispatch_supported_foot_mission_cadence(
+        dispatch_foot_mission(
             sim,
             MINER_ID,
             rules,
@@ -2714,7 +2489,7 @@ mod move_arrival_tests {
     }
 
     fn dispatch(sim: &mut Simulation, rules: &RuleSet) -> Option<MissionType> {
-        dispatch_supported_foot_mission_cadence(
+        dispatch_foot_mission(
             sim,
             UNIT_ID,
             rules,

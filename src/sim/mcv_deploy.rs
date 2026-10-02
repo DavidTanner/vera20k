@@ -401,7 +401,7 @@ pub(crate) fn mission_unload(
             } else {
                 // 0x0073D6CA..0x0073D6DB: Enter_Idle_Mode(0, 1), then
                 // NextMission.
-                sim.unit_enter_idle_mode(id, Some(rules));
+                sim.unit_enter_idle_mode(id, Some(rules), false);
                 let _ = sim.mission_commence_exact(id, now);
             }
         }

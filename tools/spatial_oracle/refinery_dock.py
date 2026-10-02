@@ -229,8 +229,12 @@ def observe_dock(u, read32, case):
             ret(12)
         elif address == IDLE:
             events.append(['enter_idle_mode', read32(sp + 4), read32(sp + 8)])
-            ret(8)
+            if not case.get('native_idle', False):
+                ret(8)
         elif address == READY:
+            if case.get('native_ready', False):
+                events.append(['ready_original'])
+                return
             assert ready, ('unsupplied Ready_To_Commence', case)
             answer = ready.pop(0)
             events.append(['ready', answer])

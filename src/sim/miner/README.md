@@ -1,0 +1,72 @@
+# War Miner mission ownership
+
+An ordinary stock `HARV` ordered to Attack must stop cutting ore, fire through
+the Unit combat host, and use the Unit idle receiver after its target disappears.
+On human-owned ore that receiver queues Harvest; on clear land it queues Guard.
+Cargo is retained. This chain shares its mission and navigation owners with
+movement, placement, capture and refinery/depot exits.
+
+| Responsibility | Rust owner | Original identity |
+| --- | --- | --- |
+| Committed mission, cursor, queue, dispatch timer | `MissionCom` / mission authority | Mission `5B3060`, Queue `5B35E0`, Commence `5B3570` |
+| Single Foot/Unit dispatch and timer epilogue | `world::techno_ai::mission_handlers::dispatch_foot_mission` | Unit Attack `7447A0` → Foot `4D4DC0`; Unit Harvest `73E5E0` |
+| Unit idle base, selection, setters and deferred queue | `Simulation::unit_enter_idle_mode` in `movement/track_host.rs` | Foot `4D82B0` → Unit `738970` |
+| Target setter and pointer-expiry hierarchy | Mission concrete effects / `world::lifecycle` | Target `6FCDB0`; Unit `7446E0` → Foot `4D9960` → Techno `7077C0` |
+| Ore search, cargo and ore mutations | `miner_system`, `ore_scan`, `tiberium` | Search `4DCFE0`, ore tick `73D450` |
+| Stage and harvesting latch | Entity Stage owner / Unit AI miner receiver | Techno `6FABB8..6FAC31`; Unit `7365BB..7365DF` |
+
+The committed selector chooses one handler. A Miner component never admits
+Harvest while Attack, Move or another mission is current. Harvest returns its
+delay to the common dispatcher; committing its working snapshot does not write
+a second timer. Unit idle calls the concrete Target(NULL) then Destination(NULL)
+owners before its final queue gate. Promotion resets the shared handler cursor
+and dispatch timer; changing a queued mission does not interpret an Attack
+cursor as Harvest state.
+
+Target expiry may draw Scenario range 4..8 before clearing Target, depending on
+the passive timer. A due targetless Attack invokes idle before its own cadence
+draw, even if idle queues Harvest. The later Unit checkpoint clears the retained
+harvesting latch before firing and promotes the queue. Harvest's next dispatch
+arms Stage; Techno advances Stage after dispatch, at most once per admitted visit.
+These timer/RNG results come from original executable samples, not calculations
+from the Rust implementation.
+
+## Evidence and reproduction
+
+The [native packet and reader receipts](../../../tools/spatial_oracle/harvest_attack_return.md)
+save 43 original histories, including complete 250-word Scenario RNG states.
+`world::harvest_attack_return_oracle_tests` compares 42 represented histories
+step by step. Retained AttackMove is explicitly excluded from Rust replay.
+The existing field, refinery and Chrono Miner corpora retain their own coverage.
+
+`world::harvest_field_cycle_tests::retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission`
+loads physical RULESMD, fixed ARTMD, Battle and AnyTown INIs through the production
+reader. It connects ordinary Attack to firing, damage, target removal and renewed
+ore collection, and checks the clear-land Guard return. Its terrain/refineries
+are the existing field fixture; it is Rust integration coverage.
+
+The [ordinary map profile](../../../tools/map_observation.war-miner-attack.example.json)
+deploys an MCV, builds power and a refinery, obtains its free War Miner, then
+ForceAttacks a stationary friendly conscript. It observes real terrain and
+actor missions through the synchronized command scheduler. Run it with the
+existing [map observation tool](../../../tools/map_observation.md). Its numeric
+type/actor handles belong to the saved launch; verify them if the population
+changes. Runtime observation is separate from a native comparison.
+
+## Coverage limits
+
+The native packet executes command, expiry, dispatch, idle, promotion and selected
+Stage/latch bodies. Live Approach uses a declared external return seam; damage
+supplies expiry in the packet. Actual firing and combat-produced death are tested
+through Rust and the ordinary retail map, without certifying native combat or
+whole-match scheduler/RNG parity.
+
+Retained AttackMove's saved mission, planning advancement, linked idle objects,
+non-Cell waypoint heads and other class locomotor unwind remain separate base
+mechanisms. Ordinary Attack clears its saved-order/navigation inputs. The stock
+HARV path uses Drive, no slave manager and an owned type from its retail `Dock=`
+list. Depot Enter still models its native Building destination as a pad Cell
+(issue #842); this change preserves that installed NavCom through shared idle.
+Native end-to-end deposit, unusual Weeder/slave routes, broad AreaGuard,
+network delivery and rendered pixel equivalence retain their existing owners
+and residuals.
