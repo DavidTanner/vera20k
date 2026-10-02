@@ -45,10 +45,17 @@ fn body_draw_against_seed(
     let seeded = seed_layers_for(assets, &model, Some(rules));
     let (asked, parts) = match body {
         BodyDraw::Turret { .. } => (VxlLayer::Body, true),
-        BodyDraw::Composite => (VxlLayer::Composite, false),
+        BodyDraw::Composite => (
+            if draws_turret_parts(&model, Some(rules), 0) {
+                VxlLayer::Body
+            } else {
+                VxlLayer::Composite
+            },
+            false,
+        ),
         BodyDraw::CrashPose(_) => return Err(format!("{base_type} takes the crash pose")),
     };
-    if !seeded.contains(&asked) {
+    if !seeded.iter().any(|&(layer, _)| layer == asked) {
         return Err(format!(
             "{base_type} draws {model} from its {asked:?} sprite, but the atlas seeds {seeded:?}"
         ));
@@ -179,11 +186,11 @@ fn retail_siege_chopper_draws_schd_only_after_deployment_completes() {
     assert!(rules.object("SCHD").unwrap().has_turret);
     // Physical retail HVA headers, recorded by unit_simple_deploy.json.
     assert_eq!(
-        detect_hva_frame_count(&assets, "SCHP", VxlLayer::Body, Some(rules)),
+        detect_hva_frame_count(&assets, "SCHP", VxlLayer::Body, 0, Some(rules)),
         2
     );
     assert_eq!(
-        detect_hva_frame_count(&assets, "SCHD", VxlLayer::Body, Some(rules)),
+        detect_hva_frame_count(&assets, "SCHD", VxlLayer::Body, 0, Some(rules)),
         1
     );
     let mut sim = Simulation::new();
@@ -193,8 +200,8 @@ fn retail_siege_chopper_draws_schd_only_after_deployment_completes() {
     assert!(sim.entities().get(id).unwrap().is_voxel);
     sim.entities_mut().get_mut(id).unwrap().body_frame_counter = 1;
     let frame_counts = std::collections::BTreeMap::from([
-        (("SCHP".to_string(), VxlLayer::Body), 2),
-        (("SCHD".to_string(), VxlLayer::Body), 1),
+        (("SCHP".to_string(), VxlLayer::Body, 0), 2),
+        (("SCHD".to_string(), VxlLayer::Body, 0), 1),
     ]);
     for (deployed, begin, reverse, expected) in [
         (false, false, false, Some(("SCHP", true))),
@@ -213,7 +220,7 @@ fn retail_siege_chopper_draws_schd_only_after_deployment_completes() {
         );
         if let Some((model, _)) = expected {
             assert_eq!(
-                unit_animation_frames(sim.entities().get(id).unwrap(), model, &frame_counts).0,
+                unit_animation_frames(sim.entities().get(id).unwrap(), model, 0, &frame_counts).0,
                 if model == "SCHP" { 1 } else { 0 },
                 "an odd SCHP counter must still draw the sole SCHD HVA frame"
             );
@@ -242,8 +249,8 @@ fn unit_hva_frames_match_native_selected_model_remainders() {
         ("unloading", physical_frames("schd.hva")),
         ("disguise", 3), // supplied native control HVA header
     ] {
-        frame_counts.insert((model.to_string(), VxlLayer::Body), frames);
-        frame_counts.insert((model.to_string(), VxlLayer::Turret), 4);
+        frame_counts.insert((model.to_string(), VxlLayer::Body, 0), frames);
+        frame_counts.insert((model.to_string(), VxlLayer::Turret, 0), 4);
     }
     let mut entity =
         crate::sim::game_entity::GameEntity::test_default(1, "SCHP", "Americans", 10, 10);
@@ -253,7 +260,7 @@ fn unit_hva_frames_match_native_selected_model_remainders() {
         entity.body_frame_counter = row["body_counter"].as_i64().unwrap() as u32;
         entity.turret_anim_frame = row["turret_counter"].as_i64().unwrap() as i32;
         let (body, turret) =
-            unit_animation_frames(&entity, row["selected"].as_str().unwrap(), &frame_counts);
+            unit_animation_frames(&entity, row["selected"].as_str().unwrap(), 0, &frame_counts);
         assert_eq!(
             body as i32,
             row["body_frame"].as_i64().unwrap() as i32,
@@ -435,13 +442,11 @@ fn retail_voxel_bodies_draw_the_sprites_their_model_is_seeded_with() {
     // (`0x0073B4DA..0x0073B4E7`); both retail unloading models therefore
     // select frame 0 independently of their persistent body counter.
     for model in ["HORV", "CMON"] {
-        let frames = detect_hva_frame_count(&assets, model, VxlLayer::Composite, Some(rules));
+        let frames = detect_hva_frame_count(&assets, model, VxlLayer::Composite, 0, Some(rules));
         assert_eq!(frames, 1, "{model}");
     }
-    // The turret arm's second admission (`0x0073B7B1..0x0073B7C5`: a
-    // `TurretCount=` type's current turret) is not represented. It is dormant
-    // in these stock Hills/Battle rules: every `TurretCount=` vehicle also
-    // sets `Turret=yes`. This does not cover other INI-layer combinations.
+    // The TurretCount admission is covered separately by native IFV controls.
+    // Every stock Hills/Battle vehicle using it also sets Turret=yes.
     for type_id in &rules.vehicle_ids {
         let object = rules.object(type_id).expect("a listed type");
         assert!(
@@ -449,4 +454,21 @@ fn retail_voxel_bodies_draw_the_sprites_their_model_is_seeded_with() {
             "{type_id} has TurretCount= without Turret="
         );
     }
+}
+
+/// The selected gun's HVA count belongs to its index, rather than the base
+/// gun's count. Arithmetic/control vectors remain in the native frame test
+/// above; this regression checks its catalogue binding at presentation.
+#[test]
+fn indexed_turret_animation_uses_its_selected_hva_count() {
+    let mut entity =
+        crate::sim::game_entity::GameEntity::test_default(1, "FV", "Americans", 10, 10);
+    entity.turret_anim_frame = 1;
+    let frames = std::collections::BTreeMap::from([
+        (("FV".to_string(), VxlLayer::Body, 0), 1),
+        (("FV".to_string(), VxlLayer::Turret, 0), 1),
+        (("FV".to_string(), VxlLayer::Turret, 1), 2),
+    ]);
+    assert_eq!(unit_animation_frames(&entity, "FV", 0, &frames), (0, 0));
+    assert_eq!(unit_animation_frames(&entity, "FV", 1, &frames), (0, 1));
 }

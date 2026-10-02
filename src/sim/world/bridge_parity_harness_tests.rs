@@ -286,7 +286,11 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // incoming E3FD9DD363C98F82; all 201 off/on boundaries differ only in tick hash.
 // Receipt: tools/spatial_oracle/unit_simple_deploy_replay/receipt.json.
 // This is Rust attribution; unit_simple_deploy separately pins native cadence.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xF6E0_2080_D0BE_29C1;
+// 2026-10-02 IFV owner migration: u8 last-shot hashing becomes signed i32
+// current-weapon hashing and the redundant None override feed is removed.
+// All 201 recorded boundaries retain gameplay/RNG after guarded field migration;
+// tools/spatial_oracle/ifv_turret_replay/receipt.json records this Rust attribution.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xC40E_68BD_B392_AF79;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

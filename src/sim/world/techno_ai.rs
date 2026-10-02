@@ -1011,12 +1011,25 @@ fn techno_common_steps(
     crate::sim::credit_income::drain_common_step(sim, id, rules);
     allied_target_drop_step(sim, id, rules);
     illegal_target_drop_step(sim, id, rules);
+    charge_turret_step(sim, id, rules);
     sim.capture_manager_update(id, rules, overlay_registry);
     if !ai_alive(sim, id) {
         return false;
     }
     self_heal_step(sim, id, rules);
     true
+}
+
+/// Techno6FA4FB follows target validity and precedes mission dispatch. The
+/// same object's later shot arms its charge duration for the next AI visit.
+fn charge_turret_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+    let Some(entity) = sim.substrate.entities.get_mut(id) else {
+        return;
+    };
+    let Some(object) = rules.object(sim.interner.resolve(entity.type_ref())) else {
+        return;
+    };
+    entity.update_charge_turret(sim.session.binary_frame as i32, object);
 }
 
 /// `TechnoClass::AI_Update @ 0x006FA472..0x006FA4CB`, after the drain
@@ -1269,6 +1282,7 @@ pub(super) fn dying_infantry_techno_ai(
     }
     allied_target_drop_step(sim, id, rules);
     illegal_target_drop_step(sim, id, rules);
+    charge_turret_step(sim, id, rules);
     passive_acquire_step(sim, id, Some(rules), ctx);
     //51BC9F still reaches Techno6FABC4 for Die1/Die2. A retained death
     // sequence uses the same absolute Stage clock as every other Infantry;

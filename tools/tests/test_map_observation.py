@@ -504,6 +504,27 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual([row['field'] for row in report['differences']],
                          ['observations.frames[1].actors[0].unit.deploy_anim_130.live.frame'])
 
+    def test_transport_commands_and_signed_selection_remain_observations(self):
+        self.scripted_profile()
+        self.profile['commands'] = [
+            {'issue_after_step': 0, 'owner': 'Computer1',
+             'payload': {'EnterTransport': {'passenger_id': 2, 'transport_id': 1}}},
+            {'issue_after_step': 2, 'owner': 'Computer1',
+             'payload': {'UnloadPassengers': {'transport_id': 1}}}]
+        self.profile_path.write_text(json.dumps(self.profile))
+        unit = dict(self.unit(), current_weapon_138=17, current_turret_124=-1)
+        self.actor_frames = {step: [dict(self.actor(category='Unit'), unit=dict(unit))]
+                             for step in range(4)}
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['observations']['frames'][0]['actors'][0]['unit'], unit)
+        unit['current_turret_124'] = True
+        with self.assertRaises(observation.ValidationError):
+            observation._unit(unit, 'unit')
+        del unit['current_turret_124']
+        with self.assertRaises(observation.ValidationError):
+            observation._unit(unit, 'unit')
+
     def test_unit_extension_validates_storage_types_without_asserting_gameplay(self):
         actor = dict(self.actor(category='Unit'), unit=self.unit())
         # These are typed observations, including stale pointers and raw flag bytes.

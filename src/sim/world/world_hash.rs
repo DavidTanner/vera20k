@@ -1281,7 +1281,7 @@ impl Simulation {
             entity.hash_building_body(hasher);
             entity.hash_building_health_sample(hasher);
             if let Some(dock) = entity.dock_state.as_ref() {
-                b"depot-docking-v281".hash(hasher);
+                b"depot-docking-v282".hash(hasher);
                 dock.hash_state(hasher);
             }
             entity.native_unique_id.hash(hasher);
@@ -1590,7 +1590,9 @@ impl Simulation {
                 b"prism-support-count-v1".hash(hasher);
                 entity.prism_support_count.hash(hasher);
             }
-            entity.current_weapon_index.hash(hasher);
+            // One native weapon owner replaces last-shot/transport copies.
+            // The turret index and saved charge duration only drive drawing.
+            entity.current_weapon_number().hash(hasher);
 
             // Slot-indexed fold: capacity + each slot's Option (null holes and
             // pad positions are hash-relevant). Replaces the old len + ordered-id
@@ -1755,7 +1757,6 @@ impl Simulation {
                     }
                 }
             }
-            entity.weapon_override.hash(hasher);
             // Spawn-manager pool: slot states, timers and targets are
             // deterministic sim state that no other field covers. (Native
             // folds only the manager-level fields into its CRC and leaves the

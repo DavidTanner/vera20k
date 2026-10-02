@@ -50,23 +50,6 @@ pub enum WeaponSlot {
     Secondary,
 }
 
-/// Weapon-selection override carried by a transport on a passenger's behalf.
-///
-/// - **`IfvSlot(idx)`** — `Gunner=yes` transports (IFV). The passenger's
-///   `IFVMode` becomes the transport's `CurrentWeaponNumber`
-///   (`TechnoClass+0x138`, written by `TechnoClass::SetGunnerWeapon @
-///   0x0070DC70` from the receive-gunner path at `0x007464CE`).
-///
-/// An open-topped passenger's `OpenTransportWeapon` is read on the passenger
-/// itself (its `+0x82`, [`PassengerRole::in_open_transport`]).
-///
-/// [`PassengerRole::in_open_transport`]: crate::sim::passenger::PassengerRole::in_open_transport
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum WeaponOverride {
-    /// Transport's `CurrentWeaponNumber`, used when transport is `Gunner=yes`.
-    IfvSlot(u32),
-}
-
 /// Result of weapon selection: the chosen weapon and its warhead.
 pub(crate) struct SelectedWeapon<'a> {
     /// Section id of the selected weapon.
@@ -950,13 +933,6 @@ fn open_transport_weapon(in_open_transport: bool, obj: &ObjectType) -> Option<i3
     (in_open_transport && obj.open_transport_weapon != -1).then_some(obj.open_transport_weapon)
 }
 
-fn current_weapon_number_from_override(weapon_override: Option<WeaponOverride>) -> i32 {
-    match weapon_override {
-        Some(WeaponOverride::IfvSlot(index)) => i32::try_from(index).unwrap_or(0),
-        _ => 0,
-    }
-}
-
 /// Read the attacker facts from live entity state.
 ///
 /// RESIDUAL (GSI-08.02, row 122) — inputs whose native state VERA does not
@@ -996,7 +972,7 @@ pub(crate) fn attacker_facts(entity: &GameEntity, obj: &ObjectType) -> AttackerF
     AttackerFacts {
         kind,
         veterancy: entity.veterancy(),
-        current_weapon_number: current_weapon_number_from_override(entity.weapon_override),
+        current_weapon_number: entity.current_weapon_number(),
         open_transport_weapon: open_transport_weapon(
             entity.passenger_role.in_open_transport(),
             obj,
@@ -1030,7 +1006,7 @@ pub(crate) fn attacker_facts_from_snapshot(
     AttackerFacts {
         kind,
         veterancy: snap.veterancy,
-        current_weapon_number: current_weapon_number_from_override(snap.weapon_override),
+        current_weapon_number: snap.current_weapon_number,
         open_transport_weapon: open_transport_weapon(snap.in_open_transport, obj),
         gattling_stage: 0,
         deploy_fire_active,
@@ -3070,7 +3046,7 @@ IsLocomotor=yes
         siege.set_unit_simple_deploy_for_test(true, false, false);
         assert!(attacker_facts(&siege, ggi_obj).deploy_fire_active);
         // The gunner slot is the transport's; `+0x82` is the rider's own.
-        siege.weapon_override = Some(WeaponOverride::IfvSlot(3));
+        siege.set_gunner_selection_for_test(3, -1);
         let f = attacker_facts(&siege, ggi_obj);
         assert_eq!(f.current_weapon_number, 3);
         assert_eq!(f.open_transport_weapon, None);

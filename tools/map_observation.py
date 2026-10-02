@@ -43,7 +43,8 @@ PROFILE_V2 = 'vera20k.map-observation-profile.v2'
 MAX_OBSERVATION_SAMPLES = 100_000
 MAX_RECEIPT_BYTES = 128 * 1024 * 1024
 ORDER_VARIANTS = frozenset(('Move', 'Stop', 'Attack', 'ForceAttack', 'Guard',
-                            'DeployMcv', 'ForceAttackCell', 'CaptureBuilding', 'ToggleRepair'))
+                            'DeployMcv', 'ForceAttackCell', 'CaptureBuilding', 'ToggleRepair',
+                            'EnterTransport', 'UnloadPassengers'))
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
 EXTENSION_FIELDS = frozenset(('commands', 'observe_owners', 'camera_cell', 'terrain_cells'))
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
@@ -373,9 +374,15 @@ def _rule_types(value: Any) -> None:
 
 def _unit(value: Any, label: str) -> None:
     unit = require_object(value, label)
-    require_exact_keys(unit, ('deployed_6e0', 'deploying_6e1', 'undeploying_6e2',
-                              'landing_for_deploy_134', 'deploy_anim_130', 'stage_f8',
-                              'body_counter_538'), label)
+    keys = ('deployed_6e0', 'deploying_6e1', 'undeploying_6e2',
+            'landing_for_deploy_134', 'deploy_anim_130', 'stage_f8', 'body_counter_538')
+    # The paired selection extension preserves older sealed unit receipts.
+    selection = ('current_weapon_138', 'current_turret_124')
+    if any(key in unit for key in selection):
+        keys += selection
+        for key in selection:
+            _bounded_int(unit.get(key), f'{label}.{key}', -(1 << 31), (1 << 31) - 1)
+    require_exact_keys(unit, keys, label)
     for key in ('deployed_6e0', 'deploying_6e1', 'undeploying_6e2'):
         _bounded_int(unit[key], f'{label}.{key}', 0, 255)
     if type(unit['landing_for_deploy_134']) is not bool:

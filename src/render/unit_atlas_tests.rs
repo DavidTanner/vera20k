@@ -1,6 +1,7 @@
 use super::*;
 use crate::render::vxl_raster::VxlSprite;
 use crate::rules::ini_parser::IniFile;
+use crate::sim::voxel_frame_catalog::draws_turret_parts;
 
 #[test]
 #[ignore = "manual timing of production atlas lookups for 20,000 cached units"]
@@ -15,6 +16,7 @@ fn cached_native_sprite_lookup_timing() {
                 for layer in [VxlLayer::Body, VxlLayer::Turret, VxlLayer::Barrel] {
                     let key = UnitSpriteKey {
                         type_id: type_id.into(),
+                        turret_index: 0,
                         facing: step * 8,
                         layer,
                         frame: 0,
@@ -89,7 +91,7 @@ fn gsi_13_07_atlas_variants_share_base_unloading_and_no_spawn_alt_derivation() {
     );
     // Each model splits on its own `Turret=`, not on the type that draws it.
     for (model, parts) in [("V3", false), ("HORV", true), ("V3WO", false)] {
-        assert_eq!(draws_turret_parts(model, Some(&rules)), parts, "{model}");
+        assert_eq!(draws_turret_parts(model, Some(&rules), 0), parts, "{model}");
     }
     assert_eq!(
         unit_atlas_variants("VLAD", Some(&rules)),
@@ -123,15 +125,15 @@ Turret=yes
         ("JET", false),
         ("NOTATYPE", false),
     ] {
-        assert_eq!(draws_turret_parts(model, Some(&rules)), parts, "{model}");
+        assert_eq!(draws_turret_parts(model, Some(&rules), 0), parts, "{model}");
     }
-    assert!(!draws_turret_parts("TANK", None));
+    assert!(!draws_turret_parts("TANK", None, 0));
 }
 
 #[test]
 fn gsi_13_07_no_spawn_alt_composite_seeds_32_facings_by_17_slopes() {
     let mut needed = HashSet::new();
-    insert_unit_layer_keys(&mut needed, "DREDWO", VxlLayer::Composite, 1, true, &[0]);
+    insert_unit_layer_keys(&mut needed, "DREDWO", VxlLayer::Composite, 0, 1, true, &[0]);
 
     assert_eq!(needed.len(), 32 * 17);
     assert!(needed.iter().all(|key| {
@@ -145,6 +147,7 @@ fn gsi_13_07_no_spawn_alt_composite_seeds_32_facings_by_17_slopes() {
         for slope_type in 0..=16 {
             assert!(needed.contains(&UnitSpriteKey {
                 type_id: "DREDWO".to_string(),
+                turret_index: 0,
                 facing,
                 layer: VxlLayer::Composite,
                 frame: 0,
@@ -159,6 +162,7 @@ fn gsi_13_07_no_spawn_alt_composite_seeds_32_facings_by_17_slopes() {
 fn test_unit_sprite_key_hash_equality() {
     let key1 = UnitSpriteKey {
         type_id: "HTNK".into(),
+        turret_index: 0,
         facing: 64,
         layer: VxlLayer::Composite,
         frame: 0,
@@ -167,6 +171,7 @@ fn test_unit_sprite_key_hash_equality() {
     };
     let key2 = UnitSpriteKey {
         type_id: "HTNK".into(),
+        turret_index: 0,
         facing: 64,
         layer: VxlLayer::Composite,
         frame: 0,
@@ -175,6 +180,7 @@ fn test_unit_sprite_key_hash_equality() {
     };
     let key3 = UnitSpriteKey {
         type_id: "HTNK".into(),
+        turret_index: 0,
         facing: 128,
         layer: VxlLayer::Composite,
         frame: 0,
@@ -194,6 +200,7 @@ fn test_unit_sprite_key_hash_equality() {
 fn every_unit_sprite_key_dimension_remains_distinct() {
     let base = UnitSpriteKey {
         type_id: "HTNK".into(),
+        turret_index: 0,
         facing: 64,
         layer: VxlLayer::Body,
         frame: 2,
@@ -218,14 +225,18 @@ fn every_unit_sprite_key_dimension_remains_distinct() {
     different_frame.frame = 3;
     variants.push(different_frame);
 
+    let mut different_turret = base.clone();
+    different_turret.turret_index = 1;
+    variants.push(different_turret);
+
     let mut different_slope = base;
     different_slope.slope_type = 4;
     variants.push(different_slope);
 
     assert_eq!(
         variants.into_iter().collect::<HashSet<_>>().len(),
-        6,
-        "type, facing, layer, frame, and slope are all cache identity"
+        7,
+        "type, turret index, facing, layer, frame, and slope are all cache identity"
     );
 }
 
@@ -241,6 +252,7 @@ fn test_key_collection_deduplicates() {
     for facing in [64u8, 64, 128] {
         needed.insert(UnitSpriteKey {
             type_id: "HTNK".to_string(),
+            turret_index: 0,
             facing,
             layer: VxlLayer::Composite,
             frame: 0,
@@ -485,6 +497,7 @@ fn incremental_repack_plan_retains_old_unloading_referent() {
     let make_cached = |type_id: &str| CachedUnitSprite {
         key: UnitSpriteKey {
             type_id: type_id.into(),
+            turret_index: 0,
             facing: 0,
             layer: VxlLayer::Composite,
             frame: 0,
@@ -558,6 +571,7 @@ fn unit_barrel_pitches_walk_the_unlimbo_turn() {
 fn barrel_image_keeps_its_first_drawn_pitch() {
     let key = |type_id: &str, facing| UnitSpriteKey {
         type_id: type_id.into(),
+        turret_index: 0,
         facing,
         layer: VxlLayer::Turret,
         frame: 0,
@@ -573,6 +587,10 @@ fn barrel_image_keeps_its_first_drawn_pitch() {
     // A TurretOffset type keys the hull's facing too; each type has its own.
     assert_eq!(pitches.pitch(&key("MTNK", 32), Some(0), -1), -1);
     assert_eq!(pitches.pitch(&key("HTNK", 32), None, -1), -1);
+    let mut different_turret = key("MTNK", 32);
+    different_turret.turret_index = 1;
+    assert_eq!(pitches.pitch(&different_turret, None, -2), -2);
+    assert_eq!(pitches.pitch(&key("MTNK", 32), None, -2), 0);
     // A new scenario starts empty.
     pitches.clear();
     assert_eq!(pitches.pitch(&key("MTNK", 32), None, -1), -1);
@@ -628,7 +646,209 @@ fn retail_vehicles_load_their_native_voxel_models() {
             assert!(assets.get_ref(file).is_some(), "{file}");
         }
         let model = UnitModel::load(&assets, type_id, Some(rules)).expect(type_id);
-        assert_eq!(model.turret.is_some(), turret, "{type_id}");
-        assert_eq!(model.barrel.is_some(), barrel, "{type_id}");
+        assert_eq!(model.gun_parts(0).0.is_some(), turret, "{type_id}");
+        assert_eq!(model.gun_parts(0).1.is_some(), barrel, "{type_id}");
+    }
+}
+
+/// The IFV's four retail gun assemblies must all be resident before its
+/// passenger changes. Its hull and shadow are shared across those assemblies.
+#[test]
+fn retail_ifv_atlas_covers_all_turrets_without_replicating_its_hull() {
+    use crate::rules::retail_ini_fixture::{retail_assets, retail_battle_rules};
+    let Some(battle) = retail_battle_rules() else {
+        return;
+    };
+    let (_, assets) = retail_assets().expect("the battle rules came from RA2_DIR");
+    let object = battle.rules.object("FV").expect("retail IFV");
+    assert_eq!(object.turret_count, 4);
+    assert!(!object.is_gattling);
+    let demand = UnitAtlasDemand {
+        ground: BTreeSet::from(["FV".to_string()]),
+        ..UnitAtlasDemand::default()
+    };
+    let (keys, _) = needed_unit_keys(&demand, &assets, Some(&battle.rules));
+    let count = |layer| keys.iter().filter(|key| key.layer == layer).count();
+    assert_eq!(count(VxlLayer::Body), 32 * 17);
+    assert_eq!(count(VxlLayer::Shadow), 32 * 17);
+    assert_eq!(count(VxlLayer::Turret), 4 * 32 * 17);
+    assert_eq!(
+        keys.iter()
+            .filter(|key| key.layer == VxlLayer::Turret)
+            .map(|key| key.turret_index)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([0, 1, 2, 3])
+    );
+    assert!(
+        keys.iter()
+            .filter(|key| matches!(key.layer, VxlLayer::Body | VxlLayer::Shadow))
+            .all(|key| key.turret_index == 0)
+    );
+}
+
+#[test]
+fn indexed_turret_names_and_draw_admission_match_native_controls() {
+    use crate::sim::voxel_frame_catalog::voxel_turret_index;
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/ifv_turret_switching.json"
+    ))
+    .expect("native IFV corpus");
+    for row in native["draw"]["filenames"].as_array().unwrap() {
+        let layer = match row["part"].as_str().unwrap() {
+            "turret" => VxlLayer::Turret,
+            "barrel" => VxlLayer::Barrel,
+            other => panic!("unknown gun part {other}"),
+        };
+        assert_eq!(
+            voxel_gun_basename("FV", layer, row["index"].as_i64().unwrap() as i32),
+            row["native_basename"].as_str().unwrap(),
+            "{row}"
+        );
+    }
+    for row in native["draw"]["rows"].as_array().unwrap() {
+        let count = row["turret_count"].as_i64().unwrap();
+        let gattling = row["is_gattling"].as_bool().unwrap();
+        let turret = row["turret"].as_bool().unwrap();
+        let current = row["selected_index"].as_i64().unwrap() as i32;
+        let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+            "[VehicleTypes]\n0=FV\n[FV]\nTurretCount={count}\nIsGattling={gattling}\nTurret={turret}\n"
+        )))
+        .unwrap();
+        assert_eq!(
+            draws_turret_parts("FV", Some(&rules), current),
+            row["gun_branch"].as_bool().unwrap(),
+            "{row}"
+        );
+        if !row["result"].is_null() {
+            assert_eq!(
+                voxel_turret_index("FV", Some(&rules), current),
+                row["result"]["selected"].as_i64().unwrap() as i32,
+                "{row}"
+            );
+        }
+    }
+}
+
+/// Byte identity is retail evidence; distinct raster outputs and unchanged
+/// hull/shadow pixels are Rust regression checks, not native raster parity.
+#[test]
+fn retail_ifv_models_draw_four_distinct_guns_and_share_body_and_shadow() {
+    use crate::rules::retail_ini_fixture::{retail_assets, retail_battle_rules};
+    use crate::util::sha256::sha256_hex;
+    let Some(battle) = retail_battle_rules() else {
+        return;
+    };
+    let (_, assets) = retail_assets().expect("the battle rules came from RA2_DIR");
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/ifv_turret_switching.json"
+    ))
+    .unwrap();
+    for row in native["physical"]["assets"].as_array().unwrap() {
+        if row["present_in_extract"] == true {
+            let file = row["file"].as_str().unwrap();
+            let bytes = assets
+                .get_ref(file)
+                .unwrap_or_else(|| panic!("retail {file}"));
+            assert_eq!(sha256_hex(bytes), row["sha256"].as_str().unwrap(), "{file}");
+        }
+    }
+    let model = UnitModel::load(&assets, "FV", Some(&battle.rules)).expect("retail IFV");
+    assert_eq!(model.guns.len(), 4);
+    let vpl = VplFile::from_bytes(assets.get_ref("VOXELS.VPL").unwrap()).unwrap();
+    let mut pose = None;
+    let mut key = UnitSpriteKey {
+        type_id: "FV".to_string(),
+        turret_index: 0,
+        facing: 64,
+        layer: VxlLayer::Body,
+        frame: 0,
+        slope_type: 0,
+        barrel_pitch: 0,
+    };
+    let (body, body_bounds) = model.render(&key, Some(&vpl), None, &mut pose).unwrap();
+    let mut guns = BTreeSet::new();
+    for index in 0..4 {
+        key.layer = VxlLayer::Turret;
+        key.turret_index = index;
+        let (sprite, bounds) = model.render(&key, Some(&vpl), None, &mut pose).unwrap();
+        assert!(bounds.is_some(), "FV turret {index}");
+        guns.insert((sprite.width, sprite.height, sprite.palette_indices));
+    }
+    assert_eq!(guns.len(), 4, "all four retail IFV turrets must differ");
+    for index in [-1, 4, i32::MAX] {
+        key.turret_index = index;
+        assert!(model.render(&key, Some(&vpl), None, &mut pose).is_none());
+    }
+    key.turret_index = 0;
+    key.layer = VxlLayer::Body;
+    let (body_after, bounds_after) = model.render(&key, Some(&vpl), None, &mut pose).unwrap();
+    assert_eq!(body.palette_indices, body_after.palette_indices);
+    assert_eq!(body_bounds, bounds_after);
+    key.layer = VxlLayer::Shadow;
+    let (shadow, shadow_bounds) = model.render(&key, Some(&vpl), None, &mut pose).unwrap();
+    for index in 1..4 {
+        // Production keys canonicalize Shadow to zero. The raster itself
+        // also remains independent of the selected turret's geometry.
+        key.turret_index = index;
+        let (other, bounds) = model.render(&key, Some(&vpl), None, &mut pose).unwrap();
+        assert_eq!(shadow.palette_indices, other.palette_indices);
+        assert_eq!(shadow_bounds, bounds);
+    }
+}
+
+#[test]
+fn indexed_model_loader_requires_turret_pairs_but_allows_absent_barrels() {
+    use crate::map::source::test_support::TestDirectory;
+    use crate::rules::retail_ini_fixture::retail_assets;
+    let Some((_, assets)) = retail_assets() else {
+        return;
+    };
+    for (name, turret, gattling, missing, bad_barrel, expected_guns) in [
+        ("valid", true, false, None, false, Some(2)),
+        ("no-turret-flag", false, false, None, true, Some(2)),
+        (
+            "missing-turret",
+            true,
+            false,
+            Some("FVTUR1.VXL"),
+            false,
+            None,
+        ),
+        ("missing-hva", true, false, Some("FVTUR1.HVA"), false, None),
+        ("bad-barrel", true, false, None, true, None),
+        ("gattling", true, true, Some("FVTUR1.VXL"), false, Some(1)),
+    ] {
+        let directory = TestDirectory::new(&format!("indexed-voxel-{name}"));
+        for file in [
+            "FV.VXL",
+            "FV.HVA",
+            "FVTUR.VXL",
+            "FVTUR.HVA",
+            "FVTUR1.VXL",
+            "FVTUR1.HVA",
+        ] {
+            if Some(file) != missing {
+                std::fs::write(directory.path().join(file), assets.get_ref(file).unwrap()).unwrap();
+            }
+        }
+        if bad_barrel {
+            // A valid voxel with no companion HVA: the required-pair failure
+            // is independent of which retail geometry supplies the VXL bytes.
+            std::fs::write(
+                directory.path().join("FVBARL1.VXL"),
+                assets.get_ref("FVTUR1.VXL").unwrap(),
+            )
+            .unwrap();
+        }
+        let fixture = AssetManager::from_loose_root_for_test(directory.path());
+        let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+            "[VehicleTypes]\n0=FV\n[FV]\nTurretCount=2\nTurret={turret}\nIsGattling={gattling}\n"
+        )))
+        .unwrap();
+        assert_eq!(
+            UnitModel::load(&fixture, "FV", Some(&rules)).map(|model| model.guns.len()),
+            expected_guns,
+            "{name}"
+        );
     }
 }

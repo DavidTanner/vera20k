@@ -1914,7 +1914,6 @@ impl Simulation {
             damage_events: _,
             remove_attack: _,
             ammo_deduct: _,
-            current_weapon_updates: _,
             unit_facing: _,
             spawn_target_updates: _,
             drain_links: _,

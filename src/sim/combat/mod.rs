@@ -2376,9 +2376,6 @@ pub(crate) struct CombatEmit {
     pub(crate) fire_events: Vec<SimFireEvent>,
     /// aircraft that fired this tick
     pub(crate) ammo_deduct: Vec<u64>,
-    /// Native `CurrentWeaponNumber` writes emitted by live weapon selection.
-    /// The per-attacker host commits these before that attack's receivers run.
-    pub(crate) current_weapon_updates: Vec<(u64, u8)>,
     /// Unit Facing outputs committed immediately at each live object slot.
     /// Component fixtures retain them here for observation.
     pub(crate) unit_facing: Vec<UnitFacingUpdate>,
@@ -2698,7 +2695,7 @@ pub(crate) fn build_attacker_snapshot(
         is_fully_deployed: entity.is_fully_deployed(),
         barrel_facing: entity.barrel_facing,
         hull_facing: entity.body_facing,
-        weapon_override: entity.weapon_override,
+        current_weapon_number: entity.current_weapon_number(),
         in_open_transport: entity.passenger_role.in_open_transport(),
         garrison,
         scan_mission: threat_range::scan_mission_for(entity),

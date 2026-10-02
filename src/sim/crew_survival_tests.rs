@@ -6,7 +6,7 @@
 use super::*;
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
-use crate::sim::combat::combat_weapon::WeaponOverride;
+
 use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags, TargetKind};
 use crate::sim::house_state::HouseState;
 use crate::sim::passenger::{PassengerCargo, PassengerRole};
@@ -988,8 +988,11 @@ fn a_gunner_transport_on_its_suicide_weapon_explodes() {
         let bystander = spawn(&mut sim, &rules, "APC", "Americans", 11, 10);
         let attacker = spawn(&mut sim, &rules, "APC", "Russians", 14, 10);
         let passenger = load_passengers(&mut sim, &rules, ifv, "Americans", 1)[0];
-        sim.substrate.entities.get_mut(ifv).unwrap().weapon_override =
-            Some(WeaponOverride::IfvSlot(ifv_mode));
+        sim.substrate
+            .entities
+            .get_mut(ifv)
+            .unwrap()
+            .set_gunner_selection_for_test(ifv_mode, -1);
         kill_by(&mut sim, &rules, ifv, attacker, ORDINARY);
         let russians = sim.interner.intern("Russians");
         let passenger = sim.substrate.entities.get(passenger).unwrap();
@@ -1025,7 +1028,7 @@ fn retail_ifv_death_arm_follows_its_passengers_slot() {
         .infantry_ids
         .iter()
         .filter(|id| {
-            let ifv_mode = i32::try_from(rules.object(id).unwrap().ifv_mode).unwrap();
+            let ifv_mode = rules.object(id).unwrap().ifv_mode;
             crate::sim::combat::death_arm_explodes(&rules, fv, 0, ifv_mode)
         })
         .map(String::as_str)
@@ -1398,8 +1401,8 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
             .entities
             .get(loads[1].1)
             .unwrap()
-            .weapon_override
-            .is_some(),
+            .current_weapon_number()
+            == rules.object("E1").unwrap().ifv_mode,
         "the IFV took its gunner's weapon"
     );
     let registry = Some(&resources.overlay_registry);
