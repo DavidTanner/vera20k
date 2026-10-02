@@ -239,6 +239,7 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         chrono_out_sound: None,
         has_turret: false,
         turret_rot: 0,
+        recoil: Default::default(),
         turret_anim: None,
         turret_anim_is_voxel: false,
         turret_anim_x: 0,

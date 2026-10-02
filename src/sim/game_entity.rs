@@ -814,11 +814,13 @@ pub struct GameEntity {
     /// `0x0043FF8B`) advance it. Only the draws read it
     /// (`UnitClass::DrawVoxelBody @ 0x0073B500`: while the body's HVA frame is
     /// 0 the turret's frame is this modulo its frame count; the building's
-    /// voxel draw `0x0043DA80`, which VERA does not port).
+    /// voxel draw `0x0043DA80`, emitted by `emit_building_turret_vxl`).
     ///
     /// Not folded into `world_hash`: its one reader is presentation.
     #[serde(default)]
     pub turret_anim_frame: i32,
+    /// Optional presentation-only native recoil, owned by voxel_recoil.
+    voxel_recoil: Option<Box<voxel_recoil::VoxelRecoil>>,
     /// Techno+3B8 survives target replacement and mission changes.
     #[serde(default)]
     pub weapon_burst: crate::sim::combat::burst::WeaponBurst,
@@ -1243,6 +1245,7 @@ pub struct GameEntity {
 mod construction_stage;
 mod gunner;
 mod simple_deploy;
+mod voxel_recoil;
 
 impl GameEntity {
     pub(crate) const fn cached_spatial_threat(&self) -> Option<i32> {
@@ -1679,6 +1682,7 @@ impl GameEntity {
             rearm_timer: crate::sim::timer::CdTimer::started(construction_frame as i32, 0),
             gattling: Default::default(),
             turret_anim_frame: 0,
+            voxel_recoil: None,
             weapon_burst: Default::default(),
             building_body: (category == EntityCategory::Structure).then(Default::default),
             building_power_health_sample: 0,

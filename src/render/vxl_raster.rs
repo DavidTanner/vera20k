@@ -525,6 +525,37 @@ pub fn barrel_pivot_screen_offset(
     (disp.x, -disp.y)
 }
 
+/// Building draw43DA80's B8/C0 offsets, in pixels (+Y down), before their
+/// shared TurretAnimX/Y anchor. Buildings truncate TurretOffset / 8 instead
+/// of using the unit's lepton scale. Each recoil translates its own part
+/// along local -X; the barrel then pitches about the turret translation.
+/// A C0-only building does none of these translations and must not call it.
+///
+/// The rotation/pitch owners are shared with the voxel rasterizer. Executed
+/// native matrices in tools/voxel_oracle/building_barrel.json bound the
+/// separate float projection to less than 0.0001 pixel roundoff.
+pub fn building_gun_screen_offsets(
+    turret_offset: i32,
+    facing: u8,
+    barrel_pitch: i8,
+    recoil: [f32; 2],
+) -> [[f32; 2]; 2] {
+    let yaw = voxel_body_facing(voxel_facing_step(facing));
+    let translation = yaw.transform_vector3(Vec3::new((turret_offset / 8) as f32, 0.0, 0.0));
+    let turret = translation - yaw.x_axis.truncate() * recoil[0];
+    let pitched = voxel_barrel_pitch(Mat4::IDENTITY, barrel_pitch).transform_vector3(translation);
+    let barrel = translation + yaw.transform_vector3(pitched - translation)
+        - yaw.x_axis.truncate() * recoil[1];
+    [turret, barrel].map(|translation| {
+        let screen = voxel_camera_view().transform_vector3(translation);
+        [screen.x, -screen.y]
+    })
+}
+
+#[cfg(test)]
+#[path = "vxl_building_tests.rs"]
+mod building_tests;
+
 /// Margin in pixels added around the sprite to avoid clipping.
 const SPRITE_MARGIN: u32 = 2;
 

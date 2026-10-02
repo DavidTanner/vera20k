@@ -289,9 +289,22 @@ def _timer(value: Any, label: str) -> None:
 
 def _building(value: Any, label: str) -> int:
     building = require_object(value, label)
-    require_exact_keys(building, ('body_state', 'queued_body_state', 'construction_control',
-                                  'stage', 'ready_latch', 'actually_placed', 'last_operational',
-                                  'animation_slots'), label)
+    keys = ('body_state', 'queued_body_state', 'construction_control',
+            'stage', 'ready_latch', 'actually_placed', 'last_operational', 'animation_slots')
+    # Optional complete extension preserves previously sealed building captures.
+    if 'voxel_gun' in building:
+        keys += ('voxel_gun',)
+        gun = require_object(building['voxel_gun'], f'{label}.voxel_gun')
+        require_exact_keys(gun, ('facing', 'elevation', 'hva_counter', 'recoil', 'recoil_active'), f'{label}.voxel_gun')
+        for key in ('facing', 'elevation'):
+            _bounded_int(gun[key], f'{label}.voxel_gun.{key}', 0, 65535)
+        _bounded_int(gun['hva_counter'], f'{label}.voxel_gun.hva_counter', -(1 << 31), (1 << 31) - 1)
+        travel = require_array(gun['recoil'], f'{label}.voxel_gun.recoil')
+        if len(travel) != 2 or any(type(v) not in (int, float) or not math.isfinite(v) for v in travel):
+            raise ValidationError(f'{label}.voxel_gun.recoil must contain two finite numbers')
+        if type(gun['recoil_active']) is not bool:
+            raise ValidationError(f'{label}.voxel_gun.recoil_active must be boolean')
+    require_exact_keys(building, keys, label)
     for key in ('body_state', 'queued_body_state'):
         if building[key] is not None:
             _bounded_int(building[key], f'{label}.{key}', -(1 << 31), (1 << 31) - 1)
