@@ -4,16 +4,20 @@ python -m unittest tools.test_native_oracle -v
 """
 
 from contextlib import redirect_stdout
+import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE
-from unicorn.x86_const import UC_X86_REG_EAX
+from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_ESP
 
 from tools import native_oracle as oracle
 
@@ -29,6 +33,13 @@ def fixture(code):
 
 
 class ExecutionTests(unittest.TestCase):
+    def setUp(self):
+        # A developer's opt-in report directory must not collect synthetic tests.
+        self.environment = patch.dict(os.environ)
+        self.environment.start()
+        os.environ.pop("VERA20K_NATIVE_FAILURE_DIR", None)
+        self.addCleanup(self.environment.stop)
+
     def test_return_boundary_and_required_address(self):
         uc = fixture(b"\xb8\x2a\x00\x00\x00\x90")
         self.assertEqual(oracle.run_checked(uc, CODE, CODE + 5,
@@ -104,6 +115,201 @@ class ExecutionTests(unittest.TestCase):
         with self.assertRaisesRegex(oracle.OracleError, "not reached"):
             self.synthetic_call(code, capture_st0=True)
 
+    def test_instruction_budget_failure_has_structured_observations(self):
+        with self.assertRaises(oracle.NativeExecutionError) as caught:
+            oracle.run_checked(fixture(b"\xeb\xfe"), CODE, CODE + 2, count=4,
+                               context={"case": "retry", "inputs": {"seed": 17}})
+        report = caught.exception.diagnostics
+        self.assertEqual(report["reason"], "instruction_limit_reached")
+        self.assertFalse(report["timed_out"])
+        self.assertEqual(report["observed_instructions"], 4)
+        self.assertEqual(report["entry"], CODE)
+        self.assertEqual(report["expected_endpoints"], [CODE + 2])
+        self.assertEqual(report["final"]["registers"]["eip"], CODE)
+        self.assertEqual(report["context"], {"case": "retry", "inputs": {"seed": 17}})
+        self.assertIn("instruction_limit_reached", str(caught.exception))
+
+    def test_timeout_failure_preserves_immediate_timeout_flag(self):
+        with self.assertRaises(oracle.NativeExecutionError) as caught:
+            oracle.run_checked(fixture(b"\xeb\xfe"), CODE, CODE + 2,
+                               count=1_000_000_000, timeout_us=1000)
+        self.assertEqual(caught.exception.diagnostics["reason"], "timeout")
+        self.assertTrue(caught.exception.diagnostics["timed_out"])
+
+    def test_external_stop_below_budget_is_distinct(self):
+        uc = fixture(b"\x90\x90")
+        uc.hook_add(UC_HOOK_CODE, lambda machine, *_: machine.emu_stop())
+        with self.assertRaises(oracle.NativeExecutionError) as caught:
+            oracle.run_checked(uc, CODE, CODE + 2, count=100)
+        report = caught.exception.diagnostics
+        self.assertEqual(report["reason"], "early_stop")
+        self.assertFalse(report["timed_out"])
+        self.assertLess(report["observed_instructions"], 100)
+
+    def test_fault_and_unmapped_stack_do_not_mask_original_error(self):
+        with self.assertRaises(oracle.NativeExecutionError) as caught:
+            oracle.run_checked(fixture(b"\xa1\x00\x00\x00\x70"), CODE, CODE + 5)
+        report = caught.exception.diagnostics
+        self.assertEqual(report["reason"], "fault")
+        self.assertIn("READ_UNMAPPED", report["fault"]["message"])
+        self.assertIsNotNone(report["fault"]["errno"])
+        self.assertEqual(report["final"]["stack"]["words"], [])
+        self.assertIn("unavailable", report["final"]["stack"])
+
+    def test_report_retains_entry_and_failure_registers_and_bounded_stack(self):
+        uc = fixture(b"\xb9\x34\x12\x00\x00\xeb\xfe")
+        uc.reg_write(UC_X86_REG_ECX, 42)
+        uc.mem_map(0x2000, 0x1000)
+        uc.mem_write(0x2000, struct.pack("<16I", *range(16)))
+        uc.reg_write(UC_X86_REG_ESP, 0x2000)
+        with self.assertRaises(oracle.NativeExecutionError) as caught:
+            oracle.run_checked(uc, CODE, CODE + 7, count=3)
+        report = caught.exception.diagnostics
+        self.assertEqual(report["initial"]["registers"]["ecx"], 42)
+        self.assertEqual(report["final"]["registers"]["ecx"], 0x1234)
+        self.assertEqual(report["initial"]["stack"]["words"], list(range(16)))
+        self.assertEqual(report["final"]["stack"]["words"], list(range(16)))
+
+    def test_required_path_failure_has_missing_addresses(self):
+        with self.assertRaises(oracle.NativeExecutionError) as caught:
+            oracle.run_checked(fixture(b"\xeb\x01\x90\x90"), CODE, CODE + 3,
+                               required_addresses=[CODE + 2])
+        self.assertEqual(caught.exception.diagnostics["reason"], "required_addresses_missing")
+        self.assertEqual(caught.exception.diagnostics["missing_required_addresses"], [CODE + 2])
+
+    def test_report_directory_preserves_distinct_failures_and_context(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reports = Path(directory) / "reports"
+            with patch.dict(os.environ, {"VERA20K_NATIVE_FAILURE_DIR": str(reports)}):
+                for seed in (17, 18):
+                    with self.assertRaises(oracle.NativeExecutionError) as caught:
+                        oracle.run_checked(fixture(b"\xeb\xfe"), CODE, CODE + 2,
+                                           count=4, context={"seed": seed})
+                    saved = caught.exception.report_path
+                    self.assertIsNotNone(saved)
+                    self.assertEqual(json.loads(saved.read_text()), caught.exception.diagnostics)
+                    self.assertIn(str(saved), str(caught.exception))
+            files = list(reports.glob("*.json"))
+            self.assertEqual(len(files), 2)
+            self.assertEqual({json.loads(p.read_text())["context"]["seed"] for p in files}, {17, 18})
+
+    def test_success_writes_no_failure_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reports = Path(directory) / "reports"
+            with patch.dict(os.environ, {"VERA20K_NATIVE_FAILURE_DIR": str(reports)}):
+                self.assertEqual(oracle.run_checked(fixture(b"\x90\x90"), CODE, CODE + 1), CODE + 1)
+            self.assertFalse(reports.exists())
+
+    def test_report_write_error_keeps_native_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            blocked = Path(directory) / "not-a-directory"
+            blocked.write_text("keep")
+            with patch.dict(os.environ, {"VERA20K_NATIVE_FAILURE_DIR": str(blocked)}):
+                with self.assertRaises(oracle.NativeExecutionError) as caught:
+                    oracle.run_checked(fixture(b"\xeb\xfe"), CODE, CODE + 2, count=4)
+            self.assertEqual(blocked.read_text(), "keep")
+            self.assertEqual(caught.exception.diagnostics["reason"], "instruction_limit_reached")
+            self.assertIn("Could not save", str(caught.exception))
+
+    def test_context_is_frozen_before_execution_and_report_can_be_used_without_disk(self):
+        context = {"case": "original", "inputs": [17]}
+        uc = fixture(b"\xeb\xfe")
+        def change_context(machine, *_):
+            context["case"] = "changed"
+            context["inputs"].append(18)
+        uc.hook_add(UC_HOOK_CODE, change_context)
+        with self.assertRaises(oracle.NativeExecutionError) as caught:
+            oracle.run_checked(uc, CODE, CODE + 2, count=4, context=context)
+        self.assertEqual(caught.exception.diagnostics["context"], {"case": "original", "inputs": [17]})
+        self.assertIsNone(caught.exception.report_path)
+
+    def test_non_json_context_is_rejected_before_execution(self):
+        uc = fixture(b"\xb8\x2a\x00\x00\x00\x90")
+        with self.assertRaises(TypeError):
+            oracle.run_checked(uc, CODE, CODE + 5, context={"case": object()})
+        self.assertEqual(uc.reg_read(UC_X86_REG_EAX), 0)
+
+    def test_partial_stack_is_retained_when_sample_crosses_unmapped_page(self):
+        uc = fixture(b"\xeb\xfe")
+        uc.mem_map(0x2000, 0x1000)
+        uc.mem_write(0x2FFC, struct.pack("<I", 17))
+        uc.reg_write(UC_X86_REG_ESP, 0x2FFC)
+        with self.assertRaises(oracle.NativeExecutionError) as caught:
+            oracle.run_checked(uc, CODE, CODE + 2, count=4)
+        stack = caught.exception.diagnostics["final"]["stack"]
+        self.assertEqual(stack["words"], [17])
+        self.assertIn("unavailable", stack)
+
+    def test_call_failure_includes_call_arguments(self):
+        with self.assertRaises(oracle.NativeExecutionError) as caught:
+            self.synthetic_call(b"\xeb\xfe", ecx=42, stack_args=[17, 18],
+                                timeout_instr=4, context={"case": "hsv-boundary"})
+        context = caught.exception.diagnostics["context"]
+        self.assertEqual(context["case"], "hsv-boundary")
+        self.assertEqual(context["call"]["ecx"], 42)
+        self.assertEqual(context["call"]["stack_args"], [17, 18])
+
+    def test_cli_failure_saves_report_before_process_exits(self):
+        code = """
+from unicorn import Uc, UC_ARCH_X86, UC_MODE_32
+from tools.native_oracle import run_checked
+machine = Uc(UC_ARCH_X86, UC_MODE_32)
+machine.mem_map(0x1000, 0x1000)
+machine.mem_write(0x1000, b'\\xeb\\xfe')
+run_checked(machine, 0x1000, 0x1002, count=4,
+            context={'case': 'cli-retry', 'inputs': {'seed': 17}})
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1],
+                env=dict(os.environ, VERA20K_NATIVE_FAILURE_DIR=directory),
+                capture_output=True, text=True, timeout=15,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "")
+            self.assertIn("reason=instruction_limit_reached", result.stderr)
+            reports = list(Path(directory).glob("*.json"))
+            self.assertEqual(len(reports), 1)
+            self.assertEqual(json.loads(reports[0].read_text())["context"]["case"], "cli-retry")
+
+    def test_mission_rules_failure_keeps_setup_selector_and_physical_layer(self):
+        from tools.rules_oracle.bridge_anim_inputs import Reader
+        from tools.spatial_oracle.anytown_damage import mission
+
+        machine = Uc(UC_ARCH_X86, UC_MODE_32)
+        machine.mem_map(0x66D000, 0x1000)
+        machine.mem_write(0x66D530, b"\x0f\x0b")  # Synthetic UD2; no retail execution.
+        machine.mem_map(mission.SP & ~0xFFF, 0x1000)
+        reader = object.__new__(Reader)
+        reader.u = machine
+        reader.rules_cache = lambda sections: None
+        reader.invoke = lambda addr, obj, args=(), **kw: (
+            Reader.invoke(reader, addr, obj, args, **kw) if addr == 0x66D530 else 0)
+        setup = object.__new__(mission.Mission)
+        setup.m, setup.u, setup.rules = reader, machine, 0x12340000
+        setup.inputs, setup.phase, setup.frame, setup.continuation = {}, "setup", 0, None
+        with tempfile.TemporaryDirectory() as directory:
+            layer = Path(directory) / "RULESMD.INI"
+            raw = b"[General]\nSyntheticFixture=yes\n"
+            layer.write_bytes(raw)
+            # Skip earlier setup stages and inject only the failing General
+            # Rules call through the real Mission -> Reader -> runner path.
+            with patch.object(mission.base, "layers", side_effect=[[], [(layer.name, layer)]]), \
+                    patch.object(mission.base, "lexical", return_value=({}, [])):
+                with self.assertRaises(oracle.NativeExecutionError) as caught:
+                    setup.setup(context={"case": "synthetic-placement", "placement_index": 7})
+        report = caught.exception.diagnostics
+        self.assertEqual(report["reason"], "fault")
+        self.assertEqual(report["entry"], 0x66D530)
+        self.assertEqual(report["initial"]["registers"]["ecx"], setup.rules)
+        self.assertEqual(report["initial"]["stack"]["words"][1], mission.RULES)
+        context = report["context"]
+        self.assertEqual((context["case"], context["placement_index"]), ("synthetic-placement", 7))
+        self.assertEqual(context["setup"]["fixture"], mission.Mission.__module__ + ".Mission")
+        self.assertEqual((context["setup"]["phase"], context["setup"]["frame"]), ("setup", 0))
+        self.assertEqual(context["rules_layer"]["name"], "RULESMD.INI")
+        self.assertEqual(context["rules_layer"]["sha256"], hashlib.sha256(raw).hexdigest())
+
 
 class IdentityAndReferenceTests(unittest.TestCase):
     def setUp(self):
@@ -133,6 +339,18 @@ class IdentityAndReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(oracle.OracleError, "Reference missing"):
             self.finish({"value": 42})
         self.assertEqual(list(Path(self.directory.name).iterdir()), [])
+
+    def test_native_failure_during_write_does_not_publish_partial_goldens(self):
+        def generate():
+            oracle.run_checked(fixture(b"\xeb\xfe"), CODE, CODE + 2, count=4,
+                               context={"case": "must-not-be-a-golden"})
+        reports = Path(self.directory.name) / "failures"
+        with patch.dict(os.environ, {"VERA20K_NATIVE_FAILURE_DIR": str(reports)}):
+            with self.assertRaises(oracle.NativeExecutionError):
+                self.finish(generate, "--write")
+        self.assertFalse(self.target.exists())
+        self.assertFalse(self.target.with_suffix(".meta.json").exists())
+        self.assertEqual(len(list(reports.glob("*.json"))), 1)
 
     def test_write_then_default_check_never_changes_files(self):
         data = {"cases": [(42, 17)]}

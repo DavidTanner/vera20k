@@ -28,6 +28,7 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Read/disassemble native VAs; scan callers, fields and bytes | [native inspection](native_inspect.md), `python -m tools.native_inspect` |
 | Reproduce Foot coordinates and bridge source-layer / reachability queries | [checked Foot bridge-layer oracle](spatial_oracle/foot_bridge_layer.md) |
 | Run pinned native executable comparisons | [native oracle runner](native_oracle.md) |
+| Preserve failed native execution context and diagnose timeouts | [native failure reports](native_oracle.md#investigating-a-failed-native-run) |
 | Compare shell captures | `python -m tools.shell_capture_diff --help` |
 | Capture and certify shell routes | [shell certification](shell_certification/README.md) |
 | Capture and certify tactical routes | [tactical certification](tactical_certification/README.md) |
