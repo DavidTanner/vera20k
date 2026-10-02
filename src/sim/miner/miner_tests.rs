@@ -948,7 +948,7 @@ fn harvester_uses_dock_list_for_refinery_selection() {
 
     for wide in [false, true] {
         assert_eq!(
-            docking_bay(&sim, &rules, miner_id, wide),
+            docking_bay(&mut sim, &rules, miner_id, wide),
             Some(3),
             "wide={wide}"
         );
@@ -988,7 +988,7 @@ fn a_warped_refinery_is_passed_over() {
 
     for wide in [false, true] {
         assert_eq!(
-            docking_bay(&sim, &rules, miner_id, wide),
+            docking_bay(&mut sim, &rules, miner_id, wide),
             Some(3),
             "wide={wide}"
         );
@@ -2130,14 +2130,14 @@ fn a_captured_refinery_is_no_longer_a_return_target() {
     spawn_refinery(&mut sim, 2, 20, 10);
     spawn_refinery(&mut sim, 3, 40, 10);
     fill_and_return(&mut sim, miner_id);
-    assert_eq!(docking_bay(&sim, &rules, miner_id, true), Some(2));
+    assert_eq!(docking_bay(&mut sim, &rules, miner_id, true), Some(2));
 
     let captor = sim.interner.intern("Russians");
     sim.change_owner(2, captor);
 
     for wide in [false, true] {
         assert_eq!(
-            docking_bay(&sim, &rules, miner_id, wide),
+            docking_bay(&mut sim, &rules, miner_id, wide),
             Some(3),
             "wide={wide}"
         );
@@ -2331,7 +2331,7 @@ fn full_miner_return_passes_over_a_dying_refinery() {
 
     for wide in [false, true] {
         assert_eq!(
-            docking_bay(&sim, &rules, miner_id, wide),
+            docking_bay(&mut sim, &rules, miner_id, wide),
             Some(3),
             "wide={wide}"
         );
@@ -2711,8 +2711,8 @@ fn fill_and_return(sim: &mut Simulation, miner_id: u64) {
 
 /// `Find_Docking_Bay(Type->Dock, 0, wide)` as the miner's state-2 dispatch
 /// calls it.
-fn docking_bay(sim: &Simulation, rules: &RuleSet, miner_id: u64, wide: bool) -> Option<u64> {
-    super::miner_system::find_docking_bay_for_test(sim, rules, miner_id, wide)
+fn docking_bay(sim: &mut Simulation, rules: &RuleSet, miner_id: u64, wide: bool) -> Option<u64> {
+    super::miner_system::find_docking_bay(sim, rules, miner_id, wide, wide)
 }
 
 /// An open 64x64 playfield: the War return's staging search
@@ -2764,8 +2764,15 @@ fn occupy_refinery(sim: &mut Simulation, refinery_sid: u64, occupant_sid: u64) {
         sim.substrate.next_stable_object_id = occupant_sid + 1;
     }
     assert_eq!(
-        crate::sim::miner::miner_dock::hello(sim, occupant_sid, refinery_sid, 1),
-        crate::sim::miner::miner_dock::ContactAdmission::Accepted,
+        crate::sim::radio::transmit(
+            sim,
+            occupant_sid,
+            refinery_sid,
+            crate::sim::radio::RadioMessage::Hello,
+            crate::sim::radio::RadioPayload::default(),
+            None,
+        ),
+        crate::sim::radio::RadioResponse::Roger,
     );
 }
 
@@ -2782,7 +2789,7 @@ fn refinery_selection_ignores_other_house_refinery() {
 
     for wide in [false, true] {
         assert_eq!(
-            docking_bay(&sim, &rules, miner_id, wide),
+            docking_bay(&mut sim, &rules, miner_id, wide),
             Some(3),
             "own-house refinery must win over a nearer foreign one (wide={wide})",
         );
@@ -2815,7 +2822,7 @@ fn refinery_selection_ignores_nearer_allied_refinery() {
 
     for wide in [false, true] {
         assert_eq!(
-            docking_bay(&sim, &rules, miner_id, wide),
+            docking_bay(&mut sim, &rules, miner_id, wide),
             Some(3),
             "own-house refinery must win over a nearer allied one (wide={wide})",
         );
@@ -2865,11 +2872,11 @@ fn refinery_selection_narrow_pass_skips_docked_refinery_within_close_radius() {
     fill_and_return(&mut sim, miner_id);
 
     assert_eq!(
-        docking_bay(&sim, &rules, miner_id, false),
+        docking_bay(&mut sim, &rules, miner_id, false),
         Some(3),
         "docked near refinery must lose to the farther free refinery",
     );
-    assert_eq!(docking_bay(&sim, &rules, miner_id, true), Some(2));
+    assert_eq!(docking_bay(&mut sim, &rules, miner_id, true), Some(2));
 }
 
 /// A free refinery beyond `HarvesterTooFarDistance` gets no HELLO: the wide
@@ -2911,8 +2918,8 @@ fn refinery_selection_wide_pass_falls_back_to_occupied_refinery() {
     occupy_refinery(&mut sim, 2, 99);
     fill_and_return(&mut sim, miner_id);
 
-    assert_eq!(docking_bay(&sim, &rules, miner_id, false), None);
-    assert_eq!(docking_bay(&sim, &rules, miner_id, true), Some(2));
+    assert_eq!(docking_bay(&mut sim, &rules, miner_id, false), None);
+    assert_eq!(docking_bay(&mut sim, &rules, miner_id, true), Some(2));
 }
 
 /// A refinery whose slot already holds the miner passes the narrow pass's
@@ -2925,12 +2932,19 @@ fn refinery_selection_keeps_already_tracked_refinery() {
     spawn_refinery(&mut sim, 2, 6, 10);
     spawn_refinery(&mut sim, 3, 8, 10);
     assert_eq!(
-        crate::sim::miner::miner_dock::hello(&mut sim, miner_id, 2, 1),
-        crate::sim::miner::miner_dock::ContactAdmission::Accepted,
+        crate::sim::radio::transmit(
+            &mut sim,
+            miner_id,
+            2,
+            crate::sim::radio::RadioMessage::Hello,
+            crate::sim::radio::RadioPayload::default(),
+            None,
+        ),
+        crate::sim::radio::RadioResponse::Roger,
     );
     fill_and_return(&mut sim, miner_id);
 
-    assert_eq!(docking_bay(&sim, &rules, miner_id, false), Some(2));
+    assert_eq!(docking_bay(&mut sim, &rules, miner_id, false), Some(2));
 }
 
 /// `Can_Reach_Zone` gate of `FUN_004DEE80`: a nearer refinery in a zone the
@@ -2957,7 +2971,7 @@ fn refinery_selection_skips_unreachable_zone_refinery() {
 
     for wide in [false, true] {
         assert_eq!(
-            docking_bay(&sim, &rules, miner_id, wide),
+            docking_bay(&mut sim, &rules, miner_id, wide),
             Some(3),
             "unreachable-zone refinery must be skipped for the reachable one (wide={wide})",
         );

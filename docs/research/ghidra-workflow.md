@@ -69,6 +69,13 @@ the analyzed program. Re-importing or enabling analysis is not routine reconnect
   a coordinate, Ghidra expresses it as base `-28` plus member offset `4`. Comparing only
   the first `PTRSUB` reports a false stack shift. Keep this check within the connected
   expression; a unique varnode reused at another instruction is not an address proof.
+- At a native stack write, compare the high p-code destination. A carried source can
+  overlap the correct address while the destination is wrong: `0x4B3493` writes entry
+  stack `-72`, but its earlier high p-code copied a value from `-72` into `-76`.
+  Counting both as candidate addresses falsely certified the write. After typing split
+  members removed that source alias, the same wrong destination looked like a new
+  regression. Keep unrepresented destinations as failed checks rather than dropping
+  them from coverage; a matching source or unchanged call count proves no destination.
 
 Follow production consumers far enough to establish the claimed result. Visual/audio
 work includes composition, active flags, selected assets/frames, timing and output;

@@ -419,6 +419,10 @@ pub(crate) enum LifecycleTestEvent {
     DestroyNotifyBoundary {
         stable_id: u64,
     },
+    BuildingNowDeadRunAway {
+        building_id: u64,
+        contact_id: u64,
+    },
     /// One visited listener of the live-detach targeting sweep, in the order
     /// the sweep visited it. Recorded for every listener that was pointed at
     /// the detaching object, so a test can pin the descending walk.
@@ -2749,15 +2753,7 @@ impl Simulation {
                 // The Building prelude opens with the building's own factory
                 // (`0x0044EC01..0x0044EC21`).
                 crate::sim::production::detach_building_factory(self, context.rules(), stable_id);
-                // The pre-hit contact copy the NowDead loop walks.
-                let contacts: Vec<u64> = self
-                    .substrate
-                    .entities
-                    .get(stable_id)
-                    .map(|building| building.radio_contacts.iter_live().collect())
-                    .unwrap_or_default();
                 crate::sim::radio::broadcast_break(self, stable_id, None);
-                self.building_now_dead_contacts(stable_id, &contacts, context.rules());
             }
             EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft => {
                 // `0x004D9744`: the Foot prelude leaves the object's team
@@ -2800,12 +2796,12 @@ impl Simulation {
     /// the hit: one at least 0x100 leptons from the building's `GetCoords`
     /// centre, on a building that is not a `Helipad=`, is sent RUN_AWAY (0x17),
     /// so a War Miner on a destroyed refinery's pad leaves its unload for
-    /// Harvest (`radio::receive`). RESIDUALS: the `+0x500` pending-entry clear
-    /// (no represented writer) and the other arm — a nearer contact, or any
+    /// Harvest (`radio::receive`), then clears its Unit+0x500 pending entry
+    /// (`0x004425AA`). RESIDUAL: the other arm — a nearer contact, or any
     /// contact of a helipad, takes the C4 kill (`vt+0x16C` with `Rules+0xFA8`,
     /// `0x004425B6..0x004425EE`), not wired (units at a building's centre and
     /// aircraft docked on a destroyed helipad survive).
-    fn building_now_dead_contacts(
+    pub(crate) fn building_now_dead_contacts(
         &mut self,
         building_id: u64,
         contacts: &[u64],
@@ -2849,6 +2845,11 @@ impl Simulation {
             // `0x00442586`: the truncated length against 0x100.
             let far = d.iter().map(|v| v * v).sum::<i64>() >= 0x100 * 0x100;
             if far && !helipad {
+                #[cfg(test)]
+                self.trace_lifecycle_for_test(LifecycleTestEvent::BuildingNowDeadRunAway {
+                    building_id,
+                    contact_id: contact,
+                });
                 crate::sim::radio::transmit(
                     self,
                     building_id,
@@ -2857,6 +2858,9 @@ impl Simulation {
                     crate::sim::radio::RadioPayload::default(),
                     Some(rules),
                 );
+                if let Some(unit) = self.substrate.entities.get_mut(contact) {
+                    crate::sim::docking::building_dock::clear_pending_entry(unit);
+                }
             }
         }
     }
@@ -3116,7 +3120,7 @@ impl Simulation {
             || listener
                 .dock_state
                 .as_ref()
-                .is_some_and(|dock| dock.dock_building_id == expired_id)
+                .is_some_and(|dock| dock.references(expired_id))
             || listener
                 .aircraft_ammo
                 .as_ref()
@@ -3553,10 +3557,14 @@ impl Simulation {
             .c4_plant
             .as_ref()
             .is_some_and(|plant| plant.target_building_id == expired_id);
-        let clear_dock = listener
-            .dock_state
-            .as_ref()
-            .is_some_and(|dock| dock.dock_building_id == expired_id);
+        // Techno707AE7..707AF5 clears private pending+500 only on control1.
+        // Non-destructive DetachAll(false) retains the independent service
+        // adapter too; its BREAK/service owners still terminate that visit.
+        let clear_dock = control == PointerExpiryControl::Uninit
+            && listener
+                .dock_state
+                .as_ref()
+                .is_some_and(|dock| dock.references(expired_id));
         let clear_airfield = listener
             .aircraft_ammo
             .as_ref()
@@ -3622,7 +3630,7 @@ impl Simulation {
             listener.c4_plant = None;
         }
         if clear_dock {
-            listener.dock_state = None;
+            crate::sim::docking::building_dock::expire_reference(listener, expired_id);
         }
         if clear_airfield && let Some(ammo) = listener.aircraft_ammo.as_mut() {
             ammo.target_airfield = None;

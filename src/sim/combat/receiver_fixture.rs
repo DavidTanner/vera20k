@@ -566,6 +566,7 @@ pub(crate) fn handle_entity_deaths(
                 damage_events,
                 rules,
                 overlay_registry,
+                None,
             )
         },
     )
