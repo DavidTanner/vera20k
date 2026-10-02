@@ -244,6 +244,57 @@ handover, malformed custom content and whole Prism combat remain outside this
 bounded ordinary IFV cycle.
 
 
+## Grand Cannon barrel observation
+
+[`map_observation.grand-cannon.example.json`](map_observation.grand-cannon.example.json)
+starts France/Battle with stock rules and assets on an
+[authored clear-ground map](map_observation/examples/grand_cannon_barrel.map).
+The fixture contains a Grand Cannon, a Patriot control and power plants, with no
+type overrides. The cannon is actor 1. An ordinary `ForceAttackCell` command at
+step 25 targets `(48,59)`; the profile ends at step 120.
+
+Run the profile through the capture command above, from the repository root.
+For an external profile copy, set `launch.selected_map_file` to the absolute path
+of the tracked map. The [validation receipt](map_observation.grand-cannon.validation.json)
+records exact inputs, binaries, native corpora, capture hashes and test results.
+The same release build also loaded the unchanged retail-directory `Hills.mmx`
+and completed 20 steps with a valid GPU readback. That load uses the idle profile,
+selects `Hills.mmx`, and omits the fixture camera and terrain-cell requests.
+
+The idle case removes commands and ends at step 20. The opposite-facing case
+changes the target to `(48,37)` and ends at step 160. Shorter copies ending at
+98 and 141 capture peak recoil and the return to rest. Their entire observation
+trajectories match the corresponding prefixes of the 160-step run. That run's
+second execution matches every observation, final simulation hash and BGRA byte.
+
+The inspected Metal readbacks show the restored barrel at rest, aimed in both
+directions and during recoil. The opposite-facing shot starts at step 95, reaches
+travel 8 at step 98 and returns to exactly 0 at step 141: 46 admitted AI updates,
+matching the stock native recoil history. `building.voxel_gun` exposes the
+existing primary facing, elevation, HVA counter and immutable recoil state; it
+does not supply gameplay state to the simulation.
+
+Before/after captures at steps 20, 120 and 160 have equal final simulation hashes
+and identical pre-existing command/actor/terrain observations at every recorded
+boundary. This excludes only the newly added `voxel_gun` diagnostic, which the
+old binary did not expose. Their changed pixels all lie within the cannon:
+372, 446 and 368 pixels respectively. These are endpoint full-state hashes and
+trajectory observations, not per-tick full-world hash comparisons.
+
+The fixture's resident atlas grows from 2,304 to 2,400 sprites and from
+14,089,600 to 14,319,788 R8Uint texel bytes. Recoil uses the existing rasterized
+parts; the resident and last-build sprite counts stay at 2,400 throughout these
+captures. These measurements exclude other caches and driver allocations.
+
+The [building comparison](voxel_oracle/building_barrel.md) executes original
+loader and draw instructions; the [recoil comparison](voxel_oracle/recoil.md)
+executes readers, firing gates and complete update histories. These bounded
+component comparisons and production captures do not establish native pixel
+parity. Native cache-pool lifetime, custom barrel overrides, upgrade-provided
+turrets and EMP cannon missions remain separate mechanisms. The retained
+three-pixel drawing anchor and measured subpixel float rounding remain visual
+residuals.
+
 ## Siege Chopper deployment observation
 
 [`map_observation.siege-chopper.example.json`](map_observation.siege-chopper.example.json)
