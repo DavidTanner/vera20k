@@ -85,35 +85,47 @@ fn gsi_13_07_atlas_variants_share_base_unloading_and_no_spawn_alt_derivation() {
     let rules = gsi_13_07_variant_rules();
     assert_eq!(
         unit_atlas_variants("V3", Some(&rules)),
-        vec![
-            UnitAtlasVariant {
-                type_id: "V3".to_string(),
-                has_turret: false,
-            },
-            UnitAtlasVariant {
-                type_id: "HORV".to_string(),
-                has_turret: true,
-            },
-            UnitAtlasVariant {
-                type_id: "V3WO".to_string(),
-                has_turret: false,
-            },
-        ]
+        ["V3", "HORV", "V3WO"]
     );
+    // Each model splits on its own `Turret=`, not on the type that draws it.
+    for (model, parts) in [("V3", false), ("HORV", true), ("V3WO", false)] {
+        assert_eq!(draws_turret_parts(model, Some(&rules)), parts, "{model}");
+    }
     assert_eq!(
         unit_atlas_variants("VLAD", Some(&rules)),
-        vec![
-            UnitAtlasVariant {
-                type_id: "VLAD".to_string(),
-                has_turret: false,
-            },
-            UnitAtlasVariant {
-                type_id: "VLADWO".to_string(),
-                has_turret: false,
-            },
-        ],
+        ["VLAD", "VLADWO"],
         "the suffix is derived from the actual type id, not VLAD's stale DREDWO INI comment"
     );
+}
+
+/// `AircraftClass::Draw_It` (`0x004144B0`) draws the main voxel alone, so an
+/// aircraft type's `Turret=` gives its model no gun parts; a vehicle's does.
+#[test]
+fn only_a_vehicle_models_turret_is_a_separate_part() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "\
+[VehicleTypes]
+0=TANK
+1=TRUCK
+[AircraftTypes]
+0=JET
+[TANK]
+Turret=yes
+[TRUCK]
+[JET]
+Turret=yes
+",
+    ))
+    .expect("the gun-part rules parse");
+    for (model, parts) in [
+        ("TANK", true),
+        ("TRUCK", false),
+        ("JET", false),
+        ("NOTATYPE", false),
+    ] {
+        assert_eq!(draws_turret_parts(model, Some(&rules)), parts, "{model}");
+    }
+    assert!(!draws_turret_parts("TANK", None));
 }
 
 #[test]

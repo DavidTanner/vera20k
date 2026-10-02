@@ -49,6 +49,10 @@ After losing their target, they resume Harvest on ore or Guard on clear land.
 The [native comparisons and retail observation](tools/spatial_oracle/harvest_attack_return.md)
 cover this Attack-to-idle chain; broader combat and match parity remain open.
 
+War Miners remain visible while dumping ore, and aircraft bodies draw both parked
+and in flight. The [retail capture checks](tools/map_observation.md#unloading-miner-and-parked-aircraft-bodies)
+cover the model-based turret split; the deployed Siege Chopper image remains open.
+
 Engineer object clicks on bridge huts use live repair geometry and Repair/NoRepair
 cursors. Healthy huts consume the click without a repair order. The
 [bounded native and retail checks](tools/spatial_oracle/engineer_bridge_production_validation.md)

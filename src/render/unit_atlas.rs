@@ -619,9 +619,9 @@ impl CachedUnitSprite {
 // sim-side catalog so construction (app + headless) and atlas seeding share
 // one source. Re-exported so this module's tests and callers keep their view.
 pub(crate) use crate::sim::voxel_frame_catalog::{
-    UnitAtlasVariant, detect_hva_frame_count, seed_layers_for, unit_atlas_variants,
+    detect_hva_frame_count, seed_layers_for, unit_atlas_variants,
 };
-use crate::sim::voxel_frame_catalog::{has_gun_parts, voxel_image_id};
+use crate::sim::voxel_frame_catalog::{draws_turret_parts, voxel_image_id};
 
 fn insert_unit_layer_keys(
     needed: &mut HashSet<UnitSpriteKey>,
@@ -680,23 +680,23 @@ pub(crate) fn unit_barrel_pitches(fire_angle: i32) -> Vec<i8> {
 fn seed_unit_variant_keys(
     needed: &mut HashSet<UnitSpriteKey>,
     frame_counts: &mut BTreeMap<(String, VxlLayer), u32>,
-    variant: &UnitAtlasVariant,
+    variant: &str,
     is_ground_vehicle: bool,
     asset_manager: &AssetManager,
     rules: Option<&RuleSet>,
 ) {
-    let layers = seed_layers_for(asset_manager, &variant.type_id, variant.has_turret, rules);
+    let layers = seed_layers_for(asset_manager, variant, rules);
     let barrel_pitches = rules
-        .and_then(|rules| rules.object(&variant.type_id))
+        .and_then(|rules| rules.object(variant))
         .map_or_else(|| vec![0], |object| unit_barrel_pitches(object.fire_angle));
     for &layer in layers {
-        let frame_key = (variant.type_id.clone(), layer);
-        let num_frames = *frame_counts.entry(frame_key).or_insert_with(|| {
-            detect_hva_frame_count(asset_manager, &variant.type_id, layer, rules)
-        });
+        let frame_key = (variant.to_string(), layer);
+        let num_frames = *frame_counts
+            .entry(frame_key)
+            .or_insert_with(|| detect_hva_frame_count(asset_manager, variant, layer, rules));
         insert_unit_layer_keys(
             needed,
-            &variant.type_id,
+            variant,
             layer,
             num_frames,
             is_ground_vehicle,
@@ -707,7 +707,7 @@ fn seed_unit_variant_keys(
     // and slope). Aircraft use FlyLocomotion's own shadow matrix and point,
     // which are not modelled yet, so they get none (recorded residual).
     if is_ground_vehicle {
-        insert_unit_layer_keys(needed, &variant.type_id, VxlLayer::Shadow, 1, true, &[0]);
+        insert_unit_layer_keys(needed, variant, VxlLayer::Shadow, 1, true, &[0]);
     }
 }
 
@@ -989,7 +989,7 @@ pub(crate) struct UnitModel {
     type_id: String,
     body: VxlFile,
     body_hva: Option<HvaFile>,
-    /// The gun parts, present only where [`has_gun_parts`] holds.
+    /// The gun parts, present only where [`draws_turret_parts`] holds.
     turret: Option<VoxelPart>,
     barrel: Option<VoxelPart>,
     /// Ordinary ground Drive units cast the prepared native shadow.
@@ -1034,7 +1034,7 @@ impl UnitModel {
                         None
                     }
                 });
-        let gun_parts = has_gun_parts(type_id, rules);
+        let gun_parts = draws_turret_parts(type_id, rules);
         let part = |suffix: &str| {
             gun_parts
                 .then(|| VoxelPart::load(asset_manager, &format!("{image}{suffix}")))
@@ -1248,8 +1248,8 @@ pub(crate) fn render_unit_sprite_with_slope_blend(
 ///
 /// Pure CPU: no `GpuContext`, no atlas state, no wgpu. This works on an image,
 /// not a type: it composites whichever `{image}TUR` and `{image}BARL` files
-/// exist, as a type with [`has_gun_parts`] draws them. A vehicle type without
-/// `Turret=` draws its body alone.
+/// exist, as a type with [`draws_turret_parts`] draws them. Every other type
+/// draws its body alone.
 pub fn composite_unit_vxl_cpu(
     asset_manager: &AssetManager,
     body: &VxlFile,

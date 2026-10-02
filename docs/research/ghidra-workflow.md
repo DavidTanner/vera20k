@@ -490,6 +490,13 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   `(void)` on a `ret 0xC` function breaks the stack analysis of its callers. A custom
   prototype that declares only `this` makes every direct caller's decompile drop the
   arguments.
+- A low-byte read does not establish a byte-sized parameter. Trace whole-word copies
+  and later reuse of the same entry-stack slot before narrowing its type. Team's
+  `Script_Move_To_Own_Building` reads entry ESP+8 as a byte at `0x6EE5C3`, then uses
+  that slot as a signed dword and a packed cell pair (`0x6EE5FB..0x6EE6F3`). A `bool`
+  formal made Ghidra invent a widened `_NewStep` alias. Keep `undefined4` storage
+  when the source declaration is unproved, and qualify the incoming low-byte flag
+  in the plate. Inspect widened aliases as well as `in_stack_` warnings in rehearsals.
 - `set_function_prototype` applies the parameters under the function's old convention
   and sets the new convention afterwards. Ghidra stores a stack purge only for a function
   that has none, and computes it from that first step. So a `__fastcall` prototype on a
