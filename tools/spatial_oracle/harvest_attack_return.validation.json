@@ -73,13 +73,254 @@
     }
   },
   "release": {
-    "status": "pending build for reviewed candidate"
+    "label": "war-miner-attack-reviewed-20261002",
+    "source": {
+      "head": "8a91153748cd10602e1766343d973299169b30bc",
+      "branch": "feature/war-miner-attack-harvest",
+      "status": "",
+      "source_sha256": "ce550b7dc3873d9afc6f5b0ed5bfcf71707fa5483c04c9b4dd5790abcb0533c5"
+    },
+    "manifest_sha256": "e0fe2673a71606f17613745bc15e2af0a793f22dcd85e5e5b9a8dc1dd14bd2b9",
+    "artifacts": [
+      {
+        "file": "0/asset",
+        "sha256": "2020e2c2dee104298886004b29a38e2ca366db7f7bcee7b93ffcd6c1aa99f4fc"
+      },
+      {
+        "file": "1/vera20k",
+        "sha256": "02ce8da73fc89912a64280f077aae28150a85cb5814dbcbf23a31e907ca63932"
+      }
+    ],
+    "rust_source_hashes_match_validated_revision": true,
+    "release_log_relative_to_checkout": ".local-audit/war-miner-attack/release-reviewed.log",
+    "release_log_sha256": "b13496ff8cc7b2c1a8b1ccff08dfd111fd0ddd16c0dc1c3024b69ad85e3247ca"
   },
   "runtime": {
-    "status": "pending ordinary production observation for reviewed candidate"
+    "evidence_level": "Rust ordinary production integration; no native combat, whole-match or pixel parity claim",
+    "source_revision": "8a91153748cd10602e1766343d973299169b30bc",
+    "status": "VALID",
+    "run_relative_to_checkout": ".local-audit/war-miner-attack/runtime-reviewed/run.json",
+    "run_sha256": "960b33ff668c86dc18b4ff55a894a2d2d14ea5771cba0fb82c74386d93f033f8",
+    "capture_sha256": "235df78f895039619810c450ce1bc64352bc030e25cd2ed86b44704356d12b4f",
+    "map_source": {
+      "entry_id": -854728974,
+      "kind": "mix",
+      "logical_name": "XMP03T4.MAP",
+      "payload_len": 156269,
+      "source_archive": "multimd.mix",
+      "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+    },
+    "commands": [
+      {
+        "envelope_execute_tick": 0,
+        "issue_after_step": 0,
+        "issued_simulation_tick": 0,
+        "ordinal": 0,
+        "owner": "VERA-OBSERVER",
+        "payload": {
+          "DeployMcv": {
+            "entity_id": 1371
+          }
+        }
+      },
+      {
+        "envelope_execute_tick": 70,
+        "issue_after_step": 70,
+        "issued_simulation_tick": 70,
+        "ordinal": 1,
+        "owner": "VERA-OBSERVER",
+        "payload": {
+          "QueueProduction": {
+            "type_id": 282
+          }
+        }
+      },
+      {
+        "envelope_execute_tick": 650,
+        "issue_after_step": 650,
+        "issued_simulation_tick": 650,
+        "ordinal": 2,
+        "owner": "VERA-OBSERVER",
+        "payload": {
+          "PlaceReadyBuilding": {
+            "rx": 31,
+            "ry": 89,
+            "type_id": 282
+          }
+        }
+      },
+      {
+        "envelope_execute_tick": 720,
+        "issue_after_step": 720,
+        "issued_simulation_tick": 720,
+        "ordinal": 3,
+        "owner": "VERA-OBSERVER",
+        "payload": {
+          "QueueProduction": {
+            "type_id": 288
+          }
+        }
+      },
+      {
+        "envelope_execute_tick": 2200,
+        "issue_after_step": 2200,
+        "issued_simulation_tick": 2200,
+        "ordinal": 4,
+        "owner": "VERA-OBSERVER",
+        "payload": {
+          "PlaceReadyBuilding": {
+            "rx": 31,
+            "ry": 85,
+            "type_id": 288
+          }
+        }
+      },
+      {
+        "envelope_execute_tick": 2500,
+        "issue_after_step": 2500,
+        "issued_simulation_tick": 2500,
+        "ordinal": 5,
+        "owner": "VERA-OBSERVER",
+        "payload": {
+          "ForceAttack": {
+            "attacker_id": 1714,
+            "target_id": 1378
+          }
+        }
+      }
+    ],
+    "miner_id": 1714,
+    "victim_id": 1378,
+    "attack": {
+      "first_step": 2502,
+      "last_step": 2727,
+      "observation_count": 226,
+      "cell": [
+        33,
+        83
+      ],
+      "ore_unchanged_for_all_attack_observations": {
+        "density": 4,
+        "id": 102
+      }
+    },
+    "victim_health_changes": [
+      [
+        0,
+        [
+          125,
+          true,
+          false
+        ]
+      ],
+      [
+        2517,
+        [
+          102,
+          true,
+          false
+        ]
+      ],
+      [
+        2537,
+        [
+          91,
+          true,
+          false
+        ]
+      ],
+      [
+        2557,
+        [
+          80,
+          true,
+          false
+        ]
+      ],
+      [
+        2577,
+        [
+          69,
+          true,
+          false
+        ]
+      ],
+      [
+        2599,
+        [
+          58,
+          true,
+          false
+        ]
+      ],
+      [
+        2619,
+        [
+          47,
+          true,
+          false
+        ]
+      ],
+      [
+        2639,
+        [
+          36,
+          true,
+          false
+        ]
+      ],
+      [
+        2661,
+        [
+          25,
+          true,
+          false
+        ]
+      ],
+      [
+        2682,
+        [
+          14,
+          true,
+          false
+        ]
+      ],
+      [
+        2703,
+        [
+          3,
+          true,
+          false
+        ]
+      ],
+      [
+        2725,
+        [
+          0,
+          false,
+          true
+        ]
+      ]
+    ],
+    "victim_dead_step": 2725,
+    "victim_removed_step": 2740,
+    "harvest_return_step": 2728,
+    "resumed_ore_change_step": 2748,
+    "final_ore": {
+      "density": 0,
+      "id": null
+    },
+    "native_comparator": "NONE",
+    "parity_certification": "NONE",
+    "observation_limit": "Cargo and Unit harvesting latch are not exposed by this actor observer; the native packet and retail Rust regression cover them."
   },
   "gpu_readback": {
-    "status": "pending reviewed candidate readback"
+    "dimensions": [
+      800,
+      600
+    ],
+    "bgra_sha256": "84643d6a50e5026ba93cad22f4fc00d7468956a6a4db8223c7272ff604f070ed",
+    "inspection": "Retail map, ordinary buildings, units and HUD present; reviewed candidate frame inspected; no native pixel comparator."
   },
   "critic": {
     "status": "single read-only pass completed; confirmed findings corrected and validated; no second pass",
