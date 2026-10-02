@@ -23,10 +23,17 @@ MATCH and every prefix. Common observations/atlas/five GPU frames equal v3; only
 IFV observer fields and initial/final state hashes differ. Five frames inspected.
 `gapowr-fatal-production-receipt-v4.json` preserves the updated receipt.
 
-Incoming fetched main03750cc7 (#1010 refinery docking) changes shared lifecycle/radio
-and uses its own snapshot282 layout. Next integrate it, combine the two layouts as283,
-revalidate after any conflict, refresh release production, publish/attach one fatal PR,
-enable auto-merge and confirm merge before another implementation. Do not rerun critic.
+Main03750cc7 (#1010 refinery docking) is integrated in e55a5315. Snapshot conflicts
+combine docking282 with Smudge identity as283. The native fixture conflict preserves
+main's nav_target and the optional constructor_abstract_flags input; whole-ctor flags
+must not be overwritten with the legacy partial-object1. Eight original corpuses were
+re-executed and every accepted payload is byte-identical; only actual regenerated
+source-provenance metadata is refreshed. `gapowr-fatal-main-03750cc-native-refresh/`
+`final-input-replay/receipt.json` binds the results. The two expanded-root attempts
+changed only enumerated input metadata, remain preserved and were not adopted.
+Next: required integrated Rust/Python/ratchet validation, release v5 and six captures,
+then publish/attach one fatal PR, enable auto-merge and confirm merge before another
+implementation. Do not rerun critic.
 
 Cargo uses `python -m tools.cargo_run`; every test uses `--lib`. Source stays frozen
 through a build. Keep the16GiB reserve and preserve required binaries/dependencies,
@@ -135,7 +142,12 @@ Neither certifies an object. Normal/-O integrity checks pass; accepted native in
 replays are normal mode because existing assert-side-effect priors differ under -O.
 That cost is recorded in existing issue#745, comment5960846507.
 `basic_factory_output_audit` still traces human GAPILE→E1 radio/PLACE/queue timing,
-with assets referenced rather than copied. It was warned of the integration boundary. Prioritize frequent factory delivery, then ordinary
+with assets referenced rather than copied. It was warned of the integration boundary. Producer Unlimbo/House admission still
+needs original proof before selecting the factory chain.
+The additive `occupy-rof-input-reconciliation-20261002` corrects a sealed-inventory
+prose error: selected/native OccupyROFMultiplier is1.2, and existing GetROF divides
+by it. Underlying original/production receipts and Rust already agree; no gameplay
+change is needed. Parent seals remain unchanged. Prioritize frequent factory delivery, then ordinary
 sale and coherent garrison work; commit no stacked implementation PRs.
 
 Recovery stashes:28a01dd28545ccbc95fea4ce23005331f8582706,

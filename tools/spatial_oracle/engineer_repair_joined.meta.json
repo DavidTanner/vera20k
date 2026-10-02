@@ -89,7 +89,7 @@
     "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
     "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
     "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
-    "tools/spatial_oracle/refinery_dock.py": "f9fe38dbf9f185594630d6bbec8bcf7184c3d5d66466a37ab91035f46639a15d",
+    "tools/spatial_oracle/refinery_dock.py": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408",
     "tools/spatial_oracle/track_destination.py": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
     "tools/spatial_oracle/unit_entry.py": "c79e273f002fbb921942676c3747068fcb1312574e66eaaafe8bf4286740b96e",
     "tools/spatial_oracle/unit_scatter_state.py": "9cb5b9726c02c8ef7e08aeadf006fecd90191341250f744e9307d5a62a63a4c3",

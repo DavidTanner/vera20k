@@ -124,7 +124,7 @@
     "tools/spatial_oracle/shrapnel_repair/zone_composition.py": "0eb3b38561c804dd4bfbbfdb3e858babd2e9a1c2214f296eedfe6447901db73e",
     "tools/spatial_oracle/fire_error.py": "ea1137e160745ff92b8d7f87930fca15c307b3d8b7bca92a99d35e2526b9c402",
     "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
-    "tools/spatial_oracle/refinery_dock.py": "f9fe38dbf9f185594630d6bbec8bcf7184c3d5d66466a37ab91035f46639a15d",
+    "tools/spatial_oracle/refinery_dock.py": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408",
     "tools/spatial_oracle/anim_bouncer_launch.py": "6fa5df589e686573addd7843c16fae49a883c437f6dba3091d4f9c8d7b601055",
     "tools/spatial_oracle/track_destination.py": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
     "tools/spatial_oracle/unit_entry.py": "c79e273f002fbb921942676c3747068fcb1312574e66eaaafe8bf4286740b96e",

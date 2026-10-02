@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "mechanism": "ordinary GAPOWR fatal lifecycle",
-  "candidate_state": "release v4 code and production validated; incoming main docking integration pending",
+  "candidate_state": "main03750cc7 integrated with snapshot283; eight original payloads re-executed byte-identically; final Rust and release v5 validation pending",
   "objects_certified": 0,
   "native_comparator": "NONE",
   "parity_certification": "NONE",
@@ -777,5 +777,11 @@
     "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-validations.json",
     "byte_length": 3845278,
     "sha256": "fbc4737a94e718f69ea94d6c2db36ae97c42a35a5c85c537560434e97ef80b06"
+  },
+  "candidate_snapshot_version": 283,
+  "integrated_native_refresh": {
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-main-03750cc-native-refresh/final-input-replay/receipt.json",
+    "byte_length": 6461,
+    "sha256": "251a3958144e75a28f3b32a80f8833b01e0ea1226ad423f71ec98919acf86842"
   }
 }

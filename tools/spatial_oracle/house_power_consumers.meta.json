@@ -49,7 +49,7 @@
     "tools/spatial_oracle/jumpjet_coordinates.py": "922eee4b7841312e85abdc52e65a65869a071de05f9644873fb3c38f9facd3b9",
     "tools/spatial_oracle/jumpjet_entry_discovery.py": "ff8fd5cd549000345331072acf19797e494ab629fca986afacd4cf392c954d14",
     "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
-    "tools/spatial_oracle/refinery_dock.py": "f9fe38dbf9f185594630d6bbec8bcf7184c3d5d66466a37ab91035f46639a15d",
+    "tools/spatial_oracle/refinery_dock.py": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408",
     "tools/spatial_oracle/slave_manager.py": "257ef2d170d2f5bf01e001f1e46561374677168a2d32a21181ef684c3bdb662d",
     "tools/spatial_oracle/time_to_build.py": "5d298a5744961484485c25f587abb2f848b6261580ee4180ebd0fbd870d7f249",
     "tools/spatial_oracle/track_destination.py": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
