@@ -180,11 +180,16 @@ fn assert_busy_factory_exit_receiver(
     receiver: u64,
 ) {
     let producer = sim.substrate.entities.get(receiver).unwrap();
-    let expected = crate::sim::movement::configured_building_exit_coordinate(
+    let expected = crate::sim::movement::building_exit_coordinate(
         crate::sim::movement::ground_pose::position_world_coord(&producer.position),
         rules.object(sim.resolve(producer.type_ref())).unwrap(),
-    )
-    .unwrap();
+        || {
+            crate::sim::movement::ground_pose::object_get_coords(
+                producer,
+                sim.resolved_terrain.as_ref(),
+            )
+        },
+    );
     let placed = sim.substrate.entities.get(product).unwrap();
     assert_eq!(
         crate::sim::movement::ground_pose::position_world_coord(&placed.position),
@@ -472,8 +477,6 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
     let Some((ini, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
         return;
     };
-    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
     let terrain_rules = crate::rules::terrain_rules::TerrainRules::from_ini(&ini);
     let road = terrain_rules.semantics_for_land_type(1).unwrap();
     let int = |value: &Value| i32::try_from(value.as_i64().unwrap()).unwrap();
@@ -495,16 +498,53 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
         None => Value::Null,
         other => panic!("unmeasured redirect archive {other:?}"),
     };
-    for row in rows {
+    let controls = data["factory_exit_coordinate_rows"].as_array().unwrap();
+    assert_eq!(controls.len(), 5);
+    let busy_controls: Vec<_> = controls
+        .iter()
+        .filter(|row| row["input"]["route"] == "busy")
+        .collect();
+    assert_eq!(busy_controls.len(), 2);
+    for (row, control) in rows.iter().map(|row| (row, None)).chain(
+        busy_controls
+            .iter()
+            .map(|control| (&control["whole_exit"], Some(*control))),
+    ) {
         let input = &row["input"];
         let name = input["name"].as_str().unwrap();
+        let mut fixture_ini = ini.clone();
+        if let Some(control) = control {
+            if input["exit_coord_control"] == "constructor_missing" {
+                fixture_ini = fixture_ini.without_entry_for_test("GAWEAP", "ExitCoord");
+            } else {
+                let raw = control["setup"]["exit_coord"]["read_passes"]
+                    .as_array()
+                    .unwrap()
+                    .last()
+                    .unwrap()["supplied_section"]["ExitCoord"]
+                    .as_str()
+                    .unwrap();
+                fixture_ini.merge(&IniFile::from_str(&format!("[GAWEAP]\nExitCoord={raw}\n")));
+            }
+        }
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&fixture_ini, &art).unwrap();
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+        if let Some(control) = control {
+            let exit = rules.object("GAWEAP").unwrap().exit_coord;
+            assert_eq!(
+                exit.is_none(),
+                input["exit_coord_control"] == "constructor_missing"
+            );
+            let supplied = exit.map_or_else(
+                || control["setup"]["exit_coord"]["ctor_exit_coord"].clone(),
+                |(x, y, z)| json!([x, y, z]),
+            );
+            assert_eq!(supplied, control["setup"]["exit_coord"]["final_coord"]);
+        }
         let before = &row["before"];
         let after = &row["after"];
         assert_eq!(row["entry"], "0x00443C60");
-        assert_eq!(
-            before["counter"], 0,
-            "these six callers begin outside scope"
-        );
+        assert_eq!(before["counter"], 0, "these callers begin outside scope");
         assert_eq!(
             row["before"]["factory_bytes"],
             row["after"]["factory_bytes"]
@@ -532,7 +572,7 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
             .collect();
         sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(128, 128, cells));
         let placement_cells = row["placement_cells_before"].as_object().unwrap();
-        assert_eq!(placement_cells.len(), 3);
+        assert_eq!(placement_cells.len(), if control.is_some() { 4 } else { 3 });
         for native in placement_cells.values() {
             let rx = native["coord"][0].as_u64().unwrap() as u16;
             let ry = native["coord"][1].as_u64().unwrap() as u16;
@@ -755,6 +795,23 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
             after["product"]["position"],
             "{name}: original placement XYZ"
         );
+        if let Some(control) = control {
+            let cell = &control["actual_cell"]["coord"];
+            let (rx, ry) = (
+                cell[0].as_u64().unwrap() as u16,
+                cell[1].as_u64().unwrap() as u16,
+            );
+            assert_eq!(json!([placed.position.rx, placed.position.ry]), *cell);
+            let plane = &control["actual_cell"]["plane_after"];
+            assert_eq!(
+                json!(sim.substrate.raw_cell_occupation.ground_bits(rx, ry)),
+                plane[2]
+            );
+            assert_eq!(
+                json!(sim.substrate.raw_cell_occupation.deck_bits(rx, ry)),
+                plane[3]
+            );
+        }
         assert_eq!(
             sim.production.factory_shadow, registry,
             "{name}: same Factory values"

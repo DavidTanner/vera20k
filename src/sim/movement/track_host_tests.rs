@@ -1043,8 +1043,8 @@ fn per_cell_factory_clearance_precedes_ready_and_preserves_foot_stop_scope() {
 }
 
 /// Instruction-level gate coverage for73A7D2..73A943, through the production
-/// Unit virtual dispatcher. These are Rust regressions; the pending composed
-/// control, not this synthetic table, establishes native execution parity.
+/// Unit virtual dispatcher. These are Rust regressions; the original composed
+/// controls establish bounded native execution parity separately.
 #[test]
 fn per_cell_factory_clearance_keeps_reason_mission_rtti_and_ground_building_gates() {
     use crate::sim::components::NavTargetRef;
@@ -1171,11 +1171,32 @@ fn per_cell_factory_clearance_keeps_reason_mission_rtti_and_ground_building_gate
         let rng = sim.rng_state();
         sim.per_cell_process(1, reason, Some(&rules), None).unwrap();
         let sends = crate::sim::radio::take_transmit_log();
+        // Object-destination arrival73A31F..A547 runs DockNow21 and returns
+        // before the later factory-clearance gate. The shared original
+        // per-cell controls in refinery_dock.json cover that earlier arm.
+        let object_dock = name == "enter_contact";
         assert_eq!(
             sends.first().map(|send| send.msg),
-            sends_clearance.then_some(8),
+            if object_dock {
+                Some(21)
+            } else {
+                sends_clearance.then_some(8)
+            },
             "{name}"
         );
+        if object_dock {
+            assert!(sends.iter().all(|send| send.msg != 8));
+            assert!(
+                !sim.substrate
+                    .entities
+                    .get(1)
+                    .unwrap()
+                    .locomotor
+                    .as_ref()
+                    .unwrap()
+                    .is_powered()
+            );
+        }
         assert_eq!(
             sim.substrate
                 .entities

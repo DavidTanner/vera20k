@@ -471,10 +471,16 @@ pub(super) fn deliver_produced_object(
     }
     let spawned = if land_factory {
         let producer = sim.substrate.entities.get(selection.producer_id)?;
-        let coord = crate::sim::movement::configured_building_exit_coordinate(
+        let coord = crate::sim::movement::building_exit_coordinate(
             crate::sim::movement::ground_pose::position_world_coord(&producer.position),
             rules.object(sim.interner.resolve(producer.type_ref()))?,
-        )?;
+            || {
+                crate::sim::movement::ground_pose::object_get_coords(
+                    producer,
+                    sim.resolved_terrain.as_ref(),
+                )
+            },
+        );
         sim.with_object_placement_scope(|sim| {
             let spawned = sim.reveal_constructed_object_at_coord_with_overlay_context(
                 stable_id,

@@ -1,5 +1,6 @@
-//! Building447E90 (+4C), GetDockCoord447B20 (+A8) and their live inputs.
-//! Full native receiver corpus: tools/spatial_oracle/building_navigation_coordinate.*.
+//! Building447E90 (+4C), GetDockCoord447B20 (+A8), GetExitCoords44F640 (+B4).
+//! Native receivers: tools/spatial_oracle/building_navigation_coordinate.*;
+//! ExitCoords: tools/spatial_oracle/anytown_damage/unit_unlimbo.*.
 use crate::rules::object_type::ObjectType;
 use crate::sim::components::DriveCoord;
 use crate::sim::radio::Contacts;
@@ -121,20 +122,23 @@ pub(crate) fn dock_coordinate(
     })
 }
 
-/// Building+B4's configured ExitCoord addition,44F678..44F6AA. This
-/// retains physical producer XYZ; neither foundation center nor cell rounding
-/// participates. The absent/empty-coordinate fallback is a separate branch
-/// outside this configured-coordinate entry point.
-pub(crate) fn configured_exit_coordinate(
+/// BuildingClass::GetExitCoords44F640, virtual+B4. A nonempty ExitCoord adds
+/// to physical Location at44F678..44F6AA. The constructor's missing vector and
+/// an explicit all-zero vector call the existing GetCoords+48 owner at44F6BC.
+/// Native execution: anytown_damage/unit_unlimbo's factory_exit_coordinate_rows.
+pub(crate) fn exit_coordinate(
     current: DriveCoord,
     object: &ObjectType,
-) -> Option<DriveCoord> {
-    let (x, y, z) = object.exit_coord?;
-    Some(DriveCoord {
+    centre: impl FnOnce() -> DriveCoord,
+) -> DriveCoord {
+    let Some((x, y, z)) = object.exit_coord.filter(|&coord| coord != (0, 0, 0)) else {
+        return centre();
+    };
+    DriveCoord {
         x: current.x.wrapping_add(x),
         y: current.y.wrapping_add(y),
         z: current.z.wrapping_add(z),
-    })
+    }
 }
 
 #[cfg(test)]

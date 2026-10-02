@@ -303,7 +303,26 @@ class UnitUnlimboControls(Mission):
         self.inputs['factory_type_layers'] = []
         u.mem_write(0xA83C68, dwords(0x7EB6D4, m.alloc(4096), 1024, 1, 0, 10))
         self.producer_type = m.alloc(0x1800)
-        m.invoke(0x45DD90, self.producer_type, (m.cstring(self.case['producer_type']),))
+        type_ctor_eax = m.invoke(0x45DD90, self.producer_type,
+                                (m.cstring(self.case['producer_type']),))
+        exit_control = self.case.get('exit_coord_control')
+        if exit_control is not None:
+            assert exit_control in ('explicit_zero', 'constructor_missing', 'z_only_nonempty')
+            self.exit_coordinate_setup = dict(
+                control=exit_control, type_ctor_entry='0x0045DD90',
+                type_ctor_returned_eax=type_ctor_eax, type_pointer=hex(self.producer_type),
+                ctor_exit_coord=base.xyz(u, self.producer_type + 0xEC8),
+                ctor_exit_coord_hex=bytes(u.mem_read(self.producer_type + 0xEC8, 12)).hex(),
+                empty_comparison_address='0x0089C848',
+                empty_comparison_hex=bytes(u.mem_read(0x89C848, 12)).hex(),
+                read_passes=[])
+        def read_slice(begin, end):
+            for reg, value in ((UC_X86_REG_ESP, SP), (UC_X86_REG_EBP, self.producer_type),
+                               (UC_X86_REG_EBX, self.producer_type + 0x24),
+                               (UC_X86_REG_ESI, RULES), (UC_X86_REG_EDI, RULES)):
+                u.reg_write(reg, value)
+            run_checked(u, begin, end, count=300000, required_addresses=(begin,))
+            assert u.reg_read(UC_X86_REG_ESP) == SP
         art_raw = (Path(os.environ['VERA20K_SHRAPNEL_INPUTS']) / 'ARTMD.INI').read_bytes()
         art, lines = base.lexical(art_raw, {self.case['producer_type']})
         m.make_ini(art)
@@ -313,21 +332,54 @@ class UnitUnlimboControls(Mission):
             if not path.exists():
                 continue
             sections, lines = base.lexical(path.read_bytes(), {self.case['producer_type']})
-            m.rules_cache(sections)
+            supplied_sections = sections
+            if exit_control == 'constructor_missing':
+                # This is an independent missing-key input starting from the
+                # original constructor, never an omission after retained512.
+                supplied_sections = {section: {key: value for key, value in fields.items()
+                                               if key != 'ExitCoord'}
+                                     for section, fields in sections.items()}
+            m.rules_cache(supplied_sections)
             calls = []
             # Native Naval, Weeder, Refinery/WeaponsFactory and ExitCoord reads.
             for begin, end in ((0x714A63, 0x714A7D), (0x4604B2, 0x4604CC),
                                (0x460A38, 0x460A92), (0x460F9C, 0x460FE2)):
-                for reg, value in ((UC_X86_REG_ESP, SP), (UC_X86_REG_EBP, self.producer_type),
-                                   (UC_X86_REG_EBX, self.producer_type + 0x24),
-                                   (UC_X86_REG_ESI, RULES), (UC_X86_REG_EDI, RULES)):
-                    u.reg_write(reg, value)
-                run_checked(u, begin, end, count=300000, required_addresses=(begin,))
-                assert u.reg_read(UC_X86_REG_ESP) == SP
+                if exit_control is not None and begin == 0x460F9C:
+                    before_exit = bytes(u.mem_read(self.producer_type + 0xEC8, 12))
+                read_slice(begin, end)
+                if exit_control is not None and begin == 0x460F9C:
+                    fields = supplied_sections.get(self.case['producer_type'], {})
+                    self.exit_coordinate_setup['read_passes'].append(dict(
+                        layer=name, entry=hex(begin), stop_before=hex(end),
+                        supplied_section=fields, physical_section=sections.get(
+                            self.case['producer_type'], {}), missing_key='ExitCoord' not in fields,
+                        before_hex=before_exit.hex(),
+                        after_hex=bytes(u.mem_read(self.producer_type + 0xEC8, 12)).hex(),
+                        after_coord=base.xyz(u, self.producer_type + 0xEC8)))
                 calls.append([hex(begin), hex(end)])
             self.inputs['factory_type_layers'].append(dict(
                 file=name, sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
-                sections=sections, lines=lines, original_slices=calls))
+                sections=supplied_sections, lines=lines, original_slices=calls))
+        if exit_control in ('explicit_zero', 'z_only_nonempty'):
+            fields = {'ExitCoord': '0,0,0' if exit_control == 'explicit_zero' else '0,0,1'}
+            before_exit = bytes(u.mem_read(self.producer_type + 0xEC8, 12))
+            m.rules_cache({self.case['producer_type']: fields})
+            read_slice(0x460F9C, 0x460FE2)
+            self.exit_coordinate_setup['read_passes'].append(dict(
+                layer='supplied_final_control', entry='0x460f9c', stop_before='0x460fe2',
+                supplied_section=fields, physical_section=None, missing_key=False,
+                before_hex=before_exit.hex(),
+                after_hex=bytes(u.mem_read(self.producer_type + 0xEC8, 12)).hex(),
+                after_coord=base.xyz(u, self.producer_type + 0xEC8)))
+        if exit_control is not None:
+            self.exit_coordinate_setup.update(
+                final_coord=base.xyz(u, self.producer_type + 0xEC8),
+                final_coord_hex=bytes(u.mem_read(self.producer_type + 0xEC8, 12)).hex(),
+                limits='Selected physical flag/ART readers execute normally. The '
+                       'declared cached ExitCoord key is removed in every layer for '
+                       'constructor_missing, or a final original ReadCoord receives '
+                       'the explicit lexical control. Complete Rules chronology and '
+                       'physical CCINI parsing remain inherited fixture boundaries.')
         for reg, value in ((UC_X86_REG_ESP, SP), (UC_X86_REG_EBP, self.producer_type),
                            (UC_X86_REG_EBX, self.producer_type + 0x24),
                            (UC_X86_REG_EDI, self.producer_type + 0x1F8)):
@@ -1309,6 +1361,132 @@ class UnitUnlimboControls(Mission):
                     inherited_inputs=self.inputs, unit_geometry_startup=self.unit_geometry_startup,
                     text_sha256=self.text_hash())
 
+    def run_factory_exit_coordinate(self):
+        """Observe the original empty-coordinate arm inside the existing exits."""
+        case = self.case
+        assert case['route'] in ('delivery', 'busy')
+        m, u = self.m, self.u
+        queries, centre_calls, query_pending, centre_pending = [], [], [], []
+        before, rng_before, rng_before_state, planes_before = None, None, None, None
+        raw_planes_before = None
+        plane_offsets = (0xE4, 0xE8, 0x124, 0x128, 0x54, 0x58)
+        cells = {pointer: list(xy) for xy, pointer in self.resident.ptrs.items()}
+
+        def endpoints():
+            archive = m.read32(self.src + 0x218)
+            return dict(self.radio_pair(), product_archive=hex(archive),
+                        product_archive_cell=cells.get(archive))
+
+        def observe(vm, pc, _size, _data):
+            nonlocal before, rng_before, rng_before_state, planes_before, raw_planes_before
+            if pc not in pcs or not self.phase.startswith('factory'):
+                return
+            sp = vm.reg_read(UC_X86_REG_ESP)
+            if pc == 0x443C60 and before is None:
+                before, rng_before = endpoints(), self.rng_bytes()
+                rng_before_state = {k: base.sr.rng_state(vm, p)
+                                    for k, p in self.resident.rngs.items()}
+                planes_before = {str(tuple(xy)): self.resident.snapshot(
+                    self.resident.ptrs[tuple(xy)]) for xy in case['placement_probe_cells']}
+                raw_planes_before = {str(tuple(xy)): [m.read32(
+                    self.resident.ptrs[tuple(xy)] + off) for off in plane_offsets]
+                    for xy in case['placement_probe_cells']}
+            elif pc == 0x44F640:
+                receiver = vm.reg_read(UC_X86_REG_ECX)
+                typ = m.read32(receiver + 0x520)
+                row = dict(entry='0x0044F640', receiver=hex(receiver),
+                           args=[m.read32(sp + 4), m.read32(sp + 8)],
+                           caller_return_pc=hex(m.read32(sp)),
+                           supplied_exit_coord=base.xyz(vm, typ + 0xEC8),
+                           producer_location=base.xyz(vm, receiver + 0x9C),
+                           producer_centre_slot=hex(m.read32(m.read32(receiver) + 0x48)),
+                           scope_counter=m.read32(0xA8E7AC), comparison_pcs=[])
+                queries.append(row)
+                query_pending.append(row)
+            elif pc in (0x44F650, 0x44F664, 0x44F674):
+                if query_pending:
+                    query_pending[-1]['comparison_pcs'].append(hex(pc))
+            elif pc in (0x44F678, 0x44F6B5):
+                assert query_pending
+                query_pending[-1]['selected_arm'] = 'centre' if pc == 0x44F6B5 else 'nonempty'
+            elif pc == 0x44F6BC:
+                assert query_pending
+                receiver = vm.reg_read(UC_X86_REG_ECX)
+                query_pending[-1]['centre_virtual_call'] = dict(
+                    pc=hex(pc), receiver=hex(receiver),
+                    slot='0x48', target=hex(m.read32(m.read32(receiver) + 0x48)),
+                    output_argument=hex(m.read32(sp)))
+            elif pc == 0x447AC0:
+                receiver = vm.reg_read(UC_X86_REG_ECX)
+                row = dict(entry='0x00447AC0', receiver=hex(receiver),
+                           output_argument=hex(m.read32(sp + 4)),
+                           caller_return_pc=hex(m.read32(sp)),
+                           producer_location=base.xyz(vm, receiver + 0x9C),
+                           type_foundation=m.read32(m.read32(receiver + 0x520) + 0xEF0),
+                           within_exit_query=bool(query_pending))
+                centre_calls.append(row)
+                centre_pending.append(row)
+                if query_pending:
+                    query_pending[-1]['centre_call_index'] = len(centre_calls) - 1
+            elif pc == 0x447B11:
+                assert centre_pending
+                row = centre_pending.pop()
+                row.update(true_ret=hex(pc), returned_eax=vm.reg_read(UC_X86_REG_EAX),
+                           output_xyz=base.xyz(vm, int(row['output_argument'], 16)))
+            elif pc in (0x44F6B2, 0x44F6DB):
+                assert query_pending
+                row = query_pending.pop()
+                row.update(true_ret=hex(pc), returned_eax=vm.reg_read(UC_X86_REG_EAX),
+                           output_xyz=base.xyz(vm, row['args'][0]))
+                assert row['returned_eax'] == row['args'][0]
+
+        pcs = {0x443C60, 0x44F640, 0x44F650, 0x44F664, 0x44F674,
+               0x44F678, 0x44F6B5, 0x44F6BC, 0x447AC0, 0x447B11,
+               0x44F6B2, 0x44F6DB}
+        hook = u.hook_add(UC_HOOK_CODE, observe)
+        try:
+            whole = self.run_factory() if case['route'] == 'delivery' else self.run_factory_busy_redirect()
+        finally:
+            u.hook_del(hook)
+        assert before is not None and queries and not query_pending and not centre_pending
+        after, rng_after = endpoints(), self.rng_bytes()
+        receiver_labels = {hex(self.producer): 'source'}
+        if case['route'] == 'busy':
+            receiver_labels.update({row['pointer']: label
+                                    for label, row in whole['before']['producers'].items()})
+        for row in queries + centre_calls:
+            row['receiver_label'] = receiver_labels.get(row['receiver'])
+
+        # Original41BEA0 encodes the placed object's actual physical Cell. Its
+        # RET4/output buffer is separate from44F640's RET8 coordinate contract.
+        output = m.alloc(8)
+        u.mem_write(output, bytes([0xA5]) * 8)
+        getter_eax = m.invoke(0x41BEA0, self.src, (output,))
+        getter_raw = bytes(u.mem_read(output, 8))
+        actual_xy = list(struct.unpack('<hh', getter_raw[:4]))
+        actual_pointer = self.resident.ptrs.get(tuple(actual_xy))
+        assert getter_eax == output and getter_raw[4:] == bytes([0xA5]) * 4
+        assert self.rng_bytes() == rng_after
+        assert actual_pointer and str(tuple(actual_xy)) in planes_before, actual_xy
+        return dict(
+            input=case, entry='0x00443C60', setup=dict(exit_coord=self.exit_coordinate_setup,
+                producer=self.producer_snapshot), before=before, after=after,
+            whole_exit=whole, coordinate_queries=queries, centre_calls=centre_calls,
+            actual_cell=dict(native_entry='0x0041BEA0', returned_eax=getter_eax,
+                output_argument=hex(output), raw_output_hex=getter_raw.hex(),
+                coord=actual_xy, pointer=hex(actual_pointer),
+                before=planes_before[str(tuple(actual_xy))],
+                after=self.resident.snapshot(actual_pointer),
+                plane_before=raw_planes_before[str(tuple(actual_xy))],
+                plane_after=[m.read32(actual_pointer + off) for off in plane_offsets]),
+            probe_cells_before=planes_before,
+            probe_cells_after={str(tuple(xy)): self.resident.snapshot(
+                self.resident.ptrs[tuple(xy)]) for xy in case['placement_probe_cells']},
+            rng_pair=self.rng_pair(rng_before, rng_after), rng_before=rng_before_state,
+            rng_after={k: base.sr.rng_state(u, p) for k, p in self.resident.rngs.items()},
+            unit_geometry_startup=self.unit_geometry_startup,
+            inherited_inputs=self.inputs, text_sha256=self.text_hash())
+
     def text_hash(self):
         digest = hashlib.sha256(bytes(self.u.mem_read(0x401000, 0x3E0000))).hexdigest()
         assert digest == self.resident.code_hash
@@ -1435,6 +1613,30 @@ def factory_busy_redirect_cases():
     ]
 
 
+def factory_exit_coordinate_cases():
+    delivery = dict(cases()[1][0], route='delivery',
+                    placement_probe_cells=[[87, 50], [87, 49], [85, 49], [86, 50]])
+    busy = dict(factory_busy_redirect_cases()[1], route='busy',
+                placement_probe_cells=[[87, 50], [87, 49], [85, 49], [86, 50]])
+    return [
+        dict(delivery, name='delivery_explicit_zero', exit_coord_control='explicit_zero'),
+        dict(delivery, name='delivery_constructor_missing', exit_coord_control='constructor_missing'),
+        dict(busy, name='busy_explicit_zero', exit_coord_control='explicit_zero'),
+        dict(busy, name='busy_constructor_missing', exit_coord_control='constructor_missing'),
+        dict(delivery, name='delivery_z_only_nonempty', exit_coord_control='z_only_nonempty'),
+    ]
+
+
+def generate_factory_exit_coordinate_rows():
+    rows = []
+    for case in factory_exit_coordinate_cases():
+        row = UnitUnlimboControls(case, 'factory').run_factory_exit_coordinate()
+        rows.append(row)
+        print(f'exitcoord {case["name"]}: original arms'
+              f'{[query["selected_arm"] for query in row["coordinate_queries"]]}', flush=True)
+    return rows
+
+
 def generate():
     direct, factory = cases()
     result = dict(schema_version=1, native_sha256=NATIVE_SHA256,
@@ -1442,7 +1644,8 @@ def generate():
                       direct_case('visceroid_reader'), 'direct').visceroid_reader_receipt(),
                   direct_rows=[], factory_rows=[], stage_rows=[], factory_exit_radio_rows=[],
                   authored_rows=[], factory_unload_rows=[], factory_miner_per_cell_rows=[],
-                  unit_move_guard_rows=[], factory_busy_redirect_rows=[])
+                  unit_move_guard_rows=[], factory_busy_redirect_rows=[],
+                  factory_exit_coordinate_rows=[])
     for case in direct:
         row = UnitUnlimboControls(case, 'direct').run_direct()
         result['direct_rows'].append(row)
@@ -1478,6 +1681,7 @@ def generate():
         result['factory_busy_redirect_rows'].append(row)
         print(f'busy {case["name"]}: original receiver{row["selected_receiver"]} '
               f'EAX{row["returned_eax"]}', flush=True)
+    result['factory_exit_coordinate_rows'] = generate_factory_exit_coordinate_rows()
     return result
 
 
@@ -1492,6 +1696,7 @@ def metadata():
               'exit-list startup rows, two contained Harvester/Weeder primary PerCell '
               'controls, eight whole MissionAI Unit Move deployment-guard controls and '
               'six whole busy-factory same-type redirection '
+              'controls, plus five empty/default/nonempty ExitCoord delivery/redirection '
               'controls, with physical layered MTNK and selected '
               'producer inputs. Immediate Unit return is distinct from the inherited later command.',
         entry_points=dict(unit_ctor=0x7353C0, unit_unlimbo=0x737BA0, foot_unlimbo=0x4D7170,
@@ -1502,6 +1707,8 @@ def metadata():
                           factory_scope_increment=0x444575, factory_unlimbo_call=0x44458C,
                           factory_scope_success=0x444979, factory_scope_failure=0x444EE6,
                           naval_unlimbo_call=0x44440C, factory_exit_coords=0x44F640,
+                          building_centre_coords=0x447AC0, object_physical_cell=0x41BEA0,
+                          factory_empty_coordinate=0x89C848,
                           cell_ground_coords=0x480A30, building_type_ctor=0x45DD90,
                           building_ctor=0x43B740, foundation_startup=0x45B1C0,
                           unit_limbo=0x7440B0, unit_stage_tail=0x737BF5,
@@ -1662,6 +1869,17 @@ def metadata():
             'temporary+524 attachment moves, recursive original+100 call and '
             'restoration. selected_receiver is observed at the second443C60 '
             'entry, with actual recursive/whole returns and full RNG retained.',
+            'Five additive ExitCoord rows compose the same whole factory '
+            'delivery/redirection owners. Original BuildingType45DD90 defaults '
+            'and every460F9C..460FE2 ReadCoord pass are recorded. Independent '
+            'constructor_missing inputs remove only ExitCoord from supplied '
+            'cached sections before any such read; explicit zero and z-only '
+            'inputs run one final original ReadCoord. Whole443C60 records '
+            'actual44F640 component comparisons, its selected arm, original '
+            'producer virtual+48/447AC0 calls and returned coordinate buffers. '
+            'After exit, original41BEA0 encodes the Unit physical Cell; its '
+            'actual resident before/after planes, archive/radio/mission/scope '
+            'and full three RNG objects are retained.',
         ],
         substitutions=[
             'Full Scenario, House/map load and producer visual asset loading are '
@@ -1720,6 +1938,13 @@ def metadata():
             'boundary distinct from the Rust adversarial cell_marked refusal; '
             'comparison of selection/archive/returns/restoration/RNG does not '
             'certify equivalence of those refusal causes.',
+            'ExitCoord control caches are declared synthetic data boundaries '
+            'over otherwise retained physical type/ART inputs. Physical '
+            'RULESMD ExitCoord is not claimed absent: its source fields are '
+            'saved separately from the supplied missing-key sections. These '
+            'rows cover admitted whole factory exits and first-alternate '
+            'redirection, not arbitrary pad translation, non-WeaponsFactory '
+            'exit-cell selection or full producer placement/navigation.',
         ],
     )
     result['promotion_sources'] = {
@@ -1753,6 +1978,11 @@ def metadata():
     binary = image_bytes()
     for name, address, length in (
         ('factory_exit_object', 0x443C60, 0x1A48), ('factory_exit_coords', 0x44F640, 0x9C),
+        ('factory_exit_coords_empty_tail', 0x44F6B5, 0x29),
+        ('building_centre_coords', 0x447AC0, 0x54),
+        ('object_physical_cell', 0x41BEA0, 0x3D),
+        ('building_centre_vtable_slot', 0x7E3F04, 4),
+        ('building_exit_coords_vtable_slot', 0x7E3F70, 4),
         ('cell_ground_coords', 0x480A30, 0x4E), ('unit_scope_and_mode', 0x73F34C, 0xD4),
         ('infantry_scope', 0x51C13A, 0xA0), ('producer_naval_read', 0x714A63, 0x1A),
         ('producer_weeder_read', 0x4604B2, 0x1A),
@@ -1835,6 +2065,10 @@ def metadata():
             assert int.from_bytes(raw, 'little') == 0x5B334E
         if name == 'building_exit_vtable_slot':
             assert int.from_bytes(raw, 'little') == 0x443C60
+        if name == 'building_centre_vtable_slot':
+            assert int.from_bytes(raw, 'little') == 0x447AC0
+        if name == 'building_exit_coords_vtable_slot':
+            assert int.from_bytes(raw, 'little') == 0x44F640
         result['native_spans'][name] = dict(address=f'0x{address:08X}', file_offset=offset,
                                            length=length, sha256=hashlib.sha256(raw).hexdigest(),
                                            hex=raw.hex())
@@ -1862,7 +2096,13 @@ def source_paths():
                      'src/sim/world/techno_ai/building_missions.rs',
                      'src/sim/world/techno_ai/mission_handlers.rs',
                      'src/sim/world/techno_ai/factory_unload_tests.rs',
-                     'src/sim/world/projectile_collision.rs'):
+                     'src/sim/world/projectile_collision.rs',
+                     'src/sim/movement/building_coordinate.rs', 'src/sim/movement/mod.rs',
+                     'src/sim/production/production_spawn.rs',
+                     'src/sim/world/unit_unlimbo_tests.rs',
+                     'src/rules/ini_parser.rs', 'src/rules/ini_parser_tests.rs',
+                     'src/rules/ini_value.rs', 'src/rules/retail_ini_fixture.rs',
+                     'src/rules/ruleset.rs'):
         paths[relative] = REPO / relative
     return paths
 

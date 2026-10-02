@@ -261,11 +261,19 @@ fn fixture(row: &Value) -> Scene {
         });
         e.mission_leaf
             .set_building_ready_latch(int(&before["building_repairing"]) as u8);
+        // This packet supplies an already-idle building body, independently
+        // of the spawned fixture's Unlimbo request. Import its measured
+        // current/queued state through the existing body owner before the
+        // selected continuation; the native prestate has no queued Idle.
+        assert_eq!(before["refinery_bstate"][1], -1);
+        e.initialize_building_idle_body(200);
         if before["refinery_bstate"][0] == 0 {
             e.begin_building_body(
                 crate::sim::building_construction::BuildingBodyMode::Construction,
                 200,
             );
+        } else {
+            assert_eq!(before["refinery_bstate"][0], 1);
         }
     }
     if let Some(name) = before["pending_entry"].as_str() {

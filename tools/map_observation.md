@@ -80,6 +80,45 @@ The factory and tank pose, lifecycle, mission and NavCom trajectories match
 the pre-integration release
 `079f26fb33e3f97ab5571c9350bcdc619384c03116a98ebfee1be8aab07a15d2`
 at every recorded step; both releases produce the final readback above.
+After integrating main `03750cc7` (shared refinery/depot docking), the final
+release binary SHA-256 is
+`30511790b949abba1b62dd596d9cf505d8e90b0e6be5d8888f34056ea114a6b1`
+(31,541,264 bytes). Its v6 bundle is valid at step5600; `capture.json` and
+`run.json` have SHA-256 values
+`cf0c3c24a1fc485160d3906f0a4f4b67fbca55eb2ce15891f9356560f6cf3262`
+and `8fbe3b95517d3a4beedab78f65add32d0867e270f61df33a82ce2a2b18dcd405`.
+All 5,601 frame boundaries match the earlier integrated release for the
+factory/tank's recorded pose, lifecycle, health, mission, NavCom, archive,
+target, Foot, Building and original Unit fields (11,202 actor comparisons),
+and the final BGRA bytes are identical. The new v6 radio/miner observations
+and incoming IFV weapon/turret fields were absent from that earlier schema;
+they are excluded from this comparison. The final deterministic state hash is
+`4786212690033122157`. The external
+`unit-unlimbo-main1010-runtime-summary.json` retains the declared field lists,
+input/artifact identities, comparison counts and endpoints.
+The final zero/default ExitCoord candidate was observed on 2026-10-03 with
+release binary SHA-256
+`e88f7537f4b0aef9dcf4ebddb3cf8c94c56f460127116938bcb6cd641f365b43`
+(31,512,752 bytes). The stock R6 bundle passes the ordinary v6 validator and
+matches R5's retained initial/final state, map identity and complete observation
+transcript; the final BGRA bytes remain identical. R5's executable path was
+superseded by the shared release build, so the strict cross-run wrapper cannot
+revalidate that historical binary. This comparison uses the retained capture
+bytes and does not weaken that wrapper.
+
+R7 uses the same release and production loader with a loose copy of the original
+map bytes plus only `[GAWEAP] ExitCoord=0,0,0`. The existing asset reader confirms
+that the scenario layer overrides stock `[512,256,0]` with `[0,0,0]`; the loader
+reports the derived map SHA-256
+`0dfbeaf28550ed9213e54ad4cca70b698488065e26e021770b263091cb7f4199`.
+R7 also passes the ordinary v6 validator. Every factory1456 and product1528
+actor field, including radio, miner and IFV fields, matches R6 at all 5,601
+boundaries (11,202 presence/actor comparisons; 3,700 present actors), and the
+final BGRA bytes are identical. The different map/rule inputs produce different
+whole-state hashes; those hashes are not an equivalence assertion. The external
+`unit-unlimbo-zero-final-runtime-summary-20261003.json` records these identities,
+declared fields and comparison limits (SHA-256
+`9d9e235d7f56d9948ffa1292fb11dc9390827115eca9a7faa007981a0feb649f`).
 These are Rust production observations. Bounded original Door, Unload and Unit
 comparisons are documented by the existing
 [Unit Unlimbo evidence owner](spatial_oracle/anytown_damage/unit_unlimbo.md);

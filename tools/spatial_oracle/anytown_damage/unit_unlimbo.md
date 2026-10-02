@@ -79,7 +79,9 @@ recipes. The metadata records their SHA-256 receipts:
 
 `unit_unlimbo.json` has `{schema_version, native_sha256, direct_rows,
 factory_rows, visceroid_reader_receipt, stage_rows, factory_exit_radio_rows,
-authored_rows, factory_unload_rows, factory_miner_per_cell_rows}`.
+authored_rows, factory_unload_rows, factory_miner_per_cell_rows,
+unit_move_guard_rows, factory_busy_redirect_rows,
+factory_exit_coordinate_rows}`.
 Every direct row retains `input`, `before`, `after`,
 `returned_al`, `trace`, all three full RNG objects, geometry startup and inherited
 physical input receipts. The new `after_unlimbo` snapshot is taken immediately
@@ -275,7 +277,7 @@ proof of the movement trigger or execution of harvesting itself.
 The existing owner executes additive `unit_move_guard_rows[8]` and
 `factory_busy_redirect_rows[6]`. All earlier fields compare exactly, and the
 eight default Mission/Unit-entry files remain byte-for-byte unchanged. The
-published native payload SHA-256 is
+native payload SHA-256 before the zero/default additions was
 `4be9dcec5b14dbb20bd707bd5da200b3c5c36becde38fb2ea9eeeb71030efbef`.
 The actual publication ran 56 fixtures and 165 GeneralRules calls without a
 fault or timeout. Its external preservation receipt is
@@ -344,6 +346,56 @@ it does not distinguish those two non-delivery return codes. The eight-row
 dispatch and six-row receiver comparisons pass, alongside authored regression
 cases. Strict replay against the final integrated source remains a separate
 required check.
+
+### Original zero/default factory coordinates
+
+`factory_exit_coordinate_rows[5]` executes whole `443C60` for explicit zero and
+fresh constructor-missing ExitCoord through both direct delivery and busy
+redirection, plus a direct Z-only vector. The original `45DD90` constructor
+retains `[0,0,0]`. Missing controls remove only the declared cached ExitCoord key
+before every original `460F9C..460FE2` read; they never read the stock512 vector.
+Explicit controls finish with original ReadCoord supplied `0,0,0` or `0,0,1`.
+Other physical flag/ART readers and the existing factory setup remain in use.
+
+Original Building virtual+B4 `44F640` compares all three words against the
+actual twelve-zero EmptyCoord at `89C848`. Zero/missing controls take
+`44F6B5`, call the producer's actual virtual+48 `447AC0` at `44F6BC`, and return
+its foundation-centred XYZ through true RET8. Z-only takes the nonempty
+`44F678` branch on both queries. The land admission at `44413D..44416F` does
+not test whether ExitCoord was present.
+
+Measured direct zero/missing delivery is `[22400,12928,416]`, Cell(87,50).
+Busy zero/missing selects `candidate_b`, delivers `[22400,12672,416]`,
+Cell(87,49), copies archive Cell(88,49), and restores the original attachment.
+Z-only delivery is `[21888,12672,417]`, Cell(85,49). All five return2 and retain
+all three complete1012-byte RNG objects. Actual `41BEA0` determines the placed
+Cell; its unused output bytes retain their supplied poison.
+
+Initial publication took184.175s,15 GeneralRules calls,5 expected setup seams
+and no unexpected stop/timeout. Its external terminal receipt is
+`unit-unlimbo-exit-coordinate-additive-oxnvae6f/terminal-hold-receipt.json`,
+SHA-256 `d81722c1f3871fe6392288be1d0f35f006e24cfe80f20e00564d9100997accbd`.
+Every historical field/default corpus is preserved. The existing two Rust
+comparison bodies now consume the additional delivery3/busy2 rows through
+production rules readers. Both initially fail on explicit-zero XYZ; the
+test-only INI omission owner regression passes. The owner correction and
+independent replay are recorded separately below.
+
+The follow-up124.777s execution captures raw actual-cell planes before/after
+in `E4,E8,124,128,54,58` order: `[0,0,0,0,0,0]` becomes
+`[604765616,0,32,0,0,0]` in all five controls. Dropping only those two additive
+plane fields reproduces the first publication exactly; all historical fields,
+106 native spans and eight default files remain unchanged. Terminal receipt
+`unit-unlimbo-exit-coordinate-planes-8hr29d94/terminal-hold-receipt.json` has
+SHA-256 `063f3a44d45933c5fcbd7b7dd50d62fcdc27f2d9c0a8dd5ea53eda8e463dabd7`.
+
+Rust's one `building_exit_coordinate` port now delegates zero/default to
+`ground_pose::object_get_coords`; its nonempty addition is unchanged. Both
+production callers use that owner, and exact land-factory admission retains
+only the original four flags. The two comparison bodies and omission-owner
+regression pass (delivery8, busy8,3 selected Rust functions). The evidence
+inventory includes83 sources,49 Python and34 Rust. Final independent replay
+against the candidate remains required.
 
 ## Native ownership and ordering
 
@@ -463,17 +515,52 @@ original byte scans and saved writer bodies established these leads.
 
 ## Rust production and deterministic hash validation
 
-The earlier candidate after main `339b57d18` passed 9,477 retail lib tests
-(227 ignored), lib Clippy passes (723 warnings), and the release build passes.
+The intermediate candidate after main `03750cc7` passed 9,514 retail lib tests
+(227 ignored), lib Clippy (728 warnings), and the release build. The
+simulation-field ratchet passes at 2,543 writable fields against 2,554 on that
+main. Snapshot283 retains shared Door state alongside incoming IFV and
+depot-docking state. The external
+`unit-unlimbo-main1010-final-validation.json` records exact logs and binaries.
 The existing
 [map observation factory profile](../../map_observation.factory-tank-exit.example.json)
 also loads retail AnyTown through the release application, delivers one human
 MTNK, follows its forced exit/clearance, and returns both product and producer to
-Guard. The integrated release repeats the pre-integration factory and tank
-trajectories and produces the identical final BGRA readback. The
+Guard. That release matches the earlier integrated factory/tank's common
+observation fields at all 5,601 frame boundaries and produces the identical
+final BGRA readback. Incoming radio/miner and IFV fields were absent from the
+earlier schema and are explicitly excluded from this comparison. The
 [observation owner](../../map_observation.md) records exact steps,
 map/binary/readback identities and the production-only coverage limit. Native
 Door/Unload comparisons above remain bounded by their original fixture seams.
+
+The final zero/default ExitCoord candidate, including documentation-only main
+`c8a794a7`, passes **9,515 retail lib tests, zero failed, 227 ignored**, lib
+Clippy (728 warnings), and release game/asset builds. The writable-field ratchet
+remains 2,543 against main's 2,554. The added omission-fixture property test and
+both existing original comparison bodies pass: eight direct-delivery and eight
+busy-redirect rows include the five added zero/missing/Z-only controls. Before
+the fix, the explicit-zero rows failed on the original XYZ values; no native
+expectation was changed. External `unit-unlimbo-zero-final-validation-20261003.json`
+and the RED/GREEN logs retain the exact commands and results.
+
+The final release observations load both stock AnyTown and the same map with
+only a scenario-layer zero ExitCoord override. Both pass the ordinary v6
+validator, complete production/exit/Guard, and match every factory/tank actor
+field at all 5,601 boundaries, with identical final GPU bytes. This includes
+the radio/miner/IFV fields present in both final bundles. The different rule
+inputs give different whole-state hashes. The observation owner records the
+map/binary identities and retains the production-only coverage limit. The final
+independent ordinary Unit replay passed all 61 fixtures, including the five
+added ExitCoord controls, with 180 GeneralRules calls, 43 declared constructor
+seams and zero unexpected timeout (1,444.369 seconds; maximum GeneralRules call
+12.502 seconds). Entry-counter eight controls and boundary 100 controls also
+passed. All 83 source bindings, 106 native spans, input identities and eight
+default files remained exact. External final receipt
+`unit-unlimbo-exit-coordinate-final-strict-5tkywxz8/final-check-receipt.json`
+has SHA-256 `0d04ffdad93480d1239a83b60eb3ae880e1323cf2d0db4943f4201ac5649e364`.
+The Gate check and integration of subsequently published main recoil state
+remain pending. Instruction-count execution is not reported; existing count
+budgets and the declared constructor boundaries remain coverage limits.
 
 Adding the authoritative shared Door fields to the deterministic hash changes
 three Rust replay fingerprints. A diagnostic removed only
@@ -509,6 +596,11 @@ are retained in external `unit-unlimbo-main1009-door-hash-attribution.json`.
 The refinery dock comparison still uses its measured `73ACB3..73ADCA` window;
 its fixture now calls the existing mission promotion and miner contact-release
 owners rather than treating that narrow window as whole PerCell execution.
+After integrating main's shared Enter/DockNow owner, the supplied refinery
+fixture also initializes the measured Idle/current1, queued-1 prestate through
+the existing Building body owner. The native expected values are unchanged.
+The track-host regression now retains the earlier native DockNow21/power-off
+arm before factory clearance, rather than excluding every radio callback.
 
 ## Explicit seams
 

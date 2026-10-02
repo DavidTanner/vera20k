@@ -944,15 +944,15 @@ fn retail_reused_unit_unlimbo_matches_original_stage_and_rng_tail() {
     assert_eq!((admitted, refused), (4, 4));
 }
 
-/// The native packet runs whole443C60; this comparison covers the five live
-/// GAWEAP non-Unload controls at Rust's existing public completed-delivery
-/// boundary, including the producer's final queued Unload. Factory queue setup
+/// The native packet runs whole443C60; this comparison covers the five stock
+/// GAWEAP controls and three original zero/missing/Z-only controls at Rust's
+/// public completed-delivery boundary, including the final queued Unload. Queue setup
 /// and whole producer activation are not compared. Two inactive-Scenario failures
 /// have no Rust Scenario-active owner; GAYARD+MTNK is not legal retail naval
 /// production. Their saved native rows are retained and explicitly excluded.
 #[test]
 fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
-    let Some((rules, registry, terrain_rules)) = retail_rules() else {
+    let Some((ini, art)) = retail_rules_and_art() else {
         return;
     };
     let corpus = corpus();
@@ -969,14 +969,45 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
             .count(),
         1
     );
+    let controls = corpus["factory_exit_coordinate_rows"].as_array().unwrap();
+    assert_eq!(controls.len(), 5);
+    let delivery_controls: Vec<_> = controls
+        .iter()
+        .filter(|row| row["input"]["route"] == "delivery")
+        .collect();
+    assert_eq!(delivery_controls.len(), 3);
     let mut compared = 0;
-    for row in rows {
+    for (row, control) in rows.iter().map(|row| (row, None)).chain(
+        delivery_controls
+            .iter()
+            .map(|control| (&control["whole_exit"], Some(*control))),
+    ) {
         let input = &row["input"];
         if input["scenario_active"] == false || input["producer_type"] != "GAWEAP" {
             continue;
         }
         compared += 1;
         let name = input["name"].as_str().unwrap();
+        let mut fixture_ini = ini.clone();
+        if let Some(control) = control {
+            let setup = &control["setup"]["exit_coord"];
+            if input["exit_coord_control"] == "constructor_missing" {
+                fixture_ini = fixture_ini.without_entry_for_test("GAWEAP", "ExitCoord");
+            } else {
+                let raw = setup["read_passes"]
+                    .as_array()
+                    .unwrap()
+                    .last()
+                    .unwrap()["supplied_section"]["ExitCoord"]
+                    .as_str()
+                    .unwrap();
+                fixture_ini.merge(&IniFile::from_str(&format!("[GAWEAP]\nExitCoord={raw}\n")));
+            }
+        }
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&fixture_ini, &art).unwrap();
+        rules.install_art_data(ArtRegistry::from_ini(&art));
+        let registry = OverlayTypeRegistry::from_ini(&fixture_ini, Some(&art));
+        let terrain_rules = TerrainRules::from_ini(&fixture_ini);
         let mut sim = retail_world(&rules, &terrain_rules);
         let owner = sim.interner.intern("Americans");
         let unit_type = sim.interner.intern("MTNK");
@@ -1014,7 +1045,20 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
         sim.mission_assign_exact(producer_id, MissionId::from_known(MissionType::Guard), 0)
             .unwrap();
         let producer_type = rules.object("GAWEAP").unwrap();
-        let exit = producer_type.exit_coord.unwrap();
+        let exit = producer_type.exit_coord;
+        if let Some(control) = control {
+            assert_eq!(
+                exit.is_none(),
+                input["exit_coord_control"] == "constructor_missing",
+                "{name}: fresh absence remains distinct from a parsed zero vector"
+            );
+            let supplied = exit.map_or_else(
+                || control["setup"]["exit_coord"]["ctor_exit_coord"].clone(),
+                |(x, y, z)| json!([x, y, z]),
+            );
+            assert_eq!(supplied, control["setup"]["exit_coord"]["final_coord"]);
+        }
+        let exit = exit.unwrap_or((0, 0, 0));
         assert_eq!(
             json!([exit.0, exit.1, exit.2]),
             row["producer"]["exit_coord"],
@@ -1049,6 +1093,30 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
             (expected_position.y / 256) as u16,
         );
         apply_cell_inputs(&mut sim, cell, input);
+        if let Some(control) = control {
+            let native = &control["actual_cell"]["before"];
+            assert_eq!(json!([cell.0, cell.1]), control["actual_cell"]["coord"]);
+            let land = native["land"].as_u64().unwrap() as u8;
+            let semantics = terrain_rules.semantics_for_land_type(land).unwrap();
+            let target = sim
+                .resolved_terrain
+                .as_mut()
+                .unwrap()
+                .cell_mut(cell.0, cell.1)
+                .unwrap();
+            target.level = native["level"].as_u64().unwrap() as u8;
+            target.slope_type = native["slope"].as_u64().unwrap() as u8;
+            target.land_type = land;
+            target.yr_cell_land_type = land;
+            target.zone_type = native["zone_type"].as_u64().unwrap() as u8;
+            target.terrain_class = semantics.terrain_class;
+            target.base_terrain_class = semantics.terrain_class;
+            target.speed_costs = semantics.speed_costs.clone();
+            target.base_speed_costs = semantics.speed_costs.clone();
+            target.final_tile_index = int(&native["tile"]);
+            target.final_sub_tile = native["subtile"].as_u64().unwrap() as u8;
+            target.bridge_facts.raw_flags = native["flags"].as_u64().unwrap() as u32;
+        }
         assert!(
             sim.production
                 .factory_shadow
@@ -1122,7 +1190,10 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
             row["producer_queued"],
             "{name}: original producer QueueMission(Unload16)"
         );
-        let plane = &row["plane_after"];
+        let plane = control.map_or(
+            &row["plane_after"],
+            |control| &control["actual_cell"]["plane_after"],
+        );
         let lists = json!([
             format!("0x{:x}", plane[0].as_u64().unwrap()),
             format!("0x{:x}", plane[1].as_u64().unwrap()),
@@ -1135,7 +1206,7 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
         );
         assert_rng(&sim, &row["rng"], "after_hex", name);
     }
-    assert_eq!(compared, 5);
+    assert_eq!(compared, 8);
 }
 
 /// Original Unit's Radio65ACB0 -> Building43C2D0 -> Techno6F4C29 -> Radio65A970,

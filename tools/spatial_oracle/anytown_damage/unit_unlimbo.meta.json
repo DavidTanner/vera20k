@@ -7,7 +7,7 @@
     1,
     33621247
   ],
-  "scope": "Nine original MTNK Unit/Foot/Techno/Object Unlimbo controls, eight whole Building443C60 controls, eight original Unit Limbo/reused Stage controls, six selected UnitType bool-reader histories and seven factory Contact0 radio8 fixtures (nine radio calls), six original Unit reader HIGH/caller controls, one original GAWEAP/MTNK Unload/ForceTrack/primary clearance continuation with nineteen Door controls and all twenty-two Foundation exit-list startup rows, two contained Harvester/Weeder primary PerCell controls, eight whole MissionAI Unit Move deployment-guard controls and six whole busy-factory same-type redirection controls, with physical layered MTNK and selected producer inputs. Immediate Unit return is distinct from the inherited later command.",
+  "scope": "Nine original MTNK Unit/Foot/Techno/Object Unlimbo controls, eight whole Building443C60 controls, eight original Unit Limbo/reused Stage controls, six selected UnitType bool-reader histories and seven factory Contact0 radio8 fixtures (nine radio calls), six original Unit reader HIGH/caller controls, one original GAWEAP/MTNK Unload/ForceTrack/primary clearance continuation with nineteen Door controls and all twenty-two Foundation exit-list startup rows, two contained Harvester/Weeder primary PerCell controls, eight whole MissionAI Unit Move deployment-guard controls and six whole busy-factory same-type redirection controls, plus five empty/default/nonempty ExitCoord delivery/redirection controls, with physical layered MTNK and selected producer inputs. Immediate Unit return is distinct from the inherited later command.",
   "assumptions": [
     "Mission is the sole constructor, physical crop and native callback owner. Original geometry735180/735210/735230/735250/7352F0 executes first; retained scalars and all three full1012-byte RNG objects are recorded. No code or original vtable is modified; original .text retains its measured hash.",
     "Direct inputs supply independent A8E7AC scope and A8B238 actual GameMode, raw ground/deck planes, HasBridge and caller OnBridge/Z. after_unlimbo is captured immediately after737BA0 returns; after preserves the historical whole Mission.setup output, including the frame1 Attack command if admitted.",
@@ -27,7 +27,8 @@
     "At the new post-exit scatter request, the Unit call stops before original AStar42A5B0 with no supplied path result or native return. Its marked0 is suspended-turn state after Unmark, not a completed Unit turn. No later Unit turn runs. Producer-only original Door and Unload leaves continue with actual cleared reciprocal contacts until close completion and queued Guard5; whole BuildingAI/Logic and subsequent navigation remain excluded.",
     "The two contained miner controls execute original UnitType 74769F..7476D3 Harvester/Weeder current-default bool reads and 74779D..7477BB default-Mission postread on custom MTNK inputs, after actual443C60. Whole739EC0 starts at reason2 and stops before73ACD7 after actual QueueHarvest[10,1], UnitReady744270 and Commence. This establishes that primary branch and its RNG/mission effects, not the movement trigger or whole harvesting.",
     "Eight additive guard rows reuse the original successful factory placement, read physical MTNK DeployTime through the existing 714B77..714B9F owner and record actual ReadDouble arguments/current defaults. Original Unit Door4A51F0 opens at190 from those double bits. Supplied Move/current2, Attack/queued1, due dispatch timer, flags6E0/6E1/6E2 and NULL or real Cell88,50 NavCom precede whole MissionAI5B3060 at200. Byte6D2 begins0. Actual nested740B03 EAX and dispatcher timer writes, Door/Nav/flag snapshots and all3 RNG objects are observations, not selected expected returns.",
-    "Six additive busy-factory rows reuse original43B740 constructors with shared exact GAWEAP type identity and a physical NAWEAP constructor identity for the different-type control. Caller supplies distinct real-Cell archives, producer poses/current/queued missions and House+68 list order. Original5B3040 records effective missions, including currentNone/queuedGuard. Typed nonNULL attachments execute originalFactory4C98B0 after a valid empty A83E30 registry header; owner/completion/held-object words are declared inputs. Whole443C60 owns archive-before-busy, selection, temporary+524 attachment moves, recursive original+100 call and restoration. selected_receiver is observed at the second443C60 entry, with actual recursive/whole returns and full RNG retained."
+    "Six additive busy-factory rows reuse original43B740 constructors with shared exact GAWEAP type identity and a physical NAWEAP constructor identity for the different-type control. Caller supplies distinct real-Cell archives, producer poses/current/queued missions and House+68 list order. Original5B3040 records effective missions, including currentNone/queuedGuard. Typed nonNULL attachments execute originalFactory4C98B0 after a valid empty A83E30 registry header; owner/completion/held-object words are declared inputs. Whole443C60 owns archive-before-busy, selection, temporary+524 attachment moves, recursive original+100 call and restoration. selected_receiver is observed at the second443C60 entry, with actual recursive/whole returns and full RNG retained.",
+    "Five additive ExitCoord rows compose the same whole factory delivery/redirection owners. Original BuildingType45DD90 defaults and every460F9C..460FE2 ReadCoord pass are recorded. Independent constructor_missing inputs remove only ExitCoord from supplied cached sections before any such read; explicit zero and z-only inputs run one final original ReadCoord. Whole443C60 records actual44F640 component comparisons, its selected arm, original producer virtual+48/447AC0 calls and returned coordinate buffers. After exit, original41BEA0 encodes the Unit physical Cell; its actual resident before/after planes, archive/radio/mission/scope and full three RNG objects are retained."
   ],
   "substitutions": [
     "Full Scenario, House/map load and producer visual asset loading are excluded. A supplied human House binds after null-House constructors with selected valid counters. Producer is not installed into foundation content lists. Complete factory controller/paid queue scheduling, other objects and global match phases are outside these controls.",
@@ -37,7 +38,8 @@
     "Reused Stage inputs poison an actually reused object but do not claim a native producer for arbitrary poisoned field values or MTNK visceroid flags. Reader controls supply lexical cached sections; full native physical CCINI parsing and Rules chronology are excluded.",
     "Radio NULL-sender and absent-Unit-contact controls are adversarial boundaries. Original65A970 NULL target resolves Contacts[0] when present; this does not certify valid reciprocal lifetime for the absent-contact input. Helipad/UnitRepair distance/repair/docking, The standalone radio rows exclude BuildingUnload and earlier/full UnitPerCell. The additive continuation/miner rows have their own bounded coverage; whole navigation/harvest/slave/rally/hunt and the producer occupied-footprint secondary73AB6C branch remain excluded. The common successful first Scatter publishes NavCom, so secondary is skipped. Raw+5AC is not treated as a direct count.",
     "The additive producer remains unplaced/limbo/health0; complete positive-health admission/readiness, House initialization and BuildingAI scheduling are excluded. HumanControlled1 is supplied. The pure Door progress query uses native_oracle.call with unchanged Door bytes/frame and its scratch FSTP binary64 observation, never an original .text patch. Original primary TMP constructor defaults for animation/shadow are retained; complete archive/Tile INI/variant loading is excluded.",
-    "Guard inputs start after supplied mission/flag/Nav and actual Door-opening setup. They establish the direct Unit Move guard and MissionAI timer boundary, not producer deployment or whole UnitAI flag lifetime. Byte6D2 is initially0; no final-host miner-clear claim is made. Busy producer poses/House vector/mission/archive and typed Factory owner/completion inputs are supplied after original constructors. Full paid queues, House holder production, producer footprint/readiness/loading and Factory scheduling are excluded. ScenarioActive0 refusal is an executed native global boundary distinct from the Rust adversarial cell_marked refusal; comparison of selection/archive/returns/restoration/RNG does not certify equivalence of those refusal causes."
+    "Guard inputs start after supplied mission/flag/Nav and actual Door-opening setup. They establish the direct Unit Move guard and MissionAI timer boundary, not producer deployment or whole UnitAI flag lifetime. Byte6D2 is initially0; no final-host miner-clear claim is made. Busy producer poses/House vector/mission/archive and typed Factory owner/completion inputs are supplied after original constructors. Full paid queues, House holder production, producer footprint/readiness/loading and Factory scheduling are excluded. ScenarioActive0 refusal is an executed native global boundary distinct from the Rust adversarial cell_marked refusal; comparison of selection/archive/returns/restoration/RNG does not certify equivalence of those refusal causes.",
+    "ExitCoord control caches are declared synthetic data boundaries over otherwise retained physical type/ART inputs. Physical RULESMD ExitCoord is not claimed absent: its source fields are saved separately from the supplied missing-key sections. These rows cover admitted whole factory exits and first-alternate redirection, not arbitrary pad translation, non-WeaponsFactory exit-cell selection or full producer placement/navigation."
   ],
   "entry_points": {
     "unit_ctor": "0x007353C0",
@@ -57,6 +59,9 @@
     "factory_scope_failure": "0x00444EE6",
     "naval_unlimbo_call": "0x0044440C",
     "factory_exit_coords": "0x0044F640",
+    "building_centre_coords": "0x00447AC0",
+    "object_physical_cell": "0x0041BEA0",
+    "factory_empty_coordinate": "0x0089C848",
     "cell_ground_coords": "0x00480A30",
     "building_type_ctor": "0x0045DD90",
     "building_ctor": "0x0043B740",
@@ -169,6 +174,41 @@
       "length": 156,
       "sha256": "cbd93353de6a40dd45a79e38b9aa88402087efb501c2961a3de1e92c7369cdc8",
       "hex": "8b812005000083ec0c8b90c80e0000563b1548c8890075208b90cc0e00008b354cc889003bd675108b90d00e00008b3550c889003bd6743d81c19c000000578b118b71048b79088b88c80e000003ca8b90cc0e000003d68bb0d00e00008b44241803f78bf8890f8957048977085f5e83c40cc208008b018d54240452ff50488bc88b4424148bd08b3189328b71048972045e8b4908894a0883c40cc2"
+    },
+    "factory_exit_coords_empty_tail": {
+      "address": "0x0044F6B5",
+      "file_offset": 325301,
+      "length": 41,
+      "sha256": "7fdc1bef879f12880e18db245ea9ea293707752589234c98fa758cbc9bcf1346",
+      "hex": "8b018d54240452ff50488bc88b4424148bd08b3189328b71048972045e8b4908894a0883c40cc20800"
+    },
+    "building_centre_coords": {
+      "address": "0x00447AC0",
+      "file_offset": 293568,
+      "length": 84,
+      "sha256": "9313b2a6f51c9c5aa1be2df9b290cce1e02e872f144ea41789754bdcec08c7c1",
+      "hex": "56578bf96a008b8f20050000e8cf7101008b8f200500008bf0c1e60781ee80000000e8a971010081c79c000000c1e0078b0f2d8000000003c88b44240c8b570403d68bf08b7f08890e895604897e085f5ec20400"
+    },
+    "object_physical_cell": {
+      "address": "0x0041BEA0",
+      "file_offset": 114336,
+      "length": 61,
+      "sha256": "995f27a395cd57d2930b7df4d2fd341e5e27d5d4c0655c9c7d000bea8c97f2b6",
+      "hex": "518b819c0000009981e2ff00000003c2c1f80866894424008b81a00000009981e2ff00000003c2c1f80866894424028b4424088b4c2400890859c20400"
+    },
+    "building_centre_vtable_slot": {
+      "address": "0x007E3F04",
+      "file_offset": 4079364,
+      "length": 4,
+      "sha256": "30965c61b712dd26ccfc0fe0fc831900dab3897fa09d494be7b3b7df638aca74",
+      "hex": "c07a4400"
+    },
+    "building_exit_coords_vtable_slot": {
+      "address": "0x007E3F70",
+      "file_offset": 4079472,
+      "length": 4,
+      "sha256": "dce80973de0dfc114bc4ae958e3e636c1ebef9bae5f7eb023374cf84cea2cd54",
+      "hex": "40f64400"
     },
     "cell_ground_coords": {
       "address": "0x00480A30",
@@ -912,7 +952,7 @@
     "tools/native_slope.py": "737b8294db419d298d362029825a255ae70df9945bef4c8b588369a53eaf13de",
     "tools/spatial_oracle/fire_error.py": "ea1137e160745ff92b8d7f87930fca15c307b3d8b7bca92a99d35e2526b9c402",
     "tools/spatial_oracle/anim_bouncer_launch.py": "6fa5df589e686573addd7843c16fae49a883c437f6dba3091d4f9c8d7b601055",
-    "tools/spatial_oracle/anytown_damage/unit_unlimbo.py": "43335978ef932867c658e5b2a3f46dc1854ec5eb32a5309fd632cdc71779365d",
+    "tools/spatial_oracle/anytown_damage/unit_unlimbo.py": "4d3ade3d30a9a299b0878cf1fe8948c937806871caa3ceb132426457a75f8358",
     "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
     "src/rules/object_type.rs": "4e0a322915fa062ca5d46c1c002bdb9b0d1a77c20480e582ce38d1c699e1fe98",
     "src/rules/native_processing.rs": "1c879827ff2ccce3aa48c414346b5274b7606e2b85dcd92a80a3d9f22e19acb0",
@@ -922,23 +962,32 @@
     "src/sim/movement/navcom.rs": "aec2a1d44d036a9bfca8601a33af5563845f4312b10a82a3bf0beaab58978a81",
     "src/sim/movement/foot_approach.rs": "74a9aa7be49bf53985fe53c869686e1067c60fdcdb87d388825aa732e9b89d3c",
     "src/sim/world/world_spawn.rs": "e151d964c536f0dd0bc7a5fcb5822c918b688e396d7508ffa72c443b823a33c0",
-    "src/sim/world/lifecycle.rs": "3e4db1c0b2f8c7bfd9cd89734f7ea9add0008d469f9b07acbecc1e6561e6c8cb",
+    "src/sim/world/lifecycle.rs": "e4bd89650ef6ff7d281b838110d3f3000627a344bf4aa79f8c0895b2e4e26881",
     "src/sim/movement/ground_pose.rs": "d1125a5bd870596719304db36326f0f795d9b640591a818828863bdd59585ff9",
     "src/sim/movement/slope_transition.rs": "7d801749be984fc8a225fc2d2228777616ac8ddb24134af10c04f3d5443b6ccf",
     "src/sim/door.rs": "8b5d637d948daf185011ad64f531d08a4402ee95d073178f82064c6f51511d1f",
     "src/sim/game_entity.rs": "bb90a69c52dbeba7eb0ac7408bf9ec2971eb91a817ee561928c90ecd6ac80d1e",
     "src/sim/gate_runtime.rs": "5cb221ca7c03ed975bd3c4997ebd4395916e8864b30b024b489071156f0e2f9a",
-    "src/sim/docking/building_dock.rs": "55eb97904ffad0ab1c44d2c006fa0ed49a5a51d173cbf1df0033c2c5c60fe2d4",
+    "src/sim/docking/building_dock.rs": "067c7de2a0100adbc297bf17db2658025df11be4addc53bf36a4a661d162fae3",
     "src/sim/movement/track_host.rs": "bf3b3c9043cb628e8f4cf4739c40ab67b5bddbcfb5f3c01f83addbcb7c2138e4",
-    "src/sim/movement/per_cell.rs": "a0649422600c3d651a24e7b8798006d96c91eee6d9f4a9ed1a0e834468be6da2",
-    "src/sim/production/production_queue.rs": "17eb860e0b710a4c6252475d0fd7dbb3853d24bc914d0a95229c5434066d357b",
+    "src/sim/movement/per_cell.rs": "fa400e5485011d743896a37334dbcb36db3450a8a672c75d1297549b389ef04b",
+    "src/sim/production/production_queue.rs": "291ac1314f82cb8acc67d9f4103cbe382bcd3e7448fa97133da6a90b706a93d4",
     "src/sim/production/factory.rs": "eced48afbe7ed19744eb343d421771cfd4a9a39873d1730fc05d19c0b22ea050",
-    "src/sim/production/production_queue_tests.rs": "e0e5a85381f435ba72b6c48956f933692c9dade05b0044f5fb7babbbaceaaadf",
-    "src/sim/world/techno_ai.rs": "6984d3ceefbf748aed96083033b1f8aef75fb3eb76499cd68b0cf5c0908afec2",
+    "src/sim/production/production_queue_tests.rs": "018431ef00304ace5b2464bbe6bd3ad51e5f97fe7a0e615059cab45306b4672d",
+    "src/sim/world/techno_ai.rs": "28c3e9b84cff03299eed40b99ba591737f0ec8ec98612970a8a4d8ed6c56beee",
     "src/sim/world/techno_ai/building_missions.rs": "7a3d3f3e1a8de739bfdd3ffaf7c72fe685849992e8d310fc4dad8ad95a89f7df",
-    "src/sim/world/techno_ai/mission_handlers.rs": "8f494c5ea54815567fcebe56d14866272f031d221dccb98d95b340f9b7d200eb",
+    "src/sim/world/techno_ai/mission_handlers.rs": "e771b48285452fbaa3aace1915a00f66fb8089b96997e0ded3977ea6d6c92f0b",
     "src/sim/world/techno_ai/factory_unload_tests.rs": "80dff0629d3900f808ffb59c84ab304f5e2c38fd3c2790df66bcae75a22aa22a",
-    "src/sim/world/projectile_collision.rs": "97c63568fa6ae2ef3a78042fdb0b764ccde15a291de250da391b8a6aabf185fc"
+    "src/sim/world/projectile_collision.rs": "97c63568fa6ae2ef3a78042fdb0b764ccde15a291de250da391b8a6aabf185fc",
+    "src/sim/movement/building_coordinate.rs": "e46958068638643c34e19ff67fec065b1b7e1fa1671b4a7544d78c16ea8aa687",
+    "src/sim/movement/mod.rs": "b65fdbb8ad1dff9fdee48d7d6b6f35eec3a3f51c1584ac7c145b055921eabfbf",
+    "src/sim/production/production_spawn.rs": "ed85e618ad729d096489a0f159b126ab0b235df93c1b0dc8b6f7980365e17233",
+    "src/sim/world/unit_unlimbo_tests.rs": "9e6eef1e55bb53162bee021544683f10d6a944ea8a2f2d63f32808f4aae99aa8",
+    "src/rules/ini_parser.rs": "d97cf575e41bf8f443033d69d40b8b8dbbdfa23bc526694b2a69070293e27b8f",
+    "src/rules/ini_parser_tests.rs": "95002a316f2678d338c76b32109d5229c51f5c7e37a450a44e626508a2ede5fd",
+    "src/rules/ini_value.rs": "67cb6083050a53271f1cd961480e4f0e0a505ab5c87a995a90bc00f6bbcf4f14",
+    "src/rules/retail_ini_fixture.rs": "15bd1177331af3f0394029f303682cddf672f2e2ad88f67fd5d0b7f438e1ac8f",
+    "src/rules/ruleset.rs": "5abdbd6f4adac8a25f1db1eaed61eaeee1d9c9e084a7bc3f6cf12a34ffd4c9da"
   },
-  "payload_sha256": "4be9dcec5b14dbb20bd707bd5da200b3c5c36becde38fb2ea9eeeb71030efbef"
+  "payload_sha256": "2915c344ba2fd60cac1782f7a08a053e0b369a4f1eab0f0c61f9869d277e581b"
 }

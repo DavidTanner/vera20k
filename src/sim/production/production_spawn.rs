@@ -232,10 +232,16 @@ pub(super) fn spawn_selection_at_producer(
             }
             if !require_water && exact_land_vehicle_exit_factory(rules, structure_id) {
                 let producer = sim.substrate.entities.get(producer_id)?;
-                let coord = crate::sim::movement::configured_building_exit_coordinate(
+                let coord = crate::sim::movement::building_exit_coordinate(
                     crate::sim::movement::ground_pose::position_world_coord(&producer.position),
                     rules.object(structure_id)?,
-                )?;
+                    || {
+                        crate::sim::movement::ground_pose::object_get_coords(
+                            producer,
+                            resolved_terrain,
+                        )
+                    },
+                );
                 // 444565's caller owns admission. PathGrid/owner claims cannot
                 // preempt its scoped Unlimbo or choose another exit coordinate.
                 return Some(standard((
@@ -302,11 +308,8 @@ pub fn mark_war_factory_spawn_contact(
 
 pub(super) fn exact_land_vehicle_exit_factory(rules: &RuleSet, structure_id: &str) -> bool {
     rules.object(structure_id).is_some_and(|obj| {
-        !obj.refinery
-            && !obj.weeder
-            && obj.weapons_factory
-            && !obj.naval
-            && obj.exit_coord.is_some()
+        // Original ExitObject44413D..44416F has no ExitCoord presence gate.
+        !obj.refinery && !obj.weeder && obj.weapons_factory && !obj.naval
     })
 }
 
