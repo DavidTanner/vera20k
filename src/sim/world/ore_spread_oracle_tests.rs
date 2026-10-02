@@ -3,7 +3,8 @@
 use super::*;
 use crate::sim::ore_growth::OreGrowthConfig;
 use crate::sim::ore_growth::queue_oracle_tests::{
-    SuppliedFixture, compare_cells, compare_overlay_state, compare_state, corpus, supplied_fixture,
+    SuppliedFixture, compare_cells, compare_dummy, compare_overlay_state, compare_state, corpus,
+    prepare_native_dummy, supplied_fixture,
 };
 use serde_json::{Value, json};
 
@@ -61,6 +62,7 @@ fn world(
         spreads: input["spreads"] == true,
         tiberium_grows_flag: input["fast_growth"] == true,
     };
+    prepare_native_dummy(sim.resolved_terrain.as_ref().unwrap());
     (sim, rules, registry)
 }
 
@@ -78,6 +80,11 @@ fn ore_rung_publishes_native_cell_attributes_before_live_object_turns() {
     sim.session.binary_frame = row["input"]["frame"].as_i64().unwrap() as u32;
     sim.tick_ore_growth_rungs(&rules, Some(&registry));
     compare_overlay_state(&sim, &row["steps"][0]["state"], name);
+    compare_dummy(
+        sim.resolved_terrain.as_ref().unwrap(),
+        &row["steps"][0]["state"],
+        name,
+    );
     compare_cells(
         sim.overlay_grid.as_ref().unwrap(),
         sim.resolved_terrain.as_ref().unwrap(),
@@ -168,6 +175,7 @@ fn app_frames_match_original_ore_driver_histories_and_rng_continuation() {
                 capacity,
                 &format!("{name}: step {index}"),
             );
+            compare_dummy(sim.resolved_terrain.as_ref().unwrap(), &step["state"], name);
             compare_cells(
                 sim.overlay_grid.as_ref().unwrap(),
                 sim.resolved_terrain.as_ref().unwrap(),

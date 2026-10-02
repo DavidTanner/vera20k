@@ -17,7 +17,7 @@ from tools.native_oracle import finish_vectors, provenance, run_checked
 from tools.spatial_oracle.harvest_field import (
     ADD_GROWTH, ADD_SPREAD, FIELD, REDUCE, TIBS, fixture,
 )
-from tools.spatial_oracle.map_queries import dwords
+from tools.spatial_oracle.map_queries import DUMMY, dwords
 from tools.spatial_oracle.refinery_dock import ACTOR, cell, cell_xy
 from tools.spatial_oracle.unit_scatter_state import SP
 from tools.spatial_oracle.unit_source_scatter import MAP, SCENARIO, TABLE
@@ -377,6 +377,18 @@ def natural_cases():
         rows.append(natural_case(f'spread_processor_interior_hole_{suffix}',
                                  cells=neighbors, next_raw=0,
                                  blocked=[[*c, 'overlay'] for c in [(3, 5), (3, 4), (3, 3)]]))
+    # Processor target counting still traverses the native lookup owner before
+    # an occupied source or the Scenario spread flag refuses the spread. Keep
+    # these controls free of Mark, whose later lookups could mask that write.
+    edge_source = dict(natural_case('unused')['cells'][0], cell=[1, 4])
+    edge_queues = [supplied_queue(k, q, [[1, 4]] if k == 0 and q == 'spread' else [])
+                   for k in range(4) for q in FIELDS]
+    rows += [natural_case('spread_processor_source_on_diamond_edge_occupied',
+                          cells=[dict(edge_source, occupied=True)], queue_states=edge_queues,
+                          next_raw=0),
+             natural_case('spread_processor_source_on_diamond_edge_spreads_disabled',
+                          cells=[edge_source], queue_states=edge_queues, spreads=False,
+                          next_raw=0)]
     return rows
 
 
@@ -422,6 +434,14 @@ def output_state(u, read32, capacity, bitmap_coordinates, lifecycle=False):
     if lifecycle:
         result.update(scenario_serial=read32(SCENARIO + 0x214),
                       overlay_registrations=read32(0xA8EC60), pending_deletes=read32(0xB0F6A8))
+        # Snapshot the actual resident Cell without calling a map lookup:
+        # observing its coordinates must not itself stamp the shared dummy.
+        result['dummy'] = dict(cell=list(struct.unpack('<hh', u.mem_read(DUMMY + 0x24, 4))),
+                               overlay=struct.unpack('<i', u.mem_read(DUMMY + 0x44, 4))[0],
+                               density=u.mem_read(DUMMY + 0x11E, 1)[0],
+                               land=struct.unpack('<i', u.mem_read(DUMMY + 0xEC, 4))[0],
+                               level=struct.unpack('<b', u.mem_read(DUMMY + 0x11B, 1))[0],
+                               slope=u.mem_read(DUMMY + 0x11C, 1)[0], flags=read32(DUMMY + 0x140))
     return result
 
 
@@ -741,6 +761,8 @@ if __name__ == '__main__':
               'original Tiberium constructor defaults and ReadINI timer/percentage stores. '
               'Original Mark SpreadCellGerminate density before growth admission, including '
               'eight same-class versus seven matching neighbors in an interior empty hole. '
+              'Retained shared Dummy state, including edge neighbor lookups before occupied '
+              'or Scenario-disabled source refusal. '
               'Natural rows observe original Scenario serial allocation, ObjectUnInit/announce '
               'and pending Overlay state; two explicit full deferred drains preserve serial/cell '
               'effects while finalizing successful transient Overlays and retaining Terrain-refused limbo.',
@@ -753,6 +775,7 @@ if __name__ == '__main__':
                       'growth_processor': GROWTH_PROCESSOR, 'grow_tiberium': GROW_CELL,
                       'place_tiberium': PLACE, 'can_place_tiberium': CAN_PLACE,
                       'spread_tiberium': SPREAD_CELL, 'spread_processor': SPREAD_PROCESSOR,
+                      'neighbor_cell': 0x481810, 'packed_cell_lookup': 0x5657A0,
                       'spread_driver': SPREAD_DRIVER, 'growth_driver': GROWTH_DRIVER,
                       'ranged': RANGED, 'ranged_inline_draw': 0x65C837,
                       'overlay_constructor': 0x5FC380, 'overlay_mark': 0x5FC570,
@@ -782,6 +805,10 @@ if __name__ == '__main__':
                      'Natural germination events read the original matching-count IDIV inputs '
                      'and return density; enqueue_growth density/overlay are read from the '
                      'original Get_CellClass EAX pointer at7235C1 before its admission compare. '
+                     'Every natural before/step/final/after_drains state reads the resident '
+                     'DummyABDC50 coordinate, overlay/density, land, level/slope and raw flags '
+                     'without invoking a lookup. Its retained fields come from the existing '
+                     'prepared shared fixture, not a full MapClass/CellClass startup claim. '
                      'The existing tree at16,16 is outside this Size4x4 diamond and is used '
                      'only as the real object identity of declared spawner-blocked targets.',
                      'Driver rows invoke the complete original functions per declared frame. '
@@ -824,6 +851,7 @@ if __name__ == '__main__':
                       'tibtre': Path(__file__).with_name('tibtre.py'),
                       'unit_scatter_state': Path(__file__).with_name('unit_scatter_state.py'),
                       'unit_source_scatter': Path(__file__).with_name('unit_source_scatter.py'),
+                      'map_queries': Path(__file__).with_name('map_queries.py'),
                       'building_body_rules': Path(__file__).with_name('building_body_rules.py'),
                       'bridge_constructor': Path(__file__).with_name('bridge_constructor.py'),
                       'bridge_landing_inputs': Path('tools/rules_oracle/bridge_landing_inputs.py'),

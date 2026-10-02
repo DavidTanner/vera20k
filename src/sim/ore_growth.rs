@@ -26,7 +26,7 @@ use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::rng::SimRng;
 use crate::sim::tiberium::{
     ADJACENT_OFFSETS, NativeCellObjectView, NewTiberiumAdmission, PlaceTiberiumContext,
-    TiberiumPlacementObjectContext, can_place_new_tiberium, can_spread_tiberium, place_tiberium,
+    TiberiumPlacementObjectContext, admit_new_tiberium_target, can_spread_tiberium, place_tiberium,
     spread_tiberium,
 };
 use crate::sim::timer::CdTimer;
@@ -1138,8 +1138,6 @@ impl OreGrowthState {
                 new_cell_admission,
                 entry.rx,
                 entry.ry,
-                self.map_width,
-                self.effective_map_height(),
             );
             if valid_targets == 0 {
                 self.native_tiberium.classes[class_idx]
@@ -1595,31 +1593,24 @@ fn current_tiberium_type(
     overlay_registry.tiberium_type_for_overlay(tiberium_types, overlay_id)
 }
 
-/// Count admitted neighbors without consuming RNG for the native spread budget.
-#[allow(clippy::too_many_arguments)]
+/// Count admitted neighbors without RNG, retaining every native map lookup's
+/// shared-dummy side effect before the source's own spread admission.
 fn count_native_spread_targets(
     overlay_grid: &OverlayGrid,
     source_object_cells: &BTreeSet<(u16, u16)>,
     new_cell_admission: Option<NewTiberiumAdmission<'_>>,
     rx: u16,
     ry: u16,
-    map_width: u16,
-    map_height: u16,
 ) -> u8 {
     let mut count = 0u8;
     for &(dx, dy) in &ADJACENT_OFFSETS {
-        let nx = rx as i32 + dx;
-        let ny = ry as i32 + dy;
-        if nx < 0 || ny < 0 || nx >= map_width as i32 || ny >= map_height as i32 {
-            continue;
-        }
+        let target = (
+            (rx as i16).wrapping_add(dx as i16) as u16,
+            (ry as i16).wrapping_add(dy as i16) as u16,
+        );
         if new_cell_admission.is_some_and(|admission| {
-            can_place_new_tiberium(
-                overlay_grid,
-                source_object_cells,
-                admission,
-                (nx as u16, ny as u16),
-            )
+            admit_new_tiberium_target(overlay_grid, source_object_cells, admission, target)
+                .is_some()
         }) {
             count = count.saturating_add(1);
         }

@@ -288,6 +288,12 @@ pub(crate) fn supplied_fixture(row: &Value) -> SuppliedFixture {
     );
     if natural {
         let shape = NativeOverlayMapShape::new(i32::from(rect.0), i32::from(rect.1));
+        let allocated: Vec<_> = shape
+            .recalc_cells()
+            .into_iter()
+            .map(|(x, y)| (x as u16, y as u16))
+            .collect();
+        prepare_native_dummy(&terrain);
         for y in 0..33 {
             for x in 0..33 {
                 terrain.cell_mut(x, y).unwrap().outside_playfield =
@@ -296,6 +302,7 @@ pub(crate) fn supplied_fixture(row: &Value) -> SuppliedFixture {
                     input["tile_allows_tiberium"].as_bool().unwrap_or(true);
             }
         }
+        terrain.test_set_native_allocated_cells(&allocated);
     }
     let mut occupancy = OccupancyGrid::new();
     for c in input["cells"].as_array().unwrap() {
@@ -496,6 +503,7 @@ fn compare_case(row: &Value) {
         ),
     );
     compare_overlay_state(&constructors, &row["before"], name);
+    compare_dummy(&terrain, &row["before"], name);
     compare_state(&state, &rng, &row["before"], capacity, name);
     let receiver = TiberiumTypeId(input["receiver"].as_u64().unwrap() as u8);
     let cell = at(&input["target"]);
@@ -660,6 +668,7 @@ fn compare_case(row: &Value) {
         }
         total_draws += draws.len();
         if let Some(expected) = row["steps"].get(step) {
+            compare_dummy(&terrain, &expected["state"], name);
             compare_overlay_state(&constructors, &expected["state"], name);
             assert_eq!(
                 json!(draws.len()),
@@ -676,6 +685,7 @@ fn compare_case(row: &Value) {
             compare_cells(&grid, &terrain, &expected["cells"], name);
         }
         if let Some(expected) = row["after_drains"].get(step) {
+            compare_dummy(&terrain, &expected["state"], name);
             constructors.load_objects.drain_deferred().unwrap();
             compare_overlay_state(&constructors, &expected["state"], name);
             compare_cells(&grid, &terrain, &expected["cells"], name);
@@ -684,9 +694,40 @@ fn compare_case(row: &Value) {
     assert_eq!(json!(total_draws), row["draw_count"], "{name}: RNG draws");
     compare_state(&state, &rng, &row["state"], capacity, name);
     compare_overlay_state(&constructors, &row["state"], name);
+    compare_dummy(&terrain, &row["state"], name);
     compare_cells(&grid, &terrain, &row["cells"], name);
     let next: Vec<_> = (0..4).map(|_| rng.next_u32()).collect();
     assert_eq!(json!(next), row["next_random"], "{name}: RNG continuation");
+}
+
+/// The original fixture maps zeroed resident dummy bytes without executing
+/// Scenario startup. Supply that same declared input, not retail ctor defaults.
+pub(crate) fn prepare_native_dummy(terrain: &ResolvedTerrainGrid) {
+    let dummy = terrain.shared_cell_dummy();
+    dummy.stamp_coord(0, 0);
+    dummy.write_overlay_identity_state(0, 0);
+}
+
+pub(crate) fn compare_dummy(terrain: &ResolvedTerrainGrid, expected: &Value, name: &str) {
+    let Some(expected) = expected.get("dummy") else {
+        return;
+    };
+    let dummy = terrain.shared_cell_dummy();
+    let snapshot = dummy.snapshot();
+    let (overlay, density) = dummy.overlay_identity_state();
+    assert_eq!(
+        json!({
+            "cell": [snapshot.coord.0, snapshot.coord.1],
+            "overlay": overlay,
+            "density": density,
+            "land": dummy.land_type(),
+            "level": snapshot.level,
+            "slope": snapshot.slope_type,
+            "flags": dummy.raw_flags(),
+        }),
+        *expected,
+        "{name}: retained native dummy"
+    );
 }
 
 pub(crate) fn compare_overlay_state(sim: &Simulation, expected: &Value, name: &str) {
@@ -790,7 +831,28 @@ fn natural_spread_processors_and_drivers_match_native_cells_queues_timers_and_rn
             )
         })
         .collect();
-    assert_eq!(rows.len(), 66, "native natural-spread coverage");
+    assert_eq!(rows.len(), 68, "native natural-spread coverage");
+    for row in rows {
+        compare_case(row);
+    }
+}
+
+#[test]
+fn same_frame_ore_edge_probes_update_retained_dummy_when_source_refuses() {
+    let corpus = corpus();
+    let rows: Vec<_> = corpus["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| {
+            matches!(
+                row["input"]["name"].as_str().unwrap(),
+                "spread_processor_source_on_diamond_edge_occupied"
+                    | "spread_processor_source_on_diamond_edge_spreads_disabled"
+            )
+        })
+        .collect();
+    assert_eq!(rows.len(), 2, "native no-placement edge controls");
     for row in rows {
         compare_case(row);
     }

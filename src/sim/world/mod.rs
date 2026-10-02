@@ -3592,11 +3592,7 @@ impl Simulation {
                 // publish as this batch without changing admission or RNG order.
                 // Native cell results: tools/spatial_oracle/ore_queue.json.
                 let marked = grid.pending_dirty_cells()[dirty_start..].to_vec();
-                if let Some(terrain) = self.resolved_terrain.as_mut() {
-                    for cell in marked {
-                        grid.recalculate_runtime_cell(terrain, registry, cell);
-                    }
-                }
+                self.publish_tiberium_cells(rules, registry, &marked);
                 // No identity allocator runs between these ordinary ore
                 // constructors. Their stock CellAnim branch is absent. Apply
                 // their ordered registry/ID effects before live-object AI;
@@ -3604,10 +3600,28 @@ impl Simulation {
                 // of the intervening Scenario RNG and queue mutations.
                 self.publish_overlay_constructions(spread.into_overlay_constructions());
             }
-            // Use the existing publication owner before movement/path readers,
-            // retaining dirty cells for the normal render-output finalizer.
-            self.finish_terrain_navigation_changes(rules, &[]);
         }
+    }
+
+    /// Overlay Mark5FC570 ->Recalc47D2B0 completes before its Logic caller
+    /// returns. Both the global ore rung and a Terrain AI slot must publish
+    /// movement costs before the next object; retain render dirty receipts.
+    pub(crate) fn publish_tiberium_cells(
+        &mut self,
+        rules: &RuleSet,
+        registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        cells: &[(u16, u16)],
+    ) {
+        if let (Some(grid), Some(terrain)) =
+            (self.overlay_grid.as_mut(), self.resolved_terrain.as_mut())
+        {
+            for &cell in cells {
+                if grid.cell(cell.0, cell.1).overlay_id.is_some() {
+                    grid.recalculate_runtime_cell(terrain, registry, cell);
+                }
+            }
+        }
+        self.finish_terrain_navigation_changes(rules, &[]);
     }
 
     pub(crate) fn publish_overlay_constructions(

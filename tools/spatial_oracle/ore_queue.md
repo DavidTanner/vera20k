@@ -4,9 +4,9 @@
 [`harvest_field` fixture](harvest_field.py) and, for natural spread, the
 [`TIBTRE` fixture](tibtre.py) with original Overlay construction. It supplies prior map/queue state;
 the enqueue, rebuild, Cell predicates, iterator, heap operations and Scenario RNG
-run original instructions. `ore_queue.json` contains 126 body cases: the retained
+run original instructions. `ore_queue.json` contains 128 body cases: the retained
 52 direct enqueue calls, three full `CellClass::Reduce_Tiberium` callers, five full
-`TiberiumClass::GrowthProcessor` callers, 45 full natural `SpreadProcessor` calls,
+`TiberiumClass::GrowthProcessor` callers, 47 full natural `SpreadProcessor` calls,
 16 complete `SpreadDriver_AllTypes` histories, and five growth-before-spread
 driver histories. Sixteen selected constructor/INI reader rows independently
 establish signed timer values and stock percentages. The sidecar records executable identity,
@@ -142,6 +142,26 @@ records every allocated diamond cell, including empty and non-tiberium cells.
 Map lookup's resident dummy is observed from its original retained coordinates;
 no boundary or admission return is supplied by an observer.
 
+Every natural `before`, per-step `state`, final `state` and explicit
+`after_drains.state` now includes `dummy`, read directly from the original
+resident Cell at `0x00ABDC50`: packed coordinate `+0x24`, overlay `+0x44`, density
+`+0x11E`, land `+0xEC`, signed level `+0x11B`, slope `+0x11C` and raw flags
+`+0x140`. Taking this snapshot invokes no map lookup and therefore cannot stamp
+the dummy. These fields retain the existing prepared fixture's initial bytes;
+this is not a complete MapClass/CellClass startup comparison.
+
+Two additional diamond-edge controls queue valid Ore at `(1,4)` with either an
+occupied source or the Scenario spread bit disabled. Original processor target
+counting (`0x00722547`) calls neighbor lookup `0x00481810`, then original packed
+map lookup `0x005657A0`, before source refusal. Both finish with dummy coordinate
+`(0,3)`, consume one budget RNG word, perform no constructor and retain serial
+zero. The other observed dummy fields stay zero in this fixture. The source is
+reinserted once at zero priority, giving array count 2 and heap index 1. These
+controls expose the lookup effect without a successful Mark's later neighbor
+queries masking it. They use the same pinned executable, Size4x4 diamond,
+GameActive1, seed1/frame100 and supplied first raw word zero as the surrounding
+natural rows; the original lookup, admission and RNG instructions execute.
+
 `SpreadDriver_AllTypes` starts at **`0x007221B0`**, the original function called
 by Logic at `0x0055B4DC`. Its only Scenario admission gate is the Basic growth
 byte at `+0x34A6`. The SpecialFlags spread bit is consumed by source predicates,
@@ -246,7 +266,7 @@ The shared fixture answers OS Interlocked imports and presentation sinks.
 rectangles; radar/tactical dirtiness are service sinks. The full-removal
 RecalcAttributes sink publishes declared bare land. No admission, growth, density,
 queue, rebuild, iterator, timer or RNG return is substituted. The five retained
-growth-processor controls use existing-cell Place. The 63 natural-spread/driver
+growth-processor controls use existing-cell Place. The 68 natural-spread/driver
 rows inherit TIBTRE's allocator/free storage services and empty dirty sinks;
 original Overlay construction/Mark and cell attribute recalculation run. Timers'
 opaque `+4` padding is declared zero, including the uninitialized driver caller
@@ -299,18 +319,27 @@ consumers. No second queue, timer, reader or admission owner was introduced.
 Original numeric comparisons include negative reloads, signed wrap, stock
 659/2999 fast-growth timers and all following RNG state.
 
-New Overlay Mark attributes also reach the resolved-cell and navigation owners
-in the ore rung, before object AI. This uses the existing runtime Recalc and
-navigation publication methods and retains render dirty receipts. Recalculation
+New Overlay Mark attributes reach the resolved-cell and navigation owners in
+the ore rung and before each emitting Terrain AI slot returns to Logic. Both
+call one World publication action using the existing runtime Recalc and private
+navigation owner, retaining render dirty receipts. Recalculation
 can be batched at this boundary: an already-stamped cell fails target admission
 at its overlay-identity gate before land is read, while growth and source gates
 use density/slope. This changes no ore-loop admission or draw ordering. The
-production test checks native LandType results at this boundary and the path/
-movement caches' consistency with those cells, rather than relying on the end
-of frame to mask a stale view.
+production tests check native LandType results and current path/movement costs
+before later object turns. The Terrain slot regression uses the production
+reader-established Clear versus Tiberium Foot/Track/Wheel costs (100/100/100
+versus 90/70/50), which equal-cost synthetic rows previously hid.
+
+Both the target pre-count and directional spread scan resolve through the
+existing map identity owner before admission. Their signed-word neighbor
+coordinates preserve fixed-grid aliases and shared dummy stamps, including
+occupied or Scenario-disabled edge sources which never reach Overlay Mark.
+The native corpus and Rust fixture observe this retained dummy without another
+lookup; the fixture's allocated mask matches the supplied native diamond.
 
 The shared supplied-state fixture builds both direct-owner comparisons and the
-18 app-frame histories. The direct comparison publishes actual owner-produced
+21 app-frame histories. The direct comparison publishes actual owner-produced
 Mark dirtiness through the same cell Recalc before inspecting cells; native
 expected fields never initialize this publication. Native constructor refusal
 under ordinary Terrain remains covered. Original TIBTRE execution still has the
@@ -332,3 +361,17 @@ issue #714); `MaxDensity` remains the existing constructor constant 12, without
 adding a new INI reader. Rust native fixtures explicitly set the resource
 OverlayType's `Land=Tiberium`, matching the original fixture's `+0x298=5`;
 `Tiberium=yes` alone does not establish that independent Mark gate.
+
+Final integrated Rust validation (source `b47c26aa`, after main `35fb0944`):
+9,427 retail library tests passed, 226 ignored; Clippy exited successfully;
+459 Python tests passed with four skipped; original 126 body/16 reader reproduction
+passed. The release AnyTown run observed 16 previously empty edge cells become
+ore at density 3 in the first frame, plus four density changes among 18 TIBTRE
+neighbor observations over 2,600 ticks. The 800x600 GPU readback and v5 sealed
+receipts passed the production observation validator; they do not certify native
+pixels or the whole Scenario. Reproduce the edge run with
+`tools/map_observation.ore-spread.example.json` through the existing observation
+wrapper. The `natural_spread_followup` stage in `ore_queue.validation.json` keeps
+source/native/binary/input/result hashes and the earlier enqueue evidence intact.
+The value-owner consolidation also resolves issue #713. Adjacent authored-crate
+Land1-versus5 admission remains issue #993, unchanged by this kernel move.

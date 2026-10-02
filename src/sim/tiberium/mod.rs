@@ -8,6 +8,7 @@
 pub(crate) mod test_support;
 
 use crate::map::bridge_facts::{BRIDGE_FLAG_DESTROYED_OR_RAMP, BRIDGE_FLAG_STRUCTURAL};
+use crate::map::cell_index::NativeCellIdentity;
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
@@ -22,16 +23,7 @@ use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::rng::SimRng;
 
 /// 8 adjacent directions for spread: N, NE, E, SE, S, SW, W, NW.
-pub(crate) const ADJACENT_OFFSETS: [(i32, i32); 8] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
+pub(crate) const ADJACENT_OFFSETS: [(i32, i32); 8] = crate::util::direction::DIRECTION_DELTAS;
 
 /// Mutable state needed to apply a shared tiberium reduction.
 pub struct ReduceTiberiumContext<'a> {
@@ -242,25 +234,39 @@ pub(crate) fn live_cell_rejects_tiberium(
     false
 }
 
-/// Shared empty-cell admission for every production placement path.
-pub(crate) fn can_place_new_tiberium(
+/// Shared lookup and empty-cell admission for every production placement path.
+///
+/// Adjacent_Cell481810 ->GetCell5657A0 precedes CanPlace4838E0, even if
+/// the source later refuses spreading. Resolve through the map owner first:
+/// misses stamp the live dummy; fixed-grid aliases use the returned real
+/// Cell's coordinate. A valid loaded map allocates every admitted diamond
+/// cell, so a dummy cannot become a new resource target. Original edge
+/// refusal controls: tools/spatial_oracle/ore_queue.md.
+pub(crate) fn admit_new_tiberium_target(
     overlay_grid: &OverlayGrid,
     source_object_cells: &std::collections::BTreeSet<(u16, u16)>,
     admission: NewTiberiumAdmission<'_>,
     cell: (u16, u16),
-) -> bool {
+) -> Option<(u16, u16)> {
+    let identity = admission
+        .resolved_terrain
+        .native_cell_identity((cell.0 as i16, cell.1 as i16));
+    if identity == NativeCellIdentity::Dummy {
+        return None;
+    }
+    let coord = admission.resolved_terrain.native_cell_coord(identity);
+    let cell = (coord.0 as u16, coord.1 as u16);
     if cell.0 >= overlay_grid.width()
         || cell.1 >= overlay_grid.height()
         || source_object_cells.contains(&cell)
         || overlay_grid.cell(cell.0, cell.1).overlay_id.is_some()
     {
-        return false;
+        return None;
     }
-    let Some(terrain_cell) = admission.resolved_terrain.cell(cell.0, cell.1) else {
-        return false;
-    };
-    resolved_cell_accepts_tiberium(terrain_cell)
-        && !live_cell_rejects_tiberium(cell, admission.live_objects)
+    let terrain_cell = admission.resolved_terrain.cell(cell.0, cell.1)?;
+    (resolved_cell_accepts_tiberium(terrain_cell)
+        && !live_cell_rejects_tiberium(cell, admission.live_objects))
+    .then_some(cell)
 }
 
 /// CellClass::CanSpreadTiberium483690 source admission, shared by queues
@@ -361,9 +367,7 @@ pub(crate) fn place_tiberium(
     let current = *ctx.overlay_grid.cell(cell.0, cell.1);
     if current.overlay_id.is_none() {
         let admission = ctx.new_cell_admission?;
-        if !can_place_new_tiberium(ctx.overlay_grid, ctx.source_object_cells, admission, cell) {
-            return None;
-        }
+        admit_new_tiberium_target(ctx.overlay_grid, ctx.source_object_cells, admission, cell)?;
         let variants = ctx.overlay_registry.flat_tiberium_variant_ids(ty)?;
         let overlay_id = variants[ctx.rng.next_range_u32(12) as usize];
         // Overlay ctor5FC380 ->Cell47C550 refuses Unlimbo on any Terrain,
@@ -528,19 +532,18 @@ pub(crate) fn spread_tiberium(
     let admission = ctx.new_cell_admission?;
     for step in 0..8 {
         let (dx, dy) = ADJACENT_OFFSETS[(start + step) % 8];
-        let x = i32::from(source.0) + dx;
-        let y = i32::from(source.1) + dy;
-        if x < 0
-            || y < 0
-            || x >= i32::from(ctx.overlay_grid.width())
-            || y >= i32::from(ctx.overlay_grid.height())
-        {
+        let requested = (
+            (source.0 as i16).wrapping_add(dx as i16) as u16,
+            (source.1 as i16).wrapping_add(dy as i16) as u16,
+        );
+        let Some(target) = admit_new_tiberium_target(
+            ctx.overlay_grid,
+            ctx.source_object_cells,
+            admission,
+            requested,
+        ) else {
             continue;
-        }
-        let target = (x as u16, y as u16);
-        if !can_place_new_tiberium(ctx.overlay_grid, ctx.source_object_cells, admission, target) {
-            continue;
-        }
+        };
         //48385C returns this first PlaceTiberium result; it does not retry
         // another neighbour after a failed placement on an admitted target.
         return place_tiberium(ctx, target, source_type, 3);

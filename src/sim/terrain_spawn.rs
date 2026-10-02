@@ -392,14 +392,8 @@ pub(crate) fn tick_terrain_object_ai(
     // Overlay Mark5FC570 ->Cell Recalc47D2B0 is synchronous: a later
     // Logic object (including a miner) sees the new LandType this frame.
     let placed_cell = placed.as_ref().map(TiberiumPlacement::cell);
-    if let (Some(cell), Some(grid), Some(terrain), Some(registry)) = (
-        placed_cell,
-        sim.overlay_grid.as_mut(),
-        sim.resolved_terrain.as_mut(),
-        overlay_registry,
-    ) && grid.cell(cell.0, cell.1).overlay_id.is_some()
-    {
-        grid.recalculate_runtime_cell(terrain, registry, cell);
+    if let (Some(cell), Some(registry)) = (placed_cell, overlay_registry) {
+        sim.publish_tiberium_cells(rules, registry, &[cell]);
     }
     sim.publish_overlay_constructions(
         placed.and_then(TiberiumPlacement::into_overlay_construction),
@@ -698,7 +692,7 @@ mod tests {
     use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
     use crate::sim::ore_growth::OreGrowthState;
     use crate::sim::tiberium::{
-        ADJACENT_OFFSETS, can_place_new_tiberium, resolved_cell_accepts_tiberium,
+        ADJACENT_OFFSETS, admit_new_tiberium_target, resolved_cell_accepts_tiberium,
     };
 
     #[test]
@@ -1242,7 +1236,8 @@ mod tests {
             let admission = NewTiberiumAdmission::runtime(&terrain, context);
 
             assert_eq!(
-                can_place_new_tiberium(&overlay_grid, &spawner_cells, admission, (11, 10)),
+                admit_new_tiberium_target(&overlay_grid, &spawner_cells, admission, (11, 10))
+                    .is_some(),
                 expected,
                 "{type_name}"
             );
@@ -1258,18 +1253,14 @@ mod tests {
         let no_objects = crate::sim::tiberium::test_support::NoLiveObjects::new();
         let admission = NewTiberiumAdmission::runtime(&terrain, no_objects.context());
 
-        assert!(can_place_new_tiberium(
-            &overlay_grid,
-            &spawning_terrain_cells,
-            admission,
-            (13, 10)
-        ));
-        assert!(!can_place_new_tiberium(
-            &overlay_grid,
-            &spawning_terrain_cells,
-            admission,
-            (12, 10)
-        ));
+        assert!(
+            admit_new_tiberium_target(&overlay_grid, &spawning_terrain_cells, admission, (13, 10))
+                .is_some()
+        );
+        assert!(
+            admit_new_tiberium_target(&overlay_grid, &spawning_terrain_cells, admission, (12, 10))
+                .is_none()
+        );
     }
 
     #[test]

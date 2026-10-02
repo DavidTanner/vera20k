@@ -83137,6 +83137,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -84507,6 +84519,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            6,
+            2
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 2,
         "pending_deletes": 2,
         "rng_indices": [
@@ -85486,6 +85510,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                6,
+                2
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 2,
             "pending_deletes": 2,
             "rng_indices": [
@@ -85627,6 +85663,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -87881,6 +87929,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            2,
+            2
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 5,
         "pending_deletes": 5,
         "rng_indices": [
@@ -89744,6 +89804,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                2,
+                2
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 5,
             "pending_deletes": 5,
             "rng_indices": [
@@ -89885,6 +89957,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -91591,6 +91675,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            2,
+            6
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 3,
         "pending_deletes": 3,
         "rng_indices": [
@@ -92906,6 +93002,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                2,
+                6
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 3,
             "pending_deletes": 3,
             "rng_indices": [
@@ -93047,6 +93155,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -93852,6 +93972,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -94265,6 +94397,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -94406,6 +94550,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -95420,6 +95576,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -96043,6 +96211,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -96184,6 +96364,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -97554,6 +97746,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            6,
+            2
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 2,
         "pending_deletes": 2,
         "rng_indices": [
@@ -98533,6 +98737,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                6,
+                2
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 2,
             "pending_deletes": 2,
             "rng_indices": [
@@ -98657,6 +98873,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -99418,6 +99646,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -99803,6 +100043,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -99944,6 +100196,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -100737,6 +101001,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -101139,6 +101415,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -101280,6 +101568,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -102208,6 +102508,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -102702,6 +103014,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -102843,6 +103167,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -103984,6 +104320,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -104696,6 +105044,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -104837,6 +105197,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -105982,6 +106354,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -106703,6 +107087,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -106844,6 +107240,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -107772,6 +108180,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -108266,6 +108686,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -108407,6 +108839,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -109335,6 +109779,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -109829,6 +110285,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -109970,6 +110438,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -110898,6 +111378,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -111392,6 +111884,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -111533,6 +112037,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -112461,6 +112977,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -112955,6 +113483,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -113096,6 +113636,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -114024,6 +114576,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -114518,6 +115082,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -114659,6 +115235,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -115755,6 +116343,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 0,
         "rng_indices": [
@@ -116417,6 +117017,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 0,
             "rng_indices": [
@@ -116558,6 +117170,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -117683,6 +118307,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -118382,6 +119018,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -118523,6 +119171,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -119657,6 +120317,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -120356,6 +121028,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -120497,6 +121181,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -121631,6 +122327,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -122330,6 +123038,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -122471,6 +123191,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -123605,6 +124337,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -124304,6 +125048,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -124445,6 +125201,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -125356,6 +126124,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -125875,6 +126655,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -126016,6 +126808,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -126927,6 +127731,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -127446,6 +128262,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -127587,6 +128415,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -128498,6 +129338,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -129017,6 +129869,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -129158,6 +130022,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -130071,6 +130947,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -130590,6 +131478,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -130731,6 +131631,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -131855,6 +132767,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            1,
+            2
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -132587,6 +133511,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                1,
+                2
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -132728,6 +133664,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -133615,6 +134563,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -134109,6 +135069,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -134250,6 +135222,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -135341,6 +136325,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -136040,6 +137036,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -136181,6 +137189,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -137272,6 +138292,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -137971,6 +139003,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -138112,6 +139156,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -139203,6 +140259,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -139902,6 +140970,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -140043,6 +141123,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -141134,6 +142226,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -141833,6 +142937,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -141974,6 +143090,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -143065,6 +144193,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -143764,6 +144904,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -143918,6 +145070,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -145202,6 +146366,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            2,
+            1
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -146029,6 +147205,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                2,
+                1
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -146514,6 +147702,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -148113,6 +149313,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -148976,6 +150188,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -149469,6 +150693,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -150616,6 +151852,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -151019,6 +152267,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -151512,6 +152772,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -152960,6 +154232,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -153664,6 +154948,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -154200,6 +155496,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -155710,6 +157018,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -156435,6 +157755,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -156954,6 +158286,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -158801,6 +160145,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -159878,6 +161234,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -160059,6 +161427,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -161050,6 +162430,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -161609,6 +163001,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -161790,6 +163194,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -165277,6 +166693,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -168332,6 +169760,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -168473,6 +169913,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -169491,6 +170943,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -170118,6 +171582,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -170259,6 +171735,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -171051,6 +172539,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -171452,6 +172952,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -171576,6 +173088,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -172341,6 +173865,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -172730,6 +174266,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -172871,6 +174419,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -173668,6 +175228,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -174074,6 +175646,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -174215,6 +175799,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -177504,6 +179100,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            2,
+            6
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 8,
         "pending_deletes": 8,
         "rng_indices": [
@@ -178487,6 +180095,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                6,
+                2
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 2,
             "pending_deletes": 2,
             "rng_indices": [
@@ -178932,6 +180552,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                6,
+                2
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 2,
             "pending_deletes": 2,
             "rng_indices": [
@@ -179377,6 +181009,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                6,
+                2
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 2,
             "pending_deletes": 2,
             "rng_indices": [
@@ -181315,6 +182959,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                2,
+                2
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 7,
             "pending_deletes": 7,
             "rng_indices": [
@@ -181860,6 +183516,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                2,
+                2
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 7,
             "pending_deletes": 7,
             "rng_indices": [
@@ -182799,6 +184467,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                2,
+                6
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 8,
             "pending_deletes": 8,
             "rng_indices": [
@@ -182991,6 +184671,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -184991,6 +186683,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -186555,6 +188259,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -186696,6 +188412,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -187729,6 +189457,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -188371,6 +190111,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -188512,6 +190264,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -189543,6 +191307,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -189944,6 +191720,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -190571,6 +192359,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -190986,6 +192786,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -191127,6 +192939,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -191927,6 +193751,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -192328,6 +194164,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -192729,6 +194577,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -192870,6 +194730,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -193891,6 +195763,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -194518,6 +196402,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -194659,6 +196555,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -196142,6 +198050,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -196769,6 +198689,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -197514,6 +199446,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -198072,6 +200016,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -198213,6 +200169,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -199696,6 +201664,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -200323,6 +202303,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -201068,6 +203060,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -201626,6 +203630,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -201767,6 +203783,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -202798,6 +204826,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -203199,6 +205239,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -203826,6 +205878,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -204241,6 +206305,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -204382,6 +206458,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -206443,6 +208531,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            2,
+            6
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 4,
         "pending_deletes": 4,
         "rng_indices": [
@@ -208112,6 +210212,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                2,
+                6
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 4,
             "pending_deletes": 4,
             "rng_indices": [
@@ -208253,6 +210365,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -209642,6 +211766,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            6,
+            2
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 2,
         "pending_deletes": 2,
         "rng_indices": [
@@ -210640,6 +212776,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                6,
+                2
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 2,
             "pending_deletes": 2,
             "rng_indices": [
@@ -210764,6 +212912,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -211569,6 +213729,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -211997,6 +214169,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -212121,6 +214305,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -212962,6 +215158,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -213375,6 +215583,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -213778,6 +215998,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -214181,6 +216413,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -214305,6 +216549,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -215146,6 +217402,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -215559,6 +217827,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -215962,6 +218242,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -216365,6 +218657,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -216506,6 +218810,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -217597,6 +219913,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -218296,6 +220624,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -218437,6 +220777,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -219533,6 +221885,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 0,
         "rng_indices": [
@@ -220195,6 +222559,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 0,
             "rng_indices": [
@@ -220645,6 +223021,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -220784,6 +223172,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -221906,6 +224306,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -222609,6 +225021,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -223038,6 +225462,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 0,
             "rng_indices": [
@@ -223177,6 +225613,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -224283,6 +226731,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 0,
         "rng_indices": [
@@ -224949,6 +227409,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 0,
             "rng_indices": [
@@ -225090,6 +227562,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -225977,6 +228461,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -226472,6 +228968,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 0,
             "pending_deletes": 0,
             "rng_indices": [
@@ -226613,6 +229121,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -227803,6 +230323,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -228507,6 +231039,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -228648,6 +231192,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -229868,6 +232424,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -230602,6 +233170,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -230743,6 +233323,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 0,
         "pending_deletes": 0,
         "rng_indices": [
@@ -231952,6 +234544,18 @@
             "type_id": 3
           }
         ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
         "overlay_registrations": 1,
         "pending_deletes": 1,
         "rng_indices": [
@@ -232686,6 +235290,18 @@
                 "type_id": 3
               }
             ],
+            "dummy": {
+              "cell": [
+                0,
+                0
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
             "overlay_registrations": 1,
             "pending_deletes": 1,
             "rng_indices": [
@@ -232694,6 +235310,3220 @@
             ],
             "rng_sha256": "d622c31dc17e82a0cb14810d6c3aa748b2545df18bd54f4554ec3cff4045e9d7",
             "scenario_serial": 1
+          }
+        }
+      ]
+    },
+    {
+      "before": {
+        "classes": [
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 1,
+              "bitmap_cells": [
+                [
+                  1,
+                  4
+                ]
+              ],
+              "bitmap_indices": [
+                0
+              ],
+              "entries": [
+                {
+                  "cell": [
+                    1,
+                    4
+                  ],
+                  "priority_bits": 0
+                }
+              ],
+              "heap_indices": [
+                0
+              ]
+            },
+            "spread_timer": [
+              -1,
+              0,
+              0
+            ],
+            "type_id": 0
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              5
+            ],
+            "type_id": 1
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              7
+            ],
+            "type_id": 2
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              11
+            ],
+            "type_id": 3
+          }
+        ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
+        "overlay_registrations": 0,
+        "pending_deletes": 0,
+        "rng_indices": [
+          0,
+          103
+        ],
+        "rng_sha256": "9a636913e754c00e67104eb49c3dd8f8467dda2581c64aae7f5be8e2d0a5b6e4",
+        "scenario_serial": 0
+      },
+      "bitmap_coordinate_map": [
+        {
+          "cell": [
+            1,
+            4
+          ],
+          "index": 0
+        },
+        {
+          "cell": [
+            2,
+            3
+          ],
+          "index": 1
+        },
+        {
+          "cell": [
+            3,
+            2
+          ],
+          "index": 2
+        },
+        {
+          "cell": [
+            4,
+            1
+          ],
+          "index": 3
+        },
+        {
+          "cell": [
+            2,
+            4
+          ],
+          "index": 4
+        },
+        {
+          "cell": [
+            3,
+            3
+          ],
+          "index": 5
+        },
+        {
+          "cell": [
+            4,
+            2
+          ],
+          "index": 6
+        },
+        {
+          "cell": [
+            2,
+            5
+          ],
+          "index": 8
+        },
+        {
+          "cell": [
+            3,
+            4
+          ],
+          "index": 9
+        },
+        {
+          "cell": [
+            4,
+            3
+          ],
+          "index": 10
+        },
+        {
+          "cell": [
+            5,
+            2
+          ],
+          "index": 11
+        },
+        {
+          "cell": [
+            3,
+            5
+          ],
+          "index": 12
+        },
+        {
+          "cell": [
+            4,
+            4
+          ],
+          "index": 13
+        },
+        {
+          "cell": [
+            5,
+            3
+          ],
+          "index": 14
+        },
+        {
+          "cell": [
+            3,
+            6
+          ],
+          "index": 16
+        },
+        {
+          "cell": [
+            4,
+            5
+          ],
+          "index": 17
+        },
+        {
+          "cell": [
+            5,
+            4
+          ],
+          "index": 18
+        },
+        {
+          "cell": [
+            6,
+            3
+          ],
+          "index": 19
+        },
+        {
+          "cell": [
+            4,
+            6
+          ],
+          "index": 20
+        },
+        {
+          "cell": [
+            5,
+            5
+          ],
+          "index": 21
+        },
+        {
+          "cell": [
+            6,
+            4
+          ],
+          "index": 22
+        },
+        {
+          "cell": [
+            4,
+            7
+          ],
+          "index": 24
+        },
+        {
+          "cell": [
+            5,
+            6
+          ],
+          "index": 25
+        },
+        {
+          "cell": [
+            6,
+            5
+          ],
+          "index": 26
+        },
+        {
+          "cell": [
+            7,
+            4
+          ],
+          "index": 27
+        },
+        {
+          "cell": [
+            5,
+            7
+          ],
+          "index": 28
+        },
+        {
+          "cell": [
+            6,
+            6
+          ],
+          "index": 29
+        },
+        {
+          "cell": [
+            7,
+            5
+          ],
+          "index": 30
+        }
+      ],
+      "capacity": 64,
+      "cells": [
+        {
+          "cell": [
+            1,
+            4
+          ],
+          "density": 3,
+          "land": 5,
+          "overlay": 102
+        },
+        {
+          "cell": [
+            2,
+            3
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            2,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            2,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            3,
+            2
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            3,
+            3
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            3,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            3,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            3,
+            6
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            1
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            2
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            3
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            6
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            7
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            2
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            3
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            6
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            7
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            6,
+            3
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            6,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            6,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            6,
+            6
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            7,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            7,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        }
+      ],
+      "draw_count": 1,
+      "events": [
+        {
+          "address": "00722440",
+          "kind": "spread_processor",
+          "receiver": 0
+        },
+        {
+          "address": "0065c780",
+          "kind": "random",
+          "raw": 0,
+          "rng_after": [
+            1,
+            104
+          ],
+          "rng_before": [
+            0,
+            103
+          ]
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            1,
+            3
+          ],
+          "kind": "can_place",
+          "result": false
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            2,
+            3
+          ],
+          "kind": "can_place",
+          "result": true
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            2,
+            4
+          ],
+          "kind": "can_place",
+          "result": true
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            2,
+            5
+          ],
+          "kind": "can_place",
+          "result": true
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            1,
+            5
+          ],
+          "kind": "can_place",
+          "result": false
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            0,
+            5
+          ],
+          "kind": "can_place",
+          "result": false
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            0,
+            4
+          ],
+          "kind": "can_place",
+          "result": false
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            0,
+            3
+          ],
+          "kind": "can_place",
+          "result": false
+        },
+        {
+          "address": "00483780",
+          "cell": [
+            1,
+            4
+          ],
+          "force": 0,
+          "kind": "spread_cell"
+        }
+      ],
+      "input": {
+        "cells": [
+          {
+            "cell": [
+              1,
+              4
+            ],
+            "density": 3,
+            "occupied": true,
+            "slope": 0,
+            "type_id": 0,
+            "variant": 0
+          }
+        ],
+        "entry": "spread_processor",
+        "frame": 100,
+        "grows": true,
+        "growth_frames": [
+          3,
+          5,
+          7,
+          11
+        ],
+        "growth_percentages": [
+          0.125,
+          0.125,
+          0.125,
+          0.125
+        ],
+        "growth_timers": [
+          [
+            -1,
+            0,
+            3
+          ],
+          [
+            -1,
+            0,
+            3
+          ],
+          [
+            -1,
+            0,
+            3
+          ],
+          [
+            -1,
+            0,
+            3
+          ]
+        ],
+        "name": "spread_processor_source_on_diamond_edge_occupied",
+        "next_raw": 0,
+        "pre_bitmap": [
+          [
+            3,
+            3
+          ]
+        ],
+        "pre_cell": [
+          4,
+          4
+        ],
+        "pre_count": 1,
+        "pre_heap_indices": [
+          0
+        ],
+        "pre_priority_bits": 1112014848,
+        "queue": "spread",
+        "queue_states": [
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "growth",
+            "type_id": 0
+          },
+          {
+            "bitmap": [
+              [
+                1,
+                4
+              ]
+            ],
+            "entries": [
+              {
+                "cell": [
+                  1,
+                  4
+                ],
+                "priority_bits": 0
+              }
+            ],
+            "heap_indices": [
+              0
+            ],
+            "queue": "spread",
+            "type_id": 0
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "growth",
+            "type_id": 1
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "spread",
+            "type_id": 1
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "growth",
+            "type_id": 2
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "spread",
+            "type_id": 2
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "growth",
+            "type_id": 3
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "spread",
+            "type_id": 3
+          }
+        ],
+        "receiver": 0,
+        "scenario_serial": 0,
+        "seed": 1,
+        "size": [
+          4,
+          4
+        ],
+        "spread_frames": [
+          3,
+          5,
+          7,
+          11
+        ],
+        "spread_percentages": [
+          0.125,
+          0.125,
+          0.125,
+          0.125
+        ],
+        "spread_timers": [
+          [
+            -1,
+            0,
+            0
+          ],
+          [
+            -1,
+            0,
+            5
+          ],
+          [
+            -1,
+            0,
+            7
+          ],
+          [
+            -1,
+            0,
+            11
+          ]
+        ],
+        "spreads": true,
+        "target": [
+          4,
+          4
+        ]
+      },
+      "next_random": [
+        660436142,
+        3663968561,
+        2901129938,
+        3879883985
+      ],
+      "returned": null,
+      "state": {
+        "classes": [
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 2,
+              "bitmap_cells": [
+                [
+                  1,
+                  4
+                ]
+              ],
+              "bitmap_indices": [
+                0
+              ],
+              "entries": [
+                {
+                  "cell": [
+                    1,
+                    4
+                  ],
+                  "priority_bits": 0
+                },
+                {
+                  "cell": [
+                    1,
+                    4
+                  ],
+                  "priority_bits": 0
+                }
+              ],
+              "heap_indices": [
+                1
+              ]
+            },
+            "spread_timer": [
+              -1,
+              0,
+              0
+            ],
+            "type_id": 0
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              5
+            ],
+            "type_id": 1
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              7
+            ],
+            "type_id": 2
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              11
+            ],
+            "type_id": 3
+          }
+        ],
+        "dummy": {
+          "cell": [
+            0,
+            3
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
+        "overlay_registrations": 0,
+        "pending_deletes": 0,
+        "rng_indices": [
+          1,
+          104
+        ],
+        "rng_sha256": "bf1e2fdac12918e0888d5bea794313a215252caaff3a548eb8a4d688236a1c18",
+        "scenario_serial": 0
+      },
+      "steps": [
+        {
+          "cells": [
+            {
+              "cell": [
+                1,
+                4
+              ],
+              "density": 3,
+              "land": 5,
+              "overlay": 102
+            },
+            {
+              "cell": [
+                2,
+                3
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                2,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                2,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                3,
+                2
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                3,
+                3
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                3,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                3,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                3,
+                6
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                1
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                2
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                3
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                6
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                7
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                2
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                3
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                6
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                7
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                6,
+                3
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                6,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                6,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                6,
+                6
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                7,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                7,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            }
+          ],
+          "draw_count": 1,
+          "events": [
+            {
+              "address": "00722440",
+              "kind": "spread_processor",
+              "receiver": 0
+            },
+            {
+              "address": "0065c780",
+              "kind": "random",
+              "raw": 0,
+              "rng_after": [
+                1,
+                104
+              ],
+              "rng_before": [
+                0,
+                103
+              ]
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                1,
+                3
+              ],
+              "kind": "can_place",
+              "result": false
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                2,
+                3
+              ],
+              "kind": "can_place",
+              "result": true
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                2,
+                4
+              ],
+              "kind": "can_place",
+              "result": true
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                2,
+                5
+              ],
+              "kind": "can_place",
+              "result": true
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                1,
+                5
+              ],
+              "kind": "can_place",
+              "result": false
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                0,
+                5
+              ],
+              "kind": "can_place",
+              "result": false
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                0,
+                4
+              ],
+              "kind": "can_place",
+              "result": false
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                0,
+                3
+              ],
+              "kind": "can_place",
+              "result": false
+            },
+            {
+              "address": "00483780",
+              "cell": [
+                1,
+                4
+              ],
+              "force": 0,
+              "kind": "spread_cell"
+            }
+          ],
+          "frame": 100,
+          "state": {
+            "classes": [
+              {
+                "growth": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "growth_timer": [
+                  -1,
+                  0,
+                  3
+                ],
+                "spread": {
+                  "array_count": 2,
+                  "bitmap_cells": [
+                    [
+                      1,
+                      4
+                    ]
+                  ],
+                  "bitmap_indices": [
+                    0
+                  ],
+                  "entries": [
+                    {
+                      "cell": [
+                        1,
+                        4
+                      ],
+                      "priority_bits": 0
+                    },
+                    {
+                      "cell": [
+                        1,
+                        4
+                      ],
+                      "priority_bits": 0
+                    }
+                  ],
+                  "heap_indices": [
+                    1
+                  ]
+                },
+                "spread_timer": [
+                  -1,
+                  0,
+                  0
+                ],
+                "type_id": 0
+              },
+              {
+                "growth": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "growth_timer": [
+                  -1,
+                  0,
+                  3
+                ],
+                "spread": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "spread_timer": [
+                  -1,
+                  0,
+                  5
+                ],
+                "type_id": 1
+              },
+              {
+                "growth": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "growth_timer": [
+                  -1,
+                  0,
+                  3
+                ],
+                "spread": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "spread_timer": [
+                  -1,
+                  0,
+                  7
+                ],
+                "type_id": 2
+              },
+              {
+                "growth": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "growth_timer": [
+                  -1,
+                  0,
+                  3
+                ],
+                "spread": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "spread_timer": [
+                  -1,
+                  0,
+                  11
+                ],
+                "type_id": 3
+              }
+            ],
+            "dummy": {
+              "cell": [
+                0,
+                3
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
+            "overlay_registrations": 0,
+            "pending_deletes": 0,
+            "rng_indices": [
+              1,
+              104
+            ],
+            "rng_sha256": "bf1e2fdac12918e0888d5bea794313a215252caaff3a548eb8a4d688236a1c18",
+            "scenario_serial": 0
+          }
+        }
+      ]
+    },
+    {
+      "before": {
+        "classes": [
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 1,
+              "bitmap_cells": [
+                [
+                  1,
+                  4
+                ]
+              ],
+              "bitmap_indices": [
+                0
+              ],
+              "entries": [
+                {
+                  "cell": [
+                    1,
+                    4
+                  ],
+                  "priority_bits": 0
+                }
+              ],
+              "heap_indices": [
+                0
+              ]
+            },
+            "spread_timer": [
+              -1,
+              0,
+              0
+            ],
+            "type_id": 0
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              5
+            ],
+            "type_id": 1
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              7
+            ],
+            "type_id": 2
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              11
+            ],
+            "type_id": 3
+          }
+        ],
+        "dummy": {
+          "cell": [
+            0,
+            0
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
+        "overlay_registrations": 0,
+        "pending_deletes": 0,
+        "rng_indices": [
+          0,
+          103
+        ],
+        "rng_sha256": "9a636913e754c00e67104eb49c3dd8f8467dda2581c64aae7f5be8e2d0a5b6e4",
+        "scenario_serial": 0
+      },
+      "bitmap_coordinate_map": [
+        {
+          "cell": [
+            1,
+            4
+          ],
+          "index": 0
+        },
+        {
+          "cell": [
+            2,
+            3
+          ],
+          "index": 1
+        },
+        {
+          "cell": [
+            3,
+            2
+          ],
+          "index": 2
+        },
+        {
+          "cell": [
+            4,
+            1
+          ],
+          "index": 3
+        },
+        {
+          "cell": [
+            2,
+            4
+          ],
+          "index": 4
+        },
+        {
+          "cell": [
+            3,
+            3
+          ],
+          "index": 5
+        },
+        {
+          "cell": [
+            4,
+            2
+          ],
+          "index": 6
+        },
+        {
+          "cell": [
+            2,
+            5
+          ],
+          "index": 8
+        },
+        {
+          "cell": [
+            3,
+            4
+          ],
+          "index": 9
+        },
+        {
+          "cell": [
+            4,
+            3
+          ],
+          "index": 10
+        },
+        {
+          "cell": [
+            5,
+            2
+          ],
+          "index": 11
+        },
+        {
+          "cell": [
+            3,
+            5
+          ],
+          "index": 12
+        },
+        {
+          "cell": [
+            4,
+            4
+          ],
+          "index": 13
+        },
+        {
+          "cell": [
+            5,
+            3
+          ],
+          "index": 14
+        },
+        {
+          "cell": [
+            3,
+            6
+          ],
+          "index": 16
+        },
+        {
+          "cell": [
+            4,
+            5
+          ],
+          "index": 17
+        },
+        {
+          "cell": [
+            5,
+            4
+          ],
+          "index": 18
+        },
+        {
+          "cell": [
+            6,
+            3
+          ],
+          "index": 19
+        },
+        {
+          "cell": [
+            4,
+            6
+          ],
+          "index": 20
+        },
+        {
+          "cell": [
+            5,
+            5
+          ],
+          "index": 21
+        },
+        {
+          "cell": [
+            6,
+            4
+          ],
+          "index": 22
+        },
+        {
+          "cell": [
+            4,
+            7
+          ],
+          "index": 24
+        },
+        {
+          "cell": [
+            5,
+            6
+          ],
+          "index": 25
+        },
+        {
+          "cell": [
+            6,
+            5
+          ],
+          "index": 26
+        },
+        {
+          "cell": [
+            7,
+            4
+          ],
+          "index": 27
+        },
+        {
+          "cell": [
+            5,
+            7
+          ],
+          "index": 28
+        },
+        {
+          "cell": [
+            6,
+            6
+          ],
+          "index": 29
+        },
+        {
+          "cell": [
+            7,
+            5
+          ],
+          "index": 30
+        }
+      ],
+      "capacity": 64,
+      "cells": [
+        {
+          "cell": [
+            1,
+            4
+          ],
+          "density": 3,
+          "land": 5,
+          "overlay": 102
+        },
+        {
+          "cell": [
+            2,
+            3
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            2,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            2,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            3,
+            2
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            3,
+            3
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            3,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            3,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            3,
+            6
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            1
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            2
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            3
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            6
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            4,
+            7
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            2
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            3
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            6
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            5,
+            7
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            6,
+            3
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            6,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            6,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            6,
+            6
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            7,
+            4
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        },
+        {
+          "cell": [
+            7,
+            5
+          ],
+          "density": 0,
+          "land": 0,
+          "overlay": -1
+        }
+      ],
+      "draw_count": 1,
+      "events": [
+        {
+          "address": "00722440",
+          "kind": "spread_processor",
+          "receiver": 0
+        },
+        {
+          "address": "0065c780",
+          "kind": "random",
+          "raw": 0,
+          "rng_after": [
+            1,
+            104
+          ],
+          "rng_before": [
+            0,
+            103
+          ]
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            1,
+            3
+          ],
+          "kind": "can_place",
+          "result": false
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            2,
+            3
+          ],
+          "kind": "can_place",
+          "result": true
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            2,
+            4
+          ],
+          "kind": "can_place",
+          "result": true
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            2,
+            5
+          ],
+          "kind": "can_place",
+          "result": true
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            1,
+            5
+          ],
+          "kind": "can_place",
+          "result": false
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            0,
+            5
+          ],
+          "kind": "can_place",
+          "result": false
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            0,
+            4
+          ],
+          "kind": "can_place",
+          "result": false
+        },
+        {
+          "address": "004838e0",
+          "argument": 0,
+          "caller": "00722558",
+          "cell": [
+            0,
+            3
+          ],
+          "kind": "can_place",
+          "result": false
+        },
+        {
+          "address": "00483780",
+          "cell": [
+            1,
+            4
+          ],
+          "force": 0,
+          "kind": "spread_cell"
+        }
+      ],
+      "input": {
+        "cells": [
+          {
+            "cell": [
+              1,
+              4
+            ],
+            "density": 3,
+            "occupied": false,
+            "slope": 0,
+            "type_id": 0,
+            "variant": 0
+          }
+        ],
+        "entry": "spread_processor",
+        "frame": 100,
+        "grows": true,
+        "growth_frames": [
+          3,
+          5,
+          7,
+          11
+        ],
+        "growth_percentages": [
+          0.125,
+          0.125,
+          0.125,
+          0.125
+        ],
+        "growth_timers": [
+          [
+            -1,
+            0,
+            3
+          ],
+          [
+            -1,
+            0,
+            3
+          ],
+          [
+            -1,
+            0,
+            3
+          ],
+          [
+            -1,
+            0,
+            3
+          ]
+        ],
+        "name": "spread_processor_source_on_diamond_edge_spreads_disabled",
+        "next_raw": 0,
+        "pre_bitmap": [
+          [
+            3,
+            3
+          ]
+        ],
+        "pre_cell": [
+          4,
+          4
+        ],
+        "pre_count": 1,
+        "pre_heap_indices": [
+          0
+        ],
+        "pre_priority_bits": 1112014848,
+        "queue": "spread",
+        "queue_states": [
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "growth",
+            "type_id": 0
+          },
+          {
+            "bitmap": [
+              [
+                1,
+                4
+              ]
+            ],
+            "entries": [
+              {
+                "cell": [
+                  1,
+                  4
+                ],
+                "priority_bits": 0
+              }
+            ],
+            "heap_indices": [
+              0
+            ],
+            "queue": "spread",
+            "type_id": 0
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "growth",
+            "type_id": 1
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "spread",
+            "type_id": 1
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "growth",
+            "type_id": 2
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "spread",
+            "type_id": 2
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "growth",
+            "type_id": 3
+          },
+          {
+            "bitmap": [],
+            "entries": [],
+            "heap_indices": [],
+            "queue": "spread",
+            "type_id": 3
+          }
+        ],
+        "receiver": 0,
+        "scenario_serial": 0,
+        "seed": 1,
+        "size": [
+          4,
+          4
+        ],
+        "spread_frames": [
+          3,
+          5,
+          7,
+          11
+        ],
+        "spread_percentages": [
+          0.125,
+          0.125,
+          0.125,
+          0.125
+        ],
+        "spread_timers": [
+          [
+            -1,
+            0,
+            0
+          ],
+          [
+            -1,
+            0,
+            5
+          ],
+          [
+            -1,
+            0,
+            7
+          ],
+          [
+            -1,
+            0,
+            11
+          ]
+        ],
+        "spreads": false,
+        "target": [
+          4,
+          4
+        ]
+      },
+      "next_random": [
+        660436142,
+        3663968561,
+        2901129938,
+        3879883985
+      ],
+      "returned": null,
+      "state": {
+        "classes": [
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 2,
+              "bitmap_cells": [
+                [
+                  1,
+                  4
+                ]
+              ],
+              "bitmap_indices": [
+                0
+              ],
+              "entries": [
+                {
+                  "cell": [
+                    1,
+                    4
+                  ],
+                  "priority_bits": 0
+                },
+                {
+                  "cell": [
+                    1,
+                    4
+                  ],
+                  "priority_bits": 0
+                }
+              ],
+              "heap_indices": [
+                1
+              ]
+            },
+            "spread_timer": [
+              -1,
+              0,
+              0
+            ],
+            "type_id": 0
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              5
+            ],
+            "type_id": 1
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              7
+            ],
+            "type_id": 2
+          },
+          {
+            "growth": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "growth_timer": [
+              -1,
+              0,
+              3
+            ],
+            "spread": {
+              "array_count": 0,
+              "bitmap_cells": [],
+              "bitmap_indices": [],
+              "entries": [],
+              "heap_indices": []
+            },
+            "spread_timer": [
+              -1,
+              0,
+              11
+            ],
+            "type_id": 3
+          }
+        ],
+        "dummy": {
+          "cell": [
+            0,
+            3
+          ],
+          "density": 0,
+          "flags": 0,
+          "land": 0,
+          "level": 0,
+          "overlay": 0,
+          "slope": 0
+        },
+        "overlay_registrations": 0,
+        "pending_deletes": 0,
+        "rng_indices": [
+          1,
+          104
+        ],
+        "rng_sha256": "bf1e2fdac12918e0888d5bea794313a215252caaff3a548eb8a4d688236a1c18",
+        "scenario_serial": 0
+      },
+      "steps": [
+        {
+          "cells": [
+            {
+              "cell": [
+                1,
+                4
+              ],
+              "density": 3,
+              "land": 5,
+              "overlay": 102
+            },
+            {
+              "cell": [
+                2,
+                3
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                2,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                2,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                3,
+                2
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                3,
+                3
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                3,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                3,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                3,
+                6
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                1
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                2
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                3
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                6
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                4,
+                7
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                2
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                3
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                6
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                5,
+                7
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                6,
+                3
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                6,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                6,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                6,
+                6
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                7,
+                4
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            },
+            {
+              "cell": [
+                7,
+                5
+              ],
+              "density": 0,
+              "land": 0,
+              "overlay": -1
+            }
+          ],
+          "draw_count": 1,
+          "events": [
+            {
+              "address": "00722440",
+              "kind": "spread_processor",
+              "receiver": 0
+            },
+            {
+              "address": "0065c780",
+              "kind": "random",
+              "raw": 0,
+              "rng_after": [
+                1,
+                104
+              ],
+              "rng_before": [
+                0,
+                103
+              ]
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                1,
+                3
+              ],
+              "kind": "can_place",
+              "result": false
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                2,
+                3
+              ],
+              "kind": "can_place",
+              "result": true
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                2,
+                4
+              ],
+              "kind": "can_place",
+              "result": true
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                2,
+                5
+              ],
+              "kind": "can_place",
+              "result": true
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                1,
+                5
+              ],
+              "kind": "can_place",
+              "result": false
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                0,
+                5
+              ],
+              "kind": "can_place",
+              "result": false
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                0,
+                4
+              ],
+              "kind": "can_place",
+              "result": false
+            },
+            {
+              "address": "004838e0",
+              "argument": 0,
+              "caller": "00722558",
+              "cell": [
+                0,
+                3
+              ],
+              "kind": "can_place",
+              "result": false
+            },
+            {
+              "address": "00483780",
+              "cell": [
+                1,
+                4
+              ],
+              "force": 0,
+              "kind": "spread_cell"
+            }
+          ],
+          "frame": 100,
+          "state": {
+            "classes": [
+              {
+                "growth": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "growth_timer": [
+                  -1,
+                  0,
+                  3
+                ],
+                "spread": {
+                  "array_count": 2,
+                  "bitmap_cells": [
+                    [
+                      1,
+                      4
+                    ]
+                  ],
+                  "bitmap_indices": [
+                    0
+                  ],
+                  "entries": [
+                    {
+                      "cell": [
+                        1,
+                        4
+                      ],
+                      "priority_bits": 0
+                    },
+                    {
+                      "cell": [
+                        1,
+                        4
+                      ],
+                      "priority_bits": 0
+                    }
+                  ],
+                  "heap_indices": [
+                    1
+                  ]
+                },
+                "spread_timer": [
+                  -1,
+                  0,
+                  0
+                ],
+                "type_id": 0
+              },
+              {
+                "growth": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "growth_timer": [
+                  -1,
+                  0,
+                  3
+                ],
+                "spread": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "spread_timer": [
+                  -1,
+                  0,
+                  5
+                ],
+                "type_id": 1
+              },
+              {
+                "growth": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "growth_timer": [
+                  -1,
+                  0,
+                  3
+                ],
+                "spread": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "spread_timer": [
+                  -1,
+                  0,
+                  7
+                ],
+                "type_id": 2
+              },
+              {
+                "growth": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "growth_timer": [
+                  -1,
+                  0,
+                  3
+                ],
+                "spread": {
+                  "array_count": 0,
+                  "bitmap_cells": [],
+                  "bitmap_indices": [],
+                  "entries": [],
+                  "heap_indices": []
+                },
+                "spread_timer": [
+                  -1,
+                  0,
+                  11
+                ],
+                "type_id": 3
+              }
+            ],
+            "dummy": {
+              "cell": [
+                0,
+                3
+              ],
+              "density": 0,
+              "flags": 0,
+              "land": 0,
+              "level": 0,
+              "overlay": 0,
+              "slope": 0
+            },
+            "overlay_registrations": 0,
+            "pending_deletes": 0,
+            "rng_indices": [
+              1,
+              104
+            ],
+            "rng_sha256": "bf1e2fdac12918e0888d5bea794313a215252caaff3a548eb8a4d688236a1c18",
+            "scenario_serial": 0
           }
         }
       ]
