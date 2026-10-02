@@ -802,7 +802,10 @@ use crate::sim::world::Simulation;
 // 279 -> 280: Unit deployment uses private6E0..6E2 and retained Techno
 // animation/landing state, removing the independent deployment countdown.
 // Anim palettes also retain either a color scheme or the creation-time House.
-const SNAPSHOT_VERSION: u32 = 280;
+// 280 -> 281: depot docking no longer serializes a retry-timer mirror;
+// MissionCom owns the saved Enter cadence for every Foot consumer. The
+// private native pending entry can coexist with an admitted service visit.
+const SNAPSHOT_VERSION: u32 = 281;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1685,13 +1688,23 @@ fn restore_object_references(
 
         if let Some(dock) = entity.dock_state.as_ref() {
             require_resolved_reference(
-                entity_ids.contains(&dock.dock_building_id),
+                entity_ids.contains(&dock.dock_building_id()),
                 "EntityStore",
                 entity_id,
                 "dock_state.dock_building_id",
                 "EntityStore",
-                dock.dock_building_id,
+                dock.dock_building_id(),
             )?;
+            if let Some(pending) = dock.pending_entry() {
+                require_resolved_reference(
+                    entity_ids.contains(&pending),
+                    "EntityStore",
+                    entity_id,
+                    "dock_state.pending_entry",
+                    "EntityStore",
+                    pending,
+                )?;
+            }
         }
         if let Some(ammo) = entity.aircraft_ammo.as_ref()
             && let Some(target_id) = ammo.target_airfield
@@ -3763,7 +3776,8 @@ mod tests {
         // and its anchored power-blackout clock/radar projection.
         // 279 -> 280: Unit deploy flags, Techno animation/landing ownership and
         // the animation's retained palette source replace the legacy countdown.
-        assert_eq!(super::SNAPSHOT_VERSION, 280);
+        // 280 -> 281: independent depot pending entry and sole MissionCom cadence.
+        assert_eq!(super::SNAPSHOT_VERSION, 281);
     }
 
     #[test]

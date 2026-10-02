@@ -16,12 +16,12 @@
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::miner::miner_dock::{self, ContactAdmission};
 use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerKind, MinerState, ResourceType};
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::zone_map::{ZONE_INVALID, ZoneGrid};
+use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
 use crate::sim::world::{GroundMove, Simulation};
 use crate::util::fixed_math::SimFixed;
 
@@ -943,10 +943,15 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
     // (`FUN_0065ADF0` at `0x004DEF09`), the pinned one included, so a
     // driving Teleporter keeps its NavCom while that bay is busy.
     let narrow = match pinned {
-        Some(bay) => refinery_dock_capacity_for_sid(sim, rules, bay)
-            .filter(|&capacity| miner_dock::would_admit(sim, bay, id, capacity))
+        Some(bay) => sim
+            .substrate
+            .entities
+            .get(bay)
+            .filter(|entity| {
+                !entity.dying && entity.health.current != 0 && entity.radio_contacts.has_free_or(id)
+            })
             .map(|_| bay),
-        None => find_docking_bay(sim, rules, snap, false),
+        None => find_docking_bay(sim, rules, snap.entity_id, false, false),
     };
     if driving {
         if narrow.is_none() {
@@ -963,15 +968,22 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
     };
     if let Some(bay) = narrow
         && return_exceeds_too_far_threshold(sim, id, bay, too_far) == Some(false)
-        && let Some(capacity) = refinery_dock_capacity_for_sid(sim, rules, bay)
-        && miner_dock::hello(sim, id, bay, capacity) == ContactAdmission::Accepted
+        && radio::transmit(
+            sim,
+            id,
+            bay,
+            RadioMessage::Hello,
+            RadioPayload::default(),
+            None,
+        ) == RadioResponse::Roger
     {
         snap.state = MinerState::Dock;
         snap.miner.forced_return = false;
         snap.miner.reserved_refinery = None;
         return;
     }
-    let Some(bay) = pinned.or_else(|| find_docking_bay(sim, rules, snap, true)) else {
+    let Some(bay) = pinned.or_else(|| find_docking_bay(sim, rules, snap.entity_id, true, true))
+    else {
         return;
     };
     if !teleporter
@@ -1080,12 +1092,11 @@ fn handle_handoff(sim: &mut Simulation, snap: &MinerSnapshot) {
 ///    only overwrites `QueuedMission` (no Commence — `commence_now` is 0 and
 ///    the guard `current == Wait && mission == Guard || current == Selling`
 ///    never holds on Harvest), and step 3 below queues Guard over it in the
-///    same dispatch. `Find_Docking_Bay @ 0x004DF040` → `FootClass::
-///    Find_Nearest_Dock_Of_Type @ 0x004DEE80` is a pure scan (no radio, no
-///    reservation; `g_MapEditorMode` untouched on this call), so neither the
-///    probe nor the overwritten queue has an observable effect. Stock
-///    `RepairBay=GADEPT,NADEPT,CAOUTP` exists, but the branch outcome is dead
-///    either way.
+///    same dispatch. The shared `Find_Docking_Bay @ 0x004DF040` scanner
+///    sends CAN_LOAD queries; stock UnitRepair queries only inspect admission
+///    and do not reserve a slot or draw RNG. This overwritten repair/hunt
+///    query remains outside the ordinary deposit/resume comparison. Stock
+///    `RepairBay=GADEPT,NADEPT,CAOUTP` supplies the candidate types.
 /// 2. `Look_up_building_in_cell(own cell)`: a building whose type has
 ///    `+0x16BB` (`Refinery=`) or `+0x16BC` (weeder dock, no stock type) set →
 ///    `Set_Destination(FUN_00703590(building))` — `Find_Nearby_Passable_Cell`
@@ -1103,13 +1114,11 @@ fn handle_handoff(sim: &mut Simulation, snap: &MinerSnapshot) {
 /// `Queue_Mission(mission, 0)` at `0x004C73B9`). A human war miner therefore
 /// parks on Guard until re-ordered — native behaviour.
 ///
-/// Step 2's cell search is VERA-internal in detail: `FUN_00703590`'s
-/// `Find_Nearby_Passable_Cell` arguments are not modelled, and the exit
-/// spiral (`exit_cell_search::find_nearby_passable_cell_with_index`) stands
-/// in, where the return staging calls the native search
-/// ([`refinery_staging_cell`]). gamemd equivalent UNCHECKED beyond the seed
-/// cell. The destination goes through the Unit setter, so a Chrono Miner
-/// drives it.
+/// Step 2 calls the existing `Simulation::techno_nearby_location` owner
+/// (703590), including its movement-zone/GetZone/FNPC arguments. Pending
+/// entry controls execute that original helper against supplied uniform
+/// zones; they do not establish arbitrary map-zone construction. The
+/// destination goes through the Unit setter, so a Chrono Miner drives it.
 ///
 /// **Non-human houses take a VERA-internal bridge instead, gamemd equivalent
 /// = AI lane (`AI_Choose_Unit` 0x004FEB7B / `Mission_Guard` arm ii)
@@ -1141,7 +1150,9 @@ fn handle_going_to_idle(
         return false;
     }
     if let Some(refinery_sid) = refinery_building_in_cell(sim, rules, (snap.rx, snap.ry))
-        && let Some(exit) = building_nearby_passable_cell(sim, refinery_sid)
+        && let Some(exit) = sim
+            .techno_nearby_location(snap.entity_id, Some(refinery_sid), rules)
+            .and_then(|(x, y)| Some((u16::try_from(x).ok()?, u16::try_from(y).ok()?)))
     {
         issue_move_if_idle(sim, Some(rules), snap.entity_id, exit, snap.speed);
     }
@@ -1199,24 +1210,6 @@ fn refinery_building_in_cell(sim: &Simulation, rules: &RuleSet, cell: (u16, u16)
                     .is_some_and(|obj| obj.refinery)
         })
     })
-}
-
-/// `FUN_00703590`: `Find_Nearby_Passable_Cell` seeded at the building's
-/// `GetCoords` cell (`BuildingClass::GetCoords @ 0x00447AC0` = NW +
-/// `((W-1)*128, (H-1)*128)` leptons, cell = coord >> 8).
-fn building_nearby_passable_cell(sim: &Simulation, building_sid: u64) -> Option<(u16, u16)> {
-    let grid = sim.path_grid()?;
-    let building = sim.substrate.entities.get(building_sid)?;
-    let coord = object_get_coords(building, sim.resolved_terrain.as_ref());
-    let (x, y) = (i64::from(coord.x), i64::from(coord.y));
-    super::exit_cell_search::find_nearby_passable_cell_with_index(
-        (x >> 8) as i32,
-        (y >> 8) as i32,
-        grid,
-        Some(&sim.substrate.occupancy),
-        super::exit_cell_search::EXIT_SEARCH_MAX_RADIUS,
-        u64::from(sim.session.binary_frame),
-    )
 }
 
 // -- Helpers --
@@ -1307,60 +1300,62 @@ pub(crate) fn extract_bales_max(
 ///   1 from the `RadioClass` ctor (0x0065A764) and then set by
 ///   `BuildingClass::Constructor` 0x0043BCBD..0x0043BCD0 to
 ///   `max([Type+0x1780] NumberOfDocks, 1)` via `Set_Contact_Count`; Rust
-///   derives the slot capacity the same way (stock refineries are
-///   `NumberOfDocks=1`);
+///   installs these slots in the shared constructor, and admission reads
+///   them through `Contacts::has_free_or` (actual-slot oracle controls);
 /// - `MapClass::Can_Reach_Zone` from the miner's cell to the building's
 ///   `GetCoords` cell (skipped when `WhatAmI() == Aircraft(2)`, never a
 ///   miner) — see `refinery_zone_reachable`;
-/// - `Receive_Radio(0xF)` must return 1 — see `refinery_accepts_can_load`;
+/// - `Receive_Radio(0xF)` must return1 — the shared building radio receiver;
 /// - distance `FUN_005F6500`: `dx² + dy²` in leptons between both objects'
 ///   `GetCoords` (Z ignored); replace when `best == -1 || d < best` (strict,
 ///   so ties keep the earlier Dock type / earlier-created building) or when
 ///   the candidate is the primary factory (`TechnoClass+0x3D3`). VERA has no
 ///   primary designation for refineries, so that override is absent here.
-/// [`find_docking_bay`] for `miner` as its state-2 dispatch calls it.
-#[cfg(test)]
-pub(super) fn find_docking_bay_for_test(
-    sim: &Simulation,
+/// `wide` controls the scanner prefilter; `ignore_dock_capacity` is the
+/// explicit native A8E7AC receiver context. Harvest73EC1F supplies both for
+/// its wide pass. They are distinct: a wide scan without that context still
+/// runs ordinary CAN_LOAD capacity admission.
+pub(crate) fn find_docking_bay(
+    sim: &mut Simulation,
     rules: &RuleSet,
-    miner: u64,
+    miner_id: u64,
     wide: bool,
+    ignore_dock_capacity: bool,
 ) -> Option<u64> {
-    let snap = build_miner_snapshot(sim, rules, miner)?;
-    find_docking_bay(sim, rules, &snap, wide)
-}
-
-fn find_docking_bay(
-    sim: &Simulation,
-    rules: &RuleSet,
-    snap: &MinerSnapshot,
-    wide: bool,
-) -> Option<u64> {
-    let miner = sim.substrate.entities.get(snap.entity_id)?;
-    let harvester = rules.object_case_insensitive(sim.interner.resolve(snap.type_id))?;
-    let miner_x = i64::from(miner.position.rx) * 256 + miner.position.sub_x.to_num::<i64>();
-    let miner_y = i64::from(miner.position.ry) * 256 + miner.position.sub_y.to_num::<i64>();
-    let unit_mz = miner
-        .locomotor
-        .as_ref()
-        .map(|loc| loc.movement_zone)
-        .unwrap_or(MovementZone::Normal);
-
-    let house = sim.houses.get(&snap.owner)?;
-    let buildings = house.base_projection.buildings();
+    let (owner, type_id, miner_x, miner_y, miner_cell, unit_mz) = {
+        let miner = sim.substrate.entities.get(miner_id)?;
+        (
+            miner.owner(),
+            miner.type_ref(),
+            i64::from(miner.position.rx) * 256 + miner.position.sub_x.to_num::<i64>(),
+            i64::from(miner.position.ry) * 256 + miner.position.sub_y.to_num::<i64>(),
+            (miner.position.rx, miner.position.ry),
+            miner
+                .locomotor
+                .as_ref()
+                .map(|loc| loc.movement_zone)
+                .unwrap_or(MovementZone::Normal),
+        )
+    };
+    let harvester = rules.object_case_insensitive(sim.interner.resolve(type_id))?;
+    // CAN_LOAD runs synchronously; retain the House's native scan order
+    // without holding its projection across radio owner calls.
+    let buildings = sim.houses.get(&owner)?.base_projection.buildings().to_vec();
     let mut best: Option<(i64, u64)> = None;
     for dock_type in &harvester.dock {
         // `0x004DEE9B..0x004DEEAC`: a type of which the house tracks no
         // instance (`+0x5500`, `JZ`) finds nothing, whatever the list holds.
         if sim.interner.get(dock_type).is_none_or(|type_ref| {
-            house
+            sim.houses
+                .get(&owner)
+                .expect("scanning existing House")
                 .tracking
                 .owned_count(EntityCategory::Structure, type_ref)
                 == 0
         }) {
             continue;
         }
-        for &sid in buildings {
+        for &sid in &buildings {
             let Some(entity) = sim.substrate.entities.get(sid) else {
                 continue;
             };
@@ -1373,29 +1368,35 @@ fn find_docking_bay(
             if entity.dying || entity.health.current == 0 {
                 continue;
             }
-            let Some(obj) = rules.object_case_insensitive(e_type) else {
-                continue;
-            };
-            let capacity = obj.dock_contact_capacity() as usize;
-            if !wide && !miner_dock::would_admit(sim, sid, snap.entity_id, capacity) {
+            if !wide && !entity.radio_contacts.has_free_or(miner_id) {
                 continue;
             }
             let dock = refinery_dock_cell(entity.position.rx, entity.position.ry);
-            if !refinery_zone_reachable(sim, miner, unit_mz, (snap.rx, snap.ry), dock) {
-                continue;
-            }
-            if !refinery_accepts_can_load(
+            if !refinery_zone_reachable(
                 sim,
-                harvester,
+                sim.substrate.entities.get(miner_id)?,
                 unit_mz,
-                entity,
-                obj,
-                snap.entity_id,
-                capacity,
-                wide,
+                miner_cell,
+                dock,
             ) {
                 continue;
             }
+            if crate::sim::radio::transmit(
+                sim,
+                miner_id,
+                sid,
+                crate::sim::radio::RadioMessage::CanEnter,
+                crate::sim::radio::RadioPayload::docking_query(ignore_dock_capacity),
+                Some(rules),
+            ) != crate::sim::radio::RadioResponse::Roger
+            {
+                continue;
+            }
+            let entity = sim
+                .substrate
+                .entities
+                .get(sid)
+                .expect("read-only CAN_LOAD retains candidate");
             // `BuildingClass::GetCoords @ 0x00447AC0`: foundation centre, the
             // same point the state-2 too-far test measures to.
             let centre = object_get_coords(entity, sim.resolved_terrain.as_ref());
@@ -1410,91 +1411,6 @@ fn find_docking_bay(
         }
     }
     best.map(|(_, sid)| sid)
-}
-
-/// `BuildingClass::Receive_Radio @ 0x0043C2D0` case 0xF (CAN_LOAD) as seen by
-/// a `Harvester=yes` unit probing a `Refinery=yes` building (disassembly
-/// 0x0043C2F8..0x0043C6EF, 2026-09-05). Returns true for native result 1.
-///
-/// - `HouseClass::Is_Ally` on the building owner → 0 (always passes here:
-///   the scanner only offers own-house buildings);
-/// - current mission Construction (0x12) or Selling (0x13) → 10;
-/// - `+0x534 == 0` → 10. `+0x534` is the current BState, written by
-///   `BuildingClass::GrandOpening @ 0x00447780` (`+0x538` is the queued one);
-///   0 = BSTATE_CONSTRUCTION. Rust: `building_up` (construction) and
-///   `building_down` (sell/deconstruct) cover both mission and BState gates;
-/// - narrow pass (`g_MapEditorMode == 0`, 0x0043C35A): no free/own contact
-///   slot (`FUN_0065ADF0`) → 10 unless the type is `UnitAbsorb=`/
-///   `InfantryAbsorb=` (+0x16AE/+0x16AF, never a stock refinery). Same probe
-///   the scanner already applied;
-/// - unit `MovementZone != Amphibious(5)` and `Naval=` (TechnoType+0xCCE)
-///   differs between unit and building → 10;
-/// - unit `BalloonHover=` (TechnoType+0xD6A, `TechnoTypeClass::ReadINI`
-///   0x00714DA9) → 10;
-/// - `+0x660 == 0` → 10 (0x0043C422). Writers (instruction scan
-///   `mov [..+0x660]`): `BuildingClass` ctor 0x0043B882 = 1, `ReadFromINI`
-///   0x0044FC49 = 1, `GoOnline @ 0x00452260` = 1, `GoOffline @ 0x00452360`
-///   = 0 (callers: `EventClass::Execute` 0x004C6D9A power toggle,
-///   `TriggerAction::Execute` 0x006DDFB9, `ReadFromINI` 0x0044FD23), plus
-///   0x004521C0 = 0 / 0x00452210 = 1 called only from `TemporalClass`
-///   InitiateWarp and LetGo (now labelled TemporalGoOffline/Online). So it
-///   is the player/trigger TogglePower latch plus a temporal-warp clear, not
-///   house low power. VERA represents the warp's half
-///   ([`crate::sim::game_entity::GameEntity::building_online`]); stock refineries are not toggleable;
-/// - 0x0043C43B..0x0043C453: unless the type is `UnitAbsorb=`/`InfantryAbsorb=`
-///   (+0x16AE/+0x16AF) the `JZ 0x0043C4F8` at 0x0043C453 jumps straight past
-///   the absorber-only block, so for a refinery NEITHER the `CaptureManager`
-///   test (`+0x2BC` → `FUN_004722C0`, 0x0043C4A0) NOR the passenger-count /
-///   `SizeLimit=` block (0x0043C4C2: `[+0x114]+1 > Type+0x5E0`, `Size` vs
-///   +0x388) is reached. They are not gates on this path and Rust models
-///   neither;
-/// - 0x0043C4F8..0x0043C64F, tested before the Refinery branch: +0x16AD → 1,
-///   +0x16AB (`+0x0070FB50` unit probe then radio 0x23), +0x16A9 (WhatAmI 1/2
-///   then radio 0x23), +0x16C2/+0x16C1 (only for `WhatAmI() == 0xF`), +0x16CB
-///   (interface query through `[unit+0x4]`). All six bytes are zero for a
-///   stock refinery type, so
-///   control falls through to the Refinery test;
-/// - `DockUnload=yes` (BuildingType+0x16B3; `Refinery=` is +0x16BB) and the unit is a UnitClass with
-///   `Harvester=yes` (UnitType+0xE0E): return 1 when `g_MapEditorMode != 0`
-///   (wide pass, 0x0043C675) or `+0x118 == 0` (0x0043C682). `+0x118` is
-///   `PassengersClass::FirstPassenger` (`PassengersClass` at +0x114: case
-///   0xE compares `[+0x114] + 1` against Type+0x5E0; `CargoClass::AddPassenger
-///   @ 0x004733A0` is always entered via `LEA ECX,[this+0x114]`;
-///   `TechnoClass` ctor zeroes +0x118 at 0x006F2B8D). None of AddPassenger's
-///   15 call sites is a BuildingClass refinery path or the harvester unload
-///   FSM (`UnitClass::Mission_Unload @ 0x0073D630`; its 0x0073DC78 call
-///   re-adds a popped passenger to the unit's own cargo), so a stock
-///   refinery's +0x118 stays 0 and this "bay" gate is INERT for stock play:
-///   the narrow-pass occupancy gate is the `Contacts[]` probe alone. Rust
-///   therefore models no bay-occupancy gate here;
-/// - otherwise 0.
-#[allow(clippy::too_many_arguments)]
-fn refinery_accepts_can_load(
-    sim: &Simulation,
-    harvester: &crate::rules::object_type::ObjectType,
-    unit_mz: MovementZone,
-    refinery: &crate::sim::game_entity::GameEntity,
-    refinery_type: &crate::rules::object_type::ObjectType,
-    miner_sid: u64,
-    capacity: usize,
-    wide: bool,
-) -> bool {
-    if refinery.building_up() || refinery.building_down() {
-        return false;
-    }
-    if !wide && !miner_dock::would_admit(sim, refinery.stable_id(), miner_sid, capacity) {
-        return false;
-    }
-    if unit_mz != MovementZone::Amphibious && harvester.naval != refinery_type.naval {
-        return false;
-    }
-    if harvester.balloon_hover {
-        return false;
-    }
-    if !refinery.building_online() {
-        return false;
-    }
-    refinery_type.dock_unload && harvester.harvester
 }
 
 /// `MapClass::Can_Reach_Zone` gate of the scanner `FUN_004DEE80`, called
@@ -1520,20 +1436,6 @@ fn refinery_zone_reachable(
     let layer = miner.movement_layer_or_ground();
     zone_grid.can_reach(mz, anchor, layer, dock, layer)
         || neighbour_reachable(zone_grid, mz, layer, anchor, dock)
-}
-
-fn refinery_dock_capacity_for_sid(
-    sim: &Simulation,
-    rules: &RuleSet,
-    ref_sid: u64,
-) -> Option<usize> {
-    let entity = sim.substrate.entities.get(ref_sid)?;
-    if entity.dying || entity.health.current == 0 {
-        return None;
-    }
-    sim.object_type(entity.type_ref(), rules)
-        .map(|o| o.dock_contact_capacity() as usize)
-        .or(Some(1))
 }
 
 /// The dock pad a refinery at NW `(rx, ry)` sends its miner to
@@ -1902,6 +1804,9 @@ mod harvest_scan_dispatch_tests {
                     None,
                     crate::sim::occupancy::CellListInsertion::AppendBuilding,
                 );
+                // Original Building OccupyDown453DB0 sets Cell+124 bit80.
+                // The shared Nearby703590/FNPC owner reads this raw plane.
+                sim.substrate.raw_cell_occupation.mark_ground(x, y, 0x80);
             }
         }
         if sim.substrate.next_stable_object_id <= REFINERY_ID {
@@ -2242,6 +2147,11 @@ mod harvest_scan_dispatch_tests {
         let grid = PathGrid::new(64, 64);
         let mut sim = Simulation::new();
         sim.install_fixture_path_grid(Some(&grid));
+        // FNPC reads CellClass identity and raw Building occupation. A detached
+        // PathGrid resolves the shared dummy instead of these placed cells.
+        sim.install_resolved_terrain_for_new_map(
+            crate::map::resolved_terrain::test_flat_ground_grid(64),
+        );
         // Standing on the stock pad cell (NW + (3, 1)) inside the footprint.
         let pad = (REFINERY_NW.0 + 3, REFINERY_NW.1 + 1);
         spawn_search_miner(&mut sim, pad);

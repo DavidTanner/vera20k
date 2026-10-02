@@ -1280,6 +1280,10 @@ impl Simulation {
             b"building-body-v277".hash(hasher);
             entity.hash_building_body(hasher);
             entity.hash_building_health_sample(hasher);
+            if let Some(dock) = entity.dock_state.as_ref() {
+                b"depot-docking-v281".hash(hasher);
+                dock.hash_state(hasher);
+            }
             entity.native_unique_id.hash(hasher);
             if let Some(manager) = entity.slave_manager.as_ref() {
                 b"slave-manager-v209".hash(hasher);

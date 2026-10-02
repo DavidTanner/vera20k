@@ -374,6 +374,14 @@ pub struct MissionControl {
 }
 
 impl MissionControl {
+    /// Install an original-executed frame projection for executable replay.
+    /// Distinctive controls directly write native double fields; their saved
+    /// conversion receipts bypass INI scanning. Retail uses the reader below.
+    #[cfg(test)]
+    pub(crate) fn set_native_rate_frames_for_test(&mut self, mission: MissionType, frames: i32) {
+        self.entries.get_mut(&mission).unwrap().rate_frames = frames;
+    }
+
     /// Parse every dispatched mission's `[<MissionName>]` section. A mission
     /// whose section is absent keeps the documented defaults (matching the
     /// original reader, which leaves an unread slot at its constructed value).

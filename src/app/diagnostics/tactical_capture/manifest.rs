@@ -401,6 +401,16 @@ pub(crate) enum PublishFault {
     SimulatedCrashAfterDirectorySync,
 }
 
+/// Encode receipts in the publisher's compact JSON format. The map
+/// observer uses these same bytes for its budget check; indentation alone
+/// must not discard a complete long-running observation. Keep the newline in
+/// the budget because it is part of the published file.
+pub(super) fn encode_manifest<T: Serialize>(manifest: &T) -> Result<Vec<u8>> {
+    let mut serialized = serde_json::to_vec(manifest)?;
+    serialized.push(b'\n');
+    Ok(serialized)
+}
+
 pub(crate) fn publish_transaction<T: Serialize>(
     output_dir: &Path,
     manifest: &T,
@@ -433,8 +443,7 @@ pub(crate) fn publish_transaction<T: Serialize>(
             PublishFault::ManifestWrite,
             "injected manifest write failure",
         )?;
-        let mut serialized = serde_json::to_vec_pretty(manifest)?;
-        serialized.push(b'\n');
+        let serialized = encode_manifest(manifest)?;
         let mut manifest_file = create_new_file(&manifest_path)?;
         manifest_file
             .write_all(&serialized)

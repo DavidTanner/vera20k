@@ -54,7 +54,7 @@ wrapper reports denied variables and does not silently change the environment.
 After sourcing the native development environment, explicitly remove `RA2_DIR`
 for this command as above; asset loading uses the working directory's config.
 
-A new wrapper v5 bundle contains sealed `profile.json`, `config.toml` and
+A new wrapper v6 bundle contains sealed `profile.json`, `config.toml` and
 `contract.json` copies, plus `stdout.log`, `stderr.log`, `run.json` and the child's
 atomically published `child-output/{capture.json,frame.bgra}`. Runtime still reads
 the supplied original paths; retaining copies does not redirect the game loader.
@@ -62,7 +62,7 @@ Original files and retained copies must remain unchanged during capture.
 `run.json` records exact input hashes, command, child PID/status, timeout, receipt
 validation and capture artifact identities. A valid observation requires unchanged
 profile/config/executable/contract files, matching profile and contract receipts,
-a v5 child manifest with resident UnitAtlas statistics, a checked presentation-clock
+a v6 child manifest with resident UnitAtlas statistics, a checked presentation-clock
 transcript and neutral-input evidence, zero initial tick/frame/time,
 the requested final tick/frame and endpoint step
 receipts, a loaded loose/MIX map digest, hidden unfocused rendering without input
@@ -261,6 +261,57 @@ viewer-dependent disguise palette selection, the forced Magnetron source and
 EMP admission remain outside this stock observation. Full native animation
 lifetime, audio playback and raster parity are also unclaimed.
 
+## War Miner refinery-cycle observation
+
+[`map_observation.refinery-docking.example.json`](map_observation.refinery-docking.example.json)
+uses the same stock Russia/Battle/AnyTown launch and first five ordinary deployment
+and production commands as the Attack profile. It issues no combat order and
+advances 7200 steps so the free War Miner can fill, dock, deposit and harvest again.
+The profile requests no terrain rows to stay within the existing retained-sample
+budget. Its numeric command handles belong to that exact launch and must be
+rechecked when launch inputs change.
+
+Child/run v6 adds actor `miner` and `radio` projections and frame `houses` rows.
+It preserves the existing optional `unit` deployment projection alongside them.
+A miner row contains `cargo_bales`, `capacity_bales`, `unload_active` and
+`harvesting`; other actors have null `miner`. Radio rows preserve the complete
+contact-slot array, including null holes, and the optional `dock_entered_with`
+stable ID on both the miner and refinery. House rows follow requested-owner order
+and expose the existing economy's `credits`, `spent_credits` and
+`harvested_credits`. A missing House has null economy; the observer never creates
+a wallet. HarvestedCredits is the existing deposit statistic, including its x5
+bale multiplier, rather than spendable cash. These immutable reads never send
+radio queries, advance timers or change cargo.
+
+Capture manifests and sealed run receipts use compact JSON with the same fields
+and a trailing newline.
+The map observer and transactional publisher use the same encoder for the
+128 MiB receipt limit; indentation previously made the complete 7,200-step
+refinery observation exceed that limit. Readers also accept historical indented
+receipts.
+
+Use the existing runner with that profile:
+
+```sh
+env -u RA2_DIR python -m tools.map_observation \
+  --build-label refinery-docking-reviewed-20261002 \
+  --profile /absolute/checkout/tools/map_observation.refinery-docking.example.json \
+  --contract /absolute/checkout/src/app/diagnostics/tactical_capture/contract.v2.json \
+  --cwd /absolute/checkout \
+  --output /absolute/evidence/refinery-docking
+```
+
+The release observation can show cargo draining alongside the actual House payout,
+contact release and resumed harvesting. It is production integration evidence;
+native scheduler, movement, audio and pixels require separate comparisons. Native
+coverage is recorded in [`spatial_oracle/refinery_dock.md`](spatial_oracle/refinery_dock.md).
+
+The [refinery validation receipt](spatial_oracle/refinery_dock.validation.json)
+records two observed deposits at steps 3778 and 5670, release and Harvest at
+3794 and 5686, then new cargo at 4229 and 6154. Each deposit paid 1,000 credits
+while spent credits stayed at 2,600. Both complete compact receipts are about
+59 MB and retain all 7,201 observed boundaries within the 128 MiB limit.
+
 ## Natural ore-spread observation
 
 [`map_observation.ore-spread.example.json`](map_observation.ore-spread.example.json)
@@ -350,7 +401,7 @@ ignored payload fields or argument
 types. Python checks diagnostic structure and the exact typed request/receipt;
 it does not duplicate the gameplay command parser or admissions.
 
-Child/run v5 records `observations.rule_types` at L0. These are the actual
+Child/run v5 and later record `observations.rule_types` at L0. These are the actual
 rules-owned Infantry, Unit, Aircraft and Structure list names, their categories,
 and their existing `interned_id` numeric handles from the loaded simulation.
 The observer never interns a name. Obtain the intended type's handle from that
@@ -417,7 +468,8 @@ production rendered output. Neither is a native comparison.
 
 Profiles are bounded to 1024 commands, 30 observed House names and 256 terrain
 cells. Captures retain at most 100000 combined actor, missing-ID and terrain
-samples, including occupied animation-slot samples in v5. Child/run/report JSON
+samples, including occupied animation-slot samples since v5 and House rows since
+v6. Child/run/report JSON
 is limited to 128 MiB on read and publication;
 the shared JSON owner keeps its 16 MiB default for other tools. Observe only the
 Houses needed by the experiment and choose a bounded step budget. Comparison checks
@@ -484,7 +536,7 @@ a labeled preserved build makes that requirement durable. The report marks this
 as `EXTERNALLY_REVALIDATED`. It cannot validate a deleted or replaced executable
 from its old receipt alone.
 
-A new wrapper v5 run validates its `SEALED_COPY` inputs without requiring the
+A new wrapper v6 run validates its `SEALED_COPY` inputs without requiring the
 original profile, config or contract files to remain available. It validates the
 retained contract's v2 rules without requiring today's checkout to have identical
 contract bytes. Offline checking does not apply the current process environment
@@ -500,8 +552,10 @@ legacy wall-clock observation and a diagnostic-clock observation are `INVALID`
 together even when their pixels match.
 Differences name precise field paths and before/after values. There are no pixel
 tolerances or omitted atlas fields.
-Current v5 pairs also compare the complete command, rule-handle inventory,
-actor/building/animation/terrain transcript and camera. Historical v4 pairs
+Current v6 pairs also compare the complete command, rule-handle inventory,
+actor/building/animation/unit/miner/radio/House/terrain transcript and camera. Historical
+v5 pairs retain their original building/animation and rule-handle transcript,
+including optional `unit` deployment observations when recorded. V4 pairs
 compare their original command and actor/terrain transcript and camera, while
 v3 pairs retain their original comparison fields.
 
@@ -525,15 +579,20 @@ Offline `validate` and `compare` reject old wall-clock observations by default.
 `--allow-legacy-clock` permits child v2 with sealed wrapper v2, preserving its
 original `run.capture` projection. Validation identifies its clock separately as
 `legacy-wall-clock`; it does not invent a diagnostic transcript or neutral-input
-guarantee. Live capture accepts only child v5 and never offers this override.
-Wrapper and child generations must correspond: v5/v5, v4/v4, v3/v3, v2/v2, or v1/v2.
+guarantee. Live capture accepts only child v6 and never offers this override.
+Wrapper and child generations must correspond: v6/v6, v5/v5, v4/v4, v3/v3, v2/v2,
+or v1/v2. Historical v5 remains readable with its original policy, production
+commands, rule handles and building fields, including the optional `unit` extension
+when present, without miner/radio/House projections. Older rows without `unit`
+remain unchanged.
+V5 and v6 comparisons are invalid because their observation policies differ.
 Historical v4 remains readable with its original observation policy and profile
 v2 trajectory, without production orders, rule-handle inventory or building
-fields. V4 and v5 comparisons are invalid because their observation policies
+fields. V4 and v5/v6 comparisons are invalid because their observation policies
 differ. No historical receipt is upgraded or supplied with missing state.
 Sealed wrapper/child v3 remains readable without a clock override, with profile
 v1 only and its original projection. It cannot declare v4 actor/command/camera
-receipts. Comparisons between v3 and v4/v5 are invalid because their observation
+receipts. Comparisons between v3 and v4/v5/v6 are invalid because their observation
 policies differ; no missing trajectory is reconstructed.
 
 Wrapper v1 also retained only `profile.json`. It additionally requires
@@ -554,7 +613,7 @@ python -m tools.map_observation compare \
 ```
 
 Same-policy legacy runs may compare when their actual input bytes match. A
-legacy/v3, legacy/v4 or legacy/v5 comparison remains `INVALID` with both flags,
+legacy/v3, legacy/v4, legacy/v5 or legacy/v6 comparison remains `INVALID` with both flags,
 including when frame
 bytes are equal. Child v1 remains unsupported historical evidence: it lacks atlas
 statistics. No command rewrites historical receipts or adds evidence they did not
@@ -607,7 +666,7 @@ and native/GPU checks do not replace that production coverage.
 
 ## Resident unit-atlas measurement
 
-The final rendered frame records `render.unit_atlas` in the v5 child manifest;
+The final rendered frame records `render.unit_atlas` in the v6 child manifest;
 the validated wrapper retains it as `capture.unit_atlas` in `run.json`. The
 `UnitAtlas` owner reads actual wgpu texture descriptors and resident entries.
 It reports resident sprite count, the last actual build's rasterized sprite count,

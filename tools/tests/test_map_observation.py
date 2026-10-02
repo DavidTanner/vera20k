@@ -44,6 +44,7 @@ class MapObservationTests(unittest.TestCase):
         }
         self.frame = bytes(range(16))
         self.actor_frames = {}
+        self.house_frames = {}
         self.rule_types = [{'type_id': name, 'interned_id': identity, 'category': 'Structure'}
                            for name, identity in [('GACNST', 40), ('GAPOWR', 41), ('GAPILE', 42)]]
         self.terrain_frames = {}
@@ -107,6 +108,9 @@ class MapObservationTests(unittest.TestCase):
                                                      for cell in self.profile.get('terrain_cells', [])])
             frames.append({'completed_steps': step, 'simulation_tick': step, 'binary_frame': step,
                            'total_simulation_ms': step * 22, 'actors': actors,
+                           'houses': deepcopy(self.house_frames.get(step, [
+                               {'owner': owner, 'economy': None}
+                               for owner in self.profile.get('observe_owners', [])])),
                            'missing_actor_ids': sorted(seen - current_ids), 'terrain': deepcopy(terrain)})
         manifest['observations'] = {
             'policy': observation.OBSERVATION_POLICY, 'owners': self.profile.get('observe_owners', []),
@@ -144,6 +148,8 @@ class MapObservationTests(unittest.TestCase):
                      'infantry_doing': 0 if category == 'Infantry' else None,
                      'navigation_leptons': [22400, 13696, 416], 'navigation_unavailable': None},
             'building': MapObservationTests.building(identity) if category == 'Structure' else None,
+            'miner': None,
+            'radio': {'contacts': [None], 'dock_entered_with': None},
         }
 
     @staticmethod
@@ -217,7 +223,7 @@ class MapObservationTests(unittest.TestCase):
         self.actor_frames[3][0]['building']['animation_slots'][0]['animation']['stable_id'] = 101
         report = self.run_capture()
         self.assertEqual(report['status'], 'VALID', report['errors'])
-        self.assertEqual(report['schema_version'], 'vera20k.map-observation-run.v5')
+        self.assertEqual(report['schema_version'], 'vera20k.map-observation-run.v6')
         observed = report['capture']['observations']
         self.assertEqual(observed['rule_types'], self.rule_types)
         self.assertEqual([row['payload'] for row in observed['commands']],
@@ -275,8 +281,8 @@ class MapObservationTests(unittest.TestCase):
         self.assertIsNone(report['capture']['observations']['frames'][1]['actors'][0]
                           ['building']['animation_slots'][0]['animation'])
         self.output = self.root / 'bounded-building-slots'
-        # Four actor + four terrain + four occupied-slot observations.
-        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 11):
+        # Four actors + four terrain + four Houses + four occupied slots.
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 15):
             self.assertEqual(self.run_capture()['status'], 'INVALID')
 
     def test_comparison_includes_rule_handles_and_animation_lifetime_and_runtime(self):
@@ -296,7 +302,7 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual([row['field'] for row in report['differences']],
                          ['observations.rule_types[0].interned_id'])
 
-    def test_v5_building_and_terrain_resource_receipts_validate_and_compare_together(self):
+    def test_building_and_terrain_resource_receipts_validate_and_compare_together(self):
         self.production_profile()
         cell = self.unallocated_cell([87, 53])
         cell.update(overlay={'id': None, 'density': 3},
@@ -322,6 +328,87 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual([row['field'] for row in report['differences']], [
             'observations.frames[1].actors[0].building.animation_slots[0].animation.runtime.frame_timer.duration',
             'observations.frames[1].terrain[0].overlay.density'])
+
+    def refinery_profile(self):
+        self.scripted_profile()
+        self.actor_frames = {step: [self.actor(category='Unit')] for step in range(4)}
+        for step, actors in self.actor_frames.items():
+            actors[0].update(type_id='HARV', miner={
+                'cargo_bales': 40 if step < 2 else step - 2,
+                'capacity_bales': 40, 'unload_active': step == 1,
+                'harvesting': step == 3}, radio={
+                'contacts': [None, 99, None] if step < 2 else [None, None, None],
+                'dock_entered_with': 99 if step == 1 else None})
+            self.house_frames[step] = [{'owner': 'Computer1', 'economy': {
+                'credits': 7000 if step < 2 else 8000,
+                'spent_credits': 3000,
+                'harvested_credits': 0 if step < 2 else 200}}]
+
+    def test_refinery_cargo_radio_and_house_receipts_remain_exact_observations(self):
+        self.refinery_profile()
+        before = self.valid_capture('refinery-before')
+        checked = observation.validate_run(before)
+        self.assertEqual(checked['status'], 'VALID', checked['errors'])
+        frames = checked['capture']['observations']['frames']
+        self.assertEqual(frames[1]['actors'][0]['radio'], {
+            'contacts': [None, 99, None], 'dock_entered_with': 99})
+        self.assertEqual(frames[2]['houses'], self.house_frames[2])
+        self.assertEqual([row['actors'][0]['miner']['cargo_bales'] for row in frames], [40, 40, 0, 1])
+        self.change = lambda m: m['observations']['frames'][2]['houses'][0]['economy'].update(credits=7999)
+        after = self.valid_capture('refinery-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual([row['field'] for row in report['differences']],
+                         ['observations.frames[2].houses[0].economy.credits'])
+        self.change = lambda m: m['observations']['frames'][1]['actors'][0]['radio'].update(
+            contacts=[99, None, None])
+        after = self.valid_capture('refinery-contact-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual([row['field'] for row in report['differences']], [
+            'observations.frames[1].actors[0].radio.contacts[0]',
+            'observations.frames[1].actors[0].radio.contacts[1]'])
+
+    def test_refinery_receipts_reject_missing_fields_types_and_wrong_house_order(self):
+        self.refinery_profile()
+        actor_changes = [lambda a: a.pop('miner'), lambda a: a.pop('radio'),
+                         lambda a: a['miner'].update(cargo_bales=True),
+                         lambda a: a['miner'].update(capacity_bales=65536),
+                         lambda a: a['miner'].update(unload_active=1),
+                         lambda a: a['miner'].update(harvesting=0),
+                         lambda a: a['miner'].update(extra=0),
+                         lambda a: a['radio'].update(contacts=[]),
+                         lambda a: a['radio'].update(contacts=[True]),
+                         lambda a: a['radio'].update(contacts=[0]),
+                         lambda a: a['radio'].update(dock_entered_with=1.5),
+                         lambda a: a['radio'].update(extra=0)]
+        changes = [lambda m, change=change: change(m['observations']['frames'][1]['actors'][0])
+                   for change in actor_changes]
+        changes += [lambda m: m['observations']['frames'][1].pop('houses'),
+                    lambda m: m['observations']['frames'][1].update(houses=[]),
+                    lambda m: m['observations']['frames'][1]['houses'][0].update(owner='OtherHouse'),
+                    lambda m: m['observations']['frames'][1]['houses'][0]['economy'].update(credits=True),
+                    lambda m: m['observations']['frames'][1]['houses'][0]['economy'].update(spent_credits=1 << 31),
+                    lambda m: m['observations']['frames'][1]['houses'][0]['economy'].update(harvested_credits=0.5),
+                    lambda m: m['observations']['frames'][1]['houses'][0]['economy'].update(extra=0)]
+        for index, change in enumerate(changes):
+            with self.subTest(index=index):
+                self.output = self.root / f'refinery-state-invalid-{index}'
+                self.change = change
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_house_observations_count_towards_budget_and_absence_stays_explicit(self):
+        self.scripted_profile()
+        self.profile['terrain_cells'] = []
+        self.profile_path.write_text(json.dumps(self.profile))
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['observations']['frames'][0]['houses'],
+                         [{'owner': 'Computer1', 'economy': None}])
+        self.output = self.root / 'bounded-house-rows'
+        # Four actors and four explicitly unavailable Houses still cost eight samples.
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 7):
+            self.assertEqual(self.run_capture()['status'], 'INVALID')
 
     def test_profile_version_order_field_types_and_budgets_are_checked_before_spawn(self):
         profile = deepcopy(self.profile)
@@ -902,7 +989,7 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(report['presentation_clock']['policy'], observation.CLOCK_POLICY)
         self.assertNotIn('observations', report['capture'])
         self.assertEqual((run / 'run.json').read_bytes(), original)
-        current = self.valid_capture('current-v5')
+        current = self.valid_capture('current-v6')
         report = observation.compare_runs(run, current)
         self.assertEqual(report['status'], 'INVALID')
         self.assertIn('observation policies differ', report['errors'][0])
@@ -917,8 +1004,11 @@ class MapObservationTests(unittest.TestCase):
             trajectory['policy'] = observation.TRAJECTORY_OBSERVATION_POLICY
             trajectory.pop('rule_types')
             for frame in trajectory['frames']:
+                frame.pop('houses')
                 for actor in frame['actors']:
                     actor.pop('building')
+                    actor.pop('miner')
+                    actor.pop('radio')
 
         def convert_child(document):
             document['schema_version'] = observation.TRAJECTORY_CHILD_SCHEMA
@@ -992,11 +1082,107 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(report['status'], 'INVALID')
         self.assertIn('outside ordinary order coverage', report['errors'][0])
 
-    def test_wrapper_v5_requires_child_v5_and_new_trajectory_fields(self):
+    def make_historical_building(self, run):
+        manifest = run / 'child-output/capture.json'
+
+        def observations(document):
+            transcript = document['observations']
+            transcript['policy'] = observation.BUILDING_OBSERVATION_POLICY
+            for frame in transcript['frames']:
+                frame.pop('houses')
+                for actor in frame['actors']:
+                    actor.pop('miner')
+                    actor.pop('radio')
+
+        def convert_child(document):
+            document['schema_version'] = observation.BUILDING_CHILD_SCHEMA
+            observations(document)
+
+        self.edit_json(manifest, convert_child)
+
+        def convert_wrapper(document):
+            document['schema_version'] = observation.BUILDING_RUN_SCHEMA
+            observations(document['capture'])
+            document['capture']['manifest'].update(byte_length=manifest.stat().st_size,
+                                                   sha256=sha256_bytes(manifest.read_bytes()))
+
+        self.edit_json(run / 'run.json', convert_wrapper)
+
+    def test_historical_v5_validates_without_upgrade_and_compares_only_same_policy(self):
+        self.refinery_profile()
+        before = self.valid_capture('historical-v5-before')
+        after = self.valid_capture('historical-v5-after')
+        self.make_historical_building(before)
+        self.make_historical_building(after)
+        paths = [run / name for run in (before, after)
+                 for name in ('run.json', 'child-output/capture.json')]
+        originals = {path: path.read_bytes() for path in paths}
+        report = observation.validate_run(before)
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertNotIn('houses', report['capture']['observations']['frames'][0])
+        self.assertNotIn('miner', report['capture']['observations']['frames'][0]['actors'][0])
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MATCH', report['errors'])
+        current = self.valid_capture('current-refinery-state')
+        report = observation.compare_runs(before, current)
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertIn('observation policies differ', report['errors'][0])
+        for path, raw in originals.items():
+            self.assertEqual(path.read_bytes(), raw)
+
+    def test_unit_extension_coexists_with_refinery_state_and_survives_historical_v5_read(self):
+        self.refinery_profile()
+        unit = self.unit()
+        unit.update(deployed_6e0=0, deploying_6e1=0, undeploying_6e2=0, deploy_anim_130=None)
+        for actors in self.actor_frames.values():
+            actors[0]['unit'] = deepcopy(unit)
+        before = self.valid_capture('unit-refinery-before')
+        after = self.valid_capture('unit-refinery-after')
+        checked = observation.validate_run(before)
+        self.assertEqual(checked['status'], 'VALID', checked['errors'])
+        frames = checked['capture']['observations']['frames']
+        self.assertEqual(frames[1]['actors'][0]['unit'], unit)
+        self.assertEqual(frames[1]['actors'][0]['miner']['cargo_bales'], 40)
+        self.assertEqual(frames[1]['actors'][0]['radio']['contacts'], [None, 99, None])
+        self.assertEqual(frames[2]['houses'], self.house_frames[2])
+        for run in (before, after):
+            self.make_historical_building(run)
+        originals = {path: path.read_bytes() for path in
+                     (before / 'run.json', before / 'child-output/capture.json')}
+        checked = observation.validate_run(before)
+        self.assertEqual(checked['status'], 'VALID', checked['errors'])
+        frames = checked['capture']['observations']['frames']
+        self.assertEqual(frames[1]['actors'][0]['unit'], unit)
+        self.assertNotIn('miner', frames[1]['actors'][0])
+        self.assertNotIn('houses', frames[1])
+        compared = observation.compare_runs(before, after)
+        self.assertEqual(compared['status'], 'MATCH', compared['errors'])
+        for path, raw in originals.items():
+            self.assertEqual(path.read_bytes(), raw)
+        self.edit_json(before / 'child-output/capture.json', lambda m:
+                       m['observations']['frames'][1]['actors'][0]['unit'].update(deployed_6e0=True))
+        checked = observation.validate_run(before)
+        self.assertEqual(checked['status'], 'INVALID')
+        self.assertIn('deployed_6e0', checked['errors'][0])
+
+    def test_historical_v5_rejects_v6_docking_and_economy_fields(self):
+        self.refinery_profile()
+        for index, change in enumerate((
+                lambda m: m['observations']['frames'][0].update(houses=[]),
+                lambda m: m['observations']['frames'][0]['actors'][0].update(miner=None),
+                lambda m: m['observations']['frames'][0]['actors'][0].update(radio={}))):
+            run = self.valid_capture(f'historical-v5-smuggle-{index}')
+            self.make_historical_building(run)
+            self.edit_json(run / 'child-output/capture.json', change)
+            self.assertEqual(observation.validate_run(run)['status'], 'INVALID')
+
+    def test_wrapper_v6_requires_child_v6_and_docking_observation_policy(self):
         for index, change in enumerate((
                 lambda m: m.update(schema_version=observation.TRAJECTORY_CHILD_SCHEMA),
-                lambda m: m['observations'].update(policy=observation.TRAJECTORY_OBSERVATION_POLICY))):
-            self.output = self.root / f'v5-generation-mismatch-{index}'
+                lambda m: m.update(schema_version=observation.BUILDING_CHILD_SCHEMA),
+                lambda m: m['observations'].update(policy=observation.TRAJECTORY_OBSERVATION_POLICY),
+                lambda m: m['observations'].update(policy=observation.BUILDING_OBSERVATION_POLICY))):
+            self.output = self.root / f'v6-generation-mismatch-{index}'
             self.change = change
             self.assertEqual(self.run_capture()['status'], 'INVALID')
 

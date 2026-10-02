@@ -5987,13 +5987,7 @@ mod tests {
             .entities
             .get_mut(ORDINARY_DRIVE_HOST_ID)
             .unwrap()
-            .dock_state = Some(DockState {
-            dock_building_id: 99,
-            phase: DockPhase::EnterDock,
-            service_timer: 0,
-            no_funds_ticks: 0,
-            enter_retry: Default::default(),
-        });
+            .dock_state = Some(DockState::new(99, DockPhase::EnterDock));
         assert_ordinary_drive_host_error(&dock, &control, 120, ordinary, HostTraceError::DockPath);
 
         let mut aircraft = ordinary_drive_host_sim(13);

@@ -1026,12 +1026,159 @@ impl Simulation {
                 .get_mut(id)
                 .expect("same setter actor");
             super::movement_commands::clear_destination_path_head(actor);
-            // Unit7422D9..7423CD: queued Approach passes false, skips the
-            // queue-clear dispatch, and consumes its first entry afterward.
-            if clear_queue {
-                actor.navigation.nav_queue.clear();
-            }
         }
+        // Unit741C4F..741E8E and742C14..742D0B: the UnitRepair
+        // Building arm belongs to this same class setter, including callers
+        // that already HELLOed in Foot70D7E0. No caller repeats its handshake.
+        // The original incoming Building identity survives a modified NULL
+        // argument. Native controls: refinery_dock.json; source741970.
+        let depot = match requested {
+            NavTargetRef::Building { id }
+            | NavTargetRef::Entity { id }
+            | NavTargetRef::Object { id } => self
+                .substrate
+                .entities
+                .get(id)
+                .filter(|building| building.category == EntityCategory::Structure)
+                .filter(|building| {
+                    self.object_type(building.type_ref(), rules)
+                        .is_some_and(|object| object.unit_repair)
+                })
+                .map(|_| id),
+            _ => None,
+        };
+        let mut destination = Some(requested);
+        let mut depot_fast_return = false;
+        if let Some(depot) = depot {
+            let enter_without_contact = self.substrate.entities.get(id).is_some_and(|unit| {
+                (unit.mission.effective().known() == Some(MissionType::Enter)
+                    || unit.mission.queued().known() == Some(MissionType::Enter))
+                    && unit.radio_contacts.is_empty()
+            });
+            if enter_without_contact {
+                let busy = self
+                    .substrate
+                    .entities
+                    .get(depot)
+                    .is_some_and(|building| !building.radio_contacts.is_empty());
+                if busy {
+                    if let Some(unit) = self.substrate.entities.get_mut(id) {
+                        unit.set_archive_target(Some(crate::sim::combat::TargetKind::Entity(
+                            depot,
+                        )));
+                    }
+                    let damaged = self
+                        .substrate
+                        .entities
+                        .get(id)
+                        .and_then(|unit| {
+                            self.object_type(unit.type_ref(), rules)
+                                .map(|object| !unit.health.is_fully_repaired(object.strength))
+                        })
+                        .unwrap_or(false);
+                    if damaged {
+                        crate::sim::docking::building_dock::set_pending_entry(
+                            self,
+                            id,
+                            Some(depot),
+                        );
+                    } else {
+                        crate::sim::radio::transmit_to_contact(
+                            self,
+                            id,
+                            crate::sim::radio::RadioMessage::Break,
+                            Some(rules),
+                        );
+                    }
+                    destination = None;
+                } else if crate::sim::radio::transmit(
+                    self,
+                    id,
+                    depot,
+                    crate::sim::radio::RadioMessage::CanDock,
+                    crate::sim::radio::RadioPayload::default(),
+                    Some(rules),
+                ) != crate::sim::radio::RadioResponse::Roger
+                {
+                    crate::sim::radio::transmit_to_contact(
+                        self,
+                        id,
+                        crate::sim::radio::RadioMessage::Break,
+                        Some(rules),
+                    );
+                    if let Some(unit) = self.substrate.entities.get_mut(id) {
+                        unit.set_archive_target(Some(crate::sim::combat::TargetKind::Entity(
+                            depot,
+                        )));
+                    }
+                }
+            }
+            // Native7422F4/7423CA clears NavQueue after the initial
+            // Enter/no-contact DOCKING arm, before the UnitRepair tail.
+            // A false flag preserves non-NULL requests for Enter's pop;
+            // the modified-NULL arm7423CA clears the queue regardless.
+            if (clear_queue || destination.is_none())
+                && let Some(unit) = self.substrate.entities.get_mut(id)
+            {
+                unit.navigation.nav_queue.clear();
+            }
+            let held_by_other = self.substrate.entities.get(depot).is_some_and(|building| {
+                !building.radio_contacts.is_empty() && building.radio_contacts.slot(0) != Some(id)
+            });
+            if held_by_other {
+                if let Some(unit) = self.substrate.entities.get_mut(id) {
+                    unit.set_archive_target(
+                        destination.map(|_| crate::sim::combat::TargetKind::Entity(depot)),
+                    );
+                }
+            } else if crate::sim::radio::transmit(
+                self,
+                id,
+                depot,
+                crate::sim::radio::RadioMessage::Hello,
+                crate::sim::radio::RadioPayload::default(),
+                Some(rules),
+            ) == crate::sim::radio::RadioResponse::Roger
+            {
+                if crate::sim::radio::transmit_to_contact(
+                    self,
+                    id,
+                    crate::sim::radio::RadioMessage::CanDock,
+                    Some(rules),
+                ) != crate::sim::radio::RadioResponse::Roger
+                {
+                    crate::sim::radio::transmit_to_contact(
+                        self,
+                        id,
+                        crate::sim::radio::RadioMessage::Break,
+                        Some(rules),
+                    );
+                    destination = None;
+                } else {
+                    depot_fast_return = true;
+                }
+            }
+            let pending = self.substrate.entities.get(id).is_some_and(|unit| {
+                unit.dock_state
+                    .as_ref()
+                    .is_some_and(|dock| dock.pending_entry().is_some())
+            });
+            if !pending || depot_fast_return {
+                crate::sim::docking::building_dock::begin_approach(self, id, depot);
+            }
+        } else if clear_queue && let Some(unit) = self.substrate.entities.get_mut(id) {
+            unit.navigation.nav_queue.clear();
+        }
+        let Some(requested) = destination else {
+            if teleporter {
+                let _ = self.unit_teleporter_arm(id, None, rules);
+            }
+            self.foot_null_destination(id, Some(rules), None);
+            if let Some(actor) = self.substrate.entities.get_mut(id) {
+                super::retain_committed_movement(actor);
+            }
+            return true;
+        };
         // 7424B1..7424F0 casts the requested receiver to CellClass. A Foot
         // or Building target is not a Cell even when it stands on a dock.
         let requested_cell = match requested {
@@ -1040,6 +1187,9 @@ impl Simulation {
         };
         let skip_move_to = teleporter && self.unit_teleporter_arm(id, requested_cell, rules);
         if !self.begin_foot_destination(id, true) {
+            if depot_fast_return && let Some(actor) = self.substrate.entities.get_mut(id) {
+                actor.navigation.path_replay.clear_live_head();
+            }
             return false;
         }
         let frame = self.session.binary_frame;
@@ -1118,6 +1268,11 @@ impl Simulation {
         // 0x004D96C2..0x004D9707: +6B7 and the +640/+668 restarts follow the
         // Move_To (or its skip) whatever it answered.
         timing.accept(actor);
+        // The successful depot tail742D0B calls Foot before its
+        // unconditional first path-word clear742D11 and early return.
+        if depot_fast_return {
+            actor.navigation.path_replay.clear_live_head();
+        }
         accepted
     }
 

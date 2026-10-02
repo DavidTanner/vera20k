@@ -14,6 +14,10 @@ movement, placement, capture and refinery/depot exits.
 | Target setter and pointer-expiry hierarchy | Mission concrete effects / `world::lifecycle` | Target `6FCDB0`; Unit `7446E0` → Foot `4D9960` → Techno `7077C0` |
 | Ore search, cargo and ore mutations | `miner_system`, `ore_scan`, `tiberium` | Search `4DCFE0`, ore tick `73D450` |
 | Stage and harvesting latch | Entity Stage owner / Unit AI miner receiver | Techno `6FABB8..6FAC31`; Unit `7365BB..7365DF` |
+| Ordered refinery selection and admission | `miner_system::find_docking_bay` → shared `radio::receive` | `4DF040`/`4DEE80` → CAN_LOAD `43C2D0` |
+| Shared refinery/depot Enter | `mission::enter` with `MissionCom` cadence | Foot `4D9290`, current control `5B3A00` |
+| Unit destination and per-cell docking | `movement::track_path` / `movement::per_cell` | Unit `741970` / `73A31F` |
+| Unload, cargo payment and departure | `miner::refinery_dock` with shared House economy | Unit `73D630` → House `4F9610` |
 
 The committed selector chooses one handler. A Miner component never admits
 Harvest while Attack, Move or another mission is current. Harvest returns its
@@ -66,6 +70,45 @@ ordinary run, ore stayed at density 4 for all 226 Attack observations
 (steps 2502..2727). Combat killed the target at 2725; Harvest returned at 2728
 and collection resumed at 2748. These are Rust production observations.
 
+## Refinery deposit and shared depot consumers
+
+A full stock War Miner searches its owner's ordered Dock list and asks the
+Building radio receiver for admission. The common Enter handler probes the
+contact and uses the committed mission's cadence. On the pad, Unit per-cell
+sends DOCK_NOW; Unload advances the shared Stage, pays the refinery owner and
+returns to Harvest. Scanner queries and mission probes use the same admission
+owner. Depot Enter also uses that handler, the Unit setter and per-cell owner;
+it carries no duplicate Enter retry timer.
+
+Building construction installs `max(NumberOfDocks, 1)` contact slots before
+selection or HELLO. Admission queries the actual sparse slots through
+`Contacts::has_free_or`; HELLO uses the radio owner without resizing the building.
+The same construction setup serves refinery, depot and airfield consumers.
+
+The docking owner retains native pending entry independently of an admitted
+depot visit. Its pointer can survive approach/service, contributes to the world
+hash and is saved. Building lethal damage captures contacts before Techno death
+effects; the later Building wrapper sends RUN_AWAY and clears pending after the
+receiver returns. Generic Destroy does not repeat that continuation.
+
+The [refinery executable packet](../../../tools/spatial_oracle/refinery_dock.md)
+retains the older 107 rows, additional shared controls and three complete
+sampled deposit/retry/destruction-prefix histories. The continuation replay
+compares represented boundaries and full Scenario RNG; a separate test binds
+the native reader inputs to production retail rules and ART. The
+packet also retains nine actual-slot admission controls and four constructor
+controls, replayed through the shared owners and both construction routes. The
+[ordinary release profile](../../../tools/map_observation.refinery-docking.example.json)
+observes cargo, House payment, radio release and resumed harvesting through
+the normal loader and synchronized commands. The packet records the exact
+boundaries of its repair, movement, scheduling and rendering evidence.
+
+The [docking validation receipt](../../../tools/spatial_oracle/refinery_dock.validation.json)
+binds the final Rust hashes, native comparisons and release run. That ordinary
+run observed two 40-bale deposits paying 1,000 credits each, with radio release
+and collection resuming after each deposit. The final GPU frame was inspected;
+native whole-clock and pixel comparisons remain outside this evidence.
+
 ## Coverage limits
 
 The native packet executes command, expiry, dispatch, idle, promotion and selected
@@ -78,8 +121,7 @@ Retained AttackMove's saved mission, planning advancement, linked idle objects,
 non-Cell waypoint heads and other class locomotor unwind remain separate base
 mechanisms. Ordinary Attack clears its saved-order/navigation inputs. The stock
 HARV path uses Drive, no slave manager and an owned type from its retail `Dock=`
-list. Depot Enter still models its native Building destination as a pad Cell
-(issue #842); this change preserves that installed NavCom through shared idle.
-Native end-to-end deposit, unusual Weeder/slave routes, broad AreaGuard,
-network delivery and rendered pixel equivalence retain their existing owners
-and residuals.
+list. Shared depot entry retains the native Building destination through idle
+and per-cell docking. Full depot repair cost/payment cadence (issue #675),
+unusual Weeder/slave routes, broad AreaGuard, network delivery and rendered pixel
+equivalence retain their existing owners and residuals.

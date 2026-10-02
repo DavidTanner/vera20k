@@ -491,6 +491,20 @@ pub(crate) fn commit_entities(
             }
             BuildingReceivePrelude::Continue => {}
         }
+        // Building4422F9..44234A copies its sparse contacts before calling
+        // Techno442425. Destroy/Stun can remove the live links before the
+        // concrete NowDead loop442511 resumes, so this per-receiver snapshot
+        // must survive the synchronous common death effects.
+        let building_contacts = if callbacks_enabled(world) {
+            world
+                .substrate
+                .entities
+                .get(target_id)
+                .filter(|target| target.category == EntityCategory::Structure)
+                .map(|target| target.radio_contacts.iter_live().collect::<Vec<_>>())
+        } else {
+            None
+        };
         // FootClass::ReceiveDamage 0x004D7330..0x004D7413 runs its parasite
         // prefix on the raw damage before TechnoClass::ReceiveDamage.
         if event.distance_leptons.is_some() {
@@ -966,6 +980,7 @@ pub(crate) fn commit_entities(
                 std::slice::from_ref(event),
                 rules,
                 overlay_registry,
+                building_contacts.as_deref(),
             );
             under_attack_events.append(&mut nested.under_attack_events);
             if matches!(
@@ -1090,6 +1105,7 @@ pub(crate) fn handle_death(
     damage_events: &[EntityDamageEvent],
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    building_contacts: Option<&[u64]>,
 ) -> DeathEffects {
     debug_assert!(
         dead_entities.len() <= 1,
@@ -1457,6 +1473,26 @@ pub(crate) fn handle_death(
     // Concrete receivers resume after Techno's nested DeathWeapon. Read the
     // retained entity's current state at that boundary.
     for &dead_id in dead_entities {
+        // Building442425 returns from Techno701900 before dispatching
+        // NowDead4 to4424A2/442511. Its saved-contact RUN_AWAY loop follows
+        // Destroy's BREAK/expiry and Techno's sounds, Stun, debris and nested
+        // death weapon; Building DestructionEffects442665 follows it.
+        // Techno702035 also forces result4 on an admitted Health0 re-entry. A
+        // nested effect that cleared ObjectAlive skips the concrete wrapper
+        // at44242C, and PostMortem never reaches this result4 continuation.
+        if callbacks_enabled(world)
+            && let Some(contacts) = building_contacts
+            && world
+                .substrate
+                .entities
+                .get(dead_id)
+                .is_some_and(|building| {
+                    building.category == EntityCategory::Structure
+                        && building.lifecycle.object_alive
+                })
+        {
+            world.building_now_dead_contacts(dead_id, contacts, Some(rules));
+        }
         finish_concrete_death(
             world,
             dead_id,

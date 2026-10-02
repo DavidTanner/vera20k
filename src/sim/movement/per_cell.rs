@@ -17,6 +17,8 @@ use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::lifecycle_request::{LifecycleRequest, UninitReason};
+use crate::sim::mission::MissionType;
+use crate::sim::radio::{self, RadioMessage, RadioPayload};
 use crate::sim::world::{FrameAdvanceError, Simulation};
 
 /// The reason a `Per_Cell_Process` call passes.
@@ -60,6 +62,97 @@ impl Simulation {
         }
     }
 
+    /// Unit739EC0 dock arrival arms73A31F..A5EA. Returns whether the
+    /// object-destination arm ran its early Foot tail and completed the call.
+    /// Native controls: tools/spatial_oracle/refinery_dock.json.
+    pub(crate) fn unit_dock_now(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
+        // 73A31F..A547: an Enter7/Patrol25 object destination at its
+        // GetDockCoord cell runs Foot's tail once, sends DOCK_NOW, powers
+        // off the locomotor and returns before Unit Ready/crush/tail.
+        let object_dock = self.substrate.entities.get(id).and_then(|unit| {
+            if !matches!(unit.mission.effective().known(), Some(MissionType::Enter | MissionType::Patrol)) {
+                return None;
+            }
+            let contact = unit.radio_contacts.slot(0)?;
+            let building = self.substrate.entities.get(contact)?;
+            if building.category != EntityCategory::Structure { return None; }
+            let at = super::ground_pose::object_get_coords(unit, self.resolved_terrain.as_ref());
+            let cell = ((at.x /256) as u16, (at.y /256) as u16);
+            let dock = super::building_dock_cell(&self.substrate.entities, contact, Some(id),
+                self.resolved_terrain.as_ref(), rules, &self.interner)?;
+            if cell != dock { return None; }
+            let restore = self.object_type(building.type_ref(), rules).is_some_and(|object| object.unit_repair)
+                // Literal GUID7E9A40 is Hover (4A582742), not Drive
+                // (4A582741 at7E9A30). Native ctor/GetClassID controls pin it.
+                && unit.locomotor.as_ref().is_some_and(|locomotor| locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Hover)
+                && unit.navigation.nav_com.is_none();
+            let aimed = matches!(unit.navigation.nav_com,
+                Some(crate::sim::components::NavTargetRef::Entity { id: nav }
+                    | crate::sim::components::NavTargetRef::Object { id: nav }
+                    | crate::sim::components::NavTargetRef::Building { id: nav }) if nav == contact);
+            (restore || aimed).then_some((contact, restore))
+        });
+        if let Some((contact, restore)) = object_dock {
+            if restore && let Some(unit) = self.substrate.entities.get_mut(id) {
+                // Unit73A4E9 restores only the raw NavCom; unlike the Foot
+                // setter this does not clear NavComAux or change movement.
+                unit.navigation.nav_com =
+                    Some(crate::sim::components::NavTargetRef::Building { id: contact });
+            }
+            self.foot_per_cell_process(id, PerCellReason::Arrival, Some(rules), registry);
+            crate::sim::radio::transmit_to_contact(
+                self,
+                id,
+                crate::sim::radio::RadioMessage::DockNow,
+                Some(rules),
+            );
+            if let Some(unit) = self.substrate.entities.get_mut(id)
+                && let Some(locomotor) = unit.locomotor.as_mut()
+            {
+                locomotor.power_off();
+            }
+            return true;
+        }
+        let Some(entity) = self.substrate.entities.get(id) else {
+            return false;
+        };
+        if entity.dock_entered_with.is_none()
+            || entity.mission.effective()
+                != crate::sim::mission::MissionId::from_known(MissionType::Enter)
+        {
+            return false;
+        }
+        let Some(contact) = entity.radio_contacts.slot(0) else {
+            return false;
+        };
+        let (x, y) = (entity.position.rx, entity.position.ry);
+        let north = self.substrate.occupancy.first_building_on_layer(
+            x,
+            (y as i16).wrapping_sub(1) as u16,
+            MovementLayer::Ground,
+        );
+        if north != Some(contact) {
+            return false;
+        }
+        let reply = radio::transmit(
+            self,
+            id,
+            contact,
+            RadioMessage::DockNow,
+            RadioPayload::default(),
+            Some(rules),
+        );
+        // 0x0073A5CE..0x0073A5E4: an answer other than 1 or 5 scatters the unit
+        // (a refinery being sold) — RESIDUAL, module doc.
+        let _ = reply;
+        false
+    }
+
     /// `UnitClass::Per_Cell_Process @ 0x00739EC0`: the Unit's own arrival
     /// work, then the Foot body (`0x0073A4FB`, `0x0073B0A0`).
     pub(super) fn unit_per_cell_process(
@@ -80,8 +173,9 @@ impl Simulation {
         // unit on Enter arriving north-adjacent to its dock sends DOCK_NOW.
         if let Some(rules) = rules
             && reason == PerCellReason::Arrival
+            && self.unit_dock_now(id, rules, registry)
         {
-            crate::sim::miner::per_cell_dock_now(self, rules, id);
+            return;
         }
         // Unit PerCell2 739EC0: after MCV retry, +6D1==0 admits
         // Ready(+200)73ACC2 -> Commence(+1EC)73ACD1, BEFORE full-cell
