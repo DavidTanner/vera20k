@@ -116,7 +116,7 @@ pub(crate) fn put_location(position: &mut Position, coord: DriveCoord) {
 /// changed (`0x004DB819..0x004DB83D`), an `OpenTopped=` transport's riders
 /// take it (`0x004DB870..0x004DB88A` -> `0x007104F0`,
 /// [`open_topped_riders_follow`]). Drive, Ship, Walk, Hover, Jumpjet, the
-/// tube and the Fly crash fall move a Foot through it.
+/// tube, Fly crash fall and Unit sinking move a Foot through it.
 ///
 /// RESIDUAL: its marked branch (`0x004DB83F..0x004DB866`, Mark(UP),
 /// `ObjectClass::SetLocation`, Mark(DOWN) while `+0x74` is set) is not
@@ -126,7 +126,9 @@ pub(crate) fn put_location(position: &mut Position, coord: DriveCoord) {
 /// `+0x74` around it otherwise (`0x004B209F`, `0x005149F7`); Jumpjet clears
 /// `+0x74` around it (`0x0054C189..0x0054C1A3`) or Mark(UP)s first
 /// (`0x0054C820`, `0x0054CBE1`); a tube mover is out of the lists until its
-/// exit's Mark(DOWN); and the Fly crash fall Mark(UP)s first (`0x004CD766`).
+/// exit's Mark(DOWN); the Fly crash fall Mark(UP)s first (`0x004CD766`);
+/// and a sinking Unit was unmarked by its fatal receiver (`0x00737F7A`)
+/// before Unit AI's call (`0x007364E3`).
 /// The Jumpjet replay also sets the Location it Mark(UP)s from while marked,
 /// which moves nothing. Natively `ObjectClass::Paradrop` calls it on the
 /// object Unlimbo just marked, with the same coordinate (`0x005F5A3D`,

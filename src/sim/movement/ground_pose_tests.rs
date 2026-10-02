@@ -1332,4 +1332,13 @@ fn foot_set_location_always_writes_but_moves_riders_only_on_a_change() {
         [1, 2].map(|id| position_world_coord(&entities.get(id).unwrap().position));
     assert_eq!(transport, moved);
     assert_eq!(rider, moved, "the rider took the changed Location");
+
+    // The native change test includes Z (4DB834). A caller that only
+    // changes height still reaches the same rider tail as an XY move.
+    let lowered = DriveCoord { z: -5, ..moved };
+    foot_set_location(&mut entities, 1, lowered, Some(&rules), &interner);
+    let [transport, rider] =
+        [1, 2].map(|id| position_world_coord(&entities.get(id).unwrap().position));
+    assert_eq!(transport, lowered);
+    assert_eq!(rider, lowered, "the rider took the Z-only Location change");
 }

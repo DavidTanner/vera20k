@@ -11,7 +11,9 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::AnimWorldCoord;
 use crate::sim::components::AnimClassSpawnDescriptor;
-use crate::sim::movement::ground_pose::{ground_surface_z_at, position_world_coord};
+use crate::sim::movement::ground_pose::{
+    foot_set_location, ground_surface_z_at, position_world_coord,
+};
 
 /// Techno constructor6F2F2B/6F2F31 initializes both bytes to zero. Kept
 /// separate from Foot+425/+426 (`GameEntity::crashing` and its sound edge).
@@ -127,6 +129,10 @@ impl Simulation {
         if entity.category != EntityCategory::Unit || !entity.sinking.active {
             return false;
         }
+        debug_assert!(
+            !entity.lifecycle.cell_marked,
+            "sinking receiver must finish Mark(UP)"
+        );
         let mut coord = position_world_coord(&entity.position);
         let floor = ground_surface_z_at(
             [coord.x, coord.y],
@@ -136,16 +142,17 @@ impl Simulation {
         )
         .unwrap_or(0);
         coord.z = coord.z.wrapping_sub(5);
-        // The fatal receiver's Mark(UP) has already removed this hull. The
-        // ensuing Foot SetCoords4DB868 only writes raw coordinates; it does
-        // not manufacture new ground membership for an unmarked object.
-        if let Some(entity) = self.substrate.entities.get_mut(id) {
-            debug_assert!(
-                !entity.lifecycle.cell_marked,
-                "sinking receiver must finish Mark(UP)"
-            );
-            entity.position.exact_z_leptons = Some(coord.z);
-        }
+        // Unit7364E3 calls vt+1B4, Foot SetLocation4DB810. The fatal
+        // receiver's Mark(UP) makes its unmarked arm4DB868 applicable; it
+        // rejoins the changed-coordinate/OpenTopped tail, not a separate
+        // raw-Z setter. Native execution: naval_sink_tick.json.
+        foot_set_location(
+            &mut self.substrate.entities,
+            id,
+            coord,
+            Some(rules),
+            &self.interner,
+        );
         if coord.z.wrapping_sub(floor) < -400 {
             // UnitAI736500's terminal RecordKill(NULL) is a second callback,
             // not a second accounting implementation. Native naval_sink_tick
