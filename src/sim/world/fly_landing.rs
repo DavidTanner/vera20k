@@ -5,9 +5,7 @@ use super::{Simulation, display_layers::DisplayLayer};
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, NavTargetRef};
-use crate::sim::movement::{
-    DestinationTiming, air_movement, ground_pose, locomotor::MovementLayer,
-};
+use crate::sim::movement::{air_movement, ground_pose, locomotor::MovementLayer};
 use crate::util::fixed_math::SIM_ZERO;
 
 impl Simulation {
@@ -321,13 +319,15 @@ impl Simulation {
         self.clear_fly_foot_destination(id, rules);
     }
 
+    /// The class setter's `vt+0x480(NULL, 1)` after a landing (`0x004CEF88`)
+    /// or on reaching the ground layer (`0x004CD2A0`'s layer arm), through
+    /// [`Simulation::assign_null_destination`]; the Fly's order adapter
+    /// retires with it.
     fn clear_fly_foot_destination(&mut self, id: u64, rules: Option<&RuleSet>) {
-        let entity = self.substrate.entities.get_mut(id).unwrap();
-        entity.navigation.nav_com_aux = None;
-        entity.navigation.nav_com = None;
-        entity.navigation.pending_arrival_clear = false;
-        entity.movement_target = None;
-        DestinationTiming::from_rules(self.session.binary_frame, rules).accept(entity);
+        self.assign_null_destination(id, rules, None);
+        if let Some(entity) = self.substrate.entities.get_mut(id) {
+            entity.movement_target = None;
+        }
     }
 
     /// Foot4DDC60: height-aware playfield, nearest ground-list Techno, then

@@ -201,7 +201,7 @@ fn teleporter_reassign(sim: &mut Simulation, rules: &RuleSet, id: u64) {
             );
         }
         _ => {
-            sim.set_unit_null_destination(id, Some(rules));
+            sim.set_unit_null_destination(id, Some(rules), None);
         }
     }
 }

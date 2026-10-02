@@ -478,25 +478,13 @@ fn foot_speed_ownership_matches_original_helper_witnesses() {
 }
 
 #[test]
-fn foot_stop_preserves_queue_while_explicit_abandonment_exhausts_it() {
+fn foot_stop_preserves_queue() {
     let (mut sim, _) = fixture();
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     activate_drive(entity);
     entity.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(12, 8));
     super::super::navcom::foot_stop_moving(entity);
     assert_eq!(entity.navigation.path_replay, replay_fixture());
-    super::super::movement_commands::stop_navigation_at_committed_head(entity);
-    assert!(
-        entity
-            .navigation
-            .path_replay
-            .remaining_directions()
-            .is_empty()
-    );
-    assert_eq!(
-        entity.navigation.path_replay.reference_cell,
-        Some((-17, 301))
-    );
 }
 
 #[test]

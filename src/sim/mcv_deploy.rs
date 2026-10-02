@@ -305,7 +305,7 @@ pub(crate) fn issue_order(sim: &mut Simulation, id: u64, rules: &RuleSet) -> boo
     // (`0x004C77F8`, Unit `0x00741970`) and its class target setter a null
     // target (`0x004C7804`) before Queue_Mission(Unload) (`0x004C7812`).
     // Queue's same-mission guard keeps the handler and timer on a repeated D.
-    sim.assign_null_destination(id, Some(rules));
+    sim.assign_null_destination(id, Some(rules), None);
     let _ = sim.assign_target_represented(id, None, Some(rules));
     let entity = sim.substrate.entities.get_mut(id).unwrap();
     entity.order_intent = None;

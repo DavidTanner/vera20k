@@ -30,11 +30,21 @@ the analyzed program. Re-importing or enabling analysis is not routine reconnect
 - Names, signatures and pseudocode are interpretations. Resolve consequential
   ambiguity from bytes/instructions, receiver/argument flow and actual callers.
   A nearby label or attractive decompile is not proof of identity.
+- Check enum values against the native reader and dispatcher. YRpp `8468aab5`
+  declares `BehavesLike::Smoke = 0` and `Gas = 1`, but ParticleTypeClass's INI
+  reader uses `Gas, Smoke, Fire, Spark, Railgun` at `0x8370BC` and stores that
+  table index at type `+0x314` (`0x6453D7..0x6453FF`). ParticleClass's dispatcher
+  reads the same field and switches on it (`0x62CE43..0x62CE54`), so those two
+  header values would misidentify the native particle handlers.
 - Check pointer types: `int *p; p[0xac]` addresses byte offset `0x2b0` on this
   32-bit target. Addition to an integer address uses byte offsets.
 - For virtual calls, establish the table/subobject owner, read the actual slot,
   follow receiver-adjusting thunks and check callers. Inspect surrounding instructions
   for questionable boundaries; compiler lifecycle plumbing can resemble gameplay.
+- HTTP xref kinds reflect Ghidra flow overrides. At `0x70DC6A`, the original
+  bytes `E9 11 9C 00 00` jump to `0x717880`, while `/get_xrefs_to` reports
+  `UNCONDITIONAL_CALL`. Decode the original instruction before deriving argument
+  storage or a caller's stack effect from that label; a tail jump pushes no return address.
 - Find state writers and initialization. Zero-filled image data may be populated
   at runtime. Confirm active-YR gates and retail inputs; inherited TS code alone
   does not establish a feature's applicability.

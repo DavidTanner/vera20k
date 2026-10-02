@@ -591,7 +591,7 @@ impl Simulation {
             return Ok(false);
         }
         //4B3A3E..4B3A56: SetDestination(NULL, 1).
-        self.set_unit_null_destination(id, Some(rules));
+        self.set_unit_null_destination(id, Some(rules), None);
         Ok(false)
     }
 
@@ -647,7 +647,7 @@ impl Simulation {
                     }
                     //4B3F58..4B3F6E: an unreachable live destination clears.
                     if !self.foot_path_zone_precheck(id, self.live_track_destination(id), rules)? {
-                        self.set_unit_null_destination(id, Some(rules));
+                        self.set_unit_null_destination(id, Some(rules), None);
                     }
                 }
                 second = self

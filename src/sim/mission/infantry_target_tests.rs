@@ -369,7 +369,14 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
             .copied();
         let expected_head = (after["path_field"].as_i64().unwrap() != -1)
             .then(|| after["path_field"].as_u64().unwrap() as u8);
-        assert_eq!(head, expected_head, "{name}");
+        // This receipt ends at Assign_Target51B1F0. An ordered event then
+        // calls the class NULL destination, which can separately clear Path[0]
+        // even when Assign_Target refused (AI Doing27..30,51AD11). Its path
+        // writes/refusal are compared by walk_percell_stop; the target-only
+        // intermediate head is not a golden for the whole event's suffix.
+        if consumer != TargetConsumer::OrderedAttack {
+            assert_eq!(head, expected_head, "{name}");
+        }
         assert_eq!(
             sim.scenario_rng.native_state_hex(),
             row["rng_after"],

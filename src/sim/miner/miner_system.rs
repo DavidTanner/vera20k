@@ -672,7 +672,7 @@ fn harvest_looking(
                 .is_some_and(|loco| loco.active_kind() == LocomotorKind::Teleport)
     });
     if teleport_with_nav {
-        sim.set_unit_null_destination(id, Some(rules));
+        sim.set_unit_null_destination(id, Some(rules), None);
     }
     let range = super::ore_scan::scan_cells(rules.general.tiberium_long_scan);
     if super::ore_scan::search_for_tiberium_and_move(sim, rules, overlay_registry, id, range) {
@@ -998,7 +998,7 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
             );
         }
         None => {
-            sim.assign_null_destination(id, Some(rules));
+            sim.assign_null_destination(id, Some(rules), None);
         }
     }
 }

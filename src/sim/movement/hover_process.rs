@@ -414,7 +414,7 @@ impl Simulation {
             {
                 return Ok(Arrival::Return);
             }
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             self.hover_halt(id);
         } else if code != 0 {
             //514982..5149EA.
@@ -680,7 +680,7 @@ impl Simulation {
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 hover_stop_moving(entity);
             }
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             return Ok(());
         }
         if path_word(entity, 0).is_some() {
@@ -817,7 +817,7 @@ impl Simulation {
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 hover_stop_moving(entity);
             }
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             return Ok(true);
         }
         self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules, registry)
@@ -839,7 +839,7 @@ impl Simulation {
             .foot_path_zone_precheck(id, destination, rules)
             .map_err(|cause| self.hover_error(id, cause))?
         {
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             return Ok(());
         }
         let Some(entity) = self.substrate.entities.get(id) else {
@@ -856,7 +856,7 @@ impl Simulation {
             ) < rules.general.close_enough
             && matches!(mission, Some(MissionType::Move | MissionType::AreaGuard))
         {
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             if !self.hover_alive(id) {
                 return Ok(());
             }
@@ -871,7 +871,7 @@ impl Simulation {
             }
         } else {
             //5167D5..51681B: give up, with the retained scold sound.
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             if !self.hover_alive(id) {
                 return Ok(());
             }
@@ -969,9 +969,9 @@ impl Simulation {
                     hover.head = None;
                 }
             }
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             self.hover_halt(id);
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             return Ok(7);
         }
         let location = ground_pose::position_world_coord(&entity.position);
@@ -1153,7 +1153,7 @@ impl Simulation {
                     if let Some(entity) = self.substrate.entities.get_mut(id) {
                         hover_stop_moving(entity);
                     }
-                    self.set_unit_null_destination(id, Some(rules));
+                    self.set_unit_null_destination(id, Some(rules), None);
                     return Ok(7);
                 }
                 //515902..5159E1: scatter the head cell; the head drops.

@@ -387,7 +387,8 @@ fn unit_setter_teleporter_arm_matches_the_original_assign_destination() {
                 );
             }
             None => {
-                s.sim.set_unit_null_destination(s.miner, Some(&s.rules));
+                s.sim
+                    .set_unit_null_destination(s.miner, Some(&s.rules), None);
             }
         }
         compare_swap(before, &s, row["events"].as_array().unwrap(), &context);

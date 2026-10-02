@@ -1198,3 +1198,89 @@ fn a_grounded_rocketeers_move_order_survives_its_first_mission_visit() {
     assert_eq!(rocketeer.mission.current().known(), Some(MissionType::Move));
     assert_eq!(rocketeer.mission.queued().known(), None);
 }
+
+/// A Rocketeer taken over in flight stops over the cell he is in. The owner
+/// change's null destination (`0x007014E9`) is Infantry `0x0051AA40(NULL, 1)`,
+/// which reaches Foot's null arm (`0x0051B1D2` -> `0x004D94B0`): the
+/// Jumpjet's `Stop_Moving` (`0x004D96B9` -> `0x0054B4D0`) re-targets the
+/// nearest passable cell to him, and the NavCom it wrote is cleared again
+/// (`0x004D96BC`). His locomotor then flies that re-target alone.
+#[test]
+fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
+    use crate::sim::command::Command;
+    use crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
+    let input = serde_json::json!({
+        "doing": 0,
+        "height": 0,
+        "owner": {"phase": 0, "moving": false},
+    });
+    let (mut sim, rules, _) = rocketeer_crash_fixture(&input);
+    assert!(sim.apply_command(
+        "Americans",
+        &Command::Move {
+            entity_id: 1,
+            target_rx: 64,
+            target_ry: 52,
+            queue: false,
+        },
+        Some(&rules),
+    ));
+    let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
+    let cruising = |sim: &super::Simulation| {
+        let rocketeer = sim.substrate.entities.get(1).unwrap();
+        let runtime = rocketeer
+            .locomotor
+            .as_ref()
+            .unwrap()
+            .jumpjet_runtime()
+            .unwrap();
+        runtime.phase == STATE_TRANSLATE && rocketeer.position.rx >= 55
+    };
+    for _ in 0..240 {
+        if cruising(&sim) {
+            break;
+        }
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
+    }
+    assert!(cruising(&sim), "he cruises toward his order");
+    // The fixture's placement published no Techno+508 threat; the unarmed
+    // Rocketeer's is zero.
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .retain_spatial_threat(0);
+    let soviets = sim.interner.intern("Soviets");
+    sim.change_owner_with_rules(1, soviets, &rules);
+    let rocketeer = sim.substrate.entities.get(1).unwrap();
+    let here = (
+        i32::from(rocketeer.position.rx),
+        i32::from(rocketeer.position.ry),
+    );
+    let runtime = rocketeer
+        .locomotor
+        .as_ref()
+        .unwrap()
+        .jumpjet_runtime()
+        .unwrap();
+    assert!(runtime.moving, "Stop_Moving re-targets, it does not null");
+    assert_eq!(
+        (runtime.destination.x / 256, runtime.destination.y / 256),
+        here,
+        "the re-target is the cell he is over"
+    );
+    assert_eq!(rocketeer.navigation.nav_com, None);
+    assert!(rocketeer.movement_target.is_none());
+    for _ in 0..120 {
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
+    }
+    let rocketeer = sim.substrate.entities.get(1).unwrap();
+    assert!(
+        i32::from(rocketeer.position.rx) <= here.0 + 1,
+        "he stopped near ({}, {}) instead of flying on: now at ({}, {})",
+        here.0,
+        here.1,
+        rocketeer.position.rx,
+        rocketeer.position.ry
+    );
+}

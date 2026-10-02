@@ -2894,99 +2894,70 @@ impl Simulation {
         }
     }
 
-    /// The tail of Foot's accepted null `Set_Destination`
-    /// (`0x004D96C2..0x004D9707`): the retry byte, blocked timer and movement
-    /// timer restart, as every other caller of the Jumpjet null setter runs it.
-    fn foot_null_setter_tail(&mut self, stable_id: u64, rules: Option<&RuleSet>) {
-        let frame = self.session.binary_frame;
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            crate::sim::movement::DestinationTiming::from_rules(frame, rules).accept(entity);
-        }
-    }
-
     /// The Stun of TechnoClass::ReceiveDamage's death arm (`0x00702210`),
-    /// after the death sounds and before the debris: `FootClass::Stun @
-    /// 0x004D5660` (Assign_Destination(NULL,1), Path[0] = -1, Stop_Driver) for
-    /// Units, Infantry and Aircraft, then `TechnoClass::Stun @ 0x006FCD40`:
-    /// Assign_Target(NULL), a second NULL destination, RADIO OVER_OUT to every
-    /// contact (`+0x280(3)`), SpawnManager Kill_All_Spawns `0x006B7100` and
-    /// ClearAllTargets `0x006B7BB0`, Detach_All(1), and Deselect.
+    /// after the death sounds and before the debris. Units, Infantry and
+    /// Aircraft take `FootClass::Stun @ 0x004D5660`: the class setter's NULL
+    /// destination (`0x004D5669`, [`Self::assign_null_destination`]), Path[0]
+    /// = -1 (`0x004D5673`) and `Stop_Driver` (vtable `+0x500`), which is
+    /// Foot's `0x004D55C0` for a Unit or an Aircraft, the locomotor's
+    /// `Stop_Moving` ([`Self::locomotor_stop_moving`]), and Infantry's
+    /// `0x0051DAF0` ([`Self::infantry_stop_driver`]). `TechnoClass::Stun @
+    /// 0x006FCD40` follows: Assign_Target(NULL), a second NULL destination
+    /// (`0x006FCD55`), RADIO OVER_OUT to every contact (`+0x280(3)`),
+    /// SpawnManager Kill_All_Spawns `0x006B7100` and ClearAllTargets
+    /// `0x006B7BB0`, Detach_All(1), and Deselect.
     ///
-    /// A Unit takes its class setter (Unit `0x00741970`,
-    /// [`Self::assign_null_destination`]) at both NULL destinations, then
-    /// Path[0] = -1 and `Stop_Driver`: the locomotor's `Stop_Moving`, a
-    /// Jumpjet Unit's through [`Self::jumpjet_stun_stop`], whose NavCom the
-    /// second NULL destination clears again. An Aircraft takes the represented body of
-    /// [`crate::sim::movement::stop_navigation_at_committed_head`]. Foot+6AD (Magnetron-held)
-    /// would skip the spawn calls and Detach_All; VERA never sets it (the
-    /// IsLocomotor arm is unported). On this path the spawn calls repeat the Destroy's owner arm
-    /// and find nothing left to kill. Detach_All(1) repeats the broadcast the
-    /// killing hit's Destroy already made (on a re-entered death arm,
-    /// `0x0070202E..0x00702035`, that was an earlier call). The walk is not
-    /// repeated: every Target write since then refused the Health-0 object
-    /// (the setter through `assign_target_commits`, including the Destroy
-    /// walk's own Restores; the scans, orders and legacy retaliation filter
-    /// Health 0 themselves), so no listener can hold it again. The Foot
-    /// prelude's contact-0 OVER_OUT is covered by the OVER_OUT to every contact.
+    /// Each accepted NULL destination reaches the locomotor's `Stop_Moving`
+    /// through Foot's null arm, so a moving Jumpjet stops up to three times.
+    /// A Jumpjet Unit's keeps a moving wreck flying to the cell under it and
+    /// lifts a descent back into the climb, so `Process`'s crash latch
+    /// engages wherever the kill found it. Unit `0x00741970` returns at once
+    /// without a NavCom (its `+0x1F8` override down), so the NavCom the
+    /// Stop_Driver's re-target writes is what the second NULL destination
+    /// clears. A Jumpjet Infantry's placement draws on the Scenario RNG each
+    /// time his moving byte is set, and his Stop_Driver's Do_Action at Health
+    /// 0 re-enters Stop_Driver once more when it accepts. Native execution:
+    /// `tools/spatial_oracle/jumpjet_infantry_crash`.
     ///
-    /// An Infantry flown by the Jumpjet locomotor stops it three times, and
-    /// its Infantry placement draws on the Scenario RNG each time the moving
-    /// byte is set: `InfantryClass::Set_Destination(NULL)` (`0x0051AA40`)
-    /// reaches Foot's null setter (`0x0051B1D2`, [`Self::jumpjet_null_destination`]),
-    /// Stop_Driver (`0x0051DAF0`) runs its Do_Action (which at Health 0
-    /// re-enters Stop_Driver once more when it accepts) and the locomotor's
-    /// Stop_Moving, and `TechnoClass::Stun`'s second null setter repeats the
-    /// first. Each null setter ends with Foot's timer tail (`0x004D96C2`).
-    /// Infantry's setter also clears the mutual `+0x2A8` link
-    /// (`0x0051AB34`), which only the dormant `DirectRocker=` arm raises.
-    /// Native execution: `tools/spatial_oracle/jumpjet_infantry_crash`.
+    /// Foot+6AD (Magnetron-held) would skip the spawn calls and Detach_All;
+    /// VERA never sets it (the IsLocomotor arm is unported). On this path the
+    /// spawn calls repeat the Destroy's owner arm and find nothing left to
+    /// kill. Detach_All(1) repeats the broadcast the killing hit's Destroy
+    /// already made (on a re-entered death arm, `0x0070202E..0x00702035`, that
+    /// was an earlier call). The walk is not repeated: every Target write
+    /// since then refused the Health-0 object (the setter through
+    /// `assign_target_commits`, including the Destroy walk's own Restores; the
+    /// scans, orders and legacy retaliation filter Health 0 themselves), so no
+    /// listener can hold it again. The Foot prelude's contact-0 OVER_OUT is
+    /// covered by the OVER_OUT to every contact.
     pub(crate) fn techno_death_stun(&mut self, stable_id: u64, context: UninitContext<'_>) {
-        let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
+        let Some(entity) = self.substrate.entities.get(stable_id) else {
             return;
         };
-        let jumpjet_infantry =
-            crate::sim::movement::infantry_action::uses_jumpjet_locomotor(entity);
-        let walking_infantry = entity.category == EntityCategory::Infantry
+        let category = entity.category;
+        let walking_infantry = category == EntityCategory::Infantry
             && entity.locomotor.as_ref().is_some_and(|locomotor| {
                 locomotor.kind == crate::rules::locomotor_type::LocomotorKind::Walk
             });
         if matches!(
-            entity.category,
+            category,
             EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
         ) {
-            if walking_infantry {
-                //FootStun4D5660: class NULL destination, Path[0]=-1,
-                //then virtual Stop_Driver. Reuse Walk's callback owner on
-                //both Stops; clearing a raw locomotor cannot consume+6E4.
-                self.assign_null_destination(stable_id, context.rules);
-                if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                    entity.clear_live_path_head();
-                }
+            self.assign_null_destination(stable_id, context.rules, context.registry);
+            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                entity.clear_live_path_head();
+            }
+            if category == EntityCategory::Infantry {
                 if let Some(rules) = context.rules
-                    && let Err(cause) = self.infantry_stop_driver(stable_id, rules, None)
+                    && let Err(cause) =
+                        self.infantry_stop_driver(stable_id, rules, context.registry)
                 {
                     log::debug!("infantry {stable_id} Stun Stop_Driver: {cause}");
                 }
-            } else if let (true, Some(rules)) = (jumpjet_infantry, context.rules) {
-                crate::sim::movement::stop_navigation_at_committed_head(entity);
-                self.jumpjet_null_destination(stable_id, Some(rules), None);
-                self.foot_null_setter_tail(stable_id, Some(rules));
-                if let Err(cause) = self.infantry_stop_driver(stable_id, rules, None) {
-                    log::debug!("infantry {stable_id} Stun Stop_Driver: {cause}");
-                }
-            } else if entity.category == EntityCategory::Unit {
-                // The Unit setter `0x00741970(NULL, 1)`, Path[0] = -1
-                // (`0x004D5673`), then Stop_Driver (Unit +0x500 =
-                // `0x004D55C0`): the locomotor's Stop_Moving, Drive/Ship/Hover
-                // here and a Jumpjet's through `jumpjet_stun_stop`.
-                self.assign_null_destination(stable_id, context.rules);
-                if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                    entity.navigation.path_replay.clear_live_head();
-                    crate::sim::movement::track_stop_moving(entity);
-                }
-                self.jumpjet_stun_stop(stable_id, context.rules);
-            } else {
-                crate::sim::movement::stop_navigation_at_committed_head(entity);
+            } else if let Err(cause) =
+                self.locomotor_stop_moving(stable_id, context.rules, context.registry)
+            {
+                log::debug!("{stable_id} Stun Stop_Driver: {cause}");
             }
         }
         if walking_infantry {
@@ -2994,26 +2965,7 @@ impl Simulation {
         } else if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
         }
-        if walking_infantry {
-            self.assign_null_destination(stable_id, context.rules);
-        }
-        if jumpjet_infantry {
-            self.jumpjet_null_destination(stable_id, context.rules, None);
-            self.foot_null_setter_tail(stable_id, context.rules);
-        }
-        if self
-            .substrate
-            .entities
-            .get(stable_id)
-            .is_some_and(|entity| entity.category == EntityCategory::Unit)
-        {
-            self.assign_null_destination(stable_id, context.rules);
-        } else if !walking_infantry && let Some(entity) = self.substrate.entities.get_mut(stable_id)
-        {
-            crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
-                entity, None,
-            );
-        }
+        self.assign_null_destination(stable_id, context.rules, context.registry);
         if !self.substrate.entities.contains(stable_id) {
             return;
         }

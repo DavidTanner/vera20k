@@ -4646,7 +4646,7 @@ impl Simulation {
                     .is_some_and(|object| object.is_simple_deployer);
             let now = self.session.binary_frame;
             let _ = self.assign_target_represented(stable_id, None, Some(rules));
-            self.assign_null_destination(stable_id, Some(rules));
+            self.assign_null_destination(stable_id, Some(rules), None);
             if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
                 entity.movement_target = None;
                 entity.order_intent = None;
@@ -4929,7 +4929,7 @@ impl Simulation {
         if in_factory_contact {
             return;
         }
-        self.assign_null_destination(stable_id, Some(rules));
+        self.assign_null_destination(stable_id, Some(rules), None);
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             entity.movement_target = None;
         }

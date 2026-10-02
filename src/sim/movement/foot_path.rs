@@ -361,8 +361,9 @@ impl Simulation {
 
     /// `+0x500` at 0x4D4044, whose return value Find_Path ignores. Infantry
     /// 0x0051DAF0 performs Do_Action and the current-cell answer before Foot
-    /// 0x4D55C0; Unit's slot IS 0x4D55C0, which only calls the active
-    /// locomotor's Stop_Moving (+0x48: Drive 0x4AFE00, Ship 0x69F510).
+    /// 0x4D55C0; the Unit's and the Aircraft's slot IS 0x4D55C0, which only
+    /// calls the active locomotor's Stop_Moving (+0x48,
+    /// [`Self::locomotor_stop_moving`]).
     pub(crate) fn run_find_path_failed_receiver(
         &mut self,
         id: u64,
@@ -372,18 +373,16 @@ impl Simulation {
         let actor = self
             .substrate
             .entities
-            .get_mut(id)
+            .get(id)
             .ok_or("retired failed-path receiver")?;
         match actor.category {
             EntityCategory::Infantry => self.infantry_stop_driver(id, rules, registry),
-            EntityCategory::Unit => {
-                if super::navcom::track_stop_moving(actor) {
-                    Ok(())
-                } else {
-                    Err("Find_Path Unit +0x500 Stop for this locomotor is not represented".into())
-                }
+            EntityCategory::Unit | EntityCategory::Aircraft => {
+                self.locomotor_stop_moving(id, Some(rules), registry)
             }
-            _ => Err("Find_Path +0x500 receiver for this class is not represented".into()),
+            EntityCategory::Structure => {
+                Err("Find_Path +0x500 receiver for this class is not represented".into())
+            }
         }
     }
 
@@ -629,7 +628,7 @@ impl Simulation {
                 return Ok(());
             }
         }
-        let (owner, category) = (actor.owner(), actor.category);
+        let owner = actor.owner();
         if self.team_script_vm.team_for_member(id).is_some() {
             //0x4D40DA..0x4D4134: the actor leaves its team (Remove_Member
             //0x6EA870, idle order included) between its locomotor's +B4 and
@@ -660,11 +659,7 @@ impl Simulation {
         //0x4D413A: the class SetDestination(NULL, true): Infantry 0x51AA40 ->
         //Foot 0x4D94B0 -> Walk 0x75ADA0, or Unit 0x741970 -> Foot 0x4D94B0 ->
         //Drive 0x4AFE00 / Ship 0x69F510.
-        if category == EntityCategory::Unit {
-            self.set_unit_null_destination(id, Some(rules));
-        } else {
-            self.set_walk_null_destination(id, Some(rules));
-        }
+        self.assign_null_destination(id, Some(rules), None);
         let actor = self
             .substrate
             .entities

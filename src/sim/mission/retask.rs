@@ -56,7 +56,7 @@ impl Simulation {
         rules: &crate::rules::ruleset::RuleSet,
     ) {
         let now = self.session.binary_frame;
-        self.assign_null_destination(id, Some(rules));
+        self.assign_null_destination(id, Some(rules), None);
         let _ = self.assign_target_represented(id, None, Some(rules));
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.movement_target = None;

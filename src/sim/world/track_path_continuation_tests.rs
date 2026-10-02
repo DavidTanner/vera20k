@@ -407,7 +407,7 @@ fn ordered_attack_null_destination_stops_a_moving_tank_after_its_track() {
         if adapter_dropped {
             sim.substrate.entities.get_mut(id).unwrap().movement_target = None;
         }
-        sim.finish_ordered_attack_destination(id, Some(&rules));
+        sim.assign_null_destination(id, Some(&rules), None);
         let e = sim.substrate.entities.get(id).unwrap();
         assert!(e.navigation.nav_com.is_none());
         assert!(e.drive_locomotion.as_ref().unwrap().destination.is_none());

@@ -32,7 +32,7 @@
 //!   (0x4D3E82..0x4D3E9F); VERA installs the whole route, so the native
 //!   re-request every 24 cells does not happen. Effect: a long route is not
 //!   re-planned mid-way.
-//! - Adapter-only stops. The Guard command and pursuit ClearMovement drop only
+//! - Adapter-only pursuit stops. Pursuit ClearMovement drops only
 //!   the scheduling adapter and leave NavCom, +34 and path words; the track
 //!   terminal defers the order and the same-call continuation finishes it
 //!   toward NavCom (before the continuation, the next frame did). Their
@@ -40,7 +40,7 @@
 //!   resumes its order after the track instead of stopping, and a turretless
 //!   one, whose FACING turn waits for a null NavCom (`0x00736FB6`), keeps its
 //!   heading meanwhile. Callers of the
-//!   class setter vt+0x480(NULL, 1) take the Unit setter instead
+//!   class setter vt+0x480(NULL, 1) take the owner's class setter instead
 //!   (`assign_null_destination`).
 
 use super::foot_path::FootPathOutcome;
@@ -269,7 +269,7 @@ impl Simulation {
         //Unit receiver may already have cleared (Cell(0,0) refuses).
         let probe = destination.unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         if !self.foot_path_zone_precheck(id, probe, rules)? {
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             return Ok(FootPathOutcome::Returned);
         }
         //4B28F5..4B2917: a null destination returns.
@@ -618,7 +618,7 @@ impl Simulation {
         };
         clear_track_head(actor);
         if actor.navigation.nav_queue.is_empty() {
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             return false;
         }
         super::navcom::foot_stop_moving(actor);
@@ -634,7 +634,7 @@ impl Simulation {
             return;
         };
         if actor.navigation.nav_queue.is_empty() {
-            self.set_unit_null_destination(id, rules);
+            self.set_unit_null_destination(id, rules, None);
         } else {
             super::navcom::foot_stop_moving(actor);
             self.unit_enter_idle_mode(id, rules, false);
@@ -803,7 +803,7 @@ impl Simulation {
             timing.accept(actor);
             super::movement_commands::schedule_track_process(actor, (rx, ry), speed);
         } else {
-            super::navcom::set_destination_internal_null(actor);
+            self.assign_null_destination(id, rules, registry);
             return;
         }
     }
@@ -888,60 +888,57 @@ impl Simulation {
         }
     }
 
-    /// EventClass MEGAMISSION: Assign_Target (0x4C7467), then the payload
-    /// destination through the class setter +0x480 (0x4C747C). An ordered
-    /// Attack carries none, so Walk takes Infantry 0x51AA40(NULL, 1) with its
-    /// paid head kept and a Drive/Ship Unit takes 0x741970(NULL, 1): NavCom
-    /// and +34 clear and the running track finishes at its head.
-    pub(crate) fn finish_ordered_attack_destination(&mut self, id: u64, rules: Option<&RuleSet>) {
-        if self.substrate.entities.get(id).is_some_and(track_unit) {
-            self.set_unit_null_destination(id, rules);
-        } else {
-            self.finish_ordered_walk_attack(id, rules);
-        }
-    }
-
     /// The class setter vt+0x480 with a NULL destination from outside the
-    /// locomotor: Foot::Override_Mission (0x4D8F6D, the ReceiveDamage
-    /// retaliation) and Restore_Mission (0x4D8F99), the capture reset
-    /// (0x70F859), the owner change (0x7014E9, 0x70182F), the parasite
-    /// release (0x62A78A, 0x62A3ED, 0x62AAB9) and the Temporal freeze. A
-    /// Drive/Ship Unit takes Unit 0x741970(NULL, 1), whose locomotor Stop
-    /// nulls +34, so a track end cannot resume the old order, and a Jumpjet
-    /// Unit takes it too, whose locomotor Stop re-targets the cell under it.
-    /// Ordinary Walk Infantry uses51AA40, preserving human deploy refusal;
-    /// every other Unit uses741970 too. Other receivers (Aircraft and a
-    /// Jumpjet or Teleport man) keep the represented NavCom writes.
-    pub(crate) fn assign_null_destination(&mut self, id: u64, rules: Option<&RuleSet>) {
-        let walk_category = self.substrate.entities.get(id).and_then(|actor| {
-            actor
-                .locomotor
-                .as_ref()
-                .is_some_and(|loco| loco.kind == LocomotorKind::Walk)
-                .then_some(actor.category)
-        });
-        if walk_category == Some(EntityCategory::Infantry) {
-            //51AA40 may refuse a human deploy action before any NavCom,
-            //path or timer write. Keep the adapter too on that refusal;
-            //accepted WalkStop75ADA0 retains any committed physical head.
-            if self.set_walk_null_destination(id, rules)
-                && let Some(actor) = self.substrate.entities.get_mut(id)
-            {
-                super::retain_committed_movement(actor);
+    /// locomotor: Event STOP (0x4C75ED) and MEGAMISSION (0x4C747C, an
+    /// ordered Attack's), Foot::Override_Mission (0x4D8F6D, the
+    /// ReceiveDamage retaliation) and Restore_Mission (0x4D8F99), the Stuns
+    /// (Foot 0x4D5669, Techno 0x6FCD55), the capture reset (0x70F859), the
+    /// owner change (0x7014E9, 0x70182F), the parasite release (0x62A78A,
+    /// 0x62A3ED, 0x62AAB9) and the Temporal freeze. Each class's setter
+    /// (vtables 0x7F5C70, 0x7EB058 and 0x7E22A4, whatever the locomotor) ends
+    /// in Foot's null arm ([`Self::foot_null_destination`]) and so in its
+    /// active locomotor's Stop_Moving:
+    /// - a Unit takes Unit 0x741970 ([`Self::set_unit_null_destination`]),
+    ///   which trims the scheduling adapter itself;
+    /// - an Infantry takes Infantry 0x51AA40
+    ///   ([`Self::set_infantry_null_destination`]), which may refuse a human
+    ///   deploy action before any write; the adapter keeps only a committed
+    ///   Walk head, so a Jumpjet or Teleport man drops it and his locomotor
+    ///   flies its Stop alone;
+    /// - an Aircraft's null arm (0x41AA8B -> 0x41ADAC) is Foot's own; its Fly
+    ///   Stop preserves the represented adapter behavior; its landing and
+    ///   airfield selection remain a residual in `locomotor_stop_moving`.
+    ///
+    /// A Building's setter (0x455D50) is not ported; its NavCom takes the
+    /// represented write.
+    pub(crate) fn assign_null_destination(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        let Some(category) = self.substrate.entities.get(id).map(|actor| actor.category) else {
+            return;
+        };
+        match category {
+            EntityCategory::Unit => {
+                self.set_unit_null_destination(id, rules, registry);
             }
-        } else if self
-            .substrate
-            .entities
-            .get(id)
-            .is_some_and(|actor| actor.category == EntityCategory::Unit)
-        {
-            // Every Unit's vt+0x480 is 0x741970 (vtable 0x7F5C70), whatever
-            // its locomotor.
-            self.set_unit_null_destination(id, rules);
-        } else if let Some(actor) = self.substrate.entities.get_mut(id) {
-            crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
-                actor, None,
-            );
+            EntityCategory::Infantry => {
+                if self.set_infantry_null_destination(id, rules, registry)
+                    && let Some(actor) = self.substrate.entities.get_mut(id)
+                {
+                    super::retain_committed_movement(actor);
+                }
+            }
+            EntityCategory::Aircraft => self.foot_null_destination(id, rules, registry),
+            _ => {
+                if let Some(actor) = self.substrate.entities.get_mut(id) {
+                    crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
+                        actor, None,
+                    );
+                }
+            }
         }
     }
 
@@ -1194,8 +1191,9 @@ impl Simulation {
         false
     }
 
-    /// Unit 0x741970(NULL, 1) for a Drive/Ship receiver, as Find_Path's
-    /// failure continuation (0x4D413A) and the Process continuations call it.
+    /// Unit 0x741970(NULL, 1), the null destination of every Unit, as
+    /// Find_Path's failure continuation (0x4D413A), the Process continuations
+    /// and [`Self::assign_null_destination`] call it.
     /// - 0x741A80..0x741A9C: without a NavCom it returns before any write
     ///   unless the Techno+0x1F8 override is up; the call then clears it.
     /// - 0x742D46..0x742E1F: while radio slot 0 holds a WeaponsFactory
@@ -1203,24 +1201,29 @@ impl Simulation {
     ///   mission is not Enter, it clears only NavQueue (+588) and the +5AC
     ///   vector (not represented) and returns: the exiting unit keeps NavCom.
     /// - 0x741E88: the live path word is cleared unless an Enter mission lacks
-    ///   a radio contact; 0x7423BE clears NavQueue; 0x74314F enters Foot
-    ///   0x4D94B0(NULL): NavComAux/NavCom, locomotor Stop (+0x48) and the
-    ///   +640/+668 restart with +6B7 = 0.
+    ///   a radio contact; 0x7423BE clears NavQueue; 0x74314F enters Foot's
+    ///   null arm ([`Self::foot_null_destination`]), whose locomotor Stop
+    ///   keeps a Drive/Ship head and re-targets a moving Jumpjet to the cell
+    ///   under it.
     ///
     /// - A `Teleporter=` type runs its arm first ([`Self::unit_teleporter_arm`]):
     ///   a NULL destination installs a Drive over the Teleport, which the
     ///   FootClass::AI tail ends again once it is stopped.
     ///
-    /// - A Jumpjet Unit's locomotor Stop is `Stop_Moving`, which re-targets
-    ///   the cell under it; Foot then clears the NavCom that re-target wrote
-    ///   ([`Self::jumpjet_null_destination`]).
-    ///
     /// Residual (not represented): the BalloonHover arm (0x741983), the
     /// deploy-byte early return (0x741AA3..0x741ABD), the +2B0 linked-object
     /// branch (0x742E3A) and the unpowered-locomotor PowerOn (0x742F48).
+    /// A Jumpjet Stop's failed search retains the caller's overlay context
+    /// for synchronous damage; callers without that context retain their
+    /// existing damage-closure limitation.
     /// Returns whether Foot 0x4D94B0 ran; the Rust scheduling adapter is then
     /// trimmed to the committed head.
-    pub(crate) fn set_unit_null_destination(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
+    pub(crate) fn set_unit_null_destination(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
@@ -1248,7 +1251,6 @@ impl Simulation {
                         .is_some_and(|kind| kind.weapons_factory)
             });
         let current_enter = actor.mission.current().raw() == 7;
-        let timing = super::DestinationTiming::from_rules(self.session.binary_frame, rules);
         let actor = self
             .substrate
             .entities
@@ -1260,20 +1262,13 @@ impl Simulation {
             return false;
         }
         actor.navigation.nav_queue.clear();
-        super::navcom::set_destination_internal_null(actor);
-        if jumpjet_unit(actor) {
-            self.jumpjet_null_destination(id, rules, None);
-        }
-        let actor = self
-            .substrate
-            .entities
-            .get_mut(id)
-            .expect("same setter actor");
-        timing.accept(actor);
+        self.foot_null_destination(id, rules, registry);
         // The scheduling adapter keeps only the committed head step: the
         // locomotor Stop keeps the head, so the running track still finishes,
         // and its terminal then retires the adapter.
-        super::retain_committed_movement(actor);
+        if let Some(actor) = self.substrate.entities.get_mut(id) {
+            super::retain_committed_movement(actor);
+        }
         true
     }
 }

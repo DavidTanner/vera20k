@@ -386,7 +386,7 @@ impl Simulation {
             if self.foot_path_zone_precheck(id, destination, rules)? {
                 self.walk_failed_path_receiver(id, rules)?;
             } else {
-                self.set_walk_class_null_destination(id, rules);
+                self.assign_null_destination(id, Some(rules), None);
             }
             if let Some(actor) = self.substrate.entities.get_mut(id)
                 && actor.locomotor.as_ref().is_some_and(|loco| {
@@ -442,7 +442,7 @@ impl Simulation {
                 .ok_or("Walk code6 owner retired during its callback")?
                 .foot_speed
                 .set_speed_fraction(SIM_ZERO);
-            self.set_walk_class_null_destination(id, rules);
+            self.assign_null_destination(id, Some(rules), None);
             self.clear_walk_admission_path(id)?;
             if let Some(actor) = self.substrate.entities.get_mut(id) {
                 super::retain_committed_movement(actor);
@@ -544,19 +544,6 @@ impl Simulation {
         Ok(())
     }
 
-    pub(super) fn set_walk_class_null_destination(&mut self, id: u64, rules: &RuleSet) {
-        if self
-            .substrate
-            .entities
-            .get(id)
-            .is_some_and(|actor| actor.category == EntityCategory::Unit)
-        {
-            self.set_unit_null_destination(id, Some(rules));
-        } else {
-            self.set_walk_null_destination(id, Some(rules));
-        }
-    }
-
     /// Foot4DC030 (Infantry521DD0 prefix, Unit+4F4): Hunt alone clears
     ///TarCom then calls the class NULL destination setter. No RNG or timers
     ///are introduced by this receiver; the setter owns any timer effects.
@@ -573,7 +560,7 @@ impl Simulation {
         if actor.mission.effective().raw() == 15 {
             self.assign_target_represented(id, None, Some(rules))
                 .map_err(|error| format!("{error:?}"))?;
-            self.set_walk_class_null_destination(id, rules);
+            self.assign_null_destination(id, Some(rules), None);
         }
         let actor = self
             .substrate

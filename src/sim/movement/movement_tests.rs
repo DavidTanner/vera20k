@@ -403,7 +403,7 @@ fn walk_path_timer_waits_without_double_aging_or_losing_owner_state() {
         // the next accepted order must not recreate or truncate the dword count.
         sim.substrate.entities.get_mut(1).unwrap().movement_target = None;
         sim.session.binary_frame = 200;
-        assert!(sim.set_walk_null_destination(1, None));
+        assert!(sim.set_infantry_null_destination(1, None, None));
         let actor = sim.substrate.entities.get(1).unwrap();
         assert_eq!(
             actor.navigation.path_runtime.movement_timer,

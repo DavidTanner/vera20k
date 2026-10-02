@@ -693,7 +693,7 @@ fn foot_move_here(
             );
         }
         None => {
-            sim.assign_null_destination(foot, Some(rules));
+            sim.assign_null_destination(foot, Some(rules), None);
         }
     }
     // 0x004D91F1..0x004D920D: UpdateTimer (+0xC8) = {Frame, -, 0}. Inside a
@@ -729,7 +729,7 @@ fn foot_run_away(sim: &mut Simulation, foot: u64, rules: Option<&RuleSet>) {
         _ => false,
     };
     if aimed_at_contact {
-        sim.assign_null_destination(foot, Some(rules));
+        sim.assign_null_destination(foot, Some(rules), None);
     }
     let mission = |sim: &Simulation| {
         sim.substrate
