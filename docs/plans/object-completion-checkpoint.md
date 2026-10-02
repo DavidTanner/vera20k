@@ -12,15 +12,21 @@ Checkout `/Users/halvor/.codex/worktrees/object-completion/vera20k`; branch
 `1cfd3081e5fd2ca6cb26af953f8710f2329eec86` (IFV PR#1009).
 The only merge conflicts were snapshot comments/version: main weapon/turret281
 and retained Smudge identities are combined as **snapshot282**. No other task's
-files, refs or processes were altered. The owned checkpoint/production receipt are being committed before the release build.
+files, refs or processes were altered. The release source was frozen clean through all six captures.
 
-Integrated validation now passes: strict-retail9503/227 ignored, clippy728 warnings
-with zero edited-span diagnostics, Python478/four skips, native stock replay PASS
+Integrated validation passes: strict-retail9503/227 ignored, clippy728 warnings
+with zero edited-span diagnostics, Python478/four skips, original stock replay PASS
 without writes, field ratchet2554/2559 and all39 edited Rust leaf formatting checks.
-Receipt `gapowr-fatal-code-validation-v5.json` binds HEAD b4933c86 and exact logs.
-Next: fresh release v4 production, then commit receipts, publish one fatal-chain PR, attach it,
-enable auto-merge and confirm merge before starting another implementation.
-Do not rerun the critic. Do not claim v3 validates the integrated IFV/282 candidate.
+Receipt `gapowr-fatal-code-validation-v5.json` binds code HEAD b4933c86 and exact logs.
+Release v4 at clean22908e2d passes all six visible observations, exact full/repeat
+MATCH and every prefix. Common observations/atlas/five GPU frames equal v3; only
+IFV observer fields and initial/final state hashes differ. Five frames inspected.
+`gapowr-fatal-production-receipt-v4.json` preserves the updated receipt.
+
+Incoming fetched main03750cc7 (#1010 refinery docking) changes shared lifecycle/radio
+and uses its own snapshot282 layout. Next integrate it, combine the two layouts as283,
+revalidate after any conflict, refresh release production, publish/attach one fatal PR,
+enable auto-merge and confirm merge before another implementation. Do not rerun critic.
 
 Cargo uses `python -m tools.cargo_run`; every test uses `--lib`. Source stays frozen
 through a build. Keep the16GiB reserve and preserve required binaries/dependencies,
@@ -122,10 +128,14 @@ Sealed additive research (no implementation):
 - `smudge-map-loader-research`: separate positive-priority placement residual;
   selected AnyTown/Dustbowl have no map Smudge entries.
 
-Read-only workers: basic-building and basic-infantry whole-object closure inventories
-retain explicit9d0 priors; basic_factory_output_audit traces human GAPILE→E1
-radio/PLACE/queue timing, with assets referenced rather than copied. They were warned
-of the IFV integration boundary. Prioritize frequent factory delivery, then ordinary
+Sealed whole-object inventories: `ordinary-building-object-closure-inventory-20261002`
+(24 groups; explicit9d0 prior) and `ordinary-infantry-object-closure-inventory-20261002`
+(27 groups; b493 code/22908 continuity,373 asset receipts/482 original reader calls).
+Neither certifies an object. Normal/-O integrity checks pass; accepted native input
+replays are normal mode because existing assert-side-effect priors differ under -O.
+That cost is recorded in existing issue#745, comment5960846507.
+`basic_factory_output_audit` still traces human GAPILE→E1 radio/PLACE/queue timing,
+with assets referenced rather than copied. It was warned of the integration boundary. Prioritize frequent factory delivery, then ordinary
 sale and coherent garrison work; commit no stacked implementation PRs.
 
 Recovery stashes:28a01dd28545ccbc95fea4ce23005331f8582706,
