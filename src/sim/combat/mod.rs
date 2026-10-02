@@ -1908,10 +1908,7 @@ impl crate::sim::voxel_anim::DeathDebrisHost for DeathDebrisWorldHost<'_, '_> {
         &mut self,
         source: crate::sim::voxel_anim::ShpDebrisSource,
         index: usize,
-    ) -> Result<
-        Option<crate::sim::anim_class::AnimConstructorDraws>,
-        crate::util::native_x87::NativeX87Error,
-    > {
+    ) -> Result<(), crate::util::native_x87::NativeX87Error> {
         let native_unique_id = crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(
             &mut self.world.native_unique_ids,
         );
@@ -1961,7 +1958,7 @@ impl crate::sim::voxel_anim::DeathDebrisHost for DeathDebrisWorldHost<'_, '_> {
                 self.explosion_effects.push(effect);
             }
         }
-        Ok(Some(draws))
+        Ok(())
     }
 
     fn admit_voxel(&mut self, spawn: &crate::sim::voxel_anim::VoxelDebrisSpawn) {
