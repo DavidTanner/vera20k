@@ -6627,11 +6627,11 @@ mod harvest_attack_return_oracle_tests;
 #[path = "harvest_field_oracle_tests.rs"]
 mod harvest_field_oracle_tests;
 #[cfg(test)]
-#[path = "refinery_dock_oracle_tests.rs"]
-mod refinery_dock_oracle_tests;
-#[cfg(test)]
 #[path = "refinery_dock_continuation_tests.rs"]
 mod refinery_dock_continuation_tests;
+#[cfg(test)]
+#[path = "refinery_dock_oracle_tests.rs"]
+mod refinery_dock_oracle_tests;
 #[cfg(test)]
 #[path = "refinery_dock_retail_tests.rs"]
 mod refinery_dock_retail_tests;
