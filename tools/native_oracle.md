@@ -206,6 +206,63 @@ branches and boundaries. Avoid a second Python implementation of the algorithm.
   to callers independently. The HSV example checks 2,304 inputs, not all 256³ inputs
   or final rendered colors.
 
+## Investigating a failed native run
+
+`run_checked` raises `NativeExecutionError` (an `OracleError`) on unsuccessful
+execution. Its `diagnostics` dictionary preserves the immediate Unicorn timeout
+flag, observed instruction count/budget, entry and expected endpoints, last 16
+observed instruction addresses, required/missing visits, and entry/failure
+registers. Each register snapshot includes FPCW and up to 16 readable words at
+ESP; unmapped or partially readable stacks are reported without masking the
+original failure.
+
+The reason distinguishes `timeout`, `fault`, `early_stop`,
+`instruction_limit_reached` and `required_addresses_missing`. The instruction
+count is hook observations, not a retirement counter. Reaching the budget does
+not rule out an external stop on that same instruction; a timeout flag does not
+explain why the operation was slow. Reports diagnose a rejected run, never prove
+native output or a complete initialized game state.
+
+Set a directory to save each failure as a new JSON file, including failures in
+older generators that call `run_checked` before `finish_vectors`:
+
+```sh
+VERA20K_NATIVE_FAILURE_DIR=/absolute/diagnostics python -m tools.color_oracle.hsv_to_rgb --check
+```
+
+In PowerShell, set `$env:VERA20K_NATIVE_FAILURE_DIR = 'C:/diagnostics'` first.
+Success writes nothing. The directory is created when needed; unique files use
+exclusive creation and do not replace earlier failures or golden files. The
+exception names its `report_path`. A failure to write diagnostics is reported
+alongside the original native failure. Without the environment variable, the
+structured diagnostics remain on the exception and no report file is written.
+
+Custom fixture owners should name the case and relevant supplied inputs:
+
+```python
+run_checked(machine, entry, stop, context={
+    "case": "unfunded-repair",
+    "inputs": {"seed": seed, "frame": frame, "credits": 0},
+})
+```
+
+Context must be a JSON object and is frozen before execution. `call` accepts the
+same argument and adds a reserved `call` object containing ECX/EDX, stack
+arguments, FPCW, observation mode and fixture write ranges. Reports do not copy
+the full heap, pointed-to data or executable and cannot restore an emulator.
+Include the fixture selectors needed to reproduce the case. The recorded
+`expected_native_sha256` is the runner's expected image, not an attestation of a
+custom machine: `run_checked` also accepts synthetic tests.
+
+The shared `Reader.invoke(..., context=...)` forwards this context. Anytown
+`Mission.setup` supplies its fixture class, phase/frame, continuation inputs and
+the current physical INI layer's name/path/SHA-256 for General and Radiation
+Rules reads. A repeated-case driver can call
+`fixture.setup(context={"case": "unit-unlimbo", "placement_index": 7})` to add
+the precise case selector; `setup` and `rules_layer` are filled by the owner.
+Other custom generators must supply their own selectors; registers alone cannot
+identify a case whose input data lives behind pointers.
+
 ## Execution guarantees and limits
 
 Unicorn can return normally when its instruction or time budget expires. The runner
