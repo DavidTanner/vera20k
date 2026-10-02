@@ -573,19 +573,121 @@ def gate_provenance():
             'SHP closure and Gate drawing parity are excluded. CRT atexit7C978A registration is a '
             'no-op; original lazy terminal writes execute. No Gate, Door, foundation query, mission verb, '
             'dispatch timer or RNG return/state is replaced. Original .text checked byte-for-byte.'
-        ]) | dict(harness_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-                  source_pins={name: hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in
-                               ('tools/native_oracle.py', 'tools/spatial_oracle/building_construction.py',
-                                'tools/spatial_oracle/slave_manager.py', 'tools/spatial_oracle/harvest_field.py',
-                                'tools/spatial_oracle/refinery_dock.py', 'tools/spatial_oracle/unit_source_scatter.py',
-                                'tools/spatial_oracle/building_sale.py')},
-                  consumer_source_pins={name: hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in
-                                        ('src/sim/gate_runtime.rs', 'src/sim/door.rs',
-                                         'src/sim/game_entity.rs', 'src/sim/world/world_spawn/construction.rs',
-                                         'src/sim/world/techno_ai.rs', 'src/sim/world/techno_ai/building_missions.rs',
-                                         'src/sim/world/world_spawn.rs', 'src/sim/mission/authority.rs',
-                                         'src/sim/world/world_hash.rs', 'src/sim/snapshot.rs',
-                                         'src/rules/object_type.rs')})
+        ])
+
+
+def gate_source_paths():
+    """Conservative imported-module inventory plus the selected Rust owners.
+
+    Import membership binds source identity; it does not claim that every
+    imported body executes in the bounded Gate controls. The central
+    finish_vectors owner hashes normalized source before and after generation.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    paths = (
+        # Conservative repository Python import closure, including this owner.
+        'tools/native_oracle.py',
+        'tools/projectile_oracle/bridge_render_inputs.py',
+        'tools/projectile_oracle/bridge_render_inputs_selection.py',
+        'tools/projectile_oracle/flat_art.py',
+        'tools/projectile_oracle/guided_step.py',
+        'tools/rmg_oracle/gen_rng_vectors.py',
+        'tools/rules_oracle/bridge_anim_inputs.py',
+        'tools/rules_oracle/bridge_anim_lists.py',
+        'tools/rules_oracle/bridge_child_sound.py',
+        'tools/rules_oracle/bridge_landing_inputs.py',
+        'tools/spatial_oracle/__init__.py',
+        'tools/spatial_oracle/air_locomotor_moving.py',
+        'tools/spatial_oracle/anim_bouncer_launch.py',
+        'tools/spatial_oracle/bridge_rim.py',
+        'tools/spatial_oracle/building_art_transition.py',
+        'tools/spatial_oracle/building_body_rules.py',
+        'tools/spatial_oracle/building_construction.py',
+        'tools/spatial_oracle/building_guard_attack.py',
+        'tools/spatial_oracle/building_sale.py',
+        'tools/spatial_oracle/building_slot_replacement.py',
+        'tools/spatial_oracle/cmin_dock.py',
+        'tools/spatial_oracle/estimated_damage.py',
+        'tools/spatial_oracle/harvest_attack_return.py',
+        'tools/spatial_oracle/harvest_field.py',
+        'tools/spatial_oracle/infantry_entry_raw.py',
+        'tools/spatial_oracle/jumpjet_coordinates.py',
+        'tools/spatial_oracle/jumpjet_entry_discovery.py',
+        'tools/spatial_oracle/locomotor_at_coord.py',
+        'tools/spatial_oracle/map_queries.py',
+        'tools/spatial_oracle/mapgen_range.py',
+        'tools/spatial_oracle/object_health.py',
+        'tools/spatial_oracle/refinery_dock.py',
+        'tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py',
+        'tools/spatial_oracle/slave_manager.py',
+        'tools/spatial_oracle/track_destination.py',
+        'tools/spatial_oracle/unit_entry.py',
+        'tools/spatial_oracle/unit_scatter_state.py',
+        'tools/spatial_oracle/unit_source_scatter.py',
+        'tools/spatial_oracle/walk_head_occupation.py',
+        # Gate, Door and constructor/body state owners.
+        'src/sim/gate_runtime.rs',
+        'src/sim/door.rs',
+        'src/sim/timer.rs',
+        'src/sim/game_entity.rs',
+        'src/sim/game_entity/construction_stage.rs',
+        'src/sim/building_construction.rs',
+        'src/sim/stage.rs',
+        'src/sim/game_options.rs',
+        'src/sim/components.rs',
+        'src/sim/movement/facing_class.rs',
+        # Live scheduling, canonical idle, publication and persistence consumers.
+        'src/sim/world/mod.rs',
+        'src/sim/world/world_spawn.rs',
+        'src/sim/world/world_spawn/construction.rs',
+        'src/sim/world/techno_ai.rs',
+        'src/sim/world/techno_ai/building_missions.rs',
+        'src/sim/world/object_turn.rs',
+        'src/sim/world/logic_vector.rs',
+        'src/sim/world/world_hash.rs',
+        'src/sim/snapshot.rs',
+        # Mission cursor, verbs, readiness and frame clocks.
+        'src/sim/mission/mod.rs',
+        'src/sim/mission/authority.rs',
+        'src/sim/mission/state.rs',
+        'src/sim/mission/verb.rs',
+        'src/sim/mission/readiness.rs',
+        'src/sim/mission/leaf.rs',
+        'src/sim/mission/timer.rs',
+        'src/sim/mission/control.rs',
+        # Admission/passability callers and ordered footprint/list owners.
+        'src/sim/movement/track_fresh.rs',
+        'src/sim/movement/track_host.rs',
+        'src/sim/movement/track_path.rs',
+        'src/sim/movement/hover_process.rs',
+        'src/sim/movement/walk_admission.rs',
+        'src/sim/movement/walk_head.rs',
+        'src/sim/movement/jumpjet_movement.rs',
+        'src/sim/world/object_entry.rs',
+        'src/sim/movement/locomotor.rs',
+        'src/sim/occupancy.rs',
+        'src/sim/production/production_tech.rs',
+        'src/sim/entity_store.rs',
+        'src/sim/intern.rs',
+        'src/sim/rng.rs',
+        'src/map/entities.rs',
+        'src/map/houses.rs',
+        'src/sim/production/mod.rs',
+        # Typed rule inputs, canonical rates and their numeric owner.
+        'src/rules/ruleset.rs',
+        'src/rules/object_type.rs',
+        'src/rules/art_data.rs',
+        'src/rules/ini_parser.rs',
+        'src/rules/ini_value.rs',
+        'src/rules/mission_data.rs',
+        'src/util/native_x87.rs',
+        'src/util/native_x87/masked.rs',
+        'src/rules/foundation.rs',
+        # Incoming recoil constructor reached by component installation.
+        'src/sim/game_entity/voxel_recoil.rs',
+        'src/rules/recoil.rs',
+    )
+    return {name: repo / name for name in paths}
 
 
 def main(argv=None):
@@ -593,7 +695,7 @@ def main(argv=None):
     if '--gate' in args:
         args.remove('--gate')
         finish_vectors(generate_gate, Path(__file__).with_name('building_guard_attack_gate.json'),
-                       provenance=gate_provenance, argv=args)
+                       provenance=gate_provenance, source_paths=gate_source_paths(), argv=args)
         return
     finish_vectors(
         generate, Path(__file__).with_suffix('.json'),

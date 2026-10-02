@@ -119,6 +119,19 @@ whole-state hashes; those hashes are not an equivalence assertion. The external
 `unit-unlimbo-zero-final-runtime-summary-20261003.json` records these identities,
 declared fields and comparison limits (SHA-256
 `9d9e235d7f56d9948ffa1292fb11dc9390827115eca9a7faa007981a0feb649f`).
+After incoming Grand Cannon/recoil integration and snapshot284 composition,
+final R8 stock and R9 zero-map bundles both pass the ordinary v6 validator.
+Release binary SHA-256 is
+`d894cf0b771716e60d394c692c419b62e125920c1d0a3c12ab1c13e67c2a2f0f`
+(31,640,672 bytes). Their complete factory/tank actor dictionaries match at
+all 5,601 boundaries (11,202 presence/actor checks, 3,700 present), and their
+final BGRA bytes retain the same `adceea6c…` identity above. The factory/tank
+fields also match retained R6 after removing only incoming optional
+`building.voxel_gun` from that historical schema comparison. R8/R9 retain
+the stock/zero map identities and complete exit/Guard endpoints above; their
+whole-state hashes remain distinct with different rule inputs. Final summary
+SHA-256 is
+`e503a82b7e63b1cb4c654f644a6359e41d606ed0c4708870efecea5039b1b43d`.
 These are Rust production observations. Bounded original Door, Unload and Unit
 comparisons are documented by the existing
 [Unit Unlimbo evidence owner](spatial_oracle/anytown_damage/unit_unlimbo.md);

@@ -533,7 +533,7 @@ earlier schema and are explicitly excluded from this comparison. The
 map/binary/readback identities and the production-only coverage limit. Native
 Door/Unload comparisons above remain bounded by their original fixture seams.
 
-The final zero/default ExitCoord candidate, including documentation-only main
+The zero/default ExitCoord candidate before subsequent main integration, including documentation-only main
 `c8a794a7`, passes **9,515 retail lib tests, zero failed, 227 ignored**, lib
 Clippy (728 warnings), and release game/asset builds. The writable-field ratchet
 remains 2,543 against main's 2,554. The added omission-fixture property test and
@@ -558,9 +558,49 @@ passed. All 83 source bindings, 106 native spans, input identities and eight
 default files remained exact. External final receipt
 `unit-unlimbo-exit-coordinate-final-strict-5tkywxz8/final-check-receipt.json`
 has SHA-256 `0d04ffdad93480d1239a83b60eb3ae880e1323cf2d0db4943f4201ac5649e364`.
-The Gate check and integration of subsequently published main recoil state
-remain pending. Instruction-count execution is not reported; existing count
-budgets and the declared constructor boundaries remain coverage limits.
+Instruction-count execution is not reported; existing count budgets and the
+declared constructor boundaries remain coverage limits.
+
+After integrating main `518605dd`, snapshot284 retains both the shared Door and
+incoming optional recoil owners. The central publisher updates exactly six
+Rust bindings (native processing, ObjectType, RuleSet, GameEntity, Techno AI and
+Building missions). All 49 Python sources, the native generator, original binary,
+106 spans, input identities and complete saved payload remain exact. This is a
+source-binding repair against the freshly executed 61-fixture native receipt,
+not another native execution or new golden. External factorization receipt
+`unit-unlimbo-main1013-factorized-sb4gr9gn/binding-repair-receipt.json` has SHA-256
+`d0a32eea171554c7bb07fb26f2e0f8efb958f219a814af10938887fd73c0e91f`.
+The combined candidate passes 9,528 required-retail lib tests, zero failures,
+227 ignored, lib Clippy (725 warnings), and release game/asset builds through
+the shared runner with all tracked files frozen. The writable-field ratchet
+remains 2,543 against current main's 2,554. External
+`unit-unlimbo-main1013-final-validation-20261003.json` records the commands and
+logs. An earlier run passed the tests but its runner rejected the source receipt
+after an evidence-document edit; that receipt is preserved and the final batch
+was rerun successfully without source drift.
+
+The Gate owner now binds
+94 selected sources (39 conservative imported Python paths and 55 Rust
+owners/consumers) through the central publisher, replacing its manual hash
+projections. Staged generation, ordinary Gate check and ordinary default check
+all pass with the original 37 controls, 350 frames and complete payload exact.
+Default JSON/metadata and all protected Unit/default files remain unchanged.
+External Gate terminal receipt has SHA-256
+`9b81b3bad1d506ff015fd7971debc64ac136ab835e83b3cb0c1c8cbfea73e204`;
+the new Gate metadata has SHA-256
+`7bea72575c73e27bbb8cfd19e176f125a5368f3011d10e34df0a6cdeeab927d2`.
+Import/source membership establishes identity, not execution of every bound body.
+
+Final stock and zero-override release observations both pass the ordinary v6
+validator with binary SHA-256
+`d894cf0b771716e60d394c692c419b62e125920c1d0a3c12ab1c13e67c2a2f0f`
+(31,640,672 bytes). Complete factory/tank actor dictionaries match at all 5,601
+boundaries, as do final GPU bytes; both product and producer complete exit and
+return to Guard. The retained earlier stock actor fields also match after
+excluding only incoming optional `building.voxel_gun` from that schema comparison.
+External `unit-unlimbo-main1013-final-runtime-summary-20261003.json` has SHA-256
+`e503a82b7e63b1cb4c654f644a6359e41d606ed0c4708870efecea5039b1b43d`.
+These remain Rust production observations within the declared profile.
 
 Adding the authoritative shared Door fields to the deterministic hash changes
 three Rust replay fingerprints. A diagnostic removed only

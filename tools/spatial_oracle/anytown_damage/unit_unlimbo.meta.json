@@ -954,8 +954,8 @@
     "tools/spatial_oracle/anim_bouncer_launch.py": "6fa5df589e686573addd7843c16fae49a883c437f6dba3091d4f9c8d7b601055",
     "tools/spatial_oracle/anytown_damage/unit_unlimbo.py": "4d3ade3d30a9a299b0878cf1fe8948c937806871caa3ceb132426457a75f8358",
     "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
-    "src/rules/object_type.rs": "4e0a322915fa062ca5d46c1c002bdb9b0d1a77c20480e582ce38d1c699e1fe98",
-    "src/rules/native_processing.rs": "1c879827ff2ccce3aa48c414346b5274b7606e2b85dcd92a80a3d9f22e19acb0",
+    "src/rules/object_type.rs": "b1b6f181d4c8cb3c848b2df03eeaf17bc544cfc2afe817a2cc8fce39cc2f2fb9",
+    "src/rules/native_processing.rs": "6cfef9aec2854af57fa6ee363ad0e3c217917f0dfe4810928de2cb7e4621e211",
     "src/sim/stage.rs": "fcd4e96aec1bef724cb19040f4260f82cbc94e1ee4b31efb3623545bf673e865",
     "src/sim/cell_kernel.rs": "bd5ee573a64d6ac21a371ffba7ce3f865dd951b1acca8991679c111fe4ed8f70",
     "src/sim/combat/in_range.rs": "66c62cf588c458df4e770626b62abb2bb59e7a2ad7f844dec3546c91b6d41925",
@@ -966,7 +966,7 @@
     "src/sim/movement/ground_pose.rs": "d1125a5bd870596719304db36326f0f795d9b640591a818828863bdd59585ff9",
     "src/sim/movement/slope_transition.rs": "7d801749be984fc8a225fc2d2228777616ac8ddb24134af10c04f3d5443b6ccf",
     "src/sim/door.rs": "8b5d637d948daf185011ad64f531d08a4402ee95d073178f82064c6f51511d1f",
-    "src/sim/game_entity.rs": "bb90a69c52dbeba7eb0ac7408bf9ec2971eb91a817ee561928c90ecd6ac80d1e",
+    "src/sim/game_entity.rs": "d0620a238765d83c83c602dbcab3aa697a62eabbbc1f2933007f81d04c71f28f",
     "src/sim/gate_runtime.rs": "5cb221ca7c03ed975bd3c4997ebd4395916e8864b30b024b489071156f0e2f9a",
     "src/sim/docking/building_dock.rs": "067c7de2a0100adbc297bf17db2658025df11be4addc53bf36a4a661d162fae3",
     "src/sim/movement/track_host.rs": "bf3b3c9043cb628e8f4cf4739c40ab67b5bddbcfb5f3c01f83addbcb7c2138e4",
@@ -974,8 +974,8 @@
     "src/sim/production/production_queue.rs": "291ac1314f82cb8acc67d9f4103cbe382bcd3e7448fa97133da6a90b706a93d4",
     "src/sim/production/factory.rs": "eced48afbe7ed19744eb343d421771cfd4a9a39873d1730fc05d19c0b22ea050",
     "src/sim/production/production_queue_tests.rs": "018431ef00304ace5b2464bbe6bd3ad51e5f97fe7a0e615059cab45306b4672d",
-    "src/sim/world/techno_ai.rs": "28c3e9b84cff03299eed40b99ba591737f0ec8ec98612970a8a4d8ed6c56beee",
-    "src/sim/world/techno_ai/building_missions.rs": "7a3d3f3e1a8de739bfdd3ffaf7c72fe685849992e8d310fc4dad8ad95a89f7df",
+    "src/sim/world/techno_ai.rs": "ac1002e7c8577744ad378377bcdaf4c2337d96eee698e47ba1975036d7041fee",
+    "src/sim/world/techno_ai/building_missions.rs": "1c50342f1b9585daa773e61fcc5410fa93f9b0b9975cd0bda65a8360ba2a26ea",
     "src/sim/world/techno_ai/mission_handlers.rs": "e771b48285452fbaa3aace1915a00f66fb8089b96997e0ded3977ea6d6c92f0b",
     "src/sim/world/techno_ai/factory_unload_tests.rs": "80dff0629d3900f808ffb59c84ab304f5e2c38fd3c2790df66bcae75a22aa22a",
     "src/sim/world/projectile_collision.rs": "97c63568fa6ae2ef3a78042fdb0b764ccde15a291de250da391b8a6aabf185fc",
@@ -987,7 +987,7 @@
     "src/rules/ini_parser_tests.rs": "95002a316f2678d338c76b32109d5229c51f5c7e37a450a44e626508a2ede5fd",
     "src/rules/ini_value.rs": "67cb6083050a53271f1cd961480e4f0e0a505ab5c87a995a90bc00f6bbcf4f14",
     "src/rules/retail_ini_fixture.rs": "15bd1177331af3f0394029f303682cddf672f2e2ad88f67fd5d0b7f438e1ac8f",
-    "src/rules/ruleset.rs": "5abdbd6f4adac8a25f1db1eaed61eaeee1d9c9e084a7bc3f6cf12a34ffd4c9da"
+    "src/rules/ruleset.rs": "7be8ce1456220c1b2fbf0749588213b3948550fee65032dbd2183775c7bfb0e0"
   },
   "payload_sha256": "2915c344ba2fd60cac1782f7a08a053e0b369a4f1eab0f0c61f9869d277e581b"
 }
