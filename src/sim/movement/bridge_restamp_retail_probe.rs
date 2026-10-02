@@ -95,7 +95,7 @@ fn retail_inactive_high_record_restamp_inventory() {
                 // All terrain cells conservatively form the source exclusion set;
                 // an admitted empty witness is also admitted with the narrower spawner set.
                 "live_new_tiberium_admission": sim.overlay_grid.as_ref().is_some_and(|g|
-                    crate::sim::tiberium::can_place_new_tiberium(g, &source_cells, admission, coord)),
+                    crate::sim::tiberium::admit_new_tiberium_target(g, &source_cells, admission, coord).is_some()),
                 "techno_occupants": sim.occupancy().get(coord.0, coord.1).map_or(0, |o| o.occupants.len()),
                 "terrain_object": sim.production.terrain_object_cells.contains_key(&coord),
                 "ground_walkable": sim.path_grid().and_then(|g| g.cell(coord.0, coord.1)).map(|c| c.ground_walkable),

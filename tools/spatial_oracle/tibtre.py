@@ -169,7 +169,8 @@ def fixture(case):
         tib = TIBS + index * 0x200
         u.mem_write(tib + 0xE4, dwords(12))
         u.mem_write(tib + 0xB0, struct.pack('<d', case.get('growth_percentage', 0.1)))
-    # GrowthAllowed is a byte in the land row, separate from its speed floats.
+    # Buildable is the byte at land-row+0x20 (89EA60 + land*36), read by
+    # CanPlaceTiberium; native Rules674216..67421B reads/stores Buildable.
     for land in (0, 5):
         u.mem_write(0x89EA60 + land * 36, b'\x01')
     inputs = case.get('type', retail_inputs()['rows'][0])
@@ -257,7 +258,9 @@ def fixture(case):
             events[-1]['rng_before'] = [read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)]
             pending.append((read32(sp), len(events) - 1))
         elif address == CAN_GERMINATE:
-            events.append(dict(event='can_germinate', cell=cell_xy(this),
+            # Native Cells carry their coordinates at+24, including the
+            # resident dummy updated by MapClass lookup beyond this arena.
+            events.append(dict(event='can_germinate', cell=list(struct.unpack('<hh', u.mem_read(this + 0x24, 4))),
                                caller=f'{read32(sp):08X}', result=None))
             pending.append((read32(sp), len(events) - 1))
         elif address == SPREAD:

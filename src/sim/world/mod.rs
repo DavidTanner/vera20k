@@ -107,7 +107,7 @@ pub(crate) use lifecycle::{
 };
 #[cfg(test)]
 pub(crate) use lifecycle::{LifecycleTestEvent, RevealFailure};
-pub(crate) use load_object_lifecycle::LoadObjectLifecycle;
+pub(crate) use load_object_lifecycle::{LoadObjectLifecycle, OverlayConstructionReceipt};
 pub(crate) use logic_vector::LogicVector;
 pub(crate) use object_entry::FootEntryReceiver;
 pub use substrate::EnterOrderCounter;
@@ -3552,6 +3552,7 @@ impl Simulation {
                 &self.production.terrain_object_cells,
             );
             if let (Some(grid), Some(registry)) = (self.overlay_grid.as_mut(), overlay_registry) {
+                let dirty_start = grid.pending_dirty_cells().len();
                 self.production.ore_growth_state.tick_native_growth_driver(
                     grid,
                     registry,
@@ -3568,7 +3569,7 @@ impl Simulation {
                     Some(&mut self.radar_terrain_dirty_generation),
                     Some(&mut self.tactical_dirty_cells),
                 );
-                self.production.ore_growth_state.tick_native_spread_driver(
+                let spread = self.production.ore_growth_state.tick_native_spread_driver(
                     grid,
                     registry,
                     &rules.tiberium_types,
@@ -3583,7 +3584,63 @@ impl Simulation {
                     Some(&mut self.radar_terrain_dirty_generation),
                     Some(&mut self.tactical_dirty_cells),
                 );
+                // Original Place487190 -> Overlay Mark5FC570 -> Recalc47D2B0
+                // publishes LandType before Logic55B4DC returns to live-object
+                // AI. Within the ore loops, a stamped cell is excluded by its
+                // overlay identity before admission reads its land; growth and
+                // source gates use density/slope. Their Recalcs can therefore
+                // publish as this batch without changing admission or RNG order.
+                // Native cell results: tools/spatial_oracle/ore_queue.json.
+                let marked = grid.pending_dirty_cells()[dirty_start..].to_vec();
+                self.publish_tiberium_cells(rules, registry, &marked);
+                // No identity allocator runs between these ordinary ore
+                // constructors. Their stock CellAnim branch is absent. Apply
+                // their ordered registry/ID effects before live-object AI;
+                // Scenario IDs and retirement order are preserved independently
+                // of the intervening Scenario RNG and queue mutations.
+                self.publish_overlay_constructions(spread.into_overlay_constructions());
             }
+        }
+    }
+
+    /// Overlay Mark5FC570 ->Recalc47D2B0 completes before its Logic caller
+    /// returns. Both the global ore rung and a Terrain AI slot must publish
+    /// movement costs before the next object; retain render dirty receipts.
+    pub(crate) fn publish_tiberium_cells(
+        &mut self,
+        rules: &RuleSet,
+        registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        cells: &[(u16, u16)],
+    ) {
+        if let (Some(grid), Some(terrain)) =
+            (self.overlay_grid.as_mut(), self.resolved_terrain.as_mut())
+        {
+            for &cell in cells {
+                if grid.cell(cell.0, cell.1).overlay_id.is_some() {
+                    grid.recalculate_runtime_cell(terrain, registry, cell);
+                }
+            }
+        }
+        self.finish_terrain_navigation_changes(rules, &[]);
+    }
+
+    pub(crate) fn publish_overlay_constructions(
+        &mut self,
+        receipts: impl IntoIterator<Item = OverlayConstructionReceipt>,
+    ) {
+        for receipt in receipts {
+            let stable_id = self.allocate_stable_id();
+            let handle = self
+                .load_objects
+                .construct_overlay(stable_id, receipt.cell(), || {
+                    crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(
+                        &mut self.native_unique_ids,
+                    )
+                })
+                .expect("runtime Overlay constructor must join its owned registries");
+            self.load_objects
+                .finish_cell_construction(handle, receipt)
+                .expect("runtime Overlay constructor must finish its owned lifecycle");
         }
     }
 
@@ -5786,7 +5843,7 @@ impl Simulation {
         self.process_pending_delete_with(rules, overlay_registry);
 
         // Original55DE9F calls725C70 at this admitted late-frame boundary.
-        // Stock bridge Overlay objects publish only Cell state; their isolated
+        // Stock bridge/ore Overlay objects publish only Cell state; their isolated
         // destructor has no gameplay-object callback effects and cannot allocate
         // IDs. Drain the shared authored/runtime owner after gameplay objects.
         self.load_objects
@@ -6637,3 +6694,7 @@ pub(crate) fn wake_anchor_for(
 #[cfg(test)]
 #[path = "tibtre_oracle_tests.rs"]
 mod tibtre_oracle_tests;
+
+#[cfg(test)]
+#[path = "ore_spread_oracle_tests.rs"]
+mod ore_spread_oracle_tests;

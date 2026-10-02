@@ -90,7 +90,7 @@ pub(crate) fn tiberium_rules_text() -> String {
         }
     }
     for name in tiberium_names {
-        text.push_str(&format!("[{name}]\nTiberium=yes\n"));
+        text.push_str(&format!("[{name}]\nTiberium=yes\nLand=Tiberium\n"));
     }
     text
 }

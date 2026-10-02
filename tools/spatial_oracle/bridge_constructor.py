@@ -149,6 +149,30 @@ class OriginalBridgeConstructor:
     def read_u32(self, address):
         return struct.unpack('<I', self.uc.mem_read(address, 4))[0]
 
+    @staticmethod
+    def prepare_deferred_services(u):
+        """Supply the existing Windows SEH/IsBadReadPtr boundary for drains.
+
+        Original RTTI, deferred-queue operations and destructors still execute.
+        Reused by the natural-ore owner after original Overlay construction.
+        """
+        u.mem_map(0, 0x1000)
+        u.mem_write(0, dwords(-1))
+        pointer_probe = RET_MAGIC + 0x100
+        u.mem_write(0x7E115C, dwords(pointer_probe))
+
+        def pointer_service(_u, address, _size, _data):
+            if address != pointer_probe:
+                return
+            sp = u.reg_read(UC_X86_REG_ESP)
+            ret, pointer, length = struct.unpack('<3I', u.mem_read(sp, 12))
+            u.mem_read(pointer, length)  # Validate every supplied success.
+            u.reg_write(UC_X86_REG_EAX, 0)
+            u.reg_write(UC_X86_REG_ESP, sp + 12)
+            u.reg_write(UC_X86_REG_EIP, ret)
+
+        u.hook_add(UC_HOOK_CODE, pointer_service)
+
     def construct(self):
         """Execute construction independently of the optional queue drain."""
         returned = self.call(0x5FC380, self.obj, (self.typ, self.coord, -1), self.required)
@@ -189,19 +213,8 @@ class OriginalBridgeConstructor:
         frees = []
         # Original typeid uses Windows SEH and IsBadReadPtr during finalization.
         # Supply those OS facilities after the complete constructor has returned.
-        u.mem_map(0, 0x1000)
-        u.mem_write(0, dwords(-1))
-        pointer_probe = RET_MAGIC + 0x100
-        u.mem_write(0x7E115C, dwords(pointer_probe))
+        self.prepare_deferred_services(u)
         def external_services(_u, address, _size, _data):
-            if address == pointer_probe:
-                sp = u.reg_read(UC_X86_REG_ESP)
-                ret, pointer, length = struct.unpack('<3I', u.mem_read(sp, 12))
-                u.mem_read(pointer, length)  # Validate every supplied success.
-                u.reg_write(UC_X86_REG_EAX, 0)
-                u.reg_write(UC_X86_REG_ESP, sp + 12)
-                u.reg_write(UC_X86_REG_EIP, ret)
-                return
             if address != 0x7C8B3D:
                 return
             sp = u.reg_read(UC_X86_REG_ESP)
@@ -268,4 +281,5 @@ if __name__ == '__main__':
             'Empty Windows SEH chain supplied for original typeid during the post-constructor drain',
         ], substitutions=['7C8B3D external free and Windows IsBadReadPtr transport only during the post-constructor drain; no constructor call is substituted'],
         entry_points={'empty_initializer': 0x5FC310, 'constructor': 0x5FC380, 'mark': 0x5FC570, 'drain': 0x725C70,
-                      'overlay_destructor': 0x5FDF70, 'base_destructor': 0x5F3B80}))
+                      'overlay_destructor': 0x5FDF70, 'base_destructor': 0x5F3B80}),
+                   source_paths={'producer': Path(__file__)})

@@ -28,10 +28,15 @@ chaining, the Nuke and the Chronosphere. The 30-player, 20,000-unit scale hasn't
 demonstrated yet.
 
 Stock TIBTRE ore trees use retained simulation animation, emit ore at the native
-midpoint and feed the existing growth and harvesting paths. Ore queues
-now rebuild at the native enqueue thresholds; the
-[queue comparison](tools/spatial_oracle/ore_queue.md) records the tested boundaries
-and connected callers. The
+midpoint and feed the existing growth and harvesting paths. Ore queues rebuild at
+the native enqueue thresholds. Natural spread processes due timers even when
+spreading is disabled, preserves signed rules intervals and publishes new cell
+attributes and movement costs before the next object, including Terrain AI emission.
+Edge probes retain native shared-cell lookup effects. New ore constructors also
+advance the shared Scenario ID
+and follow the shared Overlay registry/deferred cleanup owner, including tree-blocked
+limbo survivors. The [queue comparison](tools/spatial_oracle/ore_queue.md)
+records the tested boundaries and connected callers. The
 [bounded native comparisons](tools/spatial_oracle/tibtre.md) cover their timing,
 RNG and placement; stock artwork uses the native body/shadow frame pairs.
 

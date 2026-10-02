@@ -1036,7 +1036,7 @@ where
                 .finalized_map_cell(rx, ry)
                 .expect("final authored iterator coordinate remains in the live overlay grid");
             tiberium_value_total =
-                tiberium_value_total.wrapping_add(crate::sim::ore_twinkle::tiberium_value(
+                tiberium_value_total.wrapping_add(crate::map::tiberium_cell::tiberium_value(
                     current.overlay_id(),
                     current.state(),
                     overlay_registry,

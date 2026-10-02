@@ -322,8 +322,12 @@ fn forced_spread_matches_original_admission_placement_queues_and_rng() {
             coords[0],
             true,
         );
+        let succeeded = result.is_some();
+        s.sim.publish_overlay_constructions(
+            result.and_then(crate::sim::tiberium::TiberiumPlacement::into_overlay_construction),
+        );
         assert_eq!(
-            json!(u8::from(result.is_some())),
+            json!(u8::from(succeeded)),
             case["result"],
             "{} result",
             case["input"]["name"]
@@ -370,6 +374,75 @@ fn terrain_probability_and_rate_reader_match_native_physical_inputs() {
         assert_eq!(json!(t.is_animated), row["animated"]);
         assert_eq!(json!(t.spawns_tiberium), row["spawns"]);
     }
+}
+
+/// A single Terrain AI slot must publish movement costs before returning to
+/// Logic's next object. Native midpoint timing is covered by the AI replay.
+#[test]
+fn same_frame_ore_terrain_ai_publishes_path_costs_before_return() {
+    let native = corpus();
+    let typ = &native["retail_inputs"]["rows"][0];
+    // Native animated midpoint11 emits through force1. Isolate that object
+    // turn without any frame-tail cache publication.
+    let (mut s, _) = fixture(&json!({"seed":4,"stage":[10,0,0,0,1]}), typ);
+    let mut ini = IniFile::from_str(&crate::sim::tiberium::test_support::tiberium_rules_text());
+    // Stock AnyTown mode1 rows from the production asset reader; the fixture
+    // otherwise uses equal land costs, which would hide the stale cache.
+    ini.merge(&IniFile::from_str(
+        "[Clear]\nFoot=100%\nTrack=100%\nWheel=100%\nBuildable=yes\n\
+         [Tiberium]\nFoot=90%\nTrack=70%\nWheel=50%\nBuildable=yes\n",
+    ));
+    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let tree = s
+        .sim
+        .production
+        .terrain_objects
+        .iter()
+        .find(|(_, object)| object.cell() == (16, 16))
+        .map(|(&id, _)| id)
+        .unwrap();
+    crate::sim::terrain_spawn::tick_terrain_object_ai(
+        &mut s.sim,
+        tree,
+        Some(&s.rules),
+        Some(&registry),
+        None,
+    );
+    let (x, y, _) = s
+        .sim
+        .overlay_grid
+        .as_ref()
+        .unwrap()
+        .iter_occupied()
+        .next()
+        .expect("force1 Terrain turn creates actual ore");
+    let cell = s.sim.resolved_terrain.as_ref().unwrap().cell(x, y).unwrap();
+    assert_eq!(cell.land_type, 5, "native Mark published ore attributes");
+    for (&speed_type, costs) in &s.sim.terrain_costs {
+        assert_eq!(
+            costs.ground_cost_at(x, y),
+            cell.speed_costs
+                .cost_for_speed_type(speed_type)
+                .unwrap_or(0),
+            "later Foot path requests must see the emitted ore's current costs"
+        );
+    }
+    assert!(
+        s.sim
+            .path_grid
+            .as_ref()
+            .unwrap()
+            .resolved_cell_is_current(cell, false)
+    );
+    assert!(
+        !s.sim
+            .overlay_grid
+            .as_ref()
+            .unwrap()
+            .pending_dirty_cells()
+            .is_empty(),
+        "synchronous navigation publication retains render updates"
+    );
 }
 
 /// Composition witness through the normal frame and real player commands.

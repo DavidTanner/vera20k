@@ -26,14 +26,14 @@ use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::rng::SimRng;
 use crate::sim::tiberium::{
     ADJACENT_OFFSETS, NativeCellObjectView, NewTiberiumAdmission, PlaceTiberiumContext,
-    TiberiumPlacementObjectContext, can_place_new_tiberium, can_spread_tiberium, place_tiberium,
+    TiberiumPlacementObjectContext, admit_new_tiberium_target, can_spread_tiberium, place_tiberium,
     spread_tiberium,
 };
 use crate::sim::timer::CdTimer;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53, X87Ordering};
 
 #[cfg(test)]
-mod queue_oracle_tests;
+pub(crate) mod queue_oracle_tests;
 
 /// The `1e-05` double at `0x007E3810` every tiberium percentage gate compares
 /// against (`CanGrowTiberium @ 0x00483620`, `CanSpreadTiberium @ 0x00483690`,
@@ -66,8 +66,8 @@ const NATIVE_GROWTH_RELOAD_UNIT_MULTIPLIER_BITS: u64 = 0x3FF0_0000_0000_0000;
 pub struct OreGrowthConfig {
     /// `ScenarioClass+0x34A6` (`[Basic] TiberiumGrowthEnabled`, default 1 from
     /// `Set_Defaults @ 0x00683848`, read at `Read_INI_Basic @ 0x0068A57A`):
-    /// the entry gate of both `GrowthDriver_AllTypes @ 0x00722C48` and
-    /// `SpreadDriver_AllTypes @ 0x007221B8`, and of `CanGrowTiberium`.
+    /// the entry gate of both `GrowthDriver_AllTypes @ 0x00722C40` and
+    /// `SpreadDriver_AllTypes @ 0x007221B0`, and of `CanGrowTiberium`.
     pub grows: bool,
     /// `ScenarioClass` flags bit `0x80` (`TiberiumSpreads`): the
     /// `CellClass::CanSpreadTiberium @ 0x00483690` gate.
@@ -141,7 +141,7 @@ impl OreGrowthConfig {
 /// (`0x0E7F`: 53-bit precision, round toward zero) for `ftol`, so both the
 /// multiply and the conversion truncate. Stock `Growth=2200` therefore reloads
 /// to **659** (2200 x 0.3 chops just below 660), `Growth=10000` to 2999.
-pub(crate) fn native_growth_timer_reload(growth: u32, tiberium_grows_flag: bool) -> u32 {
+pub(crate) fn native_growth_timer_reload(growth: i32, tiberium_grows_flag: bool) -> i32 {
     let multiplier_bits = if tiberium_grows_flag {
         NATIVE_GROWTH_RELOAD_FAST_MULTIPLIER_BITS
     } else {
@@ -149,10 +149,10 @@ pub(crate) fn native_growth_timer_reload(growth: u32, tiberium_grows_flag: bool)
     };
     let multiplier = X87Chop53::load_f64(NativeF64Bits::from_bits(multiplier_bits))
         .expect("retail reload multipliers are finite normals");
-    let product = X87Chop53::mul(X87Chop53::load_i32(growth as i32), multiplier);
+    let product = X87Chop53::mul(X87Chop53::load_i32(growth), multiplier);
     // The signed-dword input and multiplier at most 1.0 fit signed64;
     // native keeps EAX (the low dword).
-    X87Chop53::ftol_i32_low_masked(product) as u32
+    X87Chop53::ftol_i32_low_masked(product)
 }
 
 /// Native `TiberiumClass` queue/timer state shell.
@@ -451,7 +451,7 @@ impl NativeGrowthProcessStats {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeSpreadProcessStats {
     pub processor_calls: u32,
     pub budget_rng_draws: u32,
@@ -462,6 +462,7 @@ pub struct NativeSpreadProcessStats {
     pub placed_entries: u32,
     pub reinserted_entries: u32,
     pub bitmap_clears: u32,
+    overlay_constructions: Vec<crate::sim::world::OverlayConstructionReceipt>,
 }
 
 impl NativeSpreadProcessStats {
@@ -475,6 +476,14 @@ impl NativeSpreadProcessStats {
         self.placed_entries += other.placed_entries;
         self.reinserted_entries += other.reinserted_entries;
         self.bitmap_clears += other.bitmap_clears;
+        self.overlay_constructions
+            .extend(other.overlay_constructions);
+    }
+
+    pub(crate) fn into_overlay_constructions(
+        self,
+    ) -> Vec<crate::sim::world::OverlayConstructionReceipt> {
+        self.overlay_constructions
     }
 }
 
@@ -753,7 +762,7 @@ impl OreGrowthState {
                 // `0x00722C9E..0x00722CE3`: see `native_growth_timer_reload`.
                 class.growth_timer = CdTimer::started(
                     current_frame as i32,
-                    native_growth_timer_reload(ty.growth, tiberium_grows_flag) as i32,
+                    native_growth_timer_reload(ty.growth, tiberium_grows_flag),
                 );
             }
         }
@@ -903,7 +912,7 @@ impl OreGrowthState {
                         radar_dirty_generation: radar_dirty_generation.as_deref_mut(),
                         tactical_dirty_cells: tactical_dirty_cells.as_deref_mut(),
                     };
-                    place_tiberium(&mut context, (entry.rx, entry.ry), type_id, 1)
+                    place_tiberium(&mut context, (entry.rx, entry.ry), type_id, 1).is_some()
                 };
                 if placed {
                     stats.grown_entries += 1;
@@ -991,7 +1000,11 @@ impl OreGrowthState {
         mut radar_dirty_generation: Option<&mut u64>,
         mut tactical_dirty_cells: Option<&mut Vec<(u16, u16)>>,
     ) -> NativeSpreadProcessStats {
-        if !growth_enabled || !spread_enabled {
+        // `SpreadDriver_AllTypes @ 0x007221B0` tests only Basic growth
+        // (`0x007221B8`, Scenario+0x34A6). The spread bit gates sources inside
+        // the processor; due queues still consume budget RNG and reload while
+        // it is off. Executed histories: tools/spatial_oracle/ore_queue.md.
+        if !growth_enabled {
             return NativeSpreadProcessStats::default();
         }
         let due_ids: Vec<TiberiumTypeId> = self
@@ -1034,7 +1047,7 @@ impl OreGrowthState {
                 // `SpreadDriver_AllTypes @ 0x00722205..0x00722227`: the raw
                 // `Spread=` int (`TiberiumClass+0x9C`) reloads the timer; no
                 // multiplier and no flag test on this driver.
-                class.spread_timer = CdTimer::started(current_frame as i32, ty.spread as i32);
+                class.spread_timer = CdTimer::started(current_frame as i32, ty.spread);
             }
         }
         stats
@@ -1125,8 +1138,6 @@ impl OreGrowthState {
                 new_cell_admission,
                 entry.rx,
                 entry.ry,
-                self.map_width,
-                self.effective_map_height(),
             );
             if valid_targets == 0 {
                 self.native_tiberium.classes[class_idx]
@@ -1166,8 +1177,11 @@ impl OreGrowthState {
                 radar_dirty_generation: radar_dirty_generation.as_deref_mut(),
                 tactical_dirty_cells: tactical_dirty_cells.as_deref_mut(),
             };
-            if spread_tiberium(&mut placement, (entry.rx, entry.ry), false).is_some() {
+            if let Some(placed) = spread_tiberium(&mut placement, (entry.rx, entry.ry), false) {
                 stats.placed_entries += 1;
+                stats
+                    .overlay_constructions
+                    .extend(placed.into_overlay_construction());
             }
 
             // `0x0072259A..0x00722614`: more than one valid target reinserts
@@ -1579,31 +1593,24 @@ fn current_tiberium_type(
     overlay_registry.tiberium_type_for_overlay(tiberium_types, overlay_id)
 }
 
-/// Count admitted neighbors without consuming RNG for the native spread budget.
-#[allow(clippy::too_many_arguments)]
+/// Count admitted neighbors without RNG, retaining every native map lookup's
+/// shared-dummy side effect before the source's own spread admission.
 fn count_native_spread_targets(
     overlay_grid: &OverlayGrid,
     source_object_cells: &BTreeSet<(u16, u16)>,
     new_cell_admission: Option<NewTiberiumAdmission<'_>>,
     rx: u16,
     ry: u16,
-    map_width: u16,
-    map_height: u16,
 ) -> u8 {
     let mut count = 0u8;
     for &(dx, dy) in &ADJACENT_OFFSETS {
-        let nx = rx as i32 + dx;
-        let ny = ry as i32 + dy;
-        if nx < 0 || ny < 0 || nx >= map_width as i32 || ny >= map_height as i32 {
-            continue;
-        }
+        let target = (
+            (rx as i16).wrapping_add(dx as i16) as u16,
+            (ry as i16).wrapping_add(dy as i16) as u16,
+        );
         if new_cell_admission.is_some_and(|admission| {
-            can_place_new_tiberium(
-                overlay_grid,
-                source_object_cells,
-                admission,
-                (nx as u16, ny as u16),
-            )
+            admit_new_tiberium_target(overlay_grid, source_object_cells, admission, target)
+                .is_some()
         }) {
             count = count.saturating_add(1);
         }
@@ -2452,7 +2459,7 @@ SpreadPercentage=.06
                 .duration();
             assert_eq!(
                 interval,
-                native_growth_timer_reload(2200, tiberium_grows_flag) as i32
+                native_growth_timer_reload(2200, tiberium_grows_flag)
             );
             fired
         };
@@ -2953,7 +2960,7 @@ SpreadPercentage=.06
         assert_eq!(
             class.growth.heap_entry(0).unwrap().priority_bits,
             growth_queue_priority(200, growth_priority_raw).to_bits(),
-            "AddToGrowthQueue runs immediately after the zero-data overlay stamp"
+            "AddToGrowthQueue runs after Mark germination and before the final amount write"
         );
         assert!(class.growth_bitmap.contains(&(4, 3)));
         assert_eq!(radar_dirty, vec![(4, 3)]);
