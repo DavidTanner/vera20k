@@ -1,10 +1,9 @@
-//! Diamond-ring exit-cell search for Mission_Harvest state 4 (off the
-//! refinery cell) and the tank-bunker exit.
+//! Legacy diamond-ring exit-cell search for the tank-bunker exit.
 //!
 //! VERA-internal approximation of `MapClass::Find_Nearby_Passable_Cell @
 //! 0x0056DC20`: the native range and flag arguments are not modelled. The
-//! native port is `sim::find_nearby_cell`; these two callers have not moved
-//! onto it yet.
+//! native port is `sim::find_nearby_cell`; the tank-bunker caller has not
+//! moved onto it yet. Harvest uses the shared Techno nearby-location owner.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/pathfinding, sim/occupancy.
@@ -13,13 +12,6 @@
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::PathGrid;
-
-/// Maximum diamond-ring radius for the exit-cell spiral search. gamemd's
-/// `FootClass::Find_Nearby_Passable_Cell` derives its cap from
-/// `Speed + SightRange` (capped at 32). A miner-class unit lands at ~14.
-/// 16 covers the same footprint with a small safety margin and still
-/// terminates quickly when the area around the refinery is fully blocked.
-pub(super) const EXIT_SEARCH_MAX_RADIUS: i32 = 16;
 
 /// Whether `(x, y)` is in-bounds, passable on the ground layer, and not
 /// occupied by any other ground-layer entity.

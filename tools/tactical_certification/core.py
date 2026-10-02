@@ -374,11 +374,12 @@ def write_bytes_exclusive(path: Path, data: bytes) -> Path:
     return target
 
 
-def canonical_json_bytes(value: Mapping[str, Any]) -> bytes:
+def canonical_json_bytes(value: Mapping[str, Any], *, compact: bool = False) -> bytes:
     return (
         json.dumps(
             value,
-            indent=2,
+            indent=None if compact else 2,
+            separators=(",", ":") if compact else None,
             sort_keys=True,
             ensure_ascii=False,
             allow_nan=False,
@@ -388,9 +389,10 @@ def canonical_json_bytes(value: Mapping[str, Any]) -> bytes:
 
 
 def write_json_exclusive(
-    path: Path, value: Mapping[str, Any], *, maximum_length: int | None = None
+    path: Path, value: Mapping[str, Any], *, maximum_length: int | None = None,
+    compact: bool = False,
 ) -> Path:
-    raw = canonical_json_bytes(value)
+    raw = canonical_json_bytes(value, compact=compact)
     if maximum_length is not None:
         if type(maximum_length) is not int or maximum_length < 1:
             raise ValidationError("JSON maximum_length must be a positive integer")

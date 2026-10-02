@@ -17,8 +17,9 @@ Collection*, on [Steam](https://store.steampowered.com/bundle/39394/) and on
 
 Pre-alpha. Local skirmish is playable on Windows against a placeholder AI.
 
-- **Working:** retail and random maps, menus and sidebar, base building, harvesting,
-  core combat, and save/load.
+- **Working:** retail and random maps, menus and sidebar, base building,
+  [harvesting and refinery deposits](tools/spatial_oracle/refinery_dock.md), core combat,
+  and save/load.
 - **Partial:** aircraft attack runs, mind control, crates, death effects, and some bridges.
 - **Missing:** multiplayer, the original AI, campaign, most map triggers, movies,
   and several special weapons and superweapons.

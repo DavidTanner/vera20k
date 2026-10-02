@@ -47,10 +47,10 @@ SELECT = {'HARV': {'Harvester', 'Weeder', 'Storage', 'MovementZone', 'Dock'},
              for s in ('Sleep', 'Attack', 'Guard', 'Harvest', 'Move', 'Stop')}}
 
 
-def reader_receipts():
+def reader_receipts(*, refinery_dock=False, root=None):
     """Physical lexical strings, original constructors and key-block readers."""
-    root = Path(os.environ.get('VERA20K_HARVEST_ATTACK_INPUTS',
-                               'target/asset/harvest-attack-return/extract'))
+    root = Path(root or os.environ.get('VERA20K_HARVEST_ATTACK_INPUTS',
+                                      'target/asset/harvest-attack-return/extract'))
     m = Landing()
     u = m.u
     for registry in (0x887568, 0xA8EB00, 0xA83CE0, 0xA8ED40, 0xA83C68):
@@ -59,6 +59,15 @@ def reader_receipts():
     m.invoke(0x7470D0, typ, [m.cstring('HARV')])
     m.invoke(0x665650, rules)
     m.invoke(0x4E7CF0, 0)
+    docking = None
+    selected, missions = SELECT, MISSIONS
+    if refinery_dock:
+        from tools.spatial_oracle.refinery_dock import DockInputReader
+        docking = DockInputReader(m, typ, rules)
+        selected = {name: set(keys) for name, keys in SELECT.items()}
+        for name, keys in docking.selected.items():
+            selected.setdefault(name, set()).update(keys)
+        missions = MISSIONS | {'enter': 7, 'unload': 16}
 
     def snap():
         return dict(harvester=u.mem_read(typ + 0xE0E, 1)[0],
@@ -70,7 +79,7 @@ def reader_receipts():
                     load_rate=i32(u, rules + 0x1520),
                     short_scan=i32(u, rules + 0x1778), long_scan=i32(u, rules + 0x177C),
                     mission_controls={name: bytes(u.mem_read(CONTROLS + n * 32, 32)).hex()
-                                      for name, n in MISSIONS.items()})
+                                      for name, n in missions.items()})
 
     constructor = snap()
     rows, calls, writes = [], [], []
@@ -105,13 +114,19 @@ def reader_receipts():
             if not path.is_file():
                 assert filename == 'LANGRULE.INI', str(path)
                 rows.append(dict(file=filename, absent=True))
+                if docking:
+                    docking.layers.append(dict(file=filename, absent=True))
                 continue
             current[0] = filename
             raw = path.read_bytes()
-            sections, lines = lexical(raw, set(SELECT))
+            sections, lines = lexical(raw, set(selected))
             m.make_ini(sections)
             before, start_calls, start_writes = snap(), len(calls), len(writes)
-            if m.invoke(0x526810, INI, [m.cstring('HARV')]) & 255:
+            if docking:
+                docking.begin_layer(filename, raw, sections, lines)
+            # 526810 returns a Section pointer, not a boolean AL. A valid
+            # aligned section can have lowbyte0 (refinery_dock reader controls).
+            if m.invoke(0x526810, INI, [m.cstring('HARV')]):
                 for register, value in ((UC_X86_REG_ESP, READER_SP), (UC_X86_REG_EDI, typ),
                                         (UC_X86_REG_EBX, INI), (UC_X86_REG_EBP, typ + 0x24)):
                     u.reg_write(register, value)
@@ -134,25 +149,38 @@ def reader_receipts():
                 # The original 524EC0 getter leaves two pushed arguments live.
                 u.mem_write(READER_SP + 0x380, dwords(INI))
                 run_checked(u, 0x71605E, 0x716090, required_addresses=(0x474E40, 0x716081))
-            if m.invoke(0x526810, INI, [m.cstring('General')]) & 255:
+            if m.invoke(0x526810, INI, [m.cstring('General')]):
                 for begin, end in ((0x670CE7, 0x670D07), (0x67028C, 0x6702CB)):
                     for register, value in ((UC_X86_REG_ESP, READER_SP), (UC_X86_REG_ESI, rules),
                                             (UC_X86_REG_EDI, INI)):
                         u.reg_write(register, value)
                     run_checked(u, begin, end)
+            if docking:
+                docking.read_layer()
             u.reg_write(UC_X86_REG_ESP, READER_SP)
             u.reg_write(UC_X86_REG_ESI, INI)
             run_checked(u, 0x679C92, 0x679CAF, required_addresses=(0x5B3760,))
+            if docking:
+                docking.end_layer()
             rows.append(dict(file=filename, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest(),
-                             selected={s: {k: v for k, v in values.items() if k in SELECT[s]}
+                             selected={s: {k: v for k, v in values.items() if k in selected[s]}
                                        for s, values in sections.items()},
-                             lines=[r for r in lines if r['key'] in SELECT[r['section']]],
+                             lines=[r for r in lines if r['key'] in selected[r['section']]],
                              before=before, after=snap(), calls=calls[start_calls:],
                              writes=writes[start_writes:]))
+        if docking:
+            docking.read_art(root / 'ARTMD.INI' if (root / 'ARTMD.INI').is_file()
+                             else Path('ini/ARTMD.INI'))
     finally:
         u.hook_del(h)
         u.hook_del(w)
-    return dict(constructor=constructor, layers=rows, after=snap())
+        if docking:
+            docking.close()
+    result = dict(constructor=constructor, layers=rows, after=snap())
+    if docking:
+        result['refinery_dock'] = dict(constructor=docking.constructor, layers=docking.layers,
+                                       art=docking.art, after=docking.snap())
+    return result
 
 
 OBSERVED = {DISPATCH: ('mission_dispatch', 0), ATTACK: ('unit_attack', 0), FOOT_ATTACK: ('foot_attack', 0),

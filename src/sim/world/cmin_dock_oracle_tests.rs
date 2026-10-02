@@ -610,7 +610,11 @@ fn mission_harvest_teleporter_arms_match_the_original_dispatch() {
             row["state"]["status"].as_i64().unwrap(),
             "{context}: Harvest status"
         );
-        assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
+        assert_eq!(
+            super::refinery_dock_oracle_tests::legacy_harvest_sends(&s),
+            oracle_sends(row),
+            "{context}: legacy transmit suffix"
+        );
         compare_delay(&s, row, delay, &mut stream, &context);
         compare_swap(before, &s, row["events"].as_array().unwrap(), &context);
         compare_cmin(&s, &row["state"], &context);
@@ -637,7 +641,7 @@ fn mission_enter_teleporter_arms_match_the_original_dispatch() {
         radio::take_transmit_log();
         let before = active(&s);
         let mut stream = s.sim.scenario_rng.clone();
-        let delay = crate::sim::miner::mission_enter(&mut s.sim, &s.rules, s.miner);
+        let delay = crate::sim::mission::enter::mission_enter(&mut s.sim, &s.rules, s.miner);
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_delay(&s, row, delay, &mut stream, &context);
         compare_swap(before, &s, row["events"].as_array().unwrap(), &context);
@@ -677,7 +681,7 @@ fn per_cell_dock_now_waits_for_the_tether_after_a_warp() {
         let context = input["name"].as_str().unwrap().to_string();
         let mut s = cmin_scene(input);
         radio::take_transmit_log();
-        crate::sim::miner::per_cell_dock_now(&mut s.sim, &s.rules, s.miner);
+        s.sim.unit_dock_now(s.miner, &s.rules, None);
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_cmin(&s, &row["state"], &context);
     }

@@ -149,6 +149,14 @@ impl Simulation {
             install_authored_bridge(ge, origin);
             return;
         };
+        if category == EntityCategory::Structure {
+            // Building43BCBD..43BCD0 calls Radio65AE60 with the signed
+            // NumberOfDocks floored at one. Both authored and runtime objects
+            // own their actual slots before any scan or HELLO. Original
+            // constructor controls: tools/spatial_oracle/refinery_dock.json.
+            ge.radio_contacts =
+                crate::sim::radio::Contacts::with_capacity(obj.dock_contact_capacity() as usize);
+        }
         // Unit constructor735678 and InitFromType74689B initialize the empty
         // Gunner through the shared selector, including its charge-type gate.
         if category == EntityCategory::Unit && obj.gunner {

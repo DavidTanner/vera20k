@@ -5,7 +5,7 @@
 //! receiver (`radio::receive`, `0x0043C7E9`) drives the handshake: MOVE_HERE
 //! to the pad NW+(3,1), then, once the miner stands in it, TETHER and
 //! PREPARE_TO_DOCK, which turns the hull to 0x4000 and sends DOCK_NOW back
-//! (or the Drive track end sends it, [`per_cell_dock_now`]). The refinery
+//! (or the Drive track end sends it, `Simulation::unit_dock_now`). The refinery
 //! answers DOCK_NOW by queueing Unload, whose harvester branch
 //! ([`mission_unload`], `0x0073DEE0`) dumps the cargo on the Unit+0xF8
 //! StageClass gate and hands back to Harvest.
@@ -18,16 +18,13 @@
 //! reaches the pad by the Unit setter's Teleporter arm (`0x007423CD`): while
 //! the refinery is its radio contact the MOVE_HERE keeps the Teleport
 //! locomotor and warps onto the pad; every other destination drives.
-//! Mission_Enter re-runs that setter on each dispatch
-//! ([`teleporter_reassign`]). Evidence: tools/spatial_oracle/cmin_dock.json.
+//! The shared `mission::enter` owner re-runs that setter on each dispatch.
+//! Evidence: tools/spatial_oracle/cmin_dock.json.
 //!
 //! RESIDUALS (named trigger, effect, frequency):
-//! - `0x0070D8F0` (Unit+0x500 pending entry) is unrepresented: Mission_Enter
-//!   with no target always reaches Enter_Idle_Mode. Frequency: zero in the
-//!   dock chain (no represented writer).
-//! - Mission_Enter re-assigns only a Cell or NULL NavCom (`0x004D93E8`); an
-//!   object NavCom has no setter here and is left as it is. Frequency: zero
-//!   in the dock chain (MOVE_HERE and Mission_Harvest set cells).
+//! - The shared Enter, pending-entry and destination owners handle depot and
+//!   refinery consumers; retained controls/histories compare their native
+//!   cadence, contact, cargo and cleanup boundaries in refinery_dock.json.
 //! - Weeder= types (`GiveWeed 0x004F9700`) are not represented; no stock type.
 //! - The payout keeps VERA's integer economy (`economy.rs`): identical to
 //!   native for every retail value (whole bales, IncomeMult 1.0, PurifierBonus
@@ -51,11 +48,11 @@
 
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{BaleDepositEvent, NavTargetRef};
+use crate::sim::components::BaleDepositEvent;
 use crate::sim::mission::authority::LiveReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
+use crate::sim::radio::{self, RadioMessage};
 use crate::sim::world::Simulation;
 
 use super::{MinerKind, ResourceType};
@@ -75,135 +72,6 @@ pub(crate) fn native_dock_miner(sim: &Simulation, id: u64) -> bool {
         .get(id)
         .and_then(|entity| entity.miner.as_ref())
         .is_some_and(|miner| miner.kind != MinerKind::Slave)
-}
-
-/// `FootClass::Mission_Enter @ 0x004D9290` for a harvester. Returns the
-/// dispatch delay.
-pub(crate) fn mission_enter(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
-    let now = sim.session.binary_frame;
-    let Some(entity) = sim.substrate.entities.get(id) else {
-        return 1;
-    };
-    // 0x004D9294..0x004D92AC: Contacts[0], else the Techno behind ArchiveTarget.
-    let target = entity
-        .radio_contacts
-        .slot(0)
-        .or(match entity.archive_target() {
-            Some(crate::sim::combat::TargetKind::Entity(archived)) => Some(archived),
-            _ => None,
-        });
-    match target {
-        None => {
-            // 0x004D9425..0x004D9466: unless the NavCom is a Unit or an
-            // Aircraft, Enter_Idle_Mode(0, 1); then Commence.
-            let nav_is_mover = match entity.navigation.nav_com {
-                Some(
-                    NavTargetRef::Entity { id: nav }
-                    | NavTargetRef::Object { id: nav }
-                    | NavTargetRef::Building { id: nav },
-                ) => sim.substrate.entities.get(nav).is_some_and(|other| {
-                    matches!(
-                        other.category,
-                        EntityCategory::Unit | EntityCategory::Aircraft
-                    )
-                }),
-                _ => false,
-            };
-            if !nav_is_mover {
-                sim.unit_enter_idle_mode(id, Some(rules), false);
-            }
-            let _ = sim.mission_commence_exact(id, now);
-        }
-        Some(target) => {
-            let reply = radio::transmit(
-                sim,
-                id,
-                target,
-                RadioMessage::CanDock,
-                RadioPayload::default(),
-                Some(rules),
-            );
-            let tethered = sim
-                .substrate
-                .entities
-                .get(id)
-                .is_some_and(|entity| entity.dock_entered_with.is_some());
-            if reply != RadioResponse::Roger && !tethered {
-                // 0x004D92CE..0x004D92E8.
-                radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules));
-                sim.unit_enter_idle_mode(id, Some(rules), false);
-            } else if !pop_nav_queue(sim, rules, id) {
-                teleporter_reassign(sim, rules, id);
-            }
-        }
-    }
-    // 0x004D946C..0x004D9497: the CURRENT mission's Rate (a Commence above may
-    // have changed it).
-    sim.mission_rate_epilogue_for(rules, id, MissionType::Enter)
-}
-
-/// `0x004D92ED..0x004D93E3`: with no NavCom and a waypoint queued, a
-/// piggyback that `Is_Ok_To_End` allows ends first (`0x004D9309..0x004D937C`,
-/// no `Is_Piggybacking` test), then the class setter takes `NavQueue[0]` with
-/// the flag 0 (the queue is kept) and the first entry is deleted. Only Cell
-/// waypoints are represented. Returns whether this arm ran.
-fn pop_nav_queue(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
-    let Some(entity) = sim.substrate.entities.get_mut(id) else {
-        return false;
-    };
-    if entity.navigation.nav_com.is_some() || entity.navigation.nav_queue.is_empty() {
-        return false;
-    }
-    let _ = crate::sim::movement::locomotor_owner::try_restore_primary(entity);
-    let queue = entity.navigation.nav_queue.clone();
-    if let NavTargetRef::Cell { rx, ry } = queue[0] {
-        sim.set_unit_destination(
-            id,
-            crate::sim::components::NavTargetRef::cell(rx, ry),
-            rules,
-            true,
-        );
-    }
-    if let Some(entity) = sim.substrate.entities.get_mut(id) {
-        entity.navigation.nav_queue = queue[1..].to_vec();
-    }
-    true
-}
-
-/// `0x004D93E8..0x004D941D`: a `Teleporter=` type drops NavCom and NavComAux
-/// raw and hands the old NavCom back to the class setter with the flag 1. On
-/// the pad approach that re-runs the Teleporter arm and the Teleport Move_To;
-/// after the warp NavCom is NULL and the setter returns at once (`0x00741A80`).
-fn teleporter_reassign(sim: &mut Simulation, rules: &RuleSet, id: u64) {
-    let Some(entity) = sim.substrate.entities.get(id) else {
-        return;
-    };
-    if !sim
-        .object_type(entity.type_ref(), rules)
-        .is_some_and(|object| object.teleporter)
-    {
-        return;
-    }
-    let nav = entity.navigation.nav_com;
-    if !matches!(nav, None | Some(NavTargetRef::Cell { .. })) {
-        return;
-    }
-    if let Some(entity) = sim.substrate.entities.get_mut(id) {
-        crate::sim::movement::foot_stop_moving(entity);
-    }
-    match nav {
-        Some(NavTargetRef::Cell { rx, ry }) => {
-            sim.set_unit_destination(
-                id,
-                crate::sim::components::NavTargetRef::cell(rx, ry),
-                rules,
-                true,
-            );
-        }
-        _ => {
-            sim.set_unit_null_destination(id, Some(rules), None);
-        }
-    }
 }
 
 /// `UnitClass::Mission_Unload @ 0x0073D630`, harvester branch `0x0073DEE0`.
@@ -355,45 +223,6 @@ fn unload_finishing(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
         }
     }
     epilogue(sim, rules, id)
-}
-
-/// Unit `Per_Cell_Process(2)` Enter arm at a Drive track end
-/// (`0x0073A558..0x0073A5E4`): a tethered unit on Enter whose first contact
-/// is the building in the cell north of it sends that building DOCK_NOW. The
-/// depot arm before it (`0x0073A31F..0x0073A54A`, unit standing in the
-/// GetDockCoord cell) belongs to the depot flow and is not represented.
-pub(crate) fn per_cell_dock_now(sim: &mut Simulation, rules: &RuleSet, id: u64) {
-    let Some(entity) = sim.substrate.entities.get(id) else {
-        return;
-    };
-    if entity.dock_entered_with.is_none()
-        || entity.mission.effective() != MissionId::from_known(MissionType::Enter)
-    {
-        return;
-    }
-    let Some(contact) = entity.radio_contacts.slot(0) else {
-        return;
-    };
-    let (x, y) = (entity.position.rx, entity.position.ry);
-    let north = sim.substrate.occupancy.first_building_on_layer(
-        x,
-        (y as i16).wrapping_sub(1) as u16,
-        MovementLayer::Ground,
-    );
-    if north != Some(contact) {
-        return;
-    }
-    let reply = radio::transmit(
-        sim,
-        id,
-        contact,
-        RadioMessage::DockNow,
-        RadioPayload::default(),
-        Some(rules),
-    );
-    // 0x0073A5CE..0x0073A5E4: an answer other than 1 or 5 scatters the unit
-    // (a refinery being sold) — RESIDUAL, module doc.
-    let _ = reply;
 }
 
 /// Unit `Per_Cell_Process(2)` after Ready/Commence (`0x0073ACD7..0x0073AD48`)

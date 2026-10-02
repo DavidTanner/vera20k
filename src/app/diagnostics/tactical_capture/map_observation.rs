@@ -2,7 +2,7 @@
 //! The launch is the production session DTO; this diagnostic owns no gameplay.
 
 use super::super::integrity::{SealedJsonFile, parse_strict_json, read_stable_regular_bytes};
-use super::super::manifest::{PublishFault, publish_transaction};
+use super::super::manifest::{PublishFault, encode_manifest, publish_transaction};
 use super::*;
 use crate::app::diagnostics::state::{MAP_PRESENTATION_CLOCK_POLICY, MAP_PRESENTATION_INTERVAL_MS};
 use crate::app::presentation::render::GameRenderTimes;
@@ -12,8 +12,8 @@ use std::collections::BTreeSet;
 
 const PROFILE_V1: &str = "vera20k.map-observation-profile.v1";
 const PROFILE_V2: &str = "vera20k.map-observation-profile.v2";
-const CHILD_SCHEMA: &str = "vera20k.map-observation.v5";
-const OBSERVATION_POLICY: &str = "map-ordinary-command-observation-v2";
+const CHILD_SCHEMA: &str = "vera20k.map-observation.v6";
+const OBSERVATION_POLICY: &str = "map-ordinary-command-observation-v3";
 const MAX_COMMANDS: usize = 1024;
 const MAX_OBSERVED_OWNERS: usize = 30;
 const MAX_TERRAIN_CELLS: usize = 256;
@@ -266,6 +266,7 @@ struct MapFrameObservation {
     binary_frame: u32,
     total_simulation_ms: u64,
     actors: Vec<Value>,
+    houses: Vec<Value>,
     missing_actor_ids: Vec<u64>,
     terrain: Vec<Value>,
 }
@@ -313,6 +314,7 @@ impl MapObservation {
                     )
                 })
             })
+            .and_then(|count| count.checked_add(frame.houses.len()))
             .and_then(|count| count.checked_add(frame.missing_actor_ids.len()))
             .and_then(|count| count.checked_add(frame.terrain.len()))
             .context("actor observation sample count overflow")?;
@@ -754,6 +756,17 @@ impl TacticalCaptureSession {
                 } else {
                     None
                 };
+                let miner = entity.miner.as_ref().map(|miner| {
+                    json!({"cargo_bales": miner.cargo.len(),
+                        "capacity_bales": miner.capacity_bales,
+                        "unload_active": miner.unload_active,
+                        "harvesting": miner.harvesting})
+                });
+                // Preserve contact slot positions, including null holes. Reads
+                // of the contact/tether owners never send a radio query.
+                let contacts: Vec<_> = (0..entity.radio_contacts.capacity())
+                    .map(|slot| entity.radio_contacts.slot(slot))
+                    .collect();
                 actors.push(json!({
                     "stable_id": id, "owner": owner,
                     "type_id": sim.interner.resolve(entity.type_ref()), "category": entity.category,
@@ -769,6 +782,8 @@ impl TacticalCaptureSession {
                     "target": entity.attack_target.as_ref().map(|target| target.target),
                     "archive": entity.archive_target(), "nav": entity.navigation.nav_com, "foot": foot,
                     "building": building, "unit": unit,
+                    "miner": miner,
+                    "radio": {"contacts": contacts, "dock_entered_with": entity.dock_entered_with},
                 }));
             }
         }
@@ -776,6 +791,21 @@ impl TacticalCaptureSession {
             .iter()
             .copied()
             .filter(|id| !sim.entities().contains(*id))
+            .collect();
+        let houses = profile
+            .observe_owners()
+            .iter()
+            .map(|owner| {
+                let economy = crate::sim::house_state::house_state_for_owner(
+                    &sim.houses,
+                    owner,
+                    &sim.interner,
+                )
+                .map(|house| &house.economy);
+                // Missing Houses stay explicit rather than inventing a zero
+                // balance. Economy is the same immutable wallet used by play.
+                json!({"owner": owner, "economy": economy})
+            })
             .collect();
         let terrain = profile.terrain_cells().iter().map(|&[rx, ry]| {
             // Immutable real-cell indexing only. A diagnostic lookup must not
@@ -806,6 +836,7 @@ impl TacticalCaptureSession {
             binary_frame: sim.session.binary_frame,
             total_simulation_ms: sim.session.total_sim_ms,
             actors,
+            houses,
             missing_actor_ids,
             terrain,
         };
@@ -960,7 +991,7 @@ impl TacticalCaptureSession {
                 "Radar and timed HUD presentation consume the recorded diagnostic exact-step clock; ordinary gameplay clocks are unchanged. Audio, menus, animated input and scenario exit are outside this comparison."],
         });
         ensure!(
-            serde_json::to_vec_pretty(&manifest)?.len() < MAX_RECEIPT_BYTES,
+            encode_manifest(&manifest)?.len() < MAX_RECEIPT_BYTES,
             "map observation manifest exceeds the 128 MiB receipt budget"
         );
         publish_transaction(
@@ -983,7 +1014,7 @@ impl TacticalCaptureSession {
                 "rule_types": map.rule_types, "commands": map.commands, "frames": map.frames},
             "native_comparator": "NONE", "parity_certification": "NONE"});
         ensure!(
-            serde_json::to_vec_pretty(&manifest)?.len() < MAX_RECEIPT_BYTES,
+            encode_manifest(&manifest)?.len() < MAX_RECEIPT_BYTES,
             "map failure manifest exceeds the 128 MiB receipt budget"
         );
         publish_transaction(
@@ -1252,6 +1283,7 @@ mod tests {
             binary_frame: tick as u32,
             total_simulation_ms: tick * 22,
             actors: Vec::new(),
+            houses: Vec::new(),
             missing_actor_ids: Vec::new(),
             terrain: Vec::new(),
         };

@@ -102,6 +102,42 @@ fn returning_scene() -> Scene {
     scene(&returning_input())
 }
 
+/// Original43C366/4DEF0C call Radio65ADF0 against actual slots, not the
+/// type's capacity. The single critic's original supplied-state probe has
+/// NumberOfDocks1 and [OTHER,NULL], and returns1. Additional retained slot
+/// controls live in tools/spatial_oracle/refinery_dock.json.
+#[test]
+fn admission_owner_uses_actual_sparse_contact_slots() {
+    let mut s = returning_scene();
+    let refinery = s.sim.substrate.entities.get_mut(s.refinery).unwrap();
+    refinery.radio_contacts = crate::sim::radio::Contacts::with_capacity(2);
+    refinery.radio_contacts.insert(99).unwrap();
+    let before_rng = s.sim.scenario_rng.logical_state();
+    assert_eq!(
+        crate::sim::radio::transmit(
+            &mut s.sim,
+            s.miner,
+            s.refinery,
+            crate::sim::radio::RadioMessage::CanEnter,
+            crate::sim::radio::RadioPayload::default(),
+            Some(&s.rules),
+        ),
+        crate::sim::radio::RadioResponse::Roger,
+        "CAN_LOAD must share the actual-slot Radio owner"
+    );
+    assert_eq!(
+        crate::sim::miner::miner_system::find_docking_bay(
+            &mut s.sim, &s.rules, s.miner, false, false,
+        ),
+        Some(s.refinery),
+        "the narrow scan must share the same actual-slot predicate"
+    );
+    let refinery = s.sim.substrate.entities.get(s.refinery).unwrap();
+    assert_eq!(refinery.radio_contacts.slot(0), Some(99));
+    assert_eq!(refinery.radio_contacts.slot(1), None);
+    assert_eq!(s.sim.scenario_rng.logical_state(), before_rng);
+}
+
 /// One whole visit: tethered on the pad, east before the first dump, 1000
 /// credits for 40 ore, and the refinery's slot free again afterwards.
 fn assert_whole_visit(s: &mut Scene) {
@@ -343,25 +379,120 @@ fn selling_the_refinery_mid_unload_hands_the_miner_to_harvest() {
 
 /// A refinery destroyed under an unloading miner: the NowDead contact loop
 /// (`0x00442511`) sends it RUN_AWAY, so it leaves Unload for Harvest with its
-/// cargo instead of waiting on the rubble.
+/// cargo instead of waiting on the rubble. The original Building wrapper
+/// (`442230`) retains its pre-hit contacts across Destroy/Techno death effects;
+/// its RUN_AWAY precedes DestructionEffects/UnInit and clears even an unrelated
+/// pending entry (`4425AA`) after the receiver returns.
 #[test]
 fn a_refinery_destroyed_mid_unload_hands_the_miner_to_harvest() {
-    let mut s = returning_scene();
+    use crate::rules::ini_parser::IniFile;
+    use crate::sim::combat::{
+        EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags, world_receiver,
+    };
+    use crate::sim::docking::building_dock;
+    use crate::sim::world::lifecycle::LifecycleTestEvent;
+
+    let ini = IniFile::from_str(&format!(
+        "{}\n[Clear]\nFoot=100%\nTrack=100%\nWheel=100%\nBuildable=yes\n\
+         [Warheads]\n0=C4\n[C4]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+        super::refinery_dock_oracle_tests::RULES,
+    ));
+    let art = IniFile::from_str(
+        "[GAREFN]\nFoundation=4x3\nQueueingCell=4,1\n\
+         [GAREFX]\nFoundation=4x3\nQueueingCell=4,1\n[GAOREP]\nFoundation=2x2\n",
+    );
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    let mut s = scene_with(&returning_input(), rules, &ini);
     run_until_unloading(&mut s);
     let refinery = s.refinery;
-    {
-        let building = s.sim.substrate.entities.get_mut(refinery).unwrap();
-        building.health.current = 0;
-    }
-    s.sim.object_destroy_callback(
+    building_dock::set_pending_entry(&mut s.sim, s.miner, Some(s.other));
+    assert_eq!(
+        s.sim
+            .substrate
+            .entities
+            .get(s.miner)
+            .unwrap()
+            .dock_state
+            .as_ref()
+            .unwrap()
+            .pending_entry(),
+        Some(s.other),
+    );
+    let trace_start = s.sim.lifecycle_test_events_for_test().len();
+    let warhead = s.sim.interner.intern("C4");
+    let event = EntityDamageEvent::direct_receiver(
         refinery,
-        crate::sim::world::UninitContext::with_rules(&s.rules),
+        2000,
+        0,
+        RAD_NO_ATTACKER,
+        None,
+        warhead,
+        ReceiverCallFlags {
+            ignore_defenses: true,
+            arg6: true,
+        },
+    );
+    world_receiver::commit_entities(
+        &mut s.sim,
+        &mut world_receiver::ReceiverRun::default(),
+        &[event],
+        None,
+        &s.rules,
+        Some(crate::sim::tiberium::test_support::overlay_registry()),
     );
     let after = sample(&s, s.miner);
     assert!(!after.unloading);
     assert!(!after.tethered);
+    assert_eq!(after.contact, None);
     assert_eq!(after.ore, 40);
     assert_eq!(after.mission, MissionId::from_known(MissionType::Harvest));
+    assert_eq!(
+        s.sim
+            .substrate
+            .entities
+            .get(s.miner)
+            .unwrap()
+            .dock_state
+            .as_ref()
+            .and_then(|dock| dock.pending_entry()),
+        None,
+        "NowDead clears pending500 even though it names another building",
+    );
+    let building = s.sim.substrate.entities.get(refinery).unwrap();
+    assert!(!building.lifecycle.object_alive && !building.lifecycle.cell_marked);
+    let trace = &s.sim.lifecycle_test_events_for_test()[trace_start..];
+    let expiry = trace
+        .iter()
+        .position(|event| {
+            matches!(
+                event,
+                LifecycleTestEvent::UninitRemovalListenerVisited { expired_id, listener_id, .. }
+                    if *expired_id == refinery && *listener_id == s.miner
+            )
+        })
+        .expect("Destroy visits the miner before the Building wrapper resumes");
+    let run_away = trace
+        .iter()
+        .position(|event| {
+            matches!(
+                event,
+                LifecycleTestEvent::BuildingNowDeadRunAway { building_id, contact_id }
+                    if *building_id == refinery && *contact_id == s.miner
+            )
+        })
+        .expect("the saved pre-hit contact still receives RUN_AWAY");
+    let uninit = trace
+        .iter()
+        .position(|event| {
+            matches!(
+                event,
+                LifecycleTestEvent::UninitRemovalNotifyBoundary { stable_id, .. }
+                    if *stable_id == refinery
+            )
+        })
+        .expect("the concrete Building postlude reaches UnInit");
+    assert!(expiry < run_away && run_away < uninit);
 }
 
 /// Stop while the miner drives onto the pad (Enter, not yet tethered): the

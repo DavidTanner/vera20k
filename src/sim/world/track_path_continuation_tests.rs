@@ -480,7 +480,7 @@ fn depot_release_and_pad_entry_route_through_find_path() {
             .entities
             .get(id)
             .and_then(|e| e.dock_state.as_ref())
-            .map(|state| state.phase)
+            .map(|state| state.phase())
     };
     let exit = (16, 12);
     let mut first_released = false;
@@ -520,7 +520,7 @@ fn depot_release_and_pad_entry_route_through_find_path() {
         "released {first_released} exited {first_exited}: waiter at {:?} dock {:?} nav {:?} \
          mission {:?}",
         (e.position.rx, e.position.ry),
-        e.dock_state.as_ref().map(|state| state.phase),
+        e.dock_state.as_ref().map(|state| state.phase()),
         e.navigation.nav_com,
         e.mission.current(),
     );
@@ -577,7 +577,7 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
     for _ in 0..1200 {
         sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         let e = sim.substrate.entities.get(miner).unwrap();
-        let phase = e.dock_state.as_ref().map(|state| state.phase);
+        let phase = e.dock_state.as_ref().map(|state| state.phase());
         serviced |= phase == Some(crate::sim::docking::building_dock::DockPhase::Servicing);
         let on_footprint = (16..19).contains(&e.position.rx) && (9..12).contains(&e.position.ry);
         let teleport = e.locomotor.as_ref().is_some_and(|loco| {
@@ -593,7 +593,7 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
         serviced && left,
         "serviced {serviced}: cell {:?} dock {:?} nav {:?} loco {:?}",
         (e.position.rx, e.position.ry),
-        e.dock_state.as_ref().map(|state| state.phase),
+        e.dock_state.as_ref().map(|state| state.phase()),
         e.navigation.nav_com,
         e.locomotor.as_ref().map(|loco| loco.active_kind()),
     );
@@ -673,7 +673,7 @@ fn three_depot_waiters_are_repaired_in_turn_without_pad_intrusion() {
                     "{arrival}: tank {tank} on the pad without the slot at frame {}",
                     sim.session.binary_frame
                 );
-                let phase = e.dock_state.as_ref().map(|state| state.phase);
+                let phase = e.dock_state.as_ref().map(|state| state.phase());
                 if phase == Some(DockPhase::Servicing) && !serviced.contains(&tank) {
                     serviced.push(tank);
                 }
@@ -698,7 +698,7 @@ fn three_depot_waiters_are_repaired_in_turn_without_pad_intrusion() {
                 300,
                 "{arrival}: tank {tank} at {:?} dock {:?} nav {:?} serviced {serviced:?}",
                 (e.position.rx, e.position.ry),
-                e.dock_state.as_ref().map(|state| state.phase),
+                e.dock_state.as_ref().map(|state| state.phase()),
                 e.navigation.nav_com,
             );
         }
@@ -1339,7 +1339,7 @@ fn damaged_hover_unit_reaches_a_free_depot_pad() {
     for _ in 0..1500 {
         sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         let e = sim.substrate.entities.get(hov).unwrap();
-        if e.dock_state.as_ref().map(|s| s.phase) == Some(DockPhase::Servicing) {
+        if e.dock_state.as_ref().map(|s| s.phase()) == Some(DockPhase::Servicing) {
             return;
         }
     }
@@ -1347,7 +1347,7 @@ fn damaged_hover_unit_reaches_a_free_depot_pad() {
     panic!(
         "hover never docked: at {:?}, phase {:?}",
         (e.position.rx, e.position.ry),
-        e.dock_state.as_ref().map(|s| s.phase)
+        e.dock_state.as_ref().map(|s| s.phase())
     );
 }
 

@@ -26,7 +26,6 @@ use crate::sim::command::{
     SellWallAtCellRecord,
 };
 use crate::sim::components::OrderIntent;
-use crate::sim::docking::building_dock;
 use crate::sim::mission::{DockTeardown, MissionType};
 use crate::sim::movement;
 use crate::sim::movement::locomotor::MovementLayer;
@@ -1305,7 +1304,12 @@ impl Simulation {
                     e.order_intent = None;
                 }
                 // Event4C747C: the Unit class setter with the depot.
-                building_dock::order_onto_depot(self, rules, *entity_id, *depot_id);
+                self.set_unit_destination(
+                    *entity_id,
+                    crate::sim::components::NavTargetRef::Building { id: *depot_id },
+                    rules,
+                    true,
+                );
                 true
             }
             Command::EnterTransport {
@@ -2144,7 +2148,7 @@ impl Simulation {
             .substrate
             .entities
             .get(entity_id)
-            .and_then(|e| e.dock_state.as_ref().map(|ds| ds.dock_building_id));
+            .and_then(|e| e.dock_state.as_ref().map(|ds| ds.dock_building_id()));
         if let Some(depot_id) = depot_id {
             let linked = self
                 .substrate

@@ -11,6 +11,7 @@
 
 pub(crate) mod authority;
 pub(crate) mod concrete_effects;
+pub(crate) mod enter;
 pub mod control;
 pub(crate) mod leaf;
 pub(crate) mod readiness;

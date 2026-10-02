@@ -804,9 +804,12 @@ use crate::sim::world::Simulation;
 // Anim palettes also retain either a color scheme or the creation-time House.
 // 280 -> 281: one signed current weapon/turret pair replaces weapon overrides
 // and last-fire slot state; charge drawing retains the native saved ROF duration.
-// 281 -> 282: SmudgeGrid retains runtime Smudge identities through the shared
+// 281 -> 282: depot docking no longer serializes a retry-timer mirror;
+// MissionCom owns the saved Enter cadence for every Foot consumer. The
+// private native pending entry can coexist with an admitted service visit.
+// 282 -> 283: SmudgeGrid retains runtime Smudge identities through the shared
 // deferred destructor, separately from its persistent cell marks.
-const SNAPSHOT_VERSION: u32 = 282;
+const SNAPSHOT_VERSION: u32 = 283;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1702,13 +1705,23 @@ fn restore_object_references(
 
         if let Some(dock) = entity.dock_state.as_ref() {
             require_resolved_reference(
-                entity_ids.contains(&dock.dock_building_id),
+                entity_ids.contains(&dock.dock_building_id()),
                 "EntityStore",
                 entity_id,
                 "dock_state.dock_building_id",
                 "EntityStore",
-                dock.dock_building_id,
+                dock.dock_building_id(),
             )?;
+            if let Some(pending) = dock.pending_entry() {
+                require_resolved_reference(
+                    entity_ids.contains(&pending),
+                    "EntityStore",
+                    entity_id,
+                    "dock_state.pending_entry",
+                    "EntityStore",
+                    pending,
+                )?;
+            }
         }
         if let Some(ammo) = entity.aircraft_ammo.as_ref()
             && let Some(target_id) = ammo.target_airfield
@@ -3800,8 +3813,9 @@ mod tests {
         // 279 -> 280: Unit deploy flags, Techno animation/landing ownership and
         // the animation's retained palette source replace the legacy countdown.
         // 280 -> 281: authoritative weapon/turret pair and saved charge duration.
-        // 281 -> 282: retained runtime Smudge identities/pending deletion.
-        assert_eq!(super::SNAPSHOT_VERSION, 282);
+        // 281 -> 282: independent depot pending entry and sole MissionCom cadence.
+        // 282 -> 283: retained runtime Smudge identities/pending deletion.
+        assert_eq!(super::SNAPSHOT_VERSION, 283);
     }
 
     #[test]
