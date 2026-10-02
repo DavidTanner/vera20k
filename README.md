@@ -44,6 +44,11 @@ Empty IFVs can approach and fire at concrete bridges, continue launched missiles
 after Stop, and resume saved pursuit state. The [native comparisons](tools/spatial_oracle/fv_cell_attack/README.md)
 cover six concrete-bridge cases; the whole-bridge audit remains in progress.
 
+Stock War Miners pause ore collection while attacking and preserve their cargo.
+After losing their target, they resume Harvest on ore or Guard on clear land.
+The [native comparisons and retail observation](tools/spatial_oracle/harvest_attack_return.md)
+cover this Attack-to-idle chain; broader combat and match parity remain open.
+
 Engineer object clicks on bridge huts use live repair geometry and Repair/NoRepair
 cursors. Healthy huts consume the click without a repair order. The
 [bounded native and retail checks](tools/spatial_oracle/engineer_bridge_production_validation.md)

@@ -25,7 +25,7 @@ mod outbound_drive_tests;
 
 // Generic nearby-passable-cell search, reused by the tank-bunker exit placement.
 pub(crate) use self::exit_cell_search::find_nearby_passable_cell_with_index;
-pub(crate) use self::harvest_mission::dispatch_harvest_for_object;
+pub(crate) use self::harvest_mission::mission_harvest;
 pub(crate) use self::miner_system::extract_bale;
 pub(crate) use self::refinery_dock::{
     clear_unload_latch, mission_enter, mission_unload, native_dock_miner, pay_refinery_owner,

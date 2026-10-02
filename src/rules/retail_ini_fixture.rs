@@ -229,6 +229,14 @@ pub(crate) fn retail_rules_owner(
 // dependency guard scans leaf files without inheriting rules/mod.rs's gate.
 #[cfg(test)]
 pub(crate) fn retail_battle_rules() -> Option<RetailBattleRules> {
+    retail_battle_rules_for_map("Hills.mmx")
+}
+
+/// The same physical retail startup/mode/map source owner for a requested
+/// stock Battle map. Rules and the fixed ART snapshot keep their production
+/// selection and reader order; this does not load the app's asset bindings.
+#[cfg(test)]
+pub(crate) fn retail_battle_rules_for_map(map_name: &str) -> Option<RetailBattleRules> {
     use crate::rules::retail_sources::select_ini;
 
     let (root, mut assets) = retail_assets()?;
@@ -246,18 +254,23 @@ pub(crate) fn retail_battle_rules() -> Option<RetailBattleRules> {
     let modes = crate::skirmish_modes::skirmish_modes_from_assets(&assets)
         .expect("load retail mode roster");
     let mode = crate::skirmish_modes::mode_by_id(&modes, 1).expect("stock Battle mode");
-    let map = crate::map::source::load_map_by_name_or_path_with_assets(&root, "Hills.mmx", &assets)
-        .expect("load stock Hills fixture");
+    let map = crate::map::source::load_map_by_name_or_path_with_assets(&root, map_name, &assets)
+        .expect("load requested retail Battle fixture");
     crate::map::theater::load_theater(&mut assets, &map.map.header.theater)
-        .expect("load Hills theater before mode selection");
+        .expect("load fixture theater before mode selection");
     let mode = select_ini(&assets, &mode.override_file).expect("select Battle override");
     eprintln!("retail mode {:?}; map {:?}", mode.source, map.source);
     let (mut rules, processed_rules, fixed_art, _) = owner
         .load_noncampaign_scenario(Some(&mode.ini), &map.map.ini)
-        .expect("process noncampaign Hills/Battle Rules")
+        .expect("process noncampaign retail Battle Rules")
         .into_parts();
     let art = crate::rules::art_data::ArtRegistry::from_ini(&fixed_art);
     rules.install_art_data(art);
+    // Match the app's data-only ART sequence binding before a frame fixture
+    // fires or destroys Infantry. Without it death actions cannot finish.
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&fixed_art),
+    );
     rules.general.resolve_art_rates(&fixed_art);
     Some(RetailBattleRules {
         authored_rules,

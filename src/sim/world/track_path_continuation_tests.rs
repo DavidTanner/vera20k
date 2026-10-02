@@ -1441,7 +1441,7 @@ fn idle_mode_queue_head_runs_the_hover_unit_setter_in_the_same_call() {
         .unwrap();
     let e = sim.substrate.entities.get_mut(id).unwrap();
     e.navigation.nav_queue = vec![NavTargetRef::cell(14, 12), NavTargetRef::cell(16, 12)];
-    sim.unit_enter_idle_mode(id, Some(&rules));
+    sim.unit_enter_idle_mode(id, Some(&rules), false);
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(14, 12)));
     assert_eq!(e.navigation.nav_queue, vec![NavTargetRef::cell(16, 12)]);
