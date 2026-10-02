@@ -3758,6 +3758,49 @@ impl ResolvedTerrainGrid {
         self.tube_facts.get(tube_id.as_usize())
     }
 
+    /// Cell484AE0, CanDeploy700D50's tunnel-mouth exclusion. Native
+    /// neighbors use packed lookup and then the returned cell's coordinates;
+    /// absent neighbors do not become an ordinary edge cell.
+    pub(crate) fn is_tube_deploy_neighborhood(&self, cell: (i16, i16)) -> bool {
+        let Some(origin) = self.native_fixed_cell_index(cell.0, cell.1) else {
+            return false;
+        };
+        let is_tube = |index: usize| {
+            self.native_tube_indices[index]
+                .validated_id(self.tube_facts.len())
+                .is_some()
+                && self.cells[index].yr_cell_land_type == YR_CELL_LAND_TUNNEL
+        };
+        if is_tube(origin) {
+            return true;
+        }
+        for (dx, dy) in [(0i16, -1i16), (-1, 0)] {
+            let next = |index: usize| {
+                let at = &self.cells[index];
+                self.native_fixed_cell_index(
+                    (at.rx as i16).wrapping_add(dx),
+                    (at.ry as i16).wrapping_add(dy),
+                )
+            };
+            let Some(first) = next(origin) else {
+                continue;
+            };
+            let Some(second) = next(first) else {
+                continue;
+            };
+            if is_tube(first) && !is_tube(second) {
+                return true;
+            }
+            if let Some(third) = next(second)
+                && is_tube(second)
+                && !is_tube(third)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn tube_at_cell(&self, rx: u16, ry: u16) -> Option<&TubeFact> {
         let index = self.index(rx, ry)?;
         let tube_id = self
@@ -7948,6 +7991,44 @@ mod tests {
         assert_eq!(cache.cached_water_set_base(), 1);
     }
 
+    #[test]
+    fn deploy_tube_neighborhood_matches_original_cell_body() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/unit_simple_deploy.json"
+        ))
+        .unwrap();
+        let fixture = &corpus["tube_admission"];
+        for row in fixture["rows"].as_array().unwrap() {
+            let mask = row["mask"].as_u64().unwrap();
+            let mut cells: Vec<_> = (0..16)
+                .flat_map(|y| (0..16).map(move |x| make_test_cell(x, y)))
+                .collect();
+            for (bit, coord) in fixture["mask_cells"].as_array().unwrap().iter().enumerate() {
+                if mask & (1 << bit) == 0 {
+                    continue;
+                }
+                let x = coord[0].as_u64().unwrap() as usize;
+                let y = coord[1].as_u64().unwrap() as usize;
+                cells[y * 16 + x].tube_index = Some(TubeId(0));
+                cells[y * 16 + x].yr_cell_land_type = YR_CELL_LAND_TUNNEL;
+            }
+            let tube = TubeFact {
+                entry: (10, 10),
+                exit: (14, 14),
+                direction: 0,
+                path_steps: Vec::new(),
+                source: TubeSource::AutoLowBridge,
+            };
+            let grid = ResolvedTerrainGrid::from_cells_with_tubes(16, 16, cells, vec![tube]);
+            assert_eq!(
+                grid.is_tube_deploy_neighborhood((10, 10)),
+                row["refused"].as_bool().unwrap(),
+                "mask {mask}"
+            );
+        }
+    }
+
+    #[test]
     /// `CellClass::IsTubeCell` 0x00484AB0 requires BOTH a tube index inside
     /// `[0, g_TubeCount)` and `cell+0xEC` (LandType) == 10, but
     /// `CellClass::GetTubeAtCell` 0x00484F20 tests only the index and hands
@@ -7955,7 +8036,6 @@ mod tests {
     /// the binary and load-bearing for tube exits, whose facing is read from
     /// the record after the cell has already been left behind. Keep both sides
     /// of it.
-    #[test]
     fn tube_at_cell_ignores_land_type_while_is_tube_cell_requires_it() {
         let mut cells = vec![make_test_cell(0, 0), make_test_cell(1, 0)];
         cells[0].tube_index = Some(TubeId(0));

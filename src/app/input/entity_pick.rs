@@ -1419,7 +1419,6 @@ mod tests {
     /// must here too.
     #[test]
     fn item83_a_deploying_object_is_still_band_selectable() {
-        use crate::sim::deploy::DeployPhase;
         let rules = item83_rules();
         let mut interner = StringInterner::new();
         let owner = interner.intern("Americans");
@@ -1431,11 +1430,11 @@ mod tests {
             can_be_selected_now(&entity, &entities, Some(&rules), Some(&interner)),
             "an idle object is selectable"
         );
-        for phase in [
-            DeployPhase::Deploying { ticks_remaining: 3 },
-            DeployPhase::Undeploying { ticks_remaining: 3 },
-        ] {
-            entity.deploy_state = Some(phase);
+        for doing in [27, 31] {
+            entity
+                .mission_leaf
+                .set_infantry_doing_verified(doing)
+                .unwrap();
             assert!(
                 can_be_selected_now(&entity, &entities, Some(&rules), Some(&interner)),
                 "gamemd has no deploy-transition clause here"

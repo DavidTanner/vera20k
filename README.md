@@ -51,7 +51,14 @@ cover this Attack-to-idle chain; broader combat and match parity remain open.
 
 War Miners remain visible while dumping ore, and aircraft bodies draw both parked
 and in flight. The [retail capture checks](tools/map_observation.md#unloading-miner-and-parked-aircraft-bodies)
-cover the model-based turret split; the deployed Siege Chopper image remains open.
+cover the model-based turret split.
+
+The stock Siege Chopper landing, deployment animation, SCHD body, reverse animation
+and return to flight are implemented. [Native component comparisons](tools/spatial_oracle/unit_simple_deploy.md)
+cover the bounded state and draw decisions; [production phase captures](tools/map_observation.md#siege-chopper-deployment-observation)
+show all six phases and an exact repeat of the 750-step cycle. Native raster
+parity, aircraft shadows, custom palettes,
+viewer-dependent disguise, Magnetron and EMP behavior remain outside this claim.
 
 Engineer object clicks on bridge huts use live repair geometry and Repair/NoRepair
 cursors. Healthy huts consume the click without a repair order. The

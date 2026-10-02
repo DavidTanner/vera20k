@@ -221,21 +221,22 @@ pub fn resolve_shp_frame<'a>(
     start.wrapping_add(direction).wrapping_add(within)
 }
 
-/// Advance the persistent Unit SHP body counter at FootClass's post-Process
+/// Advance the persistent Unit body counter at FootClass's post-Process
 /// point for the current absolute binary frame.
 ///
 /// The moving branch deliberately does not guard a zero `WalkRate`: retail
 /// feeds that raw signed value to IDIV, making zero invalid content. `IdleRate`
-/// is different â€” zero is its documented branch-off switch and performs no
+/// is different — zero is its documented branch-off switch and performs no
 /// division. The counter itself is a native dword, so increment wraps.
-pub(crate) fn tick_shp_vehicle_body_frame_counter(
+pub(crate) fn tick_unit_body_frame_counter(
     entity: &mut crate::sim::game_entity::GameEntity,
     rules: Option<crate::sim::movement::SpeedRules<'_>>,
     cadence: ShpVehicleCadence,
+    hover_attack: bool,
+    deploy_to_land: bool,
     binary_frame: u32,
 ) {
     if entity.category != crate::map::entities::EntityCategory::Unit
-        || entity.is_voxel
         || entity.dying
         || !entity.lifecycle.object_alive
         || entity.lifecycle.in_limbo
@@ -244,27 +245,24 @@ pub(crate) fn tick_shp_vehicle_body_frame_counter(
         return;
     }
 
-    let Some(locomotor) = entity.locomotor.as_ref() else {
-        return;
-    };
-    if locomotor.piggyback.is_some()
-        || entity.deploy_state.is_some()
+    if entity.locomotor.is_none()
+        || entity.foot_locomotor_swap_active
         || entity.is_warped_out()
         || entity.is_warping_in()
     {
         return;
     }
-
-    let rate = if crate::sim::movement::motion_query::is_moving_now(entity, rules, binary_frame) {
-        cadence.walk_rate
-    } else {
-        if cadence.idle_rate == 0 {
-            return;
-        }
-        cadence.idle_rate
-    };
-
-    if (binary_frame as i32) % rate == 0 {
+    // Foot4DA886..4DAA01: the same+538 feeds SHP and voxel drawing.
+    // HoverAttack is Type+390, not TurretSpins. Native deploy6E0 only
+    // excludes that hover-attack walk arm; it does not suppress IdleRate.
+    let moving = crate::sim::movement::motion_query::is_moving_now(entity, rules, binary_frame);
+    let walking =
+        moving || (entity.attack_target.is_some() && hover_attack && !entity.is_fully_deployed());
+    let due = (walking && (binary_frame as i32) % cadence.walk_rate == 0)
+        || (cadence.idle_rate != 0 && !moving && (binary_frame as i32) % cadence.idle_rate == 0)
+        || (deploy_to_land
+            && crate::sim::movement::ground_pose::object_altitude_leptons(entity) > 0);
+    if due {
         entity.body_frame_counter = entity.body_frame_counter.wrapping_add(1);
     }
 }
@@ -425,27 +423,11 @@ fn tick_animations_impl(
         // Infantry never enters this cascade: Doing/Stage is its only
         // sequence clock. Retain the existing non-Infantry visual transitions.
         let seq_set = sequence_set_for_type(sequences, rules, interner.resolve(type_ref));
-        match entity.deploy_state {
-            Some(crate::sim::deploy::DeployPhase::Deploying { .. }) => {
-                anim.switch_to(SequenceKind::Deploy)
-            }
-            Some(crate::sim::deploy::DeployPhase::Undeploying { .. }) => {
-                anim.switch_to(SequenceKind::Undeploy)
-            }
-            Some(crate::sim::deploy::DeployPhase::Deployed) => {
-                if anim.sequence != SequenceKind::DeployedFire {
-                    anim.switch_to(SequenceKind::Deployed);
-                }
-            }
-            None => {
-                if has_movement && anim.sequence == SequenceKind::Stand {
-                    anim.switch_to(SequenceKind::Walk);
-                } else if !has_movement
-                    && matches!(anim.sequence, SequenceKind::Walk | SequenceKind::Crawl)
-                {
-                    anim.switch_to(SequenceKind::Stand);
-                }
-            }
+        if has_movement && anim.sequence == SequenceKind::Stand {
+            anim.switch_to(SequenceKind::Walk);
+        } else if !has_movement && matches!(anim.sequence, SequenceKind::Walk | SequenceKind::Crawl)
+        {
+            anim.switch_to(SequenceKind::Stand);
         }
 
         // Advance frame timing.
@@ -596,10 +578,10 @@ pub fn tick_voxel_animations(entities: &mut crate::sim::entity_store::EntityStor
     let advancing: Vec<u64> = entities
         .values()
         .filter(|entity| {
-            entity
-                .voxel_animation
-                .as_ref()
-                .is_some_and(|anim| anim.playing && anim.frame_count > 1 && anim.frame_delay != 0)
+            entity.category != crate::map::entities::EntityCategory::Unit
+                && entity.voxel_animation.as_ref().is_some_and(|anim| {
+                    anim.playing && anim.frame_count > 1 && anim.frame_delay != 0
+                })
         })
         .map(|entity| entity.stable_id())
         .collect();

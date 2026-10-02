@@ -452,20 +452,11 @@ pub(super) fn commit_miner_snapshot(sim: &mut Simulation, snap: &MinerSnapshot) 
     sync_harvest_visuals(entity);
 }
 
-/// The render-side flags that follow Unit+0x6D2 (never hashed): the
-/// HarvestOverlay (oregath.shp), which `UnitClass::Draw @ 0x0073CEC0`
-/// draws only with the locomotor at rest (presentation), and the voxel
-/// harvest cycle. RESIDUAL: the voxel HVA cycle keyed on this byte has no
-/// native source established (UNCHECKED).
+/// The HarvestOverlay (oregath.shp) follows Unit+0x6D2 (never hashed).
+/// `UnitClass::Draw @ 0x0073CEC0` draws it only with the locomotor at rest.
+/// Unit body animation uses Foot+0x538 through the shared body-counter owner.
 fn sync_harvest_visuals(entity: &mut crate::sim::game_entity::GameEntity) {
     let is_harvesting = entity.miner.as_ref().is_some_and(|miner| miner.harvesting);
-    if let Some(ref mut va) = entity.voxel_animation {
-        va.playing = is_harvesting;
-        if !is_harvesting {
-            va.frame = 0;
-            va.elapsed_frames = 0;
-        }
-    }
     if let Some(ref mut ho) = entity.harvest_overlay {
         if is_harvesting && !ho.visible {
             ho.visible = true;

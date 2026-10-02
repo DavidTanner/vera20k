@@ -511,7 +511,14 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // All819 complete current/control boundaries match except tick hashes,
 // including House/Factory state and three full RNG streams/draws/callers.
 // Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x851C_57C5_76CA_991A;
+// 2026-10-02 Unit deployment/body ownership: snapshot280 replaces the legacy
+// DeployPhase hash with Techno130/134, adds Unit6E0, and advances the existing
+// Foot538 counter for voxel Units. The 13-shot duel, surviving tank health,
+// mission transitions and RNG pins remain unchanged. The same-binary hash
+// control reproduces incoming 851C57C576CA991A; all 601 off/on boundaries differ
+// only in tick hash. tools/spatial_oracle/unit_simple_deploy_replay/receipt.json
+// records this Rust attribution; unit_simple_deploy separately pins native cadence.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xC86F_736C_E956_87B3;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

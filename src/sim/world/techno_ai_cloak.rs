@@ -86,10 +86,8 @@ fn stock_cloak_tick_facts(
     // ParasiteClass: a released owner for 3x its ROF, and bitten victims.
     let emp_active = false;
     let paralyzed = entity.is_paralyzed(sim.session.binary_frame);
-    let deploy_pending = entity.deploy_state.is_some();
     let state_zero_head_allows =
-        is_cloakable && !emp_active && !paralyzed && !deploy_pending && !chrono_active
-            || rank_cloak;
+        is_cloakable && !emp_active && !paralyzed && !chrono_active || rank_cloak;
 
     // CloakingTick's pre-CanAuto destination exclusion is Contact_With_Whom(0)
     // resolving to a WeaponsFactory building (naval-yard repair contact), not
@@ -198,20 +196,20 @@ fn stock_cloak_tick_facts(
     //   if (rank CLOAK) return 0;
     //   return IsVisibleToHouse(myCell, myOwner) ? 0 : 1;
     // The tail therefore returns 1 in stock YR, so the predicate reduces to
-    // "the object can no longer sustain its cloak" — EMP, chrono warp, a
-    // pending deploy, `CloakStop=` while moving, or a lost stealth ability.
+    // "the object can no longer sustain its cloak" — EMP, chrono warp,
+    // `CloakStop=` while moving, or a lost stealth ability. Neither this body
+    // nor CloakingTick's head reads the Unit deployment flags.
     // The `|| +0x3D2` disjunct is the raw stealth byte; see the two `+0x3D2`
     // residuals on `can_auto_cloak` above — `object.cloakable` inside
     // `is_cloakable` is that byte's stock seed, and the crate-granted and
     // `CloakStop=`-while-moving halves are both unreachable in stock data.
-    let should_uncloak =
-        if is_cloakable && !emp_active && !paralyzed && !deploy_pending && !chrono_active {
-            false
-        } else if rank_cloak {
-            false
-        } else {
-            !cloaked_by_own_house
-        };
+    let should_uncloak = if is_cloakable && !emp_active && !paralyzed && !chrono_active {
+        false
+    } else if rank_cloak {
+        false
+    } else {
+        !cloaked_by_own_house
+    };
     Some(crate::sim::cloak_disguise::CloakTickFacts {
         current_frame,
         state_zero_head_allows,

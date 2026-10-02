@@ -22,6 +22,8 @@ pub(crate) struct UnitMissionLeaf {
     /// Foot+68D: ctor4D33C6 clears it; Unit736DF0 only clears it, while raw
     /// Object5F5E80/Abstract410380 load retains the full Unit8E8 record.
     firing_sequence_latch: u8,
+    /// Unit+6E0, constructed clear and written by739AC0/739CD0.
+    deployed: u8,
     deploy_begin_active: u8,
     deploy_reverse_active: u8,
     tracker_byte_18: u8,
@@ -116,12 +118,14 @@ impl MissionLeafState {
         }
     }
 
-    #[cfg(test)]
+    pub(crate) fn set_unit_deployed(&mut self, raw: u8) {
+        self.expect_unit_mut().deployed = raw;
+    }
+
     pub(crate) fn set_unit_deploy_begin_active(&mut self, raw: u8) {
         self.expect_unit_mut().deploy_begin_active = raw;
     }
 
-    #[cfg(test)]
     pub(crate) fn set_unit_deploy_reverse_active(&mut self, raw: u8) {
         self.expect_unit_mut().deploy_reverse_active = raw;
     }
@@ -214,7 +218,6 @@ impl MissionLeafState {
     }
 
     #[track_caller]
-    #[cfg(test)]
     fn expect_unit_mut(&mut self) -> &mut UnitMissionLeaf {
         match self {
             Self::Unit(leaf) => leaf,
@@ -270,6 +273,7 @@ impl MissionLeafState {
     ) -> Self {
         Self::Unit(UnitMissionLeaf {
             firing_sequence_latch: 0,
+            deployed: 0,
             deploy_begin_active,
             deploy_reverse_active,
             tracker_byte_18,
@@ -311,11 +315,16 @@ impl UnitMissionLeaf {
     const fn initial() -> Self {
         Self {
             firing_sequence_latch: 0,
+            deployed: 0,
             deploy_begin_active: 0,
             deploy_reverse_active: 0,
             tracker_byte_18: 0,
             tracker_byte_19: 0,
         }
+    }
+
+    pub(crate) const fn deployed(&self) -> u8 {
+        self.deployed
     }
 
     pub(crate) const fn deploy_begin_active(&self) -> u8 {

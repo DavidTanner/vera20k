@@ -307,6 +307,7 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         hidden_occupancy: crate::rules::object_type::BuildingHiddenOccupancyProfile::default(),
         base_reservation_spacing: None,
         unloading_class: None,
+        deploying_anim: None,
         ammo: -1,
         initial_ammo: -1,
         spawns: None,

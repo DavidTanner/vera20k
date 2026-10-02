@@ -486,7 +486,8 @@ pub enum Command {
         entity_id: u64,
         target_id: Option<u64>,
     },
-    /// Deploy a mobile construction vehicle into its construction yard.
+    /// Unit DEPLOY event: convert an MCV or toggle a SimpleDeployer.
+    /// The existing wire spelling is retained for saved commands/replays.
     DeployMcv { entity_id: u64 },
     /// Undeploy a structure back into its mobile unit (e.g. ConYard → MCV).
     /// Reads UndeploysInto from rules.ini to determine the spawned unit type.

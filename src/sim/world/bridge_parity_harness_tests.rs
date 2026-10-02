@@ -279,7 +279,14 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // All819 complete current/control boundaries match except tick hashes,
 // including House/Factory state and three full RNG streams/draws/callers.
 // Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xE3FD_9DD3_63C9_8F82;
+// 2026-10-02 Unit deployment/body ownership: snapshot280 replaces the legacy
+// DeployPhase hash with Techno130/134, adds Unit6E0, and advances the existing
+// Foot538 counter for voxel Units. Route, height and RNG tripwires above the
+// final assertion remain unchanged. The same-binary hash control reproduces
+// incoming E3FD9DD363C98F82; all 201 off/on boundaries differ only in tick hash.
+// Receipt: tools/spatial_oracle/unit_simple_deploy_replay/receipt.json.
+// This is Rust attribution; unit_simple_deploy separately pins native cadence.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xF6E0_2080_D0BE_29C1;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

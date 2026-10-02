@@ -703,6 +703,20 @@ impl TacticalCaptureSession {
                 } else {
                     None
                 };
+                let unit = entity.mission_leaf.as_unit().map(|leaf| {
+                    let animation = entity.deploy_anim().map(|anim_id| {
+                        json!({"stable_id": anim_id, "live": sim.anim(anim_id).map(|anim| {
+                            json!({"type_id": sim.interner.resolve(anim.type_id),
+                                "frame": anim.runtime.current_frame, "owner_entity": anim.owner_entity})
+                        })})
+                    });
+                    json!({"deployed_6e0": leaf.deployed(),
+                        "deploying_6e1": leaf.deploy_begin_active(),
+                        "undeploying_6e2": leaf.deploy_reverse_active(),
+                        "landing_for_deploy_134": entity.landing_for_deploy(),
+                        "deploy_anim_130": animation, "stage_f8": entity.native_stage().value(),
+                        "body_counter_538": entity.body_frame_counter})
+                });
                 let building = if entity.category == crate::map::entities::EntityCategory::Structure
                 {
                     let slots: Vec<_> = entity
@@ -750,7 +764,7 @@ impl TacticalCaptureSession {
                         "dispatch_timer": {"start_frame": timer.start_frame(), "delay": timer.delay()}},
                     "target": entity.attack_target.as_ref().map(|target| target.target),
                     "archive": entity.archive_target(), "nav": entity.navigation.nav_com, "foot": foot,
-                    "building": building,
+                    "building": building, "unit": unit,
                 }));
             }
         }

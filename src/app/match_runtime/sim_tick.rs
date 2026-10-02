@@ -1076,8 +1076,24 @@ fn advance_one_simulation_frame(
         }
     }
 
-    // Entity identity or ownership changes require presentation atlas refresh.
-    if refresh_atlases_after_tick {
+    // AnimClass producers can install a new palette after construction without
+    // changing any entity identity. Unit deploy Anim+D4 (739C1A/739DFE) is one
+    // such producer: its first ordinary draw needs the selected-scheme atlas
+    // frames even when the tick reports no entity spawn or ownership change.
+    if refresh_atlases_after_tick
+        || (frame_committed
+            && state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .is_some_and(|runtime| {
+                    !sprite_atlas::atlas_covers_anim_remaps(
+                        state.match_state.match_presentation.sprite_atlas.as_ref(),
+                        &runtime.simulation,
+                        &state.match_state.match_presentation.house_color_map,
+                    )
+                }))
+    {
         refresh_entity_atlases(state);
     }
     frame_committed
@@ -1235,7 +1251,10 @@ pub(crate) fn refresh_entity_atlases(state: &mut AppState) {
     // AnimClass colour remap or the harvest overlay the world now draws.
     let extra_buildings: Vec<&str> =
         crate::app::frontend::skirmish::deployable_building_types(bound_rules);
-    let anim_remap_keys = sprite_atlas::collect_anim_remap_base_keys(sim);
+    let anim_remap_keys = sprite_atlas::collect_anim_remap_base_keys(
+        sim,
+        &state.match_state.match_presentation.house_color_map,
+    );
     let sprite_rebuild = !sprite_atlas::atlas_covers_world(
         state.match_state.match_presentation.sprite_atlas.as_ref(),
         sim.entities(),

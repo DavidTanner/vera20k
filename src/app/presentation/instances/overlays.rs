@@ -289,7 +289,12 @@ pub(crate) fn build_anim_class_instances(
             .lighting
             .grid()
             .anim_tint_at((rx, ry), config);
-        let palette_light = if anim.remap_color.is_some() {
+        let remap_color = crate::render::sprite_atlas::anim_remap_color(
+            anim,
+            &sim.interner,
+            &state.match_state.match_presentation.house_color_map,
+        );
+        let palette_light = if remap_color.is_some() {
             Default::default()
         } else {
             anim_palette_light(state, (rx, ry), config, anim.use_cell_drawer)
@@ -297,7 +302,7 @@ pub(crate) fn build_anim_class_instances(
         let key = ShpSpriteKey {
             palette_context: if anim.use_cell_drawer {
                 crate::render::sprite_atlas::ShpPaletteContext::Cell
-            } else if anim.remap_color.is_some() {
+            } else if remap_color.is_some() {
                 crate::render::sprite_atlas::ShpPaletteContext::SelectedScheme
             } else {
                 crate::render::sprite_atlas::ShpPaletteContext::GlobalAnim
@@ -305,7 +310,7 @@ pub(crate) fn build_anim_class_instances(
             type_id: type_name.to_string(),
             facing: 0,
             frame,
-            house_color: anim.remap_color.unwrap_or(HouseColorIndex(0)),
+            house_color: remap_color.unwrap_or(HouseColorIndex(0)),
         };
         let Some(entry) = atlas.get(&key) else {
             continue;

@@ -9,7 +9,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{HarvestOverlay, Health, VoxelAnimation};
+use crate::sim::components::{HarvestOverlay, Health};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
@@ -1814,11 +1814,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
                 value: config.ore_bale_value,
             });
         }
-        let mut voxel = VoxelAnimation::new(15, 1);
-        voxel.frame = 7;
-        voxel.elapsed_frames = 1;
-        voxel.playing = true;
-        entity.voxel_animation = Some(voxel);
         entity.harvest_overlay = Some(HarvestOverlay {
             frame: 6,
             visible: true,
@@ -1848,9 +1843,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert_eq!(miner.reserved_refinery, None);
         assert!(entity.movement_target.is_none());
         assert!(entity.teleport_state.is_none());
-        let voxel = entity.voxel_animation.expect("voxel anim");
-        assert!(voxel.playing);
-        assert_eq!((voxel.frame, voxel.elapsed_frames), (7, 1));
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(overlay.visible);
         assert_eq!(overlay.frame, 6);
@@ -1877,13 +1869,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert_eq!(entity.archive_target(), None);
         assert_eq!(miner.reserved_refinery, None);
         assert!(entity.movement_target.is_none());
-        let voxel = entity.voxel_animation.expect("voxel anim");
-        assert!(voxel.playing);
-        assert_eq!(
-            (voxel.frame, voxel.elapsed_frames),
-            (7, 1),
-            "nonzero visual state remains live through F+18"
-        );
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(overlay.visible);
         assert_eq!(
@@ -1917,9 +1902,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert_eq!(miner.reserved_refinery, None);
         assert!(entity.movement_target.is_none());
         assert!(entity.teleport_state.is_none());
-        let voxel = entity.voxel_animation.expect("voxel anim");
-        assert!(!voxel.playing);
-        assert_eq!((voxel.frame, voxel.elapsed_frames), (0, 0));
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(!overlay.visible);
         assert_eq!(overlay.frame, 0);

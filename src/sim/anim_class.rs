@@ -342,6 +342,16 @@ impl AnimDisplayState {
     }
 }
 
+/// The producer-selected AnimClass+0xD4 palette conversion. A fixed scheme
+/// serves CellAnim; a deploy animation retains the house selected by
+/// Techno705D70 at creation. Presentation resolves that identity through the
+/// match's existing HouseColorMap, never through the owner's later state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AnimRemap {
+    ColorScheme(HouseColorIndex),
+    House(InternedId),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnimObject {
     pub stable_id: AnimId,
@@ -360,7 +370,7 @@ pub struct AnimObject {
     /// Optional ConvertClass palette selected by a producer after construction
     /// (for example OverlayClass CellAnim over a Tiberium cell).
     #[serde(default)]
-    pub remap_color: Option<HouseColorIndex>,
+    remap: Option<AnimRemap>,
     pub effective_end: i32,
     pub effective_loop_end: i32,
     pub runtime: AnimRuntime,
@@ -395,6 +405,45 @@ pub struct AnimObject {
 }
 
 impl AnimObject {
+    pub fn remap(&self) -> Option<AnimRemap> {
+        self.remap
+    }
+
+    /// Minimal unattached object for tests of storage, lifecycle and checksum
+    /// consumers. Runtime producers use the animation constructor below.
+    #[cfg(test)]
+    pub(crate) fn new_unattached_for_test(
+        stable_id: AnimId,
+        native_unique_id: i32,
+        type_id: InternedId,
+        world_coord: AnimWorldCoord,
+        runtime: AnimRuntime,
+    ) -> Self {
+        Self {
+            stable_id,
+            native_unique_id,
+            type_id,
+            world_coord,
+            draw_flags: 0,
+            z_adjust: 0,
+            remap: None,
+            effective_end: 1,
+            effective_loop_end: 1,
+            runtime,
+            draw_runtime: AnimDrawRuntime::default(),
+            use_cell_drawer: false,
+            terrain_attached: false,
+            in_logic_vector: false,
+            owner_entity: None,
+            building_slot: None,
+            damage_fire_slot: None,
+            start_sound_active: false,
+            stop_sound_id: None,
+            display: AnimDisplayState::default(),
+            bounce: None,
+        }
+    }
+
     /// Preserve the former field order; the new damage-fire reverse index is
     /// derived from already-hashed Building slots and never enters this fold.
     pub(crate) fn hash_before_display(&self, hasher: &mut impl std::hash::Hasher) {
@@ -405,7 +454,7 @@ impl AnimObject {
         self.world_coord.hash(hasher);
         self.draw_flags.hash(hasher);
         self.z_adjust.hash(hasher);
-        self.remap_color.hash(hasher);
+        self.remap.hash(hasher);
         self.effective_end.hash(hasher);
         self.effective_loop_end.hash(hasher);
         self.runtime.hash(hasher);
@@ -883,7 +932,7 @@ impl Simulation {
             world_coord,
             draw_flags: descriptor.draw_flags,
             z_adjust: descriptor.z_adjust,
-            remap_color: None,
+            remap: None,
             effective_end,
             effective_loop_end,
             runtime: AnimRuntime {
@@ -1257,7 +1306,7 @@ impl Simulation {
         self.destroy_anim_with_context(id, Some(rules));
     }
 
-    fn destroy_anim_with_context(&mut self, id: AnimId, rules: Option<&RuleSet>) {
+    pub(crate) fn destroy_anim_with_context(&mut self, id: AnimId, rules: Option<&RuleSet>) {
         if self.substrate.pending_delete.contains(&id) {
             return;
         }
@@ -1273,7 +1322,18 @@ impl Simulation {
             .anim(id)
             .is_some_and(|anim| anim.owner_entity.is_some())
         {
-            self.detach_anim_from_owner(id, rules.expect("attached Anim Destroy requires Rules"));
+            if let Some(rules) = rules {
+                self.detach_anim_from_owner(id, rules);
+            } else {
+                // An imminent physical owner retirement may have no Rules.
+                // Preserve SetOwner(NULL)'s resolved coordinates and pointer
+                // callback here. Its temporary Display resubmission is omitted:
+                // this same operation conceals the Anim before another draw.
+                self.release_anim_owner_reference(id);
+                self.anim_mut_by_id(id)
+                    .expect("the retiring animation still exists")
+                    .world_coord = world;
+            }
         }
         if let Some(anim) = self.anim_mut_by_id(id) {
             anim.start_sound_active = false;
@@ -1476,6 +1536,10 @@ impl Simulation {
     /// only when this Anim broadcasts its own pointer expiry (44EA45).
     pub(crate) fn detach_anim_from_owner(&mut self, id: AnimId, rules: &RuleSet) -> Option<u64> {
         let owner = self.anim(id)?.owner_entity?;
+        if let Some(entity) = self.substrate.entities.get_mut(owner) {
+            // TechnoClass::Detach710443 clears the matching Techno+0x130.
+            entity.expire_deploy_anim(id);
+        }
         self.set_anim_owner_object(id, None, rules);
         Some(owner)
     }
@@ -1483,7 +1547,11 @@ impl Simulation {
     /// Destruction/expiry clear the reference without SetOwner's coordinate
     /// conversion or intermediate display submission (422961 / 425190).
     pub(crate) fn release_anim_owner_reference(&mut self, id: AnimId) -> Option<u64> {
-        self.anim_mut_by_id(id)?.owner_entity.take()
+        let owner = self.anim_mut_by_id(id)?.owner_entity.take()?;
+        if let Some(entity) = self.substrate.entities.get_mut(owner) {
+            entity.expire_deploy_anim(id);
+        }
+        Some(owner)
     }
 
     /// Anim PointerExpired425150 removes Display, calls owner+60, clears +CC,
@@ -1531,8 +1599,20 @@ impl Simulation {
         let Some(anim) = self.anim_mut_by_id(id) else {
             return false;
         };
-        anim.remap_color = remap_color;
+        anim.remap = remap_color.map(AnimRemap::ColorScheme);
         anim.z_adjust = z_adjust;
+        true
+    }
+
+    /// Unit deploy739C1A/739DFE store the palette conversion returned by
+    /// Techno705D70. Freeze its selected house now; later disguise or owner
+    /// changes must not recolor this animation. CustomPalette is not yet
+    /// represented by this owner; stock SCHP uses the house conversion.
+    pub(crate) fn set_deploy_anim_remap(&mut self, id: AnimId, house: InternedId) -> bool {
+        let Some(anim) = self.anim_mut_by_id(id) else {
+            return false;
+        };
+        anim.remap = Some(AnimRemap::House(house));
         true
     }
 
@@ -2910,6 +2990,99 @@ mod tests {
             terrain_attached: false,
             draw_runtime: AnimDrawRuntime::default(),
         }
+    }
+
+    /// Techno710443..71044E clears the matching retained animation pointer,
+    /// leaving Unit deployment state for the mission's next visit.
+    #[test]
+    fn deployment_attachment_expiry_clears_only_the_matching_pointer() {
+        for detach_with_coords in [false, true] {
+            let rules = runtime_rules("[DEPLOY]\nEnd=3\n", &[("DEPLOY", 3)]);
+            let mut sim = Simulation::new();
+            let owner_id = 100;
+            let owner = sim.interner.intern("Americans");
+            let type_ref = sim.interner.intern("UNIT");
+            let mut entity = GameEntity::new_at_frame_zero_for_test(
+                owner_id,
+                10,
+                10,
+                0,
+                0,
+                owner,
+                Health { current: 100 },
+                type_ref,
+                EntityCategory::Unit,
+                0,
+                5,
+                true,
+            );
+            entity.set_unit_simple_deploy_for_test(false, true, false);
+            sim.substrate.entities.insert(entity);
+            let type_id = sim.interner.intern("DEPLOY");
+            let other = sim
+                .spawn_anim_object(&rules, runtime_descriptor(type_id, 0))
+                .unwrap();
+            let retained = sim
+                .spawn_anim_object(&rules, runtime_descriptor(type_id, 0))
+                .unwrap();
+            for id in [other, retained] {
+                sim.set_anim_owner_object(id, Some(owner_id), &rules);
+            }
+            sim.substrate
+                .entities
+                .get_mut(owner_id)
+                .unwrap()
+                .retain_deploy_anim(retained);
+            for (id, expected) in [(other, Some(retained)), (retained, None)] {
+                let cleared = if detach_with_coords {
+                    sim.detach_anim_from_owner(id, &rules)
+                } else {
+                    sim.release_anim_owner_reference(id)
+                };
+                assert_eq!(cleared, Some(owner_id));
+                assert_eq!(sim.anim(id).unwrap().owner_entity, None);
+                let entity = sim.substrate.entities.get(owner_id).unwrap();
+                assert_eq!(entity.deploy_anim(), expected);
+                assert!(entity.unit_deploying());
+                assert!(!entity.is_fully_deployed());
+            }
+        }
+    }
+
+    #[test]
+    fn deployment_attachment_retirement_without_rules_keeps_absolute_sound_position() {
+        let rules = runtime_rules("[DEPLOY]\nEnd=3\nStopSound=DeployDone\n", &[("DEPLOY", 3)]);
+        let mut sim = Simulation::new();
+        let owner_id = 100;
+        let mut entity = GameEntity::test_default(owner_id, "UNIT", "Americans", 10, 10);
+        entity.owner = sim.interner.intern("Americans");
+        entity.type_ref = sim.interner.intern("UNIT");
+        sim.substrate.entities.insert(entity);
+        let type_id = sim.interner.intern("DEPLOY");
+        let id = sim
+            .spawn_anim_object(&rules, runtime_descriptor(type_id, 0))
+            .unwrap();
+        sim.set_anim_owner_object(id, Some(owner_id), &rules);
+        let entity = sim.substrate.entities.get_mut(owner_id).unwrap();
+        entity.retain_deploy_anim(id);
+        entity.position.rx += 1;
+        let absolute = sim.anim_absolute_coord(id).unwrap();
+        assert_ne!(sim.anim(id).unwrap().world_coord, absolute);
+
+        sim.destroy_anim_with_context(id, None);
+
+        let anim = sim.anim(id).unwrap();
+        assert_eq!(anim.world_coord, absolute);
+        assert_eq!(anim.owner_entity, None);
+        assert_eq!(
+            sim.substrate.entities.get(owner_id).unwrap().deploy_anim(),
+            None
+        );
+        assert!(sim.substrate.pending_delete.contains(&id));
+        assert!(sim.sound_events.iter().any(|event| matches!(event,
+            SimSoundEvent::AnimationStopped { anim_id, world, .. }
+                if *anim_id == id && *world == absolute
+        )));
     }
 
     #[test]

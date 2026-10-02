@@ -233,6 +233,7 @@ pub fn anim_class_roots(rules: &RuleSet) -> Vec<String> {
             .iter()
             .chain(&object.destroy_anims)
             .chain(&object.debris_anims)
+            .chain(&object.deploying_anim)
         {
             insert(name);
         }
