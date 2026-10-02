@@ -48,6 +48,11 @@ the analyzed program. Re-importing or enabling analysis is not routine reconnect
 - Find state writers and initialization. Zero-filled image data may be populated
   at runtime. Confirm active-YR gates and retail inputs; inherited TS code alone
   does not establish a feature's applicability.
+- A missing field in a register-tracking scan does not prove it is unused. Check
+  indexed operands and receiver preservation across compiler helpers. `_chkstk`
+  saves ECX at `0x7CA650` and restores it at `0x7CA678`; treating that call as an
+  ordinary volatile-register call hides `Find_Path`'s receiver save at `0x4D3936`
+  and its indexed path-buffer access at `0x4D3E98` (`this+index*4+0x5E0`).
 - Check a decompile's stack offsets against the code when a parameter or local looks
   misplaced (`unaff_retaddr`, `in_stack_`, a parameter where another is pushed). For a
   call whose stack change it does not know, the decompiler assumes the call pops nothing,
