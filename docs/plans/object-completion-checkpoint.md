@@ -7,33 +7,39 @@ DONE requires three whole objects with native comparisons and production validat
 ## Owned state and next action
 
 Checkout `/Users/halvor/.codex/worktrees/object-completion/vera20k`; branch
-`feature/native-gapowr-fatal-lifecycle`. HEAD
-`b4933c86a154b3e57dc1d20ff44aca46b8620973` integrates fetched main
-`1cfd3081e5fd2ca6cb26af953f8710f2329eec86` (IFV PR#1009).
-The only merge conflicts were snapshot comments/version: main weapon/turret281
-and retained Smudge identities are combined as **snapshot282**. No other task's
-files, refs or processes were altered. The release source was frozen clean through all six captures.
+`feature/native-gapowr-fatal-lifecycle`. Integrated HEAD `e0e28954958fb46fd13404cdbdfa52e9f7a09eab` includes
+gameplay main03750cc7 (#1010 refinery docking) and documentation-only c8a794a7
+(#1011 Ghidra stack writes). Snapshot283 combines docking282 with runtime Smudge
+identities. No other task's files, refs or processes were changed.
 
-Integrated validation passes: strict-retail9503/227 ignored, clippy728 warnings
-with zero edited-span diagnostics, Python478/four skips, original stock replay PASS
-without writes, field ratchet2554/2559 and all39 edited Rust leaf formatting checks.
-Receipt `gapowr-fatal-code-validation-v5.json` binds code HEAD b4933c86 and exact logs.
-Release v4 at clean22908e2d passes all six visible observations, exact full/repeat
-MATCH and every prefix. Common observations/atlas/five GPU frames equal v3; only
-IFV observer fields and initial/final state hashes differ. Five frames inspected.
-`gapowr-fatal-production-receipt-v4.json` preserves the updated receipt.
+Final code validation at clean69f980ad: strict-retail **9511 passed /227 ignored**,
+clippy success/732 warnings with zero edited-span diagnostics, Python485/four
+skips, field ratchet2549/2554 and all39 edited Rust leaf checks. Exact logs/identities
+are in `gapowr-fatal-code-validation-v6.json`. The clean documentation merge changes
+only ghidra-workflow.md; `gapowr-fatal-code-continuity-docs-main.json` confirms
+Rust/tools/goldens/lockfile bytes unchanged. Rust v6 never invoked Cargo because
+of the16GiB reserve; Python v8 used the wrong discovery entry point and is excluded.
+Correct entry point `python -m tools.run_tests` v9 passes.
 
-Main03750cc7 (#1010 refinery docking) is integrated in e55a5315. Snapshot conflicts
-combine docking282 with Smudge identity as283. The native fixture conflict preserves
-main's nav_target and the optional constructor_abstract_flags input; whole-ctor flags
-must not be overwritten with the legacy partial-object1. Eight original corpuses were
-re-executed and every accepted payload is byte-identical; only actual regenerated
-source-provenance metadata is refreshed. `gapowr-fatal-main-03750cc-native-refresh/`
-`final-input-replay/receipt.json` binds the results. The two expanded-root attempts
-changed only enumerated input metadata, remain preserved and were not adopted.
-Next: required integrated Rust/Python/ratchet validation, release v5 and six captures,
-then publish/attach one fatal PR, enable auto-merge and confirm merge before another
-implementation. Do not rerun critic.
+Eight original native corpuses re-executed after gameplay integration are
+byte-identical. Only actual source-provenance hashes changed. The native fixture
+conflict preserves main's nav_target and optional constructor_abstract_flags;
+whole constructors retain flags3 rather than the legacy partial object's1.
+`gapowr-fatal-main-03750cc-native-refresh/final-input-replay/receipt.json` binds
+these executions. Expanded-input retries changed only metadata and were not adopted.
+
+Prior release v4 (clean22908e2d) passes six observations/full-repeat MATCH/every
+prefix; all common observations/atlas/five GPU frames equal reviewed v3, with
+only IFV observer fields/hashes different. Prior receipts remain immutable.
+The completed b493 unlabelled test binary and all48 superseded v3 raw observation
+files are preserved byte-for-byte in verified archives, with restore roots in
+`gapowr-pre-final-v5-archive-applied.json`; v3 labels/images/results/critic and all
+native evidence remain retained. The shared runner safely trims eligible caches.
+
+Next: freeze a clean documentation commit, build release v5 and collect six fresh
+visible captures. Revalidate full/repeat and every prefix, inspect five GPU frames,
+update the receipt/draft to actual v5, publish/attach one fatal PR, enable auto-merge
+and confirm merge before another implementation. Do not rerun critic.
 
 Cargo uses `python -m tools.cargo_run`; every test uses `--lib`. Source stays frozen
 through a build. Keep the16GiB reserve and preserve required binaries/dependencies,
@@ -142,8 +148,11 @@ Neither certifies an object. Normal/-O integrity checks pass; accepted native in
 replays are normal mode because existing assert-side-effect priors differ under -O.
 That cost is recorded in existing issue#745, comment5960846507.
 `basic_factory_output_audit` still traces human GAPILE→E1 radio/PLACE/queue timing,
-with assets referenced rather than copied. It was warned of the integration boundary. Producer Unlimbo/House admission still
-needs original proof before selecting the factory chain.
+with assets referenced rather than copied. Original producer ctor/type-index/Unlimbo/House
+admission, refusal/retry, expiry roster/counters and power consumers now execute.
+ActiveGame was1 throughout; the missing B0F720 House expiry registration explains
+the former dangling roster. The peer is joining that actual producer with the
+two-product Skirmish delivery/radio loop before final sealing/chain selection.
 The additive `occupy-rof-input-reconciliation-20261002` corrects a sealed-inventory
 prose error: selected/native OccupyROFMultiplier is1.2, and existing GetROF divides
 by it. Underlying original/production receipts and Rust already agree; no gameplay
