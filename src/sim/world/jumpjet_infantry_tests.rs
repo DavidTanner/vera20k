@@ -779,6 +779,7 @@ fn rocketeer_crash_fixture(
                 id,
                 RevealRequest {
                     position: RevealPosition {
+                        exact_z_leptons: None,
                         rx,
                         ry,
                         z: 0,

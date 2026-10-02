@@ -70,37 +70,44 @@ pub(crate) fn target_cell_coord(
     ry: u16,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
 ) -> DriveCoord {
-    // Cell486840 sign-extends the returned object's own CellStruct, including
-    // aliased fixed-grid lookups and the shared dummy's stamped coordinates.
-    let identity =
-        resolved_terrain.map(|terrain| terrain.native_cell_identity((rx as i16, ry as i16)));
-    let cell = resolved_terrain
-        .zip(identity)
-        .map_or((rx as i16, ry as i16), |(terrain, identity)| {
-            terrain.native_cell_coord(identity)
-        });
-    let mut coord = DriveCoord {
-        x: i32::from(cell.0) * 256 + 128,
-        y: i32::from(cell.1) * 256 + 128,
-        z: 0,
-    };
-    if let Some((terrain, identity)) = resolved_terrain.zip(identity) {
-        // 486840 -> 47B3A0 retains the SAME Cell receiver for height. A new
-        // world-XY lookup changes the cell for negative/aliased coordinates.
-        let (level, slope) = match identity {
-            crate::map::cell_index::NativeCellIdentity::Real(index) => {
-                let cell = &terrain.cells()[index];
-                (cell.level, cell.slope_type)
-            }
-            crate::map::cell_index::NativeCellIdentity::Dummy => {
-                let dummy = terrain.shared_cell_dummy().snapshot();
-                (dummy.level as u8, dummy.slope_type)
-            }
+    if let Some(terrain) = resolved_terrain {
+        let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+        let identity = cells.lookup((rx as i16, ry as i16));
+        let (x, y, z) = crate::sim::cell_kernel::native_cell_own_coords(identity, &cells)
+            .unwrap_or_else(|| {
+                // Preserve this caller's existing unsupported-slope zero-Z
+                // adapter. The receiver identity/XY still come from the same
+                // Cell and the shared center kernel.
+                let (x, y) = cells.coord(identity);
+                let point = crate::sim::cell_kernel::cell_center(
+                    crate::sim::cell_kernel::CellCoordinate {
+                        x: i32::from(x),
+                        y: i32::from(y),
+                    },
+                    0,
+                );
+                (i64::from(point.x), i64::from(point.y), 0)
+            });
+        return DriveCoord {
+            x: x as i32,
+            y: y as i32,
+            z: z as i32,
         };
-        coord.z =
-            crate::util::lepton::ground_height_leptons(level, slope, coord.x, coord.y).unwrap_or(0);
     }
-    coord
+    // Existing no-map diagnostic adapter; ordinary receivers use the retained
+    // Cell identity and one shared native point above.
+    let point = crate::sim::cell_kernel::cell_center(
+        crate::sim::cell_kernel::CellCoordinate {
+            x: i32::from(rx as i16),
+            y: i32::from(ry as i16),
+        },
+        0,
+    );
+    DriveCoord {
+        x: point.x,
+        y: point.y,
+        z: point.z,
+    }
 }
 
 /// Shared destination-setter adjustment (Drive4AFD40 / Ship69F450). Each call

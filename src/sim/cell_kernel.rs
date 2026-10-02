@@ -3,6 +3,8 @@
 //! These helpers intentionally keep floor, deck, coordinate lookup, and object-list
 //! selection separate: YR composes them at their individual call sites.
 
+use crate::map::cell_index::NativeCellIdentity;
+use crate::map::resolved_terrain::NativeCellQuery;
 use crate::util::fixed_math::isqrt_i64;
 #[cfg(test)]
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
@@ -68,6 +70,29 @@ pub fn cell_center(cell: CellCoordinate, floor_z: i32) -> WorldCoordinate {
             .wrapping_add(CELL_CENTER_LEPTONS),
         z: floor_z,
     }
+}
+
+/// `CellClass::GetCoords` 0x00486840 — a cell's own world point is its centre
+/// (`MapCoord * 0x100 + 0x80` on both axes) with Z from
+/// `CellClass::ComputeGroundHeightAtCoord` 0x0047B3A0. **No bridge-deck term:**
+/// the deck offset belongs to whoever is standing on the deck, and
+/// `TechnoClass::CanFireAt` adds it separately from the object's own OnBridge
+/// byte at 0x006F7887.
+pub(crate) fn native_cell_own_coords(
+    cell: NativeCellIdentity,
+    cells: &NativeCellQuery<'_>,
+) -> Option<(i64, i64, i64)> {
+    let (x, y) = cells.coord(cell);
+    let point = cell_center(
+        CellCoordinate {
+            x: i32::from(x),
+            y: i32::from(y),
+        },
+        0,
+    );
+    let (level, slope) = cells.ground_fields(cell);
+    let z = cell_floor_height(level, slope, point.x, point.y).ok()?;
+    Some((i64::from(point.x), i64::from(point.y), i64::from(z)))
 }
 
 /// Native invalid-cell coordinates are process-global sentinels. At the Rust map

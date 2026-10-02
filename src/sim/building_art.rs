@@ -677,6 +677,7 @@ mod slot_tests {
             id,
             RevealRequest {
                 position: RevealPosition {
+                    exact_z_leptons: None,
                     rx: 3,
                     ry: 4,
                     z: 0,

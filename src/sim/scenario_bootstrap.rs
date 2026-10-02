@@ -1771,7 +1771,7 @@ fn place_starting_object_near_base(
     )?;
     if starting_object_cell_placeable(sim, resolved_terrain, base_rx, base_ry, category) {
         if sim
-            .reveal_constructed_object_at_height_with_unit_context(
+            .reveal_constructed_object_at_height_with_overlay_context(
                 stable_id,
                 base_rx,
                 base_ry,
@@ -1780,7 +1780,6 @@ fn place_starting_object_near_base(
                 PlacementEvidence::EvaluateMark,
                 rules,
                 overlay_registry,
-                stable_id,
             )
             .is_some()
         {
@@ -1819,7 +1818,7 @@ fn place_starting_object_near_base(
                 }
                 let z = resolved_terrain.cell(rx, ry).map_or(0, |cell| cell.level);
                 if sim
-                    .reveal_constructed_object_at_height_with_unit_context(
+                    .reveal_constructed_object_at_height_with_overlay_context(
                         stable_id,
                         rx,
                         ry,
@@ -1828,7 +1827,6 @@ fn place_starting_object_near_base(
                         PlacementEvidence::EvaluateMark,
                         rules,
                         overlay_registry,
-                        stable_id,
                     )
                     .is_some()
                 {

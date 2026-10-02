@@ -7,9 +7,10 @@
     1,
     33621247
   ],
-  "scope": "100 complete Unit73F0A0 calls through original retained-Cell578540 and Foot4DA1D0: GameMode, retained3D4/3D5, current/queued Retreat, signed level/slope boundaries and non-action3 Team exits. Excludes IsTrain and active action3 Team waypoint/lifecycle branches.",
+  "scope": "100 complete Unit73F0A0 calls through original retained-Cell578540 and Foot4DA1D0: A8E7AC scope counter, retained3D4/3D5, current/queued Retreat, signed level/slope boundaries and non-action3 Team exits. Excludes IsTrain and active action3 Team waypoint/lifecycle branches.",
   "assumptions": [
     "Real Unit/Drive and map/type/house fixture from unit_entry. Map LocalSize fields are supplied raw, not clipped by a loader. Target Cell11,10 and retained flags/missions are supplied prestates.",
+    "Historical input key game_mode_nonzero writes A8E7AC ScenarioInit scope, not actual GameMode A8B238. Payloads and results are preserved; independent actual GameMode controls live in unit_entry --counter-mode.",
     "Team cases execute original Script readers with one non-action3 record; outcomes are independent of7F. No production Team activation, waypoints, IsTrain or boundary-dummy proof."
   ],
   "substitutions": [

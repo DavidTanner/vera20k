@@ -146,7 +146,7 @@ impl Simulation {
             && object.can_recalc_approach_target
             && !can_fire
         {
-            let own = in_range::native_cell_own_coords(identity, &cells)
+            let own = crate::sim::cell_kernel::native_cell_own_coords(identity, &cells)
                 .ok_or("Approach target coordinate failed")?;
             let nav = self.approach_nav_center(nav, &cells)?;
             clear_nav = distance_3d_leptons(
@@ -193,7 +193,7 @@ impl Simulation {
         // executed radius1228/972/716/460 are retained in candidates.json.gz.
         let radius = range.saturating_sub(180).max(0);
         let mut radius = if radius > 0 { radius.max(256) } else { 0 };
-        let own = in_range::native_cell_own_coords(identity, &cells)
+        let own = crate::sim::cell_kernel::native_cell_own_coords(identity, &cells)
             .ok_or("Approach target coordinate failed")?;
         let target_cell = ((own.0 / 256) as i16, (own.1 / 256) as i16);
         let source = super::ground_pose::position_world_coord(&actor.position);
@@ -345,7 +345,7 @@ impl Simulation {
                 let cell = TargetKind::Cell(rx, ry)
                     .cell_identity(cells.terrain())
                     .unwrap();
-                let (x, y, z) = in_range::native_cell_own_coords(cell, cells)
+                let (x, y, z) = crate::sim::cell_kernel::native_cell_own_coords(cell, cells)
                     .ok_or("NavCom Cell coordinate failed")?;
                 return Ok(DriveCoord {
                     x: x as i32,

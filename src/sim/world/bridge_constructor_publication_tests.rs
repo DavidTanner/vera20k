@@ -277,6 +277,7 @@ fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
                         id,
                         RevealRequest {
                             position: RevealPosition {
+                                exact_z_leptons: None,
                                 rx: x,
                                 ry: y,
                                 z: 10,

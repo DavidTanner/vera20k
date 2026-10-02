@@ -113,6 +113,7 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
             1,
             RevealRequest {
                 position: RevealPosition {
+                    exact_z_leptons: None,
                     rx: 52,
                     ry: 52,
                     z: level,
@@ -342,6 +343,7 @@ fn crash_fall_matches_native_frames_to_the_impact() {
                         victim,
                         RevealRequest {
                             position: RevealPosition {
+                                exact_z_leptons: None,
                                 rx: (expected[0] / 256) as u16,
                                 ry: (expected[1] / 256) as u16,
                                 z: int(input, "level", 0) as u8,
@@ -443,6 +445,7 @@ fn a_crash_fall_lists_the_wreck_in_its_impact_cell() {
             bystander,
             RevealRequest {
                 position: RevealPosition {
+                    exact_z_leptons: None,
                     rx: cell.0,
                     ry: cell.1,
                     z: 0,
@@ -525,6 +528,7 @@ fn a_shot_down_aircraft_falls_and_detonates_through_advance_tick() {
             shooter,
             RevealRequest {
                 position: RevealPosition {
+                    exact_z_leptons: None,
                     rx: 40,
                     ry: 40,
                     z: 0,
@@ -778,6 +782,7 @@ fn jumpjet_fixture(balloon: bool) -> (Simulation, RuleSet, u64, u64) {
                 id,
                 RevealRequest {
                     position: RevealPosition {
+                        exact_z_leptons: None,
                         rx,
                         ry,
                         z: 0,
@@ -1247,6 +1252,7 @@ fn a_jumpjet_wreck_scans_only_on_its_committed_guard() {
                 enemy,
                 RevealRequest {
                     position: RevealPosition {
+                        exact_z_leptons: None,
                         rx: 54,
                         ry: 52,
                         z: 0,

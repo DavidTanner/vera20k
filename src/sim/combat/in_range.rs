@@ -32,6 +32,7 @@ use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::rules::ruleset::RuleSet;
 use crate::rules::weapon_type::WeaponType;
+use crate::sim::cell_kernel::native_cell_own_coords;
 use crate::sim::combat::TargetKind;
 use crate::sim::combat::line_of_fire::{self, LineOfFireInputs};
 use crate::sim::entity_store::EntityStore;
@@ -41,9 +42,7 @@ use crate::sim::movement::air_movement::{is_high_flying_in_query, is_low_flying_
 use crate::sim::movement::ground_pose::object_world_z_leptons;
 use crate::sim::production::foundation_dimensions;
 use crate::util::fixed_math::{SimFixed, isqrt_i64};
-use crate::util::lepton::{
-    BRIDGE_DECK_HEIGHT_LEPTONS, WEAPON_RANGE_ALWAYS_IN_RANGE_LEPTONS, ground_height_leptons,
-};
+use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, WEAPON_RANGE_ALWAYS_IN_RANGE_LEPTONS};
 
 /// `AirRangeBonus=` reaches `TechnoTypeClass+0x68C` through
 /// `CCINIClass::ReadRange` 0x00474620 (the call at 0x007147A9), so the native
@@ -497,24 +496,6 @@ fn resolve_target_coords_3d(
         }
         TargetKind::Cell(..) => native_cell_range_coords(target.cell_identity(terrain)?, cells),
     }
-}
-
-/// `CellClass::GetCoords` 0x00486840 — a cell's own world point is its centre
-/// (`MapCoord * 0x100 + 0x80` on both axes) with Z from
-/// `CellClass::ComputeGroundHeightAtCoord` 0x0047B3A0. **No bridge-deck term:**
-/// the deck offset belongs to whoever is standing on the deck, and
-/// `TechnoClass::CanFireAt` adds it separately from the object's own OnBridge
-/// byte at 0x006F7887.
-pub(crate) fn native_cell_own_coords(
-    cell: NativeCellIdentity,
-    cells: &NativeCellQuery<'_>,
-) -> Option<(i64, i64, i64)> {
-    let (x, y) = cells.coord(cell);
-    let x = i32::from(x).wrapping_mul(256).wrapping_add(128);
-    let y = i32::from(y).wrapping_mul(256).wrapping_add(128);
-    let (level, slope) = cells.ground_fields(cell);
-    let z = ground_height_leptons(level, slope, x, y).ok()?;
-    Some((i64::from(x), i64::from(y), i64::from(z)))
 }
 
 pub(crate) fn native_cell_range_coords(

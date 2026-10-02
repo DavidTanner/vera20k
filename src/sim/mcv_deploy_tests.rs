@@ -292,7 +292,7 @@ fn moving_mcv_finishes_committed_segment_then_deploys_once() {
             .movement_target
             .is_some()
     );
-    let position = sim.substrate.entities.get(id).unwrap().position.clone();
+    let position = sim.substrate.entities.get(id).unwrap().position;
     tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
     assert_eq!(yards(&sim), 0);
     assert_eq!(finish(&mut sim, &rules, id), 1);

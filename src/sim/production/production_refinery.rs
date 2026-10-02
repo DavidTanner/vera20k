@@ -71,7 +71,6 @@ pub(crate) fn spawn_building_free_unit(
     try_spawn_building_free_unit(
         sim,
         rules,
-        stable_id,
         &owner,
         &building_type_id,
         rx,
@@ -85,7 +84,6 @@ pub(crate) fn spawn_building_free_unit(
 fn try_spawn_building_free_unit(
     sim: &mut Simulation,
     rules: &RuleSet,
-    building_id: u64,
     owner: &str,
     building_type_id: &str,
     building_rx: u16,
@@ -106,8 +104,8 @@ fn try_spawn_building_free_unit(
     let search_seed = (building_rx, building_ry);
 
     // Native constructs one UnitClass, then retries Unlimbo on that same object.
-    // Keep that one stable ID in limbo until a placement commits. The limbo cell is
-    // the primary target; it is overwritten by whichever attempt commits, and the
+    // Keep that one stable ID at its constructor's zero Location until a
+    // placement commits. Each attempt supplies its own coordinate, and the
     // object is not on the map until one does.
     let (initial_rx, initial_ry) = primary.unwrap_or(search_seed);
     let initial_z = sim.terrain_cell_level(initial_rx, initial_ry).unwrap_or(0);
@@ -139,7 +137,6 @@ fn try_spawn_building_free_unit(
             primary_ry,
             FREE_UNIT_FACING_PRIMARY,
             rules,
-            building_id,
             overlay_registry,
         )
     {
@@ -171,7 +168,6 @@ fn try_spawn_building_free_unit(
             fallback_ry,
             FREE_UNIT_FACING_FALLBACK,
             rules,
-            building_id,
             overlay_registry,
         ) {
             log::info!(
@@ -206,7 +202,6 @@ fn try_place_free_unit(
     ry: u16,
     facing: u8,
     rules: &RuleSet,
-    producer_id: u64,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     // BuildingClass::OnConstructionComplete @ 0x00445F80 invokes the newly
@@ -218,7 +213,7 @@ fn try_place_free_unit(
     // occupied by their own live building object and therefore enter the native
     // nearby-search sequence; independent occupants are evaluated in that same
     // ordered cell list rather than through the old coarse ground-blocker model.
-    sim.reveal_constructed_object_at_height_with_unit_context(
+    sim.reveal_constructed_object_at_height_with_overlay_context(
         free_unit_id,
         rx,
         ry,
@@ -227,7 +222,6 @@ fn try_place_free_unit(
         PlacementEvidence::EvaluateMark,
         rules,
         overlay_registry,
-        producer_id,
     )
     .is_some()
 }

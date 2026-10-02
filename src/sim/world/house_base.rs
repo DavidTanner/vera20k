@@ -1192,6 +1192,7 @@ mod tests {
                 id,
                 RevealRequest {
                     position: RevealPosition {
+                        exact_z_leptons: None,
                         rx: cell.0,
                         ry: cell.1,
                         z: 0,

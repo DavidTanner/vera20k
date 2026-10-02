@@ -1419,7 +1419,12 @@ fn passive_scan_shortening_matches_original_signed_timer_and_rng_controls() {
         .filter(|row| row["input"]["kind"] == "reload")
     {
         let (mut sim, _rules, id) = native_deploy_fixture(row);
-        sim.shorten_passive_scan_timer(id, row["input"]["map_editor"].as_u64().unwrap() != 0);
+        // This historical oracle label controls A8E7AC, not GameMode.
+        if row["input"]["map_editor"].as_u64().unwrap() != 0 {
+            sim.with_object_placement_scope(|sim| sim.shorten_passive_scan_timer(id));
+        } else {
+            sim.shorten_passive_scan_timer(id);
+        }
         assert_native_deploy_state(&sim, id, row);
         compared += 1;
     }

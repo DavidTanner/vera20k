@@ -5,21 +5,26 @@ readers. Supplied ordered lists and raw occupation are intentionally independent
 No gameplay method is replaced; scatter fixture dispatch observers are not called.
 """
 from pathlib import Path
+import argparse
+import hashlib
+import itertools
 import struct
 
 from unicorn import UC_HOOK_CODE
-from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ESP
-from tools.native_oracle import SCRATCH, finish_vectors, provenance
+from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_ESP
+from tools.native_oracle import (
+    NATIVE_SHA256, SCRATCH, file_span, finish_vectors, image_bytes, provenance,
+)
 from tools.spatial_oracle.map_queries import dwords, packed
 from tools.spatial_oracle.unit_scatter_state import ACTOR, TYPE, SP
-from tools.spatial_oracle.unit_source_scatter import make_source_fixture, CELLS
+from tools.spatial_oracle.unit_source_scatter import make_source_fixture, CELLS, SCENARIO
 
 EXTRA = SCRATCH + 0xA0000
 HOUSE, ENEMY, WEAPON, PROJECTILE, WARHEAD = [EXTRA + n for n in (0, 0x6000, 0xC000, 0xD000, 0xE000)]
 CELL = CELLS + (10 * 32 + 11) * 0x200
 
 
-def query(case):
+def query(case, *, counter_control=None):
     u, call, read32 = make_source_fixture(dict(case, live_entry=True))
     u.mem_map(EXTRA, 0x30000)
     u.mem_write(0xA8E9A0, b'\x01')
@@ -27,7 +32,15 @@ def query(case):
     u.mem_write(ACTOR + 0x14, dwords(5))  # Techno and Foot abstract flags
     u.mem_write(ACTOR + 0x21C, dwords(HOUSE))
     u.mem_write(ACTOR + 0x3D4, bytes([case.get('mission_only', False), case.get('in_playfield', False)]))
-    u.mem_write(0xA8E7AC, dwords(case.get('game_mode_nonzero', False)))
+    # Historical payloads called A8E7AC "game_mode_nonzero". Preserve that
+    # compatibility input literally: it controls the nested ScenarioInit scope,
+    # not actual GameMode A8B238 (which has a separate later crate gate).
+    scope = case.get('scenario_init_counter', case.get('game_mode_nonzero', False))
+    if 'scenario_init_counter' in case and 'game_mode_nonzero' in case:
+        assert scope == case['game_mode_nonzero'], 'Conflicting legacy and explicit scope inputs'
+    u.mem_write(0xA8E7AC, dwords(scope))
+    if 'actual_game_mode' in case:
+        u.mem_write(0xA8B238, dwords(case['actual_game_mode']))
     if 'team' in case:
         team, script, script_type = EXTRA + 0x2B000, EXTRA + 0x2B200, EXTRA + 0x2B400
         state = case['team']
@@ -171,7 +184,48 @@ def query(case):
     call(0x73F0A0, ACTOR, [CELL, case.get('direction', -1), case.get('height', -1), previous_ptr, 1])
     assert u.reg_read(UC_X86_REG_ESP) == SP + 24
     assert bytes(u.mem_read(EXTRA, 0x30000)) == before
-    return dict(input=case, result=u.reg_read(UC_X86_REG_EAX), calls=seen)
+    initial = dict(input=case, result=u.reg_read(UC_X86_REG_EAX), calls=seen)
+    if counter_control is None:
+        return initial
+    # Measure the original class again in the same initialized fixture, matching
+    # the saved independent counter/mode controls without a second controller or
+    # a monkeypatched make_source_fixture. Existing outputs remain unchanged.
+    kind, scope, mode = (counter_control[name] for name in
+                         ('kind', 'scenario_init_counter', 'actual_game_mode'))
+    assert kind in ('boundary', 'crate') and scope in (0, 1) and mode in (0, 1)
+    u.mem_write(0xA8E7AC, dwords(scope))
+    u.mem_write(0xA8B238, dwords(mode))
+    if kind == 'crate':
+        assert case['overlay'] == 0
+        u.mem_write(EXTRA + 0xF000 + 0x2AA, b'\x01')
+    rngs = {'main': 0x886B88, 'scenario': SCENARIO + 0x218, 'mapgen': 0xABE890}
+    for pointer in rngs.values():
+        call(0x65C6D0, pointer, [31])
+    before_rng = {name: bytes(u.mem_read(pointer, 1012)) for name, pointer in rngs.items()}
+    before_extra = bytes(u.mem_read(EXTRA, 0x30000))
+    before_text = hashlib.sha256(bytes(u.mem_read(0x401000, 0x3E0000))).hexdigest()
+    trace = []
+    def measure(_u, pc, _size, _data):
+        if pc in (0x73F34C, 0x73F364, 0x73F371, 0x73F405, 0x50B730,
+                  0x4D9C10, 0x578540, 0x4DA1D0):
+            trace.append(dict(pc=hex(pc), scope=read32(0xA8E7AC),
+                              actual_game_mode=read32(0xA8B238),
+                              ecx=hex(u.reg_read(UC_X86_REG_ECX))))
+    u.hook_add(UC_HOOK_CODE, measure)
+    call(0x73F0A0, ACTOR, [CELL, -1, -1, 0, 1])
+    result = u.reg_read(UC_X86_REG_EAX)
+    assert u.reg_read(UC_X86_REG_ESP) == SP + 24
+    assert bytes(u.mem_read(EXTRA, 0x30000)) == before_extra
+    after_rng = {name: bytes(u.mem_read(pointer, 1012)) for name, pointer in rngs.items()}
+    text_sha256 = hashlib.sha256(bytes(u.mem_read(0x401000, 0x3E0000))).hexdigest()
+    assert text_sha256 == before_text
+    return dict(
+        input=dict(kind=kind, scenario_init_counter=scope, actual_game_mode=mode, fixture=case),
+        fixture_initial_result=initial, result=result, trace=trace,
+        rng={name: dict(before_hex=value.hex(), after_hex=after_rng[name].hex(),
+                        unchanged=value == after_rng[name]) for name, value in before_rng.items()},
+        text_sha256=text_sha256,
+    )
 
 
 def generate():
@@ -211,12 +265,94 @@ def generate():
     return [query(case) for case in cases]
 
 
-if __name__ == '__main__':
-    finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
+def metadata():
+    return provenance(
         scope='Complete Unit73F0A0 numeric results with existing repair arguments(-1,-1,NULL,true): raw occupation, ordered Unit/Building lists, wall and Gate arms; excludes non-Drive locomotors, direction/height traversal and full repair/scatter effects.',
         entry_points={'unit_entry': 0x73F0A0, 'foot_entry': 0x4D9C10,
                       'drive_entry': 0x55ABF0, 'tail': 0x73FC24, 'get_unit': 0x47EBA0},
         assumptions=['Shared Unit/Drive/source map fixture; actual vtables and typed prestates. Type IsTrain=false, unrestricted land, no tubes; land speed1.0. Raw owner indices -1/0/1 and independent supplied lists. Optional Wall overlay/owner/Crushable, primary warhead Wall and MovementZone CrusherAll are supplied.',
                      'Objects are supplied Unit or Building nodes; Drive constructed, unpowered/turning/lifecycle producers excluded. Ordinary bodies/owner queries/GetWeapon/CrushableBy execute. No native scenario load.',
                      'Object and house memory remains unchanged. Source fixture QueueMission/SetDestination observer slots are never reached.'],
-        substitutions=['Only OS Interlocked imports from the shared Unit fixture. No gameplay callable substitution.']))
+        substitutions=['Only OS Interlocked imports from the shared Unit fixture. No gameplay callable substitution.'])
+
+
+def counter_mode_generate():
+    rows = []
+    for kind, scope, mode in itertools.product(('boundary', 'crate'), (0, 1), (0, 1)):
+        case = dict(in_playfield=True, mission=5, queued=-1,
+                    bounds=[16, 0, 3, 16, 16] if kind == 'boundary' else [16, -16, -16, 64, 64],
+                    trace_boundary=True)
+        if kind == 'crate':
+            case['overlay'] = 0
+        rows.append(query(case, counter_control=dict(
+            kind=kind, scenario_init_counter=scope, actual_game_mode=mode)))
+    return dict(schema_version=1, native_sha256=NATIVE_SHA256, rows=rows)
+
+
+def counter_mode_metadata():
+    result = provenance(
+        scope='Eight complete original Unit73F0A0 repeat-call controls separating '
+              'A8E7AC nested scope from A8B238 actual GameMode: retained-playfield '
+              'boundary and nonhuman CrateType arms, with three complete RNG objects.',
+        entry_points=dict(unit_entry=0x73F0A0, unit_scope_gate=0x73F34C,
+                          unit_crate_mode_gate=0x73F405, retained_cell_bounds=0x578540,
+                          foot_edge=0x4DA1D0, foot_entry=0x4D9C10, rng_seed=0x65C6D0),
+        assumptions=[
+            'Existing query owns the Unit/Drive/map/type/House fixture and runs '
+            'an initial original class call before the measured repeat. Explicit '
+            'scenario_init_counter writes A8E7AC; actual_game_mode writes A8B238. '
+            'Legacy game_mode_nonzero remains an A8E7AC compatibility alias only.',
+            'Both independent globals are supplied0/1. Boundary controls supply '
+            'retained+3D5 and LocalSize; crate controls supply overlay CrateType+2AA '
+            'and a nonhuman House. Main/Scenario/MapGen are seeded31 through native '
+            '65C6D0 before the measured call and saved as full1012-byte objects.',
+            'Complete original Unit/Foot admission and actual Drive execute. '
+            'The scratch owner bytes and original .text stay unchanged. '
+            'fixture_initial_result.calls retains the existing observer list, '
+            'including second-call entries, as in the preserved scratch receipt.',
+        ],
+        substitutions=[
+            'Supplied actor/type/House/map/overlay prestates exclude their full '
+            'construction, readers and factory production. This is a branch '
+            'control, not a native lifecycle producer or full movement mechanism.',
+            'Existing source fixture clones the Unit vtable into scratch; class '
+            '+1AC remains original73F0A0, while scatter-only Queue/Set observer '
+            'slots are never reached. Original executable/vtable tables are '
+            'unchanged. Only inherited OS Interlocked imports are substituted.',
+        ],
+    )
+    result['promotion_sources'] = dict(
+        scratch_recipe_sha256='14d1f0f80d41875fb9cd920ef94054441223926cc92cb423cb45314ce6375cc9',
+        scratch_results_sha256='8c8972ab4074282e3c7eead8a904c80146f9ca99f42608fa3e2344790eca6023',
+    )
+    result['native_spans'] = {}
+    binary = image_bytes()
+    for name, address, length in (('unit_scope_and_mode', 0x73F34C, 0xD4),
+                                  ('infantry_scope', 0x51C13A, 0xA0)):
+        offset, raw = file_span(binary, address, length)
+        result['native_spans'][name] = dict(address=f'0x{address:08X}', file_offset=offset,
+                                           length=length, sha256=hashlib.sha256(raw).hexdigest(),
+                                           hex=raw.hex())
+    return result
+
+
+def counter_mode_source_paths():
+    repo = Path(__file__).resolve().parents[2]
+    return {name: repo / name for name in (
+        'tools/native_oracle.py', 'tools/rmg_oracle/harness.py',
+        'tools/spatial_oracle/unit_entry.py', 'tools/spatial_oracle/unit_source_scatter.py',
+        'tools/spatial_oracle/unit_scatter_state.py', 'tools/spatial_oracle/map_queries.py',
+    )}
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--counter-mode', action='store_true')
+    args, remaining = parser.parse_known_args()
+    if args.counter_mode:
+        finish_vectors(counter_mode_generate, Path(__file__).with_name('unit_entry_counter_mode.json'),
+                       provenance=counter_mode_metadata, argv=remaining,
+                       source_paths=counter_mode_source_paths())
+    else:
+        finish_vectors(generate, Path(__file__).with_suffix('.json'),
+                       provenance=metadata, argv=remaining)

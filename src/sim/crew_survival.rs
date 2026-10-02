@@ -538,7 +538,7 @@ impl Simulation {
         // rounded DirType is the Unlimbo direction.
         let frame = self.session.binary_frame;
         let facing = building.body_facing_dir(frame);
-        let position = building.position.clone();
+        let position = building.position;
         let sub_cell =
             infantry.then(|| bump_crush::priority_sub_cell(position.sub_x, position.sub_y));
         // The dying building's expiry broadcast already cleared the
@@ -555,6 +555,7 @@ impl Simulation {
                     passenger,
                     RevealRequest {
                         position: RevealPosition {
+                            exact_z_leptons: None,
                             rx: position.rx,
                             ry: position.ry,
                             z: position.z,
@@ -614,7 +615,7 @@ impl Simulation {
         let owner = entity.owner();
         let armed = crate::sim::combat::combat_weapon::is_armed(entity, object);
         let on_bridge = entity.on_bridge;
-        let position = entity.position.clone();
+        let position = entity.position;
         let Some(side) = self.houses.get(&owner).map(|house| house.side_index) else {
             return;
         };
@@ -983,6 +984,7 @@ impl Simulation {
             id,
             RevealRequest {
                 position: RevealPosition {
+                    exact_z_leptons: None,
                     rx,
                     ry,
                     z,

@@ -5,6 +5,8 @@
 use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::sim::bridge_state::BridgeRuntimeState;
+use crate::sim::components::DriveCoord;
+use crate::sim::movement::ground_pose;
 use crate::sim::projectile::ProjectileDetonationReason;
 use crate::sim::world::Simulation;
 use serde_json::Value;
@@ -186,7 +188,19 @@ fn nested_death_bridge_continuation_finishes_before_parent_area_returns() {
                 .unwrap();
             // Both objects are in the deck list at the identical coordinate,
             // so OUTER's zero-spread death blast includes only the live INNER.
-            sim.substrate.entities.get_mut(id).unwrap().on_bridge = true;
+            {
+                let actor = sim.substrate.entities.get_mut(id).unwrap();
+                ground_pose::put_location(
+                    &mut actor.position,
+                    DriveCoord {
+                        x: 2688,
+                        y: 5248,
+                        z: 624,
+                    },
+                );
+                actor.position.z = 6;
+                actor.on_bridge = true;
+            }
             sim.reveal_entity_with_rules(id, &rules);
             assert!(
                 sim.substrate

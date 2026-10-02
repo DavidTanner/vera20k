@@ -25,6 +25,7 @@ use crate::sim::house_state::HouseState;
 use crate::sim::mission::leaf::MissionLeafState;
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionTimer};
+use crate::sim::movement::ground_pose;
 use crate::sim::movement::locomotion::piggyback::{LocomotorRuntimePayload, WalkRuntime};
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::radiation::{RadSite, RadiationState};
@@ -32,7 +33,6 @@ use crate::sim::rng::SimRng;
 use crate::sim::stage::StageClass;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::{ObjectAiCtx, Simulation};
-use crate::util::fixed_math::SimFixed;
 
 fn corpus() -> &'static Value {
     static CORPUS: OnceLock<Value> = OnceLock::new();
@@ -238,9 +238,9 @@ fn supplied_fixture(row: &Value) -> (Simulation, RuleSet, u64) {
     actor.health.current = 100;
     actor.lifecycle.in_limbo = false;
     actor.lifecycle.object_alive = true;
-    actor.position.sub_x = SimFixed::from_num(128);
-    actor.position.sub_y = SimFixed::from_num(128);
-    actor.position.exact_z_leptons = Some(signed(&input["z"]));
+    // The companion supplies a post-constructor Location at Cell10,10;
+    // transport the complete saved XYZ through the existing coordinate owner.
+    ground_pose::put_location(&mut actor.position, coordinate(&before["position"]));
     actor.on_bridge = input["bridge"] != 0;
     actor.set_falling_down_for_test(input["falling"].as_i64().unwrap_or(0) != 0);
     actor.infantry.as_mut().unwrap().is_prone = before["prone"] != 0;
@@ -298,7 +298,9 @@ fn supplied_fixture(row: &Value) -> (Simulation, RuleSet, u64) {
     if input["target"] == true && input["target_kind"] == "entity" {
         let mut supplied_target = actor.clone();
         supplied_target.stable_id = 2;
-        supplied_target.position.sub_x += SimFixed::from_num(signed(&input["delta"]));
+        let mut target_coord = ground_pose::position_world_coord(&actor.position);
+        target_coord.x = target_coord.x.wrapping_add(signed(&input["delta"]));
+        ground_pose::put_location(&mut supplied_target.position, target_coord);
         supplied_target.attack_target = None;
         supplied_target.mission_leaf = MissionLeafState::infantry_raw_for_test(0, 0);
         sim.substrate.entities.insert(supplied_target);

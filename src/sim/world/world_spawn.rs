@@ -29,6 +29,7 @@ use crate::sim::game_entity::{
 use crate::sim::intern::InternedId;
 use crate::sim::production::{self, ProductionCategory, foundation_dimensions};
 use crate::sim::vision::MAX_SIGHT_RANGE;
+use crate::util::fixed_math::SimFixed;
 
 /// Exact generated-object constructor handoff. The later RMG lifecycle owner
 /// supplies this table after replaying all successful and discarded native
@@ -341,199 +342,248 @@ impl Simulation {
             }
         }
 
-        let mut count: u32 = 0;
+        // ReadScenario684685 / FullInit686B4F retain nonzero A8E7AC
+        // through the authored readers (Unit743270 called at687AA7).
+        // PostMapInit68691C clears that context for starting-unit callbacks,
+        // which use the separate runtime spawn path. This projection retains
+        // the same admission context through all constructor/Unlimbo callbacks.
+        self.with_object_placement_scope(|sim| {
+            let mut count: u32 = 0;
 
-        for (entity_index, map_ent) in entities.iter().enumerate() {
-            if !self.map_entity_resolves_before_constructor(
-                map_ent,
-                rules,
-                generated_inits.is_some(),
-            ) {
-                log::warn!(
-                    "Skipping map Techno {} owned by {} before constructor resolution",
-                    map_ent.type_id,
-                    map_ent.owner
-                );
-                continue;
-            }
-            let bridge_spawn = map_ent
-                .high
-                .then(|| {
-                    resolved_terrain
-                        .and_then(|terrain| terrain.cell(map_ent.cell_x, map_ent.cell_y))
-                        .filter(|cell| cell.bridge_walkable)
-                        .map(|cell| cell.bridge_deck_level)
-                })
-                .flatten();
-            if map_ent.high && bridge_spawn.is_none() {
-                log::warn!(
-                    "Map entity {} at ({},{}) requested HIGH spawn but no bridge deck was resolved; falling back to ground",
-                    map_ent.type_id,
-                    map_ent.cell_x,
-                    map_ent.cell_y
-                );
-            }
-            let z: u8 = bridge_spawn.unwrap_or_else(|| {
-                resolved_terrain
-                    .or(self.resolved_terrain.as_ref())
-                    .and_then(|terrain| terrain.cell(map_ent.cell_x, map_ent.cell_y))
-                    .map_or(0, |cell| cell.level)
-            });
-
-            // Typed production admission has already resolved the class type.
-            // Rules-less construction remains an explicit diagnostic seam, using
-            // the supplied health directly rather than inventing a type maximum.
-            let health = Health {
-                current: rules
-                    .map(|rules| {
-                        authored_health::map_object_type(map_ent.category, &map_ent.type_id, rules)
-                            .expect("resolved map type")
-                            .strength
-                    })
-                    .unwrap_or(map_ent.health),
-            };
-
-            let uses_voxel_default: bool = match map_ent.category {
-                EntityCategory::Unit | EntityCategory::Aircraft => true,
-                EntityCategory::Infantry | EntityCategory::Structure => false,
-            };
-            let uses_voxel: bool = rules
-                .and_then(|rules| {
-                    authored_health::map_object_type(map_ent.category, &map_ent.type_id, rules)
-                        .map(|object| object_uses_voxel(&map_ent.type_id, object, rules))
-                })
-                .unwrap_or(uses_voxel_default);
-
-            let sight_range = rules
-                .and_then(|r| {
-                    authored_health::map_object_type(map_ent.category, &map_ent.type_id, r)
-                })
-                .map(|obj| (obj.sight.max(0) as u16).min(MAX_SIGHT_RANGE))
-                .unwrap_or_else(|| Self::default_vision_range_for_category(map_ent.category));
-
-            let stable_id = self.allocate_stable_id();
-            let owner_id = self.interner.intern(&map_ent.owner);
-            let type_id = self.interner.intern(&map_ent.type_id);
-            let constructor_init = generated_inits
-                .as_ref()
-                .map_or(TechnoConstructorInit::FreshScenario, |inits| {
-                    TechnoConstructorInit::PreconsumedGenerated((*inits[entity_index]).clone())
-                });
-            let techno_ctor_random_word = self.resolve_techno_constructor_word(
-                constructor_init,
-                generated_inits.as_ref().map(|_| {
-                    (
-                        entity_index,
-                        map_ent.type_id.as_str(),
-                        (map_ent.cell_x, map_ent.cell_y),
+            for (entity_index, map_ent) in entities.iter().enumerate() {
+                if !sim.map_entity_resolves_before_constructor(
+                    map_ent,
+                    rules,
+                    generated_inits.is_some(),
+                ) {
+                    log::warn!(
+                        "Skipping map Techno {} owned by {} before constructor resolution",
+                        map_ent.type_id,
+                        map_ent.owner
+                    );
+                    continue;
+                }
+                // Unit ReadUnits7434F3 writes OnBridge from HIGH itself; its
+                // 7434FB..743510 coordinate is Map578080 ground plus B1D0AC.
+                // HasBridge and navigation's bridge_walkable do not admit that
+                // reader-owned pose. Other classes retain their existing adapter.
+                let unit_high = map_ent.category == EntityCategory::Unit && map_ent.high;
+                let bridge_spawn = if unit_high {
+                    Some(
+                        resolved_terrain
+                            .or(sim.resolved_terrain.as_ref())
+                            .and_then(|terrain| terrain.cell(map_ent.cell_x, map_ent.cell_y))
+                            .map_or(0, |cell| cell.level)
+                            .wrapping_add(4),
                     )
-                }),
-            )?;
-            // Concrete constructors assign after the base Techno Scenario word
-            // and before Unlimbo. Generated rows already spent both effects at
-            // their original construction point; projection must not repeat it.
-            let native_unique_id = generated_inits.as_ref().map_or_else(
-                || self.next_native_runtime_id(),
-                |inits| inits[entity_index].native_unique_id,
-            );
+                } else {
+                    map_ent
+                        .high
+                        .then(|| {
+                            resolved_terrain
+                                .and_then(|terrain| terrain.cell(map_ent.cell_x, map_ent.cell_y))
+                                .filter(|cell| cell.bridge_walkable)
+                                .map(|cell| cell.bridge_deck_level)
+                        })
+                        .flatten()
+                };
+                if map_ent.high && bridge_spawn.is_none() {
+                    log::warn!(
+                        "Map entity {} at ({},{}) requested HIGH spawn but no bridge deck was resolved; falling back to ground",
+                        map_ent.type_id,
+                        map_ent.cell_x,
+                        map_ent.cell_y
+                    );
+                }
+                let z: u8 = bridge_spawn.unwrap_or_else(|| {
+                    resolved_terrain
+                        .or(sim.resolved_terrain.as_ref())
+                        .and_then(|terrain| terrain.cell(map_ent.cell_x, map_ent.cell_y))
+                        .map_or(0, |cell| cell.level)
+                });
 
-            // Build the GameEntity with all required fields.
-            let mut ge = GameEntity::new_at_frame_from_constructor_word(
-                stable_id,
-                native_unique_id,
-                map_ent.cell_x,
-                map_ent.cell_y,
-                z,
-                map_ent.facing,
-                owner_id,
-                health,
-                type_id,
-                map_ent.category,
-                map_ent.veterancy,
-                sight_range,
-                uses_voxel,
-                self.session.binary_frame,
-                techno_ctor_random_word,
-            );
-            ge.base_defense_response.recruitable_a = map_ent.recruitable_a;
-            ge.base_defense_response.recruitable_b = map_ent.recruitable_b;
+                // Typed production admission has already resolved the class type.
+                // Rules-less construction remains an explicit diagnostic seam, using
+                // the supplied health directly rather than inventing a type maximum.
+                let health = Health {
+                    current: rules
+                        .map(|rules| {
+                            authored_health::map_object_type(map_ent.category, &map_ent.type_id, rules)
+                                .expect("resolved map type")
+                                .strength
+                        })
+                        .unwrap_or(map_ent.health),
+                };
 
-            self.install_techno_components(
-                &mut ge,
-                rules.and_then(|rules| {
-                    authored_health::map_object_type(map_ent.category, &map_ent.type_id, rules)
-                }),
-                rules,
-                construction::ComponentOrigin::Authored {
-                    sub_cell: map_ent.sub_cell,
-                    bridge_deck: bridge_spawn,
-                },
-            );
-            // The line's AI Sellable and AI Repairable, written after the
-            // constructor and before the Unlimbo (`BuildingClass::ReadFromINI`
-            // `0x0044FB5B`, `0x0044FB70`).
-            if map_ent.category == EntityCategory::Structure {
-                ge.ai_sellable = map_ent.structure_ai_sellable;
-                ge.ai_repairable = map_ent.structure_ai_repairable;
-            }
-            let (stable_id, outcome) =
-                self.unlimbo_authored_techno(ge, map_ent.health, rules, overlay_registry);
-            if !matches!(outcome, RevealOutcome::Revealed { .. }) {
-                self.discard_constructed_limbo(stable_id);
-                continue;
-            }
-            if let Some(ruleset) = rules {
-                self.initialize_cloak_after_unlimbo(stable_id, ruleset);
-                self.add_unit_sensor_after_unlimbo(stable_id, ruleset);
-                self.add_building_sensor_array_if_powered(stable_id, ruleset);
-            }
-            self.commit_map_placement_mission(stable_id, map_ent.mission);
-            if let Some(rules) = rules {
-                self.finish_authored_building_enable(stable_id, rules);
-            }
-            count += 1;
+                let uses_voxel_default: bool = match map_ent.category {
+                    EntityCategory::Unit | EntityCategory::Aircraft => true,
+                    EntityCategory::Infantry | EntityCategory::Structure => false,
+                };
+                let uses_voxel: bool = rules
+                    .and_then(|rules| {
+                        authored_health::map_object_type(map_ent.category, &map_ent.type_id, rules)
+                            .map(|object| object_uses_voxel(&map_ent.type_id, object, rules))
+                    })
+                    .unwrap_or(uses_voxel_default);
 
-            if map_ent.category == EntityCategory::Structure
-                && let Some(ruleset) = rules
-            {
-                for (slot, upgrade_type) in map_ent.structure_upgrades.iter().enumerate() {
-                    let Some(upgrade_type) = upgrade_type.as_deref() else {
-                        continue;
-                    };
-                    let valid_upgrade = ruleset
-                        .object(upgrade_type)
-                        .is_some_and(|object| object.category == ObjectCategory::Building);
-                    if !valid_upgrade {
-                        log::warn!(
-                            "Skipping unresolved authored upgrade {} in slot {} on {}",
-                            upgrade_type,
-                            slot,
-                            map_ent.type_id
-                        );
-                        continue;
-                    }
-                    if self
-                        .spawn_attached_map_upgrade(
-                            stable_id,
-                            slot as u8,
-                            upgrade_type,
-                            &map_ent.owner,
-                            map_ent.cell_x,
-                            map_ent.cell_y,
-                            z,
-                            map_ent.facing,
-                            ruleset,
+                let sight_range = rules
+                    .and_then(|r| {
+                        authored_health::map_object_type(map_ent.category, &map_ent.type_id, r)
+                    })
+                    .map(|obj| (obj.sight.max(0) as u16).min(MAX_SIGHT_RANGE))
+                    .unwrap_or_else(|| Self::default_vision_range_for_category(map_ent.category));
+
+                let stable_id = sim.allocate_stable_id();
+                let owner_id = sim.interner.intern(&map_ent.owner);
+                let type_id = sim.interner.intern(&map_ent.type_id);
+                let constructor_init = generated_inits
+                    .as_ref()
+                    .map_or(TechnoConstructorInit::FreshScenario, |inits| {
+                        TechnoConstructorInit::PreconsumedGenerated((*inits[entity_index]).clone())
+                    });
+                let techno_ctor_random_word = sim.resolve_techno_constructor_word(
+                    constructor_init,
+                    generated_inits.as_ref().map(|_| {
+                        (
+                            entity_index,
+                            map_ent.type_id.as_str(),
+                            (map_ent.cell_x, map_ent.cell_y),
                         )
-                        .is_some()
-                    {
-                        count += 1;
+                    }),
+                )?;
+                // Concrete constructors assign after the base Techno Scenario word
+                // and before Unlimbo. Generated rows already spent both effects at
+                // their original construction point; projection must not repeat it.
+                let native_unique_id = generated_inits.as_ref().map_or_else(
+                    || sim.next_native_runtime_id(),
+                    |inits| inits[entity_index].native_unique_id,
+                );
+
+                // Build the GameEntity with all required fields.
+                let mut ge = GameEntity::new_at_frame_from_constructor_word(
+                    stable_id,
+                    native_unique_id,
+                    map_ent.cell_x,
+                    map_ent.cell_y,
+                    z,
+                    map_ent.facing,
+                    owner_id,
+                    health,
+                    type_id,
+                    map_ent.category,
+                    map_ent.veterancy,
+                    sight_range,
+                    uses_voxel,
+                    sim.session.binary_frame,
+                    techno_ctor_random_word,
+                );
+                if map_ent.category == EntityCategory::Unit {
+                    let [x, y] = crate::sim::movement::ground_pose::position_world_xy(&ge.position);
+                    let mut requested = crate::sim::components::DriveCoord { x, y, z: 0 };
+                    if unit_high {
+                        requested.z = i32::from(z as i8)
+                            .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS);
+                        if let Some(terrain) = resolved_terrain.or(sim.resolved_terrain.as_ref()) {
+                            match crate::sim::movement::ground_pose::query_ground_height(
+                                &crate::map::resolved_terrain::NativeCellQuery::canonical(terrain),
+                                requested,
+                            ) {
+                                Ok(ground) => {
+                                    requested.z = ground.wrapping_add(
+                                        crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS,
+                                    );
+                                }
+                                // Unsupported slope identities retain the prior
+                                // coarse adapter; no native height claim for them.
+                                Err(cause) => log::warn!("authored Unit HIGH height: {cause}"),
+                            }
+                        }
+                    }
+                    // LOW supplies Z0 (743408..743431); ObjectType747EB0 then
+                    // clamps it to ground. Retain the legacy level projection
+                    // separately from this exact caller coordinate.
+                    crate::sim::movement::ground_pose::put_location(&mut ge.position, requested);
+                }
+                ge.base_defense_response.recruitable_a = map_ent.recruitable_a;
+                ge.base_defense_response.recruitable_b = map_ent.recruitable_b;
+
+                sim.install_techno_components(
+                    &mut ge,
+                    rules.and_then(|rules| {
+                        authored_health::map_object_type(map_ent.category, &map_ent.type_id, rules)
+                    }),
+                    rules,
+                    construction::ComponentOrigin::Authored {
+                        sub_cell: map_ent.sub_cell,
+                        bridge_deck: bridge_spawn,
+                    },
+                );
+                // The line's AI Sellable and AI Repairable, written after the
+                // constructor and before the Unlimbo (`BuildingClass::ReadFromINI`
+                // `0x0044FB5B`, `0x0044FB70`).
+                if map_ent.category == EntityCategory::Structure {
+                    ge.ai_sellable = map_ent.structure_ai_sellable;
+                    ge.ai_repairable = map_ent.structure_ai_repairable;
+                }
+                let (stable_id, outcome) =
+                    sim.unlimbo_authored_techno(ge, map_ent.health, rules, overlay_registry);
+                if !matches!(outcome, RevealOutcome::Revealed { .. }) {
+                    sim.discard_constructed_limbo(stable_id);
+                    continue;
+                }
+                if let Some(ruleset) = rules {
+                    sim.initialize_cloak_after_unlimbo(stable_id, ruleset);
+                    sim.add_unit_sensor_after_unlimbo(stable_id, ruleset);
+                    sim.add_building_sensor_array_if_powered(stable_id, ruleset);
+                }
+                sim.commit_map_placement_mission(stable_id, map_ent.mission);
+                if let Some(rules) = rules {
+                    sim.finish_authored_building_enable(stable_id, rules);
+                }
+                count += 1;
+
+                if map_ent.category == EntityCategory::Structure
+                    && let Some(ruleset) = rules
+                {
+                    for (slot, upgrade_type) in map_ent.structure_upgrades.iter().enumerate() {
+                        let Some(upgrade_type) = upgrade_type.as_deref() else {
+                            continue;
+                        };
+                        let valid_upgrade = ruleset
+                            .object(upgrade_type)
+                            .is_some_and(|object| object.category == ObjectCategory::Building);
+                        if !valid_upgrade {
+                            log::warn!(
+                                "Skipping unresolved authored upgrade {} in slot {} on {}",
+                                upgrade_type,
+                                slot,
+                                map_ent.type_id
+                            );
+                            continue;
+                        }
+                        if sim
+                            .spawn_attached_map_upgrade(
+                                stable_id,
+                                slot as u8,
+                                upgrade_type,
+                                &map_ent.owner,
+                                map_ent.cell_x,
+                                map_ent.cell_y,
+                                z,
+                                map_ent.facing,
+                                ruleset,
+                            )
+                            .is_some()
+                        {
+                            count += 1;
+                        }
                     }
                 }
             }
-        }
 
-        log::info!("Spawned {} entities", count);
-        Ok(count)
+            log::info!("Spawned {} entities", count);
+            Ok(count)
+        })
     }
 
     fn map_entity_resolves_before_constructor(
@@ -912,17 +962,37 @@ impl Simulation {
         placement: PlacementEvidence,
         rules: &RuleSet,
     ) -> Option<u64> {
-        self.reveal_constructed_object_at_height_with_unit_context(
-            stable_id, rx, ry, facing, z, placement, rules, None, stable_id,
+        self.reveal_constructed_object_at_height_with_overlay_context(
+            stable_id, rx, ry, facing, z, placement, rules, None,
         )
     }
 
-    /// Common concrete Unlimbo boundary. A Unit arriving with ordinary
-    /// `EvaluateMark` first executes its exact `+0x1AC` CanEnter predicate;
-    /// callers that already proved exact zero carry that evidence instead.
-    /// Rejection returns before facing, subcell, bridge, or position mutation.
+    /// Retain the caller's exact native coordinate until admission succeeds.
+    /// Both coordinate and height-level callers use the same Unlimbo body.
+    pub(crate) fn reveal_constructed_object_at_coord_with_overlay_context(
+        &mut self,
+        stable_id: u64,
+        coord: crate::sim::components::DriveCoord,
+        facing: u8,
+        placement: PlacementEvidence,
+        rules: &RuleSet,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Option<u64> {
+        let mut position = self.substrate.entities.get(stable_id)?.position;
+        crate::sim::movement::ground_pose::put_location(&mut position, coord);
+        position.z = (coord.z / crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS) as u8;
+        self.reveal_constructed_object(
+            stable_id,
+            position,
+            facing,
+            placement,
+            rules,
+            overlay_registry,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn reveal_constructed_object_at_height_with_unit_context(
+    pub(crate) fn reveal_constructed_object_at_height_with_overlay_context(
         &mut self,
         stable_id: u64,
         rx: u16,
@@ -932,22 +1002,46 @@ impl Simulation {
         placement: PlacementEvidence,
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-        producer_id: u64,
     ) -> Option<u64> {
         let requested_position = RevealPosition {
+            exact_z_leptons: None,
             rx,
             ry,
             z,
-            sub_x: self.substrate.entities.get(stable_id)?.position.sub_x,
-            sub_y: self.substrate.entities.get(stable_id)?.position.sub_y,
+            // This compatibility API supplies a cell-center coordinate. Held
+            // constructor Location is zero; exact-coordinate callers use the
+            // coordinate entry point above instead of borrowing that pose.
+            sub_x: SimFixed::from_num(128),
+            sub_y: SimFixed::from_num(128),
         };
+        self.reveal_constructed_object(
+            stable_id,
+            requested_position,
+            facing,
+            placement,
+            rules,
+            overlay_registry,
+        )
+    }
+
+    /// Object5F4F1B: one shared class query, exact zero only, unless A8E7AC
+    /// skips the query. Rejection precedes facing, subcell or pose writes.
+    fn reveal_constructed_object(
+        &mut self,
+        stable_id: u64,
+        requested_position: RevealPosition,
+        facing: u8,
+        placement: PlacementEvidence,
+        rules: &RuleSet,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Option<u64> {
+        let RevealPosition { rx, ry, .. } = requested_position;
         let placement = if placement == PlacementEvidence::EvaluateMark {
             self.constructor_unlimbo_placement(
                 stable_id,
                 requested_position,
                 rules,
                 overlay_registry,
-                producer_id,
             )
         } else {
             placement
@@ -978,22 +1072,24 @@ impl Simulation {
                 entity.position.sub_x = offsets.0;
                 entity.position.sub_y = offsets.1;
             }
-            (entity.position.sub_x, entity.position.sub_y)
+            if is_infantry {
+                (entity.position.sub_x, entity.position.sub_y)
+            } else {
+                (requested_position.sub_x, requested_position.sub_y)
+            }
         };
         let outcome = self.try_reveal_entity_with_context(
             stable_id,
             RevealRequest {
                 position: RevealPosition {
-                    rx,
-                    ry,
-                    z,
                     sub_x,
                     sub_y,
+                    ..requested_position
                 },
                 placement,
                 logic_eligible: true,
             },
-            super::lifecycle::UninitContext::with_rules(rules),
+            super::lifecycle::UninitContext::new(Some(rules), overlay_registry),
         );
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
             return None;
@@ -1002,7 +1098,17 @@ impl Simulation {
         // once the Reveal succeeded (`+0x388` Set_Current, `0x006F6DAA`).
         let frame = self.session.binary_frame;
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.body_facing.snap(u16::from(facing) << 8, frame);
+            let facing = u16::from(facing) << 8;
+            entity.body_facing.snap(facing, frame);
+            // Unit737BBE..737BD2 / Aircraft414403..414417 snap Secondary
+            // to the same Unlimbo direction through FacingClass4C9300.
+            if matches!(
+                entity.category,
+                EntityCategory::Unit | EntityCategory::Aircraft
+            ) && let Some(barrel) = entity.barrel_facing.as_mut()
+            {
+                barrel.snap(facing, frame);
+            }
         }
         self.allocate_building_light(stable_id, rules);
         self.initialize_cloak_after_unlimbo(stable_id, rules);
@@ -1014,6 +1120,17 @@ impl Simulation {
     /// its owner. Placement is a separate, result-bearing Reveal transaction.
     fn store_spawned_limbo(&mut self, mut ge: GameEntity) -> u64 {
         let stable_id = ge.stable_id();
+
+        // Object5F3993..5F39C0 copies AC1380's default CoordStruct, whose
+        // original CRT initializer5F38A0 writes (0,0,0). Every held Techno
+        // constructor reaches it. Immediate placement saves its caller input
+        // before this store; later placement or launch supplies its own pose.
+        // Evidence: anytown_damage/unit_unlimbo.{json,meta.json,md}.
+        crate::sim::movement::ground_pose::put_location(
+            &mut ge.position,
+            crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 },
+        );
+        ge.position.z = 0;
 
         // This boundary receives newly constructed objects. Make those constructor
         // facts explicit so storage can never imply cell or logic presence.
@@ -1095,13 +1212,7 @@ impl Simulation {
     /// identity in limbo for its caller to retain or discard.
     #[cfg(test)]
     pub(crate) fn unlimbo(&mut self, ge: GameEntity) -> (u64, RevealOutcome) {
-        let position = RevealPosition {
-            rx: ge.position.rx,
-            ry: ge.position.ry,
-            z: ge.position.z,
-            sub_x: ge.position.sub_x,
-            sub_y: ge.position.sub_y,
-        };
+        let position = ge.position;
         let stable_id = self.store_spawned_limbo(ge);
         let outcome = self.try_reveal_entity(
             stable_id,
@@ -1133,13 +1244,7 @@ impl Simulation {
         ge: GameEntity,
         rules: Option<&RuleSet>,
     ) -> (u64, RevealPosition) {
-        let position = RevealPosition {
-            rx: ge.position.rx,
-            ry: ge.position.ry,
-            z: ge.position.z,
-            sub_x: ge.position.sub_x,
-            sub_y: ge.position.sub_y,
-        };
+        let position = ge.position;
         let stable_id = self.store_spawned_limbo(ge);
         if let Some(rules) = rules {
             self.commit_constructor_owned_techno_children(stable_id, rules);
@@ -1157,13 +1262,7 @@ impl Simulation {
         scenario_initialization: bool,
     ) -> (u64, RevealOutcome) {
         let placement = rules.map_or(PlacementEvidence::EvaluateMark, |rules| {
-            self.constructor_unlimbo_placement(
-                stable_id,
-                position,
-                rules,
-                overlay_registry,
-                stable_id,
-            )
+            self.constructor_unlimbo_placement(stable_id, position, rules, overlay_registry)
         });
         let outcome = self.try_reveal_entity_with_context(
             stable_id,
@@ -1172,10 +1271,7 @@ impl Simulation {
                 placement,
                 logic_eligible: true,
             },
-            rules.map_or_else(
-                super::lifecycle::UninitContext::default,
-                super::lifecycle::UninitContext::with_rules,
-            ),
+            super::lifecycle::UninitContext::new(rules, overlay_registry),
         );
         if matches!(outcome, RevealOutcome::Revealed { .. }) {
             if let Some(rules) = rules {
@@ -1206,45 +1302,44 @@ impl Simulation {
         (stable_id, outcome)
     }
 
-    /// Collapse the concrete Techno `+0x1AC` return code at the same boundary
-    /// as `ObjectClass::Unlimbo @ 0x005F4F1B..0x005F4F49`: exact zero admits,
-    /// every nonzero code rejects before any object mutation. UnitClass owns
-    /// the first active constructor specialization promoted here; the shared
-    /// evaluator is the same `(cell,-1,-1,0,0)` body used by production.
+    /// Object5F4F1B..5F4F49 shares movement/search's native class receiver.
+    /// Foot4D9C60 query-local plane outputs do not write OnBridge or Location.
     fn constructor_unlimbo_placement(
         &self,
         stable_id: u64,
         position: RevealPosition,
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-        producer_id: u64,
     ) -> PlacementEvidence {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return PlacementEvidence::RejectedEarly;
         };
-        // Active scenario construction installs its CellClass grid before any
-        // Techno can reach Unlimbo. Terrain-less diagnostic/unit-test harnesses
-        // remain on the generic Mark seam because no native UnitClass cell input
-        // exists there to evaluate.
+        // Other classes' +1AC constructor receivers are separate migrations.
+        // Terrain-less diagnostics retain their existing generic Mark seam.
         if entity.category != EntityCategory::Unit || self.resolved_terrain.is_none() {
             return PlacementEvidence::EvaluateMark;
         }
-        let owner = self.interner.resolve(entity.owner()).to_string();
-        let type_id = self.interner.resolve(entity.type_ref()).to_string();
-        let admission = crate::sim::production::produced_unit_unlimbo_entry_at_resolved_cell(
-            self,
-            rules,
-            &owner,
-            &type_id,
+        if self.object_placement_scope_active() {
+            return PlacementEvidence::UnitEntryAdmitted;
+        }
+        let terrain = self.resolved_terrain.as_ref().unwrap();
+        let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+        let [x, y] = crate::sim::movement::ground_pose::position_world_xy(&position);
+        let cell = cells.lookup_world(x, y);
+        match self.foot_can_enter(
             stable_id,
-            producer_id,
-            (position.rx, position.ry),
+            cell,
+            crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+            rules,
             overlay_registry,
-        );
-        let Some(layer) = admission.exact_zero_layer() else {
-            return PlacementEvidence::RejectedEarly;
-        };
-        PlacementEvidence::UnitCanEnterExactZero { layer }
+        ) {
+            Ok(0) => PlacementEvidence::UnitEntryAdmitted,
+            Ok(_) => PlacementEvidence::RejectedEarly,
+            Err(cause) => {
+                log::debug!("Unit {stable_id} Unlimbo admission: {cause}");
+                PlacementEvidence::RejectedEarly
+            }
+        }
     }
 
     /// Materialize constructor-owned Technos in native manager order. The

@@ -512,23 +512,6 @@ fn seed_bridge_scenario(sim: &mut Simulation, rules: &RuleSet) {
             "fixture actor/route cell ({rx},{ry}) must be in the native playfield"
         );
     }
-    // Exercise the complete same admission used by normal Unit construction:
-    // configured bounds/terrain, authored speed row, occupants and raw masks.
-    assert!(
-        crate::sim::production::produced_unit_unlimbo_entry_at_resolved_cell(
-            sim,
-            rules,
-            "Americans",
-            "MTNK",
-            TANK_ID,
-            0,
-            (APPROACH_A_X, SPAN_Y),
-            None,
-        )
-        .exact_zero_layer()
-        .is_some(),
-        "fixture must satisfy normal Unit admission"
-    );
     sim.spawn_from_map(
         &[
             unit(

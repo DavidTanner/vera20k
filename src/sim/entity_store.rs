@@ -687,7 +687,7 @@ mod tests {
         store.insert(e2);
 
         // Read target position first (immutable borrow ends).
-        let target_pos = store.get(2).map(|e| e.position.clone());
+        let target_pos = store.get(2).map(|e| e.position);
         // Then mutate attacker (no conflict).
         if let (Some(attacker), Some(pos)) = (store.get_mut(1), target_pos) {
             // In real code: compute firing direction, apply cooldown, etc.

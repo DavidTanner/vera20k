@@ -820,19 +820,16 @@ fn war_factory_exit_contact_held_while_on_footprint() {
     // see production_tests.rs spawn_structure), so (20,20) is the cell that has a
     // Structure occupant under it. (Real production occupies the full footprint via
     // entity_occupancy_cells; the test helper is the single-cell simplification.)
-    let produced = sim
-        .spawn_object("MTNK", "Americans", 20, 20, 64, &rules)
-        .expect("produced tank should spawn");
+    // Native land ExitObject brackets the placement, including admission.
+    let produced = sim.with_object_placement_scope(|sim| {
+        sim.spawn_object("MTNK", "Americans", 20, 20, 64, &rules)
+            .expect("produced tank should spawn in factory scope")
+    });
     assert!(mark_war_factory_spawn_contact(
         &mut sim, &rules, 10, produced
     ));
 
-    tick_war_factory_exit_contacts(
-        &mut sim.substrate.entities,
-        &sim.substrate.occupancy,
-        &rules,
-        &sim.interner,
-    );
+    tick_war_factory_exit_contacts(&mut sim, &rules);
 
     let mover = sim.substrate.entities.get(produced).unwrap();
     assert!(
@@ -855,12 +852,19 @@ fn war_factory_exit_contact_breaks_when_unit_clears_footprint() {
         &mut sim, &rules, 10, produced
     ));
 
-    tick_war_factory_exit_contacts(
-        &mut sim.substrate.entities,
-        &sim.substrate.occupancy,
-        &rules,
-        &sim.interner,
+    let producer_mission = sim.substrate.entities.get(10).unwrap().mission.clone();
+    assert!(
+        sim.substrate
+            .entities
+            .get(10)
+            .unwrap()
+            .has_live_contact_with(produced)
     );
+    assert_eq!(
+        sim.substrate.entities.get(10).unwrap().dock_entered_with,
+        Some(produced)
+    );
+    tick_war_factory_exit_contacts(&mut sim, &rules);
 
     let mover = sim.substrate.entities.get(produced).unwrap();
     assert!(
@@ -871,6 +875,10 @@ fn war_factory_exit_contact_breaks_when_unit_clears_footprint() {
         mover.dock_entered_with, None,
         "the dock-entered flag (+0x418) must clear with the contact"
     );
+    let producer = sim.substrate.entities.get(10).unwrap();
+    assert!(!producer.has_live_contact_with(produced));
+    assert_eq!(producer.dock_entered_with, None);
+    assert_eq!(producer.mission, producer_mission);
 }
 
 #[test]
@@ -889,12 +897,7 @@ fn war_factory_exit_break_ignores_non_weapons_factory_producer() {
     m.mark_live_contact_with(10);
     m.dock_entered_with = Some(10);
 
-    tick_war_factory_exit_contacts(
-        &mut sim.substrate.entities,
-        &sim.substrate.occupancy,
-        &rules,
-        &sim.interner,
-    );
+    tick_war_factory_exit_contacts(&mut sim, &rules);
 
     let m = sim.substrate.entities.get(mover).unwrap();
     assert!(

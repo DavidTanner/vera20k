@@ -783,6 +783,13 @@ fn techno_constructor_live_overlay_context_admits_ore_and_structural_bridge() {
     let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(10, 10);
     for cell in [ore_authored, ore_runtime, bridge_cell] {
         overlays.place_overlay(cell.0, cell.1, 0, 0);
+        sim.resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(cell.0, cell.1)
+            .unwrap()
+            .bridge_facts
+            .overlay_id = Some(0);
     }
     sim.overlay_grid = Some(overlays);
 
@@ -790,7 +797,10 @@ fn techno_constructor_live_overlay_context_admits_ore_and_structural_bridge() {
         sim.spawn_from_map_with_resolved_and_overlay_registry(
             &[
                 map_entity("MTNK", EntityCategory::Unit, ore_authored),
-                map_entity("MTNK", EntityCategory::Unit, bridge_cell),
+                MapEntity {
+                    high: true,
+                    ..map_entity("MTNK", EntityCategory::Unit, bridge_cell)
+                },
             ],
             Some(&rules),
             None,
@@ -851,6 +861,15 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
     let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(10, 10);
     overlays.place_overlay(wall_cell.0, wall_cell.1, 1, 0);
     sim.overlay_grid = Some(overlays);
+    // Unit73F0A0 reads the native Cell's overlay identity. OverlayGrid's
+    // presentation record alone does not supply that class-admission input.
+    sim.resolved_terrain
+        .as_mut()
+        .unwrap()
+        .cell_mut(wall_cell.0, wall_cell.1)
+        .unwrap()
+        .bridge_facts
+        .overlay_id = Some(1);
 
     let parent_id = sim
         .construct_object_limbo_at_height("CARRIER", "Americans", 2, 2, 9, 0, &rules)
@@ -869,7 +888,7 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
         .collect::<Vec<_>>();
     assert_eq!(child_ids.len(), 3);
     assert!(
-        sim.reveal_constructed_object_at_height_with_unit_context(
+        sim.reveal_constructed_object_at_height_with_overlay_context(
             parent_id,
             wall_cell.0,
             wall_cell.1,
@@ -878,7 +897,6 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
             PlacementEvidence::EvaluateMark,
             &rules,
             Some(&registry),
-            parent_id,
         )
         .is_none()
     );
@@ -889,7 +907,7 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
             rejected.position.ry,
             rejected.position.z
         ),
-        (2, 2, 0)
+        (0, 0, 0)
     );
     assert_eq!(rejected.body_facing.destination(), 9 << 8);
     assert!(rejected.lifecycle.in_limbo && !rejected.lifecycle.cell_marked);
@@ -984,8 +1002,17 @@ fn techno_constructor_routes_preserve_components_and_authored_overrides() {
                             crate::sim::movement::bump_crush::FUNCTIONAL_SUB_CELLS[1]
                         );
                     }
-                    let (x, y) = crate::util::lepton::subcell_lepton_offset(Some(sub_cell));
-                    assert_eq!((entity.position.sub_x, entity.position.sub_y), (x, y));
+                    if route == 2 {
+                        // Held Object constructor retains Location(0,0,0).
+                        // The subcell descriptor is not a placement write.
+                        let coord = crate::sim::movement::ground_pose::position_world_coord(
+                            &entity.position,
+                        );
+                        assert_eq!((coord.x, coord.y, coord.z), (0, 0, 0));
+                    } else {
+                        let (x, y) = crate::util::lepton::subcell_lepton_offset(Some(sub_cell));
+                        assert_eq!((entity.position.sub_x, entity.position.sub_y), (x, y));
+                    }
                 }
                 "SHIP" => {
                     assert!(entity.barrel_facing.is_some());

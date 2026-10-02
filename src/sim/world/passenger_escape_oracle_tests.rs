@@ -36,7 +36,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::SpeedCostProfile;
 use crate::sim::combat::TargetKind;
 use crate::sim::combat::combat_weapon::WeaponOverride;
-use crate::sim::components::NavTargetRef;
+use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::crew_survival::DyingTransport;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::RawCellKey;
@@ -195,10 +195,17 @@ fn scene(input: &Value) -> Scene {
     let facing = input["facing"].as_u64().unwrap_or(0xC000) as u16;
     {
         let unit = sim.substrate.entities.get_mut(transport).unwrap();
-        unit.position.sub_x = SimFixed::from_num(sub.0);
-        unit.position.sub_y = SimFixed::from_num(sub.1);
+        // make_fixture supplies the transport's full Object+9C XYZ after
+        // construction; the held constructor itself leaves Location zero.
+        crate::sim::movement::ground_pose::put_location(
+            &mut unit.position,
+            DriveCoord {
+                x: world_xy[0],
+                y: world_xy[1],
+                z: floor + if on_bridge { 416 } else { 0 } + height,
+            },
+        );
         unit.position.z = if on_bridge { 4 } else { 0 };
-        unit.position.exact_z_leptons = Some(floor + if on_bridge { 416 } else { 0 } + height);
         unit.on_bridge = on_bridge;
         // The Unit's FacingClass (`+0x388`), settled on the row's facing.
         let mut body = crate::sim::movement::FacingClass::new(facing, 0);
@@ -285,6 +292,7 @@ fn scene(input: &Value) -> Scene {
             id,
             RevealRequest {
                 position: RevealPosition {
+                    exact_z_leptons: None,
                     rx: x,
                     ry: y,
                     z: 0,

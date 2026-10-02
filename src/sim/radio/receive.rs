@@ -158,11 +158,32 @@ fn building_receive(
         RadioMessage::CanEnter if is_repair_depot(sim, building, rules) => {
             depot_can_load(sim, building, sender, rules)
         }
-        // 8, 0xD and any other 0xF (0x0043C2F8; the refinery scan
-        // evaluates CAN_LOAD directly) have no represented bus sender.
-        RadioMessage::RequestClearance | RadioMessage::AnimStop | RadioMessage::CanEnter => {
-            RadioResponse::None
+        RadioMessage::RequestClearance => {
+            let Some(object) = rules.and_then(|rules| {
+                sim.substrate
+                    .entities
+                    .get(building)
+                    .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+            }) else {
+                return RadioResponse::None;
+            };
+            // Building43CD2B: Helipad/UnitRepair have a separate distance
+            // and service branch. Its senders are not migrated here.
+            if object.helipad || object.unit_repair {
+                return RadioResponse::None;
+            }
+            let weapons_factory = object.weapons_factory;
+            // 43CDDD delegates to Techno BEFORE the class reply43CE18.
+            let _ = techno_receive(sim, building, sender, msg, payload, rules);
+            if weapons_factory {
+                RadioResponse::Queued
+            } else {
+                RadioResponse::Roger
+            }
         }
+        // 0xD and any other 0xF (0x0043C2F8; the refinery scan
+        // evaluates CAN_LOAD directly) have no represented bus sender.
+        RadioMessage::AnimStop | RadioMessage::CanEnter => RadioResponse::None,
         _ => techno_receive(sim, building, sender, msg, payload, rules),
     }
 }
@@ -815,9 +836,37 @@ fn techno_receive(
         }
         RadioMessage::Tether => techno_tether(sim, techno, sender, rules),
         RadioMessage::Untether => techno_untether(sim, techno, sender, rules),
-        // 8, 0x1A..0x1C, 0x1E and 0x1F have no represented sender.
-        RadioMessage::RequestClearance
-        | RadioMessage::SecondaryLockSet
+        // Techno6F4C29: the RECEIVER sends0x19 then0x03 to the original sender.
+        // Radio65A970/Techno's existing nested receivers own both endpoints.
+        // Source: anytown_damage/unit_unlimbo factory exit radio controls.
+        RadioMessage::RequestClearance => {
+            if let Some(from) = sender {
+                transmit(
+                    sim,
+                    techno,
+                    from,
+                    RadioMessage::Untether,
+                    RadioPayload::default(),
+                    rules,
+                );
+                // Original6F4C47..6F4C4D returns the nested Break reply.
+                transmit(
+                    sim,
+                    techno,
+                    from,
+                    RadioMessage::Break,
+                    RadioPayload::default(),
+                    rules,
+                )
+            } else {
+                // Radio65A970 resolves a null explicit target through slot0
+                // on EACH send. Re-read after the nested Untether callback.
+                crate::sim::radio::transmit_to_contact(sim, techno, RadioMessage::Untether, rules);
+                crate::sim::radio::transmit_to_contact(sim, techno, RadioMessage::Break, rules)
+            }
+        }
+        // 0x1A..0x1C, 0x1E and 0x1F have no represented sender.
+        RadioMessage::SecondaryLockSet
         | RadioMessage::SecondaryLockClear
         | RadioMessage::RepairTick
         | RadioMessage::DeploySetNav

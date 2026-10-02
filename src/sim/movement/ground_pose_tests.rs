@@ -1165,6 +1165,7 @@ fn a_building_on_a_ramp_is_targeted_at_its_floor() {
             1,
             crate::sim::world::RevealRequest {
                 position: crate::sim::world::RevealPosition {
+                    exact_z_leptons: None,
                     rx: 2,
                     ry: 2,
                     z: 5,

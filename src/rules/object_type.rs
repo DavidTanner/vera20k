@@ -949,6 +949,12 @@ pub struct ObjectType {
     /// The Jumpjet cruise reads it on a Unit owner at arrival
     /// (`State3_Translate 0x0054C1FE`).
     pub is_simple_deployer: bool,
+    /// UnitType+E18/E19, original747862..747896: the Unit section's
+    /// ReadBool SmallVisceroid/LargeVisceroid, distinct from General's type
+    /// references with the same keys. Unit Unlimbo737BF5 reads these bytes.
+    /// Constructor defaults and executed reads: anytown_damage/unit_unlimbo.
+    pub(crate) small_visceroid: bool,
+    pub(crate) large_visceroid: bool,
     /// `DeployToLand=` (`TechnoTypeClass+0x6AD`, `TechnoTypeClass::ReadINI`
     /// `0x00714809..0x00714816`, key string `0x00843A90`). Stock sets it on the
     /// Siege Chopper (`[SCHP]`, `[SCHD]`). A Jumpjet Unit with it keeps full
@@ -2322,6 +2328,10 @@ impl ObjectType {
             hover_attack: section.read_bool("HoverAttack", false),
             balloon_hover: section.read_bool("BalloonHover", false),
             is_simple_deployer: section.read_bool("IsSimpleDeployer", false),
+            small_visceroid: category == ObjectCategory::Vehicle
+                && section.read_bool("SmallVisceroid", false),
+            large_visceroid: category == ObjectCategory::Vehicle
+                && section.read_bool("LargeVisceroid", false),
             deploy_to_land: section.read_bool("DeployToLand", false),
             airport_bound: section.read_bool("AirportBound", false),
             fighter: section.read_bool("Fighter", false),

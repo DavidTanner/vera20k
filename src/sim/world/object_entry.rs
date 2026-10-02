@@ -899,51 +899,6 @@ fn head_on(mover: &GameEntity, blocker: &GameEntity, frame: u32) -> bool {
         && crate::util::native_x87::distance_3d_leptons([a.x, a.y, a.z], [b.x, b.y, b.z]) <= 511
 }
 
-/// ILocomotion+A4 is a chain-cursor predicate, not IsMoving. Original Drive
-///4B4B00 and Ship6A4130; Walk/Hover share false leaf4B6640.
-fn chain_cursor(e: &GameEntity) -> bool {
-    use crate::sim::movement::drive_track::{raw_track_meta, turn_track_at};
-    let progress = match e.locomotor.as_ref().map(|l| l.kind) {
-        Some(LocomotorKind::Drive) => e.drive_locomotion.as_ref().map(|s| s.track),
-        Some(LocomotorKind::Ship) => e.ship_locomotion.as_ref().map(|s| s.track),
-        _ => return false,
-    };
-    let Some(progress) = progress else {
-        return false;
-    };
-    let Some(&direction) = e
-        .navigation
-        .path_replay
-        .remaining_directions()
-        .first()
-        .filter(|d| **d < 8)
-    else {
-        return false;
-    };
-    let Some(turn) = usize::try_from(progress.turn_index)
-        .ok()
-        .and_then(turn_track_at)
-    else {
-        return false;
-    };
-    let target = crate::util::direction_tables::dir_from_facing8(turn.target_facing);
-    if direction == target || progress.cursor == 0 {
-        return false;
-    }
-    let raw = if progress.reversed {
-        turn.short_track
-    } else {
-        turn.normal_track
-    };
-    if raw_track_meta(raw).is_none_or(|r| i32::from(r.chain_index) != progress.cursor) {
-        return false;
-    }
-    turn_track_at(usize::from(target) * 8 + usize::from(direction))
-        .filter(|t| t.normal_track != 0)
-        .and_then(|t| raw_track_meta(t.normal_track))
-        .is_some_and(|r| r.entry_index != 0)
-}
-
 impl Simulation {
     /// Actual Infantry+1AC. The returned quotient preserves the distinct
     /// consumers in Foot4D3920, Infantry51DAF0 and the repair receiver487A10.
@@ -1396,10 +1351,10 @@ fn classify_foot_entry<'a>(
             MovementLayer::Ground
         }
     };
-    //Unit73F34C / Infantry51C13A: mode0 alone checks the retained Cell.
+    //Unit73F34C / Infantry51C13A read A8E7AC, independent of GameMode.
     //Unit still performs the read/+320 when3D5 is false; Infantry skips it.
     //578540 consumes the pointer directly, without578460's extra lookup.
-    let boundary_refused = !live.sim.session.game_mode_nonzero
+    let boundary_refused = !live.sim.object_placement_scope_active()
         && (!infantry || e.in_playfield)
         && !crate::sim::cell_rect::retained_cell_is_in_playfield(
             cell,
@@ -1670,6 +1625,9 @@ fn classify_foot_entry<'a>(
         {
             return Ok(0);
         }
+        // Infantry51C58D reads A8E7AC after the earlier Building/target
+        // arms. A raised scope takes the allied occupant arm here only.
+        let allied = allied || (infantry && live.sim.object_placement_scope_active());
         if !allied {
             if b.cloak.as_ref().is_some_and(|s| s.state == 2) {
                 entry_result = entry_result.max(1);
@@ -1717,7 +1675,7 @@ fn classify_foot_entry<'a>(
                     return Ok(7);
                 }
                 if (b.foot_occupation_enabled && b.category != EntityCategory::Infantry)
-                    || chain_cursor(b)
+                    || crate::sim::movement::drive_track::occupant_slot_a4_answers_true(b)
                 {
                     entry_result = entry_result.max(2);
                 }
@@ -1730,7 +1688,9 @@ fn classify_foot_entry<'a>(
                 EntityCategory::Unit => {
                     if !moving(b) && b.navigation.nav_com.is_none() {
                         entry_result = entry_result.max(6);
-                    } else if b.foot_occupation_enabled || chain_cursor(b) {
+                    } else if b.foot_occupation_enabled
+                        || crate::sim::movement::drive_track::occupant_slot_a4_answers_true(b)
+                    {
                         entry_result = entry_result.max(2);
                     }
                 }

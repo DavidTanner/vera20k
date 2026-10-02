@@ -100,6 +100,22 @@ pub(crate) fn dock_coordinate(
     })
 }
 
+/// Building+B4's configured ExitCoord addition,44F678..44F6AA. This
+/// retains physical producer XYZ; neither foundation center nor cell rounding
+/// participates. The absent/empty-coordinate fallback is a separate branch
+/// outside this configured-coordinate entry point.
+pub(crate) fn configured_exit_coordinate(
+    current: DriveCoord,
+    object: &ObjectType,
+) -> Option<DriveCoord> {
+    let (x, y, z) = object.exit_coord?;
+    Some(DriveCoord {
+        x: current.x.wrapping_add(x),
+        y: current.y.wrapping_add(y),
+        z: current.z.wrapping_add(z),
+    })
+}
+
 #[cfg(test)]
 #[path = "building_coordinate_tests.rs"]
 mod tests;

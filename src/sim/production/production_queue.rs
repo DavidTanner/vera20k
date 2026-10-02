@@ -360,33 +360,80 @@ pub(super) fn deliver_produced_object(
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> Option<u64> {
     let (rx, ry) = selection.cell;
-    let spawned = match selection.delivery {
-        ProductionDeliveryKind::NavalUnit => unlimbo_held_naval_unit(
-            sim,
-            rules,
-            sim.interner.resolve(owner_id).to_string().as_str(),
-            type_name,
-            stable_id,
-            selection.producer_id,
-            (rx, ry),
-            overlay_registry,
-        ),
-        ProductionDeliveryKind::Standard => {
-            let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
-            sim.reveal_constructed_object_at_height_with_unit_context(
+    // ExitObject443C81 writes this byte before class dispatch, even if a later
+    // Unlimbo fails. It is the existing Techno+3D5 owner, not a new flag.
+    let is_unit = sim.substrate.entities.get_mut(stable_id).map(|product| {
+        product.in_playfield = true;
+        product.category == crate::map::entities::EntityCategory::Unit
+    })?;
+    let land_factory = is_unit
+        && sim
+            .substrate
+            .entities
+            .get(selection.producer_id)
+            .is_some_and(|producer| {
+                super::production_spawn::exact_land_vehicle_exit_factory(
+                    rules,
+                    sim.interner.resolve(producer.type_ref()),
+                ) && producer.mission.effective().known()
+                    != Some(crate::sim::mission::MissionType::Unload)
+            });
+    let spawned = if land_factory {
+        let producer = sim.substrate.entities.get(selection.producer_id)?;
+        let coord = crate::sim::movement::configured_building_exit_coordinate(
+            crate::sim::movement::ground_pose::position_world_coord(&producer.position),
+            rules.object(sim.interner.resolve(producer.type_ref()))?,
+        )?;
+        sim.with_object_placement_scope(|sim| {
+            let spawned = sim.reveal_constructed_object_at_coord_with_overlay_context(
                 stable_id,
-                rx,
-                ry,
+                coord,
                 64,
-                z,
                 crate::sim::world::PlacementEvidence::EvaluateMark,
                 rules,
                 overlay_registry,
-                selection.producer_id,
-            )
-        }
+            )?;
+            // The native successful suffix44459F..4445C9 re-marks around the
+            // second coordinate write. Use the shared Mark/SetLocation owners.
+            let context = crate::sim::world::UninitContext::new(Some(rules), overlay_registry);
+            sim.unmark_entity_remove(spawned, context);
+            crate::sim::movement::ground_pose::foot_set_location(
+                &mut sim.substrate.entities,
+                spawned,
+                coord,
+                Some(rules),
+                &sim.interner,
+            );
+            sim.mark_entity_put(spawned, context);
+            mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
+            // RESIDUAL:4445F0 queues producer Unload16, whose whole factory
+            // animation/ForceTrack/alternate-producer lifecycle is unported.
+            // Retain the existing delivery scheduling adapter until that
+            // separate mechanism owns its exit/cleanup and timer/RNG cadence.
+            Some(spawned)
+        })
+    } else {
+        let spawned = match selection.delivery {
+            ProductionDeliveryKind::NavalUnit => {
+                unlimbo_held_naval_unit(sim, rules, stable_id, (rx, ry), overlay_registry)
+            }
+            ProductionDeliveryKind::Standard => {
+                let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
+                sim.reveal_constructed_object_at_height_with_overlay_context(
+                    stable_id,
+                    rx,
+                    ry,
+                    64,
+                    z,
+                    crate::sim::world::PlacementEvidence::EvaluateMark,
+                    rules,
+                    overlay_registry,
+                )
+            }
+        }?;
+        mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
+        Some(spawned)
     }?;
-    mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
     // Aircraft spawned on helipad: reserve dock slot then set
     // DockedIdle carrying the assigned pad index.
     if let Some(af_id) = airfield {

@@ -82,7 +82,6 @@ pub(in crate::sim) use self::factory_lifecycle::{
     refresh_factory_rates_for_house, revalidate_and_step_factories,
 };
 pub(in crate::sim) use self::production_queue::credits_entry_for_owner;
-pub(in crate::sim) use self::production_spawn::produced_unit_unlimbo_entry_at_resolved_cell;
 pub(crate) use self::wall_placement::stamp_wall_with_autofill;
 
 #[cfg(test)]

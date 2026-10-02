@@ -176,7 +176,7 @@ fn production_chain_code6_scatters_once_without_adopting_the_candidate() {
     // map Size.
     sim.playfield_bounds = Some(crate::sim::arena_fixture::OPEN_PLAYFIELD);
     sim.playfield_size_height = Some(20);
-    let before = sim.substrate.entities.get(2).unwrap().position.clone();
+    let before = sim.substrate.entities.get(2).unwrap().position;
     let rng = sim.scenario_rng.logical_state();
     sim.run_track_points(invocation, 8, Some(&rules), None);
     let blocker = sim.substrate.entities.get(2).unwrap();
@@ -289,7 +289,7 @@ fn production_chain_clear_and_code2_share_admission_and_never_scatter_or_repath(
 #[test]
 fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continuation() {
     let (mut sim, rules, invocation) = chain_fixture(true);
-    let position = sim.substrate.entities.get(MOVER).unwrap().position.clone();
+    let position = sim.substrate.entities.get(MOVER).unwrap().position;
     sim.substrate
         .entities
         .get_mut(MOVER)
@@ -304,7 +304,7 @@ fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continu
         );
         victim.is_voxel = false;
         victim.sub_cell = Some(0);
-        victim.position = position.clone();
+        victim.position = position;
         victim.crushable = true;
         victim.lifecycle.object_alive = true;
         victim.lifecycle.in_limbo = false;

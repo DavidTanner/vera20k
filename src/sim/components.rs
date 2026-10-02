@@ -22,7 +22,7 @@ use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 /// RA2 uses leptons as its spatial unit (256 leptons = 1 cell). We store the
 /// cell coordinate (rx, ry) plus a sub-cell lepton offset (sub_x, sub_y) to
 /// get sub-cell precision without overflowing SimFixed on large maps.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Position {
     /// Isometric cell X coordinate.
     pub rx: u16,

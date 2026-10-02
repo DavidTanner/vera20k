@@ -85,8 +85,8 @@ impl Simulation {
     /// (`TagClass @ 0x006E53A0`); VERA attaches no Tags to objects. Trigger: a
     /// tagged campaign aircraft crashes while alive (AirportBound with no
     /// airfield left). Effect: the map's trigger never hears it. Frequency:
-    /// campaign maps only. `IKnowWhatImDoing` is raised only around building
-    /// placement scopes that never reach a crash, so VERA reads it as zero.
+    /// campaign maps only. The shared A8E7AC caller scope also covers native
+    /// runtime placement/destruction; a raised scope suppresses spin draws.
     pub(crate) fn foot_crash(&mut self, id: u64, attacker: Option<u64>, rules: &RuleSet) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -123,7 +123,7 @@ impl Simulation {
         );
         self.techno_death_stun(id, UninitContext::with_rules(rules));
         self.kill_passengers(id, attacker, rules);
-        if category != EntityCategory::Infantry {
+        if category != EntityCategory::Infantry && !self.object_placement_scope_active() {
             let sideways = self.scenario_rng.next_range_i32_inclusive(0, 0x7FFF_FFFE);
             let sign = self.scenario_rng.next_range_i32_inclusive(0, 1);
             let forwards = self.scenario_rng.next_range_i32_inclusive(0, 0x7FFF_FFFE);

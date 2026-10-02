@@ -25,6 +25,8 @@ mod crash;
 #[cfg(test)]
 pub(crate) mod entry_test_fixture;
 mod object_entry;
+#[cfg(test)]
+mod unit_unlimbo_tests;
 mod sinking;
 pub(crate) use sinking::SinkingState;
 pub mod edge_cell;
@@ -946,6 +948,11 @@ pub struct Simulation {
     /// from the app-layer descriptor; serialized + hashed except for that
     /// diagnostic accumulator. See `sim::scenario_session`.
     pub session: ScenarioSession,
+    /// Native A8E7AC is a synchronous, wrapping placement/destruction scope,
+    /// independent of GameMode. Balanced at frame boundaries; not saved/hash
+    /// state. Only lifecycle's nested scope API mutates it.
+    #[serde(skip, default)]
+    object_placement_scope_depth: u32,
     /// Scenario RNG — gamemd `Scenario->Random` (Scen+0x218). Drives in-object-tick
     /// sim draws: scatter, sub-cell placement, smudge/destruction, particles,
     /// wall/overlay damage, bridge collapse/destruction presentation, ore growth/spread, TIBTRE,
@@ -3038,6 +3045,7 @@ impl Simulation {
             rule_handles: None,
             production: ProductionState::default(),
             session,
+            object_placement_scope_depth: 0,
             scenario_rng: SimRng::new(seed),
             main_rng: SimRng::new(seed),
             mapgen_rng: SimRng::new(0),
@@ -6297,10 +6305,7 @@ impl Simulation {
             // Slice 7d: break each war-factory exit contact whose vehicle has cleared
             // the factory footprint this tick (gamemd's per-cell-process break).
             crate::sim::production::tick_war_factory_exit_contacts(
-                &mut self.substrate.entities,
-                &self.substrate.occupancy,
-                rules,
-                &self.interner,
+                self, rules,
             );
         }
         // Movement-side wall crush (part of the ground-movement stage): a Crusher

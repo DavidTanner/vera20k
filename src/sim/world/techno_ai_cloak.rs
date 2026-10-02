@@ -555,12 +555,7 @@ fn emit_configured_cloak_sound(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     let Some(sound_name) = rules.general.cloak_sound.as_deref() else {
         return;
     };
-    let Some(position) = sim
-        .substrate
-        .entities
-        .get(id)
-        .map(|entity| entity.position.clone())
-    else {
+    let Some(position) = sim.substrate.entities.get(id).map(|entity| entity.position) else {
         return;
     };
     sim.sound_events

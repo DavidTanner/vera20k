@@ -167,7 +167,8 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                 .overlay_id = Some(overlay as u8);
         }
         sim.session.binary_frame = 100;
-        sim.session.game_mode_nonzero = flag("game_mode_nonzero");
+        // The legacy corpus name seeds A8E7AC, not A8B238.
+        sim.session.game_mode_nonzero = flag("actual_game_mode");
         if let Some(bounds) = input["bounds"].as_array() {
             sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
                 base: bounds[0].as_i64().unwrap() as i32,
@@ -444,22 +445,30 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                     .native_cell_identity((x as i16, y as i16))
             }),
         };
-        let live = EntryReadContext {
-            sim: &sim,
-            rules: &rules,
-            registry: Some(&registry),
-        };
         let expected = row["result"].as_u64().unwrap() as u8;
-        let actual = classify_entry(&live, CellObjectMember::Entity(90), cell, args);
-        let repair = repair_projection.then(|| {
-            classify_entry(
-                &live,
-                CellObjectMember::Entity(90),
-                cell,
-                crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
-            )
-            .map(|code| code == 7)
-        });
+        let query = |sim: &mut Simulation| {
+            let live = EntryReadContext {
+                sim,
+                rules: &rules,
+                registry: Some(&registry),
+            };
+            let actual = classify_entry(&live, CellObjectMember::Entity(90), cell, args);
+            let repair = repair_projection.then(|| {
+                classify_entry(
+                    &live,
+                    CellObjectMember::Entity(90),
+                    cell,
+                    crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+                )
+                .map(|code| code == 7)
+            });
+            (actual, repair)
+        };
+        let (actual, repair) = if flag("game_mode_nonzero") {
+            sim.with_object_placement_scope(query)
+        } else {
+            query(&mut sim)
+        };
         if actual != Ok(expected) || repair.is_some_and(|answer| answer != Ok(expected == 7)) {
             mismatches.push(format!("{input}: expected {expected}, actual {actual:?}"));
         }

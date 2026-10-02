@@ -3028,10 +3028,10 @@ fn blocked_active_war_factory_does_not_spawn_from_second_factory() {
         false,
     );
 
-    assert!(
-        spawn.is_none(),
-        "blocked active war factory must not route the completed vehicle through the second factory, got {:?}",
-        spawn
+    assert_eq!(
+        spawn,
+        Some((12, 11)),
+        "native444565 retains the selected producer's coordinate despite PathGrid blockage"
     );
 }
 
@@ -3053,10 +3053,10 @@ fn stock_war_factory_initial_exit_has_no_nearest_cell_fallback() {
         false,
     );
 
-    assert!(
-        spawn.is_none(),
-        "blocked ExitCoord must fail initial war-factory delivery instead of probing neighboring cells, got {:?}",
-        spawn
+    assert_eq!(
+        spawn,
+        Some((12, 11)),
+        "native factory scope bypasses class admission without choosing a nearby coordinate"
     );
 }
 

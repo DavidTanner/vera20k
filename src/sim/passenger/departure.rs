@@ -220,6 +220,7 @@ pub(crate) fn reveal_unloaded_passenger(
         passenger_id,
         RevealRequest {
             position: RevealPosition {
+                exact_z_leptons: None,
                 rx,
                 ry,
                 z,
