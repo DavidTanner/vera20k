@@ -2451,7 +2451,6 @@ mod tests {
 
     #[test]
     fn air_prepass_mask_uses_resolved_ifv_slot_elite_fallback_and_gattling_pair() {
-        use super::super::combat_weapon::WeaponOverride;
         let rules = RuleSet::from_ini(&IniFile::from_str(
             "[VehicleTypes]\n0=FV\n1=GATT\n\
              [FV]\nTurretCount=4\nWeaponCount=3\nWeapon1=GROUND\nWeapon2=AIR\nWeapon3=GROUND\nEliteWeapon3=AIR\n\
@@ -2470,7 +2469,7 @@ mod tests {
             let obj = rules.object(kind).unwrap();
             let mut entity = GameEntity::test_default(1, kind, "Americans", 5, 5);
             entity.set_veterancy_rank(veterancy);
-            entity.weapon_override = Some(WeaponOverride::IfvSlot(slot));
+            entity.set_gunner_selection_for_test(slot, -1);
             assert_eq!(
                 passive_scan_class_bits(&rules, obj, attacker_facts(&entity, obj), None) & 4 != 0,
                 expected,

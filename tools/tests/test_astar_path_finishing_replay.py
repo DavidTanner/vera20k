@@ -313,6 +313,235 @@ class HashCompositionReplayTests(unittest.TestCase):
         with contextlib.chdir(self.root):
             self.cli('--hash-composition-receipt', 'receipt.json')
 
+class GunnerMigrationReplayTests(unittest.TestCase):
+    def setUp(self):
+        actor = {'stable_id': 1, 'health': 125, 'last_fire_frame': -100,
+                 'rearm_timer': {'start_frame': 0, 'duration': 0},
+                 'current_weapon_index': 0, 'weapon_override': None}
+        seed = {'next_frame': 0, 'tick_result': None, 'commands': [],
+                'entities': [actor], 'logic_order': [1],
+                'fire_events_accumulated': [], 'lifecycle_outputs_accumulated': [],
+                'rng': {'scenario': [11, 22], 'main': [33, 44], 'mapgen': [55, 66]},
+                'draws': [{'value': 7, 'callers': 'owner\n at owner.rs:10:2'}],
+                'retained_path_inputs': {'house': 9}}
+        tick = deepcopy(seed)
+        tick.update(next_frame=1, tick_result={'state_hash': 70, 'tick': 1, 'committed': True})
+        tick['entities'][0].update(last_fire_frame=0,
+                                  rearm_timer={'start_frame': 0, 'duration': 52})
+        tick['fire_events_accumulated'].append({'attacker': 1, 'weapon': '105mm'})
+        later = deepcopy(tick)
+        later.update(next_frame=2, tick_result={'state_hash': 71, 'tick': 2, 'committed': True})
+        # A non-FireAt timer writer does not replace the saved charge duration.
+        later['entities'][0]['rearm_timer'] = {'start_frame': 1, 'duration': 0}
+        self.baseline = [seed, tick, later]
+        self.current = deepcopy(self.baseline)
+        for index, row in enumerate(self.current):
+            row['entities'][0].pop('current_weapon_index')
+            row['entities'][0].pop('weapon_override')
+            row['entities'][0].update(current_weapon_number=0, current_turret_index=-1,
+                                      charge_turret_delay=0 if index == 0 else 52)
+            row['draws'][0]['callers'] = 'owner\n at owner.rs:20:4'
+            if index:
+                row['tick_result']['state_hash'] += 10
+
+    def check(self):
+        return replay.compare_gunner_migration(self.baseline, self.current, 'probe')
+
+    def test_explicit_fields_and_last_fired_rearm_history_are_attributed(self):
+        before, after = deepcopy(self.baseline), deepcopy(self.current)
+        result = self.check()
+        self.assertEqual(result['actor_observations'], 3)
+        self.assertEqual(result['legacy_last_shot_slot_counts'], {'0': 3})
+        self.assertEqual(result['charge_turret_delay_counts'], {'0': 1, '52': 2})
+        self.assertEqual(result['fire_rearm_copies'], [
+            {'frame': 0, 'actor': 1, 'weapon': '105mm', 'duration': 52}])
+        self.assertEqual(result['caller_positions_changed'], 3)
+        self.assertEqual(result['changed_tick_hashes'], 2)
+        self.assertEqual(self.baseline, before)
+        self.assertEqual(self.current, after)
+
+    def test_new_owner_fields_are_checked_before_any_projection(self):
+        for field, value in [('current_weapon_number', 1), ('current_turret_index', 0),
+                             ('charge_turret_delay', 51)]:
+            with self.subTest(field=field):
+                original = deepcopy(self.current)
+                self.current[1]['entities'][0][field] = value
+                with self.assertRaises(ValueError):
+                    self.check()
+                self.current = original
+        self.current[0]['entities'][0]['charge_turret_delay'] = 52
+        with self.assertRaisesRegex(ValueError, 'charge_turret_delay'):
+            self.check()
+
+    def test_legacy_slots_and_overrides_cannot_be_blindly_removed(self):
+        for field, value in [('current_weapon_index', 1), ('current_weapon_index', False),
+                             ('weapon_override', 0)]:
+            with self.subTest(field=field, value=value):
+                original = deepcopy(self.baseline)
+                self.baseline[1]['entities'][0][field] = value
+                with self.assertRaises(ValueError):
+                    self.check()
+                self.baseline = original
+
+    def test_retained_delay_does_not_follow_non_fire_rearm_writers(self):
+        self.current[2]['entities'][0]['charge_turret_delay'] = 0
+        with self.assertRaisesRegex(ValueError, 'charge_turret_delay'):
+            self.check()
+
+    def test_positions_health_retained_inputs_rng_and_call_paths_are_not_masked(self):
+        changes = [lambda row: row['entities'][0].update(health=124),
+                   lambda row: row['retained_path_inputs'].update(house=8),
+                   lambda row: row['rng']['main'].__setitem__(1, 45),
+                   lambda row: row['draws'][0].update(value=8),
+                   lambda row: row['draws'][0].update(callers='other\n at owner.rs:20:4'),
+                   lambda row: row['draws'][0].update(callers='owner\n at other.rs:20:4')]
+        for change in changes:
+            with self.subTest(change=change):
+                original = deepcopy(self.current)
+                change(self.current[1])
+                with self.assertRaises(ValueError):
+                    self.check()
+                self.current = original
+
+    def test_unexpected_schema_missing_rows_and_fire_history_reject(self):
+        self.current[1]['entities'][0]['new_unexplained_field'] = 0
+        with self.assertRaisesRegex(ValueError, 'schema migration'):
+            self.check()
+        self.current[1]['entities'][0].pop('new_unexplained_field')
+        self.baseline[2]['fire_events_accumulated'] = []
+        with self.assertRaisesRegex(ValueError, 'FireEvent history'):
+            self.check()
+        self.current.pop()
+        with self.assertRaisesRegex(ValueError, 'observation coverage'):
+            self.check()
+
+    def test_fire_copy_requires_the_same_frame_as_the_recorded_shot(self):
+        self.baseline[1]['entities'][0]['rearm_timer']['start_frame'] = -1
+        with self.assertRaisesRegex(ValueError, 'rearm start'):
+            self.check()
+
+    def test_cli_selects_only_gunner_migration_and_rejects_other_modes(self):
+        with patch.object(replay, 'check') as old, \
+                patch.object(replay, 'check_gunner_migration', return_value={}) as gunner, \
+                patch('sys.argv', ['replay', '--check', '--gunner-migration-receipt', 'receipt.json']), \
+                contextlib.redirect_stdout(io.StringIO()):
+            replay.main()
+            old.assert_not_called()
+            gunner.assert_called_once_with(Path('receipt.json'))
+        for arguments in [('--hash-composition-receipt', 'other.json'),
+                          ('--main963-receipt', 'other.json'),
+                          ('--current-observations', 'fresh'),
+                          ('--normalize-final-caller-positions',)]:
+            with self.subTest(arguments=arguments), \
+                    patch('sys.argv', ['replay', '--check', '--gunner-migration-receipt',
+                                       'receipt.json', *arguments]), \
+                    contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                replay.main()
+
+
+class GunnerMigrationFinalReceiptTests(unittest.TestCase):
+    digest = staticmethod(HashCompositionReplayTests.digest)
+    encode = staticmethod(HashCompositionReplayTests.encode)
+    retain = HashCompositionReplayTests.retain
+    save_receipt = HashCompositionReplayTests.save_receipt
+    rewrite_json = HashCompositionReplayTests.rewrite_json
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.path = self.root / 'receipt.json'
+        fields = GunnerMigrationReplayTests()
+        fields.setUp()
+        self.receipt = {
+            'schema_version': 1, 'kind': 'rust-gunner-state-migration', 'scope': 'test',
+            'incoming_main': {'head': 'a' * 40, 'pins': {f: 71 for f in replay.GUNNER_MIGRATION_TESTS}},
+            'runs': {}, 'inputs': [], 'comparisons': [], 'limits': [],
+            'normalization': replay.GUNNER_MIGRATION_NORMALIZATION,
+        }
+        suite = b'test result: ok. 9494 passed; 0 failed; 227 ignored; finished in 1s\n'
+        self.retain('suite.log', suite)
+        self.retain('base.patch', b'diff --git a/docs/research/ghidra-workflow.md b/docs/research/ghidra-workflow.md\n')
+        saved, final_data = {}, {}
+        for mode, observations, exit_code in [('baseline', fields.baseline, 0),
+                                               ('current', fields.current, 101),
+                                               ('final', fields.current, 0)]:
+            execution = {'command': ['/test', '--exact', *replay.GUNNER_MIGRATION_TESTS.values(),
+                                     '--nocapture', '--test-threads=1'],
+                         'cwd': '/checkout', 'exit_code': exit_code, 'seconds': 0.1,
+                         'binary_sha256': self.digest(mode.encode()), 'binary_unchanged': True,
+                         'source_base': ('d' if mode == 'final' else 'a') * 40, 'stage': mode}
+            if mode == 'final':
+                execution.update(full_suite_log_sha256=self.digest(suite), full_suite_exit_code=0)
+            self.retain(f'{mode}.execution.json', self.encode(execution))
+            log = '' if exit_code == 0 else ''.join(
+                f"thread '{name}' (123) panicked at test.rs:1:1:\n  left: 81\n right: 71\n"
+                for name in replay.GUNNER_MIGRATION_TESTS.values())
+            log += ('test result: ok. 3 passed; 0 failed;' if exit_code == 0 else
+                    'test result: FAILED. 0 passed; 3 failed;') + '\n'
+            self.retain(f'{mode}.log', log.encode())
+            self.receipt['runs'][mode] = {'execution_file': f'{mode}.execution.json',
+                'log_file': f'{mode}.log', 'binary_sha256': execution['binary_sha256']}
+            for fixture in replay.GUNNER_MIGRATION_TESTS:
+                data = HashCompositionReplayTests.lines(observations)
+                if mode == 'final':
+                    data = data.replace(b'owner.rs:20:4', b'owner.rs:30:8')
+                    final_data[fixture] = data
+                else:
+                    saved[mode, fixture] = observations
+                self.retain(f'{mode}-{fixture}.jsonl', data, mode=mode, fixture=fixture)
+        self.receipt['comparisons'] = [replay.compare_gunner_migration(
+            fields.baseline, fields.current, f) for f in replay.GUNNER_MIGRATION_TESTS]
+        self.receipt['final_validation'] = {
+            'source_base': 'd' * 40, 'source_base_change_file': 'base.patch',
+            'full_suite': {'log_file': 'suite.log', 'passed': 9494, 'ignored': 227},
+            'observations': replay.compare_final_observations(saved, final_data, True),
+            'normalization': ['draw.callers .rs line/column only'],
+        }
+        self.save_receipt()
+
+    def check(self):
+        with patch.object(replay, 'MAIN963_FIXTURES',
+                          {f: (3, 71) for f in replay.GUNNER_MIGRATION_TESTS}):
+            return replay.check_gunner_migration(self.path)
+
+    def test_final_execution_retains_probe_fields_hashes_and_full_suite_identity(self):
+        result = self.check()
+        self.assertEqual(result['execution_exit_codes'], {'baseline': 0, 'current': 101, 'final': 0})
+        self.assertEqual(result['final_validation']['full_suite'],
+                         {'passed': 9494, 'failed': 0, 'ignored': 227})
+        self.assertEqual([item['caller_positions_changed']
+                          for item in result['final_validation']['observations']], [3, 3, 3])
+
+    def test_final_comparison_never_repeats_the_field_or_hash_migration(self):
+        original = (self.root / 'final-bridge.jsonl').read_bytes()
+        for target, field, value in [('actor', 'current_weapon_number', 1),
+                                     ('actor', 'current_turret_index', 0),
+                                     ('actor', 'charge_turret_delay', 51),
+                                     ('tick', 'state_hash', 82)]:
+            with self.subTest(field=field):
+                rows = replay.rows(original)
+                (rows[1]['entities'][0] if target == 'actor' else rows[1]['tick_result'])[field] = value
+                self.retain('final-bridge.jsonl', HashCompositionReplayTests.lines(rows))
+                self.save_receipt()
+                with self.assertRaisesRegex(ValueError, 'final ungated replay changed'):
+                    self.check()
+
+    def test_final_failure_source_scope_and_full_suite_claims_fail_closed(self):
+        self.rewrite_json('final.execution.json', lambda row: row.update(exit_code=101))
+        with self.assertRaisesRegex(ValueError, 'unexpected execution result'):
+            self.check()
+        self.rewrite_json('final.execution.json', lambda row: row.update(exit_code=0))
+        self.retain('base.patch', b'diff --git a/src/sim/world.rs b/src/sim/world.rs\n')
+        self.save_receipt()
+        with self.assertRaisesRegex(ValueError, 'exceeds the recorded documentation update'):
+            self.check()
+        self.retain('base.patch', b'diff --git a/docs/research/ghidra-workflow.md b/docs/research/ghidra-workflow.md\n')
+        self.receipt['final_validation']['full_suite']['passed'] = 9495
+        self.save_receipt()
+        with self.assertRaisesRegex(ValueError, 'full suite result differs'):
+            self.check()
+
 
 if __name__ == '__main__':
     unittest.main()

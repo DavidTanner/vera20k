@@ -270,7 +270,11 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // 1AD1402910CE62D8; all 17 off/on boundaries differ only in tick hash. Receipt:
 // tools/spatial_oracle/unit_simple_deploy_replay/receipt.json. This is Rust
 // attribution; unit_simple_deploy separately pins native body cadence.
-const SLICE6_BASELINE_HASH: u64 = 0xB20E_11E0_579B_C4E4;
+// 2026-10-02 IFV owner migration: u8 last-shot hashing becomes signed i32
+// current-weapon hashing and the redundant None override feed is removed.
+// All 17 recorded boundaries retain gameplay/RNG after guarded field migration;
+// tools/spatial_oracle/ifv_turret_replay/receipt.json records this Rust attribution.
+const SLICE6_BASELINE_HASH: u64 = 0x5605_0F10_EACE_5E86;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

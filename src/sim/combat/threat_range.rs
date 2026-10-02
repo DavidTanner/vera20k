@@ -519,7 +519,7 @@ GuardRange=9\n\n\
     /// the scanner adapter separately covers Hunt, Guard and Area Guard.
     #[test]
     fn original_threat_range_and_cargo_rows() {
-        use crate::sim::combat::combat_weapon::{WeaponOverride, weapon_range};
+        use crate::sim::combat::combat_weapon::weapon_range;
         use crate::sim::entity_store::EntityStore;
         use crate::sim::game_entity::GameEntity;
         use crate::sim::passenger::{PassengerCargo, PassengerRole};
@@ -628,7 +628,7 @@ GuardRange=9\n\n\
                 let current = lookup(rider, rider_defaults, "current_weapon")
                     .as_u64()
                     .unwrap();
-                passenger.weapon_override = Some(WeaponOverride::IfvSlot(current as u32));
+                passenger.set_gunner_selection_for_test(current as i32, -1);
                 passenger.passenger_role = PassengerRole::Inside {
                     transport_id: 1,
                     open_topped,

@@ -570,8 +570,6 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
     let transport_gunner = transport_obj.map(|obj| obj.gunner).unwrap_or(false);
     let transport_open_topped = transport_obj.map(|obj| obj.open_topped).unwrap_or(false);
 
-    let pax_obj = rules.object(&pax_type_str);
-    let pax_ifv_mode = pax_obj.map(|obj| obj.ifv_mode).unwrap_or(0);
     let entering_owner = sim.substrate.entities.get(pax_id).map(|pax| pax.owner());
 
     let can_board = sim
@@ -735,24 +733,62 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
         sim.open_topped_passengers_take_target(pax_id, None, rules);
 
         if transport_gunner {
-            receive_gunner(sim, transport_id, pax_id, pax_ifv_mode);
+            receive_gunner(sim, rules, transport_id, pax_id);
         }
     } else if let Some(pax) = sim.substrate.entities.get_mut(pax_id) {
         pax.passenger_role = PassengerRole::None;
     }
 }
 
-/// UnitClass `+0x4D4` (`0x00746420`) for a `Gunner=yes` transport: the
-/// passenger's `IFVMode=` becomes the transport's weapon slot (VERA's
-/// representation of that swap is `weapon_override`), and the gunner's
-/// TemporalClass moves to the IFV.
-fn receive_gunner(sim: &mut Simulation, transport_id: u64, pax_id: u64, ifv_mode: u32) {
-    if let Some(transport) = sim.substrate.entities.get_mut(transport_id) {
-        transport.weapon_override = Some(
-            crate::sim::combat::combat_weapon::WeaponOverride::IfvSlot(ifv_mode),
-        );
+/// Gunner caller dispatch to UnitClass +4D4 (746420). Temporal ownership
+/// moves first; its mode7 step precedes the final passenger IFVMode selector.
+/// The existing temporal rearm handover residual is recorded in temporal.rs.
+fn receive_gunner(sim: &mut Simulation, rules: &RuleSet, transport_id: u64, pax_id: u64) {
+    let Some(transport) = sim.substrate.entities.get(transport_id) else {
+        return;
+    };
+    let Some(object) = rules.object(sim.interner.resolve(transport.type_ref())) else {
+        return;
+    };
+    // Aircraft/Foot bind this virtual slot to the 4DE750 stub.
+    if transport.category != crate::map::entities::EntityCategory::Unit || !object.gunner {
+        return;
     }
-    sim.temporal_receive_gunner(transport_id, pax_id);
+    let Some(passenger) = sim.substrate.entities.get(pax_id) else {
+        return;
+    };
+    let mode = rules
+        .object(sim.interner.resolve(passenger.type_ref()))
+        .map_or(0, |p| p.ifv_mode);
+    if sim.temporal_receive_gunner(transport_id, pax_id)
+        && let Some(transport) = sim.substrate.entities.get_mut(transport_id)
+    {
+        transport.set_gunner_weapon(7, object);
+    }
+    if let Some(transport) = sim.substrate.entities.get_mut(transport_id) {
+        transport.set_gunner_weapon(mode, object);
+    }
+}
+
+/// Gunner caller dispatch to UnitClass +4D8 (7464E0). RemoveGunner always
+/// selects mode0 after optional temporal return/LetGo, even with no gunner.
+fn remove_gunner(sim: &mut Simulation, rules: &RuleSet, transport_id: u64, pax_id: Option<u64>) {
+    let Some(transport) = sim.substrate.entities.get(transport_id) else {
+        return;
+    };
+    let Some(object) = rules.object(sim.interner.resolve(transport.type_ref())) else {
+        return;
+    };
+    // Aircraft/Foot bind this virtual slot to the 4DE760 stub.
+    if transport.category != crate::map::entities::EntityCategory::Unit || !object.gunner {
+        return;
+    }
+    if let Some(pax_id) = pax_id {
+        sim.temporal_remove_gunner(transport_id, pax_id);
+    }
+    if let Some(transport) = sim.substrate.entities.get_mut(transport_id) {
+        transport.set_gunner_weapon(0, object);
+    }
 }
 
 /// `FootClass::SetLocation @ 0x004DB810`'s `OpenTopped=` tail (`0x004DB88A`
@@ -968,6 +1004,9 @@ fn tick_boarding(sim: &mut Simulation, rules: &RuleSet) -> bool {
     }
     false
 }
+
+#[cfg(test)]
+mod gunner_tests;
 
 #[cfg(test)]
 mod tests {
