@@ -272,6 +272,32 @@ class FrameTests(Disconnected):
         _, result = frames.NativeFrames([row(code)], image(code)).code('0x00401000')
         self.assertTrue(result['conflicts'])
 
+    def test_branch_allocation_sizes_cannot_produce_a_clean_frame_report(self):
+        # Both paths have the same ESP/EBP at their merge, but _chkstk consumes
+        # different EAX sizes. Restoring ESP through EBP hides this at RET.
+        code = '5589e585c97407b808000000eb05b810000000e838963c00890c2489ec5dc3'
+        native = image(code)
+        owner = frames.NativeFrames([row(code)], native)
+        high = pcode([op('COPY', [var('register', 4)], var('stack', -12), BASE + 24)])
+        before = FakeClient(responses={'/get_function_pcode': high})
+        after = FakeClient('after', {'/get_function_pcode': high})
+        with patch.object(native, 'is_probe', return_value=True):
+            report = frames.compare_frames(before, after, ['0x00401000'], owner)
+        self.assertEqual(report['status'], 'incomplete')
+        self.assertTrue(report['analysis_limits'])
+
+    def test_equal_or_overwritten_branch_sizes_remain_analyzable(self):
+        original = '5589e585c97407b808000000eb05b810000000e838963c00890c2489ec5dc3'
+        for code in (original.replace('b810000000', 'b808000000'),
+                     original.replace('e838963c00', 'b808000000e833963c00')):
+            with self.subTest(code=code):
+                native = image(code)
+                owner = frames.NativeFrames([row(code)], native)
+                with patch.object(native, 'is_probe', return_value=True):
+                    _, result = owner.code('0x00401000')
+                self.assertFalse(result['notes'])
+                self.assertFalse(result['conflicts'])
+
     def test_unsupported_pop_esp_and_split_instruction_are_not_analyzed_as_valid(self):
         code = '5cc3'
         _, result = frames.NativeFrames([row(code)], image(code)).code('0x00401000')

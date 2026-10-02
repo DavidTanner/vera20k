@@ -73,9 +73,37 @@ new warnings still fail. This never exempts missing or partial reads.
 
 ## Stack frames against the native instructions
 
-Frame checks require an explicit **before** census JSONL file. Use a retained
-`SignatureCensus` export from that exact saved project, or construct bounded rows
-from checked function metadata. Each line is a function object with these fields:
+Frame checks require an explicit **before** census JSONL file. Export one from the
+exact saved project with the repository's
+[`SignatureCensus.java`](ghidra_compare/SignatureCensus.java). The exporter reads
+internal function metadata only; it does not disassemble, reanalyze or change
+annotations. Use a stopped **owned snapshot**, never the project open in another
+session. From the repository root, with JDK 21 configured in `JAVA_HOME`:
+
+```sh
+export GHIDRA_INSTALL_DIR=/absolute/path/to/ghidra_12.1.2_PUBLIC
+"$GHIDRA_INSTALL_DIR/support/analyzeHeadless" \
+  /absolute/path/to/owned-snapshot-directory SnapshotProject \
+  -process gamemd.exe -noanalysis -readOnly \
+  -scriptPath "$PWD/tools/ghidra_compare" \
+  -postScript SignatureCensus.java /absolute/path/to/new-before.jsonl
+```
+
+`SnapshotProject` is the saved `.gpr` name without its extension; `gamemd.exe`
+selects the existing program in that project's root. For a nested program,
+append its folder to the project argument as `SnapshotProject/folder` and keep
+the exact program filename after `-process`. Do not use an import command.
+Export a separate new file from the owned after snapshot when comparing purges.
+
+The exporter requires the x86 language and `0x00400000` image base and preserves
+stored values, including unknown purges. It writes a temporary sibling and
+publishes the completed file with an exclusive hard link; failed/cancelled
+exports leave no final census, and an existing or concurrently created output
+is never overwritten. Use an output filesystem supporting hard links; failure
+does not fall back to exposing a partial file. The successful log message is
+`Census complete`; the frame command then validates the census schema and hashes
+the exact input. A retained compatible census can also be supplied explicitly.
+Each line is a function object with these fields:
 
 ```json
 {"entry":"00401000","name":"example","proto":"void example()","external":false,"thunk":false,"noreturn":false,"purge":0,"body":["00401000","00401003",1],"ranges":[["00401000","00401003"]]}
@@ -110,7 +138,9 @@ instruction-established no-return targets can be supplied with repeated
 The native walker uses file-backed PE bytes through `tools.native_oracle`, with
 no zero-filled BSS masquerading as code. It computes ESP/EBP-relative accesses,
 models the complete checked MSVC stack-probe body, and solves unknown call purges
-using path-merge and return constraints. Unsupported ESP writes, ambiguous EBP
+using path-merge and return constraints. Distinct EAX constants at a merge remain
+separate until overwritten or consumed by a stack probe; conflicting allocation
+paths cannot pass as one known frame. Unsupported ESP writes, ambiguous EBP
 merges, undecodable/range-crossing instructions, unresolved equations and
 conflicts are reported as limitations. It is a bounded static model, not native
 execution and not a complete x86 analyzer.
@@ -141,6 +171,12 @@ python -m unittest tools.tests.test_ghidra_compare -v
 python -m tools.run_tests
 ```
 
+The optional exporter test compiles against an installed Ghidra and exercises
+publication, cancellation/failure cleanup, collision preservation and JSON
+escaping without opening a program. With `GHIDRA_INSTALL_DIR` and `JAVA_HOME`
+set, run `python -m unittest tools.tests.test_ghidra_census_exporter -v`.
+Otherwise that test is skipped; it is not a live export validation.
+
 Tests use synthetic x86 bytes, p-code and HTTP responses, with network connection
 attempts blocked. They cover incomplete reads on either/both sides, pagination,
 thunks and virtual callers, warning identities, member-address expressions,
@@ -163,3 +199,4 @@ compatibility promise; use this documented repository CLI for new work.
 | `pe.py` (replaced by the shared native image owner) | `8fde41c5e2ec07cbbb4b3c9c3353d18a5fd4cec6e65e12b8c7882de7cab59381` |
 | `test_decomp_compare.py` | `bd4c4569d91ac8a1e59b02dc43b65563f602735ac4aef5b23afde0071227e863` |
 | `test_frame_compare.py` | `474498d5210a8493805dab4c2679d6a29bc19c454aab7b19844468de56579acc` |
+| `SignatureCensus.java` from `ghidra-signatures-20261001/scripts` (metadata-only subset retained) | `b08e534438bd6bc73bb00cdeec54375645bcf473c419f4c60121c606c0571487` |

@@ -159,7 +159,7 @@ class Walker:
             return r
         def reg(op, name):
             return op.type == X.X86_OP_REG and i.reg_name(op.reg) == name
-        at, bpat, eqs, unknown, notes = {}, {}, [], [], []
+        at, bpat, eax_seen, eqs, unknown, notes = {}, {}, {}, [], [], []
         work = [(entry, {None: 0}, None, None)]           # address, ESP, EBP as a stack address, EAX as a constant
         while work:
             a, d, bp, eax = work.pop()
@@ -169,13 +169,21 @@ class Walker:
                         notes.append('ambiguous EBP at merge 0x%X' % a)
                     if at[a] != d:
                         eqs.append((sub(at[a], d), 'paths meeting at 0x%X' % a))
-                    break
+                    if eax in eax_seen[a]:
+                        break
+                    # EAX is a stack input to _chkstk. Follow a newly observed
+                    # constant until it is overwritten or its allocation meets
+                    # the earlier path and creates a stack-depth constraint.
+                    # Values are bounded to MOV immediates plus unknown (None),
+                    # so loops cannot create an unbounded number of states.
+                    eax_seen[a].add(eax)
                 if not entry <= a < end or self.func(a) is None or self.func(a)[1] != entry:
                     notes.append('ran past the body at 0x%X' % a); break
                 i = self.instruction(a, entry)
                 if i is None:
                     notes.append('undecodable at 0x%X' % a); break
-                at[a], bpat[a] = d, bp
+                if a not in at:
+                    at[a], bpat[a], eax_seen[a] = d, bp, {eax}
                 m, ops, nxt = i.mnemonic, i.operands, a + i.size
                 if m in ('int3', 'hlt', 'ud2'):
                     break
