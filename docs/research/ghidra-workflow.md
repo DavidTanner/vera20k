@@ -511,6 +511,15 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   `__stdcall` with only the stack parameters first, then the `__fastcall` prototype. No
   endpoint reads a purge; the signature census of a staging copy does.
 - The server renumbers parameters named `param_N` by position.
+- A successful type-size lookup or `validate_function_prototype` reply does not
+  establish that the signature parser can resolve a datatype. The validator checks
+  format and convention without parsing the types. On 2026-10-02, two `GUID` entries
+  made a staged `GUID *` prototype fail with `Can't resolve datatype: GUID *`, although
+  the size lookup returned 16 bytes and pre-validation returned `valid: true`.
+  `search_data_types` exposed both names; `get_struct_layout` checked the uniquely
+  named, existing 16-byte `_GUID` view, whose pointer parsed successfully. Check a
+  compatible unique type and rehearse the actual write; preserve ambiguous aliases
+  rather than deleting or recreating them.
 - `set_function_no_return` makes the decompiler end each caller's path at the call
   (`/* WARNING: Subroutine does not return */`) and remove blocks reached only after it.
   It also removes live code where the decompiler wrongly folds an error branch to
