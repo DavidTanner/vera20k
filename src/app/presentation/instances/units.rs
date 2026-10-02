@@ -33,12 +33,17 @@ use crate::rules::house_colors::{self, HouseColorIndex};
 use crate::sim::components::HarvestOverlay;
 #[cfg(test)]
 use crate::sim::movement::slope_transition::SLOPE_TRANSITION_FRAMES;
+use crate::sim::voxel_frame_catalog::{NO_SPAWN_ALT_SUFFIX, draws_turret_parts};
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
 #[path = "naval_draw_tests.rs"]
 mod naval_draw_tests;
+
+#[cfg(test)]
+#[path = "unit_body_draw_tests.rs"]
+mod unit_body_draw_tests;
 
 /// One-shot tripwire: fires the first time a `slope_type >= 17` byte is
 /// observed at the render hand-off. Subsequent observations are silent
@@ -51,7 +56,6 @@ mod naval_draw_tests;
 /// scheduled if it ever fires.
 static WARNED_SLOPE_GE_17: AtomicBool = AtomicBool::new(false);
 
-const NO_SPAWN_ALT_SUFFIX: &str = "WO";
 const NATIVE_TURRET_FIRST_START: u8 = 32;
 const NATIVE_TURRET_FIRST_END_EXCLUSIVE: u8 = 160;
 
@@ -307,36 +311,18 @@ pub(crate) fn build_unit_instances(
         // Common visibility, passenger, limbo, and DrawState admission is shared below.
         let pos = &entity.position;
         let owner_str = sim.interner.resolve(entity.owner());
-        // Disguise remains the outer display-type choice. For an ordinary
-        // undisguised Unit, `NoSpawnAlt` is selected from the current docked
-        // slot count at draw time; the serialized override remains solely the
-        // miner dock sub-FSM's UnloadingClass (HORV/CMON) hint.
-        let active_disguise = entity.disguise.as_ref().filter(|state| state.disguised);
-        let base_type = sim.interner.resolve(entity.type_ref());
-        let no_spawn_alt = state
-            .rules()
-            .and_then(|rules| rules.object(base_type))
-            .is_some_and(|object| object.no_spawn_alt);
-        let no_spawn_alt_type =
-            no_spawn_alt_type_id(base_type, no_spawn_alt, entity.spawn_manager.as_ref());
-        let type_name: Cow<'_, str> = if let Some(disguise_type) = active_disguise
-            .and_then(|disguise| disguise.disguise_type)
-            .map(|id| sim.interner.resolve(id))
-        {
-            Cow::Borrowed(disguise_type)
-        } else if let Some(no_spawn_alt_type) = no_spawn_alt_type {
-            Cow::Owned(no_spawn_alt_type)
-        } else if let Some(display_override) = (!no_spawn_alt)
-            .then_some(entity.display_type_override)
-            .flatten()
-            .map(|id| sim.interner.resolve(id))
-        {
-            Cow::Borrowed(display_override)
-        } else {
-            Cow::Borrowed(base_type)
-        };
+        let (type_name, body) = unit_body_draw(
+            entity,
+            &sim.interner,
+            state.rules(),
+            band,
+            sim.session.binary_frame,
+        );
         let type_str = type_name.as_ref();
-        let remap_owner = active_disguise
+        let remap_owner = entity
+            .disguise
+            .as_ref()
+            .filter(|state| state.disguised)
             .and_then(|state| state.disguised_as_house)
             .map(|id| sim.interner.resolve(id))
             .unwrap_or(owner_str);
@@ -452,11 +438,6 @@ pub(crate) fn build_unit_instances(
         // Ground units, including those below bridges, keep LayerClass order.
         let mut pieces = Vec::new();
 
-        let tilt_crash_jumpjet = state
-            .rules()
-            .and_then(|rules| rules.object(type_str))
-            .is_some_and(|object| object.tilt_crash_jumpjet);
-        let body = body_draw(entity, band, sim.session.binary_frame, tilt_crash_jumpjet);
         // Sampled at the turret's frame, so the two sprites cannot disagree.
         let body_facing = entity.body_facing_byte(sim.session.binary_frame);
         if let BodyDraw::CrashPose(tilt) = body {
@@ -665,25 +646,90 @@ enum BodyDraw {
     Composite,
 }
 
-/// The crash pose is decided before the turret split: every Fly carries a
-/// Secondary facing in `barrel_facing`, which would otherwise send a crashing
-/// aircraft down the turret path. `tilt_crash_jumpjet` is the type's
-/// `TiltCrashJumpjet=`.
+/// The voxel model one Unit or Aircraft body is drawn from this frame.
+///
+/// Disguise remains the outer display-type choice. For an ordinary
+/// undisguised Unit, `NoSpawnAlt` is selected from the current docked slot
+/// count at draw time; the serialized override remains solely the miner dock
+/// sub-FSM's UnloadingClass (HORV/CMON) hint.
+fn drawn_model_id<'a>(
+    entity: &'a crate::sim::game_entity::GameEntity,
+    interner: &'a crate::sim::intern::StringInterner,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+) -> Cow<'a, str> {
+    let base_type = interner.resolve(entity.type_ref());
+    let no_spawn_alt = rules
+        .and_then(|rules| rules.object(base_type))
+        .is_some_and(|object| object.no_spawn_alt);
+    if let Some(disguise_type) = entity
+        .disguise
+        .as_ref()
+        .filter(|state| state.disguised)
+        .and_then(|disguise| disguise.disguise_type)
+    {
+        Cow::Borrowed(interner.resolve(disguise_type))
+    } else if let Some(no_spawn_alt_type) =
+        no_spawn_alt_type_id(base_type, no_spawn_alt, entity.spawn_manager.as_ref())
+    {
+        Cow::Owned(no_spawn_alt_type)
+    } else if let Some(display_override) = (!no_spawn_alt)
+        .then_some(entity.display_type_override)
+        .flatten()
+    {
+        Cow::Borrowed(interner.resolve(display_override))
+    } else {
+        Cow::Borrowed(base_type)
+    }
+}
+
+/// One Unit or Aircraft body's voxel model and how it is drawn this frame.
+fn unit_body_draw<'a>(
+    entity: &'a crate::sim::game_entity::GameEntity,
+    interner: &'a crate::sim::intern::StringInterner,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    band: EntityDrawBand,
+    binary_frame: u32,
+) -> (Cow<'a, str>, BodyDraw) {
+    let model = drawn_model_id(entity, interner, rules);
+    let tilt_crash_jumpjet = rules
+        .and_then(|rules| rules.object(&model))
+        .is_some_and(|object| object.tilt_crash_jumpjet);
+    let turret_parts = draws_turret_parts(&model, rules);
+    let body = body_draw(entity, band, binary_frame, tilt_crash_jumpjet, turret_parts);
+    (model, body)
+}
+
+/// The crash pose is decided before the turret split. `tilt_crash_jumpjet` is
+/// the drawn model's `TiltCrashJumpjet=` and `turret_parts` its
+/// [`draws_turret_parts`]: the split follows the model being drawn, as
+/// `UnitClass::DrawVoxelBody` tests its draw type (`0x0073B7A3`), not the
+/// object's own `+0x3A0`. A War Miner unloading as HORV has a turret facing
+/// and draws none, and every Fly keeps its Secondary facing in
+/// `barrel_facing` and draws no turret.
+///
+/// RESIDUAL: the turret arm reads `+0x3A0` on every unit; VERA keeps it only
+/// for a unit whose own type has a turret, so one without draws its model's
+/// turret at the hull's facing. Trigger: a `Turret=no` harvester whose
+/// `UnloadingClass=` has `Turret=yes`. Frequency: zero in retail.
 fn body_draw(
     entity: &crate::sim::game_entity::GameEntity,
     band: EntityDrawBand,
     binary_frame: u32,
     tilt_crash_jumpjet: bool,
+    turret_parts: bool,
 ) -> BodyDraw {
     if let Some(tilt) = crash_body_tilt(entity, band, tilt_crash_jumpjet) {
         return BodyDraw::CrashPose(tilt);
     }
-    match entity.barrel_facing.as_ref() {
-        Some(facing) => BodyDraw::Turret {
-            turret: facing.current(binary_frame),
-            barrel_elevation: entity.barrel_elevation().current(binary_frame),
-        },
-        None => BodyDraw::Composite,
+    if !turret_parts {
+        return BodyDraw::Composite;
+    }
+    BodyDraw::Turret {
+        turret: entity.barrel_facing.as_ref().map_or_else(
+            || entity.body_facing_current(binary_frame),
+            |facing| facing.current(binary_frame),
+        ),
+        barrel_elevation: entity.barrel_elevation().current(binary_frame),
     }
 }
 
@@ -1635,41 +1681,44 @@ mod tests {
         ));
     }
 
-    /// A Fly carries a Secondary facing in `barrel_facing` from its first air
-    /// tick, so a crashing aircraft must take the pose before the turret split.
+    /// A crashing body takes its pose before the turret split, whether or not
+    /// its model has turret parts. A Fly's Secondary facing in `barrel_facing`
+    /// is not a turret: its model has none.
     #[test]
-    fn a_crashing_fly_body_takes_its_pose_before_the_turret_split() {
+    fn a_crashing_body_takes_its_pose_before_the_turret_split() {
         let mut entity = GameEntity::test_default(1, "ORCA", "Americans", 0, 0);
         entity.category = EntityCategory::Aircraft;
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Fly));
         crate::sim::movement::air_movement::ensure_fly_secondary_facing(&mut entity);
-        assert!(matches!(
-            body_draw(&entity, EntityDrawBand::Top, 0, false),
-            BodyDraw::Turret { .. }
-        ));
+        assert_eq!(
+            body_draw(&entity, EntityDrawBand::Top, 0, false, false),
+            BodyDraw::Composite
+        );
         entity.crashing = true;
         entity.rocking = Some(crate::sim::components::RockingState {
             angle_sideways: crate::util::fixed_math::SimFixed::from_num(0.5),
             angle_forwards: crate::util::fixed_math::SimFixed::from_num(-0.25),
             ..Default::default()
         });
-        assert_eq!(
-            body_draw(&entity, EntityDrawBand::Top, 0, false),
-            BodyDraw::CrashPose(CrashTilt::Fly([0.5, -0.25]))
-        );
+        for turret_parts in [false, true] {
+            assert_eq!(
+                body_draw(&entity, EntityDrawBand::Top, 0, false, turret_parts),
+                BodyDraw::CrashPose(CrashTilt::Fly([0.5, -0.25]))
+            );
+        }
         // Only the airborne (Top) Fly body is posed.
-        assert!(matches!(
-            body_draw(&entity, EntityDrawBand::Ground, 0, false),
-            BodyDraw::Turret { .. }
-        ));
+        assert_eq!(
+            body_draw(&entity, EntityDrawBand::Ground, 0, false, false),
+            BodyDraw::Composite
+        );
         // A Jumpjet tilts only for `TiltCrashJumpjet=`, then in any band.
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Jumpjet));
         assert!(matches!(
-            body_draw(&entity, EntityDrawBand::Top, 0, false),
+            body_draw(&entity, EntityDrawBand::Top, 0, false, true),
             BodyDraw::Turret { .. }
         ));
         assert_eq!(
-            body_draw(&entity, EntityDrawBand::Ground, 0, true),
+            body_draw(&entity, EntityDrawBand::Ground, 0, true, true),
             BodyDraw::CrashPose(CrashTilt::Jumpjet([0.5, -0.25]))
         );
         // Under 0.005 on both axes the Jumpjet draws its plain facing matrix.
@@ -1679,7 +1728,7 @@ mod tests {
             ..Default::default()
         });
         assert!(matches!(
-            body_draw(&entity, EntityDrawBand::Top, 0, true),
+            body_draw(&entity, EntityDrawBand::Top, 0, true, true),
             BodyDraw::Turret { .. }
         ));
     }
