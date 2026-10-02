@@ -699,17 +699,67 @@ impl Simulation {
     /// guards before it is discovered. Frequency: campaign maps only;
     /// skirmish and multiplayer open every building at Unlimbo.
     fn queue_placed_building_guard(&mut self, stable_id: u64) -> bool {
-        let Some(entity) = self.substrate.entities.get_mut_if(stable_id, |entity| {
-            entity.category == EntityCategory::Structure
-        }) else {
+        if !self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category == EntityCategory::Structure)
+        {
             return false;
-        };
-        crate::sim::mission::authority::queue_entity_mission_deferred(
-            entity,
-            crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Guard),
-        );
-        entity.mission_leaf.set_building_ready_latch(1);
+        }
+        //The existing immediate-map/convenience-spawn adapter enters without
+        //a build-up. Its native scope is separate from ordinary Construction.
+        self.building_enter_idle_mode(stable_id, false, None);
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+            entity.mission_leaf.set_building_ready_latch(1);
+        }
         true
+    }
+
+    ///Building44D6A0, shared by map placement, owner change, factory Unload
+    ///and Gate Open. The normal arm calls the sole447780 body owner, then
+    ///queues Guard5 without commencing. Native returns false on either arm.
+    ///
+    ///The initial=true, scope0 branch also tests globalA8ED6B (build-up
+    ///bypass) before choosing Construction18. Its caller/global initialization
+    ///belongs to the separate initial Building placement mechanism; existing
+    ///immediate-placement adapters deliberately enter the normal arm.
+    pub(crate) fn building_enter_idle_mode(
+        &mut self,
+        stable_id: u64,
+        initial: bool,
+        rules: Option<&RuleSet>,
+    ) -> bool {
+        if initial && !self.object_placement_scope_active() {
+            return false;
+        }
+        let now = self.session.binary_frame;
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+            entity.begin_building_body(
+                crate::sim::building_construction::BuildingBodyMode::Idle,
+                now as i32,
+            );
+        }
+        let mission =
+            crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Guard);
+        if let Some(rules) = rules {
+            let _ = self.mission_queue_exact(
+                stable_id,
+                mission,
+                0,
+                now,
+                &crate::sim::mission::authority::LiveReadyInputProvider { rules },
+            );
+        } else {
+            let _ = self.mission_queue_exact(
+                stable_id,
+                mission,
+                0,
+                now,
+                &crate::sim::mission::authority::EntityReadyInputProvider,
+            );
+        }
+        false
     }
 
     /// A miner the harvest dispatch drives (not a Slave Miner): Unlimbo's idle

@@ -5,7 +5,11 @@ whole original Building `0x00443C60` controls. `unit_entry --counter-mode`
 preserves eight independent class controls. The same Mission mode also records
 eight actual Unit Limbo/reused Stage controls, six selected bool-reader histories
 and seven factory radio-8 fixtures with nine calls, plus six authored HIGH/scope
-controls. They execute identity-checked retail
+controls. Additive `factory_unload_rows[1]` records the original common human
+GAWEAP/MTNK no-rally continuation, including nineteen shared Door controls and
+all twenty-two original Foundation exit-list startup rows;
+`factory_miner_per_cell_rows[2]` records contained Harvester/Weeder primary
+clearance branches. They execute identity-checked retail
 `gamemd.exe`, SHA-256
 `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`,
 with the existing Mission and Unit entry fixtures. These are bounded native
@@ -50,12 +54,18 @@ recipes. The metadata records their SHA-256 receipts:
 | Authored Unit caller recipe | `c93b3b32bfaf50e09aee21060803bea90456094aac0c30368ef76468838d9e48` |
 | Authored Unit caller results | `705dfe7ac278a1ef0a75471a5d9fe4682b11a8de137e8e56dd1f4e02e82ea543` |
 | Authored Unit caller canonical payload | `24a70d5a8ed2a0ae2c300bd01c92a2053862b36382d986db69e835a966aec88b` |
+| Factory Unload recipe | `5bad3a5a00fcf1860e8cbec922f5be9db71b485e12b8d656a5a25405b99470b3` |
+| Factory Unload results | `728721a95c042ec0bc0958ec6e64e3ddfbce059c44767c1311aa58f24b15299f` |
+| Factory Unload canonical payload | `763620ea453ea78f9dd76f117a67c28bd55ac8d2dd5c6b71d7f82999ec741740` |
+| Contained miner recipe | `998273f65a1a55443255099a0302a79643e47985255c31c13100ec35c7a9ac0c` |
+| Contained miner results | `22fa0c2d236e9dda5ae60a5f0741866e727b27792394425f6f6b284d06c8d482` |
+| Contained miner canonical payload | `d76df53d41ec9b18daf4d5848037697b33e82b7faa627f45b336801e690fa9ca` |
 
 ## Corpus boundaries
 
 `unit_unlimbo.json` has `{schema_version, native_sha256, direct_rows,
 factory_rows, visceroid_reader_receipt, stage_rows, factory_exit_radio_rows,
-authored_rows}`.
+authored_rows, factory_unload_rows, factory_miner_per_cell_rows}`.
 Every direct row retains `input`, `before`, `after`,
 `returned_al`, `trace`, all three full RNG objects, geometry startup and inherited
 physical input receipts. The new `after_unlimbo` snapshot is taken immediately
@@ -149,6 +159,102 @@ the original refusal. They are counter controls, not ordinary authored-load
 scope. Parsed HIGH EAX, centered XY/Z0, actor register, facing128 and Cell/counter
 data are supplied. Complete tokenization/atoi, House/type lookup and Scenario
 loading are excluded.
+
+One `factory_unload_rows` row retains the successful original factory output,
+then original CRT Foundation initializer `45C300` and BuildingType post-read
+`46152C..46157A` establish the exit pointer. Nested
+`foundation_prerequisite.original_startup_rows[22]` contains `{id, address,
+hex, all_pairs, terminator_index, list_before_terminator, element10}`: every
+raw thirty-pair row is retained, including sentinel/padding words after a
+short list. The full raw row is necessary because Unload reads element10
+directly. GAWEAP's physical Foundation5x3 selects ID17, ED4=`89DB60` and
+element10 `[5,1]`. The post-read slice executes after the inherited factory
+call, before this Unload continuation; full retail loader chronology is excluded.
+
+The continuation uses original physical layered GAWEAP `DeployTime` and Rules
+`[Unload]` MissionControl reads. Nested `timer_controls.rows[19]` records the
+shared Techno+350 DoorClass constructor, opening/closing, reversal at10,
+zero durations, signed/overflow durations and raw IEEE controls. Each row has
+`kind`, `input_minutes_hex`, `reader`, `raw_type_override`, `native_default`,
+`start`, `closing_prerequisite`, `reversal`, `probes`, and `after_finish`.
+Closing starts with original `4A52D0` ForceOpen; that prerequisite's actual
+before/after bytes are separate from the constructor snapshot. Door raw layout
+is double+0, timer start+8/aux+C/duration+10, total+14, active+18/direction+19.
+Constructor first8/aux+C are undefined observations. Finish clears active and
+retains direction/timer fields. `.044` reads as widened float bits
+`000000002b87a63f`, produces39 ticks, and becomes due on frame39 from start0;
+active remains1 until the common TechnoAI Finish call. Zero also starts active
+and is immediately due. Reversal at10 preserves start0/total39, flips direction
+and writes duration10. `-.044` produces -39, `3000000` produces low signed
+dword -1594967296, and `1e17` or raw nonfinite products produce low dword0.
+
+Literal INI `nan`/`inf` rows are failed-scanf diagnostics: original ReadDouble
+`5283D0` widens unchanged stale float-local bytes at `52855D` after scanner
+`7CA530` returns0. `reader.scan` records that assignment count and both local
+values, and `portable_reader_result` is false. These values do not define a
+portable invalid-string result. The existing
+[ReadDouble owner](../../rules_oracle/read_double_percent.md) documents VERA's
+invalid-input policy. The separate `raw_nan`/`raw_infinite` Door controls have
+no INI reader and preserve their typed IEEE input bytes. Progress ST0 is observed
+through existing `native_oracle.call` with unchanged Door/frame bytes and one
+scratch FSTP conversion to binary64; original `.text` is never patched.
+
+`before`, `after`, and each `journal`/`trace` snapshot retain product/producer
+Mission state, actual endpoint contacts/tethers, raw Door bytes, Drive
+selector/cursor/head/destination/residual/fractions, NavCom and raw Foot control
+words. Every journal entry and the whole row preserve all three full1012-byte
+RNG objects. The original Techno door caller executes each supplied frame,
+Unload dispatch follows its actual returned delays, and whole original UnitAI
+follows each producer step. The measured producer sequence is:
+
+| Frame | Native result |
+| --- | --- |
+| 1 | state0→1/delay15, opens39 ticks |
+| 16 | state1→2/delay16 |
+| 32 | state2 waits/delay15 |
+| 40 | common TechnoAI completes opening |
+| 47 | state2→3/delay15, ForceTrack66/head `[22912,12928,0]`, Foot speed0.5 |
+| 62 | state3 waits/delay14 |
+| 75 | Unit reaches forced head, reciprocal radio8, primary FootStop/Scatter/Ready/Commence; stops at the next route request |
+| 76 | state3→4/delay16, closes39 ticks |
+| 92 | state4 waits/delay16 |
+| 108 | state4 waits/delay14 |
+| 115 | common TechnoAI completes closing |
+| 122 | state4/delay16, ReturnToIdle queues Guard5 |
+
+The frame75 Unit call stops before original AStar `42A5B0`, with no supplied
+path result or native return. Its marked0 is a suspended-turn state after
+Unmark, not a completed-turn endpoint. No later Unit turn is scheduled.
+Producer-only Door/Unload leaves then use the actual cleared contact state.
+Final producer is current Unload16/queued Guard5; full BuildingAI promotion of
+that queue, whole interleaved Logic and later navigation remain excluded.
+Scenario indexes `(2,105)`→`(24,127)`; Main/MapGen `(0,103)` stay unchanged.
+Ranged rejection can consume multiple raw draws; the event log records actual
+order instead of assuming one raw draw per cadence.
+
+The producer remains the inherited unplaced/limbo/health0 constructor. Its
+positive-health admission, readiness, whole BuildingAI and House initialization
+are excluded; HumanControlled1 is an explicit supplied branch input. Native
+current first ground Building is NULL. The primary first Scatter publishes
+NavCom Cell(89,51), skipping secondary `73AB6C`; the occupied-footprint
+secondary and raw+5AC/count lifetime are not demonstrated. The distinct
+non-current object call is literal radio0xE at `73A97D` (existing CanDock14),
+outside this NULL-destination control. Missing crop TMPs use the existing
+`navigation_inputs.extract_tiles` owner and original IsoTileType `5447C0`
+constructors. Sparse primary-loop indexes, array/cache headers, TMP pointer
+relocation and constructor animation/shadow defaults are explicit boundaries;
+whole archive/Tile INI/variant loading remains excluded. Existing crop Cell
+inputs are unchanged before later original Recalc.
+
+Two `factory_miner_per_cell_rows` retain exact original factory output, then
+native `74769F..7476D3` current-default bool reads for custom MTNK Harvester/Weeder
+yes/no inputs and `74779D..7477BB` default-Mission post-read10. At supplied
+frame1/human context, whole original PerCell `739EC0(reason2)` executes primary
+radio8, QueueHarvest `[10,1]`, actual UnitReady `744270` and Commence, stopping
+before `73ACD7`. Both rows produce current Harvest10/queued-1/dispatch `[1,0]`,
+retain NULL NavCom, clear reciprocal contacts/tethers and preserve all three
+RNG objects. These are class-branch controls, not retail MTNK classification,
+proof of the movement trigger or execution of harvesting itself.
 
 ## Native ownership and ordering
 
@@ -253,7 +359,9 @@ sends0x19 and0x03 back to the Unit, clearing reciprocal contacts and tethers; tr
 reply is23. Already-cleared/absent Unit Contact0 returns0. Native Transmit
 `65A970` resolves a NULL target through Contacts[0] when present, including the
 explicit NULL-sender Building controls. The original Unit caller compares the
-real result with23 at `73A943`; its later per-cell continuation is not executed.
+real result with23 at `73A943`; the standalone radio fixtures stop there.
+The additive factory/miner rows execute the separately bounded continuation
+described above.
 
 The counter also has runtime writers: Factory abandon `4CA0EB..4CA109`,
 transport `73DA48..73DB79`, dying passengers `738036..7381A8`, parasite
@@ -263,6 +371,29 @@ readers include Jumpjet Stop `54B4D0`, Foot Limbo `4DB2EB`, Foot Detach_All
 `4D9736`, and Foot Crash `4DECAE`. These are instruction evidence, not an
 executed claim for every factory callback or writer. Ghidra xrefs are incomplete;
 original byte scans and saved writer bodies established these leads.
+
+## Rust production and deterministic hash validation
+
+The retail lib suite passes 9,459 tests (227 ignored), and lib Clippy passes on
+the final candidate. The existing
+[map observation factory profile](../../map_observation.factory-tank-exit.example.json)
+also loads retail AnyTown through the release application, delivers one human
+MTNK, follows its forced exit/clearance, and returns both product and producer to
+Guard. The [observation owner](../../map_observation.md) records exact steps,
+map/binary/readback identities and the production-only coverage limit. Native
+Door/Unload comparisons above remain bounded by their original fixture seams.
+
+Adding the authoritative shared Door fields to the deterministic hash changes
+three Rust replay fingerprints. A diagnostic removed only
+`GameEntity::hash_door_state` from the hash feed: all three old fingerprints
+returned, with the existing behavioral and RNG assertions still passing. The
+feed is restored in the final candidate. The new Rust-only fingerprints are
+bridge `D60E65B093E4A502`, global `4274E33351E6E7C0`, and slice6
+`9FBBEE3B9E78FC73`; no original expected value was changed. The diagnostic log
+SHA-256 is `974ee58f63b5a36efdcef5584d04f9d033d447a3e765be73fdd748221ed35bb4`.
+The refinery dock comparison still uses its measured `73ACB3..73ADCA` window;
+its fixture now calls the existing mission promotion and miner contact-release
+owners rather than treating that narrow window as whole PerCell execution.
 
 ## Explicit seams
 

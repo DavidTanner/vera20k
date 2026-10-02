@@ -4910,7 +4910,6 @@ impl Simulation {
             && object.is_some_and(|object| object.weapons_factory);
         let in_limbo = entity.lifecycle.in_limbo;
         let now = self.session.binary_frame;
-        let readiness = crate::sim::mission::authority::LiveReadyInputProvider { rules };
         let rescue = self.substrate.entities.get(stable_id).is_some_and(|e| {
             e.mission.current().known() == Some(MissionType::Rescue)
                 || e.mission.queued().known() == Some(MissionType::Rescue)
@@ -4950,22 +4949,7 @@ impl Simulation {
                 queue_foot_enter_idle_mode(self, stable_id, rules);
             }
             EntityCategory::Structure => {
-                // Building Enter_Idle_Mode44D6E0 calls447780(1) before
-                // queuing Guard. The existing body owner retains+538 and
-                // applies it during the next Building visit.
-                if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                    entity.begin_building_body(
-                        crate::sim::building_construction::BuildingBodyMode::Idle,
-                        now as i32,
-                    );
-                }
-                let _ = self.mission_queue_exact(
-                    stable_id,
-                    MissionId::from_known(MissionType::Guard),
-                    0,
-                    now,
-                    &readiness,
-                );
+                self.building_enter_idle_mode(stable_id, false, Some(rules));
             }
             EntityCategory::Aircraft => {}
         }
@@ -6280,20 +6264,8 @@ impl Simulation {
             self.pending_rocket_detonations.clear();
             self.pending_missile_detonations.clear();
         }
-        if let Some(rules) = rules {
-            crate::sim::gate_runtime::tick_gate_runtimes(
-                &mut self.substrate.entities,
-                &self.substrate.occupancy,
-                rules,
-                &self.interner,
-                self.session.binary_frame,
-            );
-            // Slice 7d: break each war-factory exit contact whose vehicle has cleared
-            // the factory footprint this tick (gamemd's per-cell-process break).
-            crate::sim::production::tick_war_factory_exit_contacts(
-                self, rules,
-            );
-        }
+        //Gate Open runs in Building Mission AI; factory clearance runs in
+        //the arriving Unit's Per_Cell_Process before Ready/Commence.
         // Movement-side wall crush (part of the ground-movement stage): a Crusher
         // drive vehicle that ended Phase-1 on a wall cell flattens the wall,
         // separate from the weapon-damage wall path. No-op when no crusher sits

@@ -826,7 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn map_and_production_unlimbo_reject_outside_playfield_units() {
+    fn authored_scope_and_runtime_unlimbo_playfield_gate_are_distinct() {
         let rules = rules();
         let mut sim = sim_with_map_authority();
         let bounds = sim.playfield_bounds.unwrap();
@@ -890,10 +890,13 @@ mod tests {
                 .state,
             0
         );
-        assert!(
-            sim.substrate.entities.get(2).is_none(),
-            "authored outside-playfield Unit must fail Unlimbo and be discarded"
-        );
+        // ReadScenario/FullInit keep A8E7AC nonzero through authored
+        // readers, so Object5F4F1B skips the ordinary class gate. The
+        // successful Techno6F6CFE tail still establishes mode-one membership.
+        let authored_outside = sim.substrate.entities.get(2).unwrap();
+        assert!(!authored_outside.in_playfield);
+        assert!(!authored_outside.lifecycle.in_limbo);
+        assert!(authored_outside.lifecycle.cell_marked);
 
         let inside = sim
             .spawn_object_at_height("SUB", "Soviet", inside.0, inside.1, 0, 0, &rules)

@@ -106,6 +106,7 @@ pub mod bridge_state;
 
 // --- Infantry deploy-fire state machine ---
 pub mod deploy;
+pub(crate) mod door;
 pub mod gate_runtime;
 pub mod infantry;
 pub(crate) mod mcv_deploy;

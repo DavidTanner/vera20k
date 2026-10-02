@@ -1579,7 +1579,7 @@ fn classify_foot_entry<'a>(
                 continue;
             }
             if bt.gate {
-                if b.building_gate.is_some_and(|s| s.can_garrison_passable()) {
+                if b.is_open_gate() {
                     continue;
                 }
                 if !allied && !combat_weapon::is_armed(e, obj) {

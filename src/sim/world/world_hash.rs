@@ -1620,19 +1620,12 @@ impl Simulation {
             entity.bunker_runtime.hash(hasher);
             if let Some(gate) = entity.building_gate {
                 1u8.hash(hasher);
-                gate.mission_18_active.hash(hasher);
-                (gate.phase as u8).hash(hasher);
-                (gate.mission_state as u8).hash(hasher);
-                // Same u32 values, same order as the old (last_frame, ticks_remaining)
-                // pairs — the MissionTimer regrouping leaves the hash pre-image identical.
-                gate.transition_timer.duration.hash(hasher);
-                gate.transition_total_ticks.hash(hasher);
-                gate.transition_timer.start_frame.hash(hasher);
-                gate.hold_timer.duration.hash(hasher);
-                gate.hold_timer.start_frame.hash(hasher);
+                gate.hash_state(hasher);
             } else {
                 0u8.hash(hasher);
             }
+            // Shared Techno Door gameplay state is retained and folded once.
+            entity.hash_door_state(hasher);
 
             // Unit+68C remains the deployment authority. The former MCV-only
             // turn observation now hashes once in its retained locomotor class.

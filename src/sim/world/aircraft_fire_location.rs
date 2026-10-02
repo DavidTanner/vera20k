@@ -175,17 +175,20 @@ impl Simulation {
                 .resolved_terrain
                 .as_ref()
                 .map_or(cell, |t| t.native_cell_coord(t.native_cell_identity(cell)));
-            if super::techno_ai_cloak::find_nearest_object_in_cell(
-                self,
-                (resolved.0 as u16, resolved.1 as u16),
-            )
-            .and_then(|other| self.substrate.entities.get(other))
-            .is_some_and(|other| {
-                other.spawn_manager.is_some()
-                    || rules
-                        .object(self.interner.resolve(other.type_ref()))
-                        .is_some_and(|object| object.spawned)
-            }) {
+            if self
+                .nearest_cell_object(
+                    (resolved.0 as u16, resolved.1 as u16),
+                    crate::sim::movement::locomotor::MovementLayer::Ground,
+                    None,
+                )
+                .and_then(|other| self.substrate.entities.get(other))
+                .is_some_and(|other| {
+                    other.spawn_manager.is_some()
+                        || rules
+                            .object(self.interner.resolve(other.type_ref()))
+                            .is_some_and(|object| object.spawned)
+                })
+            {
                 return true;
             }
         }

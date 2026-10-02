@@ -863,7 +863,7 @@ pub(super) fn prepare_step_head_at(
                     rules
                         .and_then(|r| r.object(interner.resolve(b.type_ref())))
                         .is_some_and(|t| t.gate)
-                        && b.building_gate.is_some_and(|g| g.can_garrison_passable())
+                        && b.is_open_gate()
                 })
         } else {
             false

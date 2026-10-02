@@ -309,6 +309,7 @@ fn outside_reentry_clears_current_discovery_only_after_successful_alive_mark() {
         let id = sim
             .spawn_object_at_height("E1", "Americans", 6, 5, 0, 0, &rules)
             .unwrap();
+        assert!(sim.substrate.entities.get(id).unwrap().in_playfield);
         assert!(
             sim.substrate
                 .entities
@@ -335,11 +336,16 @@ fn outside_reentry_clears_current_discovery_only_after_successful_alive_mark() {
             .lifecycle
             .object_alive = alive;
         // Caller-supplied successful Mark admits an outside cell, as existing
-        // release callers can. The mode-one query is owned by shared Unlimbo.
+        // release callers can. Techno6F6CB8 returns after failed Object Mark
+        // before the membership writer6F6CFE, retaining the prior true byte.
+        // Only successful Mark reaches that writer and the mode-one query.
         let result = sim.reveal_constructed_object_at_height(id, 5, 5, 0, 0, placement, &rules);
         assert_eq!(result.is_some(), placement != PlacementEvidence::MarkFailed);
         let entity = sim.substrate.entities.get(id).unwrap();
-        assert!(!entity.in_playfield);
+        assert_eq!(
+            entity.in_playfield,
+            placement == PlacementEvidence::MarkFailed
+        );
         assert!(!entity.discovery.owned_by_current_house);
         assert_eq!(entity.discovery.discovered_by_current_house, expected_b);
         assert_eq!(entity.discovery.discovered_by_other_house, expected_c);
@@ -1379,21 +1385,24 @@ fn techno_constructor_unit_can_enter_rejection_discards_eager_pool_without_refun
     let mut expected = SimRng::new(seed);
 
     let blocker_word = (expected.next_u32() & 0xFFFF) as u16;
-    // Parent construction and its three SpawnManager children all happen
-    // before ObjectClass::Unlimbo asks UnitClass::Can_Enter_Cell. The first
-    // authored Unit is already linked when the CARRIER row reaches that gate.
-    for _ in 0..4 {
-        let _ = expected.next_u32();
-    }
     assert_eq!(
         sim.spawn_from_map(
-            &[
-                map_entity("MTNK", EntityCategory::Unit, (6, 5)),
-                map_entity("CARRIER", EntityCategory::Unit, (6, 5)),
-            ],
+            &[map_entity("MTNK", EntityCategory::Unit, (6, 5))],
             Some(&rules),
         ),
         1
+    );
+    // Authored placement retains nonzero A8E7AC and skips Object5F4F1B's
+    // class gate (saved unit_unlimbo.json authored_rows). Runtime placement
+    // outside that scope still asks UnitClass::Can_Enter_Cell. Its parent and
+    // three SpawnManager children are constructed before that refusal.
+    assert!(!sim.object_placement_scope_active());
+    for _ in 0..4 {
+        let _ = expected.next_u32();
+    }
+    assert!(
+        sim.spawn_object("CARRIER", "Americans", 6, 5, 0, &rules)
+            .is_none()
     );
     let blocker_id = 1;
     assert_eq!(
@@ -1442,15 +1451,22 @@ fn techno_constructor_fixed_map_uses_native_category_order_after_prior_mark_draw
         .map(|_| (expected.next_u32() & 0xFFFF) as u16)
         .collect();
 
-    assert_eq!(sim.spawn_from_map(&entities, Some(&rules)), 4);
+    // Authored scope skips ordinary admission at Object5F4F1B, so the fifth
+    // outside BASE remains a live marked object. Techno6F6CFE still publishes
+    // its actual outside membership; scope does not make that byte true.
+    assert_eq!(sim.spawn_from_map(&entities, Some(&rules)), 5);
     let actual_words: Vec<u16> = sim
         .substrate
         .entities
         .values()
         .map(|entity| entity.techno_ctor_random_word)
         .collect();
-    assert_eq!(actual_words.as_slice(), &expected_words[..4]);
-    assert!(sim.substrate.entities.get(5).is_none());
+    assert_eq!(actual_words, expected_words);
+    let outside = sim.substrate.entities.get(5).unwrap();
+    assert_eq!((outside.position.rx, outside.position.ry), (1, 1));
+    assert!(!outside.in_playfield);
+    assert!(outside.lifecycle.object_alive);
+    assert!(outside.lifecycle.cell_marked && !outside.lifecycle.in_limbo);
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 }
 

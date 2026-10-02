@@ -793,7 +793,8 @@ impl Simulation {
         } else {
             super::super::locomotor::MovementLayer::Ground
         };
-        let Some(nearest) = self.nearest_cell_object((cell.0 as u16, cell.1 as u16), layer) else {
+        let Some(nearest) = self.nearest_cell_object((cell.0 as u16, cell.1 as u16), layer, None)
+        else {
             return Ok(false);
         };
         let allied = self.substrate.entities.get(nearest).is_some_and(|object| {
@@ -1099,21 +1100,11 @@ impl Simulation {
                 if let Some(hover) = self.hover_mut(id) {
                     hover.head = None;
                 }
-                let owner = self
-                    .substrate
-                    .entities
-                    .get(id)
-                    .map(|entity| self.interner.resolve(entity.owner()).to_owned())
-                    .unwrap_or_default();
                 let _ = crate::sim::gate_runtime::request_gate_open_for_cell(
-                    &mut self.substrate.entities,
-                    &self.substrate.occupancy,
+                    self,
                     (cell.0 as u16, cell.1 as u16),
                     id,
-                    &owner,
                     rules,
-                    &self.house_alliances,
-                    &self.interner,
                 );
                 self.hover_halt(id);
                 Ok(3)

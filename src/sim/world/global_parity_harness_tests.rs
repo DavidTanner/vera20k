@@ -511,7 +511,12 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // All819 complete current/control boundaries match except tick hashes,
 // including House/Factory state and three full RNG streams/draws/callers.
 // Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x851C_57C5_76CA_991A;
+// Shared Techno Door hash composition: omitting only its new hash feed
+// restored all three preceding replay pins with behavior/RNG checks green.
+// The feed is restored; this remains a Rust regression, not a native golden.
+// Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+// Previous: 0x851C_57C5_76CA_991A.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x4274_E333_51E6_E7C0;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

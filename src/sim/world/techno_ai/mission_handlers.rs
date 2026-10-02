@@ -143,6 +143,20 @@ pub(crate) fn dispatch_foot_mission(
         // `UnitTypeClass*` on UnitClass and this state enum on InfantryClass,
         // which caches its own type at `+0x6C0`.
         (EntityCategory::Unit | EntityCategory::Infantry, Some(MissionType::Move)) => {
+            //Unit740A90..740ABC closes its own Techno+350 Door before the
+            //shared Foot4D4200 cadence. DeployTime is the same native type
+            //reader used by factory and Gate Door requests.
+            if input.category == EntityCategory::Unit {
+                let ticks = sim
+                    .substrate
+                    .entities
+                    .get(id)
+                    .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+                    .map_or(0, |object| object.deploy_time_ticks);
+                if let Some(entity) = sim.substrate.entities.get_mut(id) {
+                    entity.close_door(ticks, now);
+                }
+            }
             if input.moving_or_queued {
                 MissionHandlerEvaluation::cadence(jittered_mission_cadence(
                     sim,

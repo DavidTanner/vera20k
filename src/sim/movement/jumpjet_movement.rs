@@ -345,9 +345,7 @@ pub(crate) fn infantry_destination_coordinate(
                 rules
                     .and_then(|rules| rules.object(interner.resolve(building.type_ref())))
                     .is_some_and(|object| object.gate)
-                    && building
-                        .building_gate
-                        .is_some_and(|gate| gate.can_garrison_passable())
+                    && building.is_open_gate()
             });
     let slot = super::walk_head::select_slot(input, false, selected, ground, gate_open, rng)?;
     let first_ground =

@@ -158,7 +158,9 @@ impl Simulation {
         ge.immune_to_radiation = obj.immune_to_radiation;
         ge.occupier = obj.occupier;
         if category == EntityCategory::Structure && obj.gate {
-            ge.building_gate = Some(crate::sim::game_entity::BuildingGateRuntime::default());
+            ge.building_gate = Some(crate::sim::game_entity::BuildingGateRuntime::at_frame(
+                self.session.binary_frame,
+            ));
         }
         if category == EntityCategory::Structure && obj.bunker {
             ge.bunker_runtime = Some(crate::sim::docking::bunker_install::BunkerRuntime::idle());

@@ -168,7 +168,7 @@ pub fn transmit(
         });
         log.len() - 1
     });
-    let filtered = filtered_techno_sender(sim, sender_sid);
+    let filtered = as_techno(sim, sender_sid);
     let reply = match msg {
         RadioMessage::Hello => transmit_hello(sim, sender_sid, target_sid, filtered, rules),
         RadioMessage::Break => transmit_over_out(sim, sender_sid, target_sid, filtered, rules),
@@ -209,16 +209,15 @@ pub(crate) fn transmit_to_contact(
     )
 }
 
-/// RTTI sender filter (§5.2.2): the receiver only sees Unit/Aircraft/Building/
-/// Infantry senders. Every `GameEntity` is a Techno, so this currently only
-/// drops a vanished sender — kept explicit for the non-Techno cases a later
-/// slice may introduce.
-fn filtered_techno_sender(sim: &Simulation, sender_sid: u64) -> Option<u64> {
-    match sim.substrate.entities.get(sender_sid)?.category {
+///As_Techno40DD70, shared by radio sender filtering and UnitPerCell's
+///destination RTTI gate. Unit/Aircraft/Building/Infantry are the four accepted
+///native identities; a Cell or another non-entity registry is not a Techno.
+pub(crate) fn as_techno(sim: &Simulation, id: u64) -> Option<u64> {
+    match sim.substrate.entities.get(id)?.category {
         EntityCategory::Unit
         | EntityCategory::Infantry
         | EntityCategory::Structure
-        | EntityCategory::Aircraft => Some(sender_sid),
+        | EntityCategory::Aircraft => Some(id),
     }
 }
 

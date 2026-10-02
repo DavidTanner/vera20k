@@ -375,9 +375,23 @@ pub(super) fn deliver_produced_object(
                 super::production_spawn::exact_land_vehicle_exit_factory(
                     rules,
                     sim.interner.resolve(producer.type_ref()),
-                ) && producer.mission.effective().known()
-                    != Some(crate::sim::mission::MissionType::Unload)
+                )
             });
+    //444570 refuses another land exit while this producer remains on Unload.
+    //Keep the held Factory object; do not bypass the native Door/exit lifecycle
+    //through ordinary runtime Unlimbo on the same configured cell.
+    if land_factory
+        && sim
+            .substrate
+            .entities
+            .get(selection.producer_id)
+            .is_some_and(|producer| {
+                producer.mission.effective().known()
+                    == Some(crate::sim::mission::MissionType::Unload)
+            })
+    {
+        return None;
+    }
     let spawned = if land_factory {
         let producer = sim.substrate.entities.get(selection.producer_id)?;
         let coord = crate::sim::movement::configured_building_exit_coordinate(
@@ -406,10 +420,17 @@ pub(super) fn deliver_produced_object(
             );
             sim.mark_entity_put(spawned, context);
             mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
-            // RESIDUAL:4445F0 queues producer Unload16, whose whole factory
-            // animation/ForceTrack/alternate-producer lifecycle is unported.
-            // Retain the existing delivery scheduling adapter until that
-            // separate mechanism owns its exit/cleanup and timer/RNG cadence.
+            //4445F0 queues producer Unload16. Its existing Building mission
+            //owner opens the shared Door and forces the native exit track.
+            let _ = sim.mission_queue_exact(
+                selection.producer_id,
+                crate::sim::mission::MissionId::from_known(
+                    crate::sim::mission::MissionType::Unload,
+                ),
+                0,
+                sim.session.binary_frame,
+                &crate::sim::mission::authority::LiveReadyInputProvider { rules },
+            );
             Some(spawned)
         })
     } else {
@@ -434,6 +455,18 @@ pub(super) fn deliver_produced_object(
         mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
         Some(spawned)
     }?;
+    if land_factory {
+        //444492/44498E publish the leaving object's own Techno+218; Unit
+        //PerCell consumes it after clearance. Reuse the existing archive owner.
+        let archive = sim
+            .substrate
+            .entities
+            .get(selection.producer_id)
+            .and_then(|producer| producer.archive_target());
+        if let Some(product) = sim.substrate.entities.get_mut(spawned) {
+            product.set_archive_target(archive);
+        }
+    }
     // Aircraft spawned on helipad: reserve dock slot then set
     // DockedIdle carrying the assigned pad index.
     if let Some(af_id) = airfield {
@@ -486,7 +519,7 @@ pub(super) fn deliver_produced_object(
         && sim.slave_master_leaves_factory(stable_id, rules);
     // Auto-move newly produced unit to rally point (if set).
     // Skip for aircraft docked on helipad — they wait for orders.
-    if airfield.is_none() && !hunting {
+    if airfield.is_none() && !hunting && !land_factory {
         // `ExitObject_Main @ 0x00443C60` reads the factory's own
         // ArchiveTarget (`+0x218`, the rally point) for the object
         // leaving it; the naval arm reads it after Unlimbo

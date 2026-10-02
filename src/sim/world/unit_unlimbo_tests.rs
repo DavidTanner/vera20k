@@ -2,8 +2,10 @@
 //! comparisons. The oracle executes the original class receivers; these tests
 //! use the shared Rust Unlimbo and production-delivery owners. Supplied bridge
 //! flags, caller pose and raw bytes are branch controls, not a bridge-loader
-//! comparison. Full factory Unload, legal naval production, movement and the
-//! Scenario-inactive prerequisite remain outside the compared boundaries.
+//! comparison. The composed factory/Door comparisons live in
+//! techno_ai/building_missions/factory_unload_tests. Whole BuildingAI, legal
+//! naval production, AStar continuation and the Scenario-inactive prerequisite
+//! remain outside the compared boundaries.
 
 use super::{PlacementEvidence, Simulation, entry_test_fixture};
 use crate::map::entities::parse_map_entities;
@@ -944,9 +946,8 @@ fn retail_reused_unit_unlimbo_matches_original_stage_and_rng_tail() {
 
 /// The native packet runs whole443C60; this comparison covers the five live
 /// GAWEAP non-Unload controls at Rust's existing public completed-delivery
-/// boundary. Factory queue setup, its producer activation and final producer
-/// QueueMission(Unload16) are not compared. The latter needs the independent
-/// Building Unload/factory-routing mechanism. Two inactive-Scenario failures
+/// boundary, including the producer's final queued Unload. Factory queue setup
+/// and whole producer activation are not compared. Two inactive-Scenario failures
 /// have no Rust Scenario-active owner; GAYARD+MTNK is not legal retail naval
 /// production. Their saved native rows are retained and explicitly excluded.
 #[test]
@@ -1107,6 +1108,19 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
                 .unwrap()
                 .has_live_contact_with(id),
             "{name}: reciprocal Radio HELLO contact"
+        );
+        assert_eq!(
+            json!(
+                sim.substrate
+                    .entities
+                    .get(producer_id)
+                    .unwrap()
+                    .mission
+                    .queued()
+                    .raw()
+            ),
+            row["producer_queued"],
+            "{name}: original producer QueueMission(Unload16)"
         );
         let plane = &row["plane_after"];
         let lists = json!([

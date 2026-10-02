@@ -54,6 +54,30 @@ wrapper reports denied variables and does not silently change the environment.
 After sourcing the native development environment, explicitly remove `RA2_DIR`
 for this command as above; asset loading uses the working directory's config.
 
+The [factory tank exit profile](map_observation.factory-tank-exit.example.json)
+exercises the ordinary human GAWEAP → MTNK production path on retail AnyTown
+(`XMP03T4.MAP`). It deploys the starting MCV, builds power, barracks and refinery,
+places the 5×3 factory at `(25,91)`, then queues one tank without a rally order.
+Its numeric type/entity handles belong to the recorded retail roster and seed;
+inspect a zero-step observation before reusing it with different rules or assets.
+Use `RUST_LOG=info` with the command above to retain placement foundations in
+`logs/ra2.log`. The profile requires 5600 steps to observe the complete exit.
+
+The 2026-10-02 release observation loaded MIX entry `-854728974` with map payload
+SHA-256 `7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e`.
+Factory1456 placed at step4501, became operational4551, and delivered tank1528
+at5249. Unload states1/2/3/4 occurred at5250/5265/5293/5325. The tank reached the
+forced track head at5321, cleared the factory footprint at5333, and returned to
+Guard at5340 in Cell `(30,93)` / XYZ `[7808,23936,416]`; the factory returned to
+Guard at5370. The inspected 800×600 BGRA readback has SHA-256
+`adceea6c241b3e4eb16eb7039d6c1159dfdb376f4d9191bfcc4b3634127c80cb`.
+The release binary SHA-256 is
+`079f26fb33e3f97ab5571c9350bcdc619384c03116a98ebfee1be8aab07a15d2`.
+These are Rust production observations. Bounded original Door, Unload and Unit
+comparisons are documented by the existing
+[Unit Unlimbo evidence owner](spatial_oracle/anytown_damage/unit_unlimbo.md);
+this profile does not establish native whole-object clock or pixel equivalence.
+
 A new wrapper v5 bundle contains sealed `profile.json`, `config.toml` and
 `contract.json` copies, plus `stdout.log`, `stderr.log`, `run.json` and the child's
 atomically published `child-output/{capture.json,frame.bgra}`. Runtime still reads

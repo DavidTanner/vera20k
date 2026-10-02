@@ -4,6 +4,27 @@ use crate::rules::object_type::ObjectType;
 use crate::sim::components::DriveCoord;
 use crate::sim::radio::Contacts;
 
+///The one foundation exit-track point shared by Building ClearBib449540
+///and Mission_Unload44DCDD..44DD38. Type+ED4 element10 supplies both signed
+///cell words; native subtracts one from X, centres XY and sets requested Z0.
+///This is distinct from the configured ExitCoord used by object Unlimbo.
+pub(crate) fn factory_exit_track_coordinate(
+    current: DriveCoord,
+    object: &ObjectType,
+) -> DriveCoord {
+    let (dx, dy) = crate::sim::docking::building_dock::foundation_exit_pair(&object.foundation, 10)
+        .expect("every native foundation exit row retains30 pair slots");
+    let x = ((current.x / 256) as i16)
+        .wrapping_add(dx as i16)
+        .wrapping_sub(1);
+    let y = ((current.y / 256) as i16).wrapping_add(dy as i16);
+    DriveCoord {
+        x: i32::from(x) * 256 + 128,
+        y: i32::from(y) * 256 + 128,
+        z: 0,
+    }
+}
+
 /// Read the destination's type, physical coordinate, center and sparse contact
 /// slots at the call boundary. The requester coordinate is read only for Bunker;
 /// ordinary targets and uncontacted docks do not need an approach direction.

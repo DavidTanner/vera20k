@@ -359,9 +359,10 @@ impl Simulation {
         ) {
             return false;
         }
-        if let Some(other) = super::techno_ai_cloak::find_nearest_object_in_cell(
-            self,
+        if let Some(other) = self.nearest_cell_object(
             (cell.0 as u16, cell.1 as u16),
+            crate::sim::movement::locomotor::MovementLayer::Ground,
+            None,
         ) {
             return other == id
                 || e.radio_contacts.slot(0) == Some(other)
@@ -952,7 +953,11 @@ mod tests {
                     .insert(2);
             }
             assert_eq!(
-                super::super::techno_ai_cloak::find_nearest_object_in_cell(&sim, (64, 64)),
+                sim.nearest_cell_object(
+                    (64, 64),
+                    crate::sim::movement::locomotor::MovementLayer::Ground,
+                    None
+                ),
                 occupant.map(|kind| if kind == "self" { 1 } else { 2 }),
                 "supplied native occupant: {input}",
             );

@@ -8,6 +8,7 @@ from pathlib import Path
 import hashlib
 import json
 import os
+import struct
 
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import (
@@ -17,10 +18,11 @@ from unicorn.x86_const import (
 )
 
 from tools.native_oracle import (
-    NATIVE_SHA256, RET_MAGIC, file_span, finish_vectors, image_bytes, provenance, run_checked,
+    NATIVE_SHA256, RET_MAGIC, SCRATCH, call as native_call, file_span, finish_vectors, image_bytes, provenance, run_checked,
 )
 from tools.spatial_oracle.building_body_rules import SP, RULES, dwords
 from . import foot_missions
+from .navigation_inputs import extract_tiles
 from .mission import HERE, Mission, base
 
 REPO = Path(__file__).resolve().parents[3]
@@ -52,6 +54,18 @@ RADIO_RETS = {
     0x65ACCF, 0x65ACD4, 0x65AAB7, 0x65A9E5, 0x65A990, 0x43CE21,
     0x43CE12, 0x6F4C4D, 0x6F4C99, 0x6F4BBE, 0x65A8AA, 0x65A883, 0x6F4E52,
 }
+
+
+UNLOAD_PCS = {0x44D880, 0x44DD56, 0x44DE20, 0x44DE4B, 0x44DECD, 0x44DF72,
+       0x44DFA1, 0x44DFA4, 0x44E1AD, 0x44E1B8, 0x44E202, 0x44E233,
+       0x44E267, 0x44E28E, 0x44E293, 0x4A51F0, 0x4A5240, 0x4A5150,
+       0x4A5360, 0x4B0C40, 0x4B0D14, 0x4B0D3F, 0x4D3710,
+       0x4B0500, 0x4B0F20, 0x739EC0, 0x73A936, 0x65ACB0,
+       0x43CD2B, 0x5B35E0, 0x5B3570, 0x743A50, 0x65A970, 0x65AAA0,
+       0x43C2D0, 0x6F4AB0, 0x737430, 0x73A943, 0x73A946, 0x4B0F20,
+       0x42C900, 0x42A5B0, 0x73A7D2, 0x73A88B, 0x73A8BF, 0x73A936,
+       0x73A98C, 0x73AAC6, 0x73AADB, 0x73AB6C, 0x73AB99, 0x73ABAA,
+       0x73ABCE, 0x73ABD6, 0x73ACC2, 0x73ACD1}
 
 
 class InitialPlacementBoundary(Exception):
@@ -94,7 +108,14 @@ class UnitUnlimboControls(Mission):
     def rng_bytes(self):
         return {k: bytes(self.u.mem_read(p, 1012)) for k, p in self.resident.rngs.items()}
 
-    def actor(self):
+    def actor(self, pointer=None):
+        if pointer is not None:
+            retained = self.src
+            try:
+                self.src = pointer
+                return self.actor()
+            finally:
+                self.src = retained
         if not self.src:
             return None
         return dict(self.state(), on_bridge=self.u.mem_read(self.src + 0x8C, 1)[0],
@@ -600,6 +621,439 @@ class UnitUnlimboControls(Mission):
             row['preliminary'] = preliminary
         return row
 
+    @staticmethod
+    def rng_pair(before, after):
+        return {k: dict(before_hex=v.hex(), after_hex=after[k].hex(), unchanged=v == after[k])
+                for k, v in before.items()}
+
+    def factory_tail_state(self):
+        m, u = self.m, self.u
+        interface = m.read32(self.src + 0x674)
+        loco = interface - 4
+        foundation = m.read32(self.producer_type + 0xED4)
+        return dict(
+            product=self.actor(), producer=self.actor(self.producer),
+            producer_health=base.i32(u, self.producer + 0x6C),
+            producer_constructed_limbo=u.mem_read(self.producer + 0x81, 1)[0],
+            producer_tether=u.mem_read(self.producer + 0x418, 1)[0],
+            product_tether=u.mem_read(self.src + 0x418, 1)[0],
+            producer_archive=hex(m.read32(self.producer + 0x218)),
+            radio_pair=self.radio_pair(), navcom=hex(m.read32(self.src + 0x5A4)),
+            foot_control_words={hex(off):m.read32(self.src + off) for off in (0x598,0x5A4,0x5AC,0x5BC)},
+            door=bytes(u.mem_read(self.producer + 0x350, 0x1C)).hex(),
+            deploy_time_bits=bytes(u.mem_read(self.producer_type + 0x3C8, 8)).hex(),
+            foundation_pointer=hex(foundation),
+            foundation_exit_offset_words=list(struct.unpack('<hh', u.mem_read(foundation + 0x28, 4))),
+            drive=dict(interface=hex(interface), vtable=hex(m.read32(interface)),
+                       selector=base.i32(u, loco + 0x58), cursor=base.i32(u, loco + 0x5C),
+                       reversed=u.mem_read(loco + 0x60, 1)[0], valid=u.mem_read(loco + 0x63, 1)[0],
+                       head=base.xyz(u, loco + 0x40), destination=base.xyz(u, loco + 0x34),
+                       residual=base.i32(u, loco + 0x4C),
+                       target_fraction_bits=bytes(u.mem_read(loco + 0x50, 8)).hex(),
+                       applied_fraction_bits=bytes(u.mem_read(self.src + 0x578, 8)).hex()),
+            counter=m.read32(0xA8E7AC), actual_game_mode=m.read32(0xA8B238),
+            fpcw=u.reg_read(UC_X86_REG_FPCW), text_sha256=self.text_hash())
+
+    def read_factory_unload_inputs(self):
+        m, u = self.m, self.u
+        self.phase = 'setup'
+        result = []
+        for name, path in base.layers():
+            if not path.exists():
+                result.append(dict(file=name, absent=True))
+                continue
+            raw = path.read_bytes()
+            sections, lines = base.lexical(raw, {'GAWEAP', 'Unload'})
+            m.rules_cache(sections)
+            before = bytes(u.mem_read(self.producer_type + 0x3C8, 8)).hex()
+            for reg, value in ((UC_X86_REG_ESP, SP), (UC_X86_REG_EBP, self.producer_type),
+                               (UC_X86_REG_EBX, self.producer_type + 0x24), (UC_X86_REG_EDI, RULES)):
+                u.reg_write(reg, value)
+            run_checked(u, 0x714B77, 0x714B9F, required_addresses=(0x714B94, 0x5283D0))
+            assert u.reg_read(UC_X86_REG_ESP) == SP
+            u.reg_write(UC_X86_REG_ESP, SP)
+            u.reg_write(UC_X86_REG_ESI, RULES)
+            run_checked(u, 0x679C92, 0x679CAF, required_addresses=(0x5B3760,))
+            assert u.reg_read(UC_X86_REG_ESP) == SP
+            result.append(dict(file=name, sha256=hashlib.sha256(raw).hexdigest(), sections=sections,
+                               source_lines=lines, deploy_before=before,
+                               deploy_after=bytes(u.mem_read(self.producer_type + 0x3C8, 8)).hex()))
+        return result
+
+    def initialize_foundation_exit_lists(self):
+        m, u = self.m, self.u
+        before_rng = self.rng_bytes()
+        table_before = bytes(u.mem_read(0x89D368, 22 * 0x78))
+        before_pointer = m.read32(self.producer_type + 0xED4)
+        m.invoke(0x45C300, 0)
+        startup_rows = []
+        for index in range(22):
+            raw = bytes(u.mem_read(0x89D368 + index * 0x78, 0x78))
+            pairs = [list(struct.unpack_from('<hh', raw, off)) for off in range(0, 0x78, 4)]
+            sentinel = next((i for i, p in enumerate(pairs) if p == [32767, 32767]), None)
+            startup_rows.append(dict(id=index, address=hex(0x89D368 + index * 0x78),
+                hex=raw.hex(), all_pairs=pairs, terminator_index=sentinel,
+                list_before_terminator=pairs[:sentinel] if sentinel is not None else None,
+                element10=pairs[10]))
+        for reg, value in ((UC_X86_REG_ESP, SP), (UC_X86_REG_EBP, self.producer_type),
+                           (UC_X86_REG_EDI, self.producer_type + 0x1F8)):
+            u.reg_write(reg, value)
+        run_checked(u, 0x46152C, 0x46157A, required_addresses=(0x46156A, 0x528A10))
+        assert u.reg_read(UC_X86_REG_ESP) == SP
+        pointer = m.read32(self.producer_type + 0xED4)
+        assert pointer == 0x89D368 + m.read32(self.producer_type + 0xEF0) * 0x78
+        assert before_rng == self.rng_bytes()
+        return dict(original_initializer='0x0045C300', crt_slot='0x008127F0', crt_thunk='0x0045C2F0',
+                    original_post_read=['0x0046152C', '0x0046157A'], before_pointer=hex(before_pointer),
+                    after_pointer=hex(pointer), foundation_id=m.read32(self.producer_type + 0xEF0),
+                    table_before_sha256=hashlib.sha256(table_before).hexdigest(),
+                    table_after_sha256=hashlib.sha256(bytes(u.mem_read(0x89D368, 22 * 0x78))).hexdigest(),
+                    original_selected_row_hex=bytes(u.mem_read(pointer, 0x78)).hex(),
+                    original_startup_rows=startup_rows,
+                    rng=self.rng_pair(before_rng, self.rng_bytes()))
+
+    def prepare_factory_continuation_tiles(self):
+        """Bind missing crop TMP bodies through the existing physical archive owner.
+
+        This is the same declared cache/relocation boundary as the established
+        Resident/Navigation owners. Original IsoTileType construction executes;
+        the full native archive/primary tile/INI initializer remains excluded.
+        """
+        m, u = self.m, self.u
+        before_rng = self.rng_bytes()
+        theater = base.identity.theater()
+        physical, receipt = extract_tiles(theater)
+        table, count = m.read32(0xA8ED2C), m.read32(0xA8ED38)
+        retained_header = bytes(u.mem_read(0xA8ED28, 24))
+        u.mem_write(0xA8ED28, dwords(0x7EB6D4, table, count, 1, count, 10))
+        # Original constructor also retains every primary/secondary tile type.
+        # The existing Reader remains the sole allocator in this composed VM.
+        u.mem_write(0xB0F670, dwords(0x7EB6D4, m.alloc(4096 * 4), 4096, 1, 0, 10))
+        rows = []
+        for tile in sorted({r['tile'] for r in self.resident.case['supplied_cells']}):
+            if tile >= count or m.read32(table + tile * 4):
+                continue
+            raw = physical.get(tile)
+            assert raw is not None, (tile, theater['tiles'][tile])
+            head, data = m.alloc(0x400), m.alloc(len(raw))
+            name = theater['tiles'][tile]
+            # Supply the sparse original primary-array loop index as caller state;
+            # the constructor itself installs its vtable/defaults and this entry.
+            u.mem_write(0xA8ED38, dwords(tile))
+            args = (tile, -65, 0, m.cstring(name[:-4]), 0)
+            returned = m.invoke(0x5447C0, head, args)
+            assert returned == head and m.read32(table + tile * 4) == head
+            tmp = bytearray(raw)
+            width, height = struct.unpack_from('<II', tmp)
+            for sub in range(width * height):
+                offset = struct.unpack_from('<I', tmp, 16 + sub * 4)[0]
+                if offset:
+                    struct.pack_into('<I', tmp, 16 + sub * 4, data + offset)
+            u.mem_write(data, bytes(tmp))
+            u.mem_write(head + 0xA4, dwords(data))
+            u.mem_write(head + 0x2E4, dwords(width & 255, height & 255))
+            rows.append(dict(tile=tile, file=name, raw_sha256=hashlib.sha256(raw).hexdigest(),
+                             raw_bytes=len(raw), original_ctor='0x005447C0', ctor_args=list(args),
+                             head=hex(head), vtable=hex(m.read32(head)), data=hex(data),
+                             original_defaults_hex=bytes(u.mem_read(head + 0x2C0, 0x3C)).hex(),
+                             relocated_sha256=hashlib.sha256(bytes(tmp)).hexdigest()))
+        u.mem_write(0xA8ED28, retained_header)
+        assert m.read32(0xA8ED38) == count
+        assert before_rng == self.rng_bytes()
+        return dict(archive_inputs=receipt, added_rows=rows, rng=self.rng_pair(before_rng, self.rng_bytes()),
+                    boundary='Physical primary TMP cache supplied with original constructor heads and native default animation/shadow fields. The original archive loader, all tile INI properties and rendering variants are excluded. Existing crop Cell inputs are unchanged; later original Recalc owns land/slope/zone updates.')
+
+    def door_progress(self):
+        # Observe this pure query through the existing original-function call owner.
+        # Transfer the original runtime Door bytes and frame, with no derived input.
+        # Its six-byte scratch FSTP avoids this fixture's RET_MAGIC stop callback.
+        raw = bytes(self.u.mem_read(self.producer + 0x350, 0x1C))
+        frame = bytes(self.u.mem_read(0xA8ED84, 4))
+        answer = native_call(0x4A52F0, ecx=SCRATCH, writes={SCRATCH: raw, 0xA8ED84: frame},
+                             capture_st0=True, fpcw=self.u.reg_read(UC_X86_REG_FPCW),
+                             required_addresses=(0x4A52F0,))
+        return dict(binary64_hex=struct.pack('<Q', answer['st0_bits']).hex(), value=answer['st0'])
+
+    def door_controls(self):
+        m, u = self.m, self.u
+        door = self.producer + 0x350
+        retained = bytes(u.mem_read(door, 0x1C))
+        retained_frame = m.read32(0xA8ED84)
+        before_rng = self.rng_bytes()
+        minutes = struct.unpack('<II', u.mem_read(self.producer_type + 0x3C8, 8))
+        retained_type_minutes = bytes(u.mem_read(self.producer_type + 0x3C8, 8))
+        result = []
+        try:
+            controls = [(kind, None, None) for kind in
+                        ('opening', 'closing', 'reversal_at10', 'zero_opening', 'zero_closing')]
+            for label, raw in (('negative', '-.044'), ('overflow_i32', '3000000'),
+                               ('overflow_i64', '1e17'), ('nan', 'nan'), ('infinite', 'inf')):
+                controls.extend((label + '_' + direction, raw, None) for direction in ('opening', 'closing'))
+            for label, value in (('raw_nan', float('nan')), ('raw_infinite', float('inf'))):
+                controls.extend((label + '_' + direction, None, struct.pack('<d', value))
+                                for direction in ('opening', 'closing'))
+            for kind, reader_raw, raw_type in controls:
+                u.mem_write(0xA8ED84, dwords(0))
+                m.invoke(0x4A50F0, door)
+                default = bytes(u.mem_read(door, 0x1C)).hex()
+                closing_kind = kind.endswith('closing') and not kind.endswith('opening')
+                closing_prerequisite = None
+                if closing_kind:
+                    m.invoke(0x4A52D0, door)
+                    closing_prerequisite = dict(entry='0x004A52D0', before_hex=default,
+                                               after_hex=bytes(u.mem_read(door, 0x1C)).hex())
+                input_minutes = (0, 0) if kind.startswith('zero_') else minutes
+                reader = None
+                if reader_raw is not None:
+                    m.rules_cache({'GAWEAP': {'DeployTime': reader_raw}})
+                    u.mem_write(self.producer_type + 0x3C8, retained_type_minutes)
+                    for reg, value in ((UC_X86_REG_ESP, SP), (UC_X86_REG_EBP, self.producer_type),
+                                       (UC_X86_REG_EBX, self.producer_type + 0x24), (UC_X86_REG_EDI, RULES)):
+                        u.reg_write(reg, value)
+                    scan = []
+                    def observe_scan(vm, pc, _size, _data):
+                        if pc == 0x528551:
+                            pointer = vm.reg_read(UC_X86_REG_ECX)
+                            scan.append(dict(local_pointer=hex(pointer),
+                                local_before_hex=bytes(vm.mem_read(pointer, 4)).hex()))
+                        elif pc == 0x52855D:
+                            pointer = vm.reg_read(UC_X86_REG_ESP) + 0x2C
+                            assert hex(pointer) == scan[-1]['local_pointer']
+                            scan[-1].update(sscanf_returned_eax=vm.reg_read(UC_X86_REG_EAX),
+                                local_after_hex=bytes(vm.mem_read(pointer, 4)).hex())
+                    scan_hook = u.hook_add(UC_HOOK_CODE, observe_scan)
+                    try:
+                        run_checked(u, 0x714B77, 0x714B9F,
+                            required_addresses=(0x714B94, 0x5283D0, 0x52855D))
+                    finally:
+                        u.hook_del(scan_hook)
+                    assert u.reg_read(UC_X86_REG_ESP) == SP
+                    after_reader = bytes(u.mem_read(self.producer_type + 0x3C8, 8))
+                    input_minutes = struct.unpack('<II', after_reader)
+                    assert len(scan) == 1
+                    reader = dict(section='GAWEAP', key='DeployTime', raw=reader_raw,
+                                  original_slice=['0x00714B77', '0x00714B9F'],
+                                  before_hex=retained_type_minutes.hex(), after_hex=after_reader.hex(),
+                                  scan=scan[0], portable_reader_result=scan[0]['sscanf_returned_eax'] == 1,
+                                  failed_scan_limit='If the scan assigns no float, original52855D widens unchanged stack bytes. This is a diagnostic of this supplied stack, not a portable INI value; the existing rules parser policy remains separately documented.')
+                elif raw_type is not None:
+                    input_minutes = struct.unpack('<II', raw_type)
+                m.invoke(0x4A5240 if closing_kind else 0x4A51F0,
+                         door, input_minutes)
+                start = bytes(u.mem_read(door, 0x1C)).hex()
+                reversed_at = None
+                if kind == 'reversal_at10':
+                    u.mem_write(0xA8ED84, dwords(10))
+                    reversal_before = bytes(u.mem_read(door, 0x1C)).hex()
+                    m.invoke(0x4A5290, door)
+                    reversed_at = dict(frame=10, before=reversal_before,
+                                       after=bytes(u.mem_read(door, 0x1C)).hex())
+                probes = []
+                custom = kind.startswith('zero_') or reader_raw is not None or raw_type is not None
+                frames = (0, 1) if custom else ((0, 1, 38, 39, 40) if reversed_at is None else (10, 11))
+                for frame in frames:
+                    u.mem_write(0xA8ED84, dwords(frame))
+                    before = bytes(u.mem_read(door, 0x1C)).hex()
+                    progress = self.door_progress()
+                    due = m.invoke(0x4A5150, door) & 255
+                    opening = m.invoke(0x4A5110, door) & 255
+                    closing = m.invoke(0x4A5130, door) & 255
+                    open_stable = m.invoke(0x4A51B0, door) & 255
+                    closed_stable = m.invoke(0x4A51D0, door) & 255
+                    probes.append(dict(frame=frame, before=before, after=bytes(u.mem_read(door, 0x1C)).hex(),
+                                       progress=progress, due=due, opening=opening, closing=closing,
+                                       open_stable=open_stable, closed_stable=closed_stable))
+                m.invoke(0x4A5360, door)
+                result.append(dict(kind=kind, input_minutes_hex=struct.pack('<II', *input_minutes).hex(),
+                                   reader=reader, raw_type_override=raw_type.hex() if raw_type is not None else None,
+                                   native_default=default, start=start,
+                                   closing_prerequisite=closing_prerequisite,
+                                   reversal=reversed_at, probes=probes,
+                                   after_finish=bytes(u.mem_read(door, 0x1C)).hex()))
+        finally:
+            u.mem_write(door, retained)
+            u.mem_write(0xA8ED84, dwords(retained_frame))
+            u.mem_write(self.producer_type + 0x3C8, retained_type_minutes)
+        assert before_rng == self.rng_bytes()
+        return dict(rows=result, minutes_hex=struct.pack('<II', *minutes).hex(),
+                    rng=self.rng_pair(before_rng, self.rng_bytes()),
+                    observation='Original Door bytes and frame are transferred unchanged to native_oracle.call for the pure4A52F0 query. Original ST0 is rounded once to binary64 by that owner\'s six-byte scratch FSTP convention; no original text is changed.')
+
+    def run_factory_unload(self):
+        case = self.case
+        factory = self.run_factory()
+        assert factory['eax'] == 2
+        m, u = self.m, self.u
+        factory_after = self.factory_tail_state()
+        foundation = self.initialize_foundation_exit_lists()
+        reader_rng = self.rng_bytes()
+        physical_tail_inputs = self.read_factory_unload_inputs()
+        assert reader_rng == self.rng_bytes()
+        additional_tiles = self.prepare_factory_continuation_tiles()
+        timers = self.door_controls()
+        native_house_before = u.mem_read(self.house + 0x1EC, 1)[0]
+        u.mem_write(self.house + 0x1EC, bytes([case['human_controlled']]))
+        before = self.factory_tail_state()
+        trace, journal = [], []
+        operation = ['setup']
+        def observe(vm, pc, _size, _data):
+            if pc not in UNLOAD_PCS:
+                return
+            sp = vm.reg_read(UC_X86_REG_ESP)
+            item = dict(pc=hex(pc), operation=operation[0], frame=self.frame,
+                        receiver=hex(vm.reg_read(UC_X86_REG_ECX)), state=self.factory_tail_state(),
+                        eax=vm.reg_read(UC_X86_REG_EAX), ebx=vm.reg_read(UC_X86_REG_EBX),
+                        ebp=hex(vm.reg_read(UC_X86_REG_EBP)), esi=hex(vm.reg_read(UC_X86_REG_ESI)))
+            if pc == 0x4B0C40:
+                item['args'] = [m.read32(sp + 4 + i * 4) for i in range(5)]
+            if pc == 0x5B35E0:
+                item['args'] = [m.read32(sp + 4), m.read32(sp + 8)]
+            arg_count = {0x65ACB0:1, 0x65A970:3, 0x65AAA0:2,
+                         0x43C2D0:3, 0x6F4AB0:3, 0x737430:3, 0x743A50:3}.get(pc)
+            if arg_count is not None:
+                item['args'] = [m.read32(sp + 4 + i * 4) for i in range(arg_count)]
+            trace.append(item)
+        hook = u.hook_add(UC_HOOK_CODE, observe)
+        failure = None
+        before_rng, event_start = self.rng_bytes(), len(self.events)
+        consumer_route_boundary = None
+        def call(label, entry, receiver, args=()):
+            operation[0] = label
+            pre, rng0 = self.factory_tail_state(), self.rng_bytes()
+            if label == 'original_unit_ai':
+                u.mem_write(SP, dwords(RET_MAGIC, *args))
+                u.reg_write(UC_X86_REG_ESP, SP)
+                u.reg_write(UC_X86_REG_ECX, receiver)
+                stop = run_checked(u, entry, (RET_MAGIC, 0x42A5B0), count=2000000,
+                                   required_addresses=(entry,))
+                answer = u.reg_read(UC_X86_REG_EAX)
+            else:
+                answer, stop = m.invoke(entry, receiver, args), RET_MAGIC
+            post, rng1 = self.factory_tail_state(), self.rng_bytes()
+            journal.append(dict(operation=label, frame=self.frame, entry=hex(entry), receiver=hex(receiver),
+                                args=list(args), returned_eax=answer if stop == RET_MAGIC else None,
+                                stop_before=hex(stop), returned=stop == RET_MAGIC, before=pre, after=post,
+                                rng=self.rng_pair(rng0, rng1)))
+            return answer, stop
+        try:
+            self.phase = 'factory_unload'
+            call('producer_commence_queued_unload', 0x5B3570, self.producer)
+            next_dispatch = 1
+            for frame in range(1, 161):
+                self.frame = frame
+                u.mem_write(0xA8ED84, dwords(frame))
+                operation[0] = 'original_techno_door_caller'
+                pre, rng0 = self.factory_tail_state(), self.rng_bytes()
+                u.reg_write(UC_X86_REG_ESP, SP)
+                u.reg_write(UC_X86_REG_ESI, self.producer)
+                run_checked(u, 0x6FA5BE, 0x6FA5D6, required_addresses=(0x4A5150,))
+                assert u.reg_read(UC_X86_REG_ESP) == SP
+                if pre['door'] != self.factory_tail_state()['door']:
+                    journal.append(dict(operation=operation[0], frame=frame, before=pre, after=self.factory_tail_state(),
+                                        rng=self.rng_pair(rng0, self.rng_bytes())))
+                if frame >= next_dispatch and base.i32(u, self.producer + 0xAC) == 16:
+                    delay, stop = call('original_mission_unload', 0x44D880, self.producer)
+                    assert stop == RET_MAGIC
+                    next_dispatch = frame + delay
+                if consumer_route_boundary is None:
+                    _, stop = call('original_unit_ai', 0x7360C0, self.src)
+                    if stop != RET_MAGIC:
+                        consumer_route_boundary = dict(frame=frame, stop_before=hex(stop),
+                            state=self.factory_tail_state(), rng={k:v.hex() for k,v in self.rng_bytes().items()},
+                            boundary='The original consumer has reached its new scatter route request. AStar initialization and all subsequent Unit turns are excluded; no path result or native return is supplied.')
+                if consumer_route_boundary is not None and base.i32(u, self.producer + 0xAC) != 16:
+                    break
+                if (consumer_route_boundary is not None and base.i32(u, self.producer + 0xB4) == 5
+                        and bytes(u.mem_read(self.producer + 0x368, 2)) == b'\x00\x00'):
+                    break
+                if frame > 3 and not u.mem_read(self.producer + 0x418, 1)[0] and base.i32(u, self.producer + 0xBC) >= 4:
+                    if frame >= next_dispatch:
+                        break
+        except Exception as error:
+            failure = dict(type=type(error).__name__, message=str(error), operation=operation[0], frame=self.frame,
+                           original_tail_pc=[hex(v) for v in self.trace])
+        finally:
+            u.hook_del(hook)
+        assert failure is None, failure
+        assert consumer_route_boundary is not None, 'The original post-exit route boundary was not reached'
+        result = dict(input=case, factory=factory, factory_after=factory_after, physical_tail_inputs=physical_tail_inputs,
+                      foundation_prerequisite=foundation, timer_controls=timers, continuation_tiles=additional_tiles,
+                      supplied_house_control=dict(pointer=hex(self.house), offset='0x1EC',
+                                                   before=native_house_before, after=case['human_controlled']),
+                      before=before, after=self.factory_tail_state(), journal=journal, trace=trace, failure=failure,
+                      consumer_route_boundary=consumer_route_boundary, native_events=self.events[event_start:],
+                      rng=self.rng_pair(before_rng, self.rng_bytes()), inherited_inputs=self.inputs,
+                      text_sha256=self.text_hash())
+        print(json.dumps(dict(failure=failure, final_frame=self.frame, states=[
+            [j['frame'], j['before']['producer']['status'], j['after']['producer']['status'], j.get('returned_eax')]
+            for j in journal if j['operation'] == 'original_mission_unload'],
+            final_product=result['after']['product']['position'], final_drive=result['after']['drive'])), flush=True)
+        return result
+
+    def run_factory_miner_per_cell(self, selected):
+        assert selected in ('Harvester', 'Weeder')
+        case = self.case
+        factory = self.run_factory()
+        assert factory['eax'] == 2
+        m, u = self.m, self.u
+        before_flags = bytes(u.mem_read(self.typ + 0xE0E, 2)).hex()
+        before_default = m.read32(self.typ + 0x398)
+        before_reader_rng = self.rng_bytes()
+        section = {'Harvester': 'yes' if selected == 'Harvester' else 'no',
+                   'Weeder': 'yes' if selected == 'Weeder' else 'no'}
+        m.rules_cache({'MTNK': section})
+        for reg, value in ((UC_X86_REG_ESP, SP), (UC_X86_REG_EBX, RULES),
+                           (UC_X86_REG_EBP, self.typ + 0x24), (UC_X86_REG_EDI, self.typ)):
+            u.reg_write(reg, value)
+        run_checked(u, 0x74769F, 0x7476D3, required_addresses=(0x7476AE, 0x7476C8))
+        assert u.reg_read(UC_X86_REG_ESP) == SP
+        run_checked(u, 0x74779D, 0x7477BB, required_addresses=(0x7477B1,))
+        assert u.reg_read(UC_X86_REG_ESP) == SP
+        assert before_reader_rng == self.rng_bytes()
+        reader = dict(section='MTNK', keys=section,
+                      original_reader_slice=['0x0074769F', '0x007476D3'],
+                      original_post_read_slice=['0x0074779D', '0x007477BB'],
+                      before_flags_hex=before_flags,
+                      after_flags_hex=bytes(u.mem_read(self.typ + 0xE0E, 2)).hex(),
+                      before_default_mission=before_default,
+                      after_default_mission=m.read32(self.typ + 0x398),
+                      rng=self.rng_pair(before_reader_rng, self.rng_bytes()))
+        self.frame = 1
+        u.mem_write(0xA8ED84, dwords(1))
+        u.mem_write(self.house + 0x1EC, b'\x01')
+        self.phase = 'factory_miner_percell'
+        before, before_rng, event_start = self.factory_tail_state(), self.rng_bytes(), len(self.events)
+        ready = m.read32(m.read32(self.src) + 0x200)
+        pcs = {0x739EC0, 0x73A7D2, 0x73A93D, 0x73A943, 0x73A9AE, 0x73A9C2, 0x73AAE6,
+               0x5B35E0, 0x73AAF5, 0x73AB6C, 0x73ACC2, ready, 0x73ACC8, 0x73ACD1, 0x5B3570}
+        trace = []
+        def observe(vm, pc, _size, _data):
+            if pc not in pcs:
+                return
+            sp = vm.reg_read(UC_X86_REG_ESP)
+            row = dict(pc=hex(pc), receiver=hex(vm.reg_read(UC_X86_REG_ECX)),
+                       eax=vm.reg_read(UC_X86_REG_EAX), ebx=vm.reg_read(UC_X86_REG_EBX),
+                       state=self.factory_tail_state())
+            if pc == 0x5B35E0:
+                row['args'] = [m.read32(sp + 4), m.read32(sp + 8)]
+            if pc == 0x739EC0:
+                row['args'] = [m.read32(sp + 4)]
+            trace.append(row)
+        hook = u.hook_add(UC_HOOK_CODE, observe)
+        try:
+            u.mem_write(SP, dwords(RET_MAGIC, 2))
+            u.reg_write(UC_X86_REG_ESP, SP)
+            u.reg_write(UC_X86_REG_ECX, self.src)
+            stop = run_checked(u, 0x739EC0, (0x73ACD7, RET_MAGIC), count=2000000,
+                required_addresses=(0x73A7D2, 0x73A93D, 0x73AAE6, 0x5B35E0, 0x73ACC2))
+        finally:
+            u.hook_del(hook)
+        return dict(name=case['name'], input=case, factory=factory, reader=reader, before=before,
+                    after=self.factory_tail_state(), trace=trace, events=self.events[event_start:],
+                    rng=self.rng_pair(before_rng, self.rng_bytes()),
+                    ready_slot=hex(ready), stop_before=hex(stop), returned=stop == RET_MAGIC,
+                    inherited_inputs=self.inputs)
+
     def text_hash(self):
         digest = hashlib.sha256(bytes(self.u.mem_read(0x401000, 0x3E0000))).hexdigest()
         assert digest == self.resident.code_hash
@@ -678,13 +1132,23 @@ def authored_cases():
     return cases
 
 
+def factory_unload_case():
+    return dict(cases()[1][0], name='gaweap_mtnk_human_no_rally_initialized_tail',
+                human_controlled=1)
+
+
+def factory_miner_per_cell_cases():
+    return [(selected, dict(cases()[1][0], name='primary_reason2_' + selected.lower(),
+                            human_controlled=1)) for selected in ('Harvester', 'Weeder')]
+
+
 def generate():
     direct, factory = cases()
     result = dict(schema_version=1, native_sha256=NATIVE_SHA256,
                   visceroid_reader_receipt=UnitUnlimboControls(
                       direct_case('visceroid_reader'), 'direct').visceroid_reader_receipt(),
                   direct_rows=[], factory_rows=[], stage_rows=[], factory_exit_radio_rows=[],
-                  authored_rows=[])
+                  authored_rows=[], factory_unload_rows=[], factory_miner_per_cell_rows=[])
     for case in direct:
         row = UnitUnlimboControls(case, 'direct').run_direct()
         result['direct_rows'].append(row)
@@ -705,6 +1169,12 @@ def generate():
         row = UnitUnlimboControls(case, 'factory').run_authored()
         result['authored_rows'].append(row)
         print(f'authored {case["name"]}: original AL{row["returned_al"]}', flush=True)
+    row = UnitUnlimboControls(factory_unload_case(), 'factory').run_factory_unload()
+    result['factory_unload_rows'].append(row)
+    for selected, case in factory_miner_per_cell_cases():
+        row = UnitUnlimboControls(case, 'factory').run_factory_miner_per_cell(selected)
+        result['factory_miner_per_cell_rows'].append(row)
+        print(f'miner {case["name"]}: original mission{row["after"]["product"]["mission"]}', flush=True)
     return result
 
 
@@ -714,6 +1184,9 @@ def metadata():
               'Building443C60 controls, eight original Unit Limbo/reused Stage controls, '
               'six selected UnitType bool-reader histories and seven factory Contact0 '
               'radio8 fixtures (nine radio calls), six original Unit reader HIGH/caller '
+              'controls, one original GAWEAP/MTNK Unload/ForceTrack/primary clearance '
+              'continuation with nineteen Door controls and all twenty-two Foundation '
+              'exit-list startup rows, two contained Harvester/Weeder primary PerCell '
               'controls, with physical layered MTNK and selected '
               'producer inputs. Immediate Unit return is distinct from the inherited later command.',
         entry_points=dict(unit_ctor=0x7353C0, unit_unlimbo=0x737BA0, foot_unlimbo=0x4D7170,
@@ -746,7 +1219,17 @@ def metadata():
                           full_init_scope_raise=0x686B4F,
                           full_init_unit_reader_call=0x687AA7,
                           rmg_scope_raise=0x598A9A, rmg_scope_unwind=0x59934A,
-                          startup_scope_clear=0x68691C, startup_scope_restore=0x686945),
+                          startup_scope_clear=0x68691C, startup_scope_restore=0x686945,
+                          factory_mission_unload=0x44D880, force_track=0x4B0C40,
+                          foot_set_speed=0x4D3710, factory_unit_ai=0x7360C0,
+                          techno_door_caller=0x6FA5BE, door_ctor=0x4A50F0,
+                          door_progress=0x4A52F0, door_finish=0x4A5360,
+                          deploy_time_reader=0x714B77,
+                          rules_mission_control_reader=0x679C92,
+                          foundation_exit_startup=0x45C300,
+                          foundation_exit_post_read=0x46152C,
+                          unit_per_cell=0x739EC0, unit_harvester_weeder_reader=0x74769F,
+                          unit_miner_default_post_read=0x74779D),
         assumptions=[
             'Mission is the sole constructor, physical crop and native callback owner. '
             'Original geometry735180/735210/735230/735250/7352F0 executes first; retained '
@@ -803,6 +1286,48 @@ def metadata():
             'slot7C/4AFB40. That helper and Ship69F250 write only slope/cache/timer '
             'state, not Location or SetHeight. UnitType747EB0 owns max(inputZ, '
             'Map578080 groundZ), before this ForceSlope callback.',
+            'The additive common human no-rally factory row composes the same '
+            'successful443C60 owner with original Foundation45C300 CRT startup, '
+            'all22 raw30-pair rows and original46152C..46157A ED4 pointer binding. '
+            'Original GAWEAP Foundation5x3 selects row17 and element10=[5,1]. '
+            'The pointer slice runs after the inherited factory call, before '
+            'Unload; full producer loading chronology remains excluded.',
+            'Layered physical GAWEAP DeployTime and Rules Unload MissionControl '
+            'reads execute through original714B77 and679C92. The shared native '
+            'Techno+350 Door runs through original constructor/state/timer '
+            'leaves, including signed/overflow/zero/reversal and typed IEEE '
+            'controls. Each closing control records original4A52D0 ForceOpen '
+            'before Close. Constructor first8/aux+C are undefined raw bytes. '
+            'Finish clears active and preserves direction/timer words. '
+            'Literal INI nan/inf fail sscanf; assigned-count and unchanged '
+            'local bytes mark stack diagnostics, not portable reader outputs.',
+            'Missing primary TMPs in the inherited crop are supplied through '
+            'the existing navigation_inputs.extract_tiles owner. Original '
+            'IsoTileType5447C0 constructs each head at the supplied sparse '
+            'primary-loop index. Actual TMP relocation and array/cache headers '
+            'are explicit boundaries; physical crop Cell inputs are unchanged '
+            'before later original Recalc. No terrain/gameplay return is replaced.',
+            'Original Commence starts queued producer Unload16. The original '
+            'Techno door caller runs each supplied frame; whole Unload44D880 '
+            'dispatch follows measured returned delays. Whole original UnitAI '
+            'runs after each producer step until its new scatter route request. '
+            'It executes ForceTrack66/head, FootSetSpeed0.5, original PerCell '
+            'reason2 primary radio8/FootStop/Scatter, Ready and Commence. '
+            'All3 full RNG objects and native events are retained per leaf.',
+            'At the new post-exit scatter request, the Unit call stops before '
+            'original AStar42A5B0 with no supplied path result or native return. '
+            'Its marked0 is suspended-turn state after Unmark, not a completed '
+            'Unit turn. No later Unit turn runs. Producer-only original Door '
+            'and Unload leaves continue with actual cleared reciprocal contacts '
+            'until close completion and queued Guard5; whole BuildingAI/Logic '
+            'and subsequent navigation remain excluded.',
+            'The two contained miner controls execute original UnitType '
+            '74769F..7476D3 Harvester/Weeder current-default bool reads and '
+            '74779D..7477BB default-Mission postread on custom MTNK inputs, '
+            'after actual443C60. Whole739EC0 starts at reason2 and stops '
+            'before73ACD7 after actual QueueHarvest[10,1], UnitReady744270 '
+            'and Commence. This establishes that primary branch and its '
+            'RNG/mission effects, not the movement trigger or whole harvesting.',
         ],
         substitutions=[
             'Full Scenario, House/map load and producer visual asset loading are '
@@ -835,8 +1360,20 @@ def metadata():
             'boundaries. Original65A970 NULL target resolves Contacts[0] when '
             'present; this does not certify valid reciprocal lifetime for the '
             'absent-contact input. Helipad/UnitRepair distance/repair/docking, '
-            'BuildingUnload FSM, earlier/full UnitPerCell admission and later '
-            'navigation/harvest/slave/rally/hunt branches are excluded.',
+            'The standalone radio rows exclude BuildingUnload and earlier/full '
+            'UnitPerCell. The additive continuation/miner rows have their own '
+            'bounded coverage; whole navigation/harvest/slave/rally/hunt and '
+            'the producer occupied-footprint secondary73AB6C branch remain '
+            'excluded. The common successful first Scatter publishes NavCom, '
+            'so secondary is skipped. Raw+5AC is not treated as a direct count.',
+            'The additive producer remains unplaced/limbo/health0; complete '
+            'positive-health admission/readiness, House initialization and '
+            'BuildingAI scheduling are excluded. HumanControlled1 is supplied. '
+            'The pure Door progress query uses native_oracle.call with unchanged '
+            'Door bytes/frame and its scratch FSTP binary64 observation, never '
+            'an original .text patch. Original primary TMP constructor defaults '
+            'for animation/shadow are retained; complete archive/Tile INI/variant '
+            'loading is excluded.',
         ],
     )
     result['promotion_sources'] = {
@@ -850,6 +1387,12 @@ def metadata():
         'authored_caller_probe_sha256': 'c93b3b32bfaf50e09aee21060803bea90456094aac0c30368ef76468838d9e48',
         'authored_caller_results_sha256': '705dfe7ac278a1ef0a75471a5d9fe4682b11a8de137e8e56dd1f4e02e82ea543',
         'authored_caller_payload_sha256': '24a70d5a8ed2a0ae2c300bd01c92a2053862b36382d986db69e835a966aec88b',
+        'factory_unload_probe_sha256': '5bad3a5a00fcf1860e8cbec922f5be9db71b485e12b8d656a5a25405b99470b3',
+        'factory_unload_results_sha256': '728721a95c042ec0bc0958ec6e64e3ddfbce059c44767c1311aa58f24b15299f',
+        'factory_unload_payload_sha256': '763620ea453ea78f9dd76f117a67c28bd55ac8d2dd5c6b71d7f82999ec741740',
+        'factory_miner_percell_probe_sha256': '998273f65a1a55443255099a0302a79643e47985255c31c13100ec35c7a9ac0c',
+        'factory_miner_percell_results_sha256': '22fa0c2d236e9dda5ae60a5f0741866e727b27792394425f6f6b284d06c8d482',
+        'factory_miner_percell_payload_sha256': 'd76df53d41ec9b18daf4d5848037697b33e82b7faa627f45b336801e690fa9ca',
     }
     result['constructor_location_caller_chain'] = dict(
         unit_to_foot='0x007353CE', infantry_to_foot='0x00517A5B',
@@ -909,6 +1452,27 @@ def metadata():
         ('drive_force_slope_slot50', 0x4B04D0, 0x25),
         ('drive_force_slope_slot7c', 0x7E7F2C, 4),
         ('drive_force_slope', 0x4AFB40, 0x35), ('ship_force_slope', 0x69F250, 0x35),
+        ('techno_unlimbo_object_call_and_success_membership', 0x6F6CA0, 0x64),
+        ('techno_ctor_door', 0x6F2ED3, 0x0B), ('techno_ai_door', 0x6FA5BE, 0x18),
+        ('door_ctor', 0x4A50F0, 0x1A), ('door_states', 0x4A5110, 0x30),
+        ('door_due', 0x4A5150, 0x5C), ('door_stable', 0x4A51B0, 0x29),
+        ('door_open', 0x4A51F0, 0x49), ('door_close', 0x4A5240, 0x49),
+        ('door_reverse_progress_finish', 0x4A5290, 0xF6),
+        ('deploy_time_ctor', 0x710D06, 0x0C), ('deploy_time_reader', 0x714B77, 0x28),
+        ('deploy_read_double', 0x5283D0, 0x1D2),
+        ('foundation_exit_crt_thunk', 0x45C2F0, 5), ('foundation_exit_crt_slot', 0x8127F0, 4),
+        ('foundation_exit_initializer', 0x45C300, 0x1A14),
+        ('foundation_exit_ctor_pointer', 0x45DEDC, 0x0D),
+        ('foundation_exit_post_read', 0x46152C, 0x4E),
+        ('building_unload', 0x44D880, 0xB09), ('building_unload_jump_table', 0x44E38C, 0x14),
+        ('building_unload_vtable_slot', 0x7E40F8, 4), ('force_track', 0x4B0C40, 0x100),
+        ('unit_door_closed', 0x744180, 0x30), ('unit_move_door', 0x740A90, 0x74),
+        ('unit_per_cell_factory_exit', 0x73A7D2, 0x505),
+        ('isotile_ctor', 0x5447C0, 0x240), ('recalc_missing_tmp_call', 0x47D57B, 0x51),
+        ('unit_scatter_prefix', 0x743A50, 0x195), ('producer_guard_queue', 0x44D6A0, 0x46),
+        ('unit_harvester_weeder_reader', 0x74769F, 0x34),
+        ('unit_miner_default_post_read', 0x74779D, 0x1E),
+        ('harvester_key', 0x83D4CC, 10), ('weeder_key', 0x81AC50, 7),
     ):
         offset, raw = file_span(binary, address, length)
         if name == 'default_coord_crt_slot':
@@ -924,12 +1488,20 @@ def source_paths():
     # receipt. New outputs bind current source hashes without republishing old ones.
     paths = foot_missions.source_paths()
     for relative in ('tools/spatial_oracle/anytown_damage/unit_unlimbo.py',
+                     'tools/spatial_oracle/anytown_damage/navigation_inputs.py',
                      'src/rules/object_type.rs', 'src/rules/native_processing.rs',
                      'src/sim/stage.rs',
                      'src/sim/cell_kernel.rs', 'src/sim/combat/in_range.rs',
                      'src/sim/movement/navcom.rs', 'src/sim/movement/foot_approach.rs',
                      'src/sim/world/world_spawn.rs', 'src/sim/world/lifecycle.rs',
-                     'src/sim/movement/ground_pose.rs', 'src/sim/movement/slope_transition.rs'):
+                     'src/sim/movement/ground_pose.rs', 'src/sim/movement/slope_transition.rs',
+                     'src/sim/door.rs', 'src/sim/game_entity.rs', 'src/sim/gate_runtime.rs',
+                     'src/sim/docking/building_dock.rs', 'src/sim/movement/track_host.rs',
+                     'src/sim/movement/per_cell.rs', 'src/sim/production/production_queue.rs',
+                     'src/sim/world/techno_ai.rs',
+                     'src/sim/world/techno_ai/building_missions.rs',
+                     'src/sim/world/techno_ai/mission_handlers.rs',
+                     'src/sim/world/projectile_collision.rs'):
         paths[relative] = REPO / relative
     return paths
 

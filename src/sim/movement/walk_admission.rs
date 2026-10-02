@@ -163,21 +163,11 @@ impl Simulation {
             3 => {
                 //75BA0E..75BA27: ignore gate answer, then+64C=10. Neither
                 //timer nor path words are reset on this response.
-                let owner = self
-                    .substrate
-                    .entities
-                    .get(id)
-                    .ok_or("retired Walk gate owner")?
-                    .owner();
                 crate::sim::gate_runtime::request_gate_open_for_cell(
-                    &mut self.substrate.entities,
-                    &self.substrate.occupancy,
+                    self,
                     (packed.0 as u16, packed.1 as u16),
                     id,
-                    self.interner.resolve(owner),
                     rules,
-                    &self.house_alliances,
-                    &self.interner,
                 );
                 self.substrate
                     .entities

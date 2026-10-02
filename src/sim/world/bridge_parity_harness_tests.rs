@@ -279,7 +279,12 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // All819 complete current/control boundaries match except tick hashes,
 // including House/Factory state and three full RNG streams/draws/callers.
 // Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xE3FD_9DD3_63C9_8F82;
+// Shared Techno Door hash composition: omitting only its new hash feed
+// restored all three preceding replay pins with behavior/RNG checks green.
+// The feed is restored; this remains a Rust regression, not a native golden.
+// Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+// Previous: 0xE3FD_9DD3_63C9_8F82.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xD60E_65B0_93E4_A502;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

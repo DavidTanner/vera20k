@@ -784,8 +784,9 @@ pub struct ObjectType {
     /// gate state. `GateStages=` is visual timing data and is not part of the
     /// `CanGarrison` passability predicate.
     pub gate: bool,
-    /// Native helper transition duration from `DeployTime=` converted as
-    /// `trunc(value * 900)`. Used by building gates for opening/closing.
+    ///Raw signed-low-dword result of native `DeployTime=` x900/ftol.
+    ///The u32 retains its bits; DoorClass reads it as i32. Shared by factory,
+    ///Gate and Unit doors, including zero and negative transitions.
     pub deploy_time_ticks: u32,
     /// Native open-hold delay from `GateCloseDelay=` converted as
     /// `trunc(value * 900)`.
@@ -1720,12 +1721,15 @@ pub struct ObjectType {
     pub cloak_generator: bool,
 }
 
-fn native_minutes_to_ticks(value: f32) -> u32 {
-    if !value.is_finite() || value <= 0.0 {
-        0
-    } else {
-        (f64::from(value) * 900.0).trunc().min(u32::MAX as f64) as u32
-    }
+fn native_minutes_to_ticks(value: f64) -> u32 {
+    //ReadDouble widens its scanned f32; multiplication by900 fits binary64
+    //precision. Reuse the existing ftol owner for signed64-to-low32 and
+    //invalid semantics, exactly as MissionControl rates do. Native executed
+    //Door controls include -39, low-dword overflow and invalid input.
+    use crate::util::native_x87::{MaskedX87Chop53, NativeF64Bits};
+    MaskedX87Chop53::ftol_i32_low_masked(MaskedX87Chop53::load_f64(NativeF64Bits::from_bits(
+        (value * 900.0).to_bits(),
+    ))) as u32
 }
 
 impl ObjectType {
@@ -2222,11 +2226,9 @@ impl ObjectType {
             bib: section.read_bool("Bib", false),
             gate: section.read_bool("Gate", false),
             // Double fields (`0x00714B94`, `0x00460DE0`).
-            deploy_time_ticks: native_minutes_to_ticks(
-                section.read_double("DeployTime", 0.0) as f32
-            ),
+            deploy_time_ticks: native_minutes_to_ticks(section.read_double("DeployTime", 0.0)),
             gate_close_delay_ticks: native_minutes_to_ticks(
-                section.read_double("GateCloseDelay", 0.0) as f32,
+                section.read_double("GateCloseDelay", 0.0),
             ),
             storage: section.read_int("Storage", 0),
             free_unit: section.read_name("FreeUnit", 0x80).map(str::to_owned),

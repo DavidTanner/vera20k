@@ -395,59 +395,6 @@ const NEIGHBOUR_OFFSETS: [(i32, i32); 8] = [
     (-1, -1),
 ];
 
-/// `CellClass::Find_Nearest_Object @ 0x0047C3D0`, read from the disassembly for
-/// the one callsite that matters here (`0x004D87DD`, which passes offset
-/// `{0, 0}`, `alt = 0` and `exclude = NULL`):
-///
-/// ```text
-/// dx7 = offset.X * 7;  dy7 = offset.Y * 7;
-/// for (o = cell->FirstObject(+0xE4); o; o = o->NextObject(+0x30)) {
-///   if (!(o->AbstractFlags(+0x14) & 1)) continue;   // Techno only
-///   if (o == exclude) continue;
-///   c  = o->GetCoords(vt+0x48);
-///   d  = ftol(Sqrt_Approx(sq((c.X & 0xFF) - dx7) + sq((c.Y & 0xFF) - dy7)));
-///   if (best == NULL || d < bestDistance) { best = o; bestDistance = d; }
-/// }
-/// ```
-///
-/// Three things this fixes over the previous "lowest stable id whose
-/// `position` matches" scan:
-///
-/// * **The candidate set is the cell's object list, not every entity parked on
-///   the coordinate.** `techno_limbo` never clears `entity.position`, so a
-///   limboed object keeps a map position for the rest of the match; native
-///   walks `CellClass::FirstObject`, which a limboed object is unlinked from.
-///   `substrate.occupancy` is VERA's model of that list — the same authority
-///   `sensor_lifecycle::sensor_residents_in_native_order` uses — and the
-///   `MovementLayer::Ground` list is the `+0xE4` chain (`+0xE8`, the `alt`
-///   chain, is selected only when `param_3 != 0`, and this callsite passes 0).
-/// * **Selection is nearest-to-the-cell-origin, not lowest id.** With a
-///   `{0, 0}` offset the distance is the object's own sub-cell lepton offset
-///   from the cell's NW corner, through the retail `Sqrt_Approx` LUT and a
-///   truncating `ftol` — so two objects whose distances truncate to the same
-///   integer are decided by list order, and `<` keeps the earlier one.
-/// * **The `+0x14` bit-0 test is the `AbstractFlags` *Techno identity* bit**
-///   (`TechnoClass__Constructor @ 0x006F3228` ORs in 1;
-///   `ObjectClass__Constructor @ 0x005F3B34` ORs in 2), not an on-map flag.
-///   Every `GameEntity` is a Techno, so it needs no counterpart here.
-pub(super) fn find_nearest_object_in_cell(sim: &Simulation, cell: (u16, u16)) -> Option<u64> {
-    let occupancy = sim.substrate.occupancy.get(cell.0, cell.1)?;
-    let mut best: Option<(u64, i32)> = None;
-    for occupant in occupancy.iter_layer(MovementLayer::Ground) {
-        let Some(other) = sim.substrate.entities.get(occupant.entity_id) else {
-            continue;
-        };
-        let distance = crate::sim::cell_kernel::native_xy_distance(
-            other.position.sub_x.to_num::<i32>(),
-            other.position.sub_y.to_num::<i32>(),
-        );
-        if best.is_none_or(|(_, best_distance)| distance < best_distance) {
-            best = Some((occupant.entity_id, distance));
-        }
-    }
-    best.map(|(entity_id, _)| entity_id)
-}
-
 /// `FootClass::PerCellProcess @ 0x004D85D0`, the cell-enter (`param_2 == 2`)
 /// arm at `0x004D8802..0x004D8829` — the ONLY consumer of `Sensors=`
 /// (`TechnoTypeClass+0xC9D`) that is live in stock YR:
@@ -510,7 +457,7 @@ pub(crate) fn uncloak_on_sensor_neighbour_after_cell_entry(
         ) {
             continue;
         }
-        let Some(nearest) = find_nearest_object_in_cell(sim, (nx, ny)) else {
+        let Some(nearest) = sim.nearest_cell_object((nx, ny), MovementLayer::Ground, None) else {
             continue;
         };
         let Some(other) = sim.substrate.entities.get(nearest) else {

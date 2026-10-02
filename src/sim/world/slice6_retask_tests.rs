@@ -263,7 +263,12 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // All819 complete current/control boundaries match except tick hashes,
 // including House/Factory state and three full RNG streams/draws/callers.
 // Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
-const SLICE6_BASELINE_HASH: u64 = 0x1AD1_4029_10CE_62D8;
+// Shared Techno Door hash composition: omitting only its new hash feed
+// restored all three preceding replay pins with behavior/RNG checks green.
+// The feed is restored; this remains a Rust regression, not a native golden.
+// Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+// Previous: 0x1AD1_4029_10CE_62D8.
+const SLICE6_BASELINE_HASH: u64 = 0x9FBB_EE3B_9E78_FC73;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

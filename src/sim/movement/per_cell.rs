@@ -16,7 +16,10 @@ use super::locomotor::MovementLayer;
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::components::NavTargetRef;
 use crate::sim::lifecycle_request::{LifecycleRequest, UninitReason};
+use crate::sim::mission::authority::LiveReadyInputProvider;
+use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::world::{FrameAdvanceError, Simulation};
 
 /// The reason a `Per_Cell_Process` call passes.
@@ -82,6 +85,7 @@ impl Simulation {
             && reason == PerCellReason::Arrival
         {
             crate::sim::miner::per_cell_dock_now(self, rules, id);
+            self.unit_per_cell_factory_clearance(id, rules, registry);
         }
         // Unit PerCell2 739EC0: after MCV retry, +6D1==0 admits
         // Ready(+200)73ACC2 -> Commence(+1EC)73ACD1, BEFORE full-cell
@@ -191,6 +195,182 @@ impl Simulation {
         if self.per_cell_owner_alive(id) {
             self.foot_per_cell_process(id, reason, rules, registry);
         }
+    }
+
+    /// Unit739EC0's tethered arrival chapter73A7D2..73AADB, before its
+    /// Ready/Commence checkpoint. The human continuation calls the existing
+    /// archive destination, FootStop4DF0D0 and UnitScatter743A50 owners.
+    /// Source: anytown_damage/unit_unlimbo radio receipt and original Unit
+    /// listing; the composed factory-Unload control binds the null-NavCom arm.
+    fn unit_per_cell_factory_clearance(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        let Some(unit) = self.substrate.entities.get(id) else {
+            return;
+        };
+        if unit.dock_entered_with.is_none() {
+            return;
+        }
+        let nav_com = unit.navigation.nav_com;
+        let nav_techno = match nav_com {
+            Some(
+                NavTargetRef::Entity { id }
+                | NavTargetRef::Object { id }
+                | NavTargetRef::Building { id },
+            ) => crate::sim::radio::as_techno(self, id),
+            _ => None,
+        };
+        let mission = unit.mission.effective().known();
+        if mission == Some(MissionType::Enter)
+            && (nav_techno.is_none() || nav_techno == unit.radio_contacts.slot(0))
+        {
+            return;
+        }
+        if mission == Some(MissionType::Unload) {
+            return;
+        }
+        let position = position_world_coord(&unit.position);
+        //73A859..73A889 uses signed truncation toward zero, then compares
+        // the packed Cell words. Navigation's route/final goal is not read.
+        let cell = (
+            (position.x / 256) as i16 as u16,
+            (position.y / 256) as i16 as u16,
+        );
+        let at_destination = nav_com.is_none()
+            || super::navcom::nav_targets_same_receiver(
+                nav_com,
+                NavTargetRef::cell(cell.0, cell.1),
+            );
+        //Map565730 -> Cell47C520 walks only the first ground Building.
+        // RESIDUAL: ScenarioActiveA8E9A0=false loading/termination and shared
+        // Dummy Cell identities have no full active-map boundary here. This
+        // receiver covers the ordinary retained real Cell in an active frame.
+        let building =
+            self.substrate
+                .occupancy
+                .first_building_on_layer(cell.0, cell.1, MovementLayer::Ground);
+        if building.is_some() && !at_destination {
+            return;
+        }
+        //73A8CF saves Contact0 before the synchronous transmit73A93D. The
+        // radio8 owner can clear the live slot and both tether bytes inside it.
+        let contact = unit.radio_contacts.slot(0);
+        if !at_destination
+            && contact
+                .and_then(|contact| self.substrate.entities.get(contact))
+                .filter(|contact| contact.category == EntityCategory::Structure)
+                .and_then(|contact| self.object_type(contact.type_ref(), rules))
+                .is_some_and(|object| object.weapons_factory)
+            && self.substrate.occupancy.first_building_on_layer(
+                cell.0,
+                cell.1,
+                MovementLayer::Ground,
+            ) == contact
+        {
+            return;
+        }
+        let reply = crate::sim::radio::transmit_to_contact(
+            self,
+            id,
+            crate::sim::radio::RadioMessage::RequestClearance,
+            Some(rules),
+        );
+        if reply != crate::sim::radio::RadioResponse::Queued {
+            // RESIDUAL:73AAF7..73AB66's non23 replies include harvester
+            // archive/Harvest and Scatter work. Refinery/service departure is
+            // a separate lifecycle; no factory-specific substitute runs here.
+            return;
+        }
+        let Some(unit) = self.substrate.entities.get(id) else {
+            return;
+        };
+        let nav_com = unit.navigation.nav_com;
+        if nav_com.is_some()
+            && !super::navcom::nav_targets_same_receiver(
+                nav_com,
+                NavTargetRef::cell(cell.0, cell.1),
+            )
+        {
+            // RESIDUAL:73A96F tests Abstract+14 bit1 before directed opcode
+            //0xE at73A981. This distinct non-current-object receiver requires
+            // that validity state; it is not the null/current-Cell human arm.
+            return;
+        }
+        let Some(object) = self.object_type(unit.type_ref(), rules) else {
+            return;
+        };
+        if object.harvester || object.weeder {
+            // Type+E0E/E0F at73A9AE/73A9C2 select73AAE6. PUSH1/PUSH0xA
+            // at73AAE9/73AAEB calls Queue_Mission(+1E8) at73AAEF, after
+            // radio8's reciprocal cleanup and before the later Ready call.
+            // Live readiness owns whether this queues or Commences Harvest;
+            // the existing miner mission handler owns subsequent resource work.
+            let _ = self.mission_queue_exact(
+                id,
+                MissionId::from_known(MissionType::Harvest),
+                1,
+                self.session.binary_frame,
+                &LiveReadyInputProvider { rules },
+            );
+            return;
+        }
+        if unit.slave_manager.is_some() {
+            // RESIDUAL:73A9D4 invokes the existing SlaveManager6B0CC0 owner.
+            // The current delivery adapter starts its hunt earlier; its exact
+            // arrival integration remains a manager-lifecycle dependency.
+            return;
+        }
+        let producer = contact
+            .and_then(|contact| self.substrate.entities.get(contact))
+            .filter(|contact| contact.category == EntityCategory::Structure);
+        let human = self
+            .houses
+            .get(&unit.owner())
+            .map(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
+        if human.is_none()
+            || (human == Some(false)
+                && producer
+                    .and_then(|producer| self.object_type(producer.type_ref(), rules))
+                    .is_some_and(|object| object.weapons_factory))
+        {
+            // RESIDUAL:73AA19's House500200 placement/spreading owner is
+            // unported. It draws Scenario RNG for armed computer units,
+            // queues Move, Commences, archives its post and queues AreaGuard.
+            // A missing House cannot stand in for Human50B730.
+            return;
+        }
+        let archive = unit.archive_target();
+        if let Some(archive) = archive
+            .filter(|archive| Some(*archive) != nav_com.map(crate::sim::combat::TargetKind::from))
+        {
+            let target = match archive {
+                crate::sim::combat::TargetKind::Cell(rx, ry) => NavTargetRef::cell(rx, ry),
+                crate::sim::combat::TargetKind::Entity(id) => NavTargetRef::Entity { id },
+            };
+            self.set_unit_destination(id, target, rules, true);
+        } else {
+            if let Some(unit) = self.substrate.entities.get_mut(id) {
+                super::navcom::foot_stop_moving(unit);
+            }
+            //73AAC8..73AADB: no QueueMission, Process or EnterIdle. Unit's
+            // null Scatter receiver cannot produce the Infantry error path.
+            let _ = self.scatter_null(
+                id,
+                super::scatter::ScatterFlags::new(true, false),
+                rules,
+                registry,
+            );
+        }
+        // RESIDUAL:73AB6C..73ABD0 rereads the first ground Building, NavCom,
+        // and distinct counts+5BC/+598 before Scatter(NULL,1,1). NavQueue
+        // represents+598; vector+5AC/count+5BC is not represented. Its full
+        // producer/consumer/save/expiry chain is required before this fallback
+        // can be ported; SuspendedNavCom(+5A8) is not that vector. The composed
+        // fresh human control publishes NavCom in the first Scatter and skips
+        // this second call, so no invented count or factory marker is needed.
     }
 
     /// `InfantryClass::Per_Cell_Process @ 0x00519630`: for reason 2 its

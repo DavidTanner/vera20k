@@ -21,8 +21,9 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, FootPathQueue, TrackProgress};
 use crate::sim::components::{MovementTarget, NavTargetRef};
-use crate::sim::game_entity::{BuildingGateMissionState, BuildingGateRuntime, GameEntity};
+use crate::sim::game_entity::{BuildingGateRuntime, GameEntity};
 use crate::sim::intern::test_interner;
+use crate::sim::mission::MissionType;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::track_host::TrackWorldEvent;
 use crate::sim::movement::track_process::{TrackFamily, TrackInvocation};
@@ -154,15 +155,9 @@ fn production_chain_code3_opens_gate_without_consuming_the_queue() {
     sim.run_track_points_observed(invocation, 8, Some(&rules), None, &mut |_, _, event| {
         per_cell += usize::from(event == TrackWorldEvent::PerCell);
     });
-    let gate = sim
-        .substrate
-        .entities
-        .get(100)
-        .unwrap()
-        .building_gate
-        .unwrap();
-    assert!(gate.mission_18_active);
-    assert_eq!(gate.mission_state, BuildingGateMissionState::Setup);
+    let gate = sim.substrate.entities.get(100).unwrap();
+    assert_eq!(gate.mission.current().known(), Some(MissionType::Open));
+    assert_eq!(gate.mission.handler_state(), 0);
     assert_old_chain_continues(&sim);
     assert_eq!(per_cell, 0);
     assert_eq!(sim.scenario_rng.logical_state(), rng_before);

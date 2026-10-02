@@ -3694,24 +3694,17 @@ fn native_frame_committed_late_gate_captures_pre_increment_frame() {
     // The native frame is committed LATE, so a Phase-1 consumer sees frame N
     // during the whole advance. The host duration is deliberately one
     // millisecond: admission, not elapsed time, advances the frame.
-    use crate::sim::game_entity::{BuildingGateMissionState, BuildingGatePhase};
 
     let mut sim = Simulation::new();
     let rules = gate_test_rules();
     let gate_id = sim
         .spawn_object("GAGATE_A", "Americans", 10, 10, 0, &rules)
         .expect("spawn gate");
-    {
-        let gate = sim
-            .substrate
-            .entities
-            .get_mut(gate_id)
-            .expect("gate entity");
-        let rt = gate.building_gate.get_or_insert_with(Default::default);
-        rt.mission_18_active = true;
-        rt.mission_state = BuildingGateMissionState::Setup;
-        rt.phase = BuildingGatePhase::ClosedStable;
-    }
+    sim.mission_assign_exact(gate_id, crate::sim::mission::MissionId::NONE, 0).unwrap();
+    sim.mission_queue_exact(gate_id,
+        crate::sim::mission::MissionId::from_known(MissionType::Open), 0, 0,
+        &crate::sim::mission::authority::EntityReadyInputProvider).unwrap();
+    sim.mission_commence_exact(gate_id, 0).unwrap();
     assert_eq!(sim.session.binary_frame, 0, "fresh sim starts at frame 0");
 
     let _ = sim.advance_tick(&[], Some(&rules), None, None, 1);
@@ -3722,18 +3715,11 @@ fn native_frame_committed_late_gate_captures_pre_increment_frame() {
         "native frame committed late to 1"
     );
     // The consumer captured the PRE-increment frame 0 during the tick.
-    let rt = sim
-        .substrate
-        .entities
-        .get(gate_id)
-        .expect("gate entity")
-        .building_gate
-        .as_ref()
-        .expect("gate runtime");
-    assert_eq!(
-        rt.transition_timer.start_frame, 0,
-        "gate captured pre-increment frame 0, not post-increment 1"
-    );
+    let gate = sim.substrate.entities.get(gate_id).expect("gate entity");
+    assert_eq!(gate.door_phase(), crate::sim::door::DoorPhase::Opening);
+    assert_eq!(gate.mission.handler_state(), 1);
+    assert_eq!(gate.door_timer_fields().0, 0,
+        "gate captured pre-increment frame 0, not post-increment 1");
 }
 
 #[test]
@@ -4251,9 +4237,11 @@ fn test_spawn_sets_position_and_facing() {
 }
 
 #[test]
-fn test_spawn_from_map_high_unit_uses_bridge_layer_and_deck_level() {
+fn test_spawn_from_map_high_unit_uses_native_ground_plus_bridge_height() {
     let mut sim = Simulation::new();
     let resolved = single_bridge_cell(5, 5, 3);
+    install_rectangular_test_playfield(&mut sim, resolved.width(), resolved.height());
+    sim.install_resolved_terrain_for_new_map(resolved.clone());
     let count = sim.spawn_from_map_with_resolved(
         &[MapEntity {
             owner: "Americans".to_string(),
@@ -4279,7 +4267,11 @@ fn test_spawn_from_map_high_unit_uses_bridge_layer_and_deck_level() {
 
     assert_eq!(count, 1);
     let e = sim.substrate.entities.get(1).expect("spawned entity");
-    assert_eq!(e.position.z, 3);
+    // ReadUnits7434F3..743510 uses HIGH and ground+B1D0AC, independent
+    // of the navigation fixture's cached deck level3. Original controls:
+    // anytown_damage/unit_unlimbo.json authored_rows.
+    assert_eq!(e.position.z, 4);
+    assert_eq!(e.position.exact_z_leptons, Some(416));
     assert!(e.on_bridge);
     let loco = e.locomotor.as_ref().expect("loco");
     assert_eq!(loco.layer, MovementLayer::Bridge);
@@ -4325,7 +4317,7 @@ fn spawn_object_reads_the_live_terrain_level() {
 }
 
 #[test]
-fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
+fn test_spawn_from_map_high_without_bridge_retains_native_caller_pose() {
     let mut sim = Simulation::new();
     let resolved = ResolvedTerrainGrid::from_cells(
         6,
@@ -4341,6 +4333,8 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
             })
             .collect(),
     );
+    install_rectangular_test_playfield(&mut sim, resolved.width(), resolved.height());
+    sim.install_resolved_terrain_for_new_map(resolved.clone());
     sim.spawn_from_map_with_resolved(
         &[MapEntity {
             owner: "Americans".to_string(),
@@ -4364,10 +4358,14 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
         Some(&resolved),
     );
     let e = sim.substrate.entities.get(1).expect("spawned entity");
-    assert_eq!(e.position.z, 1);
-    assert!(!e.on_bridge);
+    // Native7434F3 writes OnBridge from HIGH, even without HasBridge;
+    // the caller supplies ground+B1D0AC. Authored native controls compare
+    // both HasBridge values through the same original virtual Unlimbo.
+    assert_eq!(e.position.z, 5);
+    assert_eq!(e.position.exact_z_leptons, Some(520));
+    assert!(e.on_bridge);
     let loco = e.locomotor.as_ref().expect("loco");
-    assert_eq!(loco.layer, MovementLayer::Ground);
+    assert_eq!(loco.layer, MovementLayer::Bridge);
 }
 
 #[test]
