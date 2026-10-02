@@ -36,10 +36,27 @@ files are preserved byte-for-byte in verified archives, with restore roots in
 `gapowr-pre-final-v5-archive-applied.json`; v3 labels/images/results/critic and all
 native evidence remain retained. The shared runner safely trims eligible caches.
 
-Next: freeze a clean documentation commit, build release v5 and collect six fresh
-visible captures. Revalidate full/repeat and every prefix, inspect five GPU frames,
-update the receipt/draft to actual v5, publish/attach one fatal PR, enable auto-merge
-and confirm merge before another implementation. Do not rerun critic.
+Final release v5 label `object-gapowr-fatal-release-v5-20261002`, clean c682d281:
+source SHA8da7722e042b05d0f43eec5da624cfa3b0f1c3fb2e7420520c64d6641856db84;
+app SHAc9af8e4e8ebc1149891164239ceb2740d4aa9b88ff4a3401ee3949f3531ce78b;
+asset SHA4b2593de7afc908210b7cd73535a93397ef78ad5d953b4377fa2ae982394333e.
+All six visible observations revalidate; full/repeat MATCH with zero differences,
+every prefix exact and all five GPU frames root-inspected/byte-equal v4. Final
+hash15577309209927448644,2600ticks/57200ms. Plant1428 disappears1853; E1/1759
+HP119 receives same-frame Move and reaches31,88 by1900. Final receipt is
+`gapowr-fatal-production-receipt-v5.json` and its repository counterpart.
+
+Cross-policy strict comparison correctly refuses v4v2 versus v5v3. Explicit common
+comparison matches every old actor/terrain observation, initial/final hash, atlas,
+clock and context. New v3 fields are per-frame Houses and actor miner/radio; they
+remain retained. No full cross-version MATCH or native pixel claim is made.
+The completed9511 test executable is preserved byte-for-byte in the verified archive
+`gapowr-final-9511-libtest-archive-applied.json`; only exact owned completed files
+were selected. The release entry blocked below16GiB before Cargo and is excluded;
+retry succeeds after archival/shared retention. All required release labels remain.
+
+Next: publish/attach one fatal PR, dispatch three platform lib workflows, enable
+auto-merge and confirm merge before the next implementation. Do not rerun critic.
 
 Cargo uses `python -m tools.cargo_run`; every test uses `--lib`. Source stays frozen
 through a build. Keep the16GiB reserve and preserve required binaries/dependencies,

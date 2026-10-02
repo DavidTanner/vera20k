@@ -1,32 +1,32 @@
 {
   "schema": 1,
   "mechanism": "ordinary GAPOWR fatal lifecycle",
-  "candidate_state": "main03750cc7 gameplay and c8a794a7 documentation integrated; snapshot283; eight original payloads byte-identical; final Rust/Python/ratchet pass; release v5 validation pending",
+  "candidate_state": "final release v5 validated at clean c682d281, snapshot283; all eight original corpuses byte-identical after gameplay integration; final code checks, six visible runs, exact repeat/prefixes and five root-inspected GPU frames pass",
   "objects_certified": 0,
   "native_comparator": "NONE",
   "parity_certification": "NONE",
   "build": {
-    "label": "object-gapowr-fatal-release-v4-20261002",
+    "label": "object-gapowr-fatal-release-v5-20261002",
     "manifest": {
-      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v4-20261002/manifest.json",
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v5-20261002/manifest.json",
       "byte_length": 1469,
-      "sha256": "618e08eb8848223f4446714b604f3e950eedb84b197ba4b3427a5c12f821f76f"
+      "sha256": "e4caac7ca9fda985b87eaa02741a6eaad54dae35342f8e969a6b0624ab668617"
     },
     "source": {
-      "head": "22908e2d338fa23e259e2ca0e6d2e6a84db533cb",
+      "head": "c682d28117052d16f3434f252ea1b78dc092b87b",
       "branch": "feature/native-gapowr-fatal-lifecycle",
       "status": "",
-      "source_sha256": "c98bcb078634e6c130c0129d7cb1e58a08aba76295894ce467cd2f8a7346b8b8"
+      "source_sha256": "8da7722e042b05d0f43eec5da624cfa3b0f1c3fb2e7420520c64d6641856db84"
     },
     "executable": {
-      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v4-20261002/1/vera20k",
-      "byte_length": 31545920,
-      "sha256": "fdb8362ec495d409d62ac5411e0ebb484fea52a1a6d17d0c8358b816d916c185"
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v5-20261002/1/vera20k",
+      "byte_length": 31621776,
+      "sha256": "c9af8e4e8ebc1149891164239ceb2740d4aa9b88ff4a3401ee3949f3531ce78b"
     },
     "asset_executable": {
-      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v4-20261002/0/asset",
-      "byte_length": 9137568,
-      "sha256": "837060bc449990965705bdc84ddfab608212f8642ad7f893574df01b20e5076b"
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v5-20261002/0/asset",
+      "byte_length": 9156656,
+      "sha256": "4b2593de7afc908210b7cd73535a93397ef78ad5d953b4377fa2ae982394333e"
     }
   },
   "inputs": {
@@ -41,9 +41,9 @@
       "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
     },
     "executable": {
-      "byte_length": 31545920,
-      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v4-20261002/1/vera20k",
-      "sha256": "fdb8362ec495d409d62ac5411e0ebb484fea52a1a6d17d0c8358b816d916c185"
+      "byte_length": 31621776,
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v5-20261002/1/vera20k",
+      "sha256": "c9af8e4e8ebc1149891164239ceb2740d4aa9b88ff4a3401ee3949f3531ce78b"
     },
     "profile": {
       "byte_length": 4041,
@@ -61,26 +61,26 @@
   },
   "runs": {
     "full": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4/run.json",
-      "byte_length": 53009201,
-      "sha256": "a12fdc53289fa8f31ee694c48ff158722302bc12a2e47a86f5e5c3a551afee1f"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5/run.json",
+      "byte_length": 23526812,
+      "sha256": "7daf81c8dfc0a1526c99cf517cee506e5f70f3b2aecebad49746db7437c1b043"
     },
     "repeat": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-repeat/run.json",
-      "byte_length": 53009222,
-      "sha256": "2531585899a3b0e9c6c5f32fb3877ee52873a9bd200edbec5d31b3d91d0257c1"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-repeat/run.json",
+      "byte_length": 23526833,
+      "sha256": "36281b4939d036a6de2d269ed5ea4c6fa78f1692f2cef5379bdeb2d1be6be294"
     },
     "comparison": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-match.json",
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-match.json",
       "byte_length": 1580695,
-      "sha256": "4b71659ee28b7e4d97708d59c9e45e49096e01168c4e376e4a5f8e0e56ec65f8"
+      "sha256": "993a85b673249d47f158f5a0d5e9198aaa8b8cd61b5cec0ae44d0a2d99eb21ce"
     },
     "status": "MATCH"
   },
   "prefix_comparisons": {
-    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-prefix-receipt.json",
-    "byte_length": 11785,
-    "sha256": "f49fa497e143d749320df4b52b828d6b2c89c09cb52cdd271b11d3f2921db3ad"
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-prefix-receipt.json",
+    "byte_length": 8278,
+    "sha256": "5b0de88defba11ac2c3cb03f838ae62ffe9116c371a8f848db3444d7282f757b"
   },
   "final": {
     "binary_frame": 2600,
@@ -163,6 +163,7 @@
         "foot": null,
         "health": 36,
         "in_limbo": false,
+        "miner": null,
         "mission": {
           "ai_counter": 1151,
           "current": 5,
@@ -184,6 +185,12 @@
           22912,
           416
         ],
+        "radio": {
+          "contacts": [
+            null
+          ],
+          "dock_entered_with": null
+        },
         "stable_id": 1428,
         "target": null,
         "type_id": "GAPOWR",
@@ -192,6 +199,16 @@
       "crew": null,
       "missing_actor_ids": [
         1371
+      ],
+      "houses": [
+        {
+          "economy": {
+            "credits": 8700,
+            "harvested_credits": 0,
+            "spent_credits": 1300
+          },
+          "owner": "VERA-OBSERVER"
+        }
       ]
     },
     {
@@ -220,6 +237,7 @@
         },
         "health": 119,
         "in_limbo": false,
+        "miner": null,
         "mission": {
           "ai_counter": 1,
           "current": 2,
@@ -246,6 +264,12 @@
           22966,
           416
         ],
+        "radio": {
+          "contacts": [
+            null
+          ],
+          "dock_entered_with": null
+        },
         "stable_id": 1759,
         "target": null,
         "type_id": "E1",
@@ -254,6 +278,16 @@
       "missing_actor_ids": [
         1371,
         1428
+      ],
+      "houses": [
+        {
+          "economy": {
+            "credits": 8700,
+            "harvested_credits": 0,
+            "spent_credits": 1300
+          },
+          "owner": "VERA-OBSERVER"
+        }
       ]
     },
     {
@@ -282,6 +316,7 @@
         },
         "health": 119,
         "in_limbo": false,
+        "miner": null,
         "mission": {
           "ai_counter": 8,
           "current": 2,
@@ -308,6 +343,12 @@
           22896,
           416
         ],
+        "radio": {
+          "contacts": [
+            null
+          ],
+          "dock_entered_with": null
+        },
         "stable_id": 1759,
         "target": null,
         "type_id": "E1",
@@ -316,6 +357,16 @@
       "missing_actor_ids": [
         1371,
         1428
+      ],
+      "houses": [
+        {
+          "economy": {
+            "credits": 8700,
+            "harvested_credits": 0,
+            "spent_credits": 1300
+          },
+          "owner": "VERA-OBSERVER"
+        }
       ]
     },
     {
@@ -344,6 +395,7 @@
         },
         "health": 119,
         "in_limbo": false,
+        "miner": null,
         "mission": {
           "ai_counter": 17,
           "current": 5,
@@ -365,6 +417,12 @@
           22720,
           416
         ],
+        "radio": {
+          "contacts": [
+            null
+          ],
+          "dock_entered_with": null
+        },
         "stable_id": 1759,
         "target": null,
         "type_id": "E1",
@@ -373,6 +431,16 @@
       "missing_actor_ids": [
         1371,
         1428
+      ],
+      "houses": [
+        {
+          "economy": {
+            "credits": 8700,
+            "harvested_credits": 0,
+            "spent_credits": 1300
+          },
+          "owner": "VERA-OBSERVER"
+        }
       ]
     },
     {
@@ -401,6 +469,7 @@
         },
         "health": 119,
         "in_limbo": false,
+        "miner": null,
         "mission": {
           "ai_counter": 716,
           "current": 5,
@@ -422,6 +491,12 @@
           22720,
           416
         ],
+        "radio": {
+          "contacts": [
+            null
+          ],
+          "dock_entered_with": null
+        },
         "stable_id": 1759,
         "target": null,
         "type_id": "E1",
@@ -430,6 +505,16 @@
       "missing_actor_ids": [
         1371,
         1428
+      ],
+      "houses": [
+        {
+          "economy": {
+            "credits": 8700,
+            "harvested_credits": 0,
+            "spent_credits": 1300
+          },
+          "owner": "VERA-OBSERVER"
+        }
       ]
     }
   ],
@@ -437,12 +522,12 @@
     {
       "completed_steps": 1852,
       "identity": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-images/step-1852.png",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-images/step-1852.png",
         "byte_length": 423953,
         "sha256": "72429f3f5879e8b48da5dde1bee7d7efaa4c010b3c16cfc28a0c3804a9e2db00"
       },
       "original_bgra": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-prefix-1852/child-output/frame.bgra",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-prefix-1852/child-output/frame.bgra",
         "byte_length": 1920000,
         "sha256": "4227f30b6cce2700ee266d13084d58869c37557476585dc180567240d209a50e"
       },
@@ -455,17 +540,18 @@
         "sha256": "4227f30b6cce2700ee266d13084d58869c37557476585dc180567240d209a50e",
         "surface_format": "Bgra8UnormSrgb",
         "width": 800
-      }
+      },
+      "gpu_bytes_equal_v4": true
     },
     {
       "completed_steps": 1853,
       "identity": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-images/step-1853.png",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-images/step-1853.png",
         "byte_length": 413933,
         "sha256": "8ce2d66772af9e19d8a4c307b6dee0a9151437512b9116e16b2c76f161a9005b"
       },
       "original_bgra": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-prefix-1853/child-output/frame.bgra",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-prefix-1853/child-output/frame.bgra",
         "byte_length": 1920000,
         "sha256": "9d5a00b68587b804201f138a22188a5a86bcf430d9a174614f72d6fa06577e63"
       },
@@ -478,17 +564,18 @@
         "sha256": "9d5a00b68587b804201f138a22188a5a86bcf430d9a174614f72d6fa06577e63",
         "surface_format": "Bgra8UnormSrgb",
         "width": 800
-      }
+      },
+      "gpu_bytes_equal_v4": true
     },
     {
       "completed_steps": 1860,
       "identity": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-images/step-1860.png",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-images/step-1860.png",
         "byte_length": 418691,
         "sha256": "ec1aee91dc5a5919ea256e679d4aceaab1c5d78d6be6c4822254c51f1418e074"
       },
       "original_bgra": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-prefix-1860/child-output/frame.bgra",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-prefix-1860/child-output/frame.bgra",
         "byte_length": 1920000,
         "sha256": "96586a5d741b0f4eed068302e4b76b58a5519b5c9384906b85aba23e372f5ef2"
       },
@@ -501,17 +588,18 @@
         "sha256": "96586a5d741b0f4eed068302e4b76b58a5519b5c9384906b85aba23e372f5ef2",
         "surface_format": "Bgra8UnormSrgb",
         "width": 800
-      }
+      },
+      "gpu_bytes_equal_v4": true
     },
     {
       "completed_steps": 1900,
       "identity": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-images/step-1900.png",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-images/step-1900.png",
         "byte_length": 422632,
         "sha256": "1121758e64acea453f81c40229e365d0a9ecdb15115e5c92707b6b11eac886a9"
       },
       "original_bgra": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-prefix-1900/child-output/frame.bgra",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-prefix-1900/child-output/frame.bgra",
         "byte_length": 1920000,
         "sha256": "0e08e3203026d36d13c61510a9e11c873cee615673e420645e9cd35737b3b57c"
       },
@@ -524,17 +612,18 @@
         "sha256": "0e08e3203026d36d13c61510a9e11c873cee615673e420645e9cd35737b3b57c",
         "surface_format": "Bgra8UnormSrgb",
         "width": 800
-      }
+      },
+      "gpu_bytes_equal_v4": true
     },
     {
       "completed_steps": 2600,
       "identity": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-images/step-2600.png",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-images/step-2600.png",
         "byte_length": 412273,
         "sha256": "bf20d55e3b094fa2e651f509aaa10438ee772b071a5ee49f6422a72fc1a7ddef"
       },
       "original_bgra": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4/child-output/frame.bgra",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5/child-output/frame.bgra",
         "byte_length": 1920000,
         "sha256": "a419da3b76a4ba68c02f46c8698d75802214d033f5713820452e94ed0077ee75"
       },
@@ -547,7 +636,8 @@
         "sha256": "a419da3b76a4ba68c02f46c8698d75802214d033f5713820452e94ed0077ee75",
         "surface_format": "Bgra8UnormSrgb",
         "width": 800
-      }
+      },
+      "gpu_bytes_equal_v4": true
     }
   ],
   "image_inspection": {
@@ -559,7 +649,7 @@
       1900,
       2600
     ],
-    "observed": "Damaged body/fire, fatal explosion/debris, escaping crew, settled clear aftermath; Rust GPU output only."
+    "observed": "Damaged plant/fire, fatal explosion/debris, escaping crew, settled clear aftermath; Rust GPU output only."
   },
   "native_reference_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
   "native_comparisons": [
@@ -616,9 +706,9 @@
       "sha256": "04a2b334589c4eefddc689f8cde69ca59be52b39a0691cf3d0d7185d401500c6"
     },
     "release_build": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-build-v4.log",
-      "byte_length": 4555,
-      "sha256": "59e8a7105d3602d3d37cc1052f83569ce1ff2438bb842f86d1184cbe50cf3cc6"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-build-v5-retry.log",
+      "byte_length": 4564,
+      "sha256": "354e4ddd887b8f2a05ce1863cad57dc73e7ed247f58bbbcec564838b4d90b645"
     },
     "native_body": {
       "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-native-body-frame-final-v1.log",
@@ -659,6 +749,11 @@
       "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-stock-smudge-native-final-IFV-check.log",
       "byte_length": 266,
       "sha256": "d070615c550d40a6079ac18275632050296df213ddce6f21a2111a5516b1420b"
+    },
+    "skill_sync": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-skill-sync-final.log",
+      "byte_length": 38,
+      "sha256": "75262509650ce729d238e21d471f799bdd0ba9bb5f853986b74d5de69cd5e4a4"
     }
   },
   "validation_results": {
@@ -728,9 +823,9 @@
     "Production transcript does not expose complete RNG streams, House power, tracking, passive scan words, sound or deferred graphs. Bounded original executable comparisons and Rust checks cover those owners.",
     "Tagged/captured/garrison/mind-control receivers and sale remain separate chains. Whole GAPOWR/E1/MTNK certificates remain open in docs/plans/object-completion.md.",
     "Stock native extension covers three ready-shot routes through impact frame4 / frame5 drain; full physical theater/map loading, other placements, later surviving death Anim visits and native pixels/audio are excluded. Native map-Smudge priority residual is dormant on AnyTown/Dustbowl, which have no Smudge entries.",
-    "Release v4 includes IFV weapon/turret main integration and the numeric-only receipt cleanup. Relative to preserved v3, only the two paired Unit observer fields and initial/final state hashes differ; all common observations, atlas metadata and five GPU frames match. Smudge cell/expiry graphs are not exposed by production; native and Rust joined controls compare them.",
     "Prefix atlas residency may grow when newly admitted actors first draw. Prefix validation compares all actor/terrain observations and initial/map/camera/clock prefixes; full/repeat validation additionally compares the final atlas and GPU bytes.",
-    "Broader Anim expiry is a later prerequisite: native4228E0 broadcasts through7258D0 with slot18/Grinding/SpecialAnim consumers beyond current represented direct cleanup. No reached omitted consumer was established for this ordinary GAPOWR route; universal Anim destructor equivalence is not claimed."
+    "Broader Anim expiry is a later prerequisite: native4228E0 broadcasts through7258D0 with slot18/Grinding/SpecialAnim consumers beyond current represented direct cleanup. No reached omitted consumer was established for this ordinary GAPOWR route; universal Anim destructor equivalence is not claimed.",
+    "Release v5 integrates docking main03750cc7 and documentation-only c8a794a7. Relative to v4, observation policy changes v2 to v3 and adds per-frame Houses plus actor miner/radio fields. Every common observation, initial/final state hash, atlas and clock matches; all five GPU frames match. The strict owner correctly refuses cross-policy full comparison. No cross-version full MATCH is claimed."
   ],
   "superseded_production_archive": {
     "receipt": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-v2-production-archive.json",
@@ -756,29 +851,28 @@
       "sha256": "c09a66554abb218806600f7e478a3c1ff67ef0455757124efd7f3e5c7643316a"
     }
   },
-  "production_validation_head": "22908e2d338fa23e259e2ca0e6d2e6a84db533cb",
+  "production_validation_head": "c682d28117052d16f3434f252ea1b78dc092b87b",
   "code_validation_receipt": {
     "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-code-validation-v6.json",
     "byte_length": 3740,
     "sha256": "82a56c6c0d150c8287e2fe446aef3c60d0e6eca4dc31f31dc011ae23c029fd78"
   },
-  "snapshot_version": 282,
+  "snapshot_version": 283,
   "prior_production_receipt": {
-    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-production-receipt-v3.json",
-    "byte_length": 25150,
-    "sha256": "134f39c745e60cd85bf90f15cbf428ccfb57a5e656109e172e8a721bc65d6011"
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-production-receipt-v4.json",
+    "byte_length": 29322,
+    "sha256": "e73bf50aff07adccc4fb3760a5f8ea3dc96f7c5a72d8343d8c334a7515ec2925"
   },
   "cross_version_common_fields": {
-    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v3-v4-common-fields.json",
-    "byte_length": 1238,
-    "sha256": "3260d11634620e7b36658ab8f4d9ada807cf0a896ec7f02cdcdf6a0bf8166c7e"
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-v5-common-fields.json",
+    "byte_length": 2244,
+    "sha256": "f3fc35c377ea21bdb16024b4321a8eac266e5fac7b2f5f371a9f5fcafc385119"
   },
   "all_run_revalidation": {
-    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-validations.json",
-    "byte_length": 3845278,
-    "sha256": "fbc4737a94e718f69ea94d6c2db36ae97c42a35a5c85c537560434e97ef80b06"
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-validations.json",
+    "byte_length": 4150033,
+    "sha256": "3a420c97886363cc583c284ef4b1687f1631cb4e9a6ce86a6cad57381cbcb8f1"
   },
-  "candidate_snapshot_version": 283,
   "integrated_native_refresh": {
     "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-main-03750cc-native-refresh/final-input-replay/receipt.json",
     "byte_length": 6461,
@@ -793,5 +887,25 @@
     "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-pre-final-v5-archive-applied.json",
     "byte_length": 34980,
     "sha256": "537263198791e0dfbd7f74af7b53c4d6eee990ffb2d87ea54c561f526c514d50"
+  },
+  "prior_v3_production_receipt": {
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-production-receipt-v3.json",
+    "byte_length": 25150,
+    "sha256": "134f39c745e60cd85bf90f15cbf428ccfb57a5e656109e172e8a721bc65d6011"
+  },
+  "strict_cross_version_policy_refusal": {
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v4-v5-comparison.json",
+    "byte_length": 829212,
+    "sha256": "3f69a204be199f80d30fa9828de8c978a3a6350108a566309bf8cfa7a06cc15f"
+  },
+  "final_test_binary_archive": {
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-final-9511-libtest-archive-applied.json",
+    "byte_length": 1929,
+    "sha256": "7a7adf2cd2fe362cf8c74624ac84c9a802df86e67e5ceef699a1fb9d2cad9aa8"
+  },
+  "release_build_receipt": {
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-build-receipt.json",
+    "byte_length": 2144,
+    "sha256": "2a0c1f9d3381932b38cf39f926a1661423300db15f3848b0ac46f3377fc428ad"
   }
 }
