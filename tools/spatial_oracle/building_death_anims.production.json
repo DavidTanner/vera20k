@@ -1,0 +1,645 @@
+{
+  "schema": 1,
+  "mechanism": "ordinary GAPOWR fatal lifecycle",
+  "candidate_state": "stock-smudge implementation passes joined native regression; fetched-main integration, final checks, refreshed production capture and single critic pending",
+  "objects_certified": 0,
+  "native_comparator": "NONE",
+  "parity_certification": "NONE",
+  "build": {
+    "label": "object-gapowr-fatal-release-v2-20261002",
+    "manifest": {
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v2-20261002/manifest.json",
+      "byte_length": 4257,
+      "sha256": "643bc3c039d58a71f566e6f71f482dd11f26bef2fb2ad93d302dc047fc5b9f14"
+    },
+    "source": {
+      "head": "9a6b743d29bf48a06ec12026c4d43da7038a3e5d",
+      "branch": "feature/native-gapowr-fatal-lifecycle",
+      "status": "M README.md\n M docs/plans/object-completion-checkpoint.md\n M docs/plans/object-completion.md\n M src/render/sprite_atlas.rs\n M src/render/sprite_atlas_tests.rs\n M src/sim/ai_base_building.rs\n M src/sim/anim_class.rs\n M src/sim/building_art.rs\n M src/sim/combat/destruction_effects.rs\n M src/sim/combat/destruction_effects_tests.rs\n M src/sim/combat/fire_coord.rs\n M src/sim/combat/mod.rs\n M src/sim/combat/world_receiver.rs\n M src/sim/crew_survival.rs\n M src/sim/deploy.rs\n M src/sim/deploy_tests.rs\n M src/sim/house_tracking_tests.rs\n M src/sim/movement/ground_pose.rs\n M src/sim/production/factory_ai.rs\n M src/sim/production/factory_lifecycle.rs\n M src/sim/production/production_queue_tests.rs\n M src/sim/rng.rs\n M src/sim/scenario_bootstrap.rs\n M src/sim/superweapon/paradrop.rs\n M src/sim/temporal.rs\n M src/sim/voxel_anim.rs\n M src/sim/world/crash.rs\n M src/sim/world/damage_consequences.rs\n M src/sim/world/engineer_building_repair_tests.rs\n M src/sim/world/lifecycle.rs\n M src/sim/world/mod.rs\n M src/sim/world/object_entry.rs\n M src/sim/world/world_spawn.rs\n M src/sim/world/world_spawn/tests.rs\n M tools/spatial_oracle/anytown_damage/navigation.py\n M tools/spatial_oracle/anytown_navigation_restore.retained.meta.json\n M tools/spatial_oracle/astar_hills_bridge_inputs.meta.json\n M tools/spatial_oracle/astar_hills_markers.meta.json\n M tools/spatial_oracle/astar_hills_route.meta.json\n M tools/spatial_oracle/astar_hills_route.py\n M tools/spatial_oracle/building_construction.py\n M tools/spatial_oracle/building_construction_joined.meta.json\n M tools/spatial_oracle/building_death_anims.py\n M tools/spatial_oracle/engineer_capture_accounting.meta.json\n M tools/spatial_oracle/engineer_repair_admission.py\n M tools/spatial_oracle/engineer_repair_joined.meta.json\n M tools/spatial_oracle/house_power_consumers.meta.json\n M tools/spatial_oracle/infantry_scatter_entry.meta.json\n M tools/spatial_oracle/infantry_scatter_entry.py\n M tools/spatial_oracle/naval_head_producer.py\n M tools/spatial_oracle/refinery_dock.py\n?? src/sim/world/building_fatal_lifecycle_tests.rs\n?? src/sim/world/infantry_entry_priority_tests.rs\n?? tools/map_observation.building-fatal.example.json\n?? tools/spatial_oracle/building_death_anims_joined.json\n?? tools/spatial_oracle/building_death_anims_joined.md\n?? tools/spatial_oracle/building_death_anims_joined.meta.json\n?? tools/spatial_oracle/building_death_anims_limbo_cancel.json\n?? tools/spatial_oracle/building_death_anims_limbo_cancel.md\n?? tools/spatial_oracle/building_death_anims_limbo_cancel.meta.json\n?? tools/spatial_oracle/infantry_scatter_entry_priority.json\n?? tools/spatial_oracle/infantry_scatter_entry_priority.md\n?? tools/spatial_oracle/infantry_scatter_entry_priority.meta.json",
+      "source_sha256": "a70378094f5124c61b8135c97ed377766956b560d3b24d02dd0e6277c4f893ef"
+    },
+    "executable": {
+      "byte_length": 31507584,
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v2-20261002/1/vera20k",
+      "sha256": "bc8190b00c8fac789b5448bff014041f0ebbfce1a9f89fa704dc08274d675bde"
+    }
+  },
+  "inputs": {
+    "config": {
+      "byte_length": 612,
+      "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/config.toml",
+      "sha256": "5b997bce2545d3c592e8e8fb37d73303789fdae0ae564d374a801d957ad86636"
+    },
+    "contract": {
+      "byte_length": 590,
+      "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+    },
+    "executable": {
+      "byte_length": 31507584,
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v2-20261002/1/vera20k",
+      "sha256": "bc8190b00c8fac789b5448bff014041f0ebbfce1a9f89fa704dc08274d675bde"
+    },
+    "profile": {
+      "byte_length": 4041,
+      "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/tools/map_observation.building-fatal.example.json",
+      "sha256": "a32db77ceaf1f3517dbbfed187680ab8037133e6cded8826a46aae99000573c3"
+    }
+  },
+  "map_source": {
+    "entry_id": -854728974,
+    "kind": "mix",
+    "logical_name": "XMP03T4.MAP",
+    "payload_len": 156269,
+    "source_archive": "multimd.mix",
+    "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+  },
+  "runs": {
+    "full": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2/run.json",
+      "byte_length": 49530533,
+      "sha256": "532f196ff8d474408013a45ffa88cfa6745615a3974df6da1d4e003d06324819"
+    },
+    "repeat": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-repeat/run.json",
+      "byte_length": 49530554,
+      "sha256": "c63a9104b295c9c731e6397f87c02c44b29008ffd9f95d8595efa41aad65e2bf"
+    },
+    "comparison": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-match.json",
+      "byte_length": 1580693,
+      "sha256": "c0cffb98c1ad17b4d2d005de938695f1087f1e7856eefa2e4c6fcca3e2664847"
+    },
+    "status": "MATCH"
+  },
+  "prefix_comparisons": {
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-prefix-receipt.json",
+    "byte_length": 4743,
+    "sha256": "e1e84ed9e4fd848cba42d8ef119e63c7f03703d056b5e20839b652d263795305"
+  },
+  "final": {
+    "binary_frame": 2600,
+    "deterministic_state_hash": 17513880123871236127,
+    "simulation_tick": 2600,
+    "total_simulation_ms": 57200
+  },
+  "observed_fatal_and_crew": [
+    {
+      "completed_steps": 1852,
+      "building": {
+        "active": true,
+        "archive": null,
+        "building": {
+          "actually_placed": true,
+          "animation_slots": [
+            {
+              "anim_id": 1580,
+              "animation": {
+                "building_slot": [
+                  1428,
+                  3
+                ],
+                "in_logic_vector": true,
+                "interned_type_id": 1199,
+                "native_id": 1040709,
+                "owner_entity": null,
+                "physical_leptons": [
+                  7936,
+                  22784,
+                  416
+                ],
+                "runtime": {
+                  "constructor_reverse": false,
+                  "current_frame": 7,
+                  "delay_remaining": 0,
+                  "first_ai_guard": false,
+                  "frame_step": 1,
+                  "frame_timer": {
+                    "duration": 6,
+                    "start_frame": 1849
+                  },
+                  "inactive": false,
+                  "loop_remaining": 255,
+                  "paused": false,
+                  "rate_reload": 6
+                },
+                "stable_id": 1580,
+                "type_id": "GAPOWR_AD"
+              },
+              "slot": 3
+            }
+          ],
+          "body_state": 1,
+          "construction_control": [
+            0,
+            25,
+            2
+          ],
+          "last_operational": true,
+          "queued_body_state": -1,
+          "ready_latch": 1,
+          "stage": {
+            "changed": 0,
+            "increment": 1,
+            "rate": 0,
+            "timer": {
+              "duration": 0,
+              "start_frame": 700
+            },
+            "value": 0
+          }
+        },
+        "category": "Structure",
+        "cell": [
+          31,
+          89
+        ],
+        "dying": false,
+        "foot": null,
+        "health": 36,
+        "in_limbo": false,
+        "mission": {
+          "ai_counter": 1151,
+          "current": 5,
+          "dispatch_timer": {
+            "delay": 100,
+            "start_frame": 1801
+          },
+          "effective": 5,
+          "handler_state": 0,
+          "queued": -1,
+          "start_frame": 700,
+          "suspended": -1
+        },
+        "nav": null,
+        "on_bridge": false,
+        "owner": "VERA-OBSERVER",
+        "physical_leptons": [
+          8064,
+          22912,
+          416
+        ],
+        "stable_id": 1428,
+        "target": null,
+        "type_id": "GAPOWR"
+      },
+      "crew": null,
+      "missing_actor_ids": [
+        1371
+      ]
+    },
+    {
+      "completed_steps": 1853,
+      "building": null,
+      "crew": {
+        "active": true,
+        "archive": null,
+        "building": null,
+        "category": "Infantry",
+        "cell": [
+          31,
+          89
+        ],
+        "dying": false,
+        "foot": {
+          "firing_sequence_latch_68d": 0,
+          "infantry_doing": 3,
+          "navigation_leptons": [
+            8128,
+            22720,
+            416
+          ],
+          "navigation_unavailable": null,
+          "retarget_after_stop_688": false
+        },
+        "health": 119,
+        "in_limbo": false,
+        "mission": {
+          "ai_counter": 1,
+          "current": 2,
+          "dispatch_timer": {
+            "delay": 15,
+            "start_frame": 1852
+          },
+          "effective": 2,
+          "handler_state": 0,
+          "queued": -1,
+          "start_frame": 1852,
+          "suspended": -1
+        },
+        "nav": {
+          "Cell": {
+            "rx": 31,
+            "ry": 88
+          }
+        },
+        "on_bridge": false,
+        "owner": "VERA-OBSERVER",
+        "physical_leptons": [
+          8128,
+          22966,
+          416
+        ],
+        "stable_id": 1755,
+        "target": null,
+        "type_id": "E1"
+      },
+      "missing_actor_ids": [
+        1371,
+        1428
+      ]
+    },
+    {
+      "completed_steps": 1860,
+      "building": null,
+      "crew": {
+        "active": true,
+        "archive": null,
+        "building": null,
+        "category": "Infantry",
+        "cell": [
+          31,
+          89
+        ],
+        "dying": false,
+        "foot": {
+          "firing_sequence_latch_68d": 0,
+          "infantry_doing": 3,
+          "navigation_leptons": [
+            8128,
+            22720,
+            416
+          ],
+          "navigation_unavailable": null,
+          "retarget_after_stop_688": false
+        },
+        "health": 119,
+        "in_limbo": false,
+        "mission": {
+          "ai_counter": 8,
+          "current": 2,
+          "dispatch_timer": {
+            "delay": 15,
+            "start_frame": 1852
+          },
+          "effective": 2,
+          "handler_state": 0,
+          "queued": -1,
+          "start_frame": 1852,
+          "suspended": -1
+        },
+        "nav": {
+          "Cell": {
+            "rx": 31,
+            "ry": 88
+          }
+        },
+        "on_bridge": false,
+        "owner": "VERA-OBSERVER",
+        "physical_leptons": [
+          8128,
+          22896,
+          416
+        ],
+        "stable_id": 1755,
+        "target": null,
+        "type_id": "E1"
+      },
+      "missing_actor_ids": [
+        1371,
+        1428
+      ]
+    },
+    {
+      "completed_steps": 1900,
+      "building": null,
+      "crew": {
+        "active": true,
+        "archive": null,
+        "building": null,
+        "category": "Infantry",
+        "cell": [
+          31,
+          88
+        ],
+        "dying": false,
+        "foot": {
+          "firing_sequence_latch_68d": 0,
+          "infantry_doing": 0,
+          "navigation_leptons": [
+            8128,
+            22720,
+            416
+          ],
+          "navigation_unavailable": null,
+          "retarget_after_stop_688": false
+        },
+        "health": 119,
+        "in_limbo": false,
+        "mission": {
+          "ai_counter": 17,
+          "current": 5,
+          "dispatch_timer": {
+            "delay": 27,
+            "start_frame": 1883
+          },
+          "effective": 5,
+          "handler_state": 0,
+          "queued": -1,
+          "start_frame": 1882,
+          "suspended": -1
+        },
+        "nav": null,
+        "on_bridge": false,
+        "owner": "VERA-OBSERVER",
+        "physical_leptons": [
+          8128,
+          22720,
+          416
+        ],
+        "stable_id": 1755,
+        "target": null,
+        "type_id": "E1"
+      },
+      "missing_actor_ids": [
+        1371,
+        1428
+      ]
+    },
+    {
+      "completed_steps": 2600,
+      "building": null,
+      "crew": {
+        "active": true,
+        "archive": null,
+        "building": null,
+        "category": "Infantry",
+        "cell": [
+          31,
+          88
+        ],
+        "dying": false,
+        "foot": {
+          "firing_sequence_latch_68d": 0,
+          "infantry_doing": 0,
+          "navigation_leptons": [
+            8128,
+            22720,
+            416
+          ],
+          "navigation_unavailable": null,
+          "retarget_after_stop_688": false
+        },
+        "health": 119,
+        "in_limbo": false,
+        "mission": {
+          "ai_counter": 716,
+          "current": 5,
+          "dispatch_timer": {
+            "delay": 28,
+            "start_frame": 2589
+          },
+          "effective": 5,
+          "handler_state": 0,
+          "queued": -1,
+          "start_frame": 1882,
+          "suspended": -1
+        },
+        "nav": null,
+        "on_bridge": false,
+        "owner": "VERA-OBSERVER",
+        "physical_leptons": [
+          8128,
+          22720,
+          416
+        ],
+        "stable_id": 1755,
+        "target": null,
+        "type_id": "E1"
+      },
+      "missing_actor_ids": [
+        1371,
+        1428
+      ]
+    }
+  ],
+  "images": [
+    {
+      "completed_steps": 1852,
+      "identity": {
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-images/step-1852.png",
+        "byte_length": 423953,
+        "sha256": "72429f3f5879e8b48da5dde1bee7d7efaa4c010b3c16cfc28a0c3804a9e2db00"
+      },
+      "original_bgra": {
+        "byte_length": 1920000,
+        "file_name": "frame.bgra",
+        "height": 600,
+        "pixel_layout": "BGRA8",
+        "row_stride": 3200,
+        "sha256": "4227f30b6cce2700ee266d13084d58869c37557476585dc180567240d209a50e",
+        "surface_format": "Bgra8UnormSrgb",
+        "width": 800
+      }
+    },
+    {
+      "completed_steps": 1853,
+      "identity": {
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-images/step-1853.png",
+        "byte_length": 413933,
+        "sha256": "8ce2d66772af9e19d8a4c307b6dee0a9151437512b9116e16b2c76f161a9005b"
+      },
+      "original_bgra": {
+        "byte_length": 1920000,
+        "file_name": "frame.bgra",
+        "height": 600,
+        "pixel_layout": "BGRA8",
+        "row_stride": 3200,
+        "sha256": "9d5a00b68587b804201f138a22188a5a86bcf430d9a174614f72d6fa06577e63",
+        "surface_format": "Bgra8UnormSrgb",
+        "width": 800
+      }
+    },
+    {
+      "completed_steps": 1860,
+      "identity": {
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-images/step-1860.png",
+        "byte_length": 418691,
+        "sha256": "ec1aee91dc5a5919ea256e679d4aceaab1c5d78d6be6c4822254c51f1418e074"
+      },
+      "original_bgra": {
+        "byte_length": 1920000,
+        "file_name": "frame.bgra",
+        "height": 600,
+        "pixel_layout": "BGRA8",
+        "row_stride": 3200,
+        "sha256": "96586a5d741b0f4eed068302e4b76b58a5519b5c9384906b85aba23e372f5ef2",
+        "surface_format": "Bgra8UnormSrgb",
+        "width": 800
+      }
+    },
+    {
+      "completed_steps": 1900,
+      "identity": {
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-images/step-1900.png",
+        "byte_length": 422632,
+        "sha256": "1121758e64acea453f81c40229e365d0a9ecdb15115e5c92707b6b11eac886a9"
+      },
+      "original_bgra": {
+        "byte_length": 1920000,
+        "file_name": "frame.bgra",
+        "height": 600,
+        "pixel_layout": "BGRA8",
+        "row_stride": 3200,
+        "sha256": "0e08e3203026d36d13c61510a9e11c873cee615673e420645e9cd35737b3b57c",
+        "surface_format": "Bgra8UnormSrgb",
+        "width": 800
+      }
+    },
+    {
+      "completed_steps": 2600,
+      "identity": {
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-images/step-2600.png",
+        "byte_length": 412273,
+        "sha256": "bf20d55e3b094fa2e651f509aaa10438ee772b071a5ee49f6422a72fc1a7ddef"
+      },
+      "original_bgra": {
+        "byte_length": 1920000,
+        "file_name": "frame.bgra",
+        "height": 600,
+        "pixel_layout": "BGRA8",
+        "row_stride": 3200,
+        "sha256": "a419da3b76a4ba68c02f46c8698d75802214d033f5713820452e94ed0077ee75",
+        "surface_format": "Bgra8UnormSrgb",
+        "width": 800
+      }
+    }
+  ],
+  "image_inspection": "All five lossless GPU previews inspected. Damaged completed body is visible at1852, destruction/impact/debris at1853/1860, crew reaches the next cell by1900, and building/effects are absent at2600. No native pixel comparison.",
+  "native_reference_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "native_comparisons": [
+    {
+      "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/tools/spatial_oracle/building_death_anims.json",
+      "byte_length": 813709,
+      "sha256": "91e2a4bf608127a37307efac0fde98b72fc333cf4bc767acc80d0486c0a359bd"
+    },
+    {
+      "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/tools/spatial_oracle/building_death_anims_joined.json",
+      "byte_length": 10915537,
+      "sha256": "6f30c79d8a1fee3ed057f58bf07d2e83e28d7ea3e6e7c5bca3a7d881458e25a7"
+    },
+    {
+      "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/tools/spatial_oracle/building_death_anims_limbo_cancel.json",
+      "byte_length": 6392193,
+      "sha256": "e533c6d7bb58ab8742f16ba77c7cea7e58b94d984f566ec059ebbbc277ea627a"
+    },
+    {
+      "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/tools/spatial_oracle/infantry_scatter_entry_priority.json",
+      "byte_length": 2926547,
+      "sha256": "86183cfe95713d90dba70349bcda8b982fac2333f5f4aa6865571cbcb9d42caf"
+    },
+    {
+      "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/tools/spatial_oracle/building_body_transition.json",
+      "byte_length": 914469,
+      "sha256": "26373ad2f54f94cb2860975773c26ebdb2d731603d3ee6e55de62e7c663d4194"
+    }
+  ],
+  "validation_logs": {
+    "strict_lib": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-strict-lib-final-v3.log",
+      "byte_length": 958290,
+      "sha256": "5a20b22f1c9f270bc710eef2ee1eab6d171e771aa17bbfa9f844b33954ecf3ab"
+    },
+    "strict_clippy": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-strict-clippy-final-v3.log",
+      "byte_length": 429351,
+      "sha256": "d64fbad9cec6422da88a4a2e806400bd63cf6e481dd6f86f18b7ae443a5eed92"
+    },
+    "python_full": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-python-tools-final-v5.log",
+      "byte_length": 88507,
+      "sha256": "229ea4c3d41af37a785f7e1224a5b178f9d86384688244b151befe0a6f06d022"
+    },
+    "field_ratchet": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-field-ratchet-final-v2.log",
+      "byte_length": 90,
+      "sha256": "eca00d7bddbf14cde8088e6d23a97a49d737b107560cbb93c6c00afa2ce18da8"
+    },
+    "release_build": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-release-build-final-v3.log",
+      "byte_length": 4945,
+      "sha256": "c3a306979904830cac4749e61e125f1aa195a044ed1ca01d59ceeb20304113e7"
+    },
+    "native_body": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-native-body-frame-final-v1.log",
+      "byte_length": 153,
+      "sha256": "fa277fdfb5e7ed9648908eb8a0bd7091fc2bb344d99fb2561908c1916dd990bd"
+    },
+    "native_primitive": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-preserved-primitive-final-v2.log",
+      "byte_length": 149,
+      "sha256": "e3c4622a0a88d65fd2ff01a67e042611560ddbfc544de80cf2b636d883bbb76c"
+    },
+    "atlas_fail_before": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-body-atlas-fail-before-v1.log",
+      "byte_length": 4857,
+      "sha256": "ee6f2efb32b05c9519c58775f15d8dfe7c14d8a7b8c5ccfd86bd5459671043ad"
+    },
+    "atlas_focused_after": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-body-atlas-focused-v2.log",
+      "byte_length": 6263,
+      "sha256": "73fb7b011318a36000dd941a9df6ebaf3b6fdc00d30dadcf832a679080ec8b82"
+    },
+    "release_retail_dustbowl_before_atlas_fix": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-release-retail-dustbowl-final-v1.log",
+      "byte_length": 2309,
+      "sha256": "b9513b151cb79a0910e4c3a399a2b2c76dd919e9af81df0be8cdc0ab52f75fde"
+    }
+  },
+  "validation_results": {
+    "strict_lib": {
+      "passed": 9464,
+      "failed": 0,
+      "ignored": 227,
+      "required_retail_ini": true
+    },
+    "strict_clippy": {
+      "exit_code": 0,
+      "warnings": 732,
+      "diagnostics_in_edited_rust_spans": 0
+    },
+    "python_full": {
+      "passed": 460,
+      "skipped": 4
+    },
+    "sim_writable_fields": {
+      "base": 2564,
+      "candidate": 2564
+    },
+    "atlas_focused": {
+      "passed": 36,
+      "ignored": 3
+    },
+    "release_retail_dustbowl_before_atlas_fix": {
+      "passed": 2
+    }
+  },
+  "review": {
+    "passes": 0,
+    "status": "not started"
+  },
+  "limits": [
+    "VALID/MATCH covers production loader, app commands, simulation and Metal output reproducibility. No original native whole-match or native pixel comparison is supplied.",
+    "Production uses human friendly ForceAttack on Battle/AnyTown with full match cadence; the native joined controls start with a ready enemy shot on a supplied flat map and differ in earlier volleys, credits and cadence.",
+    "Inherited joined controls supply an empty SmudgeType registry. Stock SmudgeTypes and legal TileType continuation are being audited before this chain can be reviewed or published.",
+    "Production transcript does not expose complete RNG streams, House power, tracking, passive scan words, sound or deferred graphs. Bounded original executable comparisons and Rust checks cover those owners.",
+    "The v1/v2 complete simulation transcript is unchanged after the atlas correction. Final strict suite and production v2 use the corrected loader; physical Dustbowl release lib tests ran before that presentation-only change.",
+    "Tagged/captured/garrison/mind-control receivers and sale remain separate chains. Whole GAPOWR/E1/MTNK certificates remain open in docs/plans/object-completion.md."
+  ],
+  "superseded_production_archive": {
+    "receipt": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-v2-production-archive.json",
+    "archive": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-v2-production-archive.tar.gz",
+    "sha256": "7d0cfc02b5d342839c620a10aee0039d6c4d9ceaae438c106e50636b16103d56",
+    "note": "Raw v2 full/repeat/four-prefix directories are retained here; v2 predates runtime Smudge identity changes."
+  }
+}

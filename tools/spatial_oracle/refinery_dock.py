@@ -61,10 +61,15 @@ def name_of(pointer):
     return {ACTOR: 'miner', BLD: 'refinery', OTHER: 'other', 0: None}.get(pointer, hex(pointer))
 
 
-def place_building(u, building, nw):
+def place_building(u, building, nw, *, constructor_abstract_flags=None):
+    # Supplied admitted-state helper, not a constructor or Mark port. Legacy
+    # partial objects keep flags1. A whole-ctor caller passes its actual
+    # retained+14 instead: Object5F3B37 OR2 then Techno6F322F OR1. Overwriting
+    # that datum would suppress original72592D..38 expiry dispatch.
     # Primary and RTTI (What_Am_I) vtables, as the constructor writes them (0x43B725).
     u.mem_write(building, dwords(0x7E3EBC, 0x7E3EA0))
-    u.mem_write(building + 0x14, dwords(1))
+    u.mem_write(building + 0x14, dwords(1 if constructor_abstract_flags is None
+                                     else constructor_abstract_flags))
     u.mem_write(building + 0x9C, dwords(nw[0] * 256 + 128, nw[1] * 256 + 128, 0))
     u.mem_write(building + 0xB4, dwords(-1))
     u.mem_write(building + 0x21C, dwords(HOUSE))

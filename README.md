@@ -27,6 +27,14 @@ movies, and several special weapons and superweapons, such as the Chrono Legionn
 chaining, the Nuke and the Chronosphere. The 30-player, 20,000-unit scale hasn't been
 demonstrated yet.
 
+Ordinary Allied Power Plant destruction has bounded original-executable
+comparisons through tank impact, damage fires, ordered debris and explosions,
+stock smudge identity and marks, crew escape, target expiry, power state and deferred cleanup. Cancelled held
+buildings reuse the same destructor. See the [fatal lifecycle coverage](tools/spatial_oracle/building_death_anims_joined.md)
+[stock smudge extension](tools/spatial_oracle/building_death_anims_joined_stock_smudges.md)
+and [cancellation controls](tools/spatial_oracle/building_death_anims_limbo_cancel.md);
+whole-object parity remains open.
+
 Stock TIBTRE ore trees use retained simulation animation, emit ore at the native
 midpoint and feed the existing growth and harvesting paths. Ore queues rebuild at
 the native enqueue thresholds. Natural spread processes due timers even when

@@ -165,9 +165,6 @@ const SPARKLE_OFFSET_LEPTONS: i32 = 0x78;
 /// An occupied building's port sparkle ZAdjust (`anim+0x100 = -200`,
 /// `0x004404CF`).
 const PORT_SPARKLE_Z_ADJUST: i32 = -200;
-/// A building's `vtable+0xAC` (`0x00459EF0`): its Location less 128 leptons on
-/// X and Y.
-const BUILDING_RENDER_SHIFT_LEPTONS: i32 = 128;
 
 /// One `TemporalClass`, owned by the attacker that fires it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1196,16 +1193,19 @@ impl Simulation {
                 crate::util::pixel_conversion::PixelConversionBounds::isometric_pixel_to_leptons(
                     px, py,
                 );
+            let (base, _) = crate::sim::movement::ground_pose::building_render_order_parts(
+                crate::sim::components::DriveCoord {
+                    x: location.x,
+                    y: location.y,
+                    z: location.z,
+                },
+                false,
+                false,
+            );
             let coord = AnimWorldCoord {
-                x: location
-                    .x
-                    .wrapping_sub(BUILDING_RENDER_SHIFT_LEPTONS)
-                    .wrapping_add(dx),
-                y: location
-                    .y
-                    .wrapping_sub(BUILDING_RENDER_SHIFT_LEPTONS)
-                    .wrapping_add(dy),
-                z: location.z,
+                x: base.x.wrapping_add(dx),
+                y: base.y.wrapping_add(dy),
+                z: base.z,
             };
             self.spawn_temporal_anim(&name, coord, Some(PORT_SPARKLE_Z_ADJUST), rules);
         }

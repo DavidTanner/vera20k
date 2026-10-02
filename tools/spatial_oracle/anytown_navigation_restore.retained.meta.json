@@ -45,7 +45,7 @@
     "tools/spatial_oracle/anytown_damage/__init__.py": "5cca8aa87d9e3c1c8ff349b7a2c105a2bdfbce58bb13acae9fbda5645ef8c66a",
     "tools/spatial_oracle/anytown_damage/anytown_geometry.py": "012d148f0299bfa6aee589070fb87bfb8ad14ebd09cdc30c3b22bf11df562e69",
     "tools/spatial_oracle/anytown_damage/inputs.py": "c3e1732837e85deb628f04862aaab8cf72dc3e8ba2804ce55db5dc46f2a68f25",
-    "tools/spatial_oracle/anytown_damage/navigation.py": "a3694fc3094c0fcac020e01d2976b2ec794282adf97088f3b2983675e966721d",
+    "tools/spatial_oracle/anytown_damage/navigation.py": "84b123f168898386752dae17ad9dec685b3f98ebe1e873c18d14f68c53abf8e4",
     "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
     "tools/spatial_oracle/anytown_damage/navigation_publication.py": "4d6d09e465e67bf3ed3415495f1efee7f51f069f8c762f53dbc7cb437be91211",
     "tools/spatial_oracle/anytown_damage/next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881",

@@ -560,10 +560,10 @@ class EngineerJoinedFixture(construction.JoinedFixture):
         0x6F4960: 'techno_discovery',
     }
 
-    def __init__(self, inputs):
+    def __init__(self, inputs, *, seed=31, arena_size=0x200000):
         self.phase, self.trail, self.trace = 'setup', deque(maxlen=40), []
         self.platform_audio = None
-        super().__init__(inputs)
+        super().__init__(inputs, seed=seed, arena_size=arena_size)
         u = self.u
         u.hook_add(UC_HOOK_MEM_INVALID, self.invalid)
         u.hook_add(UC_HOOK_MEM_WRITE, self.write)

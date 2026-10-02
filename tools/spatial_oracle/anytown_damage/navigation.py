@@ -16,6 +16,35 @@ class Navigation(Geometry):
  nav_snapshot=ConnectivityRepair.nav_snapshot
  graph_snapshot=HierarchyRepair.graph_snapshot
  dummy_snapshot=HierarchyRepair.dummy_snapshot
+ @classmethod
+ def on_existing_map(cls,owner,*,size,class_height_plane):
+  """Join native graphs to an existing VM and declared admitted map prior.
+
+  Cell membership, dimensions and the class/height bytes are caller inputs,
+  not answers to a path query. Original connectivity/hierarchy and all later
+  pathfinding execute. The existing runtime owns every allocation and hook.
+  """
+  from types import MethodType
+  m=cls.__new__(cls);m.uc=owner.u;m.case=dict(size=list(size))
+  m.width=sum(size);m.side=m.width+1
+  assert list(struct.unpack('<2i',m.uc.mem_read(MAP+0xF4,8)))==list(size)
+  assert len(class_height_plane)==m.side*m.side*4
+  m.allocate=owner.allocate;m.call=MethodType(ConnectivityRepair.call,m)
+  m.uc.mem_map(0x44000000,0x800000)
+  m.uc.mem_write(BASE,class_height_plane)
+  m.uc.mem_write(MAP+0x68,dwords(BASE,m.side*m.side,PLANE))
+  return m
+ @staticmethod
+ def setup_pathfinder(call):
+  """Original shared workspace producer; call transport owns execution budget.
+
+  42A6D0 constructs the global, 42AC00 sizes its map arrays, and 42C1C0
+  derives scratch from retained native hierarchy. No query result is supplied.
+  """
+  call(0x49F3A0,this=0)
+  call(0x42A6D0,this=0x87E8B8)
+  call(0x42AC00,this=0x87E8B8,args=(MAP+0xEC,))
+  call(0x42C1C0,this=0x87E8B8)
  def __init__(self,r,t,tiles,*,case=None,create_actor=True,actor_coord=(87,53),actor_height=4,admission_cells=None,stages=None,scenario_theater=None,cell_inputs_only=False):
   self.create_actor=create_actor;self.actor_coord=actor_coord;self.actor_height=actor_height
   self.admission_cells=admission_cells if admission_cells is not None else [(87,53),(86,54),(87,54),(88,54),(87,55),(85,54),(89,54)]

@@ -17,7 +17,7 @@ use crate::sim::combat::SmudgeSpawnRequest;
 use crate::sim::occupancy::{OccupancyGrid, RawCellOccupationGrid};
 use crate::sim::ore_growth::OreGrowthState;
 use crate::sim::overlay_grid::OverlayGrid;
-use crate::sim::smudge_grid::{SmudgeGrid, SmudgeKind};
+use crate::sim::smudge_grid::{SmudgeConstruction, SmudgeGrid, SmudgeKind};
 use crate::sim::tiberium::{ReduceTiberiumContext, reduce_tiberium};
 
 /// Hardcoded ore-reduction amount on `AnimClass::Middle @ 0x00424F00`'s
@@ -128,16 +128,17 @@ pub(crate) fn anim_middle_marks(
 }
 
 /// The world's [`MiddleMarkSink`]: the smudge grid at the anim's coordinate.
-struct GridMarks<'g, 't, 'c> {
+struct GridMarks<'g, 't, 'c, 's> {
     coord: SimCoord,
     smudge_grid: &'g mut SmudgeGrid,
     smudge_types: &'g SmudgeTypeRegistry,
     occupancy: &'g OccupancyGrid,
     terrain: &'g mut ResolvedTerrainGrid,
     tiberium: &'t mut SmudgeTiberiumContext<'c>,
+    construction: Option<&'g mut SmudgeConstruction<'s>>,
 }
 
-impl MiddleMarkSink for GridMarks<'_, '_, '_> {
+impl MiddleMarkSink for GridMarks<'_, '_, '_, '_> {
     fn reduce_tiberium(&mut self, amount: u16, rng: &mut SimRng) {
         // Middle's cell is the coordinate divided toward zero
         // (`0x00424F17..0x00424F3E`), then MapClass::GetCell.
@@ -162,6 +163,7 @@ impl MiddleMarkSink for GridMarks<'_, '_, '_> {
             self.tiberium.overlay_grid(),
             self.occupancy,
             rng,
+            self.construction.as_deref_mut(),
         );
     }
 }
@@ -178,6 +180,7 @@ pub(crate) fn dispatch_anim_middle_marks(
     terrain: &mut ResolvedTerrainGrid,
     tiberium: &mut SmudgeTiberiumContext<'_>,
     rng: &mut SimRng,
+    construction: Option<&mut SmudgeConstruction<'_>>,
 ) {
     let mut sink = GridMarks {
         coord,
@@ -186,6 +189,7 @@ pub(crate) fn dispatch_anim_middle_marks(
         occupancy,
         terrain,
         tiberium,
+        construction,
     };
     anim_middle_marks(marks, &mut sink, rng);
 }
@@ -214,7 +218,7 @@ fn rng_below_half_normalized(rng: &mut SimRng) -> bool {
 /// (`centre_mark`, all 22 foundations) and, on retail Dustbowl through the
 /// production receiver, `building_death_anims.py`.
 #[allow(clippy::too_many_arguments)]
-pub fn try_dispatch_building_destruction_smudges(
+pub(crate) fn try_dispatch_building_destruction_smudges(
     rx: u16,
     ry: u16,
     building_z: i32,
@@ -227,6 +231,7 @@ pub fn try_dispatch_building_destruction_smudges(
     terrain: &mut ResolvedTerrainGrid,
     tiberium: &mut SmudgeTiberiumContext<'_>,
     rng: &mut SimRng,
+    construction: Option<&mut SmudgeConstruction<'_>>,
 ) {
     let _ = art;
     if foundation_w < 2 || foundation_h < 2 {
@@ -244,33 +249,24 @@ pub fn try_dispatch_building_destruction_smudges(
         y: (ry as i32) * 256 + 128,
         z: building_z,
     };
-    if roll < 50 {
-        smudge_grid.try_place(
-            SmudgeKind::Burn,
-            center,
-            BUILDING_SMUDGE_DMG,
-            BUILDING_SMUDGE_DMG,
-            true,
-            smudge_types,
-            terrain,
-            tiberium.overlay_grid(),
-            occupancy,
-            rng,
-        );
+    let kind = if roll < 50 {
+        SmudgeKind::Burn
     } else {
-        smudge_grid.try_place(
-            SmudgeKind::Crater,
-            center,
-            BUILDING_SMUDGE_DMG,
-            BUILDING_SMUDGE_DMG,
-            true,
-            smudge_types,
-            terrain,
-            tiberium.overlay_grid(),
-            occupancy,
-            rng,
-        );
-    }
+        SmudgeKind::Crater
+    };
+    smudge_grid.try_place(
+        kind,
+        center,
+        BUILDING_SMUDGE_DMG,
+        BUILDING_SMUDGE_DMG,
+        true,
+        smudge_types,
+        terrain,
+        tiberium.overlay_grid(),
+        occupancy,
+        rng,
+        construction,
+    );
 }
 
 fn survivor_smudge_cell_passable(
@@ -310,12 +306,13 @@ fn survivor_smudge_cell_passable(
             .is_some_and(|cost| cost != 0)
 }
 
-/// Per-foundation-cell scattered smudges. For each cell that's passable,
-/// a 50/50 scorch/crater is rolled and placed at a random-offset cell within
-/// 1 cell of the foundation (mirrors `SpawnSurvivors` magnitude 0x80).
+/// One producer-ordered SpawnSurvivors cell: a passable cell rolls a scorch
+/// or crater at the native magnitude0x80 offset. Its constructor/UnInit must
+/// finish before the producer advances to another cell or RNG draw.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn try_dispatch_building_survivor_smudges(
-    foundation_cells: &[(u16, u16)],
+fn try_dispatch_building_survivor_smudge(
+    cell_rx: u16,
+    cell_ry: u16,
     art: &ArtRegistry,
     smudge_types: &SmudgeTypeRegistry,
     smudge_grid: &mut SmudgeGrid,
@@ -324,74 +321,63 @@ pub(crate) fn try_dispatch_building_survivor_smudges(
     raw_occupation: &RawCellOccupationGrid,
     tiberium: &mut SmudgeTiberiumContext<'_>,
     rng: &mut SimRng,
+    construction: Option<&mut SmudgeConstruction<'_>>,
 ) {
     let _ = art;
-    for &(cell_rx, cell_ry) in foundation_cells {
-        if !survivor_smudge_cell_passable(
-            cell_rx,
-            cell_ry,
-            raw_occupation,
-            terrain,
-            tiberium.overlay_grid(),
-            tiberium.overlay_registry,
-        ) {
-            continue;
-        }
-        let roll: u32 = rng.next_range_u32(100);
-        let base_x = (cell_rx as i32) * 256 + 128;
-        let base_y = (cell_ry as i32) * 256 + 128;
-        let (off_x, off_y) = random_direction_coord(
-            rng,
-            base_x,
-            base_y,
-            SURVIVOR_OFFSET_MAGNITUDE,
-            RandomDirectionSnap::Preserve,
-        );
-        let snap_rx = crate::util::lepton::lepton_to_cell(off_x) as u16;
-        let snap_ry = crate::util::lepton::lepton_to_cell(off_y) as u16;
-        let coord = SimCoord {
-            x: (snap_rx as i32) * 256 + 128,
-            y: (snap_ry as i32) * 256 + 128,
-            z: 0,
-        };
-        if roll < 50 {
-            smudge_grid.try_place(
-                SmudgeKind::Burn,
-                coord,
-                BUILDING_SMUDGE_DMG,
-                BUILDING_SMUDGE_DMG,
-                false,
-                smudge_types,
-                terrain,
-                tiberium.overlay_grid(),
-                occupancy,
-                rng,
-            );
-        } else {
-            // gamemd `BuildingClass::SpawnSurvivors @ 0x00442D90` calls
-            // Debris_Smoke directly; unlike AnimClass::Start, this branch does
-            // not reduce tiberium before attempting the crater.
-            smudge_grid.try_place(
-                SmudgeKind::Crater,
-                coord,
-                BUILDING_SMUDGE_DMG,
-                BUILDING_SMUDGE_DMG,
-                false,
-                smudge_types,
-                terrain,
-                tiberium.overlay_grid(),
-                occupancy,
-                rng,
-            );
-        }
+    if !survivor_smudge_cell_passable(
+        cell_rx,
+        cell_ry,
+        raw_occupation,
+        terrain,
+        tiberium.overlay_grid(),
+        tiberium.overlay_registry,
+    ) {
+        return;
     }
+    let roll: u32 = rng.next_range_u32(100);
+    let base_x = (cell_rx as i32) * 256 + 128;
+    let base_y = (cell_ry as i32) * 256 + 128;
+    let (off_x, off_y) = random_direction_coord(
+        rng,
+        base_x,
+        base_y,
+        SURVIVOR_OFFSET_MAGNITUDE,
+        RandomDirectionSnap::Preserve,
+    );
+    let snap_rx = crate::util::lepton::lepton_to_cell(off_x) as u16;
+    let snap_ry = crate::util::lepton::lepton_to_cell(off_y) as u16;
+    let coord = SimCoord {
+        x: (snap_rx as i32) * 256 + 128,
+        y: (snap_ry as i32) * 256 + 128,
+        z: 0,
+    };
+    let kind = if roll < 50 {
+        SmudgeKind::Burn
+    } else {
+        // gamemd `BuildingClass::SpawnSurvivors @ 0x00442D90` calls
+        // Debris_Smoke directly; unlike AnimClass::Start, this branch does
+        // not reduce tiberium before attempting the crater.
+        SmudgeKind::Crater
+    };
+    smudge_grid.try_place(
+        kind,
+        coord,
+        BUILDING_SMUDGE_DMG,
+        BUILDING_SMUDGE_DMG,
+        false,
+        smudge_types,
+        terrain,
+        tiberium.overlay_grid(),
+        occupancy,
+        rng,
+        construction,
+    );
 }
 
-/// Commit one producer-ordered batch of `SmudgeSpawnRequest` events, mutating
-/// `SmudgeGrid` and tiberium state before the producer returns.
+/// Commit one producer-ordered request before returning to its native caller.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn drain_smudge_spawn_requests(
-    requests: &[SmudgeSpawnRequest],
+pub(crate) fn dispatch_smudge_request(
+    req: &SmudgeSpawnRequest,
     art: &ArtRegistry,
     smudge_types: &SmudgeTypeRegistry,
     smudge_grid: &mut SmudgeGrid,
@@ -400,56 +386,59 @@ pub(crate) fn drain_smudge_spawn_requests(
     raw_occupation: &RawCellOccupationGrid,
     tiberium: &mut SmudgeTiberiumContext<'_>,
     rng: &mut SimRng,
+    construction: Option<&mut SmudgeConstruction<'_>>,
 ) {
-    for req in requests {
-        match req {
-            SmudgeSpawnRequest::AnimMiddle { coord, marks } => {
-                dispatch_anim_middle_marks(
-                    marks,
-                    *coord,
-                    smudge_grid,
-                    smudge_types,
-                    occupancy,
-                    terrain,
-                    tiberium,
-                    rng,
-                );
-            }
-            SmudgeSpawnRequest::BuildingCenter {
-                rx,
-                ry,
-                building_z,
-                foundation_w,
-                foundation_h,
-            } => {
-                try_dispatch_building_destruction_smudges(
-                    *rx,
-                    *ry,
-                    *building_z,
-                    *foundation_w,
-                    *foundation_h,
-                    art,
-                    smudge_types,
-                    smudge_grid,
-                    occupancy,
-                    terrain,
-                    tiberium,
-                    rng,
-                );
-            }
-            SmudgeSpawnRequest::BuildingSurvivor { cell_rx, cell_ry } => {
-                try_dispatch_building_survivor_smudges(
-                    &[(*cell_rx, *cell_ry)],
-                    art,
-                    smudge_types,
-                    smudge_grid,
-                    occupancy,
-                    terrain,
-                    raw_occupation,
-                    tiberium,
-                    rng,
-                );
-            }
+    match req {
+        SmudgeSpawnRequest::AnimMiddle { coord, marks } => {
+            dispatch_anim_middle_marks(
+                marks,
+                *coord,
+                smudge_grid,
+                smudge_types,
+                occupancy,
+                terrain,
+                tiberium,
+                rng,
+                construction,
+            );
+        }
+        SmudgeSpawnRequest::BuildingCenter {
+            rx,
+            ry,
+            building_z,
+            foundation_w,
+            foundation_h,
+        } => {
+            try_dispatch_building_destruction_smudges(
+                *rx,
+                *ry,
+                *building_z,
+                *foundation_w,
+                *foundation_h,
+                art,
+                smudge_types,
+                smudge_grid,
+                occupancy,
+                terrain,
+                tiberium,
+                rng,
+                construction,
+            );
+        }
+        SmudgeSpawnRequest::BuildingSurvivor { cell_rx, cell_ry } => {
+            try_dispatch_building_survivor_smudge(
+                *cell_rx,
+                *cell_ry,
+                art,
+                smudge_types,
+                smudge_grid,
+                occupancy,
+                terrain,
+                raw_occupation,
+                tiberium,
+                rng,
+                construction,
+            );
         }
     }
 }
@@ -744,6 +733,7 @@ mod dispatch_tests {
                 &mut terrain,
                 &mut tiberium,
                 &mut rng,
+                None,
             );
         }
         // Smudge NOT placed (overlay blocks) but ore reduced by 6 density levels.
@@ -791,6 +781,7 @@ mod dispatch_tests {
                 &mut terrain,
                 &mut tiberium,
                 &mut rng,
+                None,
             );
         }
         assert_eq!(grid.iter_occupied().count(), 0);
@@ -831,6 +822,7 @@ mod dispatch_tests {
             &mut terrain,
             &mut tiberium,
             &mut rng,
+            None,
         );
         let placed = grid.cell(4, 4).type_id.unwrap();
         // BURN1 is index 1 in the registry above.
@@ -889,6 +881,7 @@ mod dispatch_tests {
                     &mut map.terrain,
                     &mut tiberium,
                     &mut rng,
+                    None,
                 );
                 oracle_fixture::assert_marks(&before, &map.smudges, &map.terrain, row);
                 assert_eq!(
@@ -1010,8 +1003,9 @@ mod dispatch_tests {
                 radar_dirty_generation: &mut radar_generation,
                 tactical_dirty_cells: &mut tactical_dirty,
             };
-            try_dispatch_building_survivor_smudges(
-                &[(1, 6)],
+            try_dispatch_building_survivor_smudge(
+                1,
+                6,
                 &art,
                 &smudge_reg,
                 &mut grid,
@@ -1020,6 +1014,7 @@ mod dispatch_tests {
                 &raw,
                 &mut tiberium,
                 &mut rng,
+                None,
             );
             assert_eq!(
                 rng.logical_state(),
@@ -1077,8 +1072,9 @@ mod dispatch_tests {
                 );
                 tiberium.overlay_registry = Some(&overlay_registry);
                 tiberium.tiberium_types = Some(&tiberium_types);
-                try_dispatch_building_survivor_smudges(
-                    &[(4, 4)],
+                try_dispatch_building_survivor_smudge(
+                    4,
+                    4,
                     &art,
                     &smudge_reg,
                     &mut survivor_grid,
@@ -1087,6 +1083,7 @@ mod dispatch_tests {
                     &raw,
                     &mut tiberium,
                     &mut survivor_rng,
+                    None,
                 );
             }
             for ry in 0..8 {

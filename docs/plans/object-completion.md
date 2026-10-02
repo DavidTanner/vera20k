@@ -15,14 +15,14 @@ requirements. Ghidra names and old investigations remain leads.
 
 | Object | Current mechanism | Required behavior still open | Next audit or chain |
 |---|---|---|---|
-| E1 / GI | AI Guard-family deployment, existing Stop/action/completion, deployed reacquisition | Garrison admission/occupant order, AI Hunt/Capture occupation, human deployed Move override, fatal ReceiveDamage selectors/particles; full creation, vision, transport, weapon-rank and lifecycle coverage still needs a closure audit | Complete shared garrison/Hunt/Capture lifecycle after building completion dependencies |
+| E1 / GI | AI Guard-family deployment, existing Stop/action/completion, deployed reacquisition | Garrison admission/occupant order, AI Hunt/Capture occupation and fatal ReceiveDamage selectors/particles; full creation, vision, transport, weapon-rank and lifecycle coverage still needs a closure audit | Complete shared garrison/Hunt/Capture lifecycle after building completion dependencies |
 | E2 / Conscript | Ordinary infantry control; correctly refuses GI auto-deploy | Shared garrison/Hunt/Capture and fatal receiver gaps; remaining whole-object requirements not yet exhaustively audited | Reuse each corrected infantry mechanism; audit its ordinary weapon and death route |
 | GGI / Guardian GI | Reuses the GI automatic-deploy mechanism and existing deployed weapon owner | Whole-object lifecycle is not certified; GGI-specific antiair/weapon ranks and crush behavior still require their own coverage | Audit after the initial basic objects |
 | MTNK / Grizzly | Selection audit pending | No whole-object certificate or exhaustive required-behavior audit yet | Trace primary/elite weapon, projectile/warhead, movement, production and fatal cleanup |
 | GACNST / Construction Yard | Construction → Grand_Opening merged in#992 | Engineer repair, capture, sale/crew/destruction and AMCV undeploy remain required; whole-object closure audit pending | Validate shared Engineer entry/repair, then ordinary destruction |
-| GAPOWR / Allied Power Plant | Reuses merged opening; shared Engineer repair/House consumer chain passed native, strict Rust and repeated production validation; single critic corrections and final release repeat pass | Whole-object closure remains open for sale/destruction, drain/spy/EMP and further power/art routes | Complete ordinary power lifecycle |
+| GAPOWR / Allied Power Plant | Reuses merged opening and Engineer repair/House consumer chain#995 | Whole-object closure remains open for sale/destruction, drain/spy/EMP and further power/art routes | Complete ordinary MTNK/AP fatal, crew, ART and deferred retirement chain |
 | GAPILE / Allied Barracks | Reuses merged opening | Engineer/capture/sale/destruction coverage; factory delivery radio, infantry output and spy effects need closure | Complete infantry factory output |
-| ENGINEER / Allied Engineer | Ordinary damaged-GAPOWR entry/repair and required arrival-time capture/House consumers passed native, strict Rust and repeated production validation; single critic corrections and final release repeat pass | Live Tag/Trigger, MultiEngineer damage, Hospital/grinder and other specialized entry routes; full-object closure audit pending | Finish the current repair chain and reuse its shared owners |
+| ENGINEER / Allied Engineer | Ordinary damaged-GAPOWR entry/repair and required arrival-time capture/House consumers merged in#995, with native, strict Rust and repeated production validation | Live Tag/Trigger, MultiEngineer damage, Hospital/grinder and other specialized entry routes; full-object closure audit pending | Reuse merged repair/capture owners, then trace remaining entry and Tag prerequisites |
 
 Rows name confirmed gaps and unaudited coverage separately. Nothing in this
 table claims that unlisted behavior is already equivalent.
@@ -159,7 +159,7 @@ was inspected. [PR#992](https://github.com/YuriPlanet/vera20k/pull/992) merged a
 No whole-object or loaded-native-scenario certificate follows from these bounded
 comparisons.
 
-Ordinary engineer repair is the current required chain: active
+Ordinary Engineer repair merged in [#995](https://github.com/YuriPlanet/vera20k/pull/995): active
 PerCellProcess519630 calls inherited EngineerRepair701410 through vt+40C at
 519FF0 after engineer/contact/allied or occupiable-owner admission. It restores
 Health and EstimatedHealth, stops repair, updates damaged art, then processes

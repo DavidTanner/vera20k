@@ -1,255 +1,260 @@
-# Object completion goal: checkpoint
+# Object completion goal: current checkpoint
 
-The 2026-10-01 `/goal` authorizes implementation, validated PR publication and
-auto-merge. DONE requires three whole ordinary-match objects without unresolved
-required behavior, demonstrated by native comparisons and production validation.
-**0 / 3 objects certified.** See [the inventory](object-completion.md).
+The `/goal` authorizes implementation, validated PR publication and auto-merge.
+DONE requires three complete ordinary-match objects with original native
+comparisons and production validation. **0 / 3 objects certified.** The
+[inventory](object-completion.md) retains the required whole-object residuals.
 
-## Ownership and native identity
+## Ownership and recovery
 
 Owned checkout: `/Users/halvor/.codex/worktrees/object-completion/vera20k`.
-Branch: `feature/native-engineer-building-repair`; base/fetched main
-`bb007c1219c8b521f495fdd0178d4ecdebce31bd` (ore PR#994 merge).
-Recovery stash `7c84aa154c8987d03eec5495c032051db3ecc7cf` preserves Engineer WIP
-before the clean fast-forward and reapplication onto that main.
-Recovery stash `76d4729166e4cab62bccbb2d4c372362c028da37` is retained after
-reapplying construction WIP over main. Preserve other tasks' files/refs/processes.
-All Cargo uses `python -m tools.cargo_run`; do not edit nonignored source while
-owned Cargo is pending. Snapshot279 adds retained Building health sampling,
-House assessment/capture state and Infantry capture identity; obsolete
-capture_target/deferred score storage is removed. Telemetry v5/policy v2
-preserves the old v4 receipt pair.
+Branch `feature/native-gapowr-fatal-lifecycle`; fetched main base
+`9a6b743d29bf48a06ec12026c4d43da7038a3e5d`. Fatal changes remain uncommitted;
+no fatal PR or critic pass has occurred. Other task files/refs/processes are
+untouched. Preserve recovery stashes `28a01dd28545ccbc95fea4ce23005331f8582706`,
+`d4059d6780fd6364f3253045f9facfc235218475`,
+`510b5825c704c9fb28233c30b5b09a11e583db4e`,
+`7c84aa154c8987d03eec5495c032051db3ecc7cf` and
+`76d4729166e4cab62bccbb2d4c372362c028da37`.
+All Cargo runs through `python -m tools.cargo_run`; all tests use `--lib`.
+Freeze nonignored files during a build. Do not compete with or kill compiles.
 
-Active-retail gamemd SHA256:
+Native `gamemd.exe` SHA256:
 `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`.
-Ghidra explicit `gamemd.exe`, x86:LE:32/base00400000. Original instructions,
-active callers and production retail readers govern scope. No native golden is
-derived from Rust or hand calculation.
+Ghidra access is read-only, explicitly selecting `gamemd.exe`.
+Durable external evidence base:
+`/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002`.
 
-## Merged mechanism
+## Merged mechanisms
 
-[GI/GGI automatic deployment #988](https://github.com/YuriPlanet/vera20k/pull/988)
-merged at4ab3a4f5f67750527fd424e7ae26118200499222. Native automatic100,
-reader42/action355, strict full9407, clippy733 warnings, Python435/four skips,
-field ratchet2597 unchanged, release250-step Battle/AnyTown repeat MATCH and one
-fresh critic establish its bounded mechanism. Whole GI/GGI lifecycle stays open.
-Durable evidence: `/Users/halvor/Documents/vera20k-dev/evidence/object-completion/gi-auto-deploy-20261001-jci-y3sk`.
+GI/GGI automatic deployment [#988](https://github.com/YuriPlanet/vera20k/pull/988),
+Construction → Grand_Opening [#992](https://github.com/YuriPlanet/vera20k/pull/992),
+and Engineer repair/capture/accounting/House consumers
+[#995](https://github.com/YuriPlanet/vera20k/pull/995) are merged.
+Their final release v2 receipts and binaries remain preserved; each received
+one critic pass with confirmed defects fixed. Do not repeat those critics.
+These bounded chains certify no whole object.
 
-## Merged construction mechanism and review
+## Current chain: ordinary GAPOWR fatal lifecycle
 
-Ordinary GACNST/GAPOWR/GAPILE Construction → Grand_Opening runs inside the
-individual live object visit. MissionCom owns mission/status/cadence, MissionLeaf
-owns ready, Stage owns timing, and private BuildingBody owns current/queued body
-and immutable control. The late pass and duplicate countdown/crane producers are
-removed; affected production/power/repair/combat/presentation/save/hash consumers
-use those owners. PLACE reuses FindFactory/primary and real first-contact radio.
-Shared Slave Miner relocation queues Selling without synchronous Commence.
+Ready/faced/targeted MTNK → 105mm/Cannon/AP → untagged, uncaptured human
+GAPOWR fatal → ordered debris/foundation Anims → real E1 Unlimbo/Scatter/Walk
+→ same-frame appended Logic visits → House/presence/ART/raw occupation
+cleanup → deferred Building destructor. Constructor-limbo cancellation is
+an affected consumer of the same destructor and is migrated in this change.
+Prior volleys/target acquisition/approach, sale, live Tags, garrison,
+mind control and specialized factory receivers remain outside this chain.
 
-Native comparison: six joined routes through completion/C+1, seven factory and
-two primary controls; separate18 primitive routes/five mission slices exercise
-ordinary Rust object AI. Joined payload SHA256
-`62e31e63c49350afa9be3ffefafe158a7ae4423a898c3614e80b0506b7889ae3`.
-Original primitive payload/meta are preserved. Prior Building/House/map admission,
-allocator/cache/file IO and four drawing calls are supplied boundaries; full
-Building constructor/Unlimbo, Techno AI and Logic/House scheduler are excluded.
-Stock opening leaves FreeUnit/cash/healing/purifier/Helipad branches inactive.
+One existing owner handles each mechanism: shared DeathDebrisHost numeric loop
+and inline admission; AnimClass birth/update/retirement; Infantry entry/Walk;
+MissionCom/passive scan timer; World UnInit/common finalizer; House tracking and
+power; ground_pose Building render-coordinate getter. Removed copies include
+unit_death_explosion_now, duplicate coordinates and Engineer's RNG decoder.
+Ordinary21 slots survive UnInit until the actual destructor; eight damage-fire
+slots retain the native producer/recovery publication order and absolute coords.
+Private transient scenario-init depth gives crew, sale/passenger, factory cancel
+and target-expiry consumers their reached bracket. No new writable sim field or
+native function fork is introduced.
 
-The one fresh construction critic finished; no repeat pass is required. All three
-confirmed findings are corrected: constructor-only BuildingType+ED8 facing0 is
-separate from DeployFacing+EDC128; the native Helipad export uses+16CB; every live
-building/twinkle and authored-load Anim uses one full421EA0 constructor, retaining
-assigned identities and preconsumed death-debris draws. Both native regressions
-failed before the fixes. All290 joined snapshots compare both facing words;134
-assigned-identity Bouncer entries compare full RNG/body bits against the existing
-158 native constructor rows. This resolves the duplicate-path scope of#854.
-Construction partially corrects#819 and PLACE/primary partially corrects#841;
-remaining issue items stay open.
+### Original executable comparisons
 
-## Construction validation and publication
+[Joined corpus](../../tools/spatial_oracle/building_death_anims_joined.md)
+JSON SHA `6f30c79d8a1fee3ed057f58bf07d2e83e28d7ea3e6e7c5bca3a7d881458e25a7`;
+canonical SHA `17688026170b2f5c4fbb03f4a037c675b1f13c509076597444d1fc93a048ce2d`.
+Normal seed2 admits E1 id18/HP69 at[2752,2880,0], paid head[2496,2880,0],
+path[6,-1,...], and same-frame position[2742,2879,0]. Seeds1/31 are crew
+refusals. All original calls, Anims, timers, complete three RNG streams and
+post-drain graphs are compared. Main whole Building AI runs before impact and
+reaches actual FIRE readers/constructors/updates/cleanup.
 
-The corrected candidate passes **9420 strict-retail lib tests, zero failures,
-226 ignored** (68.59s); strict lib clippy succeeds with732 repository warnings.
-Python full459/four skips passes after the path portability fix, as do14 focused
-normal and14 optimized replay checks. Original/joined construction and Bouncer native
-checks reproduce. Field ratchet2575 vs2589 on main (14 fewer writable sim fields).
-Edited leaf formatting and diff checks remain required before commit.
+The direct seed31 receiver remains byte-identical (canonical
+`eff147eae67b771b0e66c5626274f1ca6788a1c145bc466811b1202027506871`). It
+preserves partial AbstractFlags1, raw-zero Building foundation occupation and
+cold Infantry globals; it is an isolation control, not normal crew/target
+expiry admission. Original primitive payload SHA
+`91e2a4bf608127a37307efac0fde98b72fc333cf4bc767acc80d0486c0a359bd`
+also remains unchanged and fresh original replay passes.
 
-Three prior replay hash pins were attributed to removal of absent Up/Down hash
-feeds. The preserved same-binary control matches all819 complete boundaries after
-removing only state_hash, including actors/commands/Logic/lifecycle/full RNG and
-ordered draws. Gate is removed; committed strict receipt checker passes. This is
-Rust hash composition evidence, not native replay parity.
+Normal constructor AbstractFlags3 are retained; the shared placement helper
+keeps legacy default1 and accepts the actual full-constructor datum. Real
+Mark0/3 writes/clears foundation raw80; startup's existing Infantry owner
+executes all ten table813490 entries and produces thresholds104/416 with zero
+RNG. That corrects the native fixture's former cold ground/deck selection;
+no Rust raw-occupation patch was needed. All four original joined routes were
+regenerated externally after the cancellation extension; payload bytes were
+identical and only the shared Python source identity was refreshed.
 
-Durable construction parent:
-`/Users/halvor/Documents/vera20k-dev/evidence/object-completion/building-opening-20261002-fcfvmu1h`.
-Corrected full logs: `review-strict-lib-final.log`,
-`review-strict-clippy-final.log`, `review-python-full.log` and `review-native-*.log`.
-The final normal release label is `object-building-opening-release-v2-20261002`,
-binary SHA256 `1c27a395d0d36df45446a191f34eb09c42dcf5019e421e92fe1d1646261814c5`.
-The1450-step capture and repeat are VALID; all steps/fingerprints/final Metal
-bytes MATCH. The final frame was inspected and the committed production receipt
-now describes v2. Final state hash4488350905966924341 reflects the native facing
-correction; transition/command observations and GPU bytes are unchanged from v1.
-All113 edited Rust files pass nonrecursive formatting checks; diff check and the
-field ratchet pass. Only import ordering/whitespace changed after full Rust checks.
-Commit11ff5a87244b5ad995cf877bda6a10b4706b9c85 plus tools-only follow-up
-320915e91b1045155ba493c215fea8a8e90275a2 merged in
-[PR#992](https://github.com/YuriPlanet/vera20k/pull/992) at
-35fb0944b8a46efc171be82afc8bb356b5209665 (2026-10-02T00:45:15Z).
-All Rust and Python checks passed on all three supported OSes. Windows found
-that the saved replay receipt's POSIX producer paths were interpreted with the
-checking host's path syntax. The checker now accepts recorded POSIX and Windows
-absolute paths independently of the checking host. Focused regression coverage
-includes Windows drive/UNC paths and rejects relative paths in either syntax;
-the absolute-path test failed before this fix. This tools-only follow-up needs
-no repeated Rust tests or critic pass. After merge, exact dry-run/preflight and
-retirement removed only superseded `object-building-opening-release-v1-20261002`
-(31,559,680 allocated bytes); final v2 and the hash-control binary, manifests,
-native inputs and results are retained. Post-merge compiler cache is under budget.
+Building destructor43BF11 dirties power when final Health differs from +544
+sample under the active-frame gate, independent of Power/missions/radar.
+External `gapowr-fatal-joined-work/full-target-ai/post-drain-power-dirty/receipt.json`
+SHA `85cc143812adc7706f8c3f2ef54c83035b3e3736fba0f03c7cd39bfd1891f092`
+pins unequal0/38 and equal0/0 controls. Rust uses the existing House invalidation
+owner without changing the sampler. Loading/shutdown gates are not certified.
 
-Final v2 observations: yard1402 deploy14/open43/operational44; plant1410
-allocated71/placed651/open701/operational702 (active slot1460→1461);
-barracks1465 allocated721/placed1101/open1152/operational1153. Its unchanged
-AI counter1115 is ordinary multi-House live-vector behavior, so timings are
-observations, not native goldens. Crane slots expire771/1221. GI1521 exits1269.
-All1450 steps/fingerprints/final Metal bytes repeat MATCH. Reproduction profile
-is `tools/map_observation.building-opening.example.json`; receipt
-`tools/spatial_oracle/building_construction.production.json` describes the final v2 candidate.
+[Constructor-limbo cancellation](../../tools/spatial_oracle/building_death_anims_limbo_cancel.md)
+adds five original Factory4C9FF0 → scalar459F20 → Building43BCF0 controls:
+human leaf, whole noncurrent-human House4FAA10 with ordinary Factory+53BC,
+AI-owner leaf, equal sampled-health guard, and real MTNK expiry observer.
+JSON SHA `e533c6d7bb58ab8742f16ba77c7cea7e58b94d984f566ec059ebbbc277ea627a`.
+Original StartProduction constructs the product. Destructor releases sound,
+notifies removed=true at43BD67, clears reservation/ART/fire, dirties power on
+sample mismatch, removes tracking/owned state and deletes. There is no lethal
+UnInit, loss accounting, deferred queue or cancellation RNG. Priority1 preserves
+the observer's raw passive duration45 while clearing its target. Rust's real
+production cancellation reuses the same finalizer under its original bracket;
+the focused regression failed before this migration. Portable write/check and
+independent root replay match. External packet receipt SHA
+`900c7656f7cc8a1e27b44e75dca73d33e3e1b0c1a1136d0f1a35048892d00e3e`,
+seal SHA `8be61abbab0d7761e4baef0889bdff1760d3af251b10b91a4d9b6650f4cd617a`.
+Current shared building_death_anims.py SHA
+`2c411ebe503db16d01c3a799cb3f227d901ee2c3bc488ecb442fd90cfedcd303`.
 
-## Current Engineer building-entry chain
+### Validation and production prerequisite
 
-Engineer → damaged allied GAPOWR repair/consume is the next ordinary chain.
-Original execution now joins actual ENGINEER type/object/Walk constructors,
-resolved Repair29 → Capture event/Commence, Walk arrival and full519630/701410,
-damage-art replacement, UnInit/Limbo/pointer expiry and deferred drain.
-The first Engineer restores actual374 and estimated611 independently to750;
-an already-enqueued second Engineer reaches full Health, clears NavCom, Scatters
-with both flags true and survives, returning before the Foot tail. Original
-arrival re-evaluates ownership: an en-route enemy transition takes full native
-ChangeOwner448260/7014A0 and consumes the Engineer without repairing HP.
-Therefore migrate existing late `tick_capture_orders` into the one physical
-PerCell building-entry owner. Selling/warped refusal and its terminal Scatter
-also belong there; no caller-specific arrival or action copy is permitted.
+Before the presentation fix, final strict v2 passed9463 tests/227 ignored;
+clippy succeeded with732 warnings and no diagnostic in edited Rust spans.
+Python tooling passed460/four skips. Field ratchet2564/2564 on fetched base.
+Both release physical Dustbowl tests passed (all primitive AP receivers and
+crew Scatter/45 Walk ticks). No baseline suite was run.
 
-Native Engineer repair itself leaves Building+544 and House5778/5779 unchanged;
-the next original Building sample440042..440074 publishes Health and dirties
-House power/radar. The shared health-to-power owner correction is a required
-dependency of this repair chain. The additive native generator agent owns only
-engineer_repair_admission.py and joined corpus/meta/documentation. Root owns Rust
-and checkpoint. Keep original22 admission rows/meta unchanged; reuse fixture,
-INI, animation, sound and lifecycle authorities. Rust WIP now restores actual/
-estimated health, stops paid repair, replaces damaged ART and requests the fixed
-catalog sound. Ordinary entry and input share one Engineer action/PerCell owner;
-`capture_target` and the late adjacency capture pass are removed. Full-health,
-Selling and warp refusals scatter/survive before the Foot tail (Selling/warp
-apply only to enemy capture). Capture accounting now uses immediate shared
-RecordTheKill plus the distinct native ChangeOwner score/count, with obsolete
-deferred score state removed. Required House health sampling, retained dirty
-assessment, rate-only Factory rewrites and ordered radar/EVA consumers are
-implemented WIP. The first production compile found one missing passenger
-EntityCategory import, now fixed. The eight focused Engineer/House tests pass,
-including all nine native routes/ten arrivals and106 House boundaries. The four
-House consumer comparisons cover106 joined boundaries, six blackout rows, nine
-represented radar controls and twelve local advice rows. Root added nine native
-rate/status/clamp rows through the existing Factory registry, plus an ignored
-physical AnyTown input / Walk / ART / sound / House / retirement test. Python
-map-observation67 checks and the full460-test Python suite pass (four skips).
-The field ratchet is2566 vs2573 on fetched main. The observer now accepts the ordinary
-CaptureBuilding and ToggleRepair payloads without a new parser. Publication and
-the completed critic corrections are recorded below.
+Release v1 label `object-gapowr-fatal-release-v1-20261002` produced VALID normal
+Battle/AnyTown2600-step runs and a MATCH repeat. Plant1428 disappears at1853;
+E1/1755 is admitted HP119/Move2/Doing3 and moves to[31,88] by1900. Four prefix
+captures1852/1853/1860/1900 exactly match the complete run's trajectory prefix.
+Their inspected GPU frames exposed a missing required damaged body: the existing
+sprite key collector loaded only frame0 for ordinary structures while the native
+completed draw consumer requested frame1. The native43EF90 corpus was replayed
+unchanged; a native-output key regression failed on missing1 before the fix.
+The shared loader now admits healthy0/damaged1 for every ordinary building,
+retaining the existing occupied2/3 keys and shorter-asset behavior. Focused v2
+passes36 tests/three ignored, including original joined fatal comparisons.
+Final strict v3 passes9464 tests/227 ignored; clippy succeeds with732 warnings and zero diagnostics in edited Rust spans. Corrected release v2 builds app and asset (executable SHA bc8190b00c8fac789b5448bff014041f0ebbfce1a9f89fa704dc08274d675bde). Its full2600-step run and repeat are VALID/MATCH; all four prefixes match the complete transcript. All five GPU frames were inspected: damaged body at1852, death/effects1853/1860, crew in next cell1900 and clean final2600. The complete simulation transcript is identical to v1. The candidate [production receipt](../../tools/spatial_oracle/building_death_anims.production.json) pins these outputs; stock-smudge prerequisite work and the single critic remain pending.
 
-The native joined audit caught cold AC13C8=0 startup and a manually widened
-3x2 foundation in the supplied map prior. Original Object startup produces104;
-original GAPOWR Foundation getters produce2x2. The additive fixture is corrected
-and all four native checks reproduce; prior cold receipts remain external and cannot certify
-ordinary capture. Corrected BuildingScatter4576F0 calls Infantry51D0D0, whose
-IsMoving1 demotes force and native Capture Scatter0 refuses without RNG. The
-new portable accounting companion reuses the corrected fixture and records
-the immediate callback, capture score/count and built-counter controls. Rust's
-bounded fixture uses the recorded ENGINEER Sight4, stock animation registration
-and selected native Voc catalog through existing readers. Its earlier omitted
-Sight exposed an extra discovery/power invalidation; no native golden changed.
-The first full strict run had9432 passes, twelve failures and227 ignored.
-Nine failures were traced to synthetic fixture priors or outdated assertions:
-missing constructor-ordered House admission, queue-only Factory seeds without
-the native build start, friendly Repair29 delivered through Capture8, and discovery
-history compared before CellPUT after a full reentry. Native goldens were unchanged.
-Corrections pass341 production, four save/load, nine income, one sale, seventeen
-friendly-entry and one discovery checks. Production wallet tests now use the real
-Begin_Production constructor/timer owner instead of the queue kernel.
+Rust production VALID/MATCH establishes loader/simulation/Metal integration and
+reproducibility; it supplies no native whole-world or pixel comparison and certifies
+no whole object. The ForceAttack production route differs from the native enemy
+ready-shot prior, credits and full match cadence.
 
-The remaining three failures are Rust replay hash pins. A single immutable
-Cargo-owned binary, label `object-engineer-hash-control-v1-20261002`, reproduced
-all three old pins with only four former hash feeds restored. All819 complete
-current/control boundaries match after omitting only tick_result.state_hash,
-including House statistics, private power cache, ordered factories, actors,
-commands, lifecycle, all three RNG states and exact ordered draws. Global's
-empty House order retains the new dirty cache without assessment in both modes;
-the control does not restore the removed global simulation sweep. Portable
-receipt and three Rust pin updates are retained at
-`tools/spatial_oracle/engineer_repair_replay/receipt.json`; the existing checker
-passes normally and with Python optimization. The temporary hash gate is removed
-by exact restoration and the expanded read-only fixture observer is retained.
-This is Rust hash attribution, not native whole-world parity.
+### Stock-smudge comparison and implementation
 
-Post-critic strict lib passes9445 tests (227 ignored), strict clippy exits0 with729
-repository warnings, and the full Python suite passes460 tests (four skips).
-The optimized physical retail input test passes: real command drain and Walk
-arrival repair at frame39, actual/estimated/sample HP750, damaged slot1404
-replaced by healthy slot1412, one fixed-catalog sound request, next House sample
-and deferred Engineer retirement. Its first failed attempts omitted the app's
-explicit command drain; correcting that test composition made both orders execute.
-No production timeout or native golden changed. The single fresh critic found
-one P2: live attacker-free Crash books a loss before Health becomes0, and the
-UnInit fallback booked it again at impact. The new crash-through-retirement test
-failed with two losses before the fix. Shared RecordTheKill now receives the
-caller's terminal/owner-change lifetime, seals the fallback for terminal calls,
-and preserves live ChangeOwner accounting. Sinking's duplicate NULL accounting
-body is removed; its native-backed two-loss result is preserved. The stale
-first-credit-only comment is corrected. Capture now calls the existing
-BuildingBody Idle owner before Guard; its queued-state regression failed before
-the fix. All final lib tests pass, as do original crash/sinking/House retention
-checks. No second critic is required. No new PR has been opened. A fresh fetch
-still matches bb007c exactly. The final release label is
-`object-engineer-repair-release-v2-20261002`, source SHA f3ac7eb54c7b7bd2cc3ef90511a3a743499ea9516c327ad7faaeaee89ef4a18c,
-executable SHA889093c0f1ea261f4b5e0b58dfe18636624c3140b3d9e3866fbf631135e6b152.
-Ordinary Battle/AnyTown commands now deploy MCV1371, construct yard1420,
-plant1428 and barracks1483, then deliver Engineer1557. Tank1374 ForceAttack begins
-800, damaged ART appears1306, Stop1440 retains HP288, Capture1500 starts Walk and
-ToggleRepair1580 adds two paid repair steps. Arrival1602 restores HP304→750,
-replaces damaged slot1581 with healthy slot1742 and removes the Engineer through
-deferred cleanup. All1650 steps/complete observations/final Metal bytes repeat
-MATCH. Separate damaged1601 and healthy1650 frames were inspected. Profile and
-production receipt are `tools/map_observation.engineer-repair.example.json` and
-`tools/spatial_oracle/engineer_repair.production.json`. The map observer does not
-expose sound, paid-repair state or House power/sample; physical input and native
-comparisons cover those owners separately. All93 edited Rust files pass explicit
-nonrecursive formatting; diff check and final field ratchet2566/2573 pass.
-The final v2 capture, repeat and damaged-before run are VALID; the repeat and
-both pre-critic/final comparisons are MATCH for full state/observations and GPU
-bytes. Final before/after images were inspected. Production receipt now seals30
-artifact identities, the one critic and both failing-before regressions; v1 is
-retained as historical evidence. Physical input v4 passes on the corrected code.
-Next-chain ordinary GAPOWR fatal destruction research is
-external under engineer-repair-20261002/ordinary-building-destruction-research;
-it does not expand the current repair PR.
+The additive [stock comparison](../../tools/spatial_oracle/building_death_anims_joined_stock_smudges.md)
+executes three ready-shot routes with 46 physical SmudgeTypes and native
+TEMPERATMD clear-tile Morphable input. Payload SHA
+`fd27d2986fad8ba2e54c9a7b066d72fa52816d6f9b5c3c25e311792ba126dcc0`;
+accepted external manifest SHA
+`82a6a17a8b00e14a96f3e8e1c6085e502708a578f6a898f0047151f32df178cc`.
+An independent second replay and the root's integrated native `--check` pass.
+All three older corpus payloads remain byte-identical; their source sidecars
+are refreshed from the sealed replay. The original empty-registry comparison
+retains its declared isolation coverage.
 
-## Required object residuals
+The stock regression first failed: Rust retained 24 types versus native 46.
+The existing SmudgeType reader now preserves constructor defaults for all
+registry declarations, including 22 empty legacy headers omitted by the cached
+INI transport. Original absent-cache ReadINI controls return false without
+erasing those registered types. This is executed cached-reader evidence; full
+physical INI/cache loading is excluded.
 
-Read-only audit identifies click/MegaMission/Walk/PerCell producers, shared
-EngineerRepair701410, exact sound read, damage ART, full-HP terminal Scatter and
-teardown. Native ConditionGreen is forced1.0, not an INI key. The joined comparison is
-an additive executed corpus with corrected supplied map/startup inputs. Tagged event1
-and consumed-engineer event48 need a larger live Tag/Trigger receiver; existing
-Tag oracle coverage is not a production receiver and cannot certify ENGINEER.
+The existing SmudgeGrid now owns private transient SmudgeClass identities in
+addition to Cell marks. Runtime construction consumes the existing stable/native
+ID owners, repeats the original force/allow-building placement check, sends both
+UnInit notifications while alive, then queues the dead/limbo object in the shared
+deferred list. The common scalar destructor sends the third notification and
+removes only that identity. Smudges never join Logic; no separate ID counter,
+queue or copied expiry owner is added. Snapshot version 281 preserves and
+validates this lifetime; its hash contribution is included.
 
-Native power research shows ordinary opening sets House power dirty and does not
-need the repair-sample fix. Paid repair retains Building+544 HP and marks
-House dirty on the next sample. The former unconditional recomputation published
-it one frame early; the current shared sample/dirty-gate owner matches the bounded
-native histories. Native dirty-gate/health-output proof is saved under
-`power-recheck-research` in the evidence parent. Complete the required health /
-House-power / factory-radar-EVA consumers with Engineer repair; large separate
-mechanisms need explicit residuals before any whole-object certificate.
-GI garrison/Hunt/Capture, building sale/death/capture/undeploy and infantry factory
-output remain required object residuals. Three whole objects are still unfinished.
+Native Smudge14 precedes later crew admission: seed2 selects CRATER11/index44
+and admits E1/19 HP80; seed1 refuses crew, and seed31 selects BURNT11/index32
+and refuses crew. All three expiry boundaries, full three RNG streams, ordered
+generic/deletion registries and four persistent cells are compared. The existing
+BuildingMark owner clears marks only on PUT, never on fatal REMOVE or drain.
+
+`gapowr-stock-smudge-focused-v3.log` passes all three joined Rust tests, including
+the new save/restore, malformed-queue/Logic rejection and post-drain mark checks.
+The first compile found a test-only Copy derive incompatible with owned trace
+payloads; it was removed. Final strict/clippy, current-main integration, refreshed
+retail production and the single fresh critic remain pending. Map-smudge loading
+is separate: AnyTown/Dustbowl have no [Smudge] entries, while the sealed loader
+packet records the existing positive-priority placement residual for future work.
+
+### Disk retention
+
+Only two superseded root-owned merged-chain debug-control labels were retired
+through the existing owner after exact dry-run. Their retirement receipt plus
+eligible compiler trim receipts remain external. Final construction/Engineer
+release labels, all native evidence, assets and recovery data remain preserved.
+A later reserve shortfall required compressing thirteen exact root-owned
+superseded Rust control/capture directories into a verified archive:
+`superseded-rust-controls-20261002.tar.gz`, SHA
+`008953911cc0873a0c092ff28276d5487b36d1904517f2efe628e8e24e61bc7e`.
+`superseded-rust-controls-archive.json` pins all172 original files and restoration;
+922165248 bytes were recovered. It includes the superseded fatal release v1 runs
+and earlier Engineer/construction controls, not final Engineer v2 or native packets.
+The shared runner later reclaimed2737995776 eligible compiler bytes. A further
+shortfall was resolved under the existing build lock by archiving two exact,
+completed, unchanged, idle root-owned unlabelled lib-test executables. Archive
+completed-unlabelled-libtests-before-release-v2.tar.gz SHA
+508860e780b4df56a288211af0418490360aaf4532d1558a6f6958f09bdfc2b3 and
+completed-unlabelled-libtests-archive.json retain every byte, identity, test result
+and restore path. Only those two executables were unlinked after full-member
+verification;1473855488 bytes were recovered. No required label, dependency,
+other-task file, source, asset or native packet was removed. Never lower the16GiB
+build reserve or delete another task's data to bypass admission.
+
+The later stock-regression reserve shortfall was resolved by two more exact
+root-owned archives under the existing build lock. `stock-smudge-failing-libtest-archive.tar.gz`
+SHA `b80b39b5426ec46878120e1f10d098f2df7988e3666524f86a060fb6cd318343`
+retains the completed failing test executable and its result/identity receipt.
+`gapowr-v2-production-archive.tar.gz` SHA
+`7d0cfc02b5d342839c620a10aee0039d6c4d9ceaae438c106e50636b16103d56`
+retains all 48 files from the v2 full/repeat/four-prefix bundles with a complete
+restore manifest. Their comparison receipts and inspected PNGs remain live.
+Only verified archive members were unlinked; source, assets, native packets,
+required labels and other owners were preserved. Admission now succeeds.
+
+## Next actions
+
+1. Integrate fetched main (`be14d088727f1745f34bc0e7a41055616ff67eaf`, including shared Siege Chopper changes), run final strict/clippy/tooling checks and refresh source-bound retail production. Stock joined admission now passes; preserve older isolation controls.
+2. Run exactly one fresh read-only fatal critic, fix confirmed defects and
+   validate affected paths. Do not request a second pass after fixes.
+3. Commit one coherent chain, publish/attach its PR, enable auto-merge and
+   confirm merge before beginning another implementation PR.
+4. Continue GI garrison using the independent native packet below. Audit three
+   complete objects before issuing any whole-object certificate.
+
+## Next chain research: GI garrison
+
+Independent basic-infantry auditor is read-only. It sealed
+`gi-garrison-joined-research/{README.md,manifest.json,result-summary.json}`;
+manifest SHA `faeeea463958dfd5f72d57785cd9d3447afc3182bd3456047bed89262732f083`.
+Sixty-six original shared source snapshots have aggregate SHA
+`504624ef4a0b5164a90361ab7851a1a610c34ecd684adf44234c56bf2ed729d7`.
+No repository/INI/ref/Cargo/Ghidra writes.
+
+Original CAGAS01/E1 click produces Capture8/NavCom; actual Walk/PerCellProcess
+appends occupants, limbos/removes their Logic registration and uses whole
+Building43FB20's next turn for ownership. Second arrival preserves tail order;
+wrong cells refuse. UCPara/UCElitePara occupied shots use the Building turn,
+advance occupant index before ROF and create real Bullet/Anim/audio state.
+Actual selection startup/TechnoSelect establishes self Unload16. Real CAGAS
+InitManagers has no Buildup (6E9/6DC0); whole Unload returns ownership toNeutral
+in that same Building call, appends GI2 thenGI1 and the native Logic suffix gives
+both Move2/Doing3 turns. Earlier spurious Selling came from a copied GAPOWR prior.
+
+The elapsed-clock passive control is bounded and not normal cadence proof.
+A separate consecutive-turn addendum now executes whole Building1..72 with
+original frame commits: Guard15/30/45, passive scan45, Attack59, shots60/67/72,
+ROF6/5/5 and occupant index0→1→0→1. It excludes other Logic/House/global turns,
+BulletAI/deferred drain and Anim/audio updates. Addendum manifest SHA fe7bb78d881b2c07ec61205a4e8844178c085b664a1cbb9d69ffdc990aa4f2ed; native report SHA b0a4236e19ebe34931496c8931f8287f83e4177455605fe7eca055e8f4e4c60a. The parent packet remains byte-identical.
+Full emitted-Anim retirement/EVA and all object-specific closure remain open.
+
+## Read-only next GAPOWR sale research
+
+basic_building_audit is sealing ordinary-building-sale-research independently.
+Original whole selling stage0 +702=0 skips44AB0E/44AB1B: those dirty writes
+belong to the upgrade branch. Current sell_stage_zero unconditionally dirties
+power/radar, a confirmed separate sale-chain defect. Full stock healthy Sell_Back
+through49 dynamic Logic frames and deferred dtor50 refunds400, admits one125HP
+E1 through real Scatter/Pathfinder and books no losses/score after53C=-1.
+Destruction packets remain unchanged; no sale implementation enters fatal PR.

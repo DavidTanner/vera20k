@@ -22,5 +22,8 @@
     "height_list": "0x004D9C60",
     "height": "0x005F5F00"
   },
+  "source_normalized_lf_sha256": {
+    "tools/spatial_oracle/infantry_scatter_entry.py": "ee0ab58a0c1186bc3a5318e76680216b4111ec13e9f8b62ff927803d28356d82"
+  },
   "payload_sha256": "80554c2cc92ee3d5799fc6584ac6ca0830e1d97c7d4de5f2489addadc4a94fc5"
 }

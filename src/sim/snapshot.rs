@@ -799,7 +799,10 @@ use crate::sim::world::Simulation;
 // single MissionLeaf ready byte. Building persists private body/queued mode
 // and type control, without BuildingUp's duplicate mission/clock/latch or
 // BuildingDown's duplicate ready/timer. Factory primary state is lifecycle-owned.
-const SNAPSHOT_VERSION: u32 = 279;
+// 279 -> 281: the SmudgeGrid retains runtime Smudge identities through the
+// shared deferred destructor, separately from its persistent cell marks.
+// 280 is used by other in-flight layouts and must not alias this one.
+const SNAPSHOT_VERSION: u32 = 281;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -959,6 +962,8 @@ pub enum SnapshotRestoreError {
         registry: &'static str,
         object_id: u64,
     },
+    #[error("runtime Smudge {object_id} has not completed constructor UnInit")]
+    InvalidSmudgeLifetime { object_id: u64 },
     #[error("terminal {registry} object id {object_id} is absent from PendingDeleteList")]
     MissingDeferredDeleteIdentity {
         registry: &'static str,
@@ -1305,6 +1310,17 @@ impl RestoredObjectIndex {
         for (&registry_id, wave) in sim.waves.iter() {
             Self::register(&mut identities, "WaveStore", registry_id, wave.id)?;
             highest_id = highest_id.max(registry_id);
+        }
+        if let Some(grid) = &sim.smudge_grid {
+            for (registry_id, object) in grid.objects() {
+                Self::register(
+                    &mut identities,
+                    "SmudgeGrid",
+                    registry_id,
+                    object.stable_id(),
+                )?;
+                highest_id = highest_id.max(registry_id);
+            }
         }
 
         Ok((Self { highest_id }, identities))
@@ -2050,6 +2066,25 @@ impl Simulation {
             .iter()
             .copied()
             .collect::<BTreeSet<_>>();
+        if let Some(grid) = &self.smudge_grid {
+            for (object_id, object) in grid.objects() {
+                if object.object_alive() || !object.in_limbo() {
+                    return Err(SnapshotRestoreError::InvalidSmudgeLifetime { object_id });
+                }
+                if seen_logic.contains(&object_id) {
+                    return Err(SnapshotRestoreError::InactiveLogicIdentity {
+                        registry: "SmudgeGrid",
+                        object_id,
+                    });
+                }
+                if !pending_delete_ids.contains(&object_id) {
+                    return Err(SnapshotRestoreError::MissingDeferredDeleteIdentity {
+                        registry: "SmudgeGrid",
+                        object_id,
+                    });
+                }
+            }
+        }
         for terrain in self.production.terrain_objects.values() {
             let in_logic = seen_logic.contains(&terrain.stable_id);
             let pending_delete = pending_delete_ids.contains(&terrain.stable_id);
@@ -3758,7 +3793,9 @@ mod tests {
         // 278 -> 279: native Building health sample; dirty House assessment,
         // retained House discovery/capture notifications and Engineer identity;
         // and its anchored power-blackout clock/radar projection.
-        assert_eq!(super::SNAPSHOT_VERSION, 279);
+        // 279 -> 281: retained runtime Smudge identities/pending deletion;
+        // version280 is reserved by unrelated in-flight layouts.
+        assert_eq!(super::SNAPSHOT_VERSION, 281);
     }
 
     #[test]

@@ -632,7 +632,7 @@ fn place_building(
         ) {
             return false;
         }
-        let _ = sim.discard_constructed_limbo(product);
+        let _ = sim.discard_constructed_limbo(product, Some(rules));
         return true;
     }
     let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);

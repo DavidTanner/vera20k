@@ -1215,14 +1215,11 @@ pub(crate) fn handle_death(
                         (x, y)
                     });
                 throw_debris_for_death(
+                    world,
                     obj,
                     rules,
-                    &mut world.interner,
                     owner,
-                    center,
-                    world_z_leptons,
-                    &mut world.scenario_rng,
-                    &mut world.native_unique_ids,
+                    glam::IVec3::new(center.0, center.1, world_z_leptons),
                     &mut voxel_debris,
                     &mut explosion_effects,
                 );
@@ -5101,7 +5098,7 @@ pub(crate) fn tick_combat(
 }
 
 #[inline]
-fn callbacks_enabled(_world: &Simulation) -> bool {
+pub(super) fn callbacks_enabled(_world: &Simulation) -> bool {
     #[cfg(test)]
     if _world.receiver_fixture.is_some() {
         return false;

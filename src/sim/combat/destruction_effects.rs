@@ -9,37 +9,23 @@
 //!   once at `0x00442665` while the building is still on the map), up to its
 //!   SpawnSurvivors call, which `crew_survival` owns.
 //!
-//! Each draws its picks, jitter and delays inline, in native order, and
-//! records `AnimClass(type, coord, delay, 1, 0x600, 0, 0)` on the transaction's
-//! ordered anim list (`ExplosionEffect::death`), which the consequence
-//! boundary constructs in push order (see the construction-order residual).
+//! Each producer constructs its Anim at the original call, before the next
+//! pick, nested death weapon or escaped crew. The shared421EA0 constructor and
+//! Logic/Start owners handle admission; explicit callback-disabled test packets
+//! retain their collector seam. DBRIS constructors actively read RandomRate,
+//! which normalizes to[1,1] on stock and consumes no raw word; independent
+//! Bouncer launch draws remain ordered per piece.
 //!
 //! DestructionEffects steps ported here: 1 (`0x004415F9`, the eight damage
 //! fire anims are UnInit), 7 (`0x0044177E`, the centre scorch/crater mark),
 //! 8 (`0x004418EC`, one `Explosion=` anim per foundation cell) and 13
 //! (`0x00441CAC`, one `DestroyAnim=` anim at the origin cell's corner).
 //!
+//! Original constructor/Logic-before-crew execution:
+//! `tools/spatial_oracle/building_death_anims.py` (joined fatal lifecycle),
+//! gamemd SHA1cdd1180e49024fbda8ad568caac2e86e.
+//!
 //! RESIDUALS:
-//! - Construction order. The receiver constructs survivors, crewmen, building
-//!   damaged-art anims and damage-smoke systems at their native calls, but
-//!   defers the anims on the transaction's list (death, debris, InfDeath and
-//!   warhead impact anims) to the consequence boundary, and admits the whole
-//!   transaction's voxel debris there ahead of them. Native constructs each at
-//!   its call: debris, death anims, then the crewman or survivors, the
-//!   detonation's impact anim after its receivers. VERA's live order is
-//!   survivors/crew (and later receivers' inline objects), voxel debris, then
-//!   the anims. Effects: identities; logic order, because an object that
-//!   unregisters during its AI makes the live pass skip its successor
-//!   (`Simulation::try_for_each_live_object`), so the frame a death's
-//!   last-constructed anim expires natively skips the first crewman or
-//!   survivor and in VERA another object, shifting the crew's movement and
-//!   later draws by a frame; and once `AnimClass::Middle` runs, its draws
-//!   interleave differently with survivor AI. No stock death anim has a
-//!   constructor draw (`RandomRate=`).
-//!   Trigger: every crewed vehicle death whose crew escapes and every building
-//!   death with survivors; also a multi-record transaction whose later
-//!   receiver changes damaged art. Frequency: routine. The fix is to
-//!   construct each object at its call (the plan's next destruction item).
 //! - Unit NowDead gates ahead of `Death_Explosion` (`0x00737DA7..0x00737F6F`):
 //!   - The ship sink (`0x00737DE2..0x00737E5E`) skips these explosion draws.
 //!     `world::sinking` retains Health 1/Alive/+3CD through its second Stun,
@@ -55,7 +41,7 @@
 //!     to the ground, recorded DRIFT there).
 //! - A `Crashable=` (`+0xD95`) unit's crash impact calls `Death_Explosion`
 //!   once more (`0x007461D1`, the Jumpjet's 0x117C notice), outside any
-//!   receiver transaction: [`Simulation::unit_death_explosion_now`] builds
+//!   receiver transaction: [`Simulation::unit_death_explosion`] builds
 //!   each anim right after its pick (`sim::world::crash`).
 //! - The other `Death_Explosion` callers are not wired:
 //!   - The crush of a Unit victim (`0x007418E5` -> `vt+0x170` =
@@ -113,10 +99,11 @@ pub struct DeathAnimSpawn {
 }
 
 impl Simulation {
-    /// Record `new AnimClass(type, coord, delay, 1, 0x600, 0, 0)` on the
-    /// transaction's ordered anim list.
-    fn push_death_anim(
+    /// Native constructor call, or an explicit callback-disabled fixture's
+    /// packet. Production never carries these births to the consequence tail.
+    fn emit_death_anim(
         &mut self,
+        rules: &RuleSet,
         anims: &mut Vec<ExplosionEffect>,
         type_name: &str,
         coord: AnimWorldCoord,
@@ -124,7 +111,7 @@ impl Simulation {
     ) {
         let shp_name = self.interner.intern(type_name);
         let (rx, ry, sub_x, sub_y, z) = coord.to_cell_sub_z();
-        anims.push(ExplosionEffect {
+        let effect = ExplosionEffect {
             shp_name,
             rx,
             ry,
@@ -137,10 +124,15 @@ impl Simulation {
                 delay,
                 draws: None,
             }),
-        });
+        };
+        if super::world_receiver::callbacks_enabled(self) {
+            crate::sim::world::damage_consequences::admit_explosion_effect(self, rules, effect);
+        } else {
+            anims.push(effect);
+        }
     }
 
-    /// Construct one recorded death anim at the consequence boundary.
+    /// One full Anim421EA0 constructor, reused by every death producer.
     pub(crate) fn admit_death_anim(
         &mut self,
         rules: &RuleSet,
@@ -208,44 +200,14 @@ impl Simulation {
     }
 
     /// `UnitClass::Death_Explosion @ 0x00738680`: one `Explosion=` anim and
-    /// then one `DestroyAnim=` anim at the unit's Location, each picked with
-    /// one Scenario `Next()` (`0x007386A7`, `0x0073881D`), recorded on the
-    /// receiver transaction's anim list.
+    /// then one `DestroyAnim=` at the Location. Each Next pick (7386A7,
+    /// 73881D) is followed by its actual Anim constructor, also when a crash
+    /// impact7461D1 calls this shared owner outside ReceiveDamage.
     pub(crate) fn unit_death_explosion(
         &mut self,
         rules: &RuleSet,
         unit_id: u64,
         anims: &mut Vec<ExplosionEffect>,
-    ) {
-        self.unit_death_explosion_with(rules, unit_id, |world, anim, coord| {
-            world.push_death_anim(anims, anim, coord, 0);
-        });
-    }
-
-    /// [`Self::unit_death_explosion`] outside a receiver transaction (a
-    /// crashed Jumpjet's impact notice): each anim is constructed right after
-    /// its pick, as the native constructor call follows it (`0x0073871E`,
-    /// `0x00738854`).
-    pub(crate) fn unit_death_explosion_now(&mut self, rules: &RuleSet, unit_id: u64) {
-        self.unit_death_explosion_with(rules, unit_id, |world, anim, coord| {
-            let type_id = world.interner.intern(anim);
-            world.admit_death_anim(
-                rules,
-                type_id,
-                DeathAnimSpawn {
-                    coord,
-                    delay: 0,
-                    draws: None,
-                },
-            );
-        });
-    }
-
-    fn unit_death_explosion_with(
-        &mut self,
-        rules: &RuleSet,
-        unit_id: u64,
-        mut emit: impl FnMut(&mut Self, &str, AnimWorldCoord),
     ) {
         let Some(entity) = self.substrate.entities.get(unit_id) else {
             return;
@@ -277,21 +239,21 @@ impl Simulation {
             } else {
                 picked
             };
-            emit(self, anim, coord);
+            self.emit_death_anim(rules, anims, anim, coord, 0);
         }
         // `0x00738749..0x007387FC` sums the stored ore's value into a local
         // nothing reads and calls the ShakeScreen stub (`0x0048DED0`, a bare
         // `RET`): no effect.
         if !object.destroy_anims.is_empty() {
             let anim = self.pick_death_anim(&object.destroy_anims);
-            emit(self, anim, coord);
+            self.emit_death_anim(rules, anims, anim, coord, 0);
         }
     }
 
     /// The Aircraft death arm (`0x0041661F..0x0041668A`): after the
     /// allocation, one Scenario `Next()` (`0x00416649`) picks an `Explosion=`
     /// anim at the aircraft's coordinate (vt+0xA4 `0x0041BDD0` returns
-    /// GetCoords). Aircraft play no `DestroyAnim=`.
+    /// GetCoords), then its constructor runs inline. Aircraft play no `DestroyAnim=`.
     pub(crate) fn aircraft_death_explosion(
         &mut self,
         rules: &RuleSet,
@@ -309,7 +271,8 @@ impl Simulation {
         }
         let location = position_world_coord(&entity.position);
         let anim = self.pick_death_anim(&object.explosion_anims);
-        self.push_death_anim(
+        self.emit_death_anim(
+            rules,
             anims,
             anim,
             AnimWorldCoord {
@@ -370,7 +333,8 @@ impl Simulation {
                 );
                 let delay = self.scenario_rng.next_range_u32_inclusive(0, 3) as u16;
                 let anim = self.pick_death_anim(&object.explosion_anims);
-                self.push_death_anim(
+                self.emit_death_anim(
+                    rules,
                     anims,
                     anim,
                     AnimWorldCoord {
@@ -388,13 +352,23 @@ impl Simulation {
         // 0x80 on X and Y).
         if !object.destroy_anims.is_empty() {
             let anim = self.pick_death_anim(&object.destroy_anims);
-            self.push_death_anim(
+            let (base, _) = crate::sim::movement::ground_pose::building_render_order_parts(
+                crate::sim::components::DriveCoord {
+                    x: location.x,
+                    y: location.y,
+                    z: location.z,
+                },
+                false,
+                false,
+            );
+            self.emit_death_anim(
+                rules,
                 anims,
                 anim,
                 AnimWorldCoord {
-                    x: location.x - 0x80,
-                    y: location.y - 0x80,
-                    z: location.z,
+                    x: base.x,
+                    y: base.y,
+                    z: base.z,
                 },
                 0,
             );

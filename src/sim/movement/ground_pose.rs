@@ -237,7 +237,9 @@ pub(crate) fn object_altitude_leptons(entity: &crate::sim::game_entity::GameEnti
 }
 
 /// Building render-coordinate459EF0 and GetYSort449410's type adjustment.
-/// Shared by display registration and presentation; neither uses center coords.
+/// One459EF0 port for ART, damage fires, destruction, muzzle coordinates,
+/// Temporal sparkles, display registration and presentation. YSort stays
+/// separate from the coordinate; neither uses foundation-center coords.
 pub(crate) fn building_render_order_parts(
     mut location: DriveCoord,
     turret_anim_is_voxel: bool,
