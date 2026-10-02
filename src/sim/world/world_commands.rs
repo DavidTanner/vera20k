@@ -1000,7 +1000,7 @@ impl Simulation {
                 if !self.entity_owned_by_id(command_owner, *entity_id) {
                     return false;
                 }
-                crate::sim::mcv_deploy::issue_order(self, *entity_id, rules)
+                crate::sim::deploy::issue_order(self, *entity_id, rules)
             }
             // RESIDUAL: retail undeploys a building only through a cell click
             // (`0x004436F0`: the rally/ArchiveTarget event 0x1E, then SELL

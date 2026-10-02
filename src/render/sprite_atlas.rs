@@ -704,18 +704,57 @@ fn object_pairs<'a>(
 
 /// Live AnimClass palette variants that must exist in the atlas. Producers
 /// install these after construction (notably OverlayClass CellAnim over a
-/// Tiberium cell), so entity ownership cannot supply the color key.
+/// Tiberium cell and Unit deploy animations), so the attached object's live
+/// ownership cannot supply the color key.
 pub fn collect_anim_remap_base_keys(
     sim: &crate::sim::world::Simulation,
+    house_colors: &HouseColorMap,
 ) -> HashSet<(String, HouseColorIndex)> {
-    sim.anims()
-        .filter_map(|(_, anim)| {
-            Some((
-                sim.interner.resolve(anim.type_id).to_ascii_uppercase(),
-                anim.remap_color?,
-            ))
-        })
-        .collect()
+    anim_remap_base_keys(sim, house_colors).collect()
+}
+
+/// Anim construction and producer palette assignment can occur without an
+/// entity spawn or ownership change. Check their coverage on committed ticks
+/// so those variants reach the ordinary AnimClass draw before its first frame.
+/// Only live Anims are visited; the first missing pair ends the check.
+pub(crate) fn atlas_covers_anim_remaps(
+    atlas: Option<&SpriteAtlas>,
+    sim: &crate::sim::world::Simulation,
+    house_colors: &HouseColorMap,
+) -> bool {
+    anim_remap_base_keys(sim, house_colors)
+        .all(|key| atlas.is_some_and(|atlas| atlas.covered_anim_remaps.contains(&key)))
+}
+
+fn anim_remap_base_keys<'a>(
+    sim: &'a crate::sim::world::Simulation,
+    house_colors: &'a HouseColorMap,
+) -> impl Iterator<Item = (String, HouseColorIndex)> + 'a {
+    sim.anims().filter_map(move |(_, anim)| {
+        let color = anim_remap_color(anim, &sim.interner, house_colors)?;
+        Some((
+            sim.interner.resolve(anim.type_id).to_ascii_uppercase(),
+            color,
+        ))
+    })
+}
+
+/// Resolve the producer's fixed palette identity for both atlas coverage and
+/// draw lookup. House colors have one owner, the immutable match color map;
+/// an attached unit's later owner/disguise does not change this selection.
+pub(crate) fn anim_remap_color(
+    anim: &crate::sim::anim_class::AnimObject,
+    interner: &crate::sim::intern::StringInterner,
+    house_colors: &HouseColorMap,
+) -> Option<HouseColorIndex> {
+    use crate::sim::anim_class::AnimRemap;
+    Some(match anim.remap()? {
+        AnimRemap::ColorScheme(color) => color,
+        AnimRemap::House(house) => house_colors
+            .get(interner.resolve(house))
+            .copied()
+            .unwrap_or(crate::rules::house_colors::NO_REMAP),
+    })
 }
 
 /// Every frame of each remapped AnimClass type the effect registry holds, in

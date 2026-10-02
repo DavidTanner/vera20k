@@ -311,13 +311,15 @@ pub(crate) fn build_unit_instances(
         // Common visibility, passenger, limbo, and DrawState admission is shared below.
         let pos = &entity.position;
         let owner_str = sim.interner.resolve(entity.owner());
-        let (type_name, body) = unit_body_draw(
+        let Some((type_name, body)) = unit_body_draw(
             entity,
             &sim.interner,
             state.rules(),
             band,
             sim.session.binary_frame,
-        );
+        ) else {
+            continue;
+        };
         let type_str = type_name.as_ref();
         let remap_owner = entity
             .disguise
@@ -415,21 +417,8 @@ pub(crate) fn build_unit_instances(
             0.0
         };
 
-        let anim_frame: u32 = entity.voxel_animation.map(|a| a.frame).unwrap_or(0);
-        // `UnitClass::DrawVoxelBody @ 0x0073B4DA..0x0073B50E`: the turret
-        // takes the body's HVA frame, or while that is 0, `+0x148` modulo
-        // the turret HVA's frame count (the Gattling's spinning barrels).
-        let turret_frame = if anim_frame != 0 || entity.turret_anim_frame == 0 {
-            anim_frame
-        } else {
-            atlas
-                .frame_counts
-                .get(&(type_str.to_string(), VxlLayer::Turret))
-                .filter(|&&frames| frames > 1)
-                .map_or(0, |&frames| {
-                    entity.turret_anim_frame.rem_euclid(frames as i32) as u32
-                })
-        };
+        let (anim_frame, turret_frame) =
+            unit_animation_frames(entity, type_str, &atlas.frame_counts);
 
         // Chrono teleport doesn't tint the unit — the visual effect is the
         // WarpOut animation overlay; the unit itself stays fully opaque.
@@ -646,27 +635,68 @@ enum BodyDraw {
     Composite,
 }
 
+/// Unit DrawVoxelBody73B4DA..73B50E divides the persistent Foot+538 counter
+/// by the selected model's main HVA frame count. The object's original model
+/// may have a different count (SCHP has two frames, deployed SCHD has one).
+/// When that signed remainder is zero, the turret takes Techno+148 modulo
+/// its own HVA count. Negative remainders retain their bits in the atlas key;
+/// invalid frame indices have no sprite. Aircraft retain their body path.
+/// Native vectors: tools/spatial_oracle/unit_simple_deploy.json draw_frames.
+fn unit_animation_frames(
+    entity: &crate::sim::game_entity::GameEntity,
+    model: &str,
+    frame_counts: &std::collections::BTreeMap<(String, VxlLayer), u32>,
+) -> (u32, u32) {
+    let body = if entity.category != EntityCategory::Unit {
+        entity
+            .voxel_animation
+            .map_or(0, |animation| animation.frame)
+    } else {
+        let frames = frame_counts
+            .get(&(model.to_string(), VxlLayer::Body))
+            .or_else(|| frame_counts.get(&(model.to_string(), VxlLayer::Composite)))
+            .copied()
+            .unwrap_or(1)
+            .max(1);
+        ((entity.body_frame_counter as i32) % frames as i32) as u32
+    };
+    let turret = if body != 0 || entity.turret_anim_frame == 0 {
+        body
+    } else {
+        frame_counts
+            .get(&(model.to_string(), VxlLayer::Turret))
+            .filter(|&&frames| frames > 1)
+            .map_or(0, |&frames| {
+                (entity.turret_anim_frame % frames as i32) as u32
+            })
+    };
+    (body, turret)
+}
+
 /// The voxel model one Unit or Aircraft body is drawn from this frame.
 ///
-/// Disguise remains the outer display-type choice. For an ordinary
-/// undisguised Unit, `NoSpawnAlt` is selected from the current docked slot
-/// count at draw time; the serialized override remains solely the miner dock
-/// sub-FSM's UnloadingClass (HORV/CMON) hint.
+/// `UnitClass::DrawVoxelBody` selects a deployed unit's `UnloadingClass=`
+/// after its disguise arm (`0x0073B4BC..0x0073B4D8`): Unit+0x6E0 therefore
+/// overrides disguise. The selected model owns the turret split below.
+/// See `tools/spatial_oracle/unit_simple_deploy.md`.
 ///
-/// RESIDUAL: `UnitClass::DrawVoxelBody` also draws a deployed unit
-/// (`Unit+0x6E0`) from its type's `UnloadingClass=`, after its disguise arm
-/// (`0x0073B4BC..0x0073B4D8`). Not represented: nothing selects that image.
-/// Trigger: a deployed retail Siege Chopper (`[SCHP] UnloadingClass=SCHD`).
-/// Effect: it keeps its SCHP model. Frequency: every Siege Chopper deployment.
+/// Otherwise disguise precedes `NoSpawnAlt`, selected from the current
+/// docked slot count at draw time. The serialized override remains solely
+/// the miner dock sub-FSM's UnloadingClass (HORV/CMON) hint.
 fn drawn_model_id<'a>(
     entity: &'a crate::sim::game_entity::GameEntity,
     interner: &'a crate::sim::intern::StringInterner,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
+    rules: Option<&'a crate::rules::ruleset::RuleSet>,
 ) -> Cow<'a, str> {
     let base_type = interner.resolve(entity.type_ref());
-    let no_spawn_alt = rules
-        .and_then(|rules| rules.object(base_type))
-        .is_some_and(|object| object.no_spawn_alt);
+    let object = rules.and_then(|rules| rules.object(base_type));
+    if entity.category == EntityCategory::Unit
+        && entity.is_fully_deployed()
+        && let Some(unloading_type) = object.and_then(|object| object.unloading_class.as_deref())
+    {
+        return Cow::Borrowed(unloading_type);
+    }
+    let no_spawn_alt = object.is_some_and(|object| object.no_spawn_alt);
     if let Some(disguise_type) = entity
         .disguise
         .as_ref()
@@ -689,20 +719,27 @@ fn drawn_model_id<'a>(
 }
 
 /// One Unit or Aircraft body's voxel model and how it is drawn this frame.
+/// `UnitClass::DrawIt @ 0x0073CEC0` suppresses the body during either
+/// deployment transition (`0x0073CF46` / `0x0073CF54` read Unit+0x6E1 /
+/// +0x6E2); the owned deploy animation draws separately. See
+/// `tools/spatial_oracle/unit_simple_deploy.md`.
 fn unit_body_draw<'a>(
     entity: &'a crate::sim::game_entity::GameEntity,
     interner: &'a crate::sim::intern::StringInterner,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
+    rules: Option<&'a crate::rules::ruleset::RuleSet>,
     band: EntityDrawBand,
     binary_frame: u32,
-) -> (Cow<'a, str>, BodyDraw) {
+) -> Option<(Cow<'a, str>, BodyDraw)> {
+    if entity.category == EntityCategory::Unit && entity.unit_deploying() {
+        return None;
+    }
     let model = drawn_model_id(entity, interner, rules);
     let tilt_crash_jumpjet = rules
         .and_then(|rules| rules.object(&model))
         .is_some_and(|object| object.tilt_crash_jumpjet);
     let turret_parts = draws_turret_parts(&model, rules);
     let body = body_draw(entity, band, binary_frame, tilt_crash_jumpjet, turret_parts);
-    (model, body)
+    Some((model, body))
 }
 
 /// The crash pose is decided before the turret split. `tilt_crash_jumpjet` is

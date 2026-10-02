@@ -18,7 +18,7 @@ use crate::sim::movement::{self, rocket_movement, teleport_movement};
 /// FootClass AI. Tube state armed later during an ordinary Foot visit does not
 /// retroactively suppress work already reached by that visit, so only the
 /// entry snapshot belongs in this admission predicate.
-pub(super) fn shp_vehicle_counter_admitted(tube_active_at_entry: bool) -> bool {
+pub(super) fn unit_body_counter_admitted(tube_active_at_entry: bool) -> bool {
     !tube_active_at_entry
 }
 
@@ -850,27 +850,30 @@ impl Simulation {
             return Ok(outcome);
         }
 
-        // FootClass advances the SHP Unit body counter immediately after
+        // FootClass advances the Unit body counter immediately after
         // this object's locomotor Process, against the still-current
         // absolute binary frame, inside the Process admission
         // (`0x004DA81A` bypasses both). The global frame commits only after
         // the complete live-object pass.
-        if process.admitted && shp_vehicle_counter_admitted(tube_active_at_entry) {
-            let shp_vehicle_cadence = sim.substrate.entities.get(stable_id).and_then(|entity| {
-                if entity.category != EntityCategory::Unit || entity.is_voxel {
+        if process.admitted && unit_body_counter_admitted(tube_active_at_entry) {
+            let unit_body_cadence = sim.substrate.entities.get(stable_id).and_then(|entity| {
+                if entity.category != EntityCategory::Unit {
                     return None;
                 }
                 let object = rules?.object(sim.interner.resolve(entity.type_ref()))?;
-                Some(crate::sim::animation::ShpVehicleCadence {
-                    walk_rate: object.walk_rate,
-                    idle_rate: object.idle_rate,
-                })
+                Some((
+                    crate::sim::animation::ShpVehicleCadence {
+                        walk_rate: object.walk_rate,
+                        idle_rate: object.idle_rate,
+                    },
+                    object.hover_attack,
+                    object.deploy_to_land,
+                ))
             });
-            if let (Some(cadence), Some(entity)) = (
-                shp_vehicle_cadence,
-                sim.substrate.entities.get_mut(stable_id),
-            ) {
-                crate::sim::animation::tick_shp_vehicle_body_frame_counter(
+            if let (Some((cadence, hover_attack, deploy_to_land)), Some(entity)) =
+                (unit_body_cadence, sim.substrate.entities.get_mut(stable_id))
+            {
+                crate::sim::animation::tick_unit_body_frame_counter(
                     entity,
                     rules.map(|rules| {
                         crate::sim::movement::SpeedRules::new(
@@ -881,6 +884,8 @@ impl Simulation {
                         )
                     }),
                     cadence,
+                    hover_attack,
+                    deploy_to_land,
                     sim.session.binary_frame,
                 );
             }

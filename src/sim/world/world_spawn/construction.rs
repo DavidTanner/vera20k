@@ -126,7 +126,7 @@ impl Simulation {
             }
             ge.barrel_facing = Some(secondary);
         }
-        if uses_voxel {
+        if uses_voxel && category != EntityCategory::Unit {
             ge.voxel_animation = Some(VoxelAnimation::new(1, 1));
         }
         if category == EntityCategory::Infantry {

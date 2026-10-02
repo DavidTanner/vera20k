@@ -1,6 +1,5 @@
 use super::*;
 use crate::sim::components::{DriveCoord, NavTargetRef};
-use crate::sim::deploy::DeployPhase;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::{FacingClass, locomotor::LocomotorState};
 
@@ -64,15 +63,11 @@ fn unit_refusals_match_native_and_leave_orders_and_rng_untouched() {
             LocomotorKind::Drive
         }));
         actor.locomotor.as_mut().unwrap().powered = !flag("power_off");
-        actor.deploy_state = if flag("deployed") {
-            Some(DeployPhase::Deployed)
-        } else if flag("deploying") {
-            Some(DeployPhase::Deploying { ticks_remaining: 5 })
-        } else if flag("undeploying") {
-            Some(DeployPhase::Undeploying { ticks_remaining: 5 })
-        } else {
-            None
-        };
+        actor.set_unit_simple_deploy_for_test(
+            flag("deployed"),
+            flag("deploying"),
+            flag("undeploying"),
+        );
         if flag("nav") {
             actor.navigation.nav_com = Some(NavTargetRef::cell(8, 8));
         }

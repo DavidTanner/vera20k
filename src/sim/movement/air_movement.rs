@@ -794,31 +794,28 @@ mod tests {
     /// field: `AirMovePhase` stays untouched.
     #[test]
     fn a_jumpjet_order_does_not_write_the_fly_phase() {
+        // Unit orders now enter the class destination owner, whose type/speed
+        // inputs come from the production rules and spawn path.
+        let rules =
+            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+                "[InfantryTypes]\n[AircraftTypes]\n[BuildingTypes]\n\
+                 [VehicleTypes]\n0=SHAD\n\
+                 [SHAD]\nStrength=300\nSpeed=12\nROT=5\n\
+                 Locomotor={92612C46-F71F-11d1-AC9F-006008055BB5}\n\
+                 SpeedType=Hover\nMovementZone=Fly\nJumpjetSpeed=30\n",
+            ))
+            .expect("Jumpjet Unit rules");
         let mut sim = crate::sim::world::Simulation::with_seed(0);
-        let cells = (0..32)
-            .flat_map(|y| {
-                (0..32)
-                    .map(move |x| crate::sim::world::common_raw_test_terrain_cell(x, y, 0, false))
-            })
-            .collect();
-        sim.resolved_terrain =
-            Some(crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(32, 32, cells));
-        // A playfield holding cells (10..20, 10..15) for the order's search.
-        sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
-            base: 16,
-            off_fc: 0,
-            off_100: 0,
-            off_104: 24,
-            off_108: 24,
-        });
-        sim.playfield_size_height = Some(24);
-        let mut entity = GameEntity::test_default(1, "SHAD", "Americans", 10, 10);
-        entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Jumpjet));
-        sim.substrate.entities.insert(entity);
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+        let id = sim
+            .spawn_object("SHAD", "Americans", 10, 10, 0, &rules)
+            .expect("Jumpjet Unit");
 
-        assert!(sim.issue_air_cell_destination(1, (20, 15), SimFixed::from_num(10), None,));
+        assert!(
+            sim.issue_air_cell_destination(id, (20, 15), SimFixed::from_num(10), Some(&rules),)
+        );
 
-        let e = sim.substrate.entities.get(1).expect("has entity");
+        let e = sim.substrate.entities.get(id).expect("has entity");
         assert_eq!(
             e.movement_target.as_ref().and_then(|t| t.final_goal),
             Some((20, 15)),

@@ -162,6 +162,13 @@ class MapObservationTests(unittest.TestCase):
                             'constructor_reverse': False, 'inactive': False, 'paused': False}}}]}
 
     @staticmethod
+    def unit():
+        return {'deployed_6e0': 0, 'deploying_6e1': 1, 'undeploying_6e2': 0,
+                'landing_for_deploy_134': False, 'stage_f8': 2, 'body_counter_538': 7,
+                'deploy_anim_130': {'stable_id': 100, 'live': {
+                    'type_id': 'SCHPDEPL', 'frame': 4, 'owner_entity': 1}}}
+
+    @staticmethod
     def unallocated_cell(coordinate):
         return {'cell': list(coordinate), 'allocated': False,
                 **{key: None for key in ('final_tile_index', 'final_sub_tile', 'presentation_tile',
@@ -389,6 +396,118 @@ class MapObservationTests(unittest.TestCase):
         observation._terrain(cell, [74, 32], 'terrain')
         cell['terrain_object'] = None
         observation._terrain(cell, [74, 32], 'terrain')
+
+    def test_unit_extension_retains_animation_lifetime_and_compares_observations(self):
+        self.scripted_profile()
+        self.actor_frames = {step: [dict(self.actor(category='Unit'), unit=self.unit())]
+                             for step in range(4)}
+        self.actor_frames[0][0]['unit']['deploy_anim_130'] = None
+        self.actor_frames[2][0]['unit']['deploy_anim_130']['live'] = None
+        before = self.valid_capture('unit-before')
+        checked = observation.validate_run(before)
+        self.assertEqual(checked['status'], 'VALID', checked['errors'])
+        for index, frame in enumerate(checked['capture']['observations']['frames']):
+            self.assertEqual(frame['actors'][0]['unit'], self.actor_frames[index][0]['unit'])
+        self.assertEqual(checked['capture']['observations']['policy'], observation.OBSERVATION_POLICY)
+        self.change = lambda m: m['observations']['frames'][1]['actors'][0]['unit'] \
+            ['deploy_anim_130']['live'].update(frame=5)
+        after = self.valid_capture('unit-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual([row['field'] for row in report['differences']],
+                         ['observations.frames[1].actors[0].unit.deploy_anim_130.live.frame'])
+
+    def test_unit_extension_validates_storage_types_without_asserting_gameplay(self):
+        actor = dict(self.actor(category='Unit'), unit=self.unit())
+        # These are typed observations, including stale pointers and raw flag bytes.
+        actor['unit'].update(deployed_6e0=255, deploying_6e1=255, undeploying_6e2=255,
+                             landing_for_deploy_134=True, stage_f8=-(1 << 31),
+                             body_counter_538=(1 << 32) - 1)
+        anim = actor['unit']['deploy_anim_130']
+        anim['stable_id'] = (1 << 64) - 1
+        anim['live'].update(frame=-(1 << 31), owner_entity=(1 << 64) - 1)
+        observation._actor(actor, 'actor')
+        actor['unit']['stage_f8'] = (1 << 31) - 1
+        anim['live'].update(frame=(1 << 31) - 1, owner_entity=None)
+        observation._actor(actor, 'actor')
+        anim['live'] = None
+        observation._actor(actor, 'actor')
+        actor['unit']['deploy_anim_130'] = None
+        observation._actor(actor, 'actor')
+        for category in ('Infantry', 'Aircraft', 'Structure'):
+            with self.subTest(category=category):
+                actor = dict(self.actor(category=category), unit=None)
+                observation._actor(actor, 'actor')
+                actor['unit'] = self.unit()
+                with self.assertRaises(ValidationError):
+                    observation._actor(actor, 'actor')
+
+    def test_unit_extension_rejects_malformed_fields_and_animation_identity(self):
+        actor = dict(self.actor(category='Unit'), unit=self.unit())
+        integer_fields = [
+            (('unit', key), 0, 255)
+            for key in ('deployed_6e0', 'deploying_6e1', 'undeploying_6e2')]
+        integer_fields += [
+            (('unit', 'stage_f8'), -(1 << 31), (1 << 31) - 1),
+            (('unit', 'body_counter_538'), 0, (1 << 32) - 1),
+            (('unit', 'deploy_anim_130', 'stable_id'), 1, (1 << 64) - 1),
+            (('unit', 'deploy_anim_130', 'live', 'frame'), -(1 << 31), (1 << 31) - 1),
+            (('unit', 'deploy_anim_130', 'live', 'owner_entity'), 1, (1 << 64) - 1)]
+        for path, minimum, maximum in integer_fields:
+            for value in (True, False, 1.0, '1', minimum - 1, maximum + 1):
+                with self.subTest(path=path, value=value):
+                    bad = deepcopy(actor)
+                    field = bad
+                    for key in path[:-1]:
+                        field = field[key]
+                    field[path[-1]] = value
+                    with self.assertRaises(ValidationError):
+                        observation._actor(bad, 'actor')
+        changes = [lambda a: a.update(unit=None),
+                   lambda a: a['unit'].update(landing_for_deploy_134=0),
+                   lambda a: a['unit'].update(landing_for_deploy_134=None),
+                   lambda a: a['unit'].update(deploy_anim_130=[]),
+                   lambda a: a['unit']['deploy_anim_130'].update(live=[]),
+                   lambda a: a['unit']['deploy_anim_130']['live'].update(type_id=''),
+                   lambda a: a['unit']['deploy_anim_130']['live'].update(type_id=1)]
+        for path in (('unit',), ('unit', 'deploy_anim_130'),
+                     ('unit', 'deploy_anim_130', 'live')):
+            original = actor
+            for key in path:
+                original = original[key]
+            for key in (*original, 'unknown'):
+                def change(candidate, path=path, key=key):
+                    field = candidate
+                    for part in path:
+                        field = field[part]
+                    if key == 'unknown':
+                        field[key] = None
+                    else:
+                        field.pop(key)
+                changes.append(change)
+        for index, change in enumerate(changes):
+            with self.subTest(change=index):
+                bad = deepcopy(actor)
+                change(bad)
+                with self.assertRaises(ValidationError):
+                    observation._actor(bad, 'actor')
+
+    def test_older_unit_receipts_remain_unchanged_without_optional_extension(self):
+        self.scripted_profile()
+        self.actor_frames = {step: [self.actor(category='Unit')] for step in range(4)}
+        for historical in (False, True):
+            with self.subTest(historical=historical):
+                run = self.valid_capture(f'unit-without-extension-{historical}')
+                if historical:
+                    self.make_historical_trajectory(run)
+                paths = (run / 'run.json', run / 'child-output/capture.json')
+                originals = {path: path.read_bytes() for path in paths}
+                checked = observation.validate_run(run)
+                self.assertEqual(checked['status'], 'VALID', checked['errors'])
+                for frame in checked['capture']['observations']['frames']:
+                    self.assertNotIn('unit', frame['actors'][0])
+                for path, original in originals.items():
+                    self.assertEqual(path.read_bytes(), original)
 
     def test_actor_history_retains_capture_and_disappearance_without_rebinding(self):
         self.scripted_profile()

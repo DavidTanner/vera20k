@@ -263,7 +263,14 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // All819 complete current/control boundaries match except tick hashes,
 // including House/Factory state and three full RNG streams/draws/callers.
 // Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
-const SLICE6_BASELINE_HASH: u64 = 0x1AD1_4029_10CE_62D8;
+// 2026-10-02 Unit deployment/body ownership: snapshot280 replaces the legacy
+// DeployPhase hash with Techno130/134, adds Unit6E0, and advances the existing
+// Foot538 counter for voxel Units. Mission, health and all three RNG pins
+// remain unchanged. The same-binary hash control reproduces incoming
+// 1AD1402910CE62D8; all 17 off/on boundaries differ only in tick hash. Receipt:
+// tools/spatial_oracle/unit_simple_deploy_replay/receipt.json. This is Rust
+// attribution; unit_simple_deploy separately pins native body cadence.
+const SLICE6_BASELINE_HASH: u64 = 0xB20E_11E0_579B_C4E4;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

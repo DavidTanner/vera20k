@@ -59,7 +59,7 @@ pub(crate) use world_orders::EngineerBuildingAction;
 mod shroud_refresh;
 mod track_cell_recalc;
 #[cfg(test)]
-use object_turn::shp_vehicle_counter_admitted;
+use object_turn::unit_body_counter_admitted;
 mod projectile_collision;
 mod substrate;
 mod techno_ai;
@@ -6354,14 +6354,6 @@ impl Simulation {
             if self.session.game_options.super_weapons {
                 crate::sim::superweapon::tick_superweapon_instances(self, rules);
             }
-
-            // --- Phase 4.6: Deploy/Undeploy state machine ---
-            // DEPENDS ON: the prior frame's command tail
-            //   (ToggleInfantryDeploy may have set Deploying/Undeploying).
-            // Remaining compatibility host: these phase advances follow the
-            // live Infantry fire slot. Native Doing/sequencer ownership of
-            // ordinary deployment remains separate migration work.
-            crate::sim::deploy::tick_deploy_state(&mut self.substrate.entities);
 
             // --- Phase 5: Combat + Turret rotation ---
             // DEPENDS ON: vision/fog (targeting uses fog state), power (cloaking).

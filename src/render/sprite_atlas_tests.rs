@@ -1114,6 +1114,96 @@ fn palette_context_preserves_simultaneous_global_cell_and_attached_sprite_keys()
 }
 
 #[test]
+fn deployed_anim_palette_and_atlas_coverage_share_the_frozen_house() {
+    use crate::rules::ini_parser::IniFile;
+    use crate::sim::anim_class::AnimRemap;
+    use crate::sim::components::AnimClassSpawnDescriptor;
+    use crate::sim::world::Simulation;
+    use crate::util::fixed_math::SimFixed;
+
+    let art_ini = IniFile::from_str("[DEPLOY]\nRate=9\n");
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str("[Animations]\n0=DEPLOY\n"),
+        &art_ini,
+    )
+    .expect("deploy animation rules");
+    let mut art = ArtRegistry::from_ini(&art_ini);
+    art.bind_anim_frame_count_for_test("DEPLOY", 3);
+    rules.install_art_fixture(art);
+    let mut sim = Simulation::new();
+    let mut atlas = SpriteAtlas::new(Vec::new(), HashMap::new());
+    let colors = HouseColorMap::from([("Americans".to_string(), HouseColorIndex(3))]);
+    assert!(atlas_covers_anim_remaps(Some(&atlas), &sim, &colors));
+    let house = sim.interner.intern("Americans");
+    let type_id = sim.interner.intern("DEPLOY");
+    let spawn = |sim: &mut Simulation| {
+        sim.spawn_anim_object(
+            &rules,
+            AnimClassSpawnDescriptor::new(
+                type_id,
+                10,
+                10,
+                SimFixed::from_num(128),
+                SimFixed::from_num(128),
+                0,
+            ),
+        )
+        .expect("deploy animation constructs")
+    };
+    let deployed = spawn(&mut sim);
+    let cell = spawn(&mut sim);
+    assert!(atlas_covers_anim_remaps(Some(&atlas), &sim, &colors));
+    assert!(sim.set_deploy_anim_remap(deployed, house));
+    assert!(sim.set_cell_anim_draw_authority(cell, Some(HouseColorIndex(5)), 0));
+    assert!(
+        !atlas_covers_anim_remaps(Some(&atlas), &sim, &colors),
+        "producer palette assignment must request a refresh without an entity change"
+    );
+    assert!(!atlas_covers_anim_remaps(None, &sim, &colors));
+    assert_eq!(
+        sim.anim(deployed).unwrap().remap(),
+        Some(AnimRemap::House(house))
+    );
+    assert_eq!(
+        anim_remap_color(sim.anim(deployed).unwrap(), &sim.interner, &colors),
+        Some(HouseColorIndex(3))
+    );
+    let remaps = collect_anim_remap_base_keys(&sim, &colors);
+    assert_eq!(
+        remaps,
+        HashSet::from([
+            ("DEPLOY".to_string(), HouseColorIndex(3)),
+            ("DEPLOY".to_string(), HouseColorIndex(5)),
+        ])
+    );
+    let mut keys = HashSet::new();
+    let effects = EffectRegistry {
+        frames: HashMap::from([("DEPLOY".to_string(), ("DEPLOY".to_string(), 3))]),
+        type_ids: HashSet::from(["DEPLOY".to_string()]),
+    };
+    insert_anim_remap_frame_keys(&mut keys, &effects, &remaps);
+    assert_eq!(keys.len(), 6);
+    assert!(keys.iter().all(|key| {
+        key.palette_context == ShpPaletteContext::SelectedScheme
+            && key.frame < 3
+            && matches!(key.house_color, HouseColorIndex(3 | 5))
+    }));
+    atlas.covered_anim_remaps.extend(remaps.iter().cloned());
+    assert!(
+        atlas_covers_anim_remaps(Some(&atlas), &sim, &colors),
+        "covered live animations do not request another upload"
+    );
+
+    let bytes = bincode::serialize(&sim).expect("save frozen animation remaps");
+    let restored: Simulation = bincode::deserialize(&bytes).expect("restore animation remaps");
+    assert_eq!(collect_anim_remap_base_keys(&restored, &colors), remaps);
+    assert_eq!(
+        restored.anim(deployed).unwrap().remap(),
+        Some(AnimRemap::House(house))
+    );
+}
+
+#[test]
 fn object_and_remap_coverage_are_separate_and_follow_the_world() {
     let (world, interner) = one_object_world("CRATE_SPARK", EntityCategory::Structure);
     let colors = HouseColorMap::from([("Americans".to_string(), HouseColorIndex(3))]);

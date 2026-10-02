@@ -287,6 +287,10 @@ pub(crate) fn native_minutes_to_frames(minutes: f64) -> i32 {
 /// Global gameplay constants from `[General]` that affect vision, gap generators, etc.
 #[derive(Debug, Clone)]
 pub struct GeneralRules {
+    /// Rules+48, constructor6656BD zero; AudioVisual669272..66929B reads
+    /// DeployDir with ReadInteger5276D0 then wrapping SHL5, after PoseDir.
+    /// Jumpjet54C765 takes the low byte; retain the raw signed stored dword.
+    pub deploy_dir: i32,
     /// Edge-scroll speed scale from `[AudioVisual] ScrollMultiplier=`.
     /// Stock YR uses `.07`; this is app-facing presentation state.
     pub scroll_multiplier: f64,
@@ -1592,6 +1596,7 @@ impl PrismSupportRules {
 impl Default for GeneralRules {
     fn default() -> Self {
         Self {
+            deploy_dir: 0,
             scroll_multiplier: 0.07,
             // RulesClass__Constructor @ 0x00665650 writes the double
             // 0x3F9EB851EB851EB8 to +0x14C8.
@@ -2168,6 +2173,9 @@ impl GeneralRules {
         // ReadGeneral.66B34B/66B372 pass AudioVisual to5283D0 and store raw
         // doubles in Rules+1708/+1700; a missing General section cannot skip them.
         let audio_visual = ini.section_or_empty("AudioVisual");
+        let deploy_dir = audio_visual
+            .read_int("DeployDir", defaults.deploy_dir >> 5)
+            .wrapping_shl(5);
         let condition_yellow_native = audio_visual.read_double("ConditionYellow", 0.5);
         let condition_red_native = audio_visual.read_double("ConditionRed", defaults.condition_red);
         // The bomb sounds (Rules+0x20C/+0x210) come from the same pass.
@@ -2187,6 +2195,7 @@ impl GeneralRules {
             ai.read_int("BlockagePathDelay", defaults.blockage_path_delay_ticks);
         let Some(general) = ini.section("General") else {
             return Self {
+                deploy_dir,
                 iq_production,
                 iq_harvester,
                 display_cruise_height,
@@ -2242,6 +2251,7 @@ impl GeneralRules {
         let ambient_change_rate = general.read_double("AmbientChangeRate", 0.2);
         let ambient_change_step = general.read_double("AmbientChangeStep", 0.2);
         Self {
+            deploy_dir,
             scroll_multiplier: audio_visual
                 .read_double("ScrollMultiplier", defaults.scroll_multiplier),
             savour_delay_minutes: audio_visual

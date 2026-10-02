@@ -799,9 +799,11 @@ use crate::sim::world::Simulation;
 // single MissionLeaf ready byte. Building persists private body/queued mode
 // and type control, without BuildingUp's duplicate mission/clock/latch or
 // BuildingDown's duplicate ready/timer. Factory primary state is lifecycle-owned.
-// 279 -> 281: the SmudgeGrid retains runtime Smudge identities through the
-// shared deferred destructor, separately from its persistent cell marks.
-// 280 is used by other in-flight layouts and must not alias this one.
+// 279 -> 280: Unit deployment uses private6E0..6E2 and retained Techno
+// animation/landing state, removing the independent deployment countdown.
+// Anim palettes also retain either a color scheme or the creation-time House.
+// 280 -> 281: SmudgeGrid retains runtime Smudge identities through the shared
+// deferred destructor, separately from its persistent cell marks.
 const SNAPSHOT_VERSION: u32 = 281;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
@@ -3793,8 +3795,9 @@ mod tests {
         // 278 -> 279: native Building health sample; dirty House assessment,
         // retained House discovery/capture notifications and Engineer identity;
         // and its anchored power-blackout clock/radar projection.
-        // 279 -> 281: retained runtime Smudge identities/pending deletion;
-        // version280 is reserved by unrelated in-flight layouts.
+        // 279 -> 280: Unit deploy flags, Techno animation/landing ownership and
+        // the animation's retained palette source replace the legacy countdown.
+        // 280 -> 281: retained runtime Smudge identities/pending deletion.
         assert_eq!(super::SNAPSHOT_VERSION, 281);
     }
 

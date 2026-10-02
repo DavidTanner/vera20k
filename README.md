@@ -15,71 +15,20 @@ Collection*, on [Steam](https://store.steampowered.com/bundle/39394/) and on
 
 ## Status
 
-Pre-alpha (September 2026). You can play a local skirmish on the retail maps on Windows, against
-a placeholder AI. A lot of the game works already: retail and random maps, the original menus
-and sidebar, base building and power, the tech tree, the miners, infantry, vehicle, naval and
-base-defense combat, garrisons, transports, engineers, cloaking, some support powers, and save
-and load.
+Pre-alpha. Local skirmish is playable on Windows against a placeholder AI.
 
-Aircraft attack runs, mind control, crates, death effects and some bridge types are partly
-done. Not there yet: multiplayer, the original AI, the campaign and most map triggers, the
-movies, and several special weapons and superweapons, such as the Chrono Legionnaire, Prism
-chaining, the Nuke and the Chronosphere. The 30-player, 20,000-unit scale hasn't been
-demonstrated yet.
+- **Working:** retail and random maps, menus and sidebar, base building, harvesting,
+  core combat, and save/load.
+- **Partial:** aircraft attack runs, mind control, crates, death effects, and some bridges.
+- **Missing:** multiplayer, the original AI, campaign, most map triggers, movies,
+  and several special weapons and superweapons.
+- **Scale:** 30 players and 20,000 units are the target; this hasn't been demonstrated yet.
 
-Ordinary Allied Power Plant destruction has bounded original-executable
-comparisons through tank impact, damage fires, ordered debris and explosions,
-stock smudge identity and marks, crew escape, target expiry, power state and deferred cleanup. Cancelled held
-buildings reuse the same destructor. See the [fatal lifecycle coverage](tools/spatial_oracle/building_death_anims_joined.md)
-[stock smudge extension](tools/spatial_oracle/building_death_anims_joined_stock_smudges.md)
-and [cancellation controls](tools/spatial_oracle/building_death_anims_limbo_cancel.md);
-whole-object parity remains open.
-
-Stock TIBTRE ore trees use retained simulation animation, emit ore at the native
-midpoint and feed the existing growth and harvesting paths. Ore queues rebuild at
-the native enqueue thresholds. Natural spread processes due timers even when
-spreading is disabled, preserves signed rules intervals and publishes new cell
-attributes and movement costs before the next object, including Terrain AI emission.
-Edge probes retain native shared-cell lookup effects. New ore constructors also
-advance the shared Scenario ID
-and follow the shared Overlay registry/deferred cleanup owner, including tree-blocked
-limbo survivors. The [queue comparison](tools/spatial_oracle/ore_queue.md)
-records the tested boundaries and connected callers. The
-[bounded native comparisons](tools/spatial_oracle/tibtre.md) cover their timing,
-RNG and placement; stock artwork uses the native body/shadow frame pairs.
-
-Empty IFVs can approach and fire at concrete bridges, continue launched missiles
-after Stop, and resume saved pursuit state. The [native comparisons](tools/spatial_oracle/fv_cell_attack/README.md)
-cover six concrete-bridge cases; the whole-bridge audit remains in progress.
-
-Stock War Miners pause ore collection while attacking and preserve their cargo.
-After losing their target, they resume Harvest on ore or Guard on clear land.
-The [native comparisons and retail observation](tools/spatial_oracle/harvest_attack_return.md)
-cover this Attack-to-idle chain; broader combat and match parity remain open.
-
-War Miners remain visible while dumping ore, and aircraft bodies draw both parked
-and in flight. The [retail capture checks](tools/map_observation.md#unloading-miner-and-parked-aircraft-bodies)
-cover the model-based turret split; the deployed Siege Chopper image remains open.
-
-Engineer object clicks on bridge huts use live repair geometry and Repair/NoRepair
-cursors. Healthy huts consume the click without a repair order. The
-[bounded native and retail checks](tools/spatial_oracle/engineer_bridge_production_validation.md)
-cover the object-hut route and concrete/wood rebuilding; broader bridge parity remains open.
-
-Medium tanks use native bridge entrance markers and path finishing. The
-[bounded path and retail checks](tools/spatial_oracle/astar_path_finishing.md)
-cover Hills ramp/deck travel, an underpass and retained navigation on restore;
-whole-bridge parity remains open.
-
-Computer-owned GIs and Guardian GIs automatically deploy during Guard, Sticky
-and AreaGuard, and deployed infantry retain targets using their selected weapon's
-range. The [native comparisons and retail observation](docs/plans/object-completion.md#current-chain-automatic-gi-deployment)
-cover this shared mechanism; complete infantry lifecycles remain in progress.
-
-Hold the right mouse button and drag to fast-scroll. The camera keeps moving while
-the pointer stays displaced from where the press began. The
-[native comparisons](tools/input_oracle/README.md) cover stock drag behavior,
-offline input admission and camera request ordering.
+Ordinary Allied Power Plant destruction has bounded native comparisons through
+[tank impact, effects and crew](tools/spatial_oracle/building_death_anims_joined.md),
+[stock smudges](tools/spatial_oracle/building_death_anims_joined_stock_smudges.md)
+and [deferred/cancelled-product cleanup](tools/spatial_oracle/building_death_anims_limbo_cancel.md).
+Whole-object parity remains open.
 
 ## Running it
 

@@ -493,7 +493,7 @@ pub(crate) fn dispatch_foot_mission(
         // 1` early exits and the `[Unload] Rate + RandomRanged(0, 2)`
         // epilogue — so it is committed as a plain cadence here. The refinery
         // (`Harvester=`), `DeploysInto=` and `IsSimpleDeployer=` branches of
-        // the same slot are other lanes and fall through to the default arm.
+        // the same slot are dispatched to their own owners below.
         (EntityCategory::Unit, Some(MissionType::Unload))
             if sim.substrate.entities.get(id).is_some_and(|entity| {
                 crate::sim::transport_unload::is_vehicle_transport_type(sim, entity, rules)
@@ -516,6 +516,16 @@ pub(crate) fn dispatch_foot_mission(
                 rules,
                 ctx.overlay_registry,
             ))
+        }
+        (EntityCategory::Unit, Some(MissionType::Unload))
+            if sim.substrate.entities.get(id).is_some_and(|entity| {
+                crate::sim::unit_simple_deploy::is_simple_deployer(sim, entity, rules)
+            }) =>
+        {
+            let Ok(delay) = sim.unit_simple_mission_unload(id, rules) else {
+                return bridge_changed;
+            };
+            MissionHandlerEvaluation::cadence(delay)
         }
         // The harvester branch of `UnitClass::Mission_Unload @ 0x0073D630`
         // (`0x0073D672` → `0x0073DEE0`) for a harvester on its refinery pad.

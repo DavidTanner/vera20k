@@ -169,7 +169,7 @@ fn retail_atlas_refresh_costs() {
 
     let started = Instant::now();
     let extra = crate::app::frontend::skirmish::deployable_building_types(Some(rules));
-    let remaps = sprite_atlas::collect_anim_remap_base_keys(sim);
+    let remaps = sprite_atlas::collect_anim_remap_base_keys(sim, &house_colors);
     let mut sprites = sprite_atlas::build_sprite_atlas(
         &device,
         &queue,
@@ -252,7 +252,7 @@ fn retail_atlas_refresh_costs() {
                   sprites: &sprite_atlas::SpriteAtlas,
                   units: &unit_atlas::UnitAtlas| {
         let extra = crate::app::frontend::skirmish::deployable_building_types(Some(rules));
-        let remaps = sprite_atlas::collect_anim_remap_base_keys(sim);
+        let remaps = sprite_atlas::collect_anim_remap_base_keys(sim, &house_colors);
         let sprites_covered = sprite_atlas::atlas_covers_world(
             Some(sprites),
             sim.entities(),
@@ -290,7 +290,7 @@ fn retail_atlas_refresh_costs() {
         |sim: &crate::sim::world::Simulation, atlas: sprite_atlas::SpriteAtlas, label: &str| {
             let started = Instant::now();
             let extra = crate::app::frontend::skirmish::deployable_building_types(Some(rules));
-            let remaps = sprite_atlas::collect_anim_remap_base_keys(sim);
+            let remaps = sprite_atlas::collect_anim_remap_base_keys(sim, &house_colors);
             let atlas = sprite_atlas::build_sprite_atlas(
                 &device,
                 &queue,
@@ -447,7 +447,7 @@ fn retail_atlas_refresh_costs() {
         Some(art),
         &house_colors,
         &crate::app::frontend::skirmish::deployable_building_types(Some(rules)),
-        &sprite_atlas::collect_anim_remap_base_keys(sim),
+        &sprite_atlas::collect_anim_remap_base_keys(sim, &house_colors),
         &cell_drawers,
         Some(&theater.iso_palette),
         None,

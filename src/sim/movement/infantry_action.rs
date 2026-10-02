@@ -337,7 +337,7 @@ impl Simulation {
         }
         //51D939/51D981: the admitted Deploy/Undeploy sound observes the
         // previous Doing and Stage. Refused actions do not emit this cue.
-        self.emit_infantry_deploy_action_sound(id, requested, rules)?;
+        self.emit_deploy_action_sound(id, requested, rules)?;
         let actor = self
             .substrate
             .entities

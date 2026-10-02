@@ -63,6 +63,12 @@ the analyzed program. Re-importing or enabling analysis is not routine reconnect
   above the return address. `frame_compare.py PORT ADDR` in the type-layouts research
   folder (see `LOCAL.md`) compares the decompiler's offsets with ESP computed from the
   code.
+- A typed stack aggregate can change the displayed base without moving the address
+  the code uses. Follow the full constant pointer expression in high p-code, including
+  member offsets: the native LEA at `0x425713` addresses entry stack `-24`; after typing
+  a coordinate, Ghidra expresses it as base `-28` plus member offset `4`. Comparing only
+  the first `PTRSUB` reports a false stack shift. Keep this check within the connected
+  expression; a unique varnode reused at another instruction is not an address proof.
 
 Follow production consumers far enough to establish the claimed result. Visual/audio
 work includes composition, active flags, selected assets/frames, timing and output;

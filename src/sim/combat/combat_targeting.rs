@@ -25,7 +25,7 @@
 //! an air target uses its Secondary weapon in place — it does not auto-deploy.
 //! This matches the original's behavior: deploy is a player-driven command,
 //! never triggered by AI target acquisition. Verified by grepping every writer
-//! of `deploy_state` — only the player command handler and the deploy tick
+//! of class deployment state — only the deployment owners
 //! advance set it.
 //!
 //! ## Dependency rules

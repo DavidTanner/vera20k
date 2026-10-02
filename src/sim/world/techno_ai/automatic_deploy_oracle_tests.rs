@@ -118,7 +118,7 @@ fn pending_deploy_survives_snapshot_and_paid_head_completion() {
     );
     assert_eq!(actor.mission_leaf.as_infantry().unwrap().doing(), 27);
     assert!(actor.locomotor.as_ref().unwrap().step_head().is_none());
-    assert_eq!(actor.deploy_state, None);
+    assert!(actor.mission_leaf.as_unit().is_none());
 }
 
 #[test]
@@ -197,7 +197,7 @@ fn retail_gi_and_guardian_gi_complete_deploy_in_bound_runtime() {
         for (index, id) in [gi, guardian].into_iter().enumerate() {
             let actor = runtime.simulation.substrate.entities.get(id).unwrap();
             entered[index] |= actor.mission_leaf.as_infantry().unwrap().doing() == 27;
-            assert_eq!(actor.deploy_state, None);
+            assert!(actor.mission_leaf.as_unit().is_none());
         }
     }
     assert_eq!(

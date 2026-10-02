@@ -108,7 +108,7 @@ pub(super) fn mission_permits_scatter(entity: &GameEntity, rules: &RuleSet) -> b
 /// - the mission's `Scatter=` unless forced;
 /// - a rotating body (`+0x388`);
 /// - a NavCom unless no-kidding;
-/// - the deploy bytes `+0x6E0..+0x6E2` (`deploy_state`);
+/// - the deploy bytes `+0x6E0..+0x6E2` (MissionLeaf);
 /// - an unpowered locomotor (`ILocomotion+0x60`).
 ///
 /// None draws RNG or writes state. Evidence for the flag-free prefix:
@@ -129,7 +129,7 @@ pub(super) fn unit_scatter_admitted(
         && (flags.forced || mission_permits_scatter(unit, rules))
         && !unit.body_facing.is_rotating(binary_frame)
         && (flags.no_kidding || unit.navigation.nav_com.is_none())
-        && unit.deploy_state.is_none()
+        && !unit.is_deployed()
         && locomotor.is_powered()
 }
 

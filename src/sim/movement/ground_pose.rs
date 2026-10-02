@@ -48,6 +48,20 @@ pub(crate) fn query_object_cell_height(
     i32::from(cells.ground_fields(cell).0 as i8) + if on_bridge { 4 } else { 0 }
 }
 
+/// Techno70C620, virtual+2B0: compare Map6D6410's terrain projection to
+/// Object41BEA0's current packed cell. Both consume raw Location XY; Z is
+/// ignored. Callers retain the projection's ordered canonical Dummy lookups.
+/// Native body/caller: tools/spatial_oracle/unit_simple_deploy.md.
+pub(crate) fn terrain_projection_differs(cells: &NativeCellQuery<'_>, [x, y]: [i32; 2]) -> bool {
+    let cell = (
+        i32::from(crate::util::lepton::lepton_to_cell_packed(x)),
+        i32::from(crate::util::lepton::lepton_to_cell_packed(y)),
+    );
+    crate::sim::find_nearby_cell::project_world_coordinate_with_lookup(x, y, |cx, cy| {
+        cells.projection_view(cx, cy)
+    }) != cell
+}
+
 /// Foot+BC4DDC40(false) -> Object5F6A70. The navigation coordinate can be a
 /// paid head; source bridge selection is independent of the cached path layer.
 /// Both ground samples precede the conditional structural-cell lookup.
