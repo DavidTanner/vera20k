@@ -3,15 +3,19 @@
 //! ([`is_moving_now`]) and +A8 `Is_Really_Moving_Now`
 //! ([`is_really_moving_now`]). Native callers dispatch one slot or another,
 //! and `Is_Moving` and `Is_Moving_Now` answer differently in every family
-//! except Teleport. No order/path presence, movement phase or speed is
-//! substituted for a native query here.
+//! except Teleport. Native retained-state readers are shared here; Teleport
+//! still delegates to its documented Relocate-phase adapter, pending the
+//! complete request-byte lifecycle. Rocket's destination lifecycle remains
+//! unrepresented and its `Is_Moving` query returns `None`.
 use super::track_process::TrackFamily;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;
 
 /// Drive4AFB80, Ship69F290, Walk75AB30, Fly4CCA90, Jumpjet54AE50 and
-/// Hover514C30.
-/// Evidence: locomotor_moving and air_locomotor_moving native corpora.
+/// Hover514C30. Teleport718080 delegates to its existing state owner.
+/// Evidence: locomotor_moving, air_locomotor_moving, cmin_dock and
+/// jumpjet_infantry_actions --default-motion native corpora; Teleport's
+/// ordinary move/stop controls do not establish its complete request lifetime.
 pub(crate) fn is_moving(entity: &GameEntity) -> Option<bool> {
     let locomotor = entity.locomotor.as_ref()?;
     match locomotor.active_kind() {

@@ -32,18 +32,25 @@ original ReadSequenceData 0x00523D00 builds them
 (`infantry_sequence_rules.Fixture`).
 """
 from pathlib import Path
+import hashlib
+import itertools
+import os
 import struct
+import sys
 
 from unicorn.x86_const import (
     UC_X86_REG_EAX, UC_X86_REG_EBP, UC_X86_REG_ECX, UC_X86_REG_EDI, UC_X86_REG_EIP,
-    UC_X86_REG_ESP,
+    UC_X86_REG_ESP, UC_X86_REG_FPCW,
 )
 
 from tools.native_oracle import call, finish_vectors, provenance, run_checked, STACK_BASE, STACK_SIZE
 from tools.spatial_oracle.map_queries import dwords
-from tools.spatial_oracle.jumpjet_states import BASE, LOCO, OWNER, SCRATCH, States, centre
+from tools.spatial_oracle.jumpjet_states import (
+    BASE, LOCO, OWNER, SCRATCH, States, centre, CELL_VTABLE,
+)
 from tools.spatial_oracle.infantry_sequence_rules import Fixture as SequenceFixture, RECORDS
-from tools.spatial_oracle.walk_head_occupation import TYPE, VTABLE
+from tools.spatial_oracle.walk_head_occupation import TYPE, VTABLE, DUMMY, SCENARIO
+from tools.projectile_oracle.bridge_render_inputs import lexical
 
 EXTRA = 0x21000000
 SEQUENCES = EXTRA
@@ -278,7 +285,225 @@ def generate():
     return dict(records=records, sequencer_arms=arms, rows=out)
 
 
+
+# Separate native controls for the same default sequencer arm on a real
+# Teleport Infantry receiver. The existing Jumpjet corpus remains unchanged.
+DEFAULT_MOTION_POINTS = dict(teleport_constructor=0x718000, link=0x55A710,
+    teleport_move_to=0x718100, teleport_stop=0x718230, teleport_is_moving=0x718080,
+    teleport_infantry_destination=0x718B70, cell_placement=0x481180,
+    infantry_do_action=DO_ACTION, infantry_sequencer=SEQUENCER,
+    moving_query_call=0x520D38, sequence_reader=0x523D00)
+
+
+def default_motion_records():
+    """Physical ART inputs through the original 42-record sequence reader."""
+    root = Path(os.environ.get('VERA20K_SHRAPNEL_INPUTS',
+                               str(Path(__file__).resolve().parents[2] / 'ini')))
+    sections, receipts = {}, {}
+    for name, wanted, expected in (
+        ('ARTMD.INI', {'CLEG', 'ClegSequence'},
+         'e1f0378394313c04ebbd5073f47785ee3e46f1b3c62d65724e8f3c310ee7ba31'),
+        ('RULESMD.INI', {'CLEG'},
+         '3d341ef8a13a4b5ab24af2eef48ac94931ac2bb87d950fe3330a07e2d25672ef'),
+    ):
+        path = root / name
+        if not path.exists():
+            path = root / name.lower()
+        raw = path.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        assert digest == expected, (name, digest)
+        parsed, lines = lexical(raw, wanted)
+        sections.update(parsed)
+        receipts[name] = dict(sha256=digest, sections=parsed, lines=lines)
+    assert receipts['ARTMD.INI']['sections']['CLEG']['Sequence'] == 'ClegSequence'
+    reader = SequenceFixture()
+    read = reader.execute([sections['ClegSequence']], sequence='ClegSequence')
+    records = [list(struct.unpack('<5i', reader.u.mem_read(RECORDS + n * 36, 20)))
+               + [0] * 4 for n in range(42)]
+    return records, receipts, read
+
+
+class DefaultMotion(Actions):
+    def __init__(self, row, records):
+        self.motion_trace = []
+        self.probing_phase = 'setup'
+        super().__init__(dict(row, jumpjet=False, height=0), records)
+        u = self.uc
+        # Replace inherited Jumpjet with original Teleport constructor and Link.
+        self.call(0x718000, LOCO, [])
+        self.call(0x55A710, 0, [LOCO + 4, OWNER])
+        u.mem_write(LOCO + 0x14, dwords(1))
+        u.mem_write(OWNER + 0x674, dwords(LOCO + 4))
+        assert self.read32(LOCO + 4) == 0x7F5000
+        assert self.read32(LOCO + 0xC) == OWNER
+        # Restore original Infantry slots in the inherited clone owner vtable.
+        slots = (0xF0, 0xF4, 0x1D4, 0x1D8, 0x1EC, 0x200, 0x37C, 0x380)
+        self.class_slots = {slot: self.read32(INFANTRY_VTABLE + slot) for slot in slots}
+        for slot, fn in self.class_slots.items():
+            u.mem_write(VTABLE + slot, dwords(fn))
+        # Physical [CLEG] prerequisites; full InfantryType/ART loader excluded.
+        u.mem_write(TYPE + 0xD94, b'\0')
+        u.mem_write(TYPE + 0x5B4, dwords(7))
+        u.mem_write(TYPE + 0xEBD, b'\1')
+        u.mem_write(DUMMY, dwords(CELL_VTABLE))
+        self.rngs = {'main': 0x886B88, 'scenario': SCENARIO + 0x218, 'mapgen': 0xABE890}
+        for ptr in self.rngs.values():
+            self.call(0x65C6D0, ptr, [31])
+        self.probing_phase = 'producer'
+
+    def observe(self, u, address, size, data):
+        points = (0x718000, 0x55A710, 0x718080, 0x718100, 0x718230,
+                  0x718B70, 0x481180, 0x520D38, 0x520D3B, DO_ACTION)
+        if address in points:
+            sp = u.reg_read(UC_X86_REG_ESP)
+            row = dict(pc=hex(address), phase=self.probing_phase,
+                       ecx=hex(u.reg_read(UC_X86_REG_ECX)))
+            if address == 0x520D38:
+                row['query_interface_this'] = hex(self.read32(sp))
+            if address == 0x718080:
+                row['query_interface_this'] = hex(self.read32(sp + 4))
+            if address == 0x520D3B:
+                row['query_return_al'] = u.reg_read(UC_X86_REG_EAX) & 255
+            if address == DO_ACTION:
+                row['args'] = [self.read32(sp + 4 + i * 4) for i in range(3)]
+            if address == 0x718100:
+                row['args'] = [self.read32(sp + 4 + i * 4) for i in range(4)]
+            self.motion_trace.append(row)
+        # States substitutes Link during inherited construction. This owner
+        # executes the real Link when replacing that locomotor with Teleport.
+        if address != 0x55A710:
+            super().observe(u, address, size, data)
+
+    def rng(self):
+        return {key: bytes(self.uc.mem_read(ptr, 1012)) for key, ptr in self.rngs.items()}
+
+    def snapshot(self):
+        u = self.uc
+        return dict(
+            self.result(), request_byte=u.mem_read(LOCO + 0x34, 1)[0],
+            destination=list(struct.unpack('<iii', u.mem_read(LOCO + 0x1C, 12))),
+            resolved_coordinate=list(struct.unpack('<iii', u.mem_read(LOCO + 0x28, 12))),
+            prone=u.mem_read(OWNER + 0x6DB, 1)[0],
+            fraction_bits=bytes(u.mem_read(OWNER + 0x578, 8)).hex(),
+            owner_coords=list(struct.unpack('<iii', u.mem_read(OWNER + 0x9C, 12))))
+
+    def execute(self, row):
+        u = self.uc
+        code_before = bytes(u.mem_read(0x401000, 0x3E0000))
+        producer_before = self.snapshot()
+        producer_rng_before = self.rng()
+        producer_trace_start = len(self.motion_trace)
+        if row['producer'] in ('move', 'move_stop'):
+            self.call(0x718100, 0, [LOCO + 4, 3200, 2688, 0])
+        if row['producer'] == 'move_stop':
+            self.call(0x718230, 0, [LOCO + 4])
+        producer_after = self.snapshot()
+        producer_rng_after = self.rng()
+        producer_trace = self.motion_trace[producer_trace_start:]
+        self.probing_phase = 'sequencer'
+        seq_trace_start = len(self.motion_trace)
+        seq_rng_before = self.rng()
+        before = self.snapshot()
+        self.call(SEQUENCER, OWNER, [])
+        after = self.snapshot()
+        seq_rng_after = self.rng()
+        assert code_before == bytes(u.mem_read(0x401000, 0x3E0000))
+        rng = {
+            key: dict(
+                before_hex=seq_rng_before[key].hex(), after_hex=seq_rng_after[key].hex(),
+                unchanged=seq_rng_before[key] == seq_rng_after[key],
+                producer_before_hex=producer_rng_before[key].hex(),
+                producer_after_hex=producer_rng_after[key].hex(),
+                producer_indices_before=list(struct.unpack('<2i', producer_rng_before[key][4:12])),
+                producer_indices_after=list(struct.unpack('<2i', producer_rng_after[key][4:12])))
+            for key in self.rngs
+        }
+        return dict(
+            input=row, producer=dict(before=producer_before, after=producer_after,
+                                     trace=producer_trace),
+            before=before, after=after, trace=self.motion_trace[seq_trace_start:], rng=rng,
+            text_sha256=hashlib.sha256(code_before).hexdigest(),
+            class_slots={hex(k): hex(v) for k, v in self.class_slots.items()},
+            fpcw=hex(u.reg_read(UC_X86_REG_FPCW)), code_unchanged=True,
+            locomotor_interface_vtable=hex(self.read32(LOCO + 4)),
+            locomotor_owner=hex(self.read32(LOCO + 0xC)),
+            request_field=dict(class_offset='0x34', interface_offset='0x30'),
+            destination_class_offset='0x1c', resolved_coordinate_class_offset='0x28')
+
+
+
+def default_motion_rows():
+    for producer, prone, fraction, doing in itertools.product(
+            ('ctor', 'move', 'move_stop'), (False, True), (0.0, 0.05, 0.1, 0.5), (-1, 32)):
+        yield dict(kind='default', producer=producer, prone=prone, fraction=fraction,
+                   doing=doing, stage=0 if doing == -1 else 8)
+    for producer, prone, fraction, doing, stage in (
+            ('ctor', False, 0.0, 0, 1), ('move', False, 0.5, 3, 6),
+            ('ctor', True, 0.0, 2, 1), ('move', True, 0.5, 6, 6)):
+        yield dict(kind='same_action', producer=producer, prone=prone,
+                   fraction=fraction, doing=doing, stage=stage)
+    for producer in ('ctor', 'move'):
+        yield dict(kind='not_finished', producer=producer, prone=False,
+                   fraction=0.5, doing=32, stage=7)
+
+
+def generate_default_motion():
+    records, receipts, read = default_motion_records()
+    rows = [DefaultMotion(row, records).execute(row) for row in default_motion_rows()]
+    assert len(rows) == 54
+    return dict(records=records, input_receipts=receipts, sequence_read=read, rows=rows)
+
+
+def default_motion_provenance():
+    return provenance(
+        scope='Original Infantry DoTypeSequencer default arm on original Teleport ordinary '
+              'MoveTo/Stop controls with physical ClegSequence. Not Teleport Process, '
+              'Chronosphere, the full Infantry AI or a whole match.',
+        entry_points=DEFAULT_MOTION_POINTS,
+        assumptions=[
+            'Existing Actions/States setup executes before original Teleport718000 and '
+            'Link55A710 replace the Jumpjet. Original ILocomotion7F5000 binds Infantry+674; '
+            'request is class+34/interface+30, armed destination class+1C, resolved coordinate class+28. Physical ClegSequence '
+            'uses original constructor loop and ReadSequenceData523D00; complete ART/type '
+            'loaders excluded. The exact ARTMD/RULESMD file identities and lexical inputs '
+            'are recorded in the payload.',
+            'Physical CLEG facts JumpJet=false, MovementZone=Infantry7 and Crawls=true '
+            'are supplied, with marked-layer true, health125, speed fractions, prone and '
+            'Doing/stage per row. Game speed1, frame1000, old Stage timer17/91/rate92. '
+            'Ambient FPCW0E7F is inherited fixture input, not live-retail process proof.',
+            'Three native RNGs seed31, complete1012-byte states before/after producer '
+            'and sequencer. MoveTo subcell selection consumes a separate Scenario draw; '
+            'the sequencer consumes none. Selected original code remains unchanged.',
+        ],
+        substitutions=[
+            'Inherited Actions/States RTTI15, type/cell getter, CanEnter result0, corridor, '
+            'ground/raw/subcell inputs and unrelated Mark/visibility/OS Interlocked '
+            'boundaries. Original Infantry clone slots F0/F4/1D4/1D8/1EC/200/37C/380 '
+            'are restored from original7EB058. Original Link is allowed to execute; '
+            'dummy cell uses original7E4EEC vtable. Full Infantry/House/Scenario '
+            'construction, unrestricted admission and full Teleport lifetime excluded.',
+        ])
+
+
+def default_motion_main(argv):
+    root = Path(__file__).resolve().parents[2]
+    sources = [__file__, 'tools/native_oracle.py',
+               'tools/spatial_oracle/jumpjet_states.py',
+               'tools/spatial_oracle/jumpjet_coordinates.py',
+               'tools/spatial_oracle/walk_head_occupation.py',
+               'tools/spatial_oracle/infantry_sequence_rules.py',
+               'tools/projectile_oracle/bridge_render_inputs.py']
+    finish_vectors(generate_default_motion,
+                   Path(__file__).with_name('infantry_default_motion.json'),
+                   provenance=default_motion_provenance, argv=argv,
+                   source_paths={str(Path(name).resolve().relative_to(root)): Path(name).resolve()
+                                 for name in sources})
+
+
 if __name__ == '__main__':
+    if '--default-motion' in sys.argv[1:]:
+        default_motion_main([arg for arg in sys.argv[1:] if arg != '--default-motion'])
+        raise SystemExit(0)
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
         scope='Jumpjet Infantry DoTypes on the original Infantry Do_Action 0x0051D6F0 and the real '
               'Jumpjet locomotor: the Ready->Hover airborne remap, gates and stage-timer writes and '
