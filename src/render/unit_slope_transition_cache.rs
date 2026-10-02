@@ -4,16 +4,14 @@
 //! gamemd's short 3-frame blended slope sprites that are actually visible,
 //! uploading each new sprite's rectangle into free shelf space of its page.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::vpl_file::VplFile;
 use crate::render::atlas_growth::{self, ShelfCursor};
 use crate::render::batch::{BatchRenderer, BatchTexture};
 use crate::render::gpu::GpuContext;
-use crate::render::unit_atlas::{
-    UnitSpriteEntry, UnitSpriteKey, VxlLayer, render_unit_sprite_with_slope_blend,
-};
+use crate::render::unit_atlas::{UnitModel, UnitSpriteEntry, UnitSpriteKey, VxlLayer};
 use crate::render::vxl_raster::VxlSlopeBlend;
 use crate::rules::ruleset::RuleSet;
 
@@ -22,6 +20,7 @@ const PAGE_SIZE: u32 = 2048;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TransitionUnitSpriteKey {
     pub type_id: String,
+    pub turret_index: i32,
     pub facing: u8,
     pub layer: VxlLayer,
     pub frame: u32,
@@ -50,6 +49,8 @@ pub struct VxlSlopeTransitionCache {
     pages: Vec<TransitionAtlasPage>,
     /// VOXELS.VPL, parsed on the first miss (`None` inside when unavailable).
     vpl: Option<Option<VplFile>>,
+    /// Shared parsed models; reset with this cache on each scenario load.
+    models: BTreeMap<String, Option<UnitModel>>,
 }
 
 impl VxlSlopeTransitionCache {
@@ -80,6 +81,7 @@ impl VxlSlopeTransitionCache {
         });
         let render_key = UnitSpriteKey {
             type_id: key.type_id.clone(),
+            turret_index: key.turret_index,
             facing: key.facing,
             layer: key.layer,
             frame: key.frame,
@@ -92,13 +94,13 @@ impl VxlSlopeTransitionCache {
             phase_num: key.phase_num,
             phase_den: key.phase_den,
         };
-        let (sprite, native_draw_bounds) = render_unit_sprite_with_slope_blend(
-            asset_manager,
-            &render_key,
-            rules,
-            vpl.as_ref(),
-            Some(blend),
-        )?;
+        let model = self
+            .models
+            .entry(key.type_id.clone())
+            .or_insert_with(|| UnitModel::load(asset_manager, &key.type_id, rules))
+            .as_ref()?;
+        let (sprite, native_draw_bounds) =
+            model.render(&render_key, vpl.as_ref(), Some(blend), &mut None)?;
 
         let size = [sprite.width, sprite.height];
         let placed = self
@@ -156,6 +158,7 @@ mod tests {
     fn key(from_slope: u8, to_slope: u8, phase_num: i32) -> TransitionUnitSpriteKey {
         TransitionUnitSpriteKey {
             type_id: "CMIN".to_string(),
+            turret_index: 0,
             facing: 64,
             layer: VxlLayer::Composite,
             frame: 0,
@@ -171,6 +174,9 @@ mod tests {
     fn vxl_slope_transition_cache_key_distinguishes_from_to_phase() {
         assert_ne!(key(1, 2, 0), key(2, 1, 0));
         assert_ne!(key(1, 2, 0), key(1, 2, 1));
+        let mut other_turret = key(1, 2, 0);
+        other_turret.turret_index = 1;
+        assert_ne!(key(1, 2, 0), other_turret);
     }
 
     #[test]

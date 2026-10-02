@@ -802,7 +802,9 @@ use crate::sim::world::Simulation;
 // 279 -> 280: Unit deployment uses private6E0..6E2 and retained Techno
 // animation/landing state, removing the independent deployment countdown.
 // Anim palettes also retain either a color scheme or the creation-time House.
-const SNAPSHOT_VERSION: u32 = 280;
+// 280 -> 281: one signed current weapon/turret pair replaces weapon overrides
+// and last-fire slot state; charge drawing retains the native saved ROF duration.
+const SNAPSHOT_VERSION: u32 = 281;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3761,9 +3763,9 @@ mod tests {
         // 278 -> 279: native Building health sample; dirty House assessment,
         // retained House discovery/capture notifications and Engineer identity;
         // and its anchored power-blackout clock/radar projection.
-        // 279 -> 280: Unit deploy flags, Techno animation/landing ownership and
-        // the animation's retained palette source replace the legacy countdown.
-        assert_eq!(super::SNAPSHOT_VERSION, 280);
+        // 279 -> 280: Unit deployment/animation ownership replaces its countdown.
+        // 280 -> 281: authoritative weapon/turret pair and saved charge duration.
+        assert_eq!(super::SNAPSHOT_VERSION, 281);
     }
 
     #[test]

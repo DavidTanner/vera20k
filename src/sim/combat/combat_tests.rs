@@ -75,7 +75,7 @@ fn sonic_active_wave_gate_precedes_target_resolution_and_all_shot_work() {
     let mut entities = EntityStore::new();
     let mut firer = GameEntity::test_default(1, "DLPH", "Americans", 4, 5);
     firer.attack_target = Some(AttackTarget::new(999));
-    firer.current_weapon_index = 1;
+    firer.set_gunner_selection_for_test(1, -1);
     entities.insert(firer);
     let mut interner = test_interner();
     let snap = build_attacker_snapshot(
@@ -115,11 +115,10 @@ fn sonic_active_wave_gate_precedes_target_resolution_and_all_shot_work() {
     assert!(emit.fire_events.is_empty());
     assert!(emit.damage_events.is_empty());
     assert!(emit.projectile_spawns.is_empty());
-    assert!(emit.current_weapon_updates.is_empty());
     assert_eq!(entities.get(1).unwrap().rearm_timer, rearm_before);
     assert!(emit.remove_attack.is_empty());
     assert_eq!(rng.logical_state(), rng_before);
-    assert_eq!(entities.get(1).unwrap().current_weapon_index, 1);
+    assert_eq!(entities.get(1).unwrap().current_weapon_number(), 1);
 }
 
 #[test]

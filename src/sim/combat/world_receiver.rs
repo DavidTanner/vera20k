@@ -2274,7 +2274,6 @@ pub(crate) fn commit_projectiles(
     debug_assert!(emit.remove_attack.is_empty());
     debug_assert!(emit.fire_events.is_empty());
     debug_assert!(emit.ammo_deduct.is_empty());
-    debug_assert!(emit.current_weapon_updates.is_empty());
     debug_assert!(emit.unit_facing.is_empty());
     debug_assert!(emit.spawn_target_updates.is_empty());
 
@@ -2577,17 +2576,6 @@ fn admit_attacker_fire<'r>(
             };
             (index, selected, false)
         };
-    if delayed_building_slot.is_none()
-        && let Some(selected) = selected.as_ref()
-    {
-        out.current_weapon_updates.push((
-            snap.stable_id,
-            match selected.slot {
-                WeaponSlot::Primary => 0,
-                WeaponSlot::Secondary => 1,
-            },
-        ));
-    }
 
     let infantry_fire = snap.category == EntityCategory::Infantry && !is_garrison;
     let sequences = rules.animation_sequence(world.interner.resolve(snap.type_id));
@@ -2859,10 +2847,6 @@ fn admit_attacker_fire<'r>(
                 .set_foot_firing_sequence(0);
             world.infantry_fire_refused_action(snap.stable_id, rules);
             return None;
-        }
-        if let Some(selected) = selected.as_ref() {
-            out.current_weapon_updates
-                .push((snap.stable_id, selected.index as u8));
         }
     }
     // Keep emission's FLH/heading/prone snapshot in the native post-action
@@ -3530,7 +3514,7 @@ pub(super) fn emit_admitted_fire(
             .unwrap_or_default();
         let rof = fireat_get_rof(world, rules, snap, obj, weapon, weapon, burst.next_index());
         if let Some(entity) = world.substrate.entities.get_mut(snap.stable_id) {
-            entity.rearm_timer.start(binary_frame as i32, rof);
+            entity.rearm_after_fire(binary_frame as i32, rof);
             entity.weapon_burst.complete_shot(weapon.burst.max(1));
         }
         return;
@@ -3993,7 +3977,7 @@ pub(super) fn emit_admitted_fire(
         } else {
             fireat_rearm_frames(rof, entity.berserk.active)
         };
-        entity.rearm_timer.start(binary_frame as i32, rearm);
+        entity.rearm_after_fire(binary_frame as i32, rearm);
         entity.weapon_burst.complete_shot(weapon.burst.max(1));
         entity.last_fire_frame = i64::from(binary_frame);
     }
@@ -4177,7 +4161,6 @@ struct FireCommitBoundary {
     damage_start: usize,
     explosion_start: usize,
     smudge_start: usize,
-    current_weapon_start: usize,
     fire_event_start: usize,
 }
 
@@ -4187,7 +4170,6 @@ impl FireCommitBoundary {
             damage_start: emit.damage_events.len(),
             explosion_start: emit.effects.explosion_effects.len(),
             smudge_start: emit.effects.smudge_spawn_requests.len(),
-            current_weapon_start: emit.current_weapon_updates.len(),
             fire_event_start: emit.fire_events.len(),
         }
     }
@@ -4205,16 +4187,10 @@ impl FireCommitBoundary {
             damage_start,
             explosion_start,
             smudge_start,
-            current_weapon_start,
             fire_event_start,
         } = self;
         let outer_explosion_effects = emit.effects.explosion_effects.split_off(explosion_start);
         let outer_anim_requests = emit.effects.smudge_spawn_requests.split_off(smudge_start);
-        for &(entity_id, weapon_index) in &emit.current_weapon_updates[current_weapon_start..] {
-            if let Some(entity) = world.substrate.entities.get_mut(entity_id) {
-                entity.current_weapon_index = weapon_index;
-            }
-        }
         let (inline_death, mut pings) = commit_area(
             world,
             run,
@@ -4944,7 +4920,6 @@ pub(crate) fn tick_combat(
         mut remove_attack,
         fire_events,
         ammo_deduct,
-        current_weapon_updates: _,
         unit_facing,
         spawn_target_updates: _,
         drain_links: _,

@@ -93,6 +93,7 @@ fn shadow_first_fill_hits_and_atlas_growth_keep_payloads() {
     let make = |layer, pixels: Vec<u8>, width, height, offset: [f32; 2]| CachedUnitSprite {
         key: UnitSpriteKey {
             type_id: "generated".into(),
+            turret_index: 0,
             facing: 0,
             layer,
             frame: 0,
