@@ -15,11 +15,12 @@ snapshot comments/version pin needed manual conflict resolution. No other task's
 files, branches or processes were changed.
 
 [PR #1014](https://github.com/YuriPlanet/vera20k/pull/1014) is published/attached;
-auto-merge is enabled. The published633b2f2f predates the new main conflict. Final
+auto-merge is enabled. The published633b2f2f predates the new main conflict; the
+validated combined candidate is ready to push. Final
 combined code passes strict-retail **9524 /0 failed /227 ignored**, clippy success
 with729 warnings/zero edited-span diagnostics, Python486/four skips, authority
 ratchet2549/2554 and all39 nonrecursive Rust leaf checks. Exact identities/results:
-`gapowr-fatal-code-validation-v7.json`. Clippy v8 invoked no Cargo below the16GiB
+`gapowr-fatal-code-validation-v8.json`. Clippy v8 invoked no Cargo below the16GiB
 reserve; retry v9 passes after exact owned archival and shared retention.
 
 The completed9524 libtest is preserved byte-for-byte in
@@ -36,12 +37,15 @@ byte-identical. Their source metadata was refreshed without changing payloads;
 the executions. All those native owners/accepted corpuses are unchanged by the
 latest main merge. This continuity is not an additional original execution.
 
-Preserved prior release v5: label `object-gapowr-fatal-release-v5-20261002`,
-clean c682d281, app SHA
-`c9af8e4e8ebc1149891164239ceb2740d4aa9b88ff4a3401ee3949f3531ce78b`.
+Preserved final release v6: label `object-gapowr-fatal-release-v6-20261002`,
+clean f2e198e3, app SHA
+`e1a76dee3e79c35bd821369e0e8ce96208af8f22864a11a62980c2429e0a3511`.
 All six Battle/AnyTown observations pass, full/repeat MATCH, every exact prefix
-and all five inspected GPU frames equal v4. Final hash15577309209927448644;
+and all five inspected GPU frames equal v5. Final hash15577309209927448644;
 plant1428 disappears1853, crew E1/1759 HP119 reaches31,88 by1900.
+`gapowr-fatal-production-receipt-v6.json` binds exact source, binary, input,
+validation, prefix and image identities. Tested390e0d0e and releasef2e198e3 differ
+only in this checkpoint and the production receipt; runtime source is identical.
 
 Visibility correction: these exact-step observations use the release production
 app/loader/simulation/Metal renderer through a **hidden window**, as required by
@@ -49,19 +53,25 @@ app/loader/simulation/Metal renderer through a **hidden window**, as required by
 corrected in this checkpoint, repository receipt and PR. Inspected GPU images
 remain valid; no earlier ordinary visible-launch check is asserted by this receipt.
 Original external receipts remain immutable, with the correction saved separately.
+The ordinary v6 executable was separately launched with no arguments from the
+primary checkout, retaining configured RA2_DIR and no other RA2 variables. PID33904
+was running. Computer Use returns Invalid app for the standalone binary and has
+no macOS window-list API; its visible/responsive state remains unverified pending
+human confirmation. Process existence does not establish that check. The initial
+launch receipt is preserved, and the process has not been stopped.
 
 Prior v4→v5 strict comparison correctly refuses observer policy v2→v3; every old
 common field/hash/atlas/clock and GPU frame matches. The new main keeps policyv3
-and adds optional Building voxel-gun observations. V5→v6 comparison must retain
-those actual schema/atlas differences rather than asserting a full cross-version
-MATCH. Native whole-world, native pixels/audio and whole-object certification
+and adds optional Building voxel-gun observations. Strict v5→v6 comparison reports
+MISMATCH solely for6249 new optional observations. Every old observation, state
+hash, atlas, clock and final GPU frame matches, as do all five impact GPU frames.
+The separate common-field receipt retains this boundary; no full cross-version
+MATCH is asserted. Native whole-world, native pixels/audio and whole-object certification
 remain outside this evidence.
 
-Next: clean release v6, six fresh observations/full-repeat/exact prefixes and
-five inspected GPU frames; verify an ordinary responsive visible launch with the
-run-game owner. Seal the final receipt and push the integrated candidate, dispatch
-three platform lib workflows, then confirm auto-merge before implementation of
-the next chain. Do not rerun the single completed critic.
+Next: push the sealed combined candidate, dispatch three platform lib workflows,
+then confirm auto-merge before implementation of the next chain. Record any human
+visible-window confirmation additively. Do not rerun the single completed critic.
 
 Cargo uses `python -m tools.cargo_run`; every test uses `--lib`. Freeze source
 through a build, keep the16GiB reserve and preserve required binaries/dependencies,
@@ -171,12 +181,31 @@ Sealed whole-object inventories: `ordinary-building-object-closure-inventory-202
 Neither certifies an object. Normal/-O integrity checks pass; accepted native input
 replays are normal mode because existing assert-side-effect priors differ under -O.
 That cost is recorded in existing issue#745, comment5960846507.
-`basic_factory_output_audit` still traces human GAPILE→E1 radio/PLACE/queue timing,
-with assets referenced rather than copied. Original producer ctor/type-index/Unlimbo/House
-admission, refusal/retry, expiry roster/counters and power consumers now execute.
-ActiveGame was1 throughout; the missing B0F720 House expiry registration explains
-the former dangling roster. The peer is joining that actual producer with the
-two-product Skirmish delivery/radio loop before final sealing/chain selection.
+`basic-factory-output-research` is sealed, manifest SHA
+`3ae9a5220673979933261a154bace85a2958404bfb8541bdb6a7b478b90fad15`.
+Root normal/optimized integrity checks pass for nine original controls. Assets
+remain physical dependencies. Actual producer ctor/type-index/Unlimbo/House,
+two human E1 deliveries, reciprocal Radio, refusal, charge/refund, expiry
+roster/counters and power consumers execute. ActiveGame was1 throughout; the
+missing B0F720 House expiry registration explains the former dangling roster.
+`basic-factory-output-prerequisites-research` remains unsealed research ahead:
+original construction/opening removes the five supplied ready fields; the actual
+45C300 CRT initializer warms the separate ExitTable before fallback/refusal.
+Single blocked preferred exit admits both GIs; all perimeter exits blocked causes
+two native refunds/deferred cleanup. Rally Archive consumption is being bounded
+at the actual Foot destination/radio handoff, with a later crowded-pathfinding
+instruction-limit failure preserved rather than accepted as arrival proof.
+
+`infantry-fatal-prefix-prerequisite-research` is sealed, manifest SHA
+`a80ab793e1980a485b9c0496f476c64254ec268acdba9572b6b443d7162249fb`.
+Root normal/optimized integrity checks pass. Original result4 unconditionally
+calls StopDriver5180FE and FootStun518108; two stationary/moving tethered AP3
+controls find those class calls idempotent after generic Stun, with zero lethal
+RNG requests and the moving paid head retained until UnInit. Existing shared
+owners represent those sampled effects; this is not whole-infantry death proof.
+The packet additively corrects518137→707CB0 to KillPassengers, preserving the
+older sealed inventory that incorrectly labelled it DeathWeapon. Deployed/prone,
+retained Die sequences, emitted lifetimes and other infantry paths remain open.
 The additive `occupy-rof-input-reconciliation-20261002` corrects a sealed-inventory
 prose error: selected/native OccupyROFMultiplier is1.2, and existing GetROF divides
 by it. Underlying original/production receipts and Rust already agree; no gameplay
