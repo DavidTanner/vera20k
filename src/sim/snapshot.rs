@@ -807,9 +807,10 @@ use crate::sim::world::Simulation;
 // 281 -> 282: depot docking no longer serializes a retry-timer mirror;
 // MissionCom owns the saved Enter cadence for every Foot consumer. The
 // private native pending entry can coexist with an admitted service visit.
-// 282 -> 283: SmudgeGrid retains runtime Smudge identities through the shared
+// 282 -> 283: optional entity-owned turret/barrel recoil survives save/load.
+// 283 -> 284: SmudgeGrid retains runtime Smudge identities through the shared
 // deferred destructor, separately from its persistent cell marks.
-const SNAPSHOT_VERSION: u32 = 283;
+const SNAPSHOT_VERSION: u32 = 284;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3814,8 +3815,9 @@ mod tests {
         // the animation's retained palette source replace the legacy countdown.
         // 280 -> 281: authoritative weapon/turret pair and saved charge duration.
         // 281 -> 282: independent depot pending entry and sole MissionCom cadence.
-        // 282 -> 283: retained runtime Smudge identities/pending deletion.
-        assert_eq!(super::SNAPSHOT_VERSION, 283);
+        // 282 -> 283: private optional turret/barrel recoil components.
+        // 283 -> 284: retained runtime Smudge identities/pending deletion.
+        assert_eq!(super::SNAPSHOT_VERSION, 284);
     }
 
     #[test]

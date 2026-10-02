@@ -918,8 +918,13 @@ fn turret_images_cached(
 /// turret and barrel pieces.
 ///
 /// gamemd-derived: active YR `UnitClass__DrawVoxelBody @ 0x0073B470`, selector
-/// instructions `0x0073BC5B..0x0073BDAB`.
-fn native_turret_barrel_order<T: Copy>(turret_facing: u16, turret: T, barrel: T) -> [T; 2] {
+/// instructions `0x0073BC5B..0x0073BDAB`. Building draw43DA80 uses the same
+/// rounded-quadrant order (tools/voxel_oracle/building_barrel.json).
+pub(super) fn native_turret_barrel_order<T: Copy>(
+    turret_facing: u16,
+    turret: T,
+    barrel: T,
+) -> [T; 2] {
     let facing_high = (turret_facing >> 8) as u8;
     if (NATIVE_TURRET_FIRST_START..NATIVE_TURRET_FIRST_END_EXCLUSIVE).contains(&facing_high) {
         [turret, barrel]

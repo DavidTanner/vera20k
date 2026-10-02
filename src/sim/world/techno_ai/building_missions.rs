@@ -110,13 +110,11 @@
 //!   (`0x0044B780`); the dock owners run the repair and reload meanwhile.
 //!   The WeaponsFactory's ClearBibArea (`0x00449540`) after the walk is
 //!   dormant: no retail WeaponsFactory type clears HasStupidGuardMode.
-//! - A voxel building's HVA animation is not drawn: the building's voxel draw
-//!   (`0x0043DA80`, Building vt+0x4E4) takes its main and turret HVA frames
-//!   from `+0x148` modulo their frame counts, which a Gattling type advances
-//!   while its value is above 0 (the Gattling Cannon's barrels spin) and any
-//!   other type on its OK and REARM arms; VERA's building voxel presentation
-//!   (`emit_building_turret_vxl`) draws frame 0. Presentation only; its own
-//!   presentation chain (#757).
+//! - Voxel HVA frames now reach `emit_building_turret_vxl`: original43DA80
+//!   selects +148 modulo the turret's frames (or the barrel's frames on the
+//!   barrel-only arm); a separate barrel uses frame0. Native component
+//!   comparisons live in tools/voxel_oracle/building_barrel.json. This does
+//!   not close the other building Attack residuals in #757.
 //! - Dormant with retail data: the SAM arm (`0x0044AD07`, `SAM=` unset), the
 //!   upgrade arm (`0x0044B2BC`, no `PowersUpBuilding=`), Mission_Guard's
 //!   SuperWeapon gate (`0x00449716..0x00449753`, no armed type sets

@@ -417,10 +417,10 @@ fn retail_voxel_bodies_draw_the_sprites_their_model_is_seeded_with() {
             ("HARV".to_string(), "HORV".to_string(), false),
         ]
     );
-    // Only a vehicle model loads `%sTUR` and `%sBARL`. No other retail model
-    // ships one: not an aircraft, whose `AircraftClass::Draw_It` would not
-    // draw it, and not a building's voxel `TurretAnim=` model, of which
-    // YAGGUN's is named as its building.
+    // Only a vehicle model appends `%sTUR` and `%sBARL`. Aircraft never draw
+    // those parts. Buildings instead resolve native B8/C0 slots by rewriting
+    // TUR inside TurretAnim (45FA90); their own gun loader has separate retail
+    // coverage in unit_atlas_tests. None uses these appended filenames.
     let turret_models: Vec<&str> = rules
         .building_ids
         .iter()

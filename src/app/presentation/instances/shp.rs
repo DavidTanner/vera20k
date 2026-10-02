@@ -556,39 +556,40 @@ pub(crate) fn build_shp_instances(
                     lift_px,
                 );
             }
-            // Emit VXL turret on top of building (e.g., SAM site, Prism Tower).
+            // Building voxel guns remain inside their SHP hull's draw call.
             if let Some(rules_obj) = state.rules().and_then(|r| r.object(type_str)) {
-                if rules_obj.turret_anim_is_voxel {
-                    if let Some(turret_id) = &rules_obj.turret_anim {
-                        if let Some((page, instance)) = emit_building_turret_vxl(
-                            state,
-                            turret_id,
-                            entity.body_facing_current(sim.session.binary_frame),
-                            hc,
-                            sx,
-                            sy,
-                            lift_px,
-                            depth,
-                            tint,
-                            // Building VXL 0043DA80 reads top directly (e.g.
-                            // 0043E2B4..0043E2FF); 00707194 selects the scheme.
-                            // SHP TerrainPalette/ExtraLight do not apply here.
-                            selected_palette_light,
-                            draw_state,
-                            rules_obj.turret_anim_x,
-                            rules_obj.turret_anim_y,
-                        ) {
-                            building_pieces.push(PlannedBuildingPieceInstance {
-                                kind: BuildingPieceKind::PoweredOrActiveOverlay,
-                                z_bias: 0,
-                                // `FUN_0043DA80` -> `TechnoClass__Draw` 0x2800:
-                                // the turret tests Z and never writes.
-                                policy: BlitPolicy::z_read(SpriteEncoding::Voxel),
-                                target: ObjectTexture::UnitAtlasPage(page),
-                                instance,
-                            });
-                        }
-                    }
+                if rules_obj.turret_anim_is_voxel
+                    && let Some(unit_atlas) = &state.match_state.match_presentation.unit_atlas
+                {
+                    let turret_offset = art_reg
+                        .and_then(|art| art.resolve_metadata_entry(type_str, &rules_obj.image))
+                        .map_or(0, |art| art.turret_offset);
+                    emit_building_turret_vxl(
+                        unit_atlas,
+                        &mut state
+                            .match_state
+                            .match_presentation
+                            .barrel_image_pitches
+                            .borrow_mut(),
+                        type_str,
+                        entity.body_facing_current(sim.session.binary_frame),
+                        entity.barrel_elevation().current(sim.session.binary_frame),
+                        entity.turret_anim_frame,
+                        entity.voxel_recoil(),
+                        turret_offset,
+                        sx,
+                        sy,
+                        lift_px,
+                        depth,
+                        tint,
+                        // Building VXL43DA80 reads top directly;707194 selects
+                        // the scheme. SHP TerrainPalette/ExtraLight don't apply.
+                        selected_palette_light,
+                        draw_state,
+                        rules_obj.turret_anim_x,
+                        rules_obj.turret_anim_y,
+                        &mut building_pieces,
+                    );
                 }
             }
         }
@@ -603,10 +604,12 @@ pub(crate) fn build_shp_instances(
     }
 }
 
-/// Emit a VXL turret sprite on top of a building (e.g., SAM site turret, Prism Tower).
+/// Emit a building's native B8 turret and C0 barrel at its TurretAnim anchor.
 ///
-/// Looks up the pre-rendered turret VXL from the UnitAtlas at the current turret facing,
-/// positioned at the building's screen origin + pixel offset from TurretAnimX/Y.
+/// Building draw43DA80 uses the current primary facing and retained +148 HVA
+/// counter; C0 pitches by +370 and stays on frame0 when a B8 turret exists.
+/// The same cache key owns both parts, except during either part's recoil.
+/// Executed controls: tools/voxel_oracle/building_barrel.json.
 ///
 /// The turret carries the building's own sort depth verbatim. `TurretAnimZAdjust=`
 /// is deliberately not folded in: gamemd's ground-layer sort key for a building
@@ -619,10 +622,14 @@ pub(crate) fn build_shp_instances(
 /// Grand Cannon −60), more on a couple of civilian map props. The set is small
 /// and does not include Prism Tower, whose turret is not a voxel.
 fn emit_building_turret_vxl(
-    state: &AppState,
-    turret_id: &str,
+    unit_atlas: &crate::render::unit_atlas::UnitAtlas,
+    barrel_image_pitches: &mut crate::render::unit_atlas::BarrelImagePitches,
+    type_id: &str,
     turret_facing: u16,
-    _hc: HouseColorIndex,
+    barrel_elevation: u16,
+    frame_counter: i32,
+    (recoil, recoil_active): ([f32; 2], bool),
+    turret_offset: i32,
     building_sx: f32,
     building_sy: f32,
     lift_px: i32,
@@ -632,46 +639,92 @@ fn emit_building_turret_vxl(
     draw_state: DrawState,
     anim_x: i32,
     anim_y: i32,
-) -> Option<(usize, SpriteInstance)> {
-    let unit_atlas = match &state.match_state.match_presentation.unit_atlas {
-        Some(a) => a,
-        None => return None,
+    pieces: &mut Vec<PlannedBuildingPieceInstance>,
+) {
+    let frame_count = |layer| {
+        unit_atlas
+            .frame_counts
+            .get(&(type_id.to_string(), layer, 0))
+            .copied()
     };
-    let key = UnitSpriteKey {
-        type_id: turret_id.to_string(),
+    let turret_frames = frame_count(VxlLayer::Turret);
+    let barrel_frames = frame_count(VxlLayer::Barrel);
+    let has_turret = turret_frames.is_some();
+    let frame =
+        |count: Option<u32>| count.map_or(0, |count| (frame_counter % count.max(1) as i32) as u32);
+    let turret_key = UnitSpriteKey {
+        type_id: type_id.to_string(),
         turret_index: 0,
         facing: canonical_turret_facing(turret_facing),
-        layer: VxlLayer::Composite,
-        frame: 0,
+        layer: VxlLayer::Turret,
+        frame: frame(turret_frames),
         slope_type: 0, // building turrets don't tilt on slopes
         barrel_pitch: 0,
     };
-    let entry = unit_atlas.get(&key)?;
-    // Position turret at building cell origin + pixel offset from INI.
-    // TurretAnimX/Y are screen pixel offsets added to the building's own draw
-    // point, which is exactly what the native turret draw does with them.
-    let center_x: f32 = building_sx;
-    let tx: f32 = center_x + anim_x as f32 + entry.offset_x;
-    let ty: f32 = building_sy + anim_y as f32 + entry.offset_y + 3.0;
-    Some((
-        entry.page,
-        SpriteInstance {
-            position: [tx, ty],
-            size: entry.pixel_size,
-            uv_origin: entry.uv_origin,
-            uv_size: entry.uv_size,
-            depth: building_depth,
-            tint,
-            palette_light,
-            alpha: 1.0,
-            draw_state,
-            // VXL blit: gradient entry 2, lift cancelled, no DrawSHP -2.
-            z_adjust: lifted_z_adjust(lift_px, 0),
-            z_gradient: pack_z_gradient(ZGradient::Vertical, false),
-            ..Default::default()
-        },
-    ))
+    let mut barrel_key = UnitSpriteKey {
+        layer: VxlLayer::Barrel,
+        frame: if has_turret { 0 } else { frame(barrel_frames) },
+        ..turret_key.clone()
+    };
+    let pitch = crate::render::vxl_raster::voxel_facing_step_u16(barrel_elevation) as i8 - 8;
+    barrel_key.barrel_pitch = if has_turret && recoil_active {
+        pitch
+    } else {
+        let mut cache_key = if has_turret { &turret_key } else { &barrel_key }.clone();
+        cache_key.frame &= 0xff;
+        barrel_image_pitches.pitch(&cache_key, None, pitch)
+    };
+    let offsets = if has_turret {
+        crate::render::vxl_raster::building_gun_screen_offsets(
+            turret_offset,
+            turret_key.facing,
+            barrel_key.barrel_pitch,
+            recoil,
+        )
+    } else {
+        [[0.0; 2]; 2]
+    };
+    for (key, [ox, oy]) in super::units::native_turret_barrel_order(
+        turret_facing,
+        (&turret_key, offsets[0]),
+        (&barrel_key, offsets[1]),
+    ) {
+        let Some(entry) = unit_atlas.get(key) else {
+            continue;
+        };
+        // TurretAnimX/Y are screen-pixel offsets at the building draw point.
+        // The existing +3 raster-origin adjustment remains a small alignment
+        // residual; the missing-barrel comparison does not establish it.
+        let tx = building_sx + anim_x as f32 + entry.offset_x + ox;
+        let ty = building_sy + anim_y as f32 + entry.offset_y + 3.0 + oy;
+        pieces.push(PlannedBuildingPieceInstance {
+            kind: BuildingPieceKind::PoweredOrActiveOverlay,
+            z_bias: 0,
+            // Building43DA80 -> Techno Draw0x2800: test Z, never write it.
+            policy: BlitPolicy::z_read(SpriteEncoding::Voxel),
+            target: ObjectTexture::UnitAtlasPage(entry.page),
+            instance: SpriteInstance {
+                position: [tx, ty],
+                size: entry.pixel_size,
+                uv_origin: entry.uv_origin,
+                uv_size: entry.uv_size,
+                depth: building_depth,
+                tint,
+                palette_light,
+                alpha: 1.0,
+                draw_state,
+                // VXL blit: gradient entry2, lift cancelled, no DrawSHP -2.
+                z_adjust: lifted_z_adjust(lift_px, 0),
+                z_gradient: pack_z_gradient(ZGradient::Vertical, false),
+                ..Default::default()
+            },
+        });
+    }
 }
+
+#[cfg(test)]
+#[path = "building_voxel_tests.rs"]
+mod building_voxel_tests;
 
 /// Emit the BibShape SpriteInstance for a building's ground-level pad.
 ///

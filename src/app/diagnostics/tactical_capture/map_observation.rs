@@ -747,12 +747,19 @@ impl TacticalCaptureSession {
                         })
                         .collect();
                     Some(json!({"body_state": entity.building_body_state(),
-                        "queued_body_state": entity.queued_building_body_state(),
-                        "construction_control": entity.building_construction_control(),
-                        "stage": entity.native_stage(), "ready_latch": entity.building_ready_latch(),
-                        "actually_placed": entity.building_actually_placed,
-                        "last_operational": entity.building_last_operational,
-                        "animation_slots": slots}))
+                    "queued_body_state": entity.queued_building_body_state(),
+                    "construction_control": entity.building_construction_control(),
+                    "stage": entity.native_stage(), "ready_latch": entity.building_ready_latch(),
+                    "actually_placed": entity.building_actually_placed,
+                    "last_operational": entity.building_last_operational,
+                    "animation_slots": slots,
+                    "voxel_gun": {
+                        "facing": entity.body_facing_current(sim.session.binary_frame),
+                        "elevation": entity.barrel_elevation().current(sim.session.binary_frame),
+                        "hva_counter": entity.turret_anim_frame,
+                        "recoil": entity.voxel_recoil().0,
+                        "recoil_active": entity.voxel_recoil().1
+                    }}))
                 } else {
                     None
                 };

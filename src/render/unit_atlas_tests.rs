@@ -651,6 +651,172 @@ fn retail_vehicles_load_their_native_voxel_models() {
     }
 }
 
+/// The eight retail building guns exercise B8+C0, B8-only, and C0-only
+/// loader arms. The Grand Cannon's long gun is GTGCANBARL, while SAM itself
+/// occupies C0 and must not be synthesized as a vehicle hull or B8 turret.
+#[test]
+fn retail_building_voxel_turrets_load_their_native_barrels() {
+    use crate::rules::retail_ini_fixture::{retail_assets, retail_battle_rules};
+    let Some(battle) = retail_battle_rules() else {
+        return;
+    };
+    let (_, assets) = retail_assets().expect("the battle rules came from RA2_DIR");
+    for (building, turret, barrel) in [
+        ("GTGCAN", Some("GTGCANTUR"), Some("GTGCANBARL")),
+        ("NAFLAK", Some("FLAKTUR"), None),
+        ("YAREFN", Some("SMINTUR"), None),
+        ("NASAM", None, Some("SAM")),
+        ("NALASR", None, Some("LASER")),
+        ("YAGGUN", None, Some("YAGGUN")),
+        ("CAOUTP", None, Some("OUTP")),
+        ("CAEAST02", None, Some("CAHEAD")),
+    ] {
+        let object = battle.rules.object(building).expect(building);
+        assert!(object.turret_anim_is_voxel, "{building}");
+        for image in turret.into_iter().chain(barrel) {
+            for extension in ["VXL", "HVA"] {
+                let file = format!("{image}.{extension}");
+                assert!(assets.get_ref(&file).is_some(), "{file}");
+            }
+        }
+        let model = UnitModel::load(&assets, building, Some(&battle.rules))
+            .unwrap_or_else(|| panic!("{building} should load its TurretAnim model"));
+        assert!(model.body.is_none(), "{building} has an SHP hull");
+        assert_eq!(
+            model.gun_parts(0).0.is_some(),
+            turret.is_some(),
+            "{building}"
+        );
+        assert_eq!(
+            model.gun_parts(0).1.is_some(),
+            barrel.is_some(),
+            "{building}"
+        );
+        let layers = seed_layers_for(&assets, building, Some(&battle.rules));
+        assert_eq!(layers.contains(&(VxlLayer::Turret, 0)), turret.is_some());
+        assert_eq!(layers.contains(&(VxlLayer::Barrel, 0)), barrel.is_some());
+        assert_eq!(
+            layers.len(),
+            usize::from(turret.is_some()) + usize::from(barrel.is_some())
+        );
+    }
+}
+
+#[test]
+fn building_voxel_filenames_match_original_loader_execution() {
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/voxel_oracle/building_barrel.json"
+    ))
+    .unwrap();
+    for case in native["loader_cases"].as_array().unwrap() {
+        if case["prior"] == true || case["barrel_anim_is_voxel"] == true {
+            continue;
+        }
+        let name = case["name"].as_str().unwrap();
+        let enabled = case["turret_anim_is_voxel"].as_bool().unwrap();
+        let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+            "[BuildingTypes]\n0=BUILDING\n[BUILDING]\nTurretAnim={name}\nTurretAnimIsVoxel={enabled}\n"
+        ))).unwrap();
+        let mut requested = Vec::new();
+        if let Some((turret, barrel)) = building_voxel_names("BUILDING", Some(&rules)) {
+            requested.extend(
+                turret
+                    .into_iter()
+                    .chain([barrel])
+                    .map(|base| format!("{base}.VXL")),
+            );
+        }
+        let expected: Vec<_> = case["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["event"] == "available")
+            .map(|event| event["name"].as_str().unwrap().to_uppercase())
+            .collect();
+        assert_eq!(requested, expected, "{case}");
+    }
+}
+
+#[test]
+fn retail_building_gun_atlas_covers_frames_and_elevation_without_voxel_hulls() {
+    use crate::rules::retail_ini_fixture::{retail_assets, retail_battle_rules};
+    let Some(battle) = retail_battle_rules() else {
+        return;
+    };
+    let (_, assets) = retail_assets().expect("the battle rules came from RA2_DIR");
+    let buildings: BTreeSet<String> = battle
+        .rules
+        .building_ids
+        .iter()
+        .filter(|id| building_voxel_names(id, Some(&battle.rules)).is_some())
+        .cloned()
+        .collect();
+    assert_eq!(buildings.len(), 8);
+    let demand = UnitAtlasDemand {
+        turrets: buildings,
+        ..Default::default()
+    };
+    let (keys, frames) = needed_unit_keys(&demand, &assets, Some(&battle.rules));
+    assert!(keys.iter().all(|key| key.slope_type == 0
+        && key.turret_index == 0
+        && matches!(key.layer, VxlLayer::Turret | VxlLayer::Barrel)));
+    let cannon_barrels: Vec<_> = keys
+        .iter()
+        .filter(|key| key.type_id == "GTGCAN" && key.layer == VxlLayer::Barrel)
+        .collect();
+    assert_eq!(cannon_barrels.len(), 64);
+    assert!(cannon_barrels.iter().all(|key| key.frame == 0));
+    assert_eq!(
+        cannon_barrels
+            .iter()
+            .map(|key| key.barrel_pitch)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([-1, 0])
+    );
+    let gattling_frames = frames[&("YAGGUN".into(), VxlLayer::Barrel, 0)];
+    assert!(
+        gattling_frames > 1,
+        "retail Gattling Cannon has animated C0"
+    );
+    assert_eq!(
+        keys.iter()
+            .filter(|key| key.type_id == "YAGGUN")
+            .map(|key| key.frame)
+            .collect::<BTreeSet<_>>(),
+        (0..gattling_frames).collect()
+    );
+
+    let model = UnitModel::load(&assets, "GTGCAN", Some(&battle.rules)).unwrap();
+    let vpl = VplFile::from_bytes(assets.get_ref("VOXELS.VPL").unwrap()).unwrap();
+    let mut pose = None;
+    let key = UnitSpriteKey {
+        type_id: "GTGCAN".into(),
+        turret_index: 0,
+        facing: 64,
+        layer: VxlLayer::Barrel,
+        frame: 0,
+        slope_type: 0,
+        barrel_pitch: 0,
+    };
+    let (level, _) = model.render(&key, Some(&vpl), None, &mut pose).unwrap();
+    let (raised, _) = model
+        .render(
+            &UnitSpriteKey {
+                barrel_pitch: -1,
+                ..key
+            },
+            Some(&vpl),
+            None,
+            &mut pose,
+        )
+        .unwrap();
+    assert_ne!(
+        (level.width, level.height, level.palette_indices),
+        (raised.width, raised.height, raised.palette_indices),
+        "the barrel really pitches"
+    );
+}
+
 /// The IFV's four retail gun assemblies must all be resident before its
 /// passenger changes. Its hull and shadow are shared across those assemblies.
 #[test]
