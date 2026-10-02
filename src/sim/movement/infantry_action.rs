@@ -781,7 +781,7 @@ impl Simulation {
     /// The sequencer's default arm (`0x00520D1B..0x00520E4A`), for an action
     /// with no arm of its own, as a forced Do_Action:
     /// - moving (locomotor `Is_Moving`, vtable `+0x10` at `0x00520D38`: the
-    ///   Walk or Jumpjet moving byte) faster than a tenth: Crawl when prone,
+    ///   active locomotor's query) faster than a tenth: Crawl when prone,
     ///   else Walk;
     /// - a deploy action: Deployed;
     /// - prone: Prone;
@@ -794,13 +794,12 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
         };
-        let is_moving = actor.locomotor.as_ref().is_some_and(|locomotor| {
-            locomotor
-                .jumpjet_runtime()
-                .map(|runtime| runtime.moving)
-                .or_else(|| locomotor.walk_is_moving())
-                .unwrap_or(false)
-        });
+        //520D38 dispatches ILocomotion+10 for every family, including
+        //ordinary Teleport requests. Keep Rocket's existing false fallback
+        //until its destination producer/lifecycle supplies the common query.
+        //Evidence: jumpjet_infantry_actions --default-motion (54 original
+        //Teleport/Infantry sequencer controls) and existing Walk/Jumpjet rows.
+        let is_moving = super::motion_query::is_moving(actor) == Some(true);
         let moving = is_moving && actor.foot_speed.above_tenth();
         let requested = if moving {
             if is_prone(actor) { DO_CRAWL } else { DO_WALK }
