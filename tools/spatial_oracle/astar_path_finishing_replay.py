@@ -11,7 +11,7 @@ import hashlib
 import io
 import json
 import math
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 
 from tools.native_oracle import _canonical, first_difference
@@ -280,8 +280,12 @@ def check_hash_composition(receipt_path: Path) -> dict:
         if not command or any(not require_string(argument, f"{mode}.command argument") for argument in command):
             raise ValueError(f"{mode}: execution command is empty")
         cwd = require_string(execution["cwd"], f"{mode}.cwd")
-        if not Path(command[0]).is_absolute() or not Path(cwd).is_absolute():
-            raise ValueError(f"{mode}: execution command/cwd must be absolute")
+        # These are recorded producer paths, not files opened on the checking
+        # host. A saved macOS/Linux receipt must also validate on Windows.
+        for recorded_path in (command[0], cwd):
+            if not (PurePosixPath(recorded_path).is_absolute()
+                    or PureWindowsPath(recorded_path).is_absolute()):
+                raise ValueError(f"{mode}: execution command/cwd must be absolute")
         seconds = execution["seconds"]
         if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
             raise ValueError(f"{mode}: execution seconds must be finite and nonnegative")

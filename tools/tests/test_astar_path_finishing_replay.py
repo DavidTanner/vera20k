@@ -192,6 +192,30 @@ class HashCompositionReplayTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.check()
 
+    def test_recorded_absolute_paths_are_independent_of_the_checking_host(self):
+        for command, cwd in (('/preserved/testbinary', '/original/checkout'),
+                             (r'C:\preserved\testbinary.exe', r'C:\original\checkout'),
+                             (r'\\server\share\testbinary.exe', r'\\server\share\checkout')):
+            with self.subTest(command=command, cwd=cwd):
+                for mode in ('control', 'current'):
+                    self.rewrite_json(f'{mode}.execution.json',
+                                      lambda doc: doc.update(command=[command, '--nocapture',
+                                                                       'custom_replay'], cwd=cwd))
+                self.check()
+
+    def test_recorded_relative_paths_reject_in_either_platform_syntax(self):
+        original = (self.root / 'control.execution.json').read_bytes()
+        for field in ('command', 'cwd'):
+            for path in ('relative/path', r'C:relative\path', r'\relative\path'):
+                with self.subTest(field=field, path=path):
+                    self.retain('control.execution.json', original)
+                    self.rewrite_json('control.execution.json',
+                                      lambda doc: doc.update(**{field: [path, '--nocapture',
+                                                                       'custom_replay']
+                                                               if field == 'command' else path}))
+                    with self.assertRaisesRegex(ValueError, 'command/cwd must be absolute'):
+                        self.check()
+
     def test_pins_and_comparisons_cannot_replace_control_reproduction(self):
         self.receipt['incoming_main']['pins']['custom'] = 71
         self.save_receipt()

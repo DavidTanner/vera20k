@@ -61,11 +61,12 @@ assigned-identity Bouncer entries compare full RNG/body bits against the existin
 Construction partially corrects#819 and PLACE/primary partially corrects#841;
 remaining issue items stay open.
 
-## Current validation and remaining publication work
+## Current validation and publication
 
 The corrected candidate passes **9420 strict-retail lib tests, zero failures,
 226 ignored** (68.59s); strict lib clippy succeeds with732 repository warnings.
-Python full457/four skips passes. Original/joined construction and Bouncer native
+Python full459/four skips passes after the path portability fix, as do14 focused
+normal and14 optimized replay checks. Original/joined construction and Bouncer native
 checks reproduce. Field ratchet2575 vs2589 on main (14 fewer writable sim fields).
 Edited leaf formatting and diff checks remain required before commit.
 
@@ -87,9 +88,17 @@ now describes v2. Final state hash4488350905966924341 reflects the native facing
 correction; transition/command observations and GPU bytes are unchanged from v1.
 All113 edited Rust files pass nonrecursive formatting checks; diff check and the
 field ratchet pass. Only import ordering/whitespace changed after full Rust checks.
-Then commit/push, open one PR to main, attach it, enable auto-merge and confirm
-merge before publishing the next chain. After merge, dry-run exact owned label
-retirement, preserving final release/native/hash evidence.
+Commit11ff5a87244b5ad995cf877bda6a10b4706b9c85 is published in
+[PR#992](https://github.com/YuriPlanet/vera20k/pull/992), attached with auto-merge
+enabled. All Rust checks and macOS/Linux Python checks passed; Windows found
+that the saved replay receipt's POSIX producer paths were interpreted with the
+checking host's path syntax. The checker now accepts recorded POSIX and Windows
+absolute paths independently of the checking host. Focused regression coverage
+includes Windows drive/UNC paths and rejects relative paths in either syntax;
+the absolute-path test failed before this fix. This tools-only follow-up needs
+no repeated Rust tests or critic pass. Confirm merge before publishing the next
+chain. After merge, dry-run exact owned label retirement, preserving final
+release/native/hash evidence.
 
 Final v2 observations: yard1402 deploy14/open43/operational44; plant1410
 allocated71/placed651/open701/operational702 (active slot1460→1461);
