@@ -41,13 +41,6 @@ pub(crate) fn can_accept_destination(entity: &GameEntity) -> bool {
     true
 }
 
-/// Clear owner navigation and queued endpoint state through the native-shaped
-/// null-destination path.
-pub fn clear_navigation_for_entity(entity: &mut GameEntity) {
-    super::navcom::set_destination_internal_null(entity);
-    entity.navigation.nav_queue.clear();
-}
-
 /// A committed head comes from the active locomotor after world callbacks;
 /// the physical path and raw occupation metadata cannot reconstruct it.
 pub(super) fn committed_movement_head(entity: &GameEntity) -> Option<(u16, u16)> {
@@ -57,33 +50,6 @@ pub(super) fn committed_movement_head(entity: &GameEntity) -> Option<(u16, u16)>
         super::track_head::committed_track_head(entity)?
     };
     Some(((head.x / 256) as u16, (head.y / 256) as u16))
-}
-
-/// The represented null destination of a receiver whose class setter VERA
-/// does not port: an Aircraft (`0x0041AA80`) and a Jumpjet or Teleport man
-/// (Infantry `0x0051AA40`), each reaching Foot's null setter (`0x004D94B0`).
-/// The Stop command and the death Stun use it for them. Units and Walk
-/// infantry take their class setters (`Simulation::assign_null_destination`).
-///
-/// RESIDUAL: Foot's null arm is represented, not ported, for these receivers.
-/// - Trigger: Stop or a death Stun on an aircraft, a Jumpjet man or a
-///   Teleport man.
-/// - Effect: this clears the NavCom, NavQueue and abandoned route suffix,
-///   keeping only an already committed segment. Native skips the locomotor
-///   Stop for an attacking Aircraft (`0x004D9672..0x004D969C`) and otherwise
-///   runs it (`0x004D96B9`); Fly's Stop_Moving is not ported, and VERA's
-///   aircraft orders read the movement adapter this drops.
-/// - Frequency: every Stop order on aircraft or Rocketeers.
-/// - Risk: what an aircraft does after Stop.
-pub fn stop_navigation_at_committed_head(e: &mut GameEntity) {
-    let committed_head = committed_movement_head(e);
-    clear_navigation_for_entity(e);
-    // Chain selection consumes the remaining native direction queue, which is
-    // independent of the physical A* cursor. Stop must retire that abandoned
-    // suffix. Keep the committed
-    // retained selector/head and replay reference until the segment finishes.
-    super::path_markers::exhaust_path_replay(&mut e.navigation.path_replay);
-    retain_path_to_head(e, committed_head);
 }
 
 /// Keep only physical movement already accepted by the locomotor. The caller

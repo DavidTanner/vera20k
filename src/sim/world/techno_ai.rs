@@ -1147,7 +1147,7 @@ fn open_transport_reach_step(
         crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
     }
     if !approaches {
-        sim.assign_null_destination(id, Some(rules));
+        sim.assign_null_destination(id, Some(rules), None);
     }
 }
 

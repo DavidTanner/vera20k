@@ -135,9 +135,10 @@ impl Simulation {
     /// `Can_Enter_Cell` (+1AC) with the facing octant and the Techno height
     /// helper 0x5F5F00 (this+8C OnBridge plus the current cell's +11B level
     /// through vtable +0x1BC), the +6DC answer byte, then Foot 0x4D55C0 ->
-    /// locomotor +0x48: Walk Stop 0x75ADA0, or the Jumpjet's `Stop_Moving`
-    /// 0x0054B4D0. Another locomotor's Stop is not ported: no stock
-    /// infantryman has one.
+    /// locomotor +0x48 ([`Self::locomotor_stop_moving`]): Walk's 0x75ADA0
+    /// clears the destination and, with no paid head, the IsMoving byte; a
+    /// Jumpjet's re-targets the nearest passable cell (a Scenario draw for
+    /// Infantry placement); a Teleport's drops an armed warp.
     pub(crate) fn infantry_stop_driver(
         &mut self,
         id: u64,
@@ -214,19 +215,11 @@ impl Simulation {
             }
             Err(cause) => log::debug!("infantry {id} Stop_Driver Can_Enter_Cell: {cause}"),
         }
-        //0x4D55C0 -> ILocomotion +0x48. Walk 0x75ADA0 clears the destination
-        //and, with no paid head, the IsMoving byte; the Jumpjet's re-targets
-        //the nearest passable cell (a Scenario draw for Infantry placement).
-        let locomotor = actor
-            .locomotor
-            .as_ref()
-            .ok_or("Stop_Driver requires a locomotor")?;
-        if locomotor.jumpjet_runtime().is_none() {
-            self.walk_stop_moving(id, Some(rules))?;
-        } else {
-            self.jumpjet_stop_moving(id, Some(rules), registry);
+        if actor.locomotor.is_none() {
+            return Err("Stop_Driver requires a locomotor".into());
         }
-        Ok(())
+        //0x4D55C0 -> ILocomotion +0x48.
+        self.locomotor_stop_moving(id, Some(rules), registry)
     }
 
     fn finish_failed_walk_process(
@@ -245,7 +238,7 @@ impl Simulation {
             .and_then(|l| l.walk_destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         if !self.foot_path_zone_precheck(id, destination, rules)? {
-            self.set_walk_class_null_destination(id, rules);
+            self.assign_null_destination(id, Some(rules), None);
         } else {
             //75AFEE..75B083: +4F4 precedes a fresh read of physical+48 and
             //the live destination. CloseEnough is independent from code6's
@@ -268,7 +261,7 @@ impl Simulation {
                 current.z.wrapping_sub(destination.z),
             ) < rules.general.close_enough;
             if close && actor.dock_entered_with.is_none() {
-                self.set_walk_class_null_destination(id, rules);
+                self.assign_null_destination(id, Some(rules), None);
             } else if actor.navigation.path_runtime.retries_left != 0 {
                 //The test is before the decrement: 1->0 does not run the
                 //exhaustion tail until a later failed Process invocation.
@@ -333,7 +326,7 @@ impl Simulation {
             .and_then(|loco| loco.walk_destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         if actor.in_playfield && !self.foot_can_reach_navigation_cell(id, destination, rules)? {
-            self.set_walk_class_null_destination(id, rules);
+            self.assign_null_destination(id, Some(rules), None);
         }
         //75B18A asks a nonnull target's+4C even when3D5 will then be false.
         let target = self

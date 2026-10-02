@@ -1132,7 +1132,7 @@ impl Simulation {
                 && (entity.navigation.nav_com.is_some() || entity.movement_target.is_some());
         }
         if clears_destination {
-            self.assign_null_destination(id, Some(rules));
+            self.assign_null_destination(id, Some(rules), None);
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 entity.movement_target = None;
             }

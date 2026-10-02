@@ -336,11 +336,6 @@ pub(super) fn consume_walk_path_replay(queue: &mut FootPathQueue) {
     }
 }
 
-/// Explicit owner abandonment, distinct from FootStop_Moving4DF0D0.
-pub(super) fn exhaust_path_replay(queue: &mut FootPathQueue) {
-    queue.cursor = queue.directions.len().min(u16::MAX as usize) as u16;
-}
-
 fn remaining_path_from_entity(
     entity: &crate::sim::game_entity::GameEntity,
 ) -> ((i16, i16), Vec<u8>) {

@@ -30,7 +30,6 @@ use crate::sim::docking::building_dock;
 use crate::sim::mission::{DockTeardown, MissionType};
 use crate::sim::movement;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::movement::teleport_movement;
 use crate::sim::overlay_grid::{
     OverlayRecalcOutcome, RecomputeResult, runtime_wall_cleanup_visit_at,
 };
@@ -695,39 +694,16 @@ impl Simulation {
                 // cleared NavCom/TarCom on their next dispatch and own the idle
                 // transition, including Temporal LetGo at that later boundary.
                 self.run_dock_teardown(*entity_id, DockTeardown::All);
-                // `0x004C75ED`: the class setter's null destination. A Unit
-                // takes Unit `0x00741970`, which returns before any write
-                // without a NavCom unless its `+0x1F8` override is up
-                // (`0x00741A80`). A Walk infantryman takes Infantry
-                // `0x0051AA40`: Walk Stop `0x0075ADA0` consumes a pending
-                // Deploy through owner +0x54C, and a paid head and the human
-                // deploy refusal survive.
-                let class_setter = self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                    e.category == crate::map::entities::EntityCategory::Unit
-                        || (e.category == crate::map::entities::EntityCategory::Infantry
-                            && e.locomotor.as_ref().is_some_and(|l| {
-                                l.kind == crate::rules::locomotor_type::LocomotorKind::Walk
-                            }))
-                });
-                if class_setter {
-                    self.assign_null_destination(*entity_id, rules);
-                } else {
-                    // An Aircraft or a Jumpjet or Teleport man: the represented
-                    // body of [`movement::stop_navigation_at_committed_head`],
-                    // a Jumpjet's Stop_Moving through Foot's null arm, then
-                    // the accepted setter's timer tail (`0x004D96C2`), which
-                    // preserves the retry counter.
-                    if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                        movement::stop_navigation_at_committed_head(e);
-                    }
-                    if !self.jumpjet_null_destination(*entity_id, rules, overlay_registry) {
-                        return false;
-                    }
-                    if let Some(entity) = self.substrate.entities.get_mut(*entity_id) {
-                        movement::DestinationTiming::from_rules(self.session.binary_frame, rules)
-                            .accept(entity);
-                    }
-                }
+                // `0x004C75ED`: the class setter's null destination, which
+                // reaches the active locomotor's Stop_Moving (a Teleport's
+                // drops only an armed warp, a moving Jumpjet's re-targets the
+                // cell under it). A Unit's returns before any write without a
+                // NavCom unless its `+0x1F8` override is up (`0x00741A80`); a
+                // human infantryman's refuses during a deploy action, and Walk
+                // Stop `0x0075ADA0` consumes a pending Deploy through owner
+                // +0x54C and keeps a paid head. An attacking Aircraft with a
+                // TarCom skips the Stop (`0x004D9672`).
+                self.assign_null_destination(*entity_id, rules, overlay_registry);
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     e.order_intent = None;
                     e.dock_state = None;
@@ -736,9 +712,6 @@ impl Simulation {
                 // Event Stop4C75F8 invokes virtual+3C8 AFTER its null
                 // destination4C75ED, including the Infantry class effects.
                 let _ = self.assign_target_represented(*entity_id, None, rules);
-                // Event Stop's null destination reaches the active locomotor's
-                // Stop_Moving; a Teleport one drops only an armed warp.
-                //
                 // **VERA-internal: retail Stop leaves the installed locomotor
                 // alone.** This existing unwind policy uses the same END gate
                 // as FootAI4DAEC3 / SetDestination742587 (an active Drive's
@@ -757,11 +730,8 @@ impl Simulation {
                         .is_some_and(|loco| loco.is_overridden())
                         && crate::sim::movement::locomotor_owner::piggyback_end_admitted(e)
                 });
-                if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    teleport_movement::teleport_stop_moving(e);
-                    if may_end {
-                        crate::sim::movement::locomotor_owner::restore_admitted_primary(e);
-                    }
+                if may_end && let Some(e) = self.substrate.entities.get_mut(*entity_id) {
+                    crate::sim::movement::locomotor_owner::restore_admitted_primary(e);
                 }
                 // Ore-miner arm, last — retail runs it after the radio break,
                 // the navigation clear, the target clear and the path-cursor
@@ -831,7 +801,9 @@ impl Simulation {
                     rules,
                 );
                 if issued {
-                    self.finish_ordered_attack_destination(*attacker_id, rules);
+                    // `0x004C747C`: the order's NULL destination through the
+                    // class setter, after its target (`0x004C7467`).
+                    self.assign_null_destination(*attacker_id, rules, overlay_registry);
                     // `0x004C7482..0x004C749D`: an open-topped transport's
                     // riders take the ordered target.
                     if let Some(rules) = rules {
@@ -878,7 +850,7 @@ impl Simulation {
                     rules,
                 );
                 if issued {
-                    self.finish_ordered_attack_destination(*attacker_id, rules);
+                    self.assign_null_destination(*attacker_id, rules, overlay_registry);
                     // `0x004C7482..0x004C749D`: an open-topped transport's
                     // riders take the ordered target.
                     if let Some(rules) = rules {
@@ -922,7 +894,7 @@ impl Simulation {
                     rules,
                 );
                 if issued {
-                    self.finish_ordered_attack_destination(*attacker_id, rules);
+                    self.assign_null_destination(*attacker_id, rules, overlay_registry);
                     // `0x004C7482..0x004C749D`, a cell target included.
                     if let Some(rules) = rules {
                         self.open_topped_passengers_take_target(
@@ -1016,7 +988,13 @@ impl Simulation {
             Command::Guard {
                 entity_id,
                 target_id,
-            } => self.apply_guard_command(command_owner, *entity_id, *target_id, rules),
+            } => self.apply_guard_command(
+                command_owner,
+                *entity_id,
+                *target_id,
+                rules,
+                overlay_registry,
+            ),
             Command::DeployMcv { entity_id } => {
                 let Some(rules) = rules else { return false };
                 if !self.entity_owned_by_id(command_owner, *entity_id) {
@@ -2494,6 +2472,7 @@ impl Simulation {
         entity_id: u64,
         target_id: Option<u64>,
         rules: Option<&RuleSet>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         if !self.entity_owned_by_id(command_owner, entity_id) {
             return false;
@@ -2546,7 +2525,7 @@ impl Simulation {
                     .is_ok();
                 // Native 0x004C7420 makes this object the destination (see
                 // the residual above); the represented order stops instead.
-                self.assign_null_destination(entity_id, rules);
+                self.assign_null_destination(entity_id, rules, overlay_registry);
                 if issued {
                     if let Some(e) = self.substrate.entities.get_mut(entity_id) {
                         e.order_intent = Some(OrderIntent::Guard {
@@ -2561,7 +2540,7 @@ impl Simulation {
                 let _ = self.assign_target_represented(entity_id, None, rules);
                 // 0x004C7420: the event's NULL destination through the class
                 // setter (Infantry 0x0051AA40 stops Walk, keeping a paid head).
-                self.assign_null_destination(entity_id, rules);
+                self.assign_null_destination(entity_id, rules, overlay_registry);
                 if let Some(e) = self.substrate.entities.get_mut(entity_id) {
                     e.order_intent = Some(OrderIntent::Guard {
                         anchor_rx,

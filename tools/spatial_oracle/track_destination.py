@@ -9,7 +9,9 @@ from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_EAX
 from tools.native_oracle import finish_vectors, provenance
 from tools.spatial_oracle.map_queries import dwords, packed
-from tools.spatial_oracle.unit_source_scatter import make_source_fixture, ACTOR, TYPE, LOCO, CELLS
+from tools.spatial_oracle.unit_source_scatter import (
+    make_source_fixture, ACTOR, TYPE, LOCO, CELLS, SCENARIO,
+)
 from tools.spatial_oracle.unit_entry import EXTRA, HOUSE, CELL
 from tools.spatial_oracle.unit_scatter_state import SP
 
@@ -129,11 +131,138 @@ def generate():
     return [query(case) for case in cases]
 
 
+def null_boundary_query(case):
+    """Run the real NULL caller with a declared Drive/Ship locomotor boundary.
+
+    An Aircraft vtable is deliberately paired with a constructed Drive/Ship:
+    this isolates Foot's class/mission gate without claiming Fly Stop parity.
+    No class, locomotor or gameplay function is substituted.
+    """
+    u, call, read32 = make_destination_fixture(dict(case, same_nav=case.get('nav', True)))
+    aircraft = case['entry'] == 'aircraft'
+    actor_vtable = 0x7E22A4 if aircraft else 0x7F5C70
+    u.mem_write(ACTOR, dwords(actor_vtable))
+    assert read32(0x7E22A4 + 0x480) == 0x41AA80
+    assert read32(0x7EB058 + 0x480) == 0x51AA40
+    u.mem_write(ACTOR + 0xAC, dwords(case['mission']))
+    u.mem_write(ACTOR + 0xB4, dwords(case['queued']))
+    u.mem_write(ACTOR + 0x2B4, dwords(CELL if case['target'] else 0))
+    u.mem_write(ACTOR + 0x6AD, bytes([case.get('swap', False)]))
+    u.mem_write(ACTOR + 0x82, bytes([case.get('open_transport', False)]))
+    u.mem_write(ACTOR + 0x2E4, dwords(CELL if case.get('bunker', False) else 0))
+    u.mem_write(EXTRA + 0x10000 + 0x1768, dwords(case['blockage']))
+    u.mem_write(ACTOR + 0x640, dwords(50, 777, 5))
+    u.mem_write(ACTOR + 0x668, dwords(40, 888, 6))
+    # NULL does not query the owner's type-dependent coordinates or radio
+    # interfaces; the original Aircraft prefix jumps straight to Foot.
+    stop = read32(read32(LOCO + 4) + 0x48)
+    assert stop == (0x4AFE00 if case['family'] == 'drive' else 0x69F510)
+    observed = {
+        0x41AA80: 'aircraft', 0x4D94B0: 'foot',
+        0x4D94C7: 'aux_clear', 0x4D9510: 'nav_clear',
+        0x4D9672: 'class_gate', 0x4D969C: 'target_gate',
+        0x4D96B9: 'stop_call', stop: 'stop_entry',
+        0x4D96BC: 'nav_clear_again', 0x4D96C2: 'timer_tail',
+    }
+    events, boundaries, random_calls = [], [], []
+
+    def observe(_u, address, _size, _data):
+        if address in observed:
+            events.append(observed[address])
+        if address in (stop, 0x4D96BC, 0x4D96C2):
+            boundaries.append(dict(
+                at=observed[address], nav=bool(read32(ACTOR + 0x5A4)),
+                aux=bool(read32(ACTOR + 0x5A0)),
+                destination=list(struct.unpack('<iii', u.mem_read(LOCO + 0x34, 12))),
+            ))
+        if address in (0x65C780, 0x65C7E0):
+            random_calls.append(hex(address))
+
+    u.hook_add(UC_HOOK_CODE, observe)
+    call(0x41AA80 if aircraft else 0x4D94B0, ACTOR, [0, case['flag']])
+    assert u.reg_read(UC_X86_REG_ESP) == SP + 12
+    recorded_random_calls = list(random_calls)
+    call(0x65C780, SCENARIO + 0x218, [])
+    continuation = u.reg_read(UC_X86_REG_EAX)
+    signed = lambda address, count: list(struct.unpack('<' + 'i' * count,
+                                                       u.mem_read(address, count * 4)))
+    return dict(
+        input=case, events=events, boundaries=boundaries,
+        destination=signed(LOCO + 0x34, 3), head=signed(LOCO + 0x40, 3),
+        nav=bool(read32(ACTOR + 0x5A4)), aux=bool(read32(ACTOR + 0x5A0)),
+        movement_timer=[read32(ACTOR + 0x640), signed(ACTOR + 0x648, 1)[0]],
+        blocked_timer=[read32(ACTOR + 0x668), signed(ACTOR + 0x670, 1)[0]],
+        blocked=bool(u.mem_read(ACTOR + 0x6B7, 1)[0]),
+        retries=read32(ACTOR + 0x64C),
+        path=signed(ACTOR + 0x5E0, 4),
+        skip_move=bool(u.mem_read(ACTOR + 0x6AC, 1)[0]),
+        random_calls=recorded_random_calls, next_random=continuation,
+    )
+
+
+def generate_null_boundary():
+    cases = []
+    for family in ('drive', 'ship'):
+        for entry in ('foot', 'aircraft'):
+            base = dict(family=family, entry=entry, mission=0, queued=-1,
+                        target=False, frame=123, blockage=22, flag=1)
+            for mission, queued in ((0, -1), (1, -1), (0, 1), (1, 1), (2, -1)):
+                for target in (False, True):
+                    cases.append(dict(base, name=f'gate_{mission}_{queued}_{target}',
+                                      mission=mission, queued=queued, target=target))
+            for gate in ('swap', 'open_transport', 'bunker'):
+                cases.append(dict(base, name=f'null_bypasses_{gate}', **{gate: True}))
+            cases += [dict(base, name='flag_zero', flag=0),
+                      dict(base, name='already_null', nav=False),
+                      dict(base, name='skip_move_latch', skip_move=True),
+                      dict(base, name='unpowered', power_off=True)]
+            for frame, blockage in ((0, 0), (0xFFFFFFFF, -1),
+                                    (0x80000000, -0x80000000), (123, 65536)):
+                cases.append(dict(base, name=f'timers_{frame}_{blockage}',
+                                  frame=frame, blockage=blockage))
+    return [null_boundary_query(case) for case in cases]
+
+
+def null_boundary_metadata():
+    return provenance(
+        scope='84 original NULL calls: Foot4D94B0 over Unit vtables and Aircraft41AA80 over Aircraft vtables, each with constructed original Drive/Ship locomotors. Complete current/queued Attack and retained-target gate combinations, NULL bypass of nonnull admission gates, setter flags, already-null NavCom, one-shot skip latch, power, frame/duration edges; ordered pre-Stop and timer boundaries, retained destinations/heads and Scenario RNG continuation. This is Foot/class NULL control and timer evidence, not native Fly Stop or a legal stock Aircraft locomotor combination.',
+        entry_points={'foot': 0x4D94B0, 'aircraft': 0x41AA80,
+                      'drive_stop': 0x4AFE00, 'ship_stop': 0x69F510,
+                      'timer_tail': 0x4D96C2},
+        assumptions=[
+            'Inherited track_destination map/House/constructor fixture, original class vtables and original constructed Drive/Ship COM entries. Unit class Set_Destination is intentionally not called: Foot NULL is tested directly.',
+            'Aircraft vtable +480=41AA80 and Infantry vtable +480=51AA40 are asserted from retail bytes. Aircraft NULL prelude executes unchanged; its Drive/Ship locomotor is a supplied boundary probe, not a stock Aircraft definition and not Fly Stop evidence.',
+            'Live or empty NavCom, auxiliary sentinel, destination700/800/900, head2816/2688/123, retries7, old timer middle words777/888, path2/3/4/5 and skip latch are supplied. Timer comparisons observe start/duration only; native middle words are not claimed as zero or modeled timer state.',
+            'No linked lift partner, retained fire particles, radio contacts, docking selection, death or locomotor Process. The swap probe supplies6AD but no2B0 link. These are prerequisite/lifecycle limits.',
+            'Seeded original ScenarioRandom, unchanged gameplay bytes and no substituted gameplay callable. No random entry is reached by these NULL calls; the subsequent original Random continuation is recorded separately.',
+        ],
+        substitutions=['Only inherited OS Interlocked import operations. No gameplay replacement.'],
+    )
+
+
 if __name__ == '__main__':
-    finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
-        scope='132 complete original calls:72 Drive/Ship MoveTo,24 Foot destination,30 ordinary Unit Cell destination and 6 Unit Cell/NULL destinations with a 2-entry NavQueue (setter flag 1, and flag 0 for Cell), each followed by original IsMoving. Warp-in/out, power, zero/raw/bridge coordinates, same NavCom/force, one-shot skip-MoveTo and NavQueue survival. No full Scatter/Process parity.',
-        entry_points={'unit':0x741970,'foot':0x4D94B0,'drive_move':0x4AFD40,'ship_move':0x69F450,
-                      'drive_bridge_scale':0x4AF4A0,'ship_bridge_scale':0x69EBB0},
-        assumptions=['Original constructors for Drive/Ship and embedded vectors; supplied Unit constructor6D8=-1, empty Radio contact slot, House, map and Rules BlockagePathDelay22. No EMP, Foot6A0 timer, lift/particle links, deploy, Jumpjet/Teleporter type arms, docking buildings or queue allocation.',
-                     'Original bridge scales execute from supplied established level scale104. Native Unit/Foot/locomotor vtables are unchanged; actor and head are supplied prestates. Power remains unchanged; MoveTo refusal does not refuse the enclosing accepted Foot setter.'],
-        substitutions=['Only inherited OS Interlocked import operations. No gameplay replacement.']))
+    import sys
+    if '--null-boundary' in sys.argv:
+        from tools import native_oracle
+        from tools.spatial_oracle import (
+            map_queries, unit_entry, unit_source_scatter, unit_scatter_state,
+        )
+        finish_vectors(
+            generate_null_boundary, Path(__file__).with_name('track_destination_null_boundary.json'),
+            provenance=null_boundary_metadata,
+            argv=[arg for arg in sys.argv[1:] if arg != '--null-boundary'],
+            source_paths={'track_destination': Path(__file__),
+                          'native_oracle': Path(native_oracle.__file__),
+                          'map_queries': Path(map_queries.__file__),
+                          'unit_entry': Path(unit_entry.__file__),
+                          'unit_source_scatter': Path(unit_source_scatter.__file__),
+                          'unit_scatter_state': Path(unit_scatter_state.__file__)},
+        )
+    else:
+        finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
+            scope='132 complete original calls:72 Drive/Ship MoveTo,24 Foot destination,30 ordinary Unit Cell destination and 6 Unit Cell/NULL destinations with a 2-entry NavQueue (setter flag 1, and flag 0 for Cell), each followed by original IsMoving. Warp-in/out, power, zero/raw/bridge coordinates, same NavCom/force, one-shot skip-MoveTo and NavQueue survival. No full Scatter/Process parity.',
+            entry_points={'unit':0x741970,'foot':0x4D94B0,'drive_move':0x4AFD40,'ship_move':0x69F450,
+                          'drive_bridge_scale':0x4AF4A0,'ship_bridge_scale':0x69EBB0},
+            assumptions=['Original constructors for Drive/Ship and embedded vectors; supplied Unit constructor6D8=-1, empty Radio contact slot, House, map and Rules BlockagePathDelay22. No EMP, Foot6A0 timer, lift/particle links, deploy, Jumpjet/Teleporter type arms, docking buildings or queue allocation.',
+                         'Original bridge scales execute from supplied established level scale104. Native Unit/Foot/locomotor vtables are unchanged; actor and head are supplied prestates. Power remains unchanged; MoveTo refusal does not refuse the enclosing accepted Foot setter.'],
+            substitutions=['Only inherited OS Interlocked import operations. No gameplay replacement.']))

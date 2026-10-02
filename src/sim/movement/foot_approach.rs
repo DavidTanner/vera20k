@@ -134,7 +134,7 @@ impl Simulation {
                         || !human && mission == Some(MissionType::Hunt)))
         {
             represented_assign_target(self.substrate.entities.get_mut(id).unwrap(), None);
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
             return Ok(None);
         }
 
@@ -330,7 +330,7 @@ impl Simulation {
         if let Some(cell) = fallback {
             self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, true);
         } else {
-            self.set_unit_null_destination(id, Some(rules));
+            self.set_unit_null_destination(id, Some(rules), None);
         }
         Ok(None)
     }

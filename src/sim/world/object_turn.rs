@@ -247,6 +247,15 @@ impl Simulation {
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
         let mut process = LocomotorProcess::admitted();
         self.complete_pending_order(stable_id, rules, overlay_registry);
+        let jumpjet = self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| {
+                entity.locomotor.as_ref().is_some_and(|locomotor| {
+                    locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
+                })
+            });
         let air = self.tick_air_movement_with_cell_lists_one(stable_id, rules, overlay_registry);
         if air.touched_down {
             process.bridge_state_changed |= self.per_cell_process(
@@ -256,6 +265,11 @@ impl Simulation {
                 overlay_registry,
             )?;
             process.per_cell_ran = true;
+            if jumpjet {
+                //54C8CB..54C8EA already cleared the locomotor destination and
+                //moving byte;54C8FF calls the class NULL setter after PerCell.
+                self.assign_null_destination(stable_id, rules, overlay_registry);
+            }
         }
         if !air.impact {
             return Ok(process);
@@ -275,9 +289,6 @@ impl Simulation {
         // The impact UnInits the object; `FootClass::AI` returns on the
         // cleared Object+90 (`0x004DA87E`) and the class AI after it
         // (`AircraftClass::AI 0x00414DAA`).
-        let jumpjet = entity.locomotor.as_ref().is_some_and(|locomotor| {
-            locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
-        });
         match rules {
             Some(rules) if jumpjet => {
                 self.jumpjet_crash_impact(stable_id, rules, overlay_registry);
@@ -352,23 +363,12 @@ impl Simulation {
             sim.foot_mark_put(stable_id, rules, overlay_registry);
         }
         // Teleport Process's warp step (`0x007192F0`), after the relocation.
-        // Its `vt+0x480(NULL, 1)` is the owner's class setter: the Unit one,
-        // or the represented NavCom clear for an infantryman.
-        let unit_teleport = sim
-            .substrate
-            .entities
-            .get(stable_id)
-            .is_some_and(|entity| entity.category == EntityCategory::Unit);
-        let null_destination = |sim: &mut Simulation| {
-            if unit_teleport {
-                sim.set_unit_null_destination(stable_id, rules);
-            } else {
-                sim.assign_null_destination(stable_id, rules);
-            }
-        };
+        // Its `vt+0x480(NULL, 1)` is the owner's class setter
+        // (`Simulation::assign_null_destination`), which reaches the
+        // Teleport's own Stop_Moving through Foot's null arm.
         if teleport_reached {
             // 0x007197B4: vt+0x480(NULL, 1) before Stop_Moving.
-            null_destination(sim);
+            sim.assign_null_destination(stable_id, rules, overlay_registry);
         }
         if teleport_relocating {
             // 0x00719710: ChronoIn at the new Location.
@@ -391,7 +391,7 @@ impl Simulation {
             // 0x0071973C: vt+0x480(NULL, 1). A Teleporter still in radio
             // contact gets a Drive here, which the FootClass::AI tail ends
             // again.
-            null_destination(sim);
+            sim.assign_null_destination(stable_id, rules, overlay_registry);
             // 0x00719742..0x00719791: the arrival WarpOut at the Location.
             if let Some(rules) = rules {
                 teleport_warp_out(sim, stable_id, rules);

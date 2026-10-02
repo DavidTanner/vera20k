@@ -109,6 +109,7 @@ These generators now default to **read-only checks**, also spelled `--check`:
 | `tools.spatial_oracle.techno_target_burst` | 108 original Unit target/burst/passive-state cases through the setter and Event, EnterIdle and Sticky call boundaries; original vtables, no substituted calls | `combat/burst.rs` compares retained state; production command, movement arrival, mission arrival and pursuit regressions. Excludes preceding native admission, Infantry override and full setter effects |
 | `tools.spatial_oracle.aircraft_fire_location` | 51 full original FindFireLocation calls: target identity, native rings/ranking, map/visibility, live reservations, Spawned/Carryall/AirportBound admission and RNG continuation; supplied runtime state, no substituted calls | `util/native_trig.rs` compares candidate geometry and ranked distances against existing deterministic math; production search, destination assignment and state1 integration remain required |
 | `tools.spatial_oracle.fly_destination` | 26 original non-null Fly MoveTo calls: retained XYZ, signed-cell landing refusal, power gate, signed Ammo/Target height substitution, FlightLevel fallback, mode/readiness suffix; no substituted calls | `world/fly_height_tests.rs` compares retained destination and refusal through the air order boundary, plus production cell orders and save/restore; moving/mode suffix, null/Stop and full Aircraft/Foot navigation remain unported |
+| `tools.spatial_oracle.track_destination --null-boundary` | 84 original Foot/Aircraft NULL setter calls over constructed Drive/Ship locomotors: current/queued Attack and target gate, clear/Stop/timer order, NULL admission bypass, flags, power, already-null NavCom, skip latch and signed timer edges; RNG continuation | `track_destination_null_boundary.{json,meta.json}` bounds evidence to Foot/class NULL control and timers. The Aircraft vtable with Drive/Ship is an explicit boundary probe; native Fly Stop and stock Aircraft flight are excluded. |
 | `tools.spatial_oracle.fly_takeoff` | 80 original callbacks with live facing histories, strict height thresholds, Carryall landing base, bridge/slope, signed ROT and both flag clears; no substituted calls | `world/fly_height_tests.rs` compares production callback fields; existing FacingClass owns both turns. Excludes BeginTakeoff, landing and full flight |
 | `tools.spatial_oracle.fly_takeoff_phase` | 75 full original phase-dispatch calls with actual Foot/Techno/Object Mark and Display, health/flag gates and same-layer reordering | `world/fly_height_tests.rs` compares the production pure-takeoff transaction and save/restore continuation; excludes preceding Process motion, landing and non-Landable branches |
 | `tools.spatial_oracle.fly_landing_phase` | 29 full original accepted ordinary landing phases: retained Top-to-Ground resubmission, threshold/latch, air-tracker removal, neighbor-counter migration, destination clear/path timer and unchanged RNG | Evidence for the pending Rust landing callback; no substituted gameplay calls. Covers already-OnBridge state, not changed-layer phase suffixes, refusal/search/destruction, AirportBound docking, Carryall/type+C95 effects or full flight/rendered parity |
@@ -140,6 +141,29 @@ reference. A missing reference or mismatch fails; checking never creates or fixe
 `--write` explicitly replaces the payload and its `.meta.json` sidecar. Review any
 changed values against native evidence before accepting them. This is not a way to
 make failing Rust tests green.
+
+The NULL boundary corpus preserves the ordinary `track_destination` corpus. Run
+`python -m tools.spatial_oracle.track_destination --null-boundary --check` to replay
+it. Aircraft `0x41AA80(NULL,flag)` jumps straight to Foot `0x4D94B0`; Foot clears
+NavComAux at `0x4D94C7`, clears NavCom at `0x4D9510`, and calls the active locomotor's
+Stop at `0x4D96B9` unless its Aircraft/current-or-queued-Attack/live-target gate
+skips it. After a Stop, `0x4D96BC` clears a re-target's NavCom again. Both paths reach
+the timer tail `0x4D96C2..0x4D9707`: blocked false, blockage timer started from
+Rules `+0x1768`, and movement timer started with duration zero, preserving retries.
+The corpus observes each boundary and executes the timer writes, including frame
+and signed-duration extremes. Its paired original Drive/Ship is intentionally a
+supplied locomotor boundary: it does not establish Aircraft Fly Stop parity.
+Fly `0x4CCFD0` re-enters the class setter through airfield `0x41A160` or landing-cell
+`0x418E20` selection, whose docking, occupancy and Scenario RNG effects require
+their own complete mechanism. Jumpjet Stop `0x54B4D0` reads owner location
+(`0x54B53E..0x54B583`) and searches from that cell; it does not read old NavCom.
+Accepted Jumpjet touchdown clears its locomotor destination/moving byte before
+PerCell (`0x54C8CB..0x54C8F0`), then calls the class NULL setter unconditionally
+(`0x54C8FF`). The original instruction packet is
+`spatial_oracle/track_destination_touchdown_control.json`; reproduce it with
+`python -m tools.native_inspect disasm 0x54C8CB --bytes 58`.
+The no-target production regression is in `world/per_cell_object_turn_tests.rs`;
+the shared NULL corpus provides the timer arithmetic comparison.
 
 Sidecars identify the executable, Unicorn Python binding and native core versions,
 entries, fixture assumptions, substitutions, coverage, and canonical payload hash.

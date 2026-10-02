@@ -300,7 +300,7 @@ impl Simulation {
             }
             crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
         }
-        self.assign_null_destination(owner, Some(rules));
+        self.assign_null_destination(owner, Some(rules), None);
         if let Some(entity) = self.substrate.entities.get_mut(owner) {
             entity.movement_target = None;
         }

@@ -32,7 +32,7 @@
 //! the scatters draw from is held outside the `Simulation` for the frame.
 //!
 //! A crashing owner (`FootClass+0x425`) takes no orders: the kill's Stun ran
-//! `Stop_Moving` on it (`Simulation::jumpjet_stun_stop`), which keeps a moving
+//! `Stop_Moving` on it (`Simulation::techno_death_stun`), which keeps a moving
 //! wreck flying and lifts a descending one into State 1, so `Process` latches
 //! it into State 5 wherever the kill found it, and the object turn finishes
 //! its impact (`Simulation::jumpjet_crash_impact`). A touchdown clears the
@@ -657,12 +657,13 @@ impl Simulation {
             self.submit_entity_display(stable_id, rules, None);
         }
 
-        // Jumpjet54C8F0 calls PerCell(2) only at accepted touchdown, before
-        // clearing the destination; cruise coordinate changes do not. The
-        // object turn runs it from `touched_down`, after this commit.
-        // RESIDUAL: so it follows the destination clear, the crash reset and
-        // the Fly cell-list re-add rather than preceding them. No ported
-        // per-cell step reads those.
+        // Jumpjet54C8CB..54C8EA clears the locomotor destination and moving
+        // byte before PerCell(2) at54C8F0. The object turn runs PerCell then
+        // the unconditional class NULL setter54C8FF from `touched_down`,
+        // after this commit. Cruise coordinate changes call neither.
+        // RESIDUAL: the crash reset and Fly cell-list re-add precede PerCell
+        // here; native reaches those after it. No ported per-cell step reads
+        // the earlier crash reset or the transaction's intermediate list.
         let entity = self.substrate.entities.get_mut(stable_id)?;
         let mut moving = effects.moving;
         // `Set_Destination` after a scatter re-aims the owner at the neighbour.
@@ -839,10 +840,10 @@ impl Simulation {
     ///   the cell's `GetCoords` (`0x004D94B0`), and the goal then names the
     ///   cell `Move_To` chose;
     /// - a goal dropped while the owner climbs or cruises with its NavCom
-    ///   still set (an Attack order and the attack approach drop only the
-    ///   goal) is a null `Set_Destination`, whose Foot arm runs `Stop_Moving`
-    ///   ([`Simulation::jumpjet_null_destination`]) and clears the NavCom, so
-    ///   it is applied once.
+    ///   still set (the attack approach drops only the goal) is the class
+    ///   setter's null `Set_Destination` ([`Simulation::assign_null_destination`]),
+    ///   whose Foot arm runs `Stop_Moving` and clears the NavCom, so it is
+    ///   applied once.
     ///
     /// A wreck takes no orders.
     fn apply_jumpjet_adapter_order(
@@ -921,16 +922,7 @@ impl Simulation {
                     entity.movement_target = None;
                 }
             }
-            Order::Stop => {
-                self.jumpjet_null_destination(id, rules, registry);
-                if let Some(entity) = self.substrate.entities.get_mut(id) {
-                    crate::sim::movement::DestinationTiming::from_rules(
-                        self.session.binary_frame,
-                        rules,
-                    )
-                    .accept(entity);
-                }
-            }
+            Order::Stop => self.assign_null_destination(id, rules, registry),
         }
     }
 }

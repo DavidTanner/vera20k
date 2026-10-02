@@ -54,3 +54,86 @@ fn a_parachute_landing_in_its_own_cell_runs_the_foot_body() {
     assert_eq!((entity.position.rx, entity.position.ry), (5, 5));
     assert!(entity.in_playfield, "the landing's Techno tail promotes");
 }
+
+/// Jumpjet54C8CB clears its destination and moving byte before PerCell(2),
+/// then54C8FF always calls the class NULL setter. No in-range target is
+/// needed for Unit741970 -> Foot4D94B0 to retire the order and reset timers.
+#[test]
+fn a_jumpjet_touchdown_without_a_target_runs_the_class_null_setter() {
+    use crate::sim::components::{DriveCoord, NavTargetRef};
+    use crate::sim::movement::jumpjet_flight::{STATE_DESCEND, STATE_GROUND};
+    use crate::sim::timer::CdTimer;
+    use crate::util::fixed_math::SimFixed;
+
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[VehicleTypes]\n0=NIGHTHAWK\n\
+         [NIGHTHAWK]\nStrength=200\nSpeed=14\nSpeedType=Hover\nMovementZone=Fly\n\
+         Locomotor={92612C46-F71F-11d1-AC9F-006008055BB5}\n\
+         JumpjetHeight=500\nJumpjetNoWobbles=yes\n",
+    ))
+    .unwrap();
+    let mut sim = Simulation::with_seed(0);
+    super::super::lifecycle_tests::install_common_raw_terrain(&mut sim, 32, 32, 0, None);
+    sim.session.binary_frame = 1000;
+    let id = sim
+        .construct_object_limbo_at_height("NIGHTHAWK", "Americans", 10, 10, 0, 0, &rules)
+        .unwrap();
+    assert!(matches!(
+        sim.reveal(id),
+        super::super::RevealOutcome::Revealed { .. }
+    ));
+    let entity = sim.substrate.entities.get_mut(id).unwrap();
+    entity.position.sub_x = SimFixed::from_num(128);
+    entity.position.sub_y = SimFixed::from_num(128);
+    entity.position.exact_z_leptons = Some(0);
+    entity.navigation.nav_com = Some(NavTargetRef::cell(10, 10));
+    entity.navigation.nav_com_aux = Some(NavTargetRef::cell(11, 10));
+    entity.navigation.nav_queue = vec![NavTargetRef::cell(12, 10)];
+    entity.navigation.path_replay.directions = vec![2, 2];
+    entity.navigation.path_runtime.path_blocked = true;
+    entity.navigation.path_runtime.movement_timer = CdTimer::started(50, 5);
+    entity.navigation.path_runtime.blocked_timer = CdTimer::started(40, 6);
+    let runtime = entity
+        .locomotor
+        .as_mut()
+        .unwrap()
+        .jumpjet_runtime_mut()
+        .unwrap();
+    runtime.phase = STATE_DESCEND;
+    runtime.moving = true;
+    runtime.landing_latched = true;
+    runtime.destination = DriveCoord::cell(10, 10, 0);
+    let scenario_before = sim.scenario_rng.native_state_hex();
+
+    let process = sim.process_air_locomotor(id, Some(&rules), None).unwrap();
+
+    assert!(process.per_cell_ran, "accepted touchdown ran PerCell");
+    let entity = sim.substrate.entities.get(id).unwrap();
+    let runtime = entity
+        .locomotor
+        .as_ref()
+        .unwrap()
+        .jumpjet_runtime()
+        .unwrap();
+    assert_eq!(runtime.phase, STATE_GROUND);
+    assert!(!runtime.moving);
+    assert!(entity.attack_target.is_none(), "no conditional range stop");
+    assert_eq!(entity.navigation.nav_com, None);
+    assert_eq!(entity.navigation.nav_com_aux, None);
+    assert!(entity.navigation.nav_queue.is_empty());
+    assert!(
+        entity
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty()
+    );
+    let timing = &entity.navigation.path_runtime;
+    assert!(!timing.path_blocked);
+    assert_eq!(timing.movement_timer, CdTimer::started(1000, 0));
+    assert_eq!(
+        timing.blocked_timer,
+        CdTimer::started(1000, rules.general.blockage_path_delay_ticks)
+    );
+    assert_eq!(sim.scenario_rng.native_state_hex(), scenario_before);
+}

@@ -307,21 +307,6 @@ pub(super) fn publish_null_nav_com(entity: &mut GameEntity) {
     entity.navigation.pending_arrival_clear = false;
 }
 
-/// Entity-local Drive/Ship destination path. World Walk receivers dispatch
-/// Stop75ADA0 and its concrete +54C callback through Simulation::walk_stop_moving.
-pub(super) fn set_destination_internal_null(entity: &mut GameEntity) {
-    publish_null_nav_com(entity);
-
-    if is_drive_locomotor(entity) {
-        drive_stop_moving(entity);
-    } else if is_ship_locomotor(entity) {
-        ship_stop_moving(entity);
-    } else if super::hover::hover_stop_moving(entity) {
-    } else if let Some(loco) = entity.locomotor.as_mut() {
-        loco.stop_walk();
-    }
-}
-
 /// FootClass::Stop_Moving-equivalent owner clear (`0x004DF0D0`): zeroes only
 /// the owner destination pair (NavCom and its auxiliary slot), nothing else.
 pub(crate) fn foot_stop_moving(entity: &mut GameEntity) {
@@ -471,6 +456,122 @@ impl crate::sim::world::Simulation {
             .nav_com_aux = None;
         !refused
     }
+
+    /// Foot's `Set_Destination` with a NULL target (`0x004D94B0`), where every
+    /// class setter's null arm ends: Unit's at `0x0074314F`, Infantry's at
+    /// `0x0051B1D2` and Aircraft's at once (`0x0041AA8B` -> `0x0041ADAC`).
+    /// - NavComAux (`0x004D94C7`) and NavCom (`0x004D9510`) clear.
+    /// - The linked-lift release (`0x004D9518..0x004D953F`) needs Foot+0x6AD,
+    ///   the Magnetron latch, which VERA never raises.
+    /// - An Aircraft (What_Am_I 2) whose current (`+0xAC`) or queued
+    ///   (`+0xB4`) mission is Attack and which holds a TarCom (`+0x2B4`) skips
+    ///   the locomotor Stop (`0x004D9672..0x004D969C`): its Fly flies on.
+    /// - Otherwise the active locomotor's `Stop_Moving` runs (`0x004D96B9`,
+    ///   [`Self::locomotor_stop_moving`]) and NavCom is cleared again
+    ///   (`0x004D96BC`), so a re-target's NavCom does not survive.
+    /// - The timer tail (`0x004D96C2..0x004D9707`) follows either way.
+    ///
+    /// The caller's class prelude runs first; the scheduling adapter is the
+    /// caller's too.
+    pub(crate) fn foot_null_destination(
+        &mut self,
+        id: u64,
+        rules: Option<&crate::rules::ruleset::RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
+        use crate::sim::mission::{MissionId, MissionType};
+        let Some(entity) = self.substrate.entities.get_mut(id) else {
+            return;
+        };
+        publish_null_nav_com(entity);
+        let attack = MissionId::from_known(MissionType::Attack);
+        // AircraftMission owns the current aircraft dispatch. Its represented
+        // Guard -> Attack transition does not update MissionState's current
+        // slot yet; use that dispatch owner when present, and the raw slot for
+        // receivers without it. Queued missions remain owned by MissionState.
+        // Original current/queued Attack gate: track_destination_null_boundary;
+        // the real Aircraft/Fly Attack call: aircraft_reengagement.
+        let current_attack = entity.aircraft_mission.as_ref().map_or_else(
+            || entity.mission.current() == attack,
+            crate::sim::aircraft::AircraftMission::is_attacking,
+        );
+        let attacking_aircraft = entity.category == crate::map::entities::EntityCategory::Aircraft
+            && (current_attack || entity.mission.queued() == attack)
+            && entity.attack_target.is_some();
+        if !attacking_aircraft {
+            self.locomotor_stop_moving(id, rules, registry)
+                .unwrap_or_else(|cause| panic!("Foot null destination {id}: {cause}"));
+            if let Some(entity) = self.substrate.entities.get_mut(id) {
+                entity.navigation.nav_com = None;
+            }
+        }
+        let timing = super::DestinationTiming::from_rules(self.session.binary_frame, rules);
+        if let Some(entity) = self.substrate.entities.get_mut(id) {
+            timing.accept(entity);
+        }
+    }
+
+    /// `Stop_Moving` (ILocomotion `+0x48`) of the owner's active locomotor, as
+    /// Foot's null destination calls it (`0x004D96B9`) and as Foot's
+    /// `Stop_Driver` is (`0x004D55C0`: the Unit and Aircraft vtable `+0x500`,
+    /// and the tail of Infantry's `0x0051DAF0`):
+    /// - Drive `0x004AFE00`, Ship `0x0069F510` and Hover `0x00516320`
+    ///   ([`track_stop_moving`]);
+    /// - Walk `0x0075ADA0` (`Simulation::walk_stop_moving`);
+    /// - Jumpjet `0x0054B4D0` (`Simulation::jumpjet_stop_moving`), which
+    ///   re-targets a moving owner to the passable cell nearest it;
+    /// - Teleport `0x00718230`
+    ///   ([`teleport_stop_moving`](super::teleport_movement::teleport_stop_moving));
+    /// - Rocket `0x006633C0`, an empty body (`RET 4`).
+    ///
+    /// RESIDUAL: Fly's (`0x004CCFD0`) is not ported. While Is_Moving
+    /// (`0x004CCA90`), it re-targets an Aircraft through its own setter
+    /// (vt+0x480): while its mission (vt+0x184) is Attack, to the airfield
+    /// `0x0041A160` answers; otherwise to the cell `0x00418E20` picks from
+    /// the cell under it, which draws the Scenario RNG (`0x00418F4F`) when
+    /// that cell will not do. An empty cell takes `ReceiveDamage` (Rules
+    /// `+0xFA8`) instead. VERA drops the Fly's order adapter, the state its
+    /// flight reads (`tick_air_movement`). Trigger: a null destination that
+    /// Foot's attack gate lets through, or a Stop_Driver, on a moving
+    /// aircraft: Stop outside an attack, the death Stun, a team script's or a
+    /// Restore's null destination. Effect: the aircraft holds where it is
+    /// until its mission orders it on, where native turns toward that
+    /// airfield or cell, and no Scenario draw is made. Frequency: every Stop
+    /// and kill of an aircraft in flight. Risk: the aircraft's path after
+    /// Stop, and the Scenario stream.
+    ///
+    /// The Jumpjet's needs the map and, for a failed search, the rules; a
+    /// world without them leaves the Jumpjet as it was.
+    pub(crate) fn locomotor_stop_moving(
+        &mut self,
+        id: u64,
+        rules: Option<&crate::rules::ruleset::RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Result<(), String> {
+        let Some(entity) = self.substrate.entities.get_mut(id) else {
+            return Ok(());
+        };
+        let Some(kind) = entity.locomotor.as_ref().map(|loco| loco.active_kind()) else {
+            return Ok(());
+        };
+        match kind {
+            LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Hover => {
+                track_stop_moving(entity);
+            }
+            LocomotorKind::Walk => self.walk_stop_moving(id, rules)?,
+            LocomotorKind::Jumpjet => {
+                if !self.jumpjet_stop_moving(id, rules, registry) {
+                    log::debug!("Jumpjet {id} Stop_Moving lacks the map or rules");
+                }
+            }
+            LocomotorKind::Teleport => super::teleport_movement::teleport_stop_moving(entity),
+            LocomotorKind::Fly => {
+                entity.movement_target = None;
+            }
+            LocomotorKind::Rocket => {}
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -501,7 +602,7 @@ mod tests {
         entity.navigation.path_replay.directions = vec![2, 2];
         entity.navigation.path_replay.cursor = 0;
 
-        set_destination_internal_null(&mut entity);
+        track_stop_moving(&mut entity);
         let ship = entity.ship_locomotion.as_ref().expect("Ship runtime");
         assert_eq!(ship.destination, None);
         assert_eq!(ship.target_speed_fraction, TRACK_STOP_TARGET_FRACTION);
@@ -528,7 +629,7 @@ mod tests {
             ..Default::default()
         });
 
-        set_destination_internal_null(&mut entity);
+        track_stop_moving(&mut entity);
 
         let ship = entity.ship_locomotion.as_ref().expect("Ship runtime");
         assert_eq!(ship.destination, None);
@@ -539,7 +640,7 @@ mod tests {
         let ship = entity.ship_locomotion.as_mut().expect("Ship runtime");
         ship.destination = Some(DriveCoord::cell(5, 3, 0));
         ship.target_speed_fraction = SimFixed::lit("0.2");
-        set_destination_internal_null(&mut entity);
+        track_stop_moving(&mut entity);
         assert_eq!(
             entity
                 .ship_locomotion
@@ -570,7 +671,7 @@ mod tests {
     fn gsi_06_11_drive_rest_speed_fraction_returns_to_zero_not_a_stop_clamp() {
         let mut entity = resting_drive_miner();
 
-        set_destination_internal_null(&mut entity);
+        track_stop_moving(&mut entity);
 
         let drive = entity.drive_locomotion.as_ref().expect("drive state");
         assert_eq!(entity.foot_speed.applied_fraction(), SIM_ZERO);
@@ -589,7 +690,7 @@ mod tests {
             .head_to = Some(DriveCoord::cell(4, 3, 0));
         entity.foot_speed.set_speed_fraction(SIM_HALF);
 
-        set_destination_internal_null(&mut entity);
+        track_stop_moving(&mut entity);
 
         assert_eq!(entity.foot_speed.applied_fraction(), SIM_HALF);
     }

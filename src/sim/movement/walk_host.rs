@@ -11,72 +11,6 @@ use crate::sim::{components::DriveCoord, world::Simulation};
 mod tests;
 
 impl Simulation {
-    /// EventClass4C7467 assigns TarCom before4C747C applies the Attack
-    /// payload's null destination. WalkStop keeps an already accepted head;
-    /// retain its execution adapter until the ordinary completion callback.
-    pub(crate) fn finish_ordered_walk_attack(&mut self, id: u64, rules: Option<&RuleSet>) {
-        if self.set_walk_null_destination(id, rules) {
-            super::retain_committed_movement(
-                self.substrate
-                    .entities
-                    .get_mut(id)
-                    .expect("accepted Walk actor"),
-            );
-        }
-    }
-
-    /// Shared ordinary Infantry51AA40(NULL,true)->Foot4D94B0->Walk75ADA0
-    /// state writes. NavQueue(+598) is a different owner and is not erased.
-    /// MovementTarget continuation/finalization belongs to the caller.
-    pub(crate) fn set_walk_null_destination(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
-        let Some(actor) = self.substrate.entities.get(id) else {
-            return false;
-        };
-        if !actor
-            .locomotor
-            .as_ref()
-            .is_some_and(|loco| loco.kind == crate::rules::locomotor_type::LocomotorKind::Walk)
-        {
-            return false;
-        }
-        let human = self
-            .houses
-            .get(&actor.owner())
-            .is_some_and(|h| h.is_controlled_by_human(self.session.game_mode_nonzero));
-        if human
-            && actor
-                .mission_leaf
-                .as_infantry()
-                .is_some_and(|leaf| (27..=30).contains(&leaf.doing()))
-        {
-            return false;
-        }
-        // 51AC25..51AD17: an Enter with no live radio contact skips the
-        // setter's head write. 65AE30 answers whether any contact is nonnull;
-        // with a null destination, 40DD70 then returns null without messaging.
-        let clear_head = (actor.mission.effective().raw() != 7
-            && actor.mission.queued().raw() != 7)
-            || !actor.radio_contacts.is_empty();
-        let actor = self
-            .substrate
-            .entities
-            .get_mut(id)
-            .expect("same setter actor");
-        if clear_head {
-            actor.navigation.path_replay.clear_live_head();
-        }
-        super::navcom::publish_null_nav_com(actor);
-        self.walk_stop_moving(id, rules)
-            .unwrap_or_else(|cause| panic!("Walk NULL destination {id}: {cause}"));
-        super::DestinationTiming::from_rules(self.session.binary_frame, rules).accept(
-            self.substrate
-                .entities
-                .get_mut(id)
-                .expect("same setter actor"),
-        );
-        true
-    }
-
     /// Walk75BE42..75BF64 runs after PerCell and reloads the live destination.
     /// The Infantry setter may refuse; the separate speed/Stop suffix still runs.
     /// Original executable comparison: tools/spatial_oracle/walk_completion.
@@ -111,7 +45,7 @@ impl Simulation {
             true
         };
         if arrived {
-            self.set_walk_null_destination(id, rules);
+            self.assign_null_destination(id, rules, None);
             if let Some(actor) = self.substrate.entities.get_mut(id) {
                 //75BF38 invokes Foot4D3710(0.0), independently of setter admission.
                 actor
