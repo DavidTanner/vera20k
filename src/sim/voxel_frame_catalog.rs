@@ -22,46 +22,28 @@ use crate::sim::components::VxlLayer;
 
 pub(crate) const NO_SPAWN_ALT_SUFFIX: &str = "WO";
 
-/// One voxel model that an entity can select at presentation time.
+/// Every voxel model an object of `type_id` can select at presentation time:
+/// its own, its `UnloadingClass=` and its `%sWO`.
 ///
 /// Initial atlas construction and incremental coverage checks must enumerate
 /// the same set. Otherwise an already-valid base model can hide a missing
 /// UnloadingClass or `%sWO` auxiliary model until the draw lookup fails.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct UnitAtlasVariant {
-    pub(crate) type_id: String,
-    pub(crate) has_turret: bool,
-}
-
-pub(crate) fn unit_atlas_variants(type_id: &str, rules: Option<&RuleSet>) -> Vec<UnitAtlasVariant> {
+pub(crate) fn unit_atlas_variants(type_id: &str, rules: Option<&RuleSet>) -> Vec<String> {
     let object = rules.and_then(|rules| rules.object(type_id));
-    let mut variants = vec![UnitAtlasVariant {
-        type_id: type_id.to_string(),
-        has_turret: object.is_some_and(|object| object.has_turret),
-    }];
+    let mut variants = vec![type_id.to_string()];
 
-    if let Some((unloading_type, unloading_object)) = object
+    if let Some(unloading_type) = object
         .and_then(|object| object.unloading_class.as_deref())
-        .and_then(|unloading_type| {
-            rules
-                .and_then(|rules| rules.object(unloading_type))
-                .map(|object| (unloading_type, object))
-        })
+        .filter(|unloading_type| rules.is_some_and(|rules| rules.object(unloading_type).is_some()))
     {
-        variants.push(UnitAtlasVariant {
-            type_id: unloading_type.to_string(),
-            has_turret: unloading_object.has_turret,
-        });
+        variants.push(unloading_type.to_string());
     }
 
     if object.is_some_and(|object| object.no_spawn_alt) {
-        variants.push(UnitAtlasVariant {
-            type_id: format!("{type_id}{NO_SPAWN_ALT_SUFFIX}"),
-            // Native stores the `%sWO` pair in the same AuxVoxel slot used by
-            // turrets. Stock NoSpawnAlt types therefore render it as one
-            // composite body and cannot also own a turret.
-            has_turret: false,
-        });
+        // Native stores the `%sWO` pair in the same AuxVoxel slot used by
+        // turrets. Stock NoSpawnAlt types therefore render it as one
+        // composite body and cannot also own a turret.
+        variants.push(format!("{type_id}{NO_SPAWN_ALT_SUFFIX}"));
     }
 
     variants
@@ -82,45 +64,69 @@ pub(crate) fn voxel_image_id(type_id: &str, rules: Option<&RuleSet>) -> String {
         .to_uppercase()
 }
 
-/// Whether the voxel model `type_id` has `%sTUR` and `%sBARL` gun parts.
+/// Whether the voxel model `type_id` draws `%sTUR` and `%sBARL` gun parts,
+/// each at its own facing: a vehicle type with `Turret=`. Every other model
+/// is its body alone. Atlas seeding, model loading and the body draw all ask
+/// this of the model being drawn, so they cannot disagree.
 ///
-/// `TechnoTypeClass::ReadINI` runs the voxel loader `0x005F8110` for a voxel
-/// type after it reads `Turret=` (`0x0071609C`, behind the voxel flag
-/// `+0x236`). For a vehicle type whose `Turret=` is clear, the loader jumps
-/// past `%sTUR` (`0x005F8277..0x005F828D`) and past `%sBARL`
-/// (`0x005F8844..0x005F8856`). Every other type loads both when the files
-/// exist. A `TurretCount=` vehicle loads one pair per turret index, the plain
-/// names for index 0 (`0x005F7A90`, `0x005F7DB0`). The loader formats no
-/// `%sBARREL` name.
+/// `UnitClass::DrawVoxelBody @ 0x0073B470` takes its turret arm on the draw
+/// type's `Turret=` byte (`[ebx+0xCA1]` at `0x0073B7A3`). The draw type is
+/// `Unit+0x6C4` as its caller left it (`0x0073B494`): `UnitClass::DrawIt`
+/// writes a `Harvester=` type's `UnloadingClass=` there while `Unit+0x6D1` is
+/// set (`0x0073D29C..0x0073D2C4`) and restores the type after the body
+/// (`0x0073D39B..0x0073D3A2`). So an unloading War Miner draws HORV, which has
+/// no `Turret=`, as a hull without the HARV turret.
+/// `AircraftClass::Draw_It @ 0x004144B0` draws the main voxel alone
+/// (`0x004149D7`), whatever the type's `Turret=`.
+///
+/// The voxel loader `0x005F8110` agrees for vehicles: `TechnoTypeClass::ReadINI`
+/// runs it after reading `Turret=` (`0x0071609C`, behind the voxel flag
+/// `+0x236`), and for a vehicle type whose `Turret=` is clear it jumps past
+/// `%sTUR` (`0x005F8277..0x005F828D`) and past `%sBARL`
+/// (`0x005F8844..0x005F8856`). A `TurretCount=` vehicle loads one pair per
+/// turret index, the plain names for index 0 (`0x005F7A90`, `0x005F7DB0`). The
+/// loader formats no `%sBARREL` name.
 ///
 /// A name that is not a rules type has none. A `%sWO` model stands in for its
-/// type's body. A building loads its `TurretAnim=` model's barrel through its
-/// own loader, which rewrites `TUR` to `BARL` in that name
+/// type's body. A building's voxel `TurretAnim=` model has none either, even
+/// where its name is a rules type (the retail YAGGUN): the building's own
+/// loader loads that model's barrel, rewriting `TUR` to `BARL` in the name
 /// (`0x0045FC73..0x0045FC82`); VERA does not port that yet.
-pub(crate) fn has_gun_parts(type_id: &str, rules: Option<&RuleSet>) -> bool {
+///
+/// RESIDUALS (named trigger, effect, frequency):
+/// - The turret arm also admits a `Turret=no` draw type whose `TurretCount=`
+///   is positive while the unit's current turret (`TechnoClass+0x124`) is set
+///   (`0x0070DC60`, `0x0070DCE0` at `0x0073B7B1..0x0073B7C5`). Not represented:
+///   such a unit draws its hull alone. Frequency: zero in the tested stock
+///   Hills/Battle rules, where every `TurretCount=` vehicle sets `Turret=yes`.
+///   Other map, mode and campaign layers remain unverified.
+/// - The turretless arm draws a loaded barrel voxel alone, at the barrel's
+///   pitch (`0x0073B7CB..0x0073B8D4`). The loader gives a `Turret=no` vehicle
+///   none, so only a type whose `Turret=` a later INI pass clears keeps one.
+///   Not represented. Frequency: not audited across INI layers.
+pub(crate) fn draws_turret_parts(type_id: &str, rules: Option<&RuleSet>) -> bool {
     rules
         .and_then(|rules| rules.object(type_id))
-        .is_some_and(|object| object.category != ObjectCategory::Vehicle || object.has_turret)
+        .is_some_and(|object| object.category == ObjectCategory::Vehicle && object.has_turret)
 }
 
-/// The layer set to seed atlas keys for, given a type's turret flag.
+/// The layer set to seed atlas keys for a voxel model.
 ///
-/// A turreted type gets separate Body/Turret layers, and a Barrel layer **only
-/// when a barrel voxel actually exists**. Most turreted units model the gun as
-/// part of the turret and ship no `…BARL.VXL`: the Soviet War Miner is one.
-/// Seeding a Barrel key for those produced a key that could never be
-/// satisfied: the Barrel branch of the renderer rebuilds the body and turret
-/// sprites, finds no barrel, and returns `None`, so nothing is cached and the
-/// whole attempt repeats on the next frame, forever. A single such unit on
-/// screen logged ~135k render failures in four minutes of play and paid for two
-/// discarded voxel rasterisations every frame.
+/// A model with [`draws_turret_parts`] gets separate Body/Turret layers, and a
+/// Barrel layer **only when a barrel voxel actually exists**. Most turreted
+/// units model the gun as part of the turret and ship no `…BARL.VXL`: the
+/// Soviet War Miner is one. Seeding a Barrel key for those produced a key that
+/// could never be satisfied: the Barrel branch of the renderer rebuilds the
+/// body and turret sprites, finds no barrel, and returns `None`, so nothing is
+/// cached and the whole attempt repeats on the next frame, forever. A single
+/// such unit on screen logged ~135k render failures in four minutes of play and
+/// paid for two discarded voxel rasterisations every frame.
 pub(crate) fn seed_layers_for(
     asset_manager: &AssetManager,
     type_id: &str,
-    has_turret: bool,
     rules: Option<&RuleSet>,
 ) -> &'static [VxlLayer] {
-    if !has_turret {
+    if !draws_turret_parts(type_id, rules) {
         return &[VxlLayer::Composite];
     }
     if has_barrel_voxel(asset_manager, type_id, rules) {
@@ -183,13 +189,11 @@ pub(crate) fn build_voxel_frame_catalog(
         }
         let type_str = interner.resolve(entity.type_ref());
         for variant in unit_atlas_variants(type_str, rules) {
-            for &layer in
-                seed_layers_for(asset_manager, &variant.type_id, variant.has_turret, rules)
-            {
+            for &layer in seed_layers_for(asset_manager, &variant, rules) {
                 frame_counts
-                    .entry((variant.type_id.clone(), layer))
+                    .entry((variant.clone(), layer))
                     .or_insert_with(|| {
-                        detect_hva_frame_count(asset_manager, &variant.type_id, layer, rules)
+                        detect_hva_frame_count(asset_manager, &variant, layer, rules)
                     });
             }
         }
