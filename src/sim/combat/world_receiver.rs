@@ -3941,6 +3941,12 @@ pub(super) fn emit_admitted_fire(
             cargo.garrison_fire_index = (cargo.garrison_fire_index + 1) % count;
         }
     }
+    // Techno6FF0B7..6FF15B: only a successfully launched shot arms recoil.
+    // Stock recoil buildings have their own Turret=yes. Building4527D0's
+    // upgrade-provided turret remains part of the separate upgrade mechanism.
+    if let Some(entity) = world.substrate.entities.get_mut(snap.stable_id) {
+        entity.fire_voxel_recoil(obj.has_turret);
+    }
     let rof_weapon = if is_garrison {
         world
             .substrate

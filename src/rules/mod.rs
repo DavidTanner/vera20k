@@ -134,6 +134,7 @@ pub mod powerups;
 pub(crate) mod process_owner;
 pub mod projectile_type;
 pub mod radar_event_config;
+pub mod recoil;
 pub(crate) mod retail_sources;
 pub mod ruleset;
 pub mod shp_vehicle_sequence;

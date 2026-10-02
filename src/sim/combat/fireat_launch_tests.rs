@@ -8,6 +8,166 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::projectile::{ProjectileCoord, launch::fireat_launch_distance};
 use crate::sim::world::Simulation;
 
+#[test]
+fn grand_cannon_recoil_follows_successful_launch_ai_and_snapshot() {
+    let Some(mut duel) = Duel::new() else {
+        return;
+    };
+    let cannon = duel.spawn("GTGCAN", "Americans", 20, 20, 64);
+    duel.spawn("GAPOWR", "Americans", 8, 8, 0);
+    duel.spawn("GAPOWR", "Americans", 12, 8, 0);
+    // Production scenario loading binds handles after constructing its roster.
+    // Building direction-to-target consumes that registry, unlike Unit fire.
+    duel.sim.resolve_type_handles(&duel.rules);
+    // A real inadmissible shot must not arm the presentation component.
+    duel.order(
+        "Americans",
+        Command::ForceAttackCell {
+            attacker_id: cannon,
+            target_rx: 2,
+            target_ry: 2,
+        },
+    );
+    for _ in 0..60 {
+        duel.tick();
+        assert!(duel.launched_by(cannon).is_none());
+        assert_eq!(
+            duel.sim
+                .substrate
+                .entities
+                .get(cannon)
+                .unwrap()
+                .voxel_recoil(),
+            ([0.0; 2], false)
+        );
+    }
+    duel.order(
+        "Americans",
+        Command::ForceAttackCell {
+            attacker_id: cannon,
+            target_rx: 20,
+            target_ry: 30,
+        },
+    );
+    let mut fired = false;
+    for _ in 0..240 {
+        duel.tick();
+        if duel.launched_by(cannon).is_some() {
+            fired = true;
+            break;
+        }
+    }
+    let actor = duel.sim.substrate.entities.get(cannon).unwrap();
+    let fire_error = super::fire_error_world::FireSubject {
+        world: &duel.sim,
+        rules: &duel.rules,
+        overlay_registry: None,
+        fog: None,
+        firer: actor,
+        obj: duel.rules.object("GTGCAN").unwrap(),
+        target: actor.attack_target.as_ref().map(|a| a.target),
+        weapon_index: 0,
+        garrison: None,
+    }
+    .fire_error(true);
+    assert!(
+        fired,
+        "retail cannon launch: error={fire_error:?}, mission={:?}, target={:?}, last_fire={}, actually_placed={}, body={:?}, facing={:?}",
+        actor.mission,
+        actor.attack_target,
+        actor.last_fire_frame,
+        actor.building_actually_placed,
+        actor.building_body_state(),
+        actor.body_facing
+    );
+    assert_eq!(
+        duel.sim
+            .substrate
+            .entities
+            .get(cannon)
+            .unwrap()
+            .voxel_recoil(),
+        ([0.0; 2], true),
+        "FireAt arms after this visit's Techno AI"
+    );
+    for _ in 0..3 {
+        duel.tick();
+    }
+    assert_eq!(
+        duel.sim
+            .substrate
+            .entities
+            .get(cannon)
+            .unwrap()
+            .voxel_recoil(),
+        ([0.0, 8.0], true)
+    );
+
+    let terrain = duel.sim.resolved_terrain.as_ref().unwrap().clone();
+    let bytes = crate::sim::snapshot::GameSnapshot::save(&duel.sim, 0, 0, "recoil", 0);
+    let mut restored = crate::sim::snapshot::GameSnapshot::load(&bytes)
+        .unwrap()
+        .sim;
+    restored.restore_after_snapshot_load().unwrap();
+    restored.resolve_type_handles(&duel.rules);
+    restored.install_resolved_terrain_for_new_map(terrain);
+    assert!(restored.rebuild_dynamic_navigation(&duel.rules));
+    assert_eq!(
+        restored
+            .substrate
+            .entities
+            .get(cannon)
+            .unwrap()
+            .voxel_recoil(),
+        ([0.0, 8.0], true)
+    );
+    for _ in 3..46 {
+        duel.tick();
+        let commands = restored.take_due_commands();
+        restored.advance_tick(&commands, Some(&duel.rules), Some(&duel.grid), None, 67);
+        assert_eq!(
+            restored
+                .substrate
+                .entities
+                .get(cannon)
+                .unwrap()
+                .voxel_recoil(),
+            duel.sim
+                .substrate
+                .entities
+                .get(cannon)
+                .unwrap()
+                .voxel_recoil()
+        );
+    }
+    assert_eq!(
+        duel.sim
+            .substrate
+            .entities
+            .get(cannon)
+            .unwrap()
+            .voxel_recoil(),
+        ([0.0; 2], false),
+        "original stock cycle ends after46 AI updates"
+    );
+}
+
+#[test]
+fn grand_cannon_recoil_state_cannot_change_simulation_hash_or_rng() {
+    let Some(mut duel) = Duel::new() else {
+        return;
+    };
+    let cannon = duel.spawn("GTGCAN", "Americans", 20, 20, 64);
+    let hash = duel.sim.state_hash();
+    let rng = duel.sim.scenario_rng.logical_state();
+    let entity = duel.sim.substrate.entities.get_mut(cannon).unwrap();
+    entity.fire_voxel_recoil(true);
+    entity.update_voxel_recoil();
+    assert!(entity.voxel_recoil().1);
+    assert_eq!(duel.sim.state_hash(), hash);
+    assert_eq!(duel.sim.scenario_rng.logical_state(), rng);
+}
+
 struct Duel {
     sim: Simulation,
     rules: RuleSet,

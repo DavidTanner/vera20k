@@ -804,7 +804,8 @@ use crate::sim::world::Simulation;
 // Anim palettes also retain either a color scheme or the creation-time House.
 // 280 -> 281: one signed current weapon/turret pair replaces weapon overrides
 // and last-fire slot state; charge drawing retains the native saved ROF duration.
-const SNAPSHOT_VERSION: u32 = 281;
+// 281 -> 282: optional entity-owned turret/barrel recoil survives save/load.
+const SNAPSHOT_VERSION: u32 = 282;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3765,7 +3766,8 @@ mod tests {
         // and its anchored power-blackout clock/radar projection.
         // 279 -> 280: Unit deployment/animation ownership replaces its countdown.
         // 280 -> 281: authoritative weapon/turret pair and saved charge duration.
-        assert_eq!(super::SNAPSHOT_VERSION, 281);
+        // 281 -> 282: private optional turret/barrel recoil components.
+        assert_eq!(super::SNAPSHOT_VERSION, 282);
     }
 
     #[test]

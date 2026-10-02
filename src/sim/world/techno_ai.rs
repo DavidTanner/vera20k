@@ -1011,6 +1011,9 @@ fn techno_common_steps(
     crate::sim::credit_income::drain_common_step(sim, id, rules);
     allied_target_drop_step(sim, id, rules);
     illegal_target_drop_step(sim, id, rules);
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.update_voxel_recoil(); // Techno6FA4D1, before ChargeTurret.
+    }
     charge_turret_step(sim, id, rules);
     sim.capture_manager_update(id, rules, overlay_registry);
     if !ai_alive(sim, id) {
@@ -1282,6 +1285,9 @@ pub(super) fn dying_infantry_techno_ai(
     }
     allied_target_drop_step(sim, id, rules);
     illegal_target_drop_step(sim, id, rules);
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.update_voxel_recoil();
+    }
     charge_turret_step(sim, id, rules);
     passive_acquire_step(sim, id, Some(rules), ctx);
     //51BC9F still reaches Techno6FABC4 for Die1/Die2. A retained death
