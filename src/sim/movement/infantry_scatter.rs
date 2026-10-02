@@ -720,6 +720,55 @@ impl Simulation {
         self.assign_infantry_walk_destination(id, requested, speed, rules, registry)
     }
 
+    /// The Infantry class setter `vt+0x480(NULL, 1)` (`0x0051AA40`), every
+    /// infantryman's whatever his locomotor:
+    /// - a human owner's deploy action (Doing 27..30) refuses before any
+    ///   write (`0x0051AA49..0x0051AA7E`), and the call answers false;
+    /// - the mutual `+0x2A8` link (`0x0051AB34`) clears; only the dormant
+    ///   `DirectRocker=` warhead raises it, and VERA keeps none;
+    /// - the path head clears unless an Enter lacks a radio contact
+    ///   (`0x0051AC25..0x0051AD17`, `clear_destination_path_head`);
+    /// - Foot's null arm follows (`0x0051B1D2`,
+    ///   [`Self::foot_null_destination`]): Walk's Stop (`0x0075ADA0`) keeps
+    ///   a paid head and consumes a pending Deploy through owner +0x54C, a
+    ///   moving Jumpjet's re-targets the cell under him, a Teleport's drops
+    ///   an armed warp.
+    ///
+    /// NavQueue is not touched. The scheduling adapter is the caller's. The
+    /// Jumpjet Stop's failed search uses the caller's overlay registry for
+    /// synchronous damage. Walk's virtual class callers
+    /// dispatch through [`Self::assign_null_destination`].
+    pub(crate) fn set_infantry_null_destination(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
+        let Some(actor) = self.substrate.entities.get(id) else {
+            return false;
+        };
+        let human = self
+            .houses
+            .get(&actor.owner())
+            .is_some_and(|h| h.is_controlled_by_human(self.session.game_mode_nonzero));
+        if human
+            && actor
+                .mission_leaf
+                .as_infantry()
+                .is_some_and(|leaf| (27..=30).contains(&leaf.doing()))
+        {
+            return false;
+        }
+        super::movement_commands::clear_destination_path_head(
+            self.substrate
+                .entities
+                .get_mut(id)
+                .expect("same setter actor"),
+        );
+        self.foot_null_destination(id, rules, registry);
+        true
+    }
+
     /// 51AB73..51ABA7 passes (SpeedType,1,0,-1,Normal,-1,true) to4834A0.
     /// This is not Infantry CanEnter: ignore the five infantry bits, retain
     /// vehicles, choose the deck on a structural bridge, and reject all walls.

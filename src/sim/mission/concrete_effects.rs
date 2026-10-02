@@ -295,7 +295,7 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
         requested: Option<NavTargetRef>,
     ) -> bool {
         if requested.is_none() {
-            sim.assign_null_destination(prepared.receiver, self.rules);
+            sim.assign_null_destination(prepared.receiver, self.rules, self.overlay_registry);
             return true;
         }
         let requested = requested.expect("nonnull destination arm");

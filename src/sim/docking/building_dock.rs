@@ -450,7 +450,7 @@ pub(crate) fn order_onto_depot(sim: &mut Simulation, rules: &RuleSet, id: u64, d
             unit.set_archive_target(None);
             unit.dock_state = Some(DockState::new(depot, DockPhase::WaitForDock));
         }
-        sim.assign_null_destination(id, Some(rules));
+        sim.assign_null_destination(id, Some(rules), None);
         return;
     }
     if !online {
@@ -458,7 +458,7 @@ pub(crate) fn order_onto_depot(sim: &mut Simulation, rules: &RuleSet, id: u64, d
             unit.set_archive_target(Some(TargetKind::Entity(depot)));
             unit.dock_state = Some(DockState::new(depot, DockPhase::EnterDock));
         }
-        sim.assign_null_destination(id, Some(rules));
+        sim.assign_null_destination(id, Some(rules), None);
         return;
     }
     let _ = hello_depot(sim, rules, id, depot);
@@ -523,7 +523,7 @@ pub(crate) fn try_pending_entry(sim: &mut Simulation, rules: &RuleSet, id: u64) 
         issue_pad_move(sim, rules, id, pad);
     } else {
         queue_mission(sim, id, MissionId::NONE, 0);
-        sim.assign_null_destination(id, Some(rules));
+        sim.assign_null_destination(id, Some(rules), None);
         if let Some(unit) = sim.substrate.entities.get_mut(id) {
             unit.dock_state = None;
         }
@@ -1749,7 +1749,7 @@ mod tests {
         assert!(order_repair(&mut sim, &rules, 1));
         tick(&mut sim, &rules);
         assert!(linked(&sim, 1));
-        sim.assign_null_destination(1, Some(&rules));
+        sim.assign_null_destination(1, Some(&rules), None);
         let e = sim.substrate.entities.get_mut(1).unwrap();
         e.movement_target = None;
         assert_eq!(e.navigation.nav_com, None, "the unit stopped");

@@ -611,7 +611,7 @@ impl Simulation {
                     building,
                     self.resolved_terrain.as_ref(),
                 );
-                self.assign_null_destination(engineer_id, Some(rules));
+                self.assign_null_destination(engineer_id, Some(rules), None);
                 self.infantry_scatter_from(
                     engineer_id,
                     (coord.x, coord.y),
@@ -1433,14 +1433,14 @@ impl Simulation {
                     // first shot comes an unmeasured number of frames off
                     // native. Every in-range stop of a pursuing vehicle.
                     if e.category == EntityCategory::Unit && movement::range_stop_admits(e) {
-                        self.set_unit_null_destination(entity_id, Some(rules));
+                        self.set_unit_null_destination(entity_id, Some(rules), None);
                     }
                 }
                 PursuitAction::DropTargetAndMovement { entity_id } => {
                     // Foot4D5730 dispatches virtual+3C8 on Sticky refusal,
                     // then the class NULL destination (0x004D573E).
                     let _ = self.assign_target_represented(entity_id, None, Some(rules));
-                    self.assign_null_destination(entity_id, Some(rules));
+                    self.assign_null_destination(entity_id, Some(rules), None);
                     if let Some(e) = self.substrate.entities.get_mut(entity_id) {
                         e.movement_target = None;
                     }

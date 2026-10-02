@@ -147,10 +147,7 @@ pub(crate) use foot_speed::{SpeedRules, order_speed, owner_current_speed};
 pub(crate) use foot_speed::owner_speed_bonus;
 pub(crate) use drive_locomotion::drive_do_turn;
 
-// Re-export command functions so callers can use `movement::clear_navigation_for_entity` etc.
-pub use movement_commands::{
-    DestinationTiming, clear_navigation_for_entity, stop_navigation_at_committed_head,
-};
+pub use movement_commands::DestinationTiming;
 #[cfg(test)]
 pub(crate) use movement_commands::{issue_move_command, issue_move_command_with_layered};
 pub(crate) use movement_commands::{

@@ -213,7 +213,8 @@ fn active_drive_ship_track_preserves_target_across_changed_path_and_terrain_requ
         next.speed_costs.float = Some(25);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         // A new Foot+5E0 route toward (11,10) from the current cell.
-        entity.navigation.path_replay = crate::sim::movement::fixture_path_replay(&[(10, 10), (11, 10)]);
+        entity.navigation.path_replay =
+            crate::sim::movement::fixture_path_replay(&[(10, 10), (11, 10)]);
         let target = entity.movement_target.as_mut().unwrap();
         target.final_goal = Some((11, 10));
         let current = crate::sim::movement::ground_pose::position_world_coord(&entity.position);

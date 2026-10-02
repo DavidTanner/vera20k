@@ -283,13 +283,8 @@ impl Simulation {
     ///
     /// A Unit takes only the `OpenTopped=` arm here; the pursuit stage's
     /// in-range halt (`world_orders.rs`) stands in for its InRange arm, tested
-    /// each frame.
-    ///
-    /// RESIDUAL: the Infantry arm reaches `InfantryClass::Set_Destination`
-    /// only for a Walk owner (`set_walk_null_destination`); a Jumpjet
-    /// infantry landing in range keeps its destination. Trigger: a
-    /// Rocketeer touching down within range of its TarCom on Attack, Hunt,
-    /// Area Guard or Rescue. Frequency: rare.
+    /// each frame. Every infantryman takes Infantry `0x0051AA40`, a Rocketeer
+    /// touching down in range included.
     fn per_cell_range_stop(
         &mut self,
         id: u64,
@@ -319,12 +314,12 @@ impl Simulation {
         }
         match category {
             EntityCategory::Unit => {
-                self.set_unit_null_destination(id, Some(rules));
+                self.set_unit_null_destination(id, Some(rules), registry);
             }
             EntityCategory::Infantry => {
                 // With no head and no destination left, the next Walk
                 // Process takes its idle tail and retires the adapter.
-                self.set_walk_null_destination(id, Some(rules));
+                self.set_infantry_null_destination(id, Some(rules), registry);
             }
             _ => {}
         }

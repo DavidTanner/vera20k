@@ -1149,7 +1149,7 @@ fn walk_null_setter_matches_original_caller_rows() {
                 loco.set_step_head(None);
             }
         }
-        assert!(sim.set_walk_null_destination(actor, Some(&rules)));
+        assert!(sim.set_infantry_null_destination(actor, Some(&rules), None));
         let e = sim.substrate.entities.get(actor).unwrap();
         let loco = e.locomotor.as_ref().unwrap();
         assert_eq!(loco.walk_is_moving(), Some(row["moving"] == 1), "{input}");

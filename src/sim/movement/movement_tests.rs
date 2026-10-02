@@ -403,7 +403,7 @@ fn walk_path_timer_waits_without_double_aging_or_losing_owner_state() {
         // the next accepted order must not recreate or truncate the dword count.
         sim.substrate.entities.get_mut(1).unwrap().movement_target = None;
         sim.session.binary_frame = 200;
-        assert!(sim.set_walk_null_destination(1, None));
+        assert!(sim.set_infantry_null_destination(1, None, None));
         let actor = sim.substrate.entities.get(1).unwrap();
         assert_eq!(
             actor.navigation.path_runtime.movement_timer,
@@ -1344,8 +1344,7 @@ fn test_friendly_passable_moving_unit_not_blocked() {
         ..Default::default()
     });
     // Moving: its Foot+5E0 head word steps east from (4,0).
-    b.navigation.path_replay =
-        crate::sim::movement::fixture_path_replay(&[(4, 0), (5, 0), (6, 0)]);
+    b.navigation.path_replay = crate::sim::movement::fixture_path_replay(&[(4, 0), (5, 0), (6, 0)]);
     entities.insert(b);
 
     let alliances = HouseAllianceMap::new();
@@ -1421,8 +1420,7 @@ fn test_enemy_unit_always_blocks_even_when_moving() {
         ..Default::default()
     });
     // Moving: its Foot+5E0 head word steps east from (3,0).
-    enemy.navigation.path_replay =
-        crate::sim::movement::fixture_path_replay(&[(3, 0), (4, 0)]);
+    enemy.navigation.path_replay = crate::sim::movement::fixture_path_replay(&[(3, 0), (4, 0)]);
     entities.insert(enemy);
 
     let alliances = HouseAllianceMap::new();

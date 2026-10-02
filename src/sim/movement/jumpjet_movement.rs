@@ -725,65 +725,6 @@ impl Simulation {
         true
     }
 
-    /// Foot's null `Set_Destination` (`0x004D94B0`) for a Jumpjet owner: the
-    /// NavCom's auxiliary slot (`0x004D94C7`) and the NavCom (`0x004D9510`)
-    /// clear, the locomotor's `Stop_Moving` runs (`0x004D96B9`), and the
-    /// NavCom clears again (`0x004D96BC`), so the one its `Move_To` wrote does
-    /// not survive. The Stop command, the Unit's null setter and an order VERA
-    /// drops mid-flight reach it; the caller publishes Foot's timer tail.
-    pub(crate) fn jumpjet_null_destination(
-        &mut self,
-        id: u64,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) -> bool {
-        let Some(entity) = self.substrate.entities.get_mut(id) else {
-            return true;
-        };
-        if entity
-            .locomotor
-            .as_ref()
-            .and_then(|locomotor| locomotor.jumpjet_runtime())
-            .is_none()
-        {
-            return true;
-        }
-        entity.navigation.nav_com_aux = None;
-        entity.navigation.nav_com = None;
-        let stopped = self.jumpjet_stop_moving(id, rules, registry);
-        if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.navigation.nav_com = None;
-        }
-        stopped
-    }
-
-    /// The Stun's `Stop_Driver` (`FootClass::Stun @ 0x004D5660` →
-    /// `0x004D55C0`) on a dying Jumpjet Unit, run by the death arm and again
-    /// by `FootClass::Crash`: `Stop_Moving` keeps a moving wreck flying to the
-    /// cell under it and lifts a descent back into the climb, so `Process`'s
-    /// crash latch engages wherever the kill found it. No Foot null setter
-    /// follows, so the NavCom its `Move_To` wrote stays. The Stun's own null
-    /// `Set_Destination` (`0x00741970`) reaches the same `Stop_Moving` while a
-    /// NavCom is set, which is idempotent for a Unit: no Scenario draw, the
-    /// same frame's search.
-    ///
-    /// A Jumpjet Infantry's Stun stops its locomotor through its own setter
-    /// and Stop_Driver instead (`Simulation::techno_death_stun`).
-    pub(crate) fn jumpjet_stun_stop(
-        &mut self,
-        id: u64,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-    ) {
-        if self
-            .substrate
-            .entities
-            .get(id)
-            .is_some_and(|entity| entity.category == crate::map::entities::EntityCategory::Unit)
-        {
-            self.jumpjet_stop_moving(id, rules, None);
-        }
-    }
-
     /// The speed an order publishes with its destination: the running
     /// order's, else the owner's move speed.
     pub(crate) fn jumpjet_order_speed(

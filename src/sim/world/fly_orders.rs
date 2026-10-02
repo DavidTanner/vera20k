@@ -9,7 +9,10 @@ use crate::util::fixed_math::SimFixed;
 
 impl Simulation {
     /// Aircraft41AA80 -> Foot4D94B0, as reached by an Attack with a live Target.
-    /// NULL skips Stop in this caller, retaining the Fly request. This does not
+    /// NULL uses the shared Foot gate (`0x004D9672`,
+    /// [`Simulation::foot_null_destination`]), retaining the Fly request
+    /// while the aircraft's current or queued dispatch is Attack with a TarCom.
+    /// This does not
     /// replace the general destination setter: queued Enter preprocessing,
     /// linked-lift detach (+2AC/+2B0), retained fire-particle cleanup (+304), and
     /// the Unit-produced +6AC latch still need their native owner migrations.
@@ -75,7 +78,11 @@ impl Simulation {
                 }
             }
         }
-        if !self.begin_foot_destination(id, requested.is_some()) {
+        if requested.is_none() {
+            self.foot_null_destination(id, Some(rules), None);
+            return;
+        }
+        if !self.begin_foot_destination(id, true) {
             return;
         }
         let entity = self.substrate.entities.get_mut(id).unwrap();

@@ -2481,7 +2481,7 @@ mod tests {
             &OccupancyGrid::new(),
         );
 
-        crate::sim::movement::clear_navigation_for_entity(&mut entity);
+        crate::sim::movement::track_stop_moving(&mut entity);
 
         assert_eq!(
             entity.drive_locomotion.as_ref().unwrap().occupation_head_to,

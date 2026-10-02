@@ -98,7 +98,7 @@ impl Simulation {
         registry: Option<&OverlayTypeRegistry>,
     ) {
         let Some(target) = target else {
-            self.assign_null_destination(id, Some(rules));
+            self.assign_null_destination(id, Some(rules), None);
             return;
         };
         let requested = match target {
