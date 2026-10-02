@@ -273,6 +273,23 @@ class MapObservationTests(unittest.TestCase):
                 self.change = change
                 self.assertEqual(self.run_capture()['status'], 'INVALID')
 
+    def test_building_voxel_gun_extension_is_optional_complete_and_finite(self):
+        building = self.building()
+        observation._building(building, 'building')
+        gun = {'facing': 16384, 'elevation': 14336, 'hva_counter': 0,
+               'recoil': [0.0, 8.0], 'recoil_active': True}
+        building['voxel_gun'] = gun
+        observation._building(building, 'building')
+        changes = [lambda g: g.pop('recoil'), lambda g: g.update(facing=65536),
+                   lambda g: g.update(elevation=True), lambda g: g.update(recoil=[0.0]),
+                   lambda g: g.update(recoil=[0.0, float('nan')]),
+                   lambda g: g.update(recoil=[True, 0.0]), lambda g: g.update(recoil_active=1)]
+        for change in changes:
+            invalid = deepcopy(building)
+            change(invalid['voxel_gun'])
+            with self.assertRaises(observation.ValidationError):
+                observation._building(invalid, 'building')
+
     def test_missing_live_animation_is_explicit_and_slots_count_towards_sample_budget(self):
         self.production_profile()
         self.actor_frames[1][0]['building']['animation_slots'][0]['animation'] = None

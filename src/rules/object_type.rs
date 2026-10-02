@@ -623,6 +623,8 @@ pub struct ObjectType {
     /// Higher = faster turret rotation. Only meaningful when `has_turret` is true.
     /// Typical values: 5 (War Miner), 7 (Grizzly/Rhino).
     pub turret_rot: i32,
+    /// Retained TechnoType recoil reader; shared by every voxel turret.
+    pub recoil: crate::rules::recoil::RecoilConfig,
     /// VXL turret model name for buildings (TurretAnim= in rules.ini, e.g., "SAM").
     /// The engine loads `{TurretAnim}.VXL` + `{TurretAnim}.HVA` as the turret model.
     pub turret_anim: Option<String>,
@@ -2180,6 +2182,7 @@ impl ObjectType {
             // gamemd writes a separate UnitType +0x398=10 for Harvester/Weeder,
             // but ROT= remains the parsed TechnoType +0x71C facing-rate field.
             turret_rot: section.read_int("ROT", 0),
+            recoil: crate::rules::recoil::RecoilConfig::from_ini_section(section),
             turret_anim: section.read_name("TurretAnim", 0x10).map(str::to_uppercase),
             turret_anim_is_voxel: section.read_bool("TurretAnimIsVoxel", false),
             turret_anim_x: section.read_int("TurretAnimX", 0),

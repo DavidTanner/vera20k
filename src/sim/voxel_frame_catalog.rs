@@ -115,6 +115,32 @@ pub(crate) fn voxel_gun_basename(image: &str, layer: VxlLayer, index: i32) -> St
     }
 }
 
+/// BuildingType's voxel loader45FA90 searches for `TUR` starting at byte4
+/// of TurretAnim. A match loads the B8 turret and replaces that suffix with
+/// `BARL` for C0; without a match the unchanged name loads C0 alone. Asset
+/// lookup is case-insensitive. Original execution:
+/// tools/voxel_oracle/building_barrel.json.
+/// The retail layers leave BarrelAnimIsVoxel/VoxelBarrelFile unset; that
+/// custom C0-only override is not part of this retained filename projection.
+pub(crate) fn building_voxel_names(
+    type_id: &str,
+    rules: Option<&RuleSet>,
+) -> Option<(Option<String>, String)> {
+    let object = rules?.object(type_id)?;
+    if object.category != ObjectCategory::Building || !object.turret_anim_is_voxel {
+        return None;
+    }
+    let image = object.turret_anim.as_deref()?.to_uppercase();
+    let split = image.get(4..).and_then(|suffix| suffix.find("TUR"));
+    Some(match split {
+        Some(offset) => {
+            let barrel = format!("{}BARL", &image[..offset + 4]);
+            (Some(image), barrel)
+        }
+        None => (None, image),
+    })
+}
+
 /// Layers and gun indices the model can draw. Body and shadow storage stay
 /// independent of the selected gun, while every indexed gun has its own HVA.
 /// Missing optional barrels never create atlas work. A missing indexed turret
@@ -125,6 +151,16 @@ pub(crate) fn seed_layers_for(
     type_id: &str,
     rules: Option<&RuleSet>,
 ) -> Vec<(VxlLayer, i32)> {
+    if let Some((turret, barrel)) = building_voxel_names(type_id, rules) {
+        return [(VxlLayer::Turret, turret), (VxlLayer::Barrel, Some(barrel))]
+            .into_iter()
+            .filter_map(|(layer, image)| {
+                asset_manager
+                    .get_ref(&format!("{}.VXL", image?))
+                    .map(|_| (layer, 0))
+            })
+            .collect();
+    }
     if !draws_turret_parts(type_id, rules, 0) {
         return vec![(VxlLayer::Composite, 0)];
     }
@@ -169,16 +205,28 @@ pub(crate) fn detect_hva_frame_count(
     turret_index: i32,
     rules: Option<&RuleSet>,
 ) -> u32 {
-    let image = voxel_image_id(type_id, rules);
-    let hva_name: String = match layer {
-        VxlLayer::Composite | VxlLayer::Body => art_data::voxel_asset_names(&image).1,
-        VxlLayer::Turret | VxlLayer::Barrel => {
-            format!("{}.HVA", voxel_gun_basename(&image, layer, turret_index))
+    let hva_name: String = if let Some((turret, barrel)) = building_voxel_names(type_id, rules) {
+        let image = match layer {
+            VxlLayer::Turret => turret,
+            VxlLayer::Barrel => Some(barrel),
+            _ => None,
+        };
+        let Some(image) = image else {
+            return 1;
+        };
+        format!("{image}.HVA")
+    } else {
+        let image = voxel_image_id(type_id, rules);
+        match layer {
+            VxlLayer::Composite | VxlLayer::Body => art_data::voxel_asset_names(&image).1,
+            VxlLayer::Turret | VxlLayer::Barrel => {
+                format!("{}.HVA", voxel_gun_basename(&image, layer, turret_index))
+            }
+            // The shadow is rendered from motion frame 0 regardless of the body's
+            // HVA length (`Get_Layer_Matrix(layer, 0)` in the TS shadow path, and
+            // the RA2 shadow key folds only slope and facing: 0x0055A7D0).
+            VxlLayer::Shadow => return 1,
         }
-        // The shadow is rendered from motion frame 0 regardless of the body's
-        // HVA length (`Get_Layer_Matrix(layer, 0)` in the TS shadow path, and
-        // the RA2 shadow key folds only slope and facing: 0x0055A7D0).
-        VxlLayer::Shadow => return 1,
     };
 
     let frame_count: u32 = asset_manager
@@ -201,10 +249,10 @@ pub(crate) fn build_voxel_frame_catalog(
     let mut frame_counts: BTreeMap<(String, VxlLayer, i32), u32> = BTreeMap::new();
     let mut seen = BTreeSet::new();
     for entity in entities.values() {
-        if !entity.is_voxel {
+        let type_str = interner.resolve(entity.type_ref());
+        if !entity.is_voxel && building_voxel_names(type_str, rules).is_none() {
             continue;
         }
-        let type_str = interner.resolve(entity.type_ref());
         for variant in unit_atlas_variants(type_str, rules) {
             if !seen.insert(variant.clone()) {
                 continue;

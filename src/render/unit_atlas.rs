@@ -102,7 +102,7 @@ pub struct UnitSpriteKey {
     pub barrel_pitch: i8,
 }
 
-/// The pitch each unit type's barrel image was first drawn at.
+/// The pitch each type's barrel image was first drawn at.
 ///
 /// `TechnoClass::DrawVoxel @ 0x00706640` keeps a unit's turret and barrel
 /// images per type (`TechnoType+0x258`, `+0x280`), stored on a miss and blitted
@@ -114,6 +114,9 @@ pub struct UnitSpriteKey {
 /// the first unit drawn under it: level for a unit drawn while its elevation
 /// still rounds level (the first two frames after Unlimbo at the default
 /// `FireAngle=`).
+/// Building draw43DA80 submits the same type cache owners: facing and the
+/// low byte of its selected HVA frame, without a hull facing or slope. Its
+/// recoil arm bypasses this cache (tools/voxel_oracle/building_barrel.json).
 ///
 /// Not modelled here:
 /// - Every cached body, turret, barrel and shadow image shares one 4,000,000
@@ -130,7 +133,7 @@ pub struct BarrelImagePitches {
     by_type: HashMap<String, HashMap<BarrelImageKey, i8>>,
 }
 
-/// The parts of a turret key a unit's barrel image varies by.
+/// The parts of a gun key a barrel image varies by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct BarrelImageKey {
     turret_index: i32,
@@ -267,9 +270,9 @@ enum VoxelModel<'a> {
     Turret(&'a str),
 }
 
-/// The voxel model of every object in the world, one per object: vehicles
-/// and aircraft by type, and SHP buildings with TurretAnimIsVoxel=true by
-/// their turret VXL (e.g., SAM.VXL for NASAM), drawn on top of the SHP body.
+/// The voxel model of every object in the world, keyed by its rules type.
+/// Buildings keep that identity too: their native loader resolves separate
+/// TurretAnim turret/barrel slots, and the draw consumes their own metadata.
 fn world_voxel_models<'a>(
     entities: &'a crate::sim::entity_store::EntityStore,
     rules: Option<&'a RuleSet>,
@@ -289,9 +292,8 @@ fn world_voxel_models<'a>(
             return None;
         }
         let obj = rules?.object(type_str)?;
-        obj.turret_anim_is_voxel
-            .then_some(obj.turret_anim.as_deref()?)
-            .map(VoxelModel::Turret)
+        (obj.turret_anim_is_voxel && obj.turret_anim.is_some())
+            .then_some(VoxelModel::Turret(type_str))
     })
 }
 
@@ -621,10 +623,12 @@ impl CachedUnitSprite {
 // F09: the variant/layer/HVA-count derivation moved to the GPU-independent
 // sim-side catalog so construction (app + headless) and atlas seeding share
 // one source. Re-exported so this module's tests and callers keep their view.
+use crate::sim::voxel_frame_catalog::{
+    building_voxel_names, indexed_turret_count, voxel_gun_basename, voxel_image_id,
+};
 pub(crate) use crate::sim::voxel_frame_catalog::{
     detect_hva_frame_count, seed_layers_for, unit_atlas_variants,
 };
-use crate::sim::voxel_frame_catalog::{indexed_turret_count, voxel_gun_basename, voxel_image_id};
 
 fn insert_unit_layer_keys(
     needed: &mut HashSet<UnitSpriteKey>,
@@ -691,6 +695,8 @@ fn seed_unit_variant_keys(
     rules: Option<&RuleSet>,
 ) {
     let layers = seed_layers_for(asset_manager, variant, rules);
+    let building_has_turret =
+        building_voxel_names(variant, rules).is_some() && layers.contains(&(VxlLayer::Turret, 0));
     let barrel_pitches = rules
         .and_then(|rules| rules.object(variant))
         .map_or_else(|| vec![0], |object| unit_barrel_pitches(object.fire_angle));
@@ -704,7 +710,13 @@ fn seed_unit_variant_keys(
             variant,
             layer,
             turret_index,
-            num_frames,
+            // Building draw43DA80 holds C0 at frame zero when B8 exists;
+            // a C0-only building animates that part through its own HVA.
+            if building_has_turret && layer == VxlLayer::Barrel {
+                1
+            } else {
+                num_frames
+            },
             is_ground_vehicle,
             &barrel_pitches,
         );
@@ -747,21 +759,17 @@ fn needed_unit_keys(
         }
     }
 
-    // Building turret VXLs (e.g., SAM.VXL for NASAM) drawn on top of SHP
-    // buildings. Buildings don't tilt on slopes, so slope_type is always 0.
-    for turret_id in &demand.turrets {
-        for bucket in 0..TURRET_FACING_BUCKETS {
-            let facing: u8 = (bucket * u16::from(TURRET_FACING_STEP)) as u8;
-            needed.insert(UnitSpriteKey {
-                type_id: turret_id.clone(),
-                turret_index: 0,
-                facing,
-                layer: VxlLayer::Composite,
-                frame: 0,
-                slope_type: 0,
-                barrel_pitch: 0,
-            });
-        }
+    // Building voxel guns share the part/frame/pitch owner with vehicles,
+    // while their SHP hull never enters the voxel atlas or slope variants.
+    for building_id in &demand.turrets {
+        seed_unit_variant_keys(
+            &mut needed,
+            &mut frame_counts,
+            building_id,
+            false,
+            asset_manager,
+            rules,
+        );
     }
 
     (needed, frame_counts)
@@ -959,7 +967,7 @@ pub fn build_unit_atlas(
     Some(atlas)
 }
 
-/// A turret or barrel part: `{image}TUR` or `{image}BARL`.
+/// A parsed voxel part and its motion file.
 pub(crate) struct VoxelPart {
     vxl: VxlFile,
     hva: Option<HvaFile>,
@@ -1002,8 +1010,8 @@ impl VoxelPart {
 /// it. They are named from [`voxel_image_id`].
 pub(crate) struct UnitModel {
     type_id: String,
-    body: VxlFile,
-    body_hva: Option<HvaFile>,
+    /// Buildings have an SHP hull and only fill their native gun slots.
+    body: Option<VoxelPart>,
     /// One pair per native turret index; the body is parsed and stored once.
     guns: Vec<GunParts>,
     /// Ordinary ground Drive units cast the prepared native shadow.
@@ -1020,7 +1028,7 @@ struct GunParts {
 /// pairs are rasterized; their parts share the result across layer keys.
 pub(crate) struct PoseParts {
     pose: (u32, u8, u8, Option<VxlSlopeBlend>),
-    body: VxlSprite,
+    body: Option<VxlSprite>,
     guns: BTreeMap<i32, RenderedGunParts>,
 }
 
@@ -1035,6 +1043,25 @@ impl UnitModel {
         type_id: &str,
         rules: Option<&RuleSet>,
     ) -> Option<Self> {
+        if let Some((turret, barrel)) = building_voxel_names(type_id, rules) {
+            // BuildingType45FA90 independently admits B8/C0 on each VXL's
+            // availability. In particular SAM lives in C0 alone; GTGCAN
+            // has both GTGCANTUR and GTGCANBARL. The missing-HVA fallback
+            // remains the loader's established malformed-asset tolerance.
+            let guns = GunParts {
+                turret: turret.and_then(|image| VoxelPart::load(asset_manager, &image, false)),
+                barrel: VoxelPart::load(asset_manager, &barrel, false),
+            };
+            if guns.turret.is_none() && guns.barrel.is_none() {
+                return None;
+            }
+            return Some(Self {
+                type_id: type_id.to_string(),
+                body: None,
+                guns: vec![guns],
+                drive_shadow: false,
+            });
+        }
         let image = voxel_image_id(type_id, rules);
         let (vxl_name, hva_name): (String, String) = art_data::voxel_asset_names(&image);
 
@@ -1099,8 +1126,10 @@ impl UnitModel {
         }
         Some(Self {
             type_id: type_id.to_string(),
-            body,
-            body_hva,
+            body: Some(VoxelPart {
+                vxl: body,
+                hva: body_hva,
+            }),
             guns,
             drive_shadow: rules.and_then(|r| r.object(type_id)).is_some_and(|o| {
                 o.locomotor == crate::rules::locomotor_type::LocomotorKind::Drive
@@ -1153,8 +1182,8 @@ impl UnitModel {
         if key.layer == VxlLayer::Shadow
             && key.frame == 0
             && self.drive_shadow
-            && let Some(sprite) =
-                vxl_raster::shadow::render(&self.body, self.body_hva.as_ref(), &params)
+            && let Some(body) = &self.body
+            && let Some(sprite) = vxl_raster::shadow::render(&body.vxl, body.hva.as_ref(), &params)
         {
             let bounds = [
                 sprite.offset_x as i32,
@@ -1177,27 +1206,24 @@ impl UnitModel {
         // The rasterizer outputs post-VPL palette indices directly.
         let sprite: VxlSprite = match key.layer {
             VxlLayer::Composite => composite_parts(
-                &self.body,
-                self.body_hva.as_ref(),
+                self.body
+                    .as_ref()
+                    .map(|body| (&body.vxl, body.hva.as_ref())),
                 turret,
                 barrel,
                 &params,
                 vpl,
             ),
             VxlLayer::Shadow => {
-                vxl_raster::render_legacy_vxl_shadow(&self.body, self.body_hva.as_ref(), &params)
+                let body = self.body.as_ref()?;
+                vxl_raster::render_legacy_vxl_shadow(&body.vxl, body.hva.as_ref(), &params)
             }
             VxlLayer::Body | VxlLayer::Turret | VxlLayer::Barrel => {
                 let key_pose = (params.frame, params.facing, params.slope_type, slope_blend);
                 if pose.as_ref().is_none_or(|parts| parts.pose != key_pose) {
                     *pose = Some(PoseParts {
                         pose: key_pose,
-                        body: vxl_raster::render_vxl(
-                            &self.body,
-                            self.body_hva.as_ref(),
-                            &params,
-                            vpl,
-                        ),
+                        body: self.body.as_ref().map(|body| body.render(&params, vpl)),
                         guns: BTreeMap::new(),
                     });
                 }
@@ -1213,19 +1239,26 @@ impl UnitModel {
                     .filter(|_| key.barrel_pitch != 0)
                     .map(|part| part.render(&part_params, vpl));
                 let barrel = pitched_barrel.as_ref().or(guns.barrel.as_ref());
-                let all_layers: Vec<&VxlSprite> = [Some(&parts.body)]
+                let all_layers: Vec<&VxlSprite> = [parts.body.as_ref()]
                     .into_iter()
                     .chain([guns.turret.as_ref(), barrel])
                     .flatten()
                     .collect();
 
                 let requested: &VxlSprite = match key.layer {
-                    VxlLayer::Body => &parts.body,
+                    VxlLayer::Body => parts.body.as_ref()?,
                     VxlLayer::Turret => guns.turret.as_ref()?,
                     VxlLayer::Barrel => barrel?,
                     _ => unreachable!(),
                 };
-                pad_layer_to_union_bounds(requested, &all_layers)
+                if self.body.is_none() {
+                    // Building43DA80 blits each gun directly; each part's
+                    // own extent seeds its vertical Z gradient. A unit's
+                    // off-screen composite instead shares the union below.
+                    requested.clone()
+                } else {
+                    pad_layer_to_union_bounds(requested, &all_layers)
+                }
             }
         };
 
@@ -1252,11 +1285,15 @@ impl UnitModel {
         vpl: Option<&VplFile>,
         tilt: CrashTilt,
     ) -> (VxlSprite, Option<[i32; 4]>) {
+        let body = self
+            .body
+            .as_ref()
+            .expect("a crashing unit has a voxel body");
         let body_tilt = match tilt {
             CrashTilt::Fly(angles) => vxl_raster::BodyTilt::Fly(angles),
             CrashTilt::Jumpjet(angles) => vxl_raster::BodyTilt::Jumpjet {
                 angles,
-                half_sizes: vxl_raster::jumpjet_tilt_half_sizes(&self.body).unwrap_or([0.0; 2]),
+                half_sizes: vxl_raster::jumpjet_tilt_half_sizes(&body.vxl).unwrap_or([0.0; 2]),
             },
         };
         let params = VxlRenderParams {
@@ -1268,8 +1305,7 @@ impl UnitModel {
         };
         let (turret, barrel) = self.gun_parts(key.turret_index);
         let sprite = composite_parts(
-            &self.body,
-            self.body_hva.as_ref(),
+            Some((&body.vxl, body.hva.as_ref())),
             turret,
             barrel,
             &params,
@@ -1291,17 +1327,15 @@ impl UnitModel {
         layer: VxlLayer,
         turret_index: i32,
     ) -> Option<[i32; 4]> {
-        let body =
-            || vxl_raster::native_vxl_draw_bounds(&self.body, self.body_hva.as_ref(), params);
         let (turret, barrel) = self.gun_parts(turret_index);
         let part = |part| VoxelPart::native_draw_bounds(part, params);
         match layer {
             VxlLayer::Shadow => None,
-            VxlLayer::Body => body(),
+            VxlLayer::Body => part(self.body.as_ref()).ok().flatten(),
             VxlLayer::Turret => part(turret).ok().flatten(),
             VxlLayer::Barrel => part(barrel).ok().flatten(),
             VxlLayer::Composite => {
-                let mut bounds = Some(body()?);
+                let mut bounds = part(self.body.as_ref()).ok()?;
                 let turret = part(turret).ok()?;
                 let barrel = part(barrel).ok()?;
                 for part in [turret, barrel].into_iter().flatten() {
@@ -1335,8 +1369,7 @@ pub fn composite_unit_vxl_cpu(
     let turret = part(VxlLayer::Turret);
     let barrel = part(VxlLayer::Barrel);
     composite_parts(
-        body,
-        body_hva,
+        Some((body, body_hva)),
         turret.as_ref(),
         barrel.as_ref(),
         params,
@@ -1345,14 +1378,16 @@ pub fn composite_unit_vxl_cpu(
 }
 
 fn composite_parts(
-    body: &VxlFile,
-    body_hva: Option<&HvaFile>,
+    body: Option<(&VxlFile, Option<&HvaFile>)>,
     turret: Option<&VoxelPart>,
     barrel: Option<&VoxelPart>,
     params: &VxlRenderParams,
     vpl: Option<&VplFile>,
 ) -> VxlSprite {
-    let mut layers: Vec<VxlSprite> = vec![vxl_raster::render_vxl(body, body_hva, params, vpl)];
+    let mut layers: Vec<VxlSprite> = body
+        .map(|(body, hva)| vxl_raster::render_vxl(body, hva, params, vpl))
+        .into_iter()
+        .collect();
     layers.extend(turret.map(|part| part.render(params, vpl)));
     layers.extend(barrel.map(|part| part.render(params, vpl)));
     composite_vxl_layers(&layers)
@@ -1793,5 +1828,9 @@ mod tests;
 impl UnitAtlas {
     pub(crate) fn from_test_pages(pages: Vec<UnitAtlasPage>) -> Self {
         Self::new(pages, HashMap::new())
+    }
+
+    pub(crate) fn from_test_entries(entries: HashMap<UnitSpriteKey, UnitSpriteEntry>) -> Self {
+        Self::new(Vec::new(), entries)
     }
 }

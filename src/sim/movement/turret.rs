@@ -181,16 +181,8 @@ pub(crate) struct FacingUpdate {
 /// `IsSimpleDeployer=` types, and only during the deploy transition.
 /// Downstream risk: none — each is a pure suppression.
 ///
-/// RESIDUAL (GSI-08.14) — recoil is not modelled. Native keeps two `RecoilData`
-/// structs at `+0x3D8`/`+0x3F8`, arms them in `Fire_At` and advances them from
-/// `TechnoClass::AI_Update` through `0x0070ED10`; the displacement is read by
-/// four instructions, all in draw code, so it is render-only and feeds no
-/// gameplay path.
-/// - Trigger: firing a type that authors `TurretRecoil=`.
-/// - Player effect: the barrel does not slide back on firing.
-/// - Frequency: two stock authors, both BUILDINGS (the Grand Cannon and
-///   CAEAST02); no stock vehicle recoils at all.
-/// - Downstream risk: none to the simulation. It consumes no RNG.
+/// Recoil's separate presentation state (+3D8/+3F8) is owned by
+/// `game_entity::voxel_recoil`; it does not change aim or consume RNG.
 pub(crate) fn facing_update(
     entity: &GameEntity,
     entities: &EntityStore,

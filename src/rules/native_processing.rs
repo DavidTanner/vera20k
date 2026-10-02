@@ -362,6 +362,24 @@ impl ProcessedRulesLayers {
         })
     }
 
+    /// Native715320 recopies the turret controls on every reached rules pass.
+    pub(crate) fn recoil_states(
+        &self,
+    ) -> impl Iterator<Item = (ObjectCategory, &str, crate::rules::recoil::RecoilConfig)> {
+        self.native_type_construction_trace
+            .registry_state()
+            .families
+            .iter()
+            .filter_map(|(family, members)| {
+                family.object_category().map(|category| (category, members))
+            })
+            .flat_map(|(category, members)| {
+                members
+                    .iter()
+                    .map(move |member| (category, member.native_stored_id.as_str(), member.recoil))
+            })
+    }
+
     /// Retained +A8 speed and +A0 projectile after the last Weapon sweep.
     pub(crate) fn weapon_speeds_and_projectiles(
         &self,
@@ -820,6 +838,7 @@ struct ProcessedType {
     /// TechnoType ctor71136F/711781, generic flag read71287E and FV pair
     /// reads747BBD..747E90, retained across every reached Rules pass.
     gunner_turrets: GunnerTurrets,
+    recoil: crate::rules::recoil::RecoilConfig,
     weapon: WeaponReadState,
     warhead_anim: WarheadAnimReadState,
 }
@@ -843,6 +862,7 @@ impl ProcessedType {
             anim_art_read: false,
             building_foundation: 0,
             gunner_turrets: GunnerTurrets::default(),
+            recoil: crate::rules::recoil::RecoilConfig::default(),
             weapon: WeaponReadState::default(),
             warhead_anim: WarheadAnimReadState::default(),
         }
@@ -1454,6 +1474,9 @@ impl RulesPassProcessor {
                 self.begin_rules_member_read(family, index, pass)
             {
                 self.process_techno_base(&raw, &effective);
+                self.families.get_mut(&family).unwrap()[index]
+                    .recoil
+                    .apply_pass(&raw);
                 self.families.get_mut(&family).unwrap()[index]
                     .gunner_turrets
                     .apply_pass(

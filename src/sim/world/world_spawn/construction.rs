@@ -162,6 +162,7 @@ impl Simulation {
         if category == EntityCategory::Unit && obj.gunner {
             ge.set_gunner_weapon(0, obj);
         }
+        ge.initialize_voxel_recoil(obj.recoil);
         ge.crushable = obj.crushable;
         ge.deployed_crushable = obj.deployed_crushable;
         ge.omni_crusher = obj.omni_crusher;
