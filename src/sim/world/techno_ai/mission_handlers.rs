@@ -213,19 +213,14 @@ pub(crate) fn dispatch_foot_mission(
                 }
             }
         }
-        // A repair-depot waiter: `FootClass::Mission_Enter @ 0x004D9290` run
-        // from the unit's own dispatch slot so its epilogue `RandomRanged(0,2)`
-        // lands in object-AI order (the building-side servicing stays in
-        // `tick_building_docks`).
-        (EntityCategory::Unit, Some(MissionType::Enter)) if input.depot_dock_state => {
-            MissionHandlerEvaluation::cadence(
-                crate::sim::docking::building_dock::mission_enter_dispatch(sim, rules, id),
-            )
-        }
-        // A harvester docking at its refinery: `FootClass::Mission_Enter @
-        // 0x004D9290` (UnitClass does not override the slot).
-        (EntityCategory::Unit, Some(MissionType::Enter)) if input.refinery_dock_miner => {
-            MissionHandlerEvaluation::cadence(crate::sim::miner::mission_enter(sim, rules, id))
+        // Unit does not override Foot Enter4D9290. Depot and refinery
+        // admissions use the same body and the unit's one dispatch timer.
+        (EntityCategory::Unit, Some(MissionType::Enter))
+            if input.depot_dock_state || input.refinery_dock_miner =>
+        {
+            MissionHandlerEvaluation::cadence(crate::sim::mission::enter::mission_enter(
+                sim, rules, id,
+            ))
         }
         // `UnitClass::Mission_Attack @ 0x007447A0` is a tail jump to
         // `FootClass::Mission_Attack`, so vehicles belong on this path.
@@ -739,7 +734,7 @@ pub(super) struct MissionHandlerInput {
     /// being skipped.
     pub(super) mission: Option<MissionType>,
     /// The object holds a repair-depot `DockState`: its Enter dispatch is
-    /// `building_dock::mission_enter_dispatch`.
+    /// the shared `mission::enter::mission_enter`.
     pub(super) depot_dock_state: bool,
     /// A harvester on Enter or Unload without a depot `DockState`: its
     /// refinery dock missions (`miner::refinery_dock`).

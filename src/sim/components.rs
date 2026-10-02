@@ -65,6 +65,17 @@ impl Health {
         X87::div(X87::load_i32(self.current), X87::load_i32(strength))
     }
 
+    /// Object radio22 (5F5339) and Techno repair6F4DE5 share this C0-clear
+    /// test, including signed and masked division. AudioVisual66B323..32D
+    /// writes the threshold1.0 unconditionally; there is no ConditionGreen key.
+    pub(crate) fn is_fully_repaired(self, strength: i32) -> bool {
+        matches!(
+            self.compare_ratio(strength, 1.0),
+            crate::util::native_x87::MaskedX87Ordering::Equal
+                | crate::util::native_x87::MaskedX87Ordering::Greater
+        )
+    }
+
     /// Compare the native ratio without converting masked values to a host float.
     pub fn compare_ratio(
         self,

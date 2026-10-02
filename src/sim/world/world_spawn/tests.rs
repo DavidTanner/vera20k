@@ -54,6 +54,134 @@ fn install_american_house(sim: &mut Simulation) {
     );
 }
 
+/// Radio65A750 and Building43BCBD..43BCD5 execute unchanged in the retained
+/// refinery packet. Both production construction routes must install those
+/// actual slots before any HELLO; the component prefix consumes no RNG.
+#[test]
+fn building_contact_constructor_matches_original_slots_before_hello() {
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../tools/spatial_oracle/refinery_dock.json"
+    ))
+    .unwrap();
+    let rows = native["building_contact_constructor_controls"]
+        .as_array()
+        .unwrap();
+    assert_eq!(rows.len(), 4);
+    for row in rows {
+        let count = row["input"]["type_number_of_docks"].as_i64().unwrap();
+        let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+            "[BuildingTypes]\n0=BASE\n[BASE]\nStrength=500\nFoundation=2x2\nNumberOfDocks={count}\n\
+             [AircraftTypes]\n0=ORCA\n[ORCA]\nStrength=200\nAmmo=6\n"
+        )))
+        .unwrap();
+        let expected = &row["after"]["contacts"];
+        let check = |entity: &GameEntity| {
+            let contacts = &entity.radio_contacts;
+            assert_eq!(
+                serde_json::json!(contacts.capacity()),
+                expected["count"],
+                "NumberOfDocks={count}: constructed count"
+            );
+            let slots: Vec<_> = (0..contacts.capacity()).map(|i| contacts.slot(i)).collect();
+            assert_eq!(
+                serde_json::json!(slots),
+                expected["slots"],
+                "NumberOfDocks={count}: initial NULL slots"
+            );
+        };
+        let mut sim = Simulation::with_seed(row["input"]["seed"].as_u64().unwrap());
+        install_constructor_test_playfield(&mut sim);
+        install_constructor_flat_terrain(&mut sim);
+        install_american_house(&mut sim);
+        let owner = sim.interner.get("Americans").unwrap();
+        let type_id = sim.interner.intern("BASE");
+        let mut entity = GameEntity::new_at_frame_zero_for_test(
+            1,
+            6,
+            5,
+            0,
+            0,
+            owner,
+            Health { current: 500 },
+            type_id,
+            EntityCategory::Structure,
+            0,
+            8,
+            false,
+        );
+        let rng = || {
+            let view = sim.scenario_rng.logical_view();
+            serde_json::json!({"disabled":view.disabled,"index_a":view.index_a,
+                "index_b":view.index_b,"state":view.words})
+        };
+        assert_eq!(rng(), row["after_radio_constructor"]["scenario_rng"]);
+        sim.install_techno_components(
+            &mut entity,
+            rules.object("BASE"),
+            Some(&rules),
+            construction::ComponentOrigin::Runtime,
+        );
+        check(&entity);
+        let view = sim.scenario_rng.logical_view();
+        assert_eq!(
+            serde_json::json!({"disabled":view.disabled,"index_a":view.index_a,
+                "index_b":view.index_b,"state":view.words}),
+            row["after"]["scenario_rng"],
+            "contact allocation leaves all 250 Scenario words unchanged"
+        );
+        let held = sim
+            .construct_object_limbo_at_height("BASE", "Americans", 0, 0, 0, 0, &rules)
+            .unwrap();
+        check(sim.substrate.entities.get(held).unwrap());
+        let mut authored = Simulation::with_seed(1);
+        install_constructor_test_playfield(&mut authored);
+        install_constructor_flat_terrain(&mut authored);
+        install_american_house(&mut authored);
+        assert_eq!(
+            authored.spawn_from_map(
+                &[map_entity("BASE", EntityCategory::Structure, (6, 5))],
+                Some(&rules)
+            ),
+            1
+        );
+        check(authored.substrate.entities.values().next().unwrap());
+        // Required airfield consumer: reservation publishes HELLO against
+        // the already-constructed slots, rather than sizing them on demand.
+        let base_id = authored
+            .substrate
+            .entities
+            .values()
+            .next()
+            .unwrap()
+            .stable_id();
+        let pads = expected["count"].as_u64().unwrap() as u32;
+        for pad in 0..pads {
+            let aircraft = authored
+                .construct_object_limbo_at_height("ORCA", "Americans", 0, 0, 0, 0, &rules)
+                .unwrap();
+            let rng = authored.scenario_rng.logical_state();
+            assert_eq!(
+                authored.reserve_airfield_pad(base_id, aircraft, pads),
+                Some(pad)
+            );
+            let base = authored.substrate.entities.get(base_id).unwrap();
+            assert_eq!(base.radio_contacts.capacity(), pads as usize);
+            assert_eq!(base.radio_contacts.slot(pad as usize), Some(aircraft));
+            assert_eq!(
+                authored
+                    .substrate
+                    .entities
+                    .get(aircraft)
+                    .unwrap()
+                    .radio_contacts
+                    .slot(0),
+                Some(base_id)
+            );
+            assert_eq!(authored.scenario_rng.logical_state(), rng);
+        }
+    }
+}
+
 #[test]
 fn signed_rot_reaches_spawn_combat_turn_and_snapshot_restore() {
     use crate::sim::combat::UnitFacingUpdate;

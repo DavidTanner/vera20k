@@ -6,7 +6,7 @@
 //! with no free slot first sends OVER_OUT to slot 0 and then reuses it
 //! (`0x0065AA1F..0x0065AA34`). Capacity is `max(NumberOfDocks, 1)` for
 //! buildings, else 1. Navigation uses the contact slot index to select a
-//! docking offset; admission reads membership through `contains`. Sparse slot
+//! docking offset; admission queries actual slots through `has_free_or`. Sparse slot
 //! positions are therefore hash-relevant.
 //! sim/ only — never render/ui/sidebar/audio/net.
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,8 @@ impl Contacts {
         }
     }
 
-    /// Grow-only resize to `n.max(1)` slots — never shrinks, preserves contents.
+    /// Grow a prepared test vector without changing its existing slots.
+    #[cfg(test)]
     pub fn set_capacity(&mut self, n: usize) {
         let target = n.max(1);
         if target > self.slots.len() {

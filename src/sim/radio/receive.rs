@@ -155,9 +155,7 @@ fn building_receive(
         }
         RadioMessage::CanDock => building_docking(sim, building, sender, rules),
         RadioMessage::DockNow => building_dock_now(sim, building, sender, payload, rules),
-        RadioMessage::CanEnter if is_repair_depot(sim, building, rules) => {
-            depot_can_load(sim, building, sender, rules)
-        }
+        RadioMessage::CanEnter => building_can_load(sim, building, sender, payload, rules),
         RadioMessage::RequestClearance => {
             let Some(object) = rules.and_then(|rules| {
                 sim.substrate
@@ -181,51 +179,34 @@ fn building_receive(
                 RadioResponse::Roger
             }
         }
-        // 0xD and any other 0xF (0x0043C2F8; the refinery scan
-        // evaluates CAN_LOAD directly) have no represented bus sender.
-        RadioMessage::AnimStop | RadioMessage::CanEnter => RadioResponse::None,
+        //0xD has no represented bus sender for its building arm.
+        RadioMessage::AnimStop => RadioResponse::None,
         _ => techno_receive(sim, building, sender, msg, payload, rules),
     }
 }
 
-fn is_repair_depot(sim: &Simulation, building: u64, rules: Option<&RuleSet>) -> bool {
-    let (Some(building), Some(rules)) = (sim.substrate.entities.get(building), rules) else {
-        return false;
-    };
-    sim.object_type(building.type_ref(), rules)
-        .is_some_and(|object| object.unit_repair)
-}
-
-/// CAN_LOAD, `BuildingClass::Receive_Radio` case 0x0F (`0x0043CB25..`), for a
-/// `UnitRepair=` building, the pending entry's second question
-/// (`building_dock::try_pending_entry`). In order: a sender that is no ally
-/// gets 0; Construction or Selling, the construction BState (`+0x534` = 0),
-/// no free or own slot (the absorb exemption aside), a Naval mismatch for a
-/// sender not `MovementZone=Amphibious`, a `BalloonHover=` sender and an
-/// offline depot (`+0x660`) each get NEGATORY; then the UnitRepair arm: a
-/// sender that is neither Unit nor Aircraft gets NEGATORY, and so does one
-/// already standing on the depot (IsOccupied 0x23 answering ROGER);
-/// otherwise ROGER. The Techno receiver's message history is not kept.
-///
-/// The UnitAbsorb/InfantryAbsorb, Grinding and Bunker arms ahead of the
-/// UnitRepair one belong to other building types; a depot type carrying one
-/// of those keys answers static (0) here, as an unported arm.
-fn depot_can_load(
+/// CAN_LOAD0F, Building43C2D0: common admission, then class/type arm.
+/// The refinery scanner and pending depot entry use this same receiver.
+/// Effective mission43C310, body43C34C, contacts43C35A, Naval/Balloon/online
+/// gates precede UnitRepair43C61B and DockUnload43C64F. The wide scan's
+/// A8E7AC context skips contact/passenger capacity, not the other gates.
+fn building_can_load(
     sim: &mut Simulation,
-    depot: u64,
+    building_id: u64,
     sender: Option<u64>,
+    payload: RadioPayload,
     rules: Option<&RuleSet>,
 ) -> RadioResponse {
     let (Some(from), Some(rules)) = (sender, rules) else {
         return RadioResponse::None;
     };
     let (Some(building), Some(unit)) = (
-        sim.substrate.entities.get(depot),
+        sim.substrate.entities.get(building_id),
         sim.substrate.entities.get(from),
     ) else {
         return RadioResponse::None;
     };
-    let (Some(depot_type), Some(unit_type)) = (
+    let (Some(building_type), Some(unit_type)) = (
         sim.object_type(building.type_ref(), rules),
         sim.object_type(unit.type_ref(), rules),
     ) else {
@@ -239,39 +220,50 @@ fn depot_can_load(
     ) {
         return RadioResponse::None;
     }
-    let absorbs = depot_type.unit_absorb || depot_type.infantry_absorb;
-    let refused = matches!(
-        building.mission.current().known(),
+    let absorbs = building_type.unit_absorb || building_type.infantry_absorb;
+    if matches!(
+        building.mission.effective().known(),
         Some(MissionType::Construction | MissionType::Selling)
     ) || building.in_construction_bstate()
-        || (!building.radio_contacts.has_free_or(from) && !absorbs)
+        || (!payload.ignore_dock_capacity && !absorbs && !building.radio_contacts.has_free_or(from))
         || (unit_type.movement_zone != crate::rules::locomotor_type::MovementZone::Amphibious
-            && depot_type.naval != unit_type.naval)
+            && building_type.naval != unit_type.naval)
         || unit_type.balloon_hover
-        || !building.building_online();
-    if refused {
+        || !building.building_online()
+    {
         return RadioResponse::Negatory;
     }
-    if absorbs || depot_type.grinding || depot_type.bunker {
+    // Other building mechanisms retain their existing owner/residual.
+    if absorbs || building_type.grinding || building_type.bunker {
         return RadioResponse::None;
     }
-    if !matches!(
-        unit.category,
-        EntityCategory::Unit | EntityCategory::Aircraft
-    ) {
-        return RadioResponse::Negatory;
+    if building_type.unit_repair {
+        if !matches!(
+            unit.category,
+            EntityCategory::Unit | EntityCategory::Aircraft
+        ) {
+            return RadioResponse::Negatory;
+        }
+        return match transmit(
+            sim,
+            building_id,
+            from,
+            RadioMessage::IsOccupied,
+            RadioPayload::default(),
+            Some(rules),
+        ) {
+            RadioResponse::Roger => RadioResponse::Negatory,
+            _ => RadioResponse::Roger,
+        };
     }
-    match transmit(
-        sim,
-        depot,
-        from,
-        RadioMessage::IsOccupied,
-        RadioPayload::default(),
-        Some(rules),
-    ) {
-        RadioResponse::Roger => RadioResponse::Negatory,
-        _ => RadioResponse::Roger,
+    if unit.category == EntityCategory::Unit
+        && (building_type.dock_unload && unit_type.harvester
+            || building_type.weeder && unit_type.weeder)
+    {
+        // Native passenger-head+118 is never filled by a refinery unload.
+        return RadioResponse::Roger;
     }
+    RadioResponse::None
 }
 
 /// IsOccupied (0x23), `FootClass::Receive_Radio @ 0x004D8FB0`: ROGER when
@@ -326,16 +318,34 @@ fn building_docking(
     let Some(object) = sim.object_type(building.type_ref(), rules) else {
         return RadioResponse::None;
     };
-    // The UnitRepair and Bunker arms (0x0043C814..0x0043C87F, and their
-    // distance force at 0x0043C93F..0x0043C9F0) and the Helipad MOVE_HERE
-    // (0x0043CA2F) belong to docks whose Enter probe VERA runs outside the bus
-    // (`building_dock::mission_enter_dispatch`, `bunker_install`, the aircraft
-    // landing flow), so no represented sender reaches them here. The
-    // Hospital/Armory arm (0x0043C882..0x0043C89E) is dormant: retail
-    // RULESMD.INI sets neither key.
-    if object.unit_repair || object.bunker || object.helipad {
+    // UnitRepair43C814..849 asks the existing contact whether its
+    // signed Health/Strength is full before any HELLO or movement probe.
+    let unit_repair = object.unit_repair;
+    if object.bunker || object.helipad {
+        // These docking mechanisms retain their existing adapters.
         return RadioResponse::None;
     }
+    if unit_repair
+        && building.radio_contacts.contains(from)
+        && transmit(
+            sim,
+            building_id,
+            from,
+            RadioMessage::IsRepairing,
+            RadioPayload::default(),
+            Some(rules),
+        ) == RadioResponse::Negatory
+    {
+        return RadioResponse::Negatory;
+    }
+    let building = sim
+        .substrate
+        .entities
+        .get(building_id)
+        .expect("docking retains building");
+    let object = sim
+        .object_type(building.type_ref(), rules)
+        .expect("docking retains type");
     let pad_dock = object.dock_unload || object.weeder;
     let (rx, ry) = (building.position.rx, building.position.ry);
     // 0x0043C8A4..0x0043C8CC: a sender that is not a contact is HELLOed back
@@ -357,7 +367,7 @@ fn building_docking(
         .entities
         .get(building_id)
         .is_some_and(|building| building.radio_contacts.contains(from));
-    let force = contacted
+    let pad_force = contacted
         && pad_dock
         && sim.substrate.entities.get(from).is_some_and(|foot| {
             foot.category != EntityCategory::Structure
@@ -373,6 +383,28 @@ fn building_docking(
                     )
                     .map(|(x, y)| NavTargetRef::cell(x, y))
         });
+    // 43C93F..C9F0: a repair contact more than128 native leptons away
+    // forces the same movement probe. Reuse the native deterministic distance
+    // owner; the original sqrt approximation changes the129-lepton boundary.
+    let repair_force = unit_repair
+        && sim
+            .substrate
+            .entities
+            .get(building_id)
+            .and_then(|building| building.radio_contacts.slot(0).map(|id| (building, id)))
+            .and_then(|(building, id)| sim.substrate.entities.get(id).map(|unit| (building, unit)))
+            .is_some_and(|(building, unit)| {
+                let a = crate::sim::movement::ground_pose::object_get_coords(
+                    building,
+                    sim.resolved_terrain.as_ref(),
+                );
+                let b = crate::sim::movement::ground_pose::object_get_coords(
+                    unit,
+                    sim.resolved_terrain.as_ref(),
+                );
+                crate::util::native_x87::distance_3d_leptons([a.x, a.y, a.z], [b.x, b.y, b.z]) > 128
+            });
+    let force = pad_force || repair_force;
     let moving = transmit(
         sim,
         building_id,
@@ -397,7 +429,10 @@ fn building_docking(
         building_id,
         from,
         RadioMessage::MoveToCell,
-        RadioPayload { cell: Some(pad) },
+        RadioPayload {
+            cell: Some(pad),
+            ..RadioPayload::default()
+        },
         Some(rules),
     );
     if arrived != RadioResponse::AlreadyThere {
@@ -457,7 +492,31 @@ fn building_dock_now(
     }
     // 0x0043C732..0x0043C785: the repair docks and Bunker queue their own
     // mission; VERA's depot and bunker flows own those links.
-    if object.unit_repair || object.bunker {
+    if object.unit_repair {
+        // Building43C7B5..C7DC: service request and the occupant's Sleep
+        // queue. DockState's service phase consumes the admitted pad contact.
+        let now = sim.session.binary_frame;
+        let _ = sim.mission_queue_exact(
+            building_id,
+            MissionId::from_known(MissionType::Repair),
+            0,
+            now,
+            &EntityReadyInputProvider,
+        );
+        let _ = sim.mission_queue_exact(
+            from,
+            MissionId::from_known(MissionType::Sleep),
+            0,
+            now,
+            &EntityReadyInputProvider,
+        );
+        if let Some(building) = sim.substrate.entities.get_mut(building_id) {
+            building.mission_leaf.set_building_ready_latch(1);
+        }
+        crate::sim::docking::building_dock::begin_service(sim, rules, from, building_id);
+        return RadioResponse::Roger;
+    }
+    if object.bunker {
         return RadioResponse::None;
     }
     // 0x0043C788..0x0043C7B2: Queue_Mission(Unload, 0) on the sender.
@@ -833,6 +892,26 @@ fn techno_receive(
             }
             let _ = radio_receive(sim, techno, sender, msg);
             RadioResponse::Roger
+        }
+        // Object5F5339..5382: inherited health query used by depot DOCKING.
+        RadioMessage::IsRepairing => {
+            let Some((entity, object)) =
+                sim.substrate
+                    .entities
+                    .get(techno)
+                    .zip(rules)
+                    .and_then(|(entity, rules)| {
+                        sim.object_type(entity.type_ref(), rules)
+                            .map(|object| (entity, object))
+                    })
+            else {
+                return RadioResponse::None;
+            };
+            if entity.health.is_fully_repaired(object.strength) {
+                RadioResponse::Negatory
+            } else {
+                RadioResponse::Roger
+            }
         }
         RadioMessage::Tether => techno_tether(sim, techno, sender, rules),
         RadioMessage::Untether => techno_untether(sim, techno, sender, rules),

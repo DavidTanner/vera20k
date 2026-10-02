@@ -913,9 +913,10 @@ impl Simulation {
         if let Some(rules) = rules
             && sim.substrate.entities.get(stable_id).is_some_and(|entity| {
                 !entity.is_warping_in()
-                    && entity.dock_state.as_ref().is_some_and(|dock| {
-                        dock.phase == crate::sim::docking::building_dock::DockPhase::WaitForDock
-                    })
+                    && entity
+                        .dock_state
+                        .as_ref()
+                        .is_some_and(|dock| dock.pending_entry().is_some())
             })
         {
             crate::sim::docking::building_dock::try_pending_entry(sim, rules, stable_id);

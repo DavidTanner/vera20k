@@ -388,6 +388,15 @@ impl RadioResponse {
 pub struct RadioPayload {
     /// Target cell `(x, y)`, when the message carries one.
     pub cell: Option<(u16, u16)>,
+    /// The bounded Find_Docking_Bay wide scan's native A8E7AC context.
+    /// Only CAN_LOAD consumes it; it is a query argument, never saved state.
+    ignore_dock_capacity: bool,
+}
+
+impl RadioPayload {
+    pub(crate) fn docking_query(wide: bool) -> Self {
+        Self { ignore_dock_capacity: wide, ..Self::default() }
+    }
 }
 
 #[cfg(test)]
