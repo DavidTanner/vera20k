@@ -41,6 +41,10 @@ the analyzed program. Re-importing or enabling analysis is not routine reconnect
 - For virtual calls, establish the table/subobject owner, read the actual slot,
   follow receiver-adjusting thunks and check callers. Inspect surrounding instructions
   for questionable boundaries; compiler lifecycle plumbing can resemble gameplay.
+- HTTP xref kinds reflect Ghidra flow overrides. At `0x70DC6A`, the original
+  bytes `E9 11 9C 00 00` jump to `0x717880`, while `/get_xrefs_to` reports
+  `UNCONDITIONAL_CALL`. Decode the original instruction before deriving argument
+  storage or a caller's stack effect from that label; a tail jump pushes no return address.
 - Find state writers and initialization. Zero-filled image data may be populated
   at runtime. Confirm active-YR gates and retail inputs; inherited TS code alone
   does not establish a feature's applicability.
