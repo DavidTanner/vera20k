@@ -396,3 +396,119 @@ fn walk_locomotion_actions_match_original_consumer_rows() {
     }
     assert_eq!(compared, 20);
 }
+
+/// Original Teleport constructor/Move_To/Stop and whole Infantry sequencer
+/// controls from `jumpjet_infantry_actions.py --default-motion` (54 rows).
+/// Rules/ART use the production retail readers and sequence binder. The
+/// ordinary Teleport request is produced through its existing move/stop owner;
+/// native Infantry subcell resolution and its preceding RNG draw are separate
+/// from this sequencer comparison. The phase adapter is not a full Teleport
+/// lifetime or Chronosphere claim.
+#[test]
+fn retail_teleport_default_action_matches_the_native_sequencer() {
+    let Some((retail_rules, retail_art)) = crate::rules::retail_ini_fixture::retail_rules_and_art()
+    else {
+        return;
+    };
+    let mut rules = RuleSet::from_ini(&retail_rules).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&retail_art));
+    rules.bind_animation_sequences(
+        &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&retail_art),
+    );
+    let corpus: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/infantry_default_motion.json"
+    ))
+    .unwrap();
+    // These values come from original523D00 on physical ClegSequence, not
+    // from the Rust binder. Confirm the retained bank used by the sequencer.
+    let records = rules.animation_sequence("CLEG").unwrap();
+    for (action, native) in corpus["records"].as_array().unwrap().iter().enumerate() {
+        let record = records.infantry_action(action as i32).unwrap();
+        assert_eq!(record.start_frame, native[0].as_i64().unwrap() as i32);
+        assert_eq!(record.frames_per_facing, native[1].as_i64().unwrap() as i32);
+        assert_eq!(record.facings, native[2].as_i64().unwrap() as i32);
+    }
+    let rows = corpus["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 54);
+    for (index, row) in rows.iter().enumerate() {
+        let input = &row["input"];
+        let name = format!("Teleport row {index} {input}");
+        let mut sim = Simulation::with_seed(31);
+        sim.session.binary_frame = 1000;
+        sim.session.game_options.game_speed = 1;
+        let house = sim.interner.intern("Americans");
+        sim.houses.insert(
+            house,
+            crate::sim::house_state::HouseState::new(house, 0, None, true, 0, 10),
+        );
+        let id = sim
+            .construct_object_limbo_at_height("CLEG", "Americans", 10, 10, 0, 0, &rules)
+            .unwrap();
+        let actor = sim.substrate.entities.get_mut(id).unwrap();
+        actor.lifecycle.in_limbo = false;
+        actor.lifecycle.cell_marked = true;
+        actor.health.current = 125;
+        actor.position.exact_z_leptons = Some(0);
+        actor.infantry.as_mut().unwrap().is_prone = input["prone"].as_bool().unwrap();
+        assert_eq!(
+            actor.locomotor.as_ref().unwrap().active_kind(),
+            crate::rules::locomotor_type::LocomotorKind::Teleport,
+        );
+        let producer = input["producer"].as_str().unwrap();
+        if producer != "ctor" {
+            assert!(super::super::teleport_movement::teleport_move_to(
+                actor,
+                (12, 10),
+                &rules.general,
+                false,
+                1000,
+            ));
+        }
+        if producer == "move_stop" {
+            super::super::teleport_movement::teleport_stop_moving(actor);
+        }
+        actor
+            .mission_leaf
+            .set_infantry_doing_verified(input["doing"].as_i64().unwrap() as i32)
+            .unwrap();
+        actor
+            .foot_speed
+            .set_speed_fraction_native_bits(input["fraction"].as_f64().unwrap().to_bits());
+        actor.install_native_stage_fixture(crate::sim::stage::StageClass::from_native_fixture(
+            input["stage"].as_i64().unwrap() as i32,
+            0,
+            crate::sim::timer::CdTimer::from_raw(17, 91),
+            92,
+            1,
+        ));
+        let native_moving = row["before"]["request_byte"].as_u64().unwrap() != 0;
+        assert_eq!(
+            super::super::motion_query::is_moving(actor),
+            Some(native_moving),
+            "{name}: original ILocomotion+10 input"
+        );
+        let rng_before = sim.rng_state();
+        assert!(
+            !sim.infantry_sequencer(id, &rules),
+            "{name}: retained owner"
+        );
+        assert_eq!(
+            doing(&sim, id),
+            row["after"]["doing"].as_i64().unwrap() as i32,
+            "{name}"
+        );
+        assert_stage(&sim, id, &row["after"], &name);
+        assert_eq!(
+            sim.rng_state(),
+            rng_before,
+            "{name}: all three complete RNG states"
+        );
+        for stream in ["main", "scenario", "mapgen"] {
+            assert_eq!(row["rng"][stream]["unchanged"], true);
+            assert_eq!(
+                row["rng"][stream]["before_hex"],
+                row["rng"][stream]["after_hex"]
+            );
+        }
+    }
+}
