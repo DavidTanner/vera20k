@@ -7,7 +7,9 @@
 
 use crate::rules::crate_rules::{CrateRules, CrateRulesAccumulator};
 use crate::rules::error::RulesError;
+use crate::rules::gunner_turrets::GunnerTurrets;
 use crate::rules::ini_parser::{IniFile, IniSection, is_native_none_type_name};
+use crate::rules::object_type::ObjectCategory;
 use crate::rules::powerups::{PowerupTable, PowerupsAccumulator};
 use crate::rules::projectile_type::ProjectileArtState;
 use crate::rules::ruleset::{GeneralBuildingTypes, PrismSupportRules};
@@ -325,6 +327,39 @@ impl ProcessedRulesLayers {
             .into_iter()
             .flatten()
             .map(|member| (member.native_stored_id.as_str(), member.building_foundation))
+    }
+
+    /// TechnoType +810/+814 state after the reached generic and FV readers.
+    /// The FV pairs have literal defaults and overlapping writes, so merged
+    /// source keys cannot reconstruct this process-resident result.
+    pub(crate) fn gunner_turret_states(
+        &self,
+    ) -> impl Iterator<Item = (ObjectCategory, &str, &GunnerTurrets)> {
+        let families = &self
+            .native_type_construction_trace
+            .registry_state()
+            .families;
+        [
+            RulesTypeFamily::Building,
+            RulesTypeFamily::Aircraft,
+            RulesTypeFamily::Vehicle,
+            RulesTypeFamily::Infantry,
+        ]
+        .into_iter()
+        .flat_map(move |family| {
+            let category = family.object_category().expect("TechnoType family");
+            families
+                .get(&family)
+                .into_iter()
+                .flatten()
+                .map(move |member| {
+                    (
+                        category,
+                        member.native_stored_id.as_str(),
+                        &member.gunner_turrets,
+                    )
+                })
+        })
     }
 
     /// Retained +A8 speed and +A0 projectile after the last Weapon sweep.
@@ -719,6 +754,16 @@ const PROJECTED_RULE_TYPE_FAMILIES: &[(&str, RulesTypeFamily)] = &[
 ];
 
 impl RulesTypeFamily {
+    fn object_category(self) -> Option<ObjectCategory> {
+        match self {
+            Self::Building => Some(ObjectCategory::Building),
+            Self::Aircraft => Some(ObjectCategory::Aircraft),
+            Self::Vehicle => Some(ObjectCategory::Vehicle),
+            Self::Infantry => Some(ObjectCategory::Infantry),
+            _ => None,
+        }
+    }
+
     fn native_constructor_family(self) -> Option<NativeTypeConstructorFamily> {
         Some(match self {
             Self::Country => NativeTypeConstructorFamily::HouseType,
@@ -772,6 +817,9 @@ struct ProcessedType {
     /// BuildingType45DF13 initializes +EF0 to zero; ReadINI461225..46125D
     /// updates it from fixed ART after ObjectType5F933B reads effective Image.
     building_foundation: u8,
+    /// TechnoType ctor71136F/711781, generic flag read71287E and FV pair
+    /// reads747BBD..747E90, retained across every reached Rules pass.
+    gunner_turrets: GunnerTurrets,
     weapon: WeaponReadState,
     warhead_anim: WarheadAnimReadState,
 }
@@ -794,6 +842,7 @@ impl ProcessedType {
             native_stored_id,
             anim_art_read: false,
             building_foundation: 0,
+            gunner_turrets: GunnerTurrets::default(),
             weapon: WeaponReadState::default(),
             warhead_anim: WarheadAnimReadState::default(),
         }
@@ -1405,6 +1454,13 @@ impl RulesPassProcessor {
                 self.begin_rules_member_read(family, index, pass)
             {
                 self.process_techno_base(&raw, &effective);
+                self.families.get_mut(&family).unwrap()[index]
+                    .gunner_turrets
+                    .apply_pass(
+                        &native_stored_id,
+                        &raw,
+                        family.object_category().expect("TechnoType family"),
+                    );
                 match family {
                     RulesTypeFamily::Building => {
                         // Native ObjectType5F933B copies Rules Image into its

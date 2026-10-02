@@ -163,6 +163,7 @@ fn retail_aegis_raster_and_parent_waterline_match_original_ship_draw() {
         let facing = row["input"]["facing_step32"].as_u64().unwrap() as u8 * 8;
         let key = UnitSpriteKey {
             type_id: "AEGIS".into(),
+            turret_index: 0,
             facing,
             layer: VxlLayer::Composite,
             frame: 0,

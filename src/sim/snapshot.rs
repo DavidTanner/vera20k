@@ -802,9 +802,11 @@ use crate::sim::world::Simulation;
 // 279 -> 280: Unit deployment uses private6E0..6E2 and retained Techno
 // animation/landing state, removing the independent deployment countdown.
 // Anim palettes also retain either a color scheme or the creation-time House.
-// 280 -> 281: SmudgeGrid retains runtime Smudge identities through the shared
+// 280 -> 281: one signed current weapon/turret pair replaces weapon overrides
+// and last-fire slot state; charge drawing retains the native saved ROF duration.
+// 281 -> 282: SmudgeGrid retains runtime Smudge identities through the shared
 // deferred destructor, separately from its persistent cell marks.
-const SNAPSHOT_VERSION: u32 = 281;
+const SNAPSHOT_VERSION: u32 = 282;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3797,8 +3799,9 @@ mod tests {
         // and its anchored power-blackout clock/radar projection.
         // 279 -> 280: Unit deploy flags, Techno animation/landing ownership and
         // the animation's retained palette source replace the legacy countdown.
-        // 280 -> 281: retained runtime Smudge identities/pending deletion.
-        assert_eq!(super::SNAPSHOT_VERSION, 281);
+        // 280 -> 281: authoritative weapon/turret pair and saved charge duration.
+        // 281 -> 282: retained runtime Smudge identities/pending deletion.
+        assert_eq!(super::SNAPSHOT_VERSION, 282);
     }
 
     #[test]

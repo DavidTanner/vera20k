@@ -92,8 +92,8 @@ pub(crate) struct AttackerSnapshot {
     /// Body FacingClass (`+0x388`), including infantry fire-start snaps and
     /// vehicle turns. Facing gates and emission read its full 16-bit value.
     pub hull_facing: crate::sim::movement::FacingClass,
-    /// Weapon-selection override (the Gunner-IFV slot).
-    pub weapon_override: Option<super::combat_weapon::WeaponOverride>,
+    /// Read-only snapshot of Techno+138, owned by GameEntity's gunner state.
+    pub current_weapon_number: i32,
     /// `TechnoClass+0x82` InOpenToppedTransport.
     pub in_open_transport: bool,
     /// Garrison state — present only for garrisoned buildings (IsOccupied).

@@ -980,8 +980,8 @@ impl Simulation {
 
     /// `UnitClass` vtable `+0x4D4` (`0x00746420`): a gunner's TemporalClass
     /// moves to the IFV, which becomes its owner.
-    pub(crate) fn temporal_receive_gunner(&mut self, ifv: u64, gunner: u64) {
-        self.temporal_move_link(gunner, ifv);
+    pub(crate) fn temporal_receive_gunner(&mut self, ifv: u64, gunner: u64) -> bool {
+        self.temporal_move_link(gunner, ifv)
     }
 
     /// `UnitClass` vtable `+0x4D8` (`0x007464E0`), when the last passenger

@@ -36,7 +36,7 @@ fn rules_with_patch(patch: &str) -> RuleSet {
          OpenTopped=yes\nLeaveTransportSound=ExitTransport\n\
          Locomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\n\
          [FV]\nStrength=200\nArmor=light\nSpeed=4\nROT=5\nPassengers=3\nTurret=yes\n\
-         TurretCount=4\nGunner=yes\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\n\
+         TurretCount=4\nGunner=yes\nNormalTurretWeapon=0\nMachineGunTurretWeapon=1\nMachineGunTurretIndex=2\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\n\
          [BGGY]\nStrength=100\nArmor=light\nSpeed=6\nROT=5\nSize=1\n\
          Locomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\n\
          [LCRF]\nStrength=300\nArmor=light\nSpeed=6\nROT=5\nPassengers=12\nSpeedType=Hover\n\
@@ -793,7 +793,6 @@ fn nighthawk_ejects_five_passengers_to_scanned_neighbours() {
 #[test]
 fn ifv_keeps_gunner_weapon_when_every_exit_is_refused() {
     use crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
-    use crate::sim::combat::combat_weapon::WeaponOverride;
 
     let mut fx = Fixture::new(|_, _| false);
     {
@@ -812,7 +811,7 @@ fn ifv_keeps_gunner_weapon_when_every_exit_is_refused() {
         .entities
         .get_mut(fv)
         .expect("ifv")
-        .weapon_override = Some(WeaponOverride::IfvSlot(1));
+        .set_gunner_weapon(1, fx.rules.object("FV").unwrap());
     assert!(fx.apply(Command::UnloadPassengers { transport_id: fv }));
 
     let mut reached_eject = false;
@@ -825,9 +824,9 @@ fn ifv_keeps_gunner_weapon_when_every_exit_is_refused() {
             reached_eject = true;
         }
         assert_eq!(
-            e.weapon_override,
-            Some(WeaponOverride::IfvSlot(1)),
-            "gunner weapon retained across a refused ejection"
+            (e.current_weapon_number(), e.current_turret_index()),
+            (1, 2),
+            "gunner weapon and turret retained across a refused ejection"
         );
     }
     assert!(reached_eject, "the handler reached state 3");
@@ -1274,7 +1273,6 @@ fn nighthawk_failed_ejection_keeps_cargo_and_leaves_for_guard() {
 
 #[test]
 fn cargo_departure_ground_reveal_rejection_preserves_route_retry_state() {
-    use crate::sim::combat::combat_weapon::WeaponOverride;
     use crate::sim::movement::locomotor::MovementLayer;
     for aircraft in [false, true] {
         for already_revealed in [false, true] {
@@ -1306,7 +1304,7 @@ fn cargo_departure_ground_reveal_rejection_preserves_route_retry_state() {
                 .mark_live_contact_with(passenger);
             {
                 let carrier = fx.sim.substrate.entities.get_mut(transport).unwrap();
-                carrier.weapon_override = Some(WeaponOverride::IfvSlot(99));
+                carrier.set_gunner_selection_for_test(99, -1);
                 let cargo = carrier.passenger_role.cargo_mut().unwrap();
                 // Admission-time size differs from current E1 Size=1.
                 cargo.passenger_sizes[0] = 7;
@@ -1342,12 +1340,11 @@ fn cargo_departure_ground_reveal_rejection_preserves_route_retry_state() {
                 held
             );
             assert_eq!(
-                carrier.weapon_override,
-                if aircraft {
-                    None
-                } else {
-                    Some(WeaponOverride::IfvSlot(1))
-                }
+                (
+                    carrier.current_weapon_number(),
+                    carrier.current_turret_index()
+                ),
+                if aircraft { (99, -1) } else { (1, 2) }
             );
             let pax = fx.sim.substrate.entities.get(passenger).unwrap();
             assert_eq!(pax.passenger_role.inside_transport_id(), Some(transport));

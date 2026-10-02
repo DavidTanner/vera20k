@@ -241,9 +241,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         let e = sim.substrate.entities.get_mut(id).unwrap();
         e.lifecycle.in_limbo = true;
         e.set_veterancy_rank((passenger["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
-        e.weapon_override = Some(combat_weapon::WeaponOverride::IfvSlot(
-            passenger["current"].as_u64().unwrap_or(0) as u32,
-        ));
+        e.set_gunner_selection_for_test(passenger["current"].as_i64().unwrap_or(0) as i32, -1);
         cargo.board_forced(id, 1);
     }
     sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::Transport { cargo };

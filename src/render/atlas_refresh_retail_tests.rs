@@ -421,6 +421,7 @@ fn retail_atlas_refresh_costs() {
         units
             .get(&UnitSpriteKey {
                 type_id: new_vehicle.to_string(),
+                turret_index: 0,
                 facing: 0,
                 layer: VxlLayer::Body,
                 frame: 0,

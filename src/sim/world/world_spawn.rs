@@ -1313,7 +1313,10 @@ impl Simulation {
     /// loading HVA files.
     pub fn update_voxel_anim_frame_counts(
         &mut self,
-        frame_counts: &std::collections::BTreeMap<(String, crate::sim::components::VxlLayer), u32>,
+        frame_counts: &std::collections::BTreeMap<
+            (String, crate::sim::components::VxlLayer, i32),
+            u32,
+        >,
     ) {
         use crate::sim::components::VxlLayer;
 
@@ -1335,7 +1338,7 @@ impl Simulation {
             ]
             .iter()
             .filter_map(|layer| {
-                frame_counts.get(&(self.interner.resolve(type_ref).to_string(), *layer))
+                frame_counts.get(&(self.interner.resolve(type_ref).to_string(), *layer, 0))
             })
             .copied()
             .max()

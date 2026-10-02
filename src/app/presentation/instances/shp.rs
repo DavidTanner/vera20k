@@ -639,6 +639,7 @@ fn emit_building_turret_vxl(
     };
     let key = UnitSpriteKey {
         type_id: turret_id.to_string(),
+        turret_index: 0,
         facing: canonical_turret_facing(turret_facing),
         layer: VxlLayer::Composite,
         frame: 0,
