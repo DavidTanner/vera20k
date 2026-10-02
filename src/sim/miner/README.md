@@ -34,10 +34,17 @@ from the Rust implementation.
 ## Evidence and reproduction
 
 The [native packet and reader receipts](../../../tools/spatial_oracle/harvest_attack_return.md)
-save 43 original histories, including complete 250-word Scenario RNG states.
-`world::harvest_attack_return_oracle_tests` compares 42 represented histories
+save 53 original histories, including complete 250-word Scenario RNG states.
+`world::harvest_attack_return_oracle_tests` compares 52 represented histories
 step by step. Retained AttackMove is explicitly excluded from Rust replay.
 The existing field, refinery and Chrono Miner corpora retain their own coverage.
+
+Ten controls cover the shared non-harvester Unit idle branch. Armed Units keep
+their target and burst; unarmed Units clear those fields before the Patrol/Unload
+queue tail. The existing `combat_weapon::is_armed` owner resolves the weapon.
+AreaGuard, Wait and Unload with a resolved DeploysInto retain their native early
+returns. These controls execute original idle and predicate bodies on declared
+scalar/pointer inputs; they do not establish native movement or combat.
 
 `world::harvest_field_cycle_tests::retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission`
 loads physical RULESMD, fixed ARTMD, Battle and AnyTown INIs through the production
@@ -52,6 +59,12 @@ actor missions through the synchronized command scheduler. Run it with the
 existing [map observation tool](../../../tools/map_observation.md). Its numeric
 type/actor handles belong to the saved launch; verify them if the population
 changes. Runtime observation is separate from a native comparison.
+
+The [validation receipt](../../../tools/spatial_oracle/harvest_attack_return.validation.json)
+binds the final Rust source, native output, test logs and release binary. In the
+ordinary run, ore stayed at density 4 for all 226 Attack observations
+(steps 2502..2727). Combat killed the target at 2725; Harvest returned at 2728
+and collection resumed at 2748. These are Rust production observations.
 
 ## Coverage limits
 

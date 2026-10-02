@@ -246,6 +246,29 @@ class AttackReturn:
             u.mem_write(cell(16, 15) + 0x7C, struct.pack('<h', case['sensor']))
         if case.get('same_owner'):
             u.mem_write(TARGET + 0x21C, dwords(HOUSE))
+        self.idle_control_receipt = None
+        if 'idle_control' in case:
+            control = case['idle_control']
+            # Read-only critic controls: original IsArmed701120 follows
+            # GetCurrentWeapon70E1A0 -> GetWeapon70E140 -> Type7177C0.
+            # HasTurrets=0 selects the supplied slot0 WeaponStruct pointer;
+            # no weapon body executes. The scalar controls force Guard rather
+            # than the separate IQ/DefaultToGuardArea branch.
+            u.mem_write(TYPE + 0x898, dwords(TYPE + 0x1800 if control['armed'] else 0))
+            u.mem_write(HOUSE + 0x24C, dwords(control['house_iq']))
+            u.mem_write(RULES + 0x1440, dwords(control['guard_area_iq']))
+            u.mem_write(ACTOR + 0x3B8, dwords(control['burst']))
+            u.mem_write(TYPE + 0x404, dwords(TYPE + 0x1C00 if control['deploys_into'] else 0))
+            self.call(0x701120, ACTOR, [])
+            self.idle_control_receipt = dict(
+                is_armed_receiver=hex(r(UNIT_VTABLE + 0x2AC)),
+                is_armed_eax=u.reg_read(UC_X86_REG_EAX),
+                has_turrets=r(TYPE + 0x808),
+                primary_weapon_pointer=hex(r(TYPE + 0x898)),
+                default_to_guard_area=u.mem_read(TYPE + 0xD39, 1)[0],
+                house_iq=i32(u, HOUSE + 0x24C),
+                guard_area_iq=i32(u, RULES + 0x1440),
+                deploys_into=hex(r(TYPE + 0x404)))
         if 'alive' in case:
             u.mem_write(ACTOR + 0x90, bytes([case['alive']]))
         if 'health' in case:
@@ -279,6 +302,8 @@ class AttackReturn:
                       stage_changed=u.mem_read(ACTOR + 0xFC, 1)[0], stage_step=i32(u, ACTOR + 0x110),
                       target_alive=u.mem_read(TARGET + 0x90, 1)[0], target_health=i32(u, TARGET + 0x6C),
                       scenario_rng=rng_state(u, SCENARIO + 0x218))
+        if self.idle_control_receipt is not None:
+            result['burst_index'] = i32(u, ACTOR + 0x3B8)
         return result
 
     def resolve_returns(self, address):
@@ -334,6 +359,10 @@ class AttackReturn:
                                     pc=hex(u.reg_read(UC_X86_REG_EIP)),
                                     field=FIELDS.get(address - ACTOR, 'cargo'),
                                     offset=hex(address - ACTOR), size=size, value=value))
+        if self.idle_control_receipt is not None and address == ACTOR + 0x3B8:
+            self.writes.append(dict(instruction=self.instruction, phase=self.phase,
+                                    pc=hex(u.reg_read(UC_X86_REG_EIP)), field='burst_index',
+                                    offset='0x3b8', size=size, value=value))
 
     def invoke(self, entry, this=ACTOR, args=(), *, seam=False):
         end = self.call(entry, this, list(args), (RET_MAGIC, APPROACH) if seam else RET_MAGIC)
@@ -424,9 +453,12 @@ class AttackReturn:
         assert not any(self.unused[0]), self.unused
         assert hashlib.sha256(bytes(self.u.mem_read(0x401000, 0x3E0000))).hexdigest() == self.original_text
         assert bytes(self.u.mem_read(UNIT_VTABLE, 0x600)) == self.original_vtable
-        return dict(input=self.case, before=self.before, after=self.state(), steps=self.steps,
-                    native_text_sha256=self.original_text, original_code_and_vtable_unchanged=True,
-                    instruction_count=self.instruction)
+        result = dict(input=self.case, before=self.before, after=self.state(), steps=self.steps,
+                      native_text_sha256=self.original_text, original_code_and_vtable_unchanged=True,
+                      instruction_count=self.instruction)
+        if self.idle_control_receipt is not None:
+            result['idle_control_receipt'] = self.idle_control_receipt
+        return result
 
 
 def cases():
@@ -497,6 +529,17 @@ def cases():
                          ore=ore if land == 'ore' else [], current=7, linked=True,
                          harvester=True, weeder=False, human=human,
                          steps=[dict(op='break_contact'), dict(op='idle'), dict(op='promote')]))
+    for name, current, armed, deploys_into in (
+            ('armed_move', 2, True, False), ('unarmed_patrol', 25, False, False),
+            ('armed_patrol', 25, True, False), ('unarmed_guard', 5, False, False),
+            ('unarmed_areaguard', 11, False, False), ('unarmed_wait', 28, False, False),
+            ('unarmed_sleep', 0, False, False), ('armed_sleep', 0, True, False),
+            ('unarmed_unload_deploys_into', 16, False, True), ('unarmed_unload', 16, False, False)):
+        rows.append(dict(name=f'plain_idle_{name}', ore=[], current=current, target=True,
+                         harvester=False, weeder=False,
+                         idle_control=dict(armed=armed, burst=7, deploys_into=deploys_into,
+                                           house_iq=0, guard_area_iq=1),
+                         steps=[dict(op='idle', args=[0, 1])]))
     return rows
 
 
@@ -511,6 +554,7 @@ def metadata():
     return provenance(scope=__doc__, entry_points={name: address for address, (name, _) in OBSERVED.items()}
                       | dict(unit_type_constructor=0x7470D0, rules_constructor=0x665650,
                              mission_static_constructor=0x4E7CF0, mission_reader=0x5B3760,
+                             is_armed=0x701120, current_weapon=0x70E1A0,
                              post_foot_ai_prefix=POST_FOOT_AI, post_foot_ai_prefix_end=0x7365DF,
                              techno_stage_prefix=0x6FABB8, techno_stage_prefix_end=0x6FAC31,
                              harvester_read=0x74769F, storage_read=0x713129, movement_zone_read=0x71605E,
@@ -524,6 +568,7 @@ def metadata():
                           'Monotonic or explicit prior-timer controls invoke original Mission5B3060, Ready744270 and conditional Commence5B3570. This runs the original dispatch epilogue, promotion bodies and selected TechnoAI6FABB8..6FAC31 stage update and UnitAI7365BB..7365DF alive/effective-mission/harvesting-latch prefix, stopping before Fire7365E1. Stage runs after mission dispatch as in the caller6FA655 ->6FABB8; Stage timerpadding+104 comes from supplied zero stacklocal, increment+110 is inherited1. This excludes whole UnitAI and Logic scheduling. A deadline step supplies the frame from the previous native timer. The Attack cadence reads CURRENT+AC, even after Harvest is queued.',
                           'Scenario RNG seeded by original65C6D0 in the inherited fixture; full state, cursors, every raw/ranged call and actual field writes are retained at every step. FPCW inherited0E7F. No code or original vtable bytes are patched.',
                           'Six shared-owner exit controls supply currentEnter7 and linked refinery contacts, execute unchanged Unitvtable+274=65ACB0 BREAK3, then originalUnit738970 idle(0,1), as in caller4D92D0..4D92E8. Contact slots and installed NavCom before/after are recorded. Full FootEnter admission/exit, depot repair/sale and subsequent Move/Harvest gameplay are excluded.',
+                          'Ten shared Unit idle controls supply Harvester/Weeder0, target, burst7, optional slot0 WeaponStruct weapon pointer, optional DeploysInto pointer, HasTurrets0, DefaultToGuardArea0 and houseIQ0/GuardAreaIQ1. Original IsArmed701120 executes and its EAX is recorded. Original Unit idle establishes armed target/burst retention and unarmed setter admission before the queue tail. Weapon bodies, broader AreaGuard/transport gameplay and native Move acquisition are excluded.',
                           'Ore/gem registry/values, cells, cargo, queues, refinery and passability retain the declared harvest_field inputs. The corpus does not establish a shot, combat damage, full target destruction, long refinery return, full match or rendered output.',
                       ], substitutions=[
                           'Live-target Attack stops before original UnitApproach7414E0 after original virtual dispatch. A supplied RET4 outside the original image returns declaredEAX0 without target mutation, then original Attack resumes. This caller comparison excludes Approach, range/admission, movement and firing.',

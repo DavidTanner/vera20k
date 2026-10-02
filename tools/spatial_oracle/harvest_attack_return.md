@@ -1,13 +1,15 @@
 # War Miner Attack return comparison
 
 `harvest_attack_return.py` extends the existing `harvest_field` /
-`refinery_dock` fixture. The 43 saved histories execute original command events,
+`refinery_dock` fixture. The 53 saved histories execute original command events,
 pointer-expiry callbacks, Attack dispatch, Unit idle, Ready/Commence, selected
 TechnoAI and UnitAI scalar prefixes, and Harvest states 0/1. Expectations come
 from `gamemd.exe`, independently of Rust.
 
 The accepted executable SHA-256 is
 `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`.
+The [validation receipt](harvest_attack_return.validation.json) binds Rust replay,
+retail integration, source identity and the ordinary release observation.
 Each history checks that the original image instruction region and Unit vtable
 remain unchanged. The `.meta.json` pins Unicorn, entry points, source identities,
 assumptions, substitutions, and the canonical payload hash. This is a bounded
@@ -155,6 +157,23 @@ NavCom, HARV human/ore, AI/ore and AI/clear queue Harvest 10; human/clear queues
 Guard 5. Those idle visits call the null target setter, then null destination
 setter, then queue. All six histories preserve the complete Scenario RNG state.
 
+Ten `plain_idle_*` controls cover the armed/unarmed split at Unit `738A6E`.
+They supply Harvester/Weeder false, target and burst 7, HasTurrets 0,
+DefaultToGuardArea 0, house IQ 0 and GuardArea IQ threshold 1. The optional slot-0
+weapon pointer and DeploysInto pointer are declared fixture data. Original
+`IsArmed701120`, its weapon getters and the complete Unit idle body execute;
+the saved receipt records the actual EAX and the Rust comparison uses its return
+byte. Weapon bodies and broader AreaGuard/transport gameplay remain excluded.
+
+Armed Move queues Guard while retaining target `0x200c2000` and burst 7; armed
+Patrol and Sleep retain those fields without queuing. Unarmed Patrol clears
+target and burst through Target(NULL), then Destination(NULL,1), before the
+tail suppresses the queue. Unarmed Guard performs the setters but the mission
+owner rejects the same-current queue; unarmed Sleep clears and queues Guard.
+AreaGuard, Wait and Unload with DeploysInto return before the setters; plain
+Unload clears before the queue tail. All ten controls preserve Scenario RNG.
+These are receiver controls, not full native moving/firing histories.
+
 `schema_version=1` contains `reader_receipts` and `rows`. Each row holds declared
 `input`, `before`, `after`, and ordered `steps`. Each step has its input operation,
 pre/post state, raw return, original entry/return events, field writes, and inherited
@@ -166,6 +185,9 @@ it does not calculate an expected dispatch result.
 `break_contact` invokes the asserted original Unit `+274` receiver with BREAK 3.
 Its writer records additionally name the miner/refinery contact slots and retain
 their absolute addresses, PCs and instruction order.
+The ten plain-Unit controls additionally save `idle_control_receipt` and retained
+`burst_index` in each state. The prior 43 histories and reader receipts are
+unchanged.
 
 RandomRanged `65C7E0` inlines its raw generator. Checkpoints at `65C87E` / `65C882`
 and the actual continue/accept branch record raw values, masks, candidates,

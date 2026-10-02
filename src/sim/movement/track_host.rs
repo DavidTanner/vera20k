@@ -1148,12 +1148,29 @@ impl Simulation {
         let current = entity.mission.current().known();
         let effective = entity.mission.effective().known();
         let category = entity.category;
-        let miner = rules
-            .and_then(|rules| rules.object(self.interner.resolve(entity.type_ref())))
-            .is_some_and(|object| object.harvester || object.weeder);
-        // Unit738AB4..ABC preserves pending Unit+68C and returns the saved
-        // Foot result before Guard/target/destination/mission side effects.
-        if !has_destination && !miner && entity.mcv_deploy_pending {
+        let unit_type =
+            rules.and_then(|rules| rules.object(self.interner.resolve(entity.type_ref())));
+        let miner = unit_type.is_some_and(|object| object.harvester || object.weeder);
+        // Unit738A6E calls the existing IsArmed701120 owner only after the
+        // Harvester/Weeder gates. Armed idle keeps TarCom and burst; the
+        // unarmed branch clears them before the final mission queue gate.
+        // Original executable controls: harvest_attack_return.json plain_idle_*.
+        let armed = !miner
+            && unit_type
+                .is_some_and(|object| crate::sim::combat::combat_weapon::is_armed(entity, object));
+        let deploys_into = unit_type
+            .and_then(|object| object.deploys_into.as_deref())
+            .and_then(|name| rules.and_then(|rules| rules.object(name)))
+            .is_some();
+        if !has_destination
+            && !miner
+            && !armed
+            && (entity.mcv_deploy_pending
+                || current == Some(MissionType::AreaGuard)
+                || (current == Some(MissionType::Unload) && deploys_into))
+        {
+            // Unarmed738AB4..738AE4 returns before either setter for pending
+            // deployment, AreaGuard, or Unload with resolved DeploysInto.
             return saved_base_return;
         }
         //73899E..7389AB: Wait28 suppresses only the Unit tail after Foot.
@@ -1164,14 +1181,19 @@ impl Simulation {
             Some(MissionType::Move)
         } else if miner {
             rules.and_then(|rules| harvester_idle_selection(self, id, rules, skip_human_land_check))
-        } else {
+        } else if armed {
             rules.map_or(Some(MissionType::Guard), |rules| {
                 crate::sim::world::foot_enter_idle_mode_selection(
                     rules, category, current, false, effective,
                 )
             })
+        } else {
+            // Unarmed738AEA..738B09 selects Guard and performs its setters
+            // even on Patrol, Guard or a frozen mission. The armed early
+            // selector gates do not apply to this branch.
+            Some(MissionType::Guard)
         };
-        if selection.is_some() && !has_destination {
+        if selection.is_some() && !has_destination && (miner || !armed) {
             // Unit738AF5/738C75 calls Target(NULL) then Destination(NULL,1)
             // before its queue gate. Use the shared concrete setter owners,
             // including retained burst, movement, and Teleporter side effects.

@@ -51,6 +51,16 @@ impl Replay {
             // Existing field fixture already reads Harvest/Guard and the stock
             // Harvester, Storage and scan values through their native parsers.
             text.push_str("[Attack]\nRate=.016\n[Move]\nRate=.016\n");
+            if let Some(control) = input.get("idle_control") {
+                if control["armed"] == true {
+                    *text = text.replacen("[HARV]\n", "[HARV]\nPrimary=IdleWeapon\n", 1);
+                    text.push_str("[IdleWeapon]\nDamage=10\nROF=10\nRange=4\n");
+                }
+                if control["deploys_into"] == true {
+                    *text = text.replacen("[HARV]\n", "[HARV]\nDeploysInto=GAREFN\n", 1);
+                }
+                text.push_str("[Sleep]\nZombie=yes\n");
+            }
         });
         let owner = scene.sim.interner.intern("Russians");
         scene
@@ -116,6 +126,24 @@ impl Replay {
             scene.sim.fog.width = 33;
             scene.sim.fog.height = 33;
             scene.sim.fog.sensors_add_at(owner, (16, 15), 1);
+        }
+        if let Some(control) = input.get("idle_control") {
+            let entity = scene.sim.substrate.entities.get_mut(scene.miner).unwrap();
+            entity.weapon_burst =
+                serde_json::from_value(json!({"index": control["burst"]})).unwrap();
+            let object = scene.rules.object("HARV").unwrap();
+            assert_eq!(
+                crate::sim::combat::combat_weapon::is_armed(entity, object),
+                int(&row["idle_control_receipt"]["is_armed_eax"]) & 255 != 0,
+                "{}: native IsArmed return byte",
+                input["name"]
+            );
+            assert_eq!(
+                object.deploys_into.is_some(),
+                control["deploys_into"] == true
+            );
+            let owner = entity.owner();
+            scene.sim.houses.get_mut(&owner).unwrap().current_iq = int(&control["house_iq"]);
         }
         // Unit construction consumes shared stream work in Rust. All fixture
         // allocations precede the declared original Scenario seed/prestate.
@@ -185,6 +213,9 @@ impl Replay {
             native["target"].as_str().unwrap(),
             "{context}: Target"
         );
+        if let Some(index) = native.get("burst_index") {
+            assert_eq!(e.weapon_burst.index(), int(index), "{context}: burst index");
+        }
         assert_eq!(
             e.navigation.nav_queue.len(),
             int(&native["nav_queue_count"]) as usize,
@@ -390,7 +421,7 @@ impl Replay {
 #[test]
 fn attack_expiry_idle_and_harvest_match_original_executable_steps() {
     let corpus = corpus();
-    assert_eq!(corpus["row_count"], 43);
+    assert_eq!(corpus["row_count"], 53);
     let mut compared = 0;
     for row in corpus["rows"].as_array().unwrap() {
         let name = row["input"]["name"].as_str().unwrap();
@@ -409,7 +440,27 @@ fn attack_expiry_idle_and_harvest_match_original_executable_steps() {
         }
         compared += 1;
     }
-    assert_eq!(compared, 42);
+    assert_eq!(compared, 52);
+}
+
+#[test]
+fn shared_unit_idle_setter_admission_matches_original_controls() {
+    let corpus = corpus();
+    let mut compared = 0;
+    for row in corpus["rows"].as_array().unwrap() {
+        if row["input"].get("idle_control").is_none() {
+            continue;
+        }
+        let name = row["input"]["name"].as_str().unwrap();
+        let mut replay = Replay::new(row);
+        replay.compare(&row["before"], &row["input"], &format!("{name}: initial"));
+        for step in row["steps"].as_array().unwrap() {
+            replay.step(step, name);
+            replay.compare(&step["after"], &row["input"], name);
+        }
+        compared += 1;
+    }
+    assert_eq!(compared, 10);
 }
 
 #[test]

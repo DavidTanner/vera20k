@@ -16,6 +16,7 @@
     "Monotonic or explicit prior-timer controls invoke original Mission5B3060, Ready744270 and conditional Commence5B3570. This runs the original dispatch epilogue, promotion bodies and selected TechnoAI6FABB8..6FAC31 stage update and UnitAI7365BB..7365DF alive/effective-mission/harvesting-latch prefix, stopping before Fire7365E1. Stage runs after mission dispatch as in the caller6FA655 ->6FABB8; Stage timerpadding+104 comes from supplied zero stacklocal, increment+110 is inherited1. This excludes whole UnitAI and Logic scheduling. A deadline step supplies the frame from the previous native timer. The Attack cadence reads CURRENT+AC, even after Harvest is queued.",
     "Scenario RNG seeded by original65C6D0 in the inherited fixture; full state, cursors, every raw/ranged call and actual field writes are retained at every step. FPCW inherited0E7F. No code or original vtable bytes are patched.",
     "Six shared-owner exit controls supply currentEnter7 and linked refinery contacts, execute unchanged Unitvtable+274=65ACB0 BREAK3, then originalUnit738970 idle(0,1), as in caller4D92D0..4D92E8. Contact slots and installed NavCom before/after are recorded. Full FootEnter admission/exit, depot repair/sale and subsequent Move/Harvest gameplay are excluded.",
+    "Ten shared Unit idle controls supply Harvester/Weeder0, target, burst7, optional slot0 WeaponStruct weapon pointer, optional DeploysInto pointer, HasTurrets0, DefaultToGuardArea0 and houseIQ0/GuardAreaIQ1. Original IsArmed701120 executes and its EAX is recorded. Original Unit idle establishes armed target/burst retention and unarmed setter admission before the queue tail. Weapon bodies, broader AreaGuard/transport gameplay and native Move acquisition are excluded.",
     "Ore/gem registry/values, cells, cargo, queues, refinery and passability retain the declared harvest_field inputs. The corpus does not establish a shot, combat damage, full target destruction, long refinery return, full match or rendered output."
   ],
   "substitutions": [
@@ -63,6 +64,8 @@
     "rules_constructor": "0x00665650",
     "mission_static_constructor": "0x004E7CF0",
     "mission_reader": "0x005B3760",
+    "is_armed": "0x00701120",
+    "current_weapon": "0x0070E1A0",
     "post_foot_ai_prefix": "0x007365BB",
     "post_foot_ai_prefix_end": "0x007365DF",
     "techno_stage_prefix": "0x006FABB8",
@@ -76,7 +79,7 @@
     "load_rate_read": "0x00670CE7"
   },
   "source_normalized_lf_sha256": {
-    "generator": "d908edd95bf0d505b1155cc779c5c24b9d0e173b8a11c3dc42955c0fc00797b0",
+    "generator": "97f0a65f08ad025292a79ad3590efa71b83c5c89e76f4c6eac1c7c2e8f9bfd47",
     "harvest_field": "047fd5d2333dcee593d93edfa92a69debd6ad2f7b5a53029711f3dde17b5e087",
     "refinery_dock": "5bb4b134ae100834f3424e650fb7c176655a3f9f0bd2e349225c20a207133e88",
     "track_destination": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
@@ -92,5 +95,5 @@
     "unit_entry": "c79e273f002fbb921942676c3747068fcb1312574e66eaaafe8bf4286740b96e",
     "native_runner": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c"
   },
-  "payload_sha256": "056471cd523c265b91879cb9b1be116721108b6c5d636e51ae70f609620eb599"
+  "payload_sha256": "552da9d44607643d1f673191b7d0f67971d0632d8bff38ff6b2c23ad9b238754"
 }

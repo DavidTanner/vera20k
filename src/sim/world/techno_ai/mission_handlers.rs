@@ -111,7 +111,7 @@ pub(crate) fn dispatch_foot_mission(
 
     let mut infantry_guard_handled = false;
     let evaluation = match (input.category, input.mission) {
-        // Unit vtable7F5C70+238 -> MissionHarvest73E5E0. No other mission
+        // Unit vtable7F5C70+224 -> MissionHarvest73E5E0. No other mission
         // can reach this body or interpret its committed handler cursor.
         (EntityCategory::Unit, Some(MissionType::Harvest)) => {
             let Some(delay) = crate::sim::miner::mission_harvest(
