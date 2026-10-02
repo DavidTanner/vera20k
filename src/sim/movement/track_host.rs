@@ -1176,7 +1176,7 @@ impl Simulation {
             // before its queue gate. Use the shared concrete setter owners,
             // including retained burst, movement, and Teleporter side effects.
             let _ = self.assign_target_represented(id, None, rules);
-            self.assign_null_destination(id, rules);
+            self.assign_null_destination(id, rules, None);
         }
         // Unit738CFA..D12 suppresses assignment only after preceding writes.
         let selection = selection.filter(|_| {
