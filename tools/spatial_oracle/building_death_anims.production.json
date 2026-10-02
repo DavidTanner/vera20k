@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "mechanism": "ordinary GAPOWR fatal lifecycle",
-  "candidate_state": "stock-smudge implementation passes joined native regression; fetched-main integration, final checks, refreshed production capture and single critic pending",
+  "candidate_state": "code validation passed on integrated main; preserved release v3 and refreshed production pending; single critic not yet run",
   "objects_certified": 0,
   "native_comparator": "NONE",
   "parity_certification": "NONE",
@@ -542,28 +542,33 @@
       "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/tools/spatial_oracle/building_body_transition.json",
       "byte_length": 914469,
       "sha256": "26373ad2f54f94cb2860975773c26ebdb2d731603d3ee6e55de62e7c663d4194"
+    },
+    {
+      "path": "/Users/halvor/.codex/worktrees/object-completion/vera20k/tools/spatial_oracle/building_death_anims_joined_stock_smudges.json",
+      "byte_length": 25599481,
+      "sha256": "fd27d2986fad8ba2e54c9a7b066d72fa52816d6f9b5c3c25e311792ba126dcc0"
     }
   ],
   "validation_logs": {
     "strict_lib": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-strict-lib-final-v3.log",
-      "byte_length": 958290,
-      "sha256": "5a20b22f1c9f270bc710eef2ee1eab6d171e771aa17bbfa9f844b33954ecf3ab"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-strict-final-v4.log",
+      "byte_length": 960425,
+      "sha256": "ddc4fbe568bac01e1a3c4ccbf591bb88ff64d60d4e6c35ab7f57fafaa18d1d18"
     },
     "strict_clippy": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-strict-clippy-final-v3.log",
-      "byte_length": 429351,
-      "sha256": "d64fbad9cec6422da88a4a2e806400bd63cf6e481dd6f86f18b7ae443a5eed92"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-clippy-final-v5.log",
+      "byte_length": 426064,
+      "sha256": "336c950588dcce233934e0e39e00c418ffb807495fc6900fcd348bf7b8b9cc81"
     },
     "python_full": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-python-tools-final-v5.log",
-      "byte_length": 88507,
-      "sha256": "229ea4c3d41af37a785f7e1224a5b178f9d86384688244b151befe0a6f06d022"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-python-final-v6.log",
+      "byte_length": 89747,
+      "sha256": "d611efdee6f9d0793139f1bfc14f733bd49e69fab3b86045457fcb7723932e34"
     },
     "field_ratchet": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-field-ratchet-final-v2.log",
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-field-ratchet-final-v3.log",
       "byte_length": 90,
-      "sha256": "eca00d7bddbf14cde8088e6d23a97a49d737b107560cbb93c6c00afa2ce18da8"
+      "sha256": "218e7007dd7838e41044be396204aea8205f5d084c108401765bfc8718bec7af"
     },
     "release_build": {
       "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-release-build-final-v3.log",
@@ -594,27 +599,42 @@
       "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-release-retail-dustbowl-final-v1.log",
       "byte_length": 2309,
       "sha256": "b9513b151cb79a0910e4c3a399a2b2c76dd919e9af81df0be8cdc0ab52f75fde"
+    },
+    "stock_smudge_fail_before": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-stock-smudge-fail-before.log",
+      "byte_length": 3005,
+      "sha256": "ce99d2f1ba5aee3ef59d6f53ed8930f32abec19015d981a8df9f44c4320675fb"
+    },
+    "stock_smudge_focused": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-stock-smudge-focused-v4.log",
+      "byte_length": 6504,
+      "sha256": "b45d095412f4407ab69de9dd3debd0559bb32f87fc2439d8572bddfc458f1e9f"
+    },
+    "stock_smudge_native_check": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-stock-smudge-native-integrated-check.log",
+      "byte_length": 266,
+      "sha256": "d070615c550d40a6079ac18275632050296df213ddce6f21a2111a5516b1420b"
     }
   },
   "validation_results": {
     "strict_lib": {
-      "passed": 9464,
+      "passed": 9483,
       "failed": 0,
       "ignored": 227,
       "required_retail_ini": true
     },
     "strict_clippy": {
       "exit_code": 0,
-      "warnings": 732,
+      "warnings": 727,
       "diagnostics_in_edited_rust_spans": 0
     },
     "python_full": {
-      "passed": 460,
+      "run": 466,
       "skipped": 4
     },
     "sim_writable_fields": {
-      "base": 2564,
-      "candidate": 2564
+      "base": 2562,
+      "candidate": 2562
     },
     "atlas_focused": {
       "passed": 36,
@@ -622,6 +642,10 @@
     },
     "release_retail_dustbowl_before_atlas_fix": {
       "passed": 2
+    },
+    "stock_smudge_focused": {
+      "passed": 49,
+      "failed": 0
     }
   },
   "review": {
@@ -631,15 +655,34 @@
   "limits": [
     "VALID/MATCH covers production loader, app commands, simulation and Metal output reproducibility. No original native whole-match or native pixel comparison is supplied.",
     "Production uses human friendly ForceAttack on Battle/AnyTown with full match cadence; the native joined controls start with a ready enemy shot on a supplied flat map and differ in earlier volleys, credits and cadence.",
-    "Inherited joined controls supply an empty SmudgeType registry. Stock SmudgeTypes and legal TileType continuation are being audited before this chain can be reviewed or published.",
     "Production transcript does not expose complete RNG streams, House power, tracking, passive scan words, sound or deferred graphs. Bounded original executable comparisons and Rust checks cover those owners.",
     "The v1/v2 complete simulation transcript is unchanged after the atlas correction. Final strict suite and production v2 use the corrected loader; physical Dustbowl release lib tests ran before that presentation-only change.",
-    "Tagged/captured/garrison/mind-control receivers and sale remain separate chains. Whole GAPOWR/E1/MTNK certificates remain open in docs/plans/object-completion.md."
+    "Tagged/captured/garrison/mind-control receivers and sale remain separate chains. Whole GAPOWR/E1/MTNK certificates remain open in docs/plans/object-completion.md.",
+    "Stock native extension covers three ready-shot routes through impact frame4 / frame5 drain; full physical theater/map loading, other placements, later surviving death Anim visits and native pixels/audio are excluded. Native map-Smudge priority residual is dormant on AnyTown/Dustbowl, which have no Smudge entries.",
+    "The v2 production build predates runtime Smudge identities and current-main integration; its raw bundles are preserved in the recorded archive. Release v3 will replace the candidate production evidence."
   ],
   "superseded_production_archive": {
     "receipt": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-v2-production-archive.json",
     "archive": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-v2-production-archive.tar.gz",
     "sha256": "7d0cfc02b5d342839c620a10aee0039d6c4d9ceaae438c106e50636b16103d56",
     "note": "Raw v2 full/repeat/four-prefix directories are retained here; v2 predates runtime Smudge identity changes."
+  },
+  "code_validation_head": "2f84f594821d7aaec348c6c942f099b552bc2214",
+  "stock_smudge_evidence": {
+    "accepted_manifest": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/fatal-smudge-admission-audit/accepted-evidence-manifest.json",
+      "byte_length": 34428,
+      "sha256": "82a6a17a8b00e14a96f3e8e1c6085e502708a578f6a898f0047151f32df178cc"
+    },
+    "declared_without_cached_section": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/fatal-smudge-admission-audit/declared-without-section-control.json",
+      "byte_length": 119421,
+      "sha256": "4feea7a65b122171ea7f0c27fb04d8fb8287ee32cc130d882fbf977c2208d8db"
+    },
+    "map_loader_residual_manifest": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/smudge-map-loader-research/manifest.json",
+      "byte_length": 26230,
+      "sha256": "c09a66554abb218806600f7e478a3c1ff67ef0455757124efd7f3e5c7643316a"
+    }
   }
 }

@@ -9,7 +9,8 @@ comparisons and production validation. **0 / 3 objects certified.** The
 
 Owned checkout: `/Users/halvor/.codex/worktrees/object-completion/vera20k`.
 Branch `feature/native-gapowr-fatal-lifecycle`; fetched main base
-`9a6b743d29bf48a06ec12026c4d43da7038a3e5d`. Fatal changes remain uncommitted;
+`be14d088727f1745f34bc0e7a41055616ff67eaf`. Fatal increment `00d01891` and
+current-main integration `2f84f594` are committed;
 no fatal PR or critic pass has occurred. Other task files/refs/processes are
 untouched. Preserve recovery stashes `28a01dd28545ccbc95fea4ce23005331f8582706`,
 `d4059d6780fd6364f3253045f9facfc235218475`,
@@ -173,7 +174,12 @@ BuildingMark owner clears marks only on PUT, never on fatal REMOVE or drain.
 `gapowr-stock-smudge-focused-v3.log` passes all three joined Rust tests, including
 the new save/restore, malformed-queue/Logic rejection and post-drain mark checks.
 The first compile found a test-only Copy derive incompatible with owned trace
-payloads; it was removed. Final strict/clippy, current-main integration, refreshed
+payloads; it was removed. After integrating current main, strict-retail v4 passes 9483 tests / 227 ignored;
+Python v6 runs 466 tests / four skips. Clippy v4 succeeds with 728 warnings;
+its one edited-span constant-assert warning is replaced by an equivalent
+production-only panic. Focused v4 passes 49 smudge checks and clippy v5 succeeds
+with 727 warnings, none in edited Rust spans. Field ratchet
+2562/2562 and all 39 edited Rust files pass nonrecursive formatting. Refreshed
 retail production and the single fresh critic remain pending. Map-smudge loading
 is separate: AnyTown/Dustbowl have no [Smudge] entries, while the sealed loader
 packet records the existing positive-priority placement residual for future work.
@@ -215,7 +221,7 @@ required labels and other owners were preserved. Admission now succeeds.
 
 ## Next actions
 
-1. Integrate fetched main (`be14d088727f1745f34bc0e7a41055616ff67eaf`, including shared Siege Chopper changes), run final strict/clippy/tooling checks and refresh source-bound retail production. Stock joined admission now passes; preserve older isolation controls.
+1. Preserve a v3 release build and refresh source-bound retail production. Current-main integration, full strict, focused smudge, final clippy, Python, formatting and field ratchet pass. Preserve older isolation controls.
 2. Run exactly one fresh read-only fatal critic, fix confirmed defects and
    validate affected paths. Do not request a second pass after fixes.
 3. Commit one coherent chain, publish/attach its PR, enable auto-merge and

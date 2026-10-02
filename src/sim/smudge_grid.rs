@@ -575,7 +575,8 @@ impl SmudgeGrid {
         } else {
             // Existing primitive oracles hook the full constructor and check
             // only numeric placement. Production always owns its lifetime.
-            assert!(cfg!(test), "runtime Smudge requires the shared ID owners");
+            #[cfg(not(test))]
+            panic!("runtime Smudge requires the shared ID owners");
         }
         self.write_footprint(origin, chosen_id, chosen.width, chosen.height, terrain);
         true

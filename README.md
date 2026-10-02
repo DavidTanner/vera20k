@@ -27,7 +27,7 @@ Pre-alpha. Local skirmish is playable on Windows against a placeholder AI.
 Ordinary Allied Power Plant destruction has bounded native comparisons through
 [tank impact, effects and crew](tools/spatial_oracle/building_death_anims_joined.md),
 [stock smudges](tools/spatial_oracle/building_death_anims_joined_stock_smudges.md)
-and [deferred/cancelled-product cleanup](tools/spatial_oracle/building_death_anims_limbo_cancel.md).
+and [cancelled held products](tools/spatial_oracle/building_death_anims_limbo_cancel.md).
 Whole-object parity remains open.
 
 ## Running it
