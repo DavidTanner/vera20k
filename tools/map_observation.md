@@ -107,6 +107,21 @@ clocks. The clock does not change simulation scheduling or provide evidence for
 native pixels, audio playback, menus or outcome timing. Full-frame comparison
 remains exact: no radar masks, channel tolerances or skipped pixels are applied.
 
+## Natural ore-spread observation
+
+[`map_observation.ore-spread.example.json`](map_observation.ore-spread.example.json)
+loads stock AnyTown in Battle mode and advances one ordinary simulation frame.
+Its 213 terrain observations are initially empty cells next to raw-map ore,
+selected from the same `XMP03T4.MAP` payload recorded by the production loader
+(SHA256 `7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e`).
+Coordinates were read with the existing shrapnel-repair map-facts decoder; the
+profile does not create ore, alter queues or provide gameplay results. The final
+integrated release run witnessed 16 new ore cells at density 3. This is a
+production integration observation, not a gamemd gameplay/pixel comparison.
+Original executable queue/RNG/Mark comparisons and the final run identities are
+in [`spatial_oracle/ore_queue.md`](spatial_oracle/ore_queue.md) and its
+[`validation receipt`](spatial_oracle/ore_queue.validation.json).
+
 ## Ordinary scheduled commands and actor trajectories
 
 For TIBTRE observation, use

@@ -362,10 +362,15 @@ adding a new INI reader. Rust native fixtures explicitly set the resource
 OverlayType's `Land=Tiberium`, matching the original fixture's `+0x298=5`;
 `Tiberium=yes` alone does not establish that independent Mark gate.
 
-Final integrated Rust validation (source `b47c26aa`, after main `35fb0944`):
-9,427 retail library tests passed, 226 ignored; Clippy exited successfully;
-459 Python tests passed with four skipped; original 126 body/16 reader reproduction
-passed. The release AnyTown run observed 16 previously empty edge cells become
+Final Rust validation after the sole critic fixes (source `1db9b166`, main
+`35fb0944` integrated): 9,429 retail library tests passed, 226 ignored; Clippy
+exited successfully; 613 focused ore checks and 459 Python tests passed (four
+Python checks skipped). Original 128 body/16 reader reproduction passed; original
+TIBTRE and bridge-constructor controls remain unchanged. Both prerequisite
+regressions failed before the fixes: dummy `(0,0)` instead of `(0,3)`, and a
+Terrain AI path cost of 100 instead of the current cell's 90. The fresh critic
+identified those two P2 gaps; both now pass through the existing owners. No
+second critic pass was run. The release AnyTown run observed 16 previously empty edge cells become
 ore at density 3 in the first frame, plus four density changes among 18 TIBTRE
 neighbor observations over 2,600 ticks. The 800x600 GPU readback and v5 sealed
 receipts passed the production observation validator; they do not certify native

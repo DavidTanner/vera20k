@@ -31,7 +31,9 @@ Stock TIBTRE ore trees use retained simulation animation, emit ore at the native
 midpoint and feed the existing growth and harvesting paths. Ore queues rebuild at
 the native enqueue thresholds. Natural spread processes due timers even when
 spreading is disabled, preserves signed rules intervals and publishes new cell
-attributes before object AI. New ore constructors also advance the shared Scenario ID
+attributes and movement costs before the next object, including Terrain AI emission.
+Edge probes retain native shared-cell lookup effects. New ore constructors also
+advance the shared Scenario ID
 and follow the shared Overlay registry/deferred cleanup owner, including tree-blocked
 limbo survivors. The [queue comparison](tools/spatial_oracle/ore_queue.md)
 records the tested boundaries and connected callers. The
