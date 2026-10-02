@@ -38,6 +38,775 @@ fn factory_constructor_rules() -> RuleSet {
     .expect("factory constructor rules")
 }
 
+/// Instruction-backed redirection inputs, through the production retail reader
+/// and the existing flat-map/StartProduction fixtures. Native4444B3..444562
+/// selects from House+68 and temporarily moves Building+524; this fixture does
+/// not implement either decision. The saved original instructions are in
+/// refactor-goal/unit-factory-fresh-critic-native-instructions-20261002.json,
+/// exit_object_archive_and_busy_redirect. Whole multi-factory native execution
+/// is separate from these control/order and restoration regressions.
+fn busy_factory_exit_world() -> Option<(Simulation, RuleSet, InternedId)> {
+    let (ini, art) = crate::rules::retail_ini_fixture::retail_rules_and_art()?;
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    let mut sim = Simulation::with_seed(0x4444_B300);
+    sim.intern_rule_type_ids(&rules);
+    sim.resolve_type_handles(&rules);
+    let owner = sim.intern("Americans");
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, 50_000, 10),
+    );
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+    for (id, cell) in [(1, (6, 6)), (2, (10, 20)), (3, (20, 10))] {
+        spawn_structure(&mut sim, id, "Americans", "GAWEAP", cell.0, cell.1);
+    }
+    sim.houses
+        .get_mut(&owner)
+        .unwrap()
+        .base_projection
+        .replace_buildings_for_test(vec![1, 3, 2]);
+    sim.production
+        .set_primary_factory_for_test(owner, ProductionCategory::Vehicle, 1);
+    busy_factory_exit_mission(&mut sim, 1, crate::sim::mission::MissionType::Unload);
+    for (id, archive) in [(1, (8, 8)), (2, (12, 24)), (3, (24, 14))] {
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .set_archive_target(Some(crate::sim::combat::TargetKind::Cell(
+                archive.0, archive.1,
+            )));
+    }
+    Some((sim, rules, owner))
+}
+
+fn busy_factory_exit_mission(
+    sim: &mut Simulation,
+    building: u64,
+    mission: crate::sim::mission::MissionType,
+) {
+    sim.substrate
+        .entities
+        .get_mut(building)
+        .unwrap()
+        .mission
+        .apply_test_fixture(crate::sim::mission::state::MissionTestFixture {
+            current: crate::sim::mission::MissionId::from_known(mission),
+            suspended: crate::sim::mission::MissionId::NONE,
+            queued: crate::sim::mission::MissionId::NONE,
+            movement_bypass_latch: 0,
+            handler_state: 0,
+            mission_start_frame: 0,
+            ai_counter: 0,
+            dispatch_timer: crate::sim::mission::MissionDispatchTimer::at_frame(0),
+        });
+}
+
+fn busy_factory_exit_product(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    attached: bool,
+) -> u64 {
+    if !attached {
+        arm_build_via(
+            sim,
+            rules,
+            "Americans",
+            "MTNK",
+            ProductionCategory::Vehicle,
+            70,
+        );
+        assert!(
+            sim.production
+                .factory_shadow
+                .test_arm_ready(owner, ProductionCategory::Vehicle)
+        );
+        return super::factory_lifecycle::active_entity_id(sim, owner, ProductionCategory::Vehicle)
+            .unwrap();
+    }
+    let type_id = sim.intern("MTNK");
+    let cost = sim.cost_of(owner, rules.object("MTNK").unwrap(), rules);
+    sim.production.factory_shadow.create_building_factory(
+        1,
+        owner,
+        ProductionCategory::Vehicle,
+        type_id,
+        70,
+        cost,
+    );
+    let product = super::factory_lifecycle::start_active_production(
+        sim,
+        rules,
+        super::factory::FactoryHolder::Building(1),
+        type_id,
+    )
+    .unwrap();
+    let factory = sim.production.factory_shadow.test_first_mut().unwrap();
+    factory.progress = super::PRODUCTION_STEPS;
+    factory.balance = 0;
+    factory.suspended = true;
+    product
+}
+
+/// Invoke the same ExitObject owner used by the House and Building callers.
+/// The return boundary deliberately precedes their successful factory release.
+fn busy_factory_exit_attempt(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    product: u64,
+) -> Option<u64> {
+    let producer = sim.substrate.entities.get(1).unwrap();
+    let selection = super::production_spawn::spawn_selection_at_producer(
+        sim,
+        rules,
+        (1, producer.position.rx, producer.position.ry, "GAWEAP"),
+        Some("MTNK"),
+        crate::rules::object_type::ObjectCategory::Vehicle,
+        false,
+    )
+    .unwrap();
+    super::production_queue::deliver_produced_object(
+        sim, rules, owner, "MTNK", product, selection, None, None,
+    )
+}
+
+fn assert_busy_factory_exit_receiver(
+    sim: &Simulation,
+    rules: &RuleSet,
+    product: u64,
+    receiver: u64,
+) {
+    let producer = sim.substrate.entities.get(receiver).unwrap();
+    let expected = crate::sim::movement::configured_building_exit_coordinate(
+        crate::sim::movement::ground_pose::position_world_coord(&producer.position),
+        rules.object(sim.resolve(producer.type_ref())).unwrap(),
+    )
+    .unwrap();
+    let placed = sim.substrate.entities.get(product).unwrap();
+    assert_eq!(
+        crate::sim::movement::ground_pose::position_world_coord(&placed.position),
+        expected,
+        "the existing coordinate owner uses the chosen receiver's supplied pose"
+    );
+    assert_eq!(placed.archive_target(), producer.archive_target());
+    assert!(!placed.lifecycle.in_limbo);
+    assert_eq!(
+        producer.mission.queued().known(),
+        Some(crate::sim::mission::MissionType::Unload)
+    );
+}
+
+#[test]
+fn busy_factory_exit_player_uses_house_order_without_moving_primary() {
+    let Some((mut sim, rules, owner)) = busy_factory_exit_world() else {
+        return;
+    };
+    assert_eq!(sim.houses[&owner].base_projection.buildings(), [1, 3, 2]);
+    assert_eq!(
+        sim.substrate
+            .entities
+            .values()
+            .map(|entity| entity.stable_id())
+            .collect::<Vec<_>>(),
+        [1, 2, 3],
+        "House order is deliberately different from storage/object order"
+    );
+    let product = busy_factory_exit_product(&mut sim, &rules, owner, false);
+    let rng = sim.scenario_rng.logical_state();
+    assert!(tick_production(&mut sim, &rules));
+    assert_busy_factory_exit_receiver(&sim, &rules, product, 3);
+    assert_eq!(sim.scenario_rng.logical_state(), rng);
+    assert_eq!(
+        sim.production
+            .primary_factory(owner, ProductionCategory::Vehicle),
+        Some(1)
+    );
+    assert!(sim.production.factory_shadow.is_empty());
+    assert!(!sim.object_placement_scope_active());
+}
+
+#[test]
+fn busy_factory_exit_skips_attached_different_type_and_non_guard_buildings() {
+    let Some((mut sim, rules, owner)) = busy_factory_exit_world() else {
+        return;
+    };
+    spawn_structure(&mut sim, 4, "Americans", "NAWEAP", 20, 20);
+    spawn_structure(&mut sim, 5, "Americans", "GAWEAP", 24, 20);
+    busy_factory_exit_mission(&mut sim, 3, crate::sim::mission::MissionType::Move);
+    // Current NONE + queued Guard must be admitted by the same effective
+    // mission getter that native vt+184 executes at4444FF.
+    let guard = &mut sim.substrate.entities.get_mut(5).unwrap().mission;
+    guard.apply_test_fixture(crate::sim::mission::state::MissionTestFixture {
+        current: crate::sim::mission::MissionId::NONE,
+        suspended: crate::sim::mission::MissionId::NONE,
+        queued: crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Guard),
+        movement_bypass_latch: 0,
+        handler_state: 0,
+        mission_start_frame: 0,
+        ai_counter: 0,
+        dispatch_timer: crate::sim::mission::MissionDispatchTimer::at_frame(0),
+    });
+    let mtnk = sim.intern("MTNK");
+    sim.production.factory_shadow.create_building_factory(
+        2,
+        owner,
+        ProductionCategory::Vehicle,
+        mtnk,
+        90,
+        700,
+    );
+    let attached = sim.production.factory_shadow.building_factory(2).cloned();
+    sim.houses
+        .get_mut(&owner)
+        .unwrap()
+        .base_projection
+        .replace_buildings_for_test(vec![1, 2, 4, 3, 5]);
+    let product = busy_factory_exit_product(&mut sim, &rules, owner, false);
+    assert!(tick_production(&mut sim, &rules));
+    assert_busy_factory_exit_receiver(&sim, &rules, product, 5);
+    assert_eq!(
+        sim.production.factory_shadow.building_factory(2),
+        attached.as_ref(),
+        "any non-null +524 excludes that candidate without changing its factory"
+    );
+    assert!(sim.production.factory_shadow.building_factory(5).is_none());
+    assert_eq!(
+        sim.production
+            .primary_factory(owner, ProductionCategory::Vehicle),
+        Some(1)
+    );
+}
+
+#[test]
+fn busy_factory_exit_restores_building_attachment_after_success() {
+    let Some((mut sim, rules, owner)) = busy_factory_exit_world() else {
+        return;
+    };
+    let product = busy_factory_exit_product(&mut sim, &rules, owner, true);
+    let registry = sim.production.factory_shadow.clone();
+    let credits = sim.houses[&owner].economy.credits;
+    let next_id = sim.substrate.next_stable_object_id;
+    assert_eq!(
+        busy_factory_exit_attempt(&mut sim, &rules, owner, product),
+        Some(product)
+    );
+    assert_busy_factory_exit_receiver(&sim, &rules, product, 3);
+    assert_eq!(sim.production.factory_shadow, registry);
+    assert!(sim.production.factory_shadow.building_factory(3).is_none());
+    assert_eq!(sim.houses[&owner].economy.credits, credits);
+    assert_eq!(sim.substrate.next_stable_object_id, next_id);
+    assert_eq!(
+        sim.production
+            .primary_factory(owner, ProductionCategory::Vehicle),
+        Some(1)
+    );
+    assert!(!sim.object_placement_scope_active());
+}
+
+#[test]
+fn busy_factory_exit_attachment_owner_preserves_identity_and_rejects_occupied_target() {
+    let Some((mut sim, rules, owner)) = busy_factory_exit_world() else {
+        return;
+    };
+    let product = busy_factory_exit_product(&mut sim, &rules, owner, true);
+    let mtnk = sim.intern("MTNK");
+    let cost = sim.cost_of(owner, rules.object("MTNK").unwrap(), &rules);
+    sim.production.factory_shadow.create_building_factory(
+        3,
+        owner,
+        ProductionCategory::Vehicle,
+        mtnk,
+        91,
+        cost,
+    );
+    let registry = sim.production.factory_shadow.clone();
+    let source = sim.production.factory_shadow.building_factory(1).cloned();
+    let credits = sim.houses[&owner].economy.credits;
+    let next_id = sim.substrate.next_stable_object_id;
+    for (from, to) in [(1, 3), (1, 1), (4, 2)] {
+        assert!(
+            !sim.production
+                .factory_shadow
+                .transfer_building_factory_attachment(from, to)
+        );
+        assert_eq!(sim.production.factory_shadow, registry);
+    }
+    assert!(
+        sim.production
+            .factory_shadow
+            .transfer_building_factory_attachment(1, 2)
+    );
+    assert!(sim.production.factory_shadow.building_factory(1).is_none());
+    assert_eq!(
+        sim.production.factory_shadow.building_factory(2),
+        source.as_ref(),
+        "reattachment retains the existing Factory and its held object"
+    );
+    assert_eq!(source.unwrap().object.unwrap().entity_id, Some(product));
+    assert!(
+        sim.production
+            .factory_shadow
+            .transfer_building_factory_attachment(2, 1)
+    );
+    assert_eq!(sim.production.factory_shadow, registry);
+    assert_eq!(sim.houses[&owner].economy.credits, credits);
+    assert_eq!(sim.substrate.next_stable_object_id, next_id);
+}
+
+#[test]
+fn busy_factory_exit_failed_chosen_receiver_returns_once_and_restores_attachment() {
+    for attached in [false, true] {
+        let Some((mut sim, rules, owner)) = busy_factory_exit_world() else {
+            return;
+        };
+        let product = busy_factory_exit_product(&mut sim, &rules, owner, attached);
+        // Explicit existing Reveal early-refusal control. This tests the
+        // caller's failure/restoration ordering, not a native production cause
+        // for refusal or an invented ScenarioActive flag. Both later receivers
+        // would see the same refusal; their distinct archives witness whether
+        // the caller incorrectly attempts another eligible candidate.
+        sim.substrate
+            .entities
+            .get_mut(product)
+            .unwrap()
+            .lifecycle
+            .cell_marked = true;
+        let registry = sim.production.factory_shadow.clone();
+        let credits = sim.houses[&owner].economy.credits;
+        let next_id = sim.substrate.next_stable_object_id;
+        let rng = (
+            sim.main_rng.logical_state(),
+            sim.scenario_rng.logical_state(),
+            sim.mapgen_rng.logical_state(),
+        );
+        assert_eq!(
+            busy_factory_exit_attempt(&mut sim, &rules, owner, product),
+            None
+        );
+        let held = sim.substrate.entities.get(product).unwrap();
+        assert!(held.lifecycle.in_limbo);
+        assert_eq!(
+            held.archive_target(),
+            sim.substrate.entities.get(3).unwrap().archive_target(),
+            "the first eligible receiver copies its archive before failing; no later receiver runs"
+        );
+        assert_eq!(sim.production.factory_shadow, registry);
+        assert!(sim.production.factory_shadow.building_factory(3).is_none());
+        assert_eq!(sim.houses[&owner].economy.credits, credits);
+        assert_eq!(sim.substrate.next_stable_object_id, next_id);
+        assert_eq!(
+            (
+                sim.main_rng.logical_state(),
+                sim.scenario_rng.logical_state(),
+                sim.mapgen_rng.logical_state()
+            ),
+            rng
+        );
+        assert!(!sim.object_placement_scope_active());
+    }
+}
+
+#[test]
+fn busy_factory_exit_without_an_alternate_copies_archive_and_holds_player_queue() {
+    let Some((mut sim, rules, owner)) = busy_factory_exit_world() else {
+        return;
+    };
+    sim.houses
+        .get_mut(&owner)
+        .unwrap()
+        .base_projection
+        .replace_buildings_for_test(vec![1]);
+    let product = busy_factory_exit_product(&mut sim, &rules, owner, false);
+    arm_build_via(
+        &mut sim,
+        &rules,
+        "Americans",
+        "MTNK",
+        ProductionCategory::Vehicle,
+        71,
+    );
+    let next_id = sim.substrate.next_stable_object_id;
+    assert!(!tick_production(&mut sim, &rules));
+    let held = sim.substrate.entities.get(product).unwrap();
+    assert!(held.lifecycle.in_limbo);
+    assert_eq!(
+        held.archive_target(),
+        sim.substrate.entities.get(1).unwrap().archive_target()
+    );
+    let factory = sim
+        .production
+        .factory_shadow
+        .view(owner, ProductionCategory::Vehicle)
+        .unwrap();
+    assert!(factory.ready);
+    assert_eq!(factory.object.unwrap().entity_id, Some(product));
+    assert_eq!(factory.queue.len(), 1);
+    assert_eq!(sim.substrate.next_stable_object_id, next_id);
+}
+
+#[test]
+fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng() {
+    use crate::map::resolved_terrain::ResolvedTerrainGrid;
+    use crate::sim::combat::TargetKind;
+    use crate::sim::components::DriveCoord;
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::mission::{MissionDispatchTimer, MissionId};
+    use crate::sim::movement::ground_pose;
+    use serde_json::{Value, json};
+    use std::collections::BTreeMap;
+
+    let data: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/anytown_damage/unit_unlimbo.json"
+    ))
+    .unwrap();
+    assert_eq!(data["schema_version"], 1);
+    assert_eq!(
+        data["native_sha256"],
+        "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
+    );
+    let rows = data["factory_busy_redirect_rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 6);
+    let Some((ini, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+        return;
+    };
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    let terrain_rules = crate::rules::terrain_rules::TerrainRules::from_ini(&ini);
+    let road = terrain_rules.semantics_for_land_type(1).unwrap();
+    let int = |value: &Value| i32::try_from(value.as_i64().unwrap()).unwrap();
+    let coord = |value: &Value| DriveCoord {
+        x: int(&value[0]),
+        y: int(&value[1]),
+        z: int(&value[2]),
+    };
+    let archive = |value: &Value| {
+        value.as_array().map(|cell| {
+            TargetKind::Cell(
+                u16::try_from(cell[0].as_u64().unwrap()).unwrap(),
+                u16::try_from(cell[1].as_u64().unwrap()).unwrap(),
+            )
+        })
+    };
+    let archive_cell = |value: Option<TargetKind>| match value {
+        Some(TargetKind::Cell(rx, ry)) => json!([rx, ry]),
+        None => Value::Null,
+        other => panic!("unmeasured redirect archive {other:?}"),
+    };
+    for row in rows {
+        let input = &row["input"];
+        let name = input["name"].as_str().unwrap();
+        let before = &row["before"];
+        let after = &row["after"];
+        assert_eq!(row["entry"], "0x00443C60");
+        assert_eq!(
+            before["counter"], 0,
+            "these six callers begin outside scope"
+        );
+        assert_eq!(
+            row["before"]["factory_bytes"],
+            row["after"]["factory_bytes"]
+        );
+        let mut sim = Simulation::with_seed(0);
+        sim.intern_rule_type_ids(&rules);
+        sim.resolve_type_handles(&rules);
+        // Preserve the packet's real XYZ. The surrounding Road/level4 cells
+        // are allocated fixture storage; the native placement cells below
+        // supply their actual derived terrain, not a full map-load claim.
+        let cells = (0..128)
+            .flat_map(|ry| {
+                (0..128).map(move |rx| {
+                    let mut cell =
+                        crate::sim::world::common_raw_test_terrain_cell(rx, ry, 4, false);
+                    cell.land_type = 1;
+                    cell.yr_cell_land_type = 1;
+                    cell.terrain_class = road.terrain_class;
+                    cell.base_terrain_class = road.terrain_class;
+                    cell.speed_costs = road.speed_costs.clone();
+                    cell.base_speed_costs = road.speed_costs.clone();
+                    cell
+                })
+            })
+            .collect();
+        sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(128, 128, cells));
+        let placement_cells = row["placement_cells_before"].as_object().unwrap();
+        assert_eq!(placement_cells.len(), 3);
+        for native in placement_cells.values() {
+            let rx = native["coord"][0].as_u64().unwrap() as u16;
+            let ry = native["coord"][1].as_u64().unwrap() as u16;
+            let land = native["land"].as_u64().unwrap() as u8;
+            let semantics = terrain_rules.semantics_for_land_type(land).unwrap();
+            let target = sim
+                .resolved_terrain
+                .as_mut()
+                .unwrap()
+                .cell_mut(rx, ry)
+                .unwrap();
+            target.level = native["level"].as_u64().unwrap() as u8;
+            target.slope_type = native["slope"].as_u64().unwrap() as u8;
+            target.land_type = land;
+            target.yr_cell_land_type = land;
+            target.zone_type = native["zone_type"].as_u64().unwrap() as u8;
+            target.terrain_class = semantics.terrain_class;
+            target.base_terrain_class = semantics.terrain_class;
+            target.speed_costs = semantics.speed_costs.clone();
+            target.base_speed_costs = semantics.speed_costs.clone();
+            target.final_tile_index = int(&native["tile"]);
+            target.final_sub_tile = native["subtile"].as_u64().unwrap() as u8;
+            target.bridge_facts.raw_flags = native["flags"].as_u64().unwrap() as u32;
+            assert_eq!(
+                target.bridge_facts.raw_flags & 0x100,
+                0,
+                "{name}: these three measured placement cells have no bridge"
+            );
+        }
+        sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
+            base: 0,
+            off_fc: -128,
+            off_100: -128,
+            off_104: 256,
+            off_108: 256,
+        });
+        sim.session.map_width = 128;
+        sim.session.map_height = 128;
+        sim.session.binary_frame = before["product"]["frame"].as_u64().unwrap() as u32;
+        sim.session.game_mode_nonzero = int(&before["actual_game_mode"]) != 0;
+        let owner = sim.intern("Americans");
+        sim.houses.insert(
+            owner,
+            crate::sim::house_state::HouseState::new(owner, 0, None, true, 50_000, 10),
+        );
+        let mut labels = BTreeMap::new();
+        let mut producer_types = vec![("source", input["producer_type"].as_str().unwrap())];
+        producer_types.extend(
+            input["candidates"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|candidate| {
+                    (
+                        candidate["label"].as_str().unwrap(),
+                        candidate["type"].as_str().unwrap(),
+                    )
+                }),
+        );
+        for (label, type_name) in &producer_types {
+            let native = &before["producers"][label];
+            let id = sim
+                .construct_object_limbo_at_height(type_name, "Americans", 0, 0, 0, 0, &rules)
+                .unwrap();
+            assert!(labels.insert(*label, id).is_none());
+            let entity = sim.substrate.entities.get_mut(id).unwrap();
+            ground_pose::put_location(&mut entity.position, coord(&native["xyz"]));
+            entity.set_archive_target(archive(&native["archive_cell"]));
+            entity.mission.apply_test_fixture(MissionTestFixture {
+                current: MissionId::from_raw(int(&native["current"])),
+                suspended: MissionId::NONE,
+                queued: MissionId::from_raw(int(&native["queued"])),
+                movement_bypass_latch: 0,
+                handler_state: native["status"].as_u64().unwrap() as u32,
+                mission_start_frame: 0,
+                ai_counter: 0,
+                dispatch_timer: MissionDispatchTimer::at_frame(sim.session.binary_frame),
+            });
+        }
+        assert_eq!(
+            labels["source"], 1,
+            "existing queue fixture source identity"
+        );
+        let order = input["house_order"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|label| labels[label.as_str().unwrap()])
+            .collect();
+        sim.houses
+            .get_mut(&owner)
+            .unwrap()
+            .base_projection
+            .replace_buildings_for_test(order);
+        sim.production.set_primary_factory_for_test(
+            owner,
+            ProductionCategory::Vehicle,
+            labels["source"],
+        );
+        let source_attached = before["producers"]["source"]["attachment"] != "0x0";
+        assert_eq!(source_attached, input["source_attachment"] == "Building");
+        let product = busy_factory_exit_product(&mut sim, &rules, owner, source_attached);
+        let type_id = sim.intern("MTNK");
+        let cost = sim.cost_of(owner, rules.object("MTNK").unwrap(), &rules);
+        for (label, _) in &producer_types {
+            if *label != "source" && before["producers"][label]["attachment"] != "0x0" {
+                sim.production.factory_shadow.create_building_factory(
+                    labels[label],
+                    owner,
+                    ProductionCategory::Vehicle,
+                    type_id,
+                    90 + labels[label],
+                    cost,
+                );
+            }
+        }
+        let actor = sim.substrate.entities.get_mut(product).unwrap();
+        ground_pose::put_location(&mut actor.position, coord(&before["product"]["position"]));
+        actor.set_archive_target(archive(&before["product_archive_cell"]));
+        actor.mission.apply_test_fixture(MissionTestFixture {
+            current: MissionId::from_raw(int(&before["product"]["mission"])),
+            suspended: MissionId::NONE,
+            queued: MissionId::from_raw(int(&before["product"]["queued"])),
+            movement_bypass_latch: 0,
+            handler_state: before["product"]["status"].as_u64().unwrap() as u32,
+            mission_start_frame: 0,
+            ai_counter: before["product"]["mission_visit_count"].as_u64().unwrap() as u32,
+            dispatch_timer: MissionDispatchTimer::from_raw(
+                int(&before["product"]["dispatch"][0]),
+                int(&before["product"]["dispatch"][1]),
+            ),
+        });
+        if before["scenario_active"] == 0 {
+            // Native executes Object5F4EC0's actual ScenarioActive refusal.
+            // Rust has no ScenarioActive owner: use its represented early
+            // Reveal refusal solely to compare caller selection, archive,
+            // delayed result, restoration and RNG. Mark/lifecycle parity for
+            // this different refusal cause is explicitly excluded.
+            assert_eq!(before["product"]["marked"], 0);
+            actor.lifecycle.cell_marked = true;
+        }
+        // Native before is post-constructor. Import that declared boundary;
+        // this compares ExitObject, not Factory construction/charge or release.
+        sim.main_rng = serde_json::from_value(row["rng_before"]["main"].clone()).unwrap();
+        sim.scenario_rng = serde_json::from_value(row["rng_before"]["scenario"].clone()).unwrap();
+        sim.mapgen_rng = serde_json::from_value(row["rng_before"]["mapgen"].clone()).unwrap();
+        let registry = sim.production.factory_shadow.clone();
+        let credits = sim.houses[&owner].economy.credits;
+        let next_id = sim.substrate.next_stable_object_id;
+        for (label, id) in &labels {
+            assert_eq!(
+                json!(
+                    sim.substrate
+                        .entities
+                        .get(*id)
+                        .unwrap()
+                        .mission
+                        .effective()
+                        .raw()
+                ),
+                row["effective_before"][label],
+                "{name}: supplied effective mission for {label}"
+            );
+        }
+        for (stream, rng) in [
+            ("main", &sim.main_rng),
+            ("scenario", &sim.scenario_rng),
+            ("mapgen", &sim.mapgen_rng),
+        ] {
+            assert!(
+                rng.native_state_hex() == row["rng_pair"][stream]["before_hex"].as_str().unwrap(),
+                "{name}: complete native {stream} caller RNG"
+            );
+        }
+        let result = busy_factory_exit_attempt(&mut sim, &rules, owner, product);
+        // The original returns 0 for a refused Unlimbo, 1 for a held exit,
+        // and 2 for delivery. This caller's Option reports delivery only.
+        assert!(matches!(row["returned_eax"].as_u64(), Some(0..=2)));
+        assert_eq!(
+            result,
+            (row["returned_eax"] == 2).then_some(product),
+            "{name}"
+        );
+        let placed = sim.substrate.entities.get(product).unwrap();
+        let actual_archive = archive_cell(placed.archive_target());
+        assert_eq!(
+            actual_archive, after["product_archive_cell"],
+            "{name}: archive"
+        );
+        // Distinct original Cell archives witness the recursive receiver even
+        // when placement fails. This does not reimplement its eligibility.
+        let archive_witnesses: Vec<_> = producer_types
+            .iter()
+            .filter(|(label, _)| before["producers"][label]["archive_cell"] == actual_archive)
+            .map(|(label, _)| *label)
+            .collect();
+        assert_eq!(
+            archive_witnesses.len(),
+            1,
+            "{name}: unique receiver witness"
+        );
+        let receiver = archive_witnesses[0];
+        let recursive_receiver = (receiver != "source").then_some(receiver);
+        assert_eq!(
+            json!(recursive_receiver),
+            row["selected_receiver"],
+            "{name}: first receiver"
+        );
+        assert_eq!(
+            row["recursive_return_eax"].as_array().unwrap().len(),
+            usize::from(recursive_receiver.is_some()),
+            "{name}: original nested call count"
+        );
+        if result.is_some() {
+            assert_eq!(placed.radio_contacts.slot(0), Some(labels[receiver]));
+        }
+        let location = ground_pose::position_world_coord(&placed.position);
+        assert_eq!(
+            json!([location.x, location.y, location.z]),
+            after["product"]["position"],
+            "{name}: original placement XYZ"
+        );
+        assert_eq!(
+            sim.production.factory_shadow, registry,
+            "{name}: same Factory values"
+        );
+        assert_eq!(sim.houses[&owner].economy.credits, credits);
+        assert_eq!(sim.substrate.next_stable_object_id, next_id);
+        assert_eq!(
+            sim.production
+                .primary_factory(owner, ProductionCategory::Vehicle),
+            Some(labels["source"])
+        );
+        for (label, id) in &labels {
+            let entity = sim.substrate.entities.get(*id).unwrap();
+            let native = &after["producers"][label];
+            assert_eq!(
+                native["attachment"],
+                before["producers"][label]["attachment"]
+            );
+            assert_eq!(
+                sim.production
+                    .factory_shadow
+                    .building_factory(*id)
+                    .is_some(),
+                native["attachment"] != "0x0",
+                "{name}: restored attachment for {label}"
+            );
+            assert_eq!(
+                archive_cell(entity.archive_target()),
+                native["archive_cell"]
+            );
+            assert_eq!(json!(entity.mission.current().raw()), native["current"]);
+            assert_eq!(json!(entity.mission.queued().raw()), native["queued"]);
+            assert_eq!(
+                json!(entity.mission.effective().raw()),
+                row["effective_after"][label]
+            );
+        }
+        assert_eq!(after["counter"], before["counter"]);
+        assert!(!sim.object_placement_scope_active());
+        for (stream, rng) in [
+            ("main", &sim.main_rng),
+            ("scenario", &sim.scenario_rng),
+            ("mapgen", &sim.mapgen_rng),
+        ] {
+            assert!(
+                rng.native_state_hex() == row["rng_pair"][stream]["after_hex"].as_str().unwrap(),
+                "{name}: complete native {stream} return RNG"
+            );
+        }
+    }
+}
+
 #[test]
 fn factory_constructor_start_cancel_and_promotion_own_scenario_words() {
     let seed = 0xFAC7_0001;

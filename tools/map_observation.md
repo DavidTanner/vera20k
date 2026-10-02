@@ -71,8 +71,15 @@ forced track head at5321, cleared the factory footprint at5333, and returned to
 Guard at5340 in Cell `(30,93)` / XYZ `[7808,23936,416]`; the factory returned to
 Guard at5370. The inspected 800×600 BGRA readback has SHA-256
 `adceea6c241b3e4eb16eb7039d6c1159dfdb376f4d9191bfcc4b3634127c80cb`.
-The release binary SHA-256 is
-`079f26fb33e3f97ab5571c9350bcdc619384c03116a98ebfee1be8aab07a15d2`.
+The integrated release binary SHA-256 is
+`ec8dfce838c10c8eb86e5107d5643c2e907584c435303d0e5e6f0995cfccd823`
+(31,504,832 bytes). Its retained `capture.json` and `run.json` SHA-256 values are
+`f51df731f516a72f28ab2a1bb3ec2687a9f2e95a54edc5455e1cd0e1ea270394`
+and `aab418567732c72350abebc572bfd898a0bab4b27c9725dbeb2a1b5986a05bf1`.
+The factory and tank pose, lifecycle, mission and NavCom trajectories match
+the pre-integration release
+`079f26fb33e3f97ab5571c9350bcdc619384c03116a98ebfee1be8aab07a15d2`
+at every recorded step; both releases produce the final readback above.
 These are Rust production observations. Bounded original Door, Unload and Unit
 comparisons are documented by the existing
 [Unit Unlimbo evidence owner](spatial_oracle/anytown_damage/unit_unlimbo.md);

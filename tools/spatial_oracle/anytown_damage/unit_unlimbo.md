@@ -37,6 +37,20 @@ The new metadata binds normalized current generator/dependency hashes and
 original executable spans. Generation fails on source drift. Native `.text`
 remains `4cd5557a7490debc493ff965afc4483d8d2f1065f434f6b665cbb8fc4835b0cc`.
 
+Mission's `BulletReader` and the inherited `Rules` fixtures share
+`bridge_anim_inputs.Reader.invoke`: its default is two million instructions and
+ten seconds. Only Mission setup's original GeneralRules `66D530` call uses
+thirty seconds, with the same instruction limit; Radiation and all other invokes
+retain the default. An immediately observed failure in the first RULESMD pass of
+`native_caller_cmp` reported `UC_QUERY_TIMEOUT=true` after 10.0028 seconds at
+`7113B3`, an original straight-line constructor byte store. The receipt is
+`observed-write.json`, SHA-256
+`2705c4b4c8e800b04c3876e1f24c0a62f45f6ea4453e7315e4aa5e9f98bcb908`,
+in the external `unit-unlimbo-final-binding-b49f6c5a-20261002` packet. The runner
+does not expose an executed instruction count. This establishes the observed
+host timeout; older stops without an immediate query remain unclassified. It
+does not establish a CRT fault or require changed native inputs or outputs.
+
 The promoted input descriptors and retained fields match the preserved scratch
 recipes. The metadata records their SHA-256 receipts:
 
@@ -256,6 +270,81 @@ retain NULL NavCom, clear reciprocal contacts/tethers and preserve all three
 RNG objects. These are class-branch controls, not retail MTNK classification,
 proof of the movement trigger or execution of harvesting itself.
 
+### Original guard and busy-factory additions
+
+The existing owner executes additive `unit_move_guard_rows[8]` and
+`factory_busy_redirect_rows[6]`. All earlier fields compare exactly, and the
+eight default Mission/Unit-entry files remain byte-for-byte unchanged. The
+published native payload SHA-256 is
+`4be9dcec5b14dbb20bd707bd5da200b3c5c36becde38fb2ea9eeeb71030efbef`.
+The actual publication ran 56 fixtures and 165 GeneralRules calls without a
+fault or timeout. Its external preservation receipt is
+`after-write-preservation.json`, SHA-256
+`925de51ebc1b6e2f6964e138fed84883235efac272915a5aa64b93412682c33a`,
+in `unit-unlimbo-final-main1009-20261003-jytoqlvb`. These outputs come from
+original execution, independently of the Rust comparison assertions.
+
+Guard inputs vary only deployment bytes `6E0/6E1/6E2` (`100`, `010`, `001`,
+`111`) and NavCom NULL/real Cell(88,50). Each follows an actual original
+successful factory placement. The existing layered DeployTime reader also
+reads MTNK, retaining original `5283D0` section/key/current-default double
+arguments and type `+3C8` bytes. Original Unit Door `4A51F0` opens at frame190
+from those exact minutes; no raw40-tick duration is selected. At frame200,
+current Move2, queued Attack1, a due dispatch timer, and byte6D2=0 are declared
+inputs. Whole MissionAI `5B3060` owns its nested `740A90` handler and timer
+epilogue. The row records actual handler EAX at `740B03`, whole return,
+`before`/`after` actor, `unit_bytes`, raw own Door `0x1C` bytes and native
+`navcell`, plus all three full RNG objects. This is the direct dispatch
+boundary; it does not claim deployment producers or whole UnitAI flag lifetime.
+Original Unit vtable `7F5C70+22C` contains `740A90` at `7F5E9C`.
+MissionAI's Move2 table word `5B34F0` selects `5B334E`; its virtual call is
+`5B3352`, with timer writes `5B335F/5B3368` and return `5B336F`.
+The separate `+218` word contains `4D4CB0` and is not this Move handler.
+All eight handler and outer returns are 1, queue Guard5, and leave the timer
+`[200,1]`. Door, NavCom, deployment bytes and all three full RNG objects remain
+unchanged. Physical MTNK DeployTime reads as 0, so the original opened Door
+has duration0; the comparison imports that result rather than selecting40 ticks.
+
+Busy rows are named `player_house_order`, `building_house_order`,
+`eligibility_effective_guard`, `player_first_refused`,
+`building_first_refused`, and `no_alternate`. Original Building constructors
+share the exact physical GAWEAP type pointer for same-type candidates; the
+different-type control constructs NAWEAP without claiming its full INI load.
+Caller data supplies producer XYZ/current/queued missions and a House `+68`
+vector whose order differs from construction order. Each producer has a
+distinct real-Cell archive. Original `5B3040` observes effective mission,
+including currentNone/queuedGuard. NonNULL Building attachments use actual
+Factory constructor `4C98B0` and a declared valid empty registry header;
+Factory owner/completion/held-object words are supplied input, not a claim of
+whole paid production.
+
+One whole original `443C60` call owns archive-before-busy, eligibility,
+temporary attachment transfer, recursive original `+100` call and restoration.
+`selected_receiver` comes from the second observed `443C60` entry and is NULL
+when there is no recursive call. `before`/`after` retain product actor (including
+native marked), normalized `product_archive_cell`/`product_navcell`, each
+logical producer's archive/attachment and the full74 Factory bytes. Actual
+recursive and whole EAX plus full RNG bytes are saved. Missing crop TMP heads
+reuse `prepare_factory_continuation_tiles`; physical Cell inputs stay unchanged
+before native Recalc. `placement_cells_before`/`placement_cells_after` compose
+the existing resident snapshot for Cell(87,50), Cell(86,50), and Cell(87,49),
+retaining actual derived land/slope/level and raw native state. `supplied_cells`
+preserves their physical map descriptors; the native Unit/Object entry trace
+also retains requested XYZ. All producers retain the fixture's unplaced constructor
+boundary. Two ScenarioActive0 rows execute the original refusal; Rust's
+adversarial cell_marked refusal is a separate caller boundary. Comparing their
+selection/archive/result/restoration/RNG does not certify the refusal causes
+as equivalent. Full House holders, paid queue scheduling, producer placement,
+footprint and readiness remain excluded.
+In the order above, whole and recursive returns are `2,2,2,0,0,1` (the final
+row has no recursive call). Every attachment and all74 Factory bytes are
+restored, with all three full RNG objects unchanged. The Rust delivery API
+maps original2 to a delivered object and original0/1 to a retained product;
+it does not distinguish those two non-delivery return codes. The eight-row
+dispatch and six-row receiver comparisons pass, alongside authored regression
+cases. Strict replay against the final integrated source remains a separate
+required check.
+
 ## Native ownership and ordering
 
 Original Object `5F3900` initializes Location by copying the shared default
@@ -374,12 +463,15 @@ original byte scans and saved writer bodies established these leads.
 
 ## Rust production and deterministic hash validation
 
-The retail lib suite passes 9,459 tests (227 ignored), and lib Clippy passes on
-the final candidate. The existing
+The earlier candidate after main `339b57d18` passed 9,477 retail lib tests
+(227 ignored), lib Clippy passes (723 warnings), and the release build passes.
+The existing
 [map observation factory profile](../../map_observation.factory-tank-exit.example.json)
 also loads retail AnyTown through the release application, delivers one human
 MTNK, follows its forced exit/clearance, and returns both product and producer to
-Guard. The [observation owner](../../map_observation.md) records exact steps,
+Guard. The integrated release repeats the pre-integration factory and tank
+trajectories and produces the identical final BGRA readback. The
+[observation owner](../../map_observation.md) records exact steps,
 map/binary/readback identities and the production-only coverage limit. Native
 Door/Unload comparisons above remain bounded by their original fixture seams.
 
@@ -387,10 +479,33 @@ Adding the authoritative shared Door fields to the deterministic hash changes
 three Rust replay fingerprints. A diagnostic removed only
 `GameEntity::hash_door_state` from the hash feed: all three old fingerprints
 returned, with the existing behavioral and RNG assertions still passing. The
-feed is restored in the final candidate. The new Rust-only fingerprints are
+feed is restored in the final candidate. The pre-integration Rust-only fingerprints were
 bridge `D60E65B093E4A502`, global `4274E33351E6E7C0`, and slice6
 `9FBBEE3B9E78FC73`; no original expected value was changed. The diagnostic log
 SHA-256 is `974ee58f63b5a36efdcef5584d04f9d033d447a3e765be73fdd748221ed35bb4`.
+After integrating main `339b57d18` (Unit deployment/body state), one diagnostic
+binary repeated this control: omitting only the Door feed restored incoming main
+`F6E02080D0BE29C1`, `C86F736CE95687B3`, and `B20E11E0579BC4E4`. Including it
+reached the final hash assertions with the existing behavior/RNG tripwires
+intact. The composed pins are `C666E760E83FFF72`, `B6FF00720C609F26`, and
+`A739CF895070DB7A`. The temporary control was removed before final validation;
+that candidate's snapshot281 retained both owners. The temporary-binary and log identities are
+retained in the external `unit-unlimbo-main1006-door-hash-attribution.json`.
+Commit `22765747` retains the pre-integration implementation; merge `eeca3458`
+retains the composed state and removes the temporary control.
+After integrating main `1cfd3081` (IFV weapon/turret ownership), the same
+binary SHA-256 `20a62a87af4948b59b984eb37d37f9e9463a98c85a5d610b4bbf03d77b9820ee`
+repeated the Door-only control. All 819 complete recorded boundaries are exact
+between control/current after excluding only `tick_result.state_hash`, including
+entity state, missions, commands, ordered events and all RNG state/draws/callers.
+Control restores incoming bridge `C40E68BDB392AF79`, global `11C7DD744E2A1928`,
+and slice6 `56050F10EACE5E86`; final composed pins are `E535E954E40A0B11`,
+`33884CEDCDBD70FD`, and `657A4E487E8AC526`. The temporary test-only control is
+removed before native source binding and final validation; snapshot282 retains
+both incoming main281 IFV state and the shared Door. Original goldens are
+unchanged. Exact binary/patch/log/observation identities and comparison limits
+are retained in external `unit-unlimbo-main1009-door-hash-attribution.json`.
+
 The refinery dock comparison still uses its measured `73ACB3..73ADCA` window;
 its fixture now calls the existing mission promotion and miner contact-release
 owners rather than treating that narrow window as whole PerCell execution.

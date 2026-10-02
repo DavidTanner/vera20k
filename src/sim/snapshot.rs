@@ -807,7 +807,6 @@ use crate::sim::world::Simulation;
 // 281 -> 282: every Techno saves one shared DoorClass; Gate Open/handler
 // status come from MissionCom rather than a second gate mission/transition.
 const SNAPSHOT_VERSION: u32 = 282;
-const SNAPSHOT_VERSION: u32 = 281;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;

@@ -654,8 +654,10 @@ class UnitUnlimboControls(Mission):
             counter=m.read32(0xA8E7AC), actual_game_mode=m.read32(0xA8B238),
             fpcw=u.reg_read(UC_X86_REG_FPCW), text_sha256=self.text_hash())
 
-    def read_factory_unload_inputs(self):
+    def read_factory_unload_inputs(self, *, type_pointer=None, type_name='GAWEAP',
+                                   include_unload=True, observe_deploy=False):
         m, u = self.m, self.u
+        type_pointer = self.producer_type if type_pointer is None else type_pointer
         self.phase = 'setup'
         result = []
         for name, path in base.layers():
@@ -663,21 +665,40 @@ class UnitUnlimboControls(Mission):
                 result.append(dict(file=name, absent=True))
                 continue
             raw = path.read_bytes()
-            sections, lines = base.lexical(raw, {'GAWEAP', 'Unload'})
+            wanted = {type_name, 'Unload'} if include_unload else {type_name}
+            sections, lines = base.lexical(raw, wanted)
             m.rules_cache(sections)
-            before = bytes(u.mem_read(self.producer_type + 0x3C8, 8)).hex()
-            for reg, value in ((UC_X86_REG_ESP, SP), (UC_X86_REG_EBP, self.producer_type),
-                               (UC_X86_REG_EBX, self.producer_type + 0x24), (UC_X86_REG_EDI, RULES)):
+            before = bytes(u.mem_read(type_pointer + 0x3C8, 8)).hex()
+            for reg, value in ((UC_X86_REG_ESP, SP), (UC_X86_REG_EBP, type_pointer),
+                               (UC_X86_REG_EBX, type_pointer + 0x24), (UC_X86_REG_EDI, RULES)):
                 u.reg_write(reg, value)
-            run_checked(u, 0x714B77, 0x714B9F, required_addresses=(0x714B94, 0x5283D0))
+            reads = []
+            def observe_reader(vm, pc, _size, _data):
+                if pc == 0x5283D0:
+                    sp = vm.reg_read(UC_X86_REG_ESP)
+                    reads.append(dict(entry=hex(pc), ini=hex(vm.reg_read(UC_X86_REG_ECX)),
+                        section=m.string(m.read32(sp + 4)), key=m.string(m.read32(sp + 8)),
+                        default_double_hex=bytes(vm.mem_read(sp + 12, 8)).hex()))
+            hook = u.hook_add(UC_HOOK_CODE, observe_reader) if observe_deploy else None
+            try:
+                run_checked(u, 0x714B77, 0x714B9F, required_addresses=(0x714B94, 0x5283D0))
+            finally:
+                if hook is not None:
+                    u.hook_del(hook)
             assert u.reg_read(UC_X86_REG_ESP) == SP
-            u.reg_write(UC_X86_REG_ESP, SP)
-            u.reg_write(UC_X86_REG_ESI, RULES)
-            run_checked(u, 0x679C92, 0x679CAF, required_addresses=(0x5B3760,))
-            assert u.reg_read(UC_X86_REG_ESP) == SP
-            result.append(dict(file=name, sha256=hashlib.sha256(raw).hexdigest(), sections=sections,
-                               source_lines=lines, deploy_before=before,
-                               deploy_after=bytes(u.mem_read(self.producer_type + 0x3C8, 8)).hex()))
+            if include_unload:
+                u.reg_write(UC_X86_REG_ESP, SP)
+                u.reg_write(UC_X86_REG_ESI, RULES)
+                run_checked(u, 0x679C92, 0x679CAF, required_addresses=(0x5B3760,))
+                assert u.reg_read(UC_X86_REG_ESP) == SP
+            row = dict(file=name, sha256=hashlib.sha256(raw).hexdigest(), sections=sections,
+                       source_lines=lines, deploy_before=before,
+                       deploy_after=bytes(u.mem_read(type_pointer + 0x3C8, 8)).hex())
+            if observe_deploy:
+                assert len(reads) == 1 and reads[0]['section'] == type_name
+                assert reads[0]['key'] == 'DeployTime'
+                row['deploy_reads'] = reads
+            result.append(row)
         return result
 
     def initialize_foundation_exit_lists(self):
@@ -1054,6 +1075,240 @@ class UnitUnlimboControls(Mission):
                     ready_slot=hex(ready), stop_before=hex(stop), returned=stop == RET_MAGIC,
                     inherited_inputs=self.inputs)
 
+    def unit_move_state(self):
+        m, u = self.m, self.u
+        nav = m.read32(self.src + 0x5A4)
+        cell = next((list(xy) for xy, pointer in self.resident.ptrs.items()
+                     if nav == pointer), None)
+        return dict(actor=self.actor(), navcom=hex(nav), navcell=cell,
+                    unit_bytes={hex(off): u.mem_read(self.src + off, 1)[0]
+                                for off in (0x6D2, 0x6E0, 0x6E1, 0x6E2)},
+                    door=bytes(u.mem_read(self.src + 0x350, 0x1C)).hex())
+
+    def run_unit_move_guard(self):
+        """Original Mission AI dispatch, including Unit's deployment guard."""
+        case = self.case
+        factory = self.run_factory()
+        m, u = self.m, self.u
+        reader_rng = self.rng_bytes()
+        reader = self.read_factory_unload_inputs(type_pointer=self.typ, type_name='MTNK',
+                                                include_unload=False, observe_deploy=True)
+        assert reader_rng == self.rng_bytes()
+        minutes = bytes(u.mem_read(self.typ + 0x3C8, 8))
+        self.frame = case['door_open_frame']
+        u.mem_write(0xA8ED84, dwords(self.frame))
+        door_before = bytes(u.mem_read(self.src + 0x350, 0x1C)).hex()
+        door_rng = self.rng_bytes()
+        open_eax = m.invoke(0x4A51F0, self.src + 0x350, struct.unpack('<II', minutes))
+        door_open = dict(entry='0x004A51F0', frame=self.frame,
+                         deploy_time_double_hex=minutes.hex(), before=door_before,
+                         after=bytes(u.mem_read(self.src + 0x350, 0x1C)).hex(),
+                         returned_eax=open_eax,
+                         rng_pair=self.rng_pair(door_rng, self.rng_bytes()))
+        self.frame = case['frame']
+        u.mem_write(0xA8ED84, dwords(self.frame))
+        u.mem_write(self.src + 0xAC, dwords(case['current_mission']))
+        u.mem_write(self.src + 0xB4, dwords(case['queued_mission']))
+        u.mem_write(self.src + 0xC8, dwords(0, 0, 0))
+        u.mem_write(self.src + 0x6D2, bytes([case['initial_unit_6D2']]))
+        u.mem_write(self.src + 0x6E0, bytes(case['flags']))
+        navcell = case['navcell']
+        nav = self.resident.ptrs[tuple(navcell)] if navcell is not None else 0
+        u.mem_write(self.src + 0x5A4, dwords(nav))
+        before, rng_before = self.unit_move_state(), self.rng_bytes()
+        rng_before_state = {k: base.sr.rng_state(u, p) for k, p in self.resident.rngs.items()}
+        fpcw_before = u.reg_read(UC_X86_REG_FPCW)
+        move_slot = m.read32(m.read32(self.src) + 0x22C)
+        assert move_slot == 0x740A90
+        trace, handler_returns = [], []
+        pcs = {0x5B3060, 0x740A90, 0x740AA4, 0x740AAE, 0x740AB8, 0x740AEF,
+               0x5B35E0, 0x740B03, 0x5B334E, 0x5B3352, 0x5B3358,
+               0x5B335F, 0x5B3368, 0x5B336F,
+               0x4A5240, 0x4D4200}
+        def observe(vm, pc, _size, _data):
+            if pc not in pcs:
+                return
+            sp = vm.reg_read(UC_X86_REG_ESP)
+            row = dict(pc=hex(pc), receiver=hex(vm.reg_read(UC_X86_REG_ECX)),
+                       eax=vm.reg_read(UC_X86_REG_EAX), state=self.unit_move_state())
+            if pc == 0x5B35E0:
+                row['args'] = [m.read32(sp + 4), m.read32(sp + 8)]
+            if pc == 0x740B03:
+                handler_returns.append(vm.reg_read(UC_X86_REG_EAX))
+            trace.append(row)
+        hook = u.hook_add(UC_HOOK_CODE, observe)
+        event_start = len(self.events)
+        self.phase = 'unit_move_guard'
+        try:
+            answer = m.invoke(0x5B3060, self.src)
+        finally:
+            u.hook_del(hook)
+        assert len(handler_returns) == 1, trace
+        assert not self.pending and not self.factory_pending
+        return dict(input=case, factory=factory,
+                    setup=dict(deploy_time_layers=reader, door_open=door_open,
+                               move_vtable_slot=hex(move_slot),
+                               supplied_dispatch_timer=[0, 0, 0]),
+                    entry='0x005B3060', handler_entry='0x00740A90', before=before,
+                    after=self.unit_move_state(), handler_return_eax=handler_returns[0],
+                    returned_eax=answer, trace=trace, events=self.events[event_start:],
+                    rng_pair=self.rng_pair(rng_before, self.rng_bytes()),
+                    rng_before=rng_before_state,
+                    rng_after={k: base.sr.rng_state(u, p) for k, p in self.resident.rngs.items()},
+                    fpcw_before=fpcw_before, fpcw_after=u.reg_read(UC_X86_REG_FPCW),
+                    inherited_inputs=self.inputs, text_sha256=self.text_hash())
+
+    def run_factory_busy_redirect(self):
+        """Whole original ExitObject recursion under declared House list inputs."""
+        case = self.case
+        self.prepare_factory()
+        self.phase = 'setup'
+        continuation_tiles = self.prepare_factory_continuation_tiles()
+        m, u = self.m, self.u
+        producers = {'source': self.producer}
+        types = {'GAWEAP': self.producer_type}
+        for spec in case['candidates']:
+            name = spec['type']
+            if name not in types:
+                pointer = m.alloc(0x1800)
+                m.invoke(0x45DD90, pointer, (m.cstring(name),))
+                types[name] = pointer
+            pointer = m.alloc(0x1000)
+            m.invoke(0x43B740, pointer, (types[name], 0))
+            producers[spec['label']] = pointer
+        specs = [dict(label='source', type='GAWEAP', xyz=case['producer_xyz'],
+                      current=case['source_current'], queued=case['source_queued'],
+                      archive=case['source_archive'],
+                      attached=case['source_attachment'] == 'Building')] + case['candidates']
+        attachments, attachment_receipts = {}, []
+        if any(spec['attached'] for spec in specs):
+            prior = bytes(u.mem_read(0xA83E30, 24)).hex()
+            assert m.read32(0xA83E40) == 0
+            u.mem_write(0xA83E30, dwords(0x7EB6D4, m.alloc(16 * 4), 16, 1, 0, 10))
+            factory_registry = dict(address='0x00A83E30', before=prior,
+                                    supplied=bytes(u.mem_read(0xA83E30, 24)).hex())
+        else:
+            factory_registry = None
+        for spec in specs:
+            pointer = producers[spec['label']]
+            u.mem_write(pointer + 0x21C, dwords(self.house))
+            u.mem_write(pointer + 0x14C, dwords(self.house))
+            u.mem_write(pointer + 0x9C, dwords(*spec['xyz']))
+            u.mem_write(pointer + 0xAC, dwords(spec['current']))
+            u.mem_write(pointer + 0xB4, dwords(spec['queued']))
+            archive = self.resident.ptrs[tuple(spec['archive'])]
+            m.invoke(0x70C610, pointer, (archive,))
+            if spec['attached']:
+                factory = m.alloc(0x74)
+                ctor_rng = self.rng_bytes()
+                ctor_eax = m.invoke(0x4C98B0, factory)
+                ctor = bytes(u.mem_read(factory, 0x74)).hex()
+                assert ctor_eax == factory and m.read32(factory) == 0x7E88D0
+                writes = {'0x6c': self.house}
+                if spec['label'] == 'source':
+                    writes.update({'0x24': 54, '0x58': self.src})
+                for off, value in writes.items():
+                    u.mem_write(factory + int(off, 16), dwords(value))
+                u.mem_write(pointer + 0x524, dwords(factory))
+                attachments[spec['label']] = factory
+                attachment_receipts.append(dict(holder=spec['label'], pointer=hex(factory),
+                    entry='0x004C98B0', returned_eax=ctor_eax, after_ctor=ctor,
+                    supplied_words={off: hex(value) for off, value in writes.items()},
+                    before_exit=bytes(u.mem_read(factory, 0x74)).hex(),
+                    rng_pair=self.rng_pair(ctor_rng, self.rng_bytes())))
+            else:
+                u.mem_write(pointer + 0x524, dwords(0))
+        data = m.alloc(max(4, len(case['house_order']) * 4))
+        order = [producers[label] for label in case['house_order']]
+        u.mem_write(data, dwords(*order))
+        prior_house_vector = bytes(u.mem_read(self.house + 0x68, 24)).hex()
+        u.mem_write(self.house + 0x68, dwords(0x7EB6D4, data, len(order), 1, len(order), 10))
+        house_vector = dict(address=hex(self.house + 0x68), before=prior_house_vector,
+                            supplied=bytes(u.mem_read(self.house + 0x68, 24)).hex(),
+                            labels=case['house_order'], pointers=[hex(p) for p in order])
+        placement_cells_before = {
+            str(tuple(xy)): self.resident.snapshot(self.resident.ptrs[tuple(xy)])
+            for xy in case['placement_probe_cells']}
+        reverse = {pointer: label for label, pointer in producers.items()}
+        cells = {pointer: list(xy) for xy, pointer in self.resident.ptrs.items()}
+        def state():
+            product_archive = m.read32(self.src + 0x218)
+            product_nav = m.read32(self.src + 0x5A4)
+            return dict(product=self.actor(), product_archive=hex(product_archive),
+                product_archive_cell=cells.get(product_archive),
+                product_navcom=hex(product_nav), product_navcell=cells.get(product_nav),
+                product_stage=foot_missions.FootMissions.stage_clock_snap(self, self.src),
+                producers={label: dict(pointer=hex(p), type=hex(m.read32(p + 0x520)),
+                    xyz=base.xyz(u, p + 0x9C), current=base.i32(u, p + 0xAC),
+                    queued=base.i32(u, p + 0xB4), status=base.i32(u, p + 0xBC),
+                    archive=hex(m.read32(p + 0x218)),
+                    archive_cell=cells.get(m.read32(p + 0x218)),
+                    attachment=hex(m.read32(p + 0x524))) for label, p in producers.items()},
+                factory_bytes={label: bytes(u.mem_read(p, 0x74)).hex()
+                               for label, p in attachments.items()},
+                counter=m.read32(0xA8E7AC), actual_game_mode=m.read32(0xA8B238),
+                scenario_active=u.mem_read(0xA8E9A0, 1)[0])
+        effective_before = {label: m.invoke(0x5B3040, p) for label, p in producers.items()}
+        before, rng_before = state(), self.rng_bytes()
+        rng_before_state = {k: base.sr.rng_state(u, p) for k, p in self.resident.rngs.items()}
+        trace, recursive_returns = [], []
+        pcs = {0x443C60, 0x444492, 0x70C610, 0x4444AA, 0x4444D6, 0x4444F5,
+               0x44451F, 0x444525, 0x44452B, 0x444535, 0x444542, 0x444548,
+               0x444552, 0x444558, 0x444575, 0x737BA0, 0x5F4EC0, 0x444979,
+               0x444EE6, 0x4452C5}
+        def observe(vm, pc, _size, _data):
+            if pc not in pcs:
+                return
+            sp, receiver = vm.reg_read(UC_X86_REG_ESP), vm.reg_read(UC_X86_REG_ECX)
+            ebp = vm.reg_read(UC_X86_REG_EBP)
+            row = dict(pc=hex(pc), receiver=hex(receiver), receiver_label=reverse.get(receiver),
+                       eax=vm.reg_read(UC_X86_REG_EAX), ebx=vm.reg_read(UC_X86_REG_EBX),
+                       ebp=hex(ebp), candidate_label=reverse.get(ebp), state=state())
+            if pc in (0x443C60, 0x737BA0, 0x5F4EC0):
+                row['args'] = [m.read32(sp + 4), m.read32(sp + 8)]
+            if pc in (0x737BA0, 0x5F4EC0):
+                row['requested_xyz'] = base.xyz(u, row['args'][0])
+            if pc == 0x70C610:
+                row['args'] = [m.read32(sp + 4)]
+            if pc == 0x444548:
+                recursive_returns.append(vm.reg_read(UC_X86_REG_EAX))
+            trace.append(row)
+        hook = u.hook_add(UC_HOOK_CODE, observe)
+        event_start = len(self.events)
+        self.phase = 'factory_busy_redirect'
+        try:
+            answer = m.invoke(0x443C60, self.producer, (self.src, 0))
+        finally:
+            u.hook_del(hook)
+        after = state()
+        effective_after = {label: m.invoke(0x5B3040, p) for label, p in producers.items()}
+        assert not self.factory_pending and not self.pending
+        receivers = [row['receiver_label'] for row in trace if row['pc'] == '0x443c60']
+        assert receivers and receivers[0] == 'source' and len(receivers) <= 2, receivers
+        return dict(input=case, entry='0x00443C60', before=before, after=after,
+                    returned_eax=answer, recursive_return_eax=recursive_returns,
+                    selected_receiver=receivers[1] if len(receivers) == 2 else None,
+                    effective_before=effective_before, effective_after=effective_after,
+                    setup=dict(producer=self.producer_snapshot, house_vector=house_vector,
+                               factory_registry=factory_registry, attachments=attachment_receipts,
+                               packed_recursive_cell_argument=m.read32(0x89C818)),
+                    continuation_tiles=continuation_tiles,
+                    placement_cells_before=placement_cells_before,
+                    placement_cells_after={
+                        str(tuple(xy)): self.resident.snapshot(self.resident.ptrs[tuple(xy)])
+                        for xy in case['placement_probe_cells']},
+                    supplied_cells=[r for r in self.resident.case['supplied_cells']
+                        if r['coord'] in case['placement_probe_cells']],
+                    trace=trace, events=self.events[event_start:],
+                    rng_pair=self.rng_pair(rng_before, self.rng_bytes()),
+                    rng_before=rng_before_state,
+                    rng_after={k: base.sr.rng_state(u, p) for k, p in self.resident.rngs.items()},
+                    plane_after={str(xy): [m.read32(p + off) for off in
+                        (0xE4, 0xE8, 0x124, 0x128, 0x54, 0x58)]
+                        for xy, p in self.resident.ptrs.items()},
+                    inherited_inputs=self.inputs, unit_geometry_startup=self.unit_geometry_startup,
+                    text_sha256=self.text_hash())
+
     def text_hash(self):
         digest = hashlib.sha256(bytes(self.u.mem_read(0x401000, 0x3E0000))).hexdigest()
         assert digest == self.resident.code_hash
@@ -1142,13 +1397,52 @@ def factory_miner_per_cell_cases():
                             human_controlled=1)) for selected in ('Harvester', 'Weeder')]
 
 
+def unit_move_guard_cases():
+    return [dict(cases()[1][0], name=f'deploy_flags_{"".join(map(str, flags))}_'
+                    f'nav_{"null" if navcell is None else "cell"}',
+                 flags=list(flags), navcell=navcell, frame=200, door_open_frame=190,
+                 current_mission=2, queued_mission=1, initial_unit_6D2=0)
+            for flags in ((1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 1))
+            for navcell in (None, [88, 50])]
+
+
+def factory_busy_redirect_cases():
+    base_case = dict(cases()[1][0], source_current=16, source_queued=-1,
+                     source_archive=[87, 50], source_attachment='House',
+                     placement_probe_cells=[[87, 50], [86, 50], [87, 49]])
+    a = dict(label='candidate_a', type='GAWEAP', xyz=[21632, 12672, 416],
+             current=5, queued=-1, archive=[86, 49], attached=False)
+    b = dict(label='candidate_b', type='GAWEAP', xyz=[21888, 12416, 416],
+             current=5, queued=-1, archive=[88, 49], attached=False)
+    common = dict(candidates=[a, b], house_order=['source', 'candidate_b', 'candidate_a'])
+    eligibility = [
+        dict(a, label='attached_same_type', archive=[84, 50], attached=True),
+        dict(b, label='other_type', type='NAWEAP', archive=[85, 50]),
+        dict(a, label='move_same_type', xyz=[21376, 12672, 416],
+             archive=[86, 50], current=2),
+        dict(a, label='none_queued_guard', current=-1, queued=5),
+    ]
+    return [
+        dict(base_case, **common, name='player_house_order'),
+        dict(base_case, **common, name='building_house_order', source_attachment='Building'),
+        dict(base_case, name='eligibility_effective_guard', candidates=eligibility,
+             house_order=['source', 'attached_same_type', 'other_type',
+                          'move_same_type', 'none_queued_guard']),
+        dict(base_case, **common, name='player_first_refused', scenario_active=False),
+        dict(base_case, **common, name='building_first_refused', scenario_active=False,
+             source_attachment='Building'),
+        dict(base_case, name='no_alternate', candidates=[], house_order=['source']),
+    ]
+
+
 def generate():
     direct, factory = cases()
     result = dict(schema_version=1, native_sha256=NATIVE_SHA256,
                   visceroid_reader_receipt=UnitUnlimboControls(
                       direct_case('visceroid_reader'), 'direct').visceroid_reader_receipt(),
                   direct_rows=[], factory_rows=[], stage_rows=[], factory_exit_radio_rows=[],
-                  authored_rows=[], factory_unload_rows=[], factory_miner_per_cell_rows=[])
+                  authored_rows=[], factory_unload_rows=[], factory_miner_per_cell_rows=[],
+                  unit_move_guard_rows=[], factory_busy_redirect_rows=[])
     for case in direct:
         row = UnitUnlimboControls(case, 'direct').run_direct()
         result['direct_rows'].append(row)
@@ -1175,6 +1469,15 @@ def generate():
         row = UnitUnlimboControls(case, 'factory').run_factory_miner_per_cell(selected)
         result['factory_miner_per_cell_rows'].append(row)
         print(f'miner {case["name"]}: original mission{row["after"]["product"]["mission"]}', flush=True)
+    for case in unit_move_guard_cases():
+        row = UnitUnlimboControls(case, 'factory').run_unit_move_guard()
+        result['unit_move_guard_rows'].append(row)
+        print(f'guard {case["name"]}: original handler EAX{row["handler_return_eax"]}', flush=True)
+    for case in factory_busy_redirect_cases():
+        row = UnitUnlimboControls(case, 'factory').run_factory_busy_redirect()
+        result['factory_busy_redirect_rows'].append(row)
+        print(f'busy {case["name"]}: original receiver{row["selected_receiver"]} '
+              f'EAX{row["returned_eax"]}', flush=True)
     return result
 
 
@@ -1187,6 +1490,8 @@ def metadata():
               'controls, one original GAWEAP/MTNK Unload/ForceTrack/primary clearance '
               'continuation with nineteen Door controls and all twenty-two Foundation '
               'exit-list startup rows, two contained Harvester/Weeder primary PerCell '
+              'controls, eight whole MissionAI Unit Move deployment-guard controls and '
+              'six whole busy-factory same-type redirection '
               'controls, with physical layered MTNK and selected '
               'producer inputs. Immediate Unit return is distinct from the inherited later command.',
         entry_points=dict(unit_ctor=0x7353C0, unit_unlimbo=0x737BA0, foot_unlimbo=0x4D7170,
@@ -1229,7 +1534,15 @@ def metadata():
                           foundation_exit_startup=0x45C300,
                           foundation_exit_post_read=0x46152C,
                           unit_per_cell=0x739EC0, unit_harvester_weeder_reader=0x74769F,
-                          unit_miner_default_post_read=0x74779D),
+                          unit_miner_default_post_read=0x74779D,
+                          mission_ai=0x5B3060, unit_move=0x740A90,
+                          unit_move_guard_queue=0x740AEF, unit_move_return=0x740B03,
+                          mission_move_timer=0x5B3358, effective_mission=0x5B3040,
+                          factory_ctor=0x4C98B0, busy_factory_archive=0x444492,
+                          busy_factory_transfer=0x444525,
+                          busy_factory_recursive_call=0x444542,
+                          busy_factory_recursive_return=0x444548,
+                          busy_factory_restore=0x444552),
         assumptions=[
             'Mission is the sole constructor, physical crop and native callback owner. '
             'Original geometry735180/735210/735230/735250/7352F0 executes first; retained '
@@ -1328,6 +1641,27 @@ def metadata():
             'before73ACD7 after actual QueueHarvest[10,1], UnitReady744270 '
             'and Commence. This establishes that primary branch and its '
             'RNG/mission effects, not the movement trigger or whole harvesting.',
+            'Eight additive guard rows reuse the original successful factory '
+            'placement, read physical MTNK DeployTime through the existing '
+            '714B77..714B9F owner and record actual ReadDouble arguments/current '
+            'defaults. Original Unit Door4A51F0 opens at190 from those double '
+            'bits. Supplied Move/current2, Attack/queued1, due dispatch timer, '
+            'flags6E0/6E1/6E2 and NULL or real Cell88,50 NavCom precede whole '
+            'MissionAI5B3060 at200. Byte6D2 begins0. Actual nested740B03 EAX '
+            'and dispatcher timer writes, Door/Nav/flag snapshots and all3 '
+            'RNG objects are observations, not selected expected returns.',
+            'Six additive busy-factory rows reuse original43B740 constructors '
+            'with shared exact GAWEAP type identity and a physical NAWEAP '
+            'constructor identity for the different-type control. Caller '
+            'supplies distinct real-Cell archives, producer poses/current/queued '
+            'missions and House+68 list order. Original5B3040 records effective '
+            'missions, including currentNone/queuedGuard. Typed nonNULL '
+            'attachments execute originalFactory4C98B0 after a valid empty '
+            'A83E30 registry header; owner/completion/held-object words are '
+            'declared inputs. Whole443C60 owns archive-before-busy, selection, '
+            'temporary+524 attachment moves, recursive original+100 call and '
+            'restoration. selected_receiver is observed at the second443C60 '
+            'entry, with actual recursive/whole returns and full RNG retained.',
         ],
         substitutions=[
             'Full Scenario, House/map load and producer visual asset loading are '
@@ -1374,6 +1708,18 @@ def metadata():
             'an original .text patch. Original primary TMP constructor defaults '
             'for animation/shadow are retained; complete archive/Tile INI/variant '
             'loading is excluded.',
+            'Guard inputs start after supplied mission/flag/Nav and actual '
+            'Door-opening setup. They establish the direct Unit Move guard and '
+            'MissionAI timer boundary, not producer deployment or whole UnitAI '
+            'flag lifetime. Byte6D2 is initially0; no final-host miner-clear '
+            'claim is made. Busy producer poses/House vector/mission/archive '
+            'and typed Factory owner/completion inputs are supplied after '
+            'original constructors. Full paid queues, House holder production, '
+            'producer footprint/readiness/loading and Factory scheduling are '
+            'excluded. ScenarioActive0 refusal is an executed native global '
+            'boundary distinct from the Rust adversarial cell_marked refusal; '
+            'comparison of selection/archive/returns/restoration/RNG does not '
+            'certify equivalence of those refusal causes.',
         ],
     )
     result['promotion_sources'] = {
@@ -1467,6 +1813,12 @@ def metadata():
         ('building_unload', 0x44D880, 0xB09), ('building_unload_jump_table', 0x44E38C, 0x14),
         ('building_unload_vtable_slot', 0x7E40F8, 4), ('force_track', 0x4B0C40, 0x100),
         ('unit_door_closed', 0x744180, 0x30), ('unit_move_door', 0x740A90, 0x74),
+        ('mission_dispatch', 0x5B3060, 0x486), ('effective_mission', 0x5B3040, 0x12),
+        ('unit_move_vtable_slot', 0x7F5E9C, 4),
+        ('mission_move_table_word', 0x5B34F0, 4),
+        ('factory_ctor', 0x4C98B0, 0x153),
+        ('factory_archive_busy_redirect', 0x444492, 0xE3),
+        ('building_exit_vtable_slot', 0x7E3FBC, 4),
         ('unit_per_cell_factory_exit', 0x73A7D2, 0x505),
         ('isotile_ctor', 0x5447C0, 0x240), ('recalc_missing_tmp_call', 0x47D57B, 0x51),
         ('unit_scatter_prefix', 0x743A50, 0x195), ('producer_guard_queue', 0x44D6A0, 0x46),
@@ -1477,6 +1829,12 @@ def metadata():
         offset, raw = file_span(binary, address, length)
         if name == 'default_coord_crt_slot':
             assert int.from_bytes(raw, 'little') == 0x5F38A0
+        if name == 'unit_move_vtable_slot':
+            assert int.from_bytes(raw, 'little') == 0x740A90
+        if name == 'mission_move_table_word':
+            assert int.from_bytes(raw, 'little') == 0x5B334E
+        if name == 'building_exit_vtable_slot':
+            assert int.from_bytes(raw, 'little') == 0x443C60
         result['native_spans'][name] = dict(address=f'0x{address:08X}', file_offset=offset,
                                            length=length, sha256=hashlib.sha256(raw).hexdigest(),
                                            hex=raw.hex())
@@ -1498,9 +1856,12 @@ def source_paths():
                      'src/sim/door.rs', 'src/sim/game_entity.rs', 'src/sim/gate_runtime.rs',
                      'src/sim/docking/building_dock.rs', 'src/sim/movement/track_host.rs',
                      'src/sim/movement/per_cell.rs', 'src/sim/production/production_queue.rs',
+                     'src/sim/production/factory.rs',
+                     'src/sim/production/production_queue_tests.rs',
                      'src/sim/world/techno_ai.rs',
                      'src/sim/world/techno_ai/building_missions.rs',
                      'src/sim/world/techno_ai/mission_handlers.rs',
+                     'src/sim/world/techno_ai/factory_unload_tests.rs',
                      'src/sim/world/projectile_collision.rs'):
         paths[relative] = REPO / relative
     return paths

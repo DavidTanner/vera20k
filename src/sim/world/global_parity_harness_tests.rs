@@ -528,7 +528,11 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // All 601 boundaries retain gameplay/RNG; each new saved charge delay is the
 // last of the 13 unchanged FireAt rearm writes. Bounded Rust attribution:
 // tools/spatial_oracle/ifv_turret_replay/receipt.json (not native replay evidence).
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x11C7_DD74_4E2A_1928;
+// Shared Door composition after main1009: same test binary, 601 complete
+// off/on boundaries equal except tick_result.state_hash. Omitting only Door
+// restores incoming main; the temporary control is removed. Bounded Rust
+// attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x3388_4CED_CDBD_70FD;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

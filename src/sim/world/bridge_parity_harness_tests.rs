@@ -295,7 +295,11 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // current-weapon hashing and the redundant None override feed is removed.
 // All 201 recorded boundaries retain gameplay/RNG after guarded field migration;
 // tools/spatial_oracle/ifv_turret_replay/receipt.json records this Rust attribution.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xC40E_68BD_B392_AF79;
+// Shared Door composition after main1009: same test binary, 201 complete
+// off/on boundaries equal except tick_result.state_hash. Omitting only Door
+// restores incoming main; the temporary control is removed. Bounded Rust
+// attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xE535_E954_E40A_0B11;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

@@ -279,7 +279,11 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // current-weapon hashing and the redundant None override feed is removed.
 // All 17 recorded boundaries retain gameplay/RNG after guarded field migration;
 // tools/spatial_oracle/ifv_turret_replay/receipt.json records this Rust attribution.
-const SLICE6_BASELINE_HASH: u64 = 0x5605_0F10_EACE_5E86;
+// Shared Door composition after main1009: same test binary, 17 complete
+// off/on boundaries equal except tick_result.state_hash. Omitting only Door
+// restores incoming main; the temporary control is removed. Bounded Rust
+// attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+const SLICE6_BASELINE_HASH: u64 = 0x657A_4E48_7E8A_C526;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

@@ -125,6 +125,25 @@ pub(crate) fn dispatch_foot_mission(
             };
             MissionHandlerEvaluation::cadence(delay)
         }
+        // Unit740A90 checks the existing +6E0/+6E1/+6E2 deployment owner
+        // before Door/Foot work. Any nonzero byte queues Guard(5,0) and
+        // returns1 at740AEF..740B03, without cadence RNG or idle/navigation
+        // effects. Native comparisons: anytown_damage/unit_unlimbo.md.
+        // Its +6D2 clear is folded into miner::unit_ai_clear_harvesting at
+        // the existing UnitAI boundary; no intervening reader observes it.
+        (EntityCategory::Unit, Some(MissionType::Move))
+            if sim
+                .substrate
+                .entities
+                .get(id)
+                .is_some_and(|entity| entity.is_deployed()) =>
+        {
+            MissionHandlerEvaluation {
+                delay: 1,
+                clear_stale_attack_target: false,
+                queue: Some(MissionType::Guard),
+            }
+        }
         // `FootClass::Mission_Move` is the native named location for this
         // handler-return cadence; movement execution remains in movement/.
         // **Infantry take a leaf override first, and VERA does not model it.**
@@ -143,7 +162,7 @@ pub(crate) fn dispatch_foot_mission(
         // `UnitTypeClass*` on UnitClass and this state enum on InfantryClass,
         // which caches its own type at `+0x6C0`.
         (EntityCategory::Unit | EntityCategory::Infantry, Some(MissionType::Move)) => {
-            //Unit740A90..740ABC closes its own Techno+350 Door before the
+            //Unit740AB8..740AEC closes its own Techno+350 Door before the
             //shared Foot4D4200 cadence. DeployTime is the same native type
             //reader used by factory and Gate Door requests.
             if input.category == EntityCategory::Unit {

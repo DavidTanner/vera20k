@@ -116,7 +116,9 @@ class Mission:
   for name,path in base.layers():
    if not path.exists():continue
    sections,lines=base.lexical(path.read_bytes(),{'General','Radiation'});m.rules_cache(sections)
-   general=m.invoke(0x66D530,self.rules,(RULES,));radiation=m.invoke(0x66CF70,self.rules,(RULES,))
+   # Full retail GeneralRules includes original type construction. Its measured
+   # host wall-time can exceed 10s; retain the shared two-million instruction cap.
+   general=m.invoke(0x66D530,self.rules,(RULES,),timeout_us=30_000_000);radiation=m.invoke(0x66CF70,self.rules,(RULES,))
    self.inputs['ai_rules_layers'].append(dict(file=name,general_al=general&255,radiation_al=radiation&255,rad_application_delay=m.read32(self.rules+0x1808)))
   # Country and side registry construction from physical ordered names. Their
   # scalar readers still execute below; this does not model complete load order.

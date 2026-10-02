@@ -818,3 +818,192 @@ fn original_harvester_and_weeder_primary_controls_use_shared_mission_authority()
         // fields above are compared. No full UnitAI or harvesting claim.
     }
 }
+
+#[test]
+fn unit_move_deployment_guard_preserves_door_navigation_and_rng() {
+    // Unit740A93..740AB6 returns1 after QueueMission(Guard,0) when any
+    // of its existing +6E0/+6E1/+6E2 deployment bytes is set. It never
+    // reaches Door Close or the Foot Move cadence/arrival owner.
+    for flags in [
+        (true, false, false),
+        (false, true, false),
+        (false, false, true),
+        (true, true, true),
+    ] {
+        for navigation in [None, Some(NavTargetRef::cell(11, 10))] {
+            let ini = IniFile::from_str(
+                "[VehicleTypes]\n0=MTNK\n[MTNK]\nStrength=300\nSpeed=6\n\
+                 SpeedType=Track\nMovementZone=Normal\nDeployTime=.044\n\
+                 Locomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\
+                 [Clear]\nBuildable=yes\n",
+            );
+            let rules = parsed_rules(&ini, &IniFile::from_str(""), None);
+            let mut sim = Simulation::with_seed(0);
+            crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+            let id = sim
+                .spawn_object("MTNK", "Americans", 10, 10, 64, &rules)
+                .unwrap();
+            sim.session.binary_frame = 200;
+            sim.mission_assign_exact(
+                id,
+                MissionId::from_known(crate::sim::mission::MissionType::Move),
+                200,
+            )
+            .unwrap();
+            sim.mission_queue_exact(
+                id,
+                MissionId::from_known(crate::sim::mission::MissionType::Attack),
+                0,
+                200,
+                &crate::sim::mission::authority::EntityReadyInputProvider,
+            )
+            .unwrap();
+            let entity = sim.substrate.entities.get_mut(id).unwrap();
+            entity.set_unit_simple_deploy_for_test(flags.0, flags.1, flags.2);
+            entity.navigation.nav_com = navigation;
+            entity.open_door(40, 190);
+            let door_before = (entity.door_phase(), entity.door_timer_fields());
+            let rng_before = sim.rng_state();
+
+            super::super::dispatch_foot_mission(&mut sim, id, &rules, ObjectAiCtx::default());
+
+            let entity = sim.substrate.entities.get(id).unwrap();
+            assert_eq!(
+                (entity.door_phase(), entity.door_timer_fields()),
+                door_before,
+                "{flags:?} {navigation:?}: deployment guard skips Door"
+            );
+            assert_eq!(entity.navigation.nav_com, navigation);
+            assert_eq!(
+                entity.mission.current().known(),
+                Some(crate::sim::mission::MissionType::Move)
+            );
+            assert_eq!(
+                entity.mission.queued().known(),
+                Some(crate::sim::mission::MissionType::Guard)
+            );
+            assert_eq!(entity.mission.dispatch_timer().start_frame(), 200);
+            assert_eq!(entity.mission.dispatch_timer().delay(), 1);
+            assert_eq!(
+                sim.rng_state(),
+                rng_before,
+                "deployment guard has no jitter"
+            );
+        }
+    }
+}
+
+#[test]
+fn original_unit_move_deployment_guards_match_mission_dispatch() {
+    let data = corpus();
+    let rows = data["unit_move_guard_rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 8);
+    let Some((ini, art)) = retail_rules_and_art() else {
+        return;
+    };
+    let rules = parsed_rules(&ini, &art, None);
+    for row in rows {
+        let name = row["input"]["name"].as_str().unwrap();
+        let before = &row["before"];
+        let after = &row["after"];
+        let actor = &before["actor"];
+        let now = row["input"]["frame"].as_u64().unwrap() as u32;
+        let mut sim = Simulation::with_seed(0);
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+        let id = sim
+            .spawn_object("MTNK", "Americans", 10, 10, 64, &rules)
+            .unwrap();
+        sim.session.binary_frame = now;
+        let nav = |value: &Value| {
+            value.as_array().map(|pair| {
+                NavTargetRef::cell(
+                    pair[0].as_u64().unwrap() as u16,
+                    pair[1].as_u64().unwrap() as u16,
+                )
+            })
+        };
+        let entity = sim.substrate.entities.get_mut(id).unwrap();
+        entity.mission.apply_test_fixture(MissionTestFixture {
+            current: MissionId::from_raw(int(&actor["mission"])),
+            suspended: MissionId::NONE,
+            queued: MissionId::from_raw(int(&actor["queued"])),
+            movement_bypass_latch: 0,
+            handler_state: int(&actor["status"]) as u32,
+            mission_start_frame: 0,
+            ai_counter: int(&actor["mission_visit_count"]) as u32,
+            dispatch_timer: MissionDispatchTimer::from_raw(
+                int(&actor["dispatch"][0]),
+                int(&actor["dispatch"][1]),
+            ),
+        });
+        let flags = &row["input"]["flags"];
+        entity.set_unit_simple_deploy_for_test(flags[0] != 0, flags[1] != 0, flags[2] != 0);
+        entity.navigation.nav_com = nav(&before["navcell"]);
+        let door = bytes(before["door"].as_str().unwrap());
+        // The original reader/4A51F0 setup supplies these inputs. This pins
+        // the dispatch decision; the separate19 controls compare Door math.
+        assert_eq!(door[24..26], [1, 1]);
+        assert_eq!(dword(&door, 16), dword(&door, 20));
+        entity.open_door(dword(&door, 16) as u32, dword(&door, 8) as u32);
+        assert_door(
+            entity.door_phase(),
+            entity.door_timer_fields(),
+            &before["door"],
+            name,
+        );
+        import_rng(&mut sim, &row["rng_pair"]);
+
+        // The arena's pose differs from the native crop. Only dispatch inputs
+        // and effects are compared: this guard never resolves coordinates.
+        super::super::dispatch_foot_mission(&mut sim, id, &rules, ObjectAiCtx::default());
+
+        let entity = sim.substrate.entities.get(id).unwrap();
+        let expected = &after["actor"];
+        assert_eq!(
+            entity.mission.current().raw(),
+            int(&expected["mission"]),
+            "{name}"
+        );
+        assert_eq!(
+            entity.mission.queued().raw(),
+            int(&expected["queued"]),
+            "{name}"
+        );
+        assert_eq!(
+            entity.mission.handler_state(),
+            int(&expected["status"]) as u32,
+            "{name}"
+        );
+        let timer = entity.mission.dispatch_timer();
+        assert_eq!(
+            json!([timer.start_frame(), timer.delay()]),
+            expected["dispatch"],
+            "{name}"
+        );
+        assert_eq!(
+            timer.delay(),
+            int(&row["handler_return_eax"]),
+            "{name}: original handler return"
+        );
+        assert_eq!(entity.navigation.nav_com, nav(&after["navcell"]), "{name}");
+        let leaf = entity.mission_leaf.as_unit().unwrap();
+        for (key, value) in [
+            ("0x6e0", leaf.deployed()),
+            ("0x6e1", leaf.deploy_begin_active()),
+            ("0x6e2", leaf.deploy_reverse_active()),
+        ] {
+            assert_eq!(json!(value), after["unit_bytes"][key], "{name}: {key}");
+        }
+        assert_eq!(
+            before["door"], after["door"],
+            "{name}: original skipped Door"
+        );
+        assert_door(
+            entity.door_phase(),
+            entity.door_timer_fields(),
+            &after["door"],
+            name,
+        );
+        assert_rng(&sim, &row["rng_pair"], "after_hex", name);
+    }
+}
