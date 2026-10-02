@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "mechanism": "ordinary GAPOWR fatal lifecycle",
-  "candidate_state": "final release v5 validated at clean c682d281, snapshot283; all eight original corpuses byte-identical after gameplay integration; final code checks, six visible runs, exact repeat/prefixes and five root-inspected GPU frames pass",
+  "candidate_state": "preserved release v5 validated at clean c682d281/snapshot283 through six hidden-window production observations; current combined code390e0d0e/snapshot284 passes code checks, with release v6 proof pending",
   "objects_certified": 0,
   "native_comparator": "NONE",
   "parity_certification": "NONE",
@@ -907,5 +907,11 @@
     "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v5-build-receipt.json",
     "byte_length": 2144,
     "sha256": "2a0c1f9d3381932b38cf39f926a1661423300db15f3848b0ac46f3377fc428ad"
+  },
+  "visibility_correction": {
+    "capture_window_hidden": true,
+    "ordinary_visible_launch_asserted_for_v5": false,
+    "source": "src/app/diagnostics/tactical_capture/session.rs:163 and map_observation.rs lifecycle.window_hidden",
+    "correction": "Earlier prose described these runs as visible. They use the release production loader/simulation/Metal path through a hidden window. Inspected GPU frames and VALID/MATCH results remain unchanged. A separate ordinary visible launch is pending for v6."
   }
 }

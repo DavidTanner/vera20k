@@ -7,61 +7,68 @@ DONE requires three whole objects with native comparisons and production validat
 ## Owned state and next action
 
 Checkout `/Users/halvor/.codex/worktrees/object-completion/vera20k`; branch
-`feature/native-gapowr-fatal-lifecycle`. Integrated HEAD `e0e28954958fb46fd13404cdbdfa52e9f7a09eab` includes
-gameplay main03750cc7 (#1010 refinery docking) and documentation-only c8a794a7
-(#1011 Ghidra stack writes). Snapshot283 combines docking282 with runtime Smudge
-identities. No other task's files, refs or processes were changed.
+`feature/native-gapowr-fatal-lifecycle`. Clean code HEAD
+`390e0d0e7d6b1b1958902c2386ac611da045a828` integrates main
+`518605ddf1883c53114073ae59e5e479b0179df4` (#1013 Grand Cannon/recoil).
+Snapshot284 preserves recoil283 and runtime Smudge identities together. Only
+snapshot comments/version pin needed manual conflict resolution. No other task's
+files, branches or processes were changed.
 
-Final code validation at clean69f980ad: strict-retail **9511 passed /227 ignored**,
-clippy success/732 warnings with zero edited-span diagnostics, Python485/four
-skips, field ratchet2549/2554 and all39 edited Rust leaf checks. Exact logs/identities
-are in `gapowr-fatal-code-validation-v6.json`. The clean documentation merge changes
-only ghidra-workflow.md; `gapowr-fatal-code-continuity-docs-main.json` confirms
-Rust/tools/goldens/lockfile bytes unchanged. Rust v6 never invoked Cargo because
-of the16GiB reserve; Python v8 used the wrong discovery entry point and is excluded.
-Correct entry point `python -m tools.run_tests` v9 passes.
+[PR #1014](https://github.com/YuriPlanet/vera20k/pull/1014) is published/attached;
+auto-merge is enabled. The published633b2f2f predates the new main conflict. Final
+combined code passes strict-retail **9524 /0 failed /227 ignored**, clippy success
+with729 warnings/zero edited-span diagnostics, Python486/four skips, authority
+ratchet2549/2554 and all39 nonrecursive Rust leaf checks. Exact identities/results:
+`gapowr-fatal-code-validation-v7.json`. Clippy v8 invoked no Cargo below the16GiB
+reserve; retry v9 passes after exact owned archival and shared retention.
 
-Eight original native corpuses re-executed after gameplay integration are
-byte-identical. Only actual source-provenance hashes changed. The native fixture
-conflict preserves main's nav_target and optional constructor_abstract_flags;
-whole constructors retain flags3 rather than the legacy partial object's1.
+The completed9524 libtest is preserved byte-for-byte in
+`gapowr-final-9524-libtest-archive.tar.gz`, SHA
+`4ddee45c6dc026ce84da627e8fb161442fc64961bc5e2b0124f2cdd33c867de5`.
+The reviewed plan/applied receipt retain its original executable SHA, source,
+result and exact restoration root. Dependencies, labels, native evidence and
+other task files were excluded; full historical debug dependency closure is not
+claimed. The minimum reserve was retained.
+
+Eight original native corpuses executed after docking main integration are
+byte-identical. Their source metadata was refreshed without changing payloads;
 `gapowr-fatal-main-03750cc-native-refresh/final-input-replay/receipt.json` binds
-these executions. Expanded-input retries changed only metadata and were not adopted.
+the executions. All those native owners/accepted corpuses are unchanged by the
+latest main merge. This continuity is not an additional original execution.
 
-Prior release v4 (clean22908e2d) passes six observations/full-repeat MATCH/every
-prefix; all common observations/atlas/five GPU frames equal reviewed v3, with
-only IFV observer fields/hashes different. Prior receipts remain immutable.
-The completed b493 unlabelled test binary and all48 superseded v3 raw observation
-files are preserved byte-for-byte in verified archives, with restore roots in
-`gapowr-pre-final-v5-archive-applied.json`; v3 labels/images/results/critic and all
-native evidence remain retained. The shared runner safely trims eligible caches.
+Preserved prior release v5: label `object-gapowr-fatal-release-v5-20261002`,
+clean c682d281, app SHA
+`c9af8e4e8ebc1149891164239ceb2740d4aa9b88ff4a3401ee3949f3531ce78b`.
+All six Battle/AnyTown observations pass, full/repeat MATCH, every exact prefix
+and all five inspected GPU frames equal v4. Final hash15577309209927448644;
+plant1428 disappears1853, crew E1/1759 HP119 reaches31,88 by1900.
 
-Final release v5 label `object-gapowr-fatal-release-v5-20261002`, clean c682d281:
-source SHA8da7722e042b05d0f43eec5da624cfa3b0f1c3fb2e7420520c64d6641856db84;
-app SHAc9af8e4e8ebc1149891164239ceb2740d4aa9b88ff4a3401ee3949f3531ce78b;
-asset SHA4b2593de7afc908210b7cd73535a93397ef78ad5d953b4377fa2ae982394333e.
-All six visible observations revalidate; full/repeat MATCH with zero differences,
-every prefix exact and all five GPU frames root-inspected/byte-equal v4. Final
-hash15577309209927448644,2600ticks/57200ms. Plant1428 disappears1853; E1/1759
-HP119 receives same-frame Move and reaches31,88 by1900. Final receipt is
-`gapowr-fatal-production-receipt-v5.json` and its repository counterpart.
+Visibility correction: these exact-step observations use the release production
+app/loader/simulation/Metal renderer through a **hidden window**, as required by
+`tactical_capture/session.rs`. The earlier visible-run wording was wrong and is
+corrected in this checkpoint, repository receipt and PR. Inspected GPU images
+remain valid; no earlier ordinary visible-launch check is asserted by this receipt.
+Original external receipts remain immutable, with the correction saved separately.
 
-Cross-policy strict comparison correctly refuses v4v2 versus v5v3. Explicit common
-comparison matches every old actor/terrain observation, initial/final hash, atlas,
-clock and context. New v3 fields are per-frame Houses and actor miner/radio; they
-remain retained. No full cross-version MATCH or native pixel claim is made.
-The completed9511 test executable is preserved byte-for-byte in the verified archive
-`gapowr-final-9511-libtest-archive-applied.json`; only exact owned completed files
-were selected. The release entry blocked below16GiB before Cargo and is excluded;
-retry succeeds after archival/shared retention. All required release labels remain.
+Prior v4→v5 strict comparison correctly refuses observer policy v2→v3; every old
+common field/hash/atlas/clock and GPU frame matches. The new main keeps policyv3
+and adds optional Building voxel-gun observations. V5→v6 comparison must retain
+those actual schema/atlas differences rather than asserting a full cross-version
+MATCH. Native whole-world, native pixels/audio and whole-object certification
+remain outside this evidence.
 
-Next: publish/attach one fatal PR, dispatch three platform lib workflows, enable
-auto-merge and confirm merge before the next implementation. Do not rerun critic.
+Next: clean release v6, six fresh observations/full-repeat/exact prefixes and
+five inspected GPU frames; verify an ordinary responsive visible launch with the
+run-game owner. Seal the final receipt and push the integrated candidate, dispatch
+three platform lib workflows, then confirm auto-merge before implementation of
+the next chain. Do not rerun the single completed critic.
 
-Cargo uses `python -m tools.cargo_run`; every test uses `--lib`. Source stays frozen
-through a build. Keep the16GiB reserve and preserve required binaries/dependencies,
-assets, native evidence and recovery data. The former lengthy checkpoint is saved
-externally as `object-completion-checkpoint-before-final-review.md`.
+Cargo uses `python -m tools.cargo_run`; every test uses `--lib`. Freeze source
+through a build, keep the16GiB reserve and preserve required binaries/dependencies,
+assets, native evidence and recovery data. Reviewed v3 raw runs and earlier test
+binaries remain in verified archives with restoration receipts; all required
+release labels/images/results/critic reports remain. Existing issue#862's specific
+Smudge lead is corrected by PR1014/comment5962339281; other items remain open.
 
 ## Current chain and evidence
 
