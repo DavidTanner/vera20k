@@ -26,6 +26,7 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Refresh Anytown packet source provenance after helper maintenance | [checked native replay and receipt refresh](spatial_oracle/anytown_damage/README.md) |
 | Compare empty-IFV bridge pursuit, missiles, collapse, Stop and restoration | [conditional native continuation and input provenance](spatial_oracle/fv_cell_attack/README.md) |
 | Read/disassemble native VAs; scan callers, fields and bytes | [native inspection](native_inspect.md), `python -m tools.native_inspect` |
+| Compare Ghidra decompiles, callers and native stack frames | [Ghidra comparisons](ghidra_compare.md), `python -m tools.ghidra_compare` |
 | Reproduce Foot coordinates and bridge source-layer / reachability queries | [checked Foot bridge-layer oracle](spatial_oracle/foot_bridge_layer.md) |
 | Run pinned native executable comparisons | [native oracle runner](native_oracle.md) |
 | Compare shell captures | `python -m tools.shell_capture_diff --help` |
