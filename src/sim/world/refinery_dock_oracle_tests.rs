@@ -469,6 +469,16 @@ pub(super) fn oracle_sends(row: &Value) -> Vec<Value> {
         .collect()
 }
 
+/// Legacy Harvest rows substitute Find_Docking_Bay, so their packet contains
+/// no scanner CAN_LOAD calls. Compare their recorded suffix; the new retained
+/// continuation corpus executes the original scanner and compares every send.
+pub(super) fn legacy_harvest_sends(s: &Scene) -> Vec<Value> {
+    sends(s)
+        .into_iter()
+        .filter(|event| event[2] != 15)
+        .collect()
+}
+
 /// The fields every row compares against the oracle's final state.
 fn compare_state(s: &Scene, row: &Value, context: &str) {
     let expected = &row["state"];
@@ -749,7 +759,7 @@ fn mission_enter_matches_the_original_dispatch() {
         }
         radio::take_transmit_log();
         let mut stream = s.sim.scenario_rng.clone();
-        let delay = crate::sim::miner::mission_enter(&mut s.sim, &s.rules, s.miner);
+        let delay = crate::sim::mission::enter::mission_enter(&mut s.sim, &s.rules, s.miner);
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_delay(&s, row, delay, &mut stream, &context);
         compare_state(&s, row, &context);
@@ -815,7 +825,11 @@ fn mission_harvest_states_two_and_three_match_the_original_dispatch() {
             frame as i32,
             "{context}: epilogue frame"
         );
-        assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
+        assert_eq!(
+            legacy_harvest_sends(&s),
+            oracle_sends(row),
+            "{context}: legacy transmit suffix"
+        );
         compare_delay(&s, row, delay, &mut stream, &context);
         let status = if entity.miner_state() == Some(MinerState::Dock) {
             3
@@ -864,7 +878,7 @@ fn per_cell_dock_now_matches_the_original_track_end_arm() {
         assert_eq!(scatters, context == "per_cell_pad_selling", "{context}");
         let mut s = scene(input);
         radio::take_transmit_log();
-        crate::sim::miner::per_cell_dock_now(&mut s.sim, &s.rules, s.miner);
+        s.sim.unit_dock_now(s.miner, &s.rules, None);
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_state(&s, row, &context);
     }

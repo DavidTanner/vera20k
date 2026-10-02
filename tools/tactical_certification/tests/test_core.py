@@ -19,6 +19,19 @@ from tools.tactical_certification.core import (
 
 
 class CoreTests(unittest.TestCase):
+    def test_compact_receipt_keeps_strict_file_budget_and_exclusive_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary).resolve() / "receipt.json"
+            value = {"value": "bounded"}
+            with self.assertRaisesRegex(ValidationError, "exceeds"):
+                write_json_exclusive(output, value, maximum_length=19, compact=True)
+            self.assertFalse(output.exists(), "budget refusal must precede file creation")
+            write_json_exclusive(output, value, maximum_length=20, compact=True)
+            _, restored = load_json_file(output, "compact receipt", maximum_length=20)
+            self.assertEqual(restored, value)
+            with self.assertRaises(OutputExistsError):
+                write_json_exclusive(output, value, maximum_length=20, compact=True)
+
     def test_explicit_json_budget_uses_the_same_strict_parser(self) -> None:
         raw = b'{"value":"bounded"}'
         self.assertEqual(parse_json_bytes(raw, "test", maximum_length=len(raw)), {"value": "bounded"})

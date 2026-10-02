@@ -318,9 +318,6 @@ impl Simulation {
         if let Some(previous) = previous.filter(|&af| af != airfield) {
             self.break_airfield_contact(aircraft, previous);
         }
-        if let Some(af) = self.substrate.entities.get_mut(airfield) {
-            af.radio_contacts.set_capacity(pads as usize);
-        }
         crate::sim::radio::transmit(
             self,
             aircraft,
