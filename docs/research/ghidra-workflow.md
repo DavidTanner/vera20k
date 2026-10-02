@@ -499,6 +499,13 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   `this` then takes that struct. It leaves an explicit custom-storage `this` with its
   old type. `set_function_prototype` applies dynamic storage, so run it first. No
   endpoint moves a function back to the global namespace.
+- In the installed headless GhidraMCP 5.14.2, `set_variable_storage` reports
+  `success=true` after printing the current/requested storage and manual instructions;
+  it does not change storage. This was checked against source and installed bytecode
+  on 2026-10-03. Read `get_function_variables` after storage-related writes and verify
+  each register and stack slot. A prototype uses convention-derived dynamic storage;
+  it cannot express every custom ABI. Keep an unrepresentable native contract qualified
+  rather than assign its input to an unsupported register or invent an object receiver.
 - A `__thiscall` prototype must declare as many stack bytes as the function's RETs pop.
   `(void)` on a `ret 0xC` function breaks the stack analysis of its callers. A custom
   prototype that declares only `this` makes every direct caller's decompile drop the
