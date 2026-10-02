@@ -1194,8 +1194,14 @@ mod tests {
             occupancy: &'a mut OccupancyGrid,
             terrain_object_cells: &'a BTreeMap<(u16, u16), u64>,
         ) -> TiberiumPlacementObjectContext<'a> {
-            let mut entity = GameEntity::test_default(1, type_name, "Neutral", 11, 10);
-            entity.category = EntityCategory::Structure;
+            let mut entity = GameEntity::test_default_of_category(
+                1,
+                type_name,
+                "Neutral",
+                11,
+                10,
+                EntityCategory::Structure,
+            );
             entity.type_ref = interner.intern(type_name);
             entities.insert(entity);
             occupancy.add(

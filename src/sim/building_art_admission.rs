@@ -70,12 +70,10 @@ impl Simulation {
             || !object.infantry_absorb
             || object.extra_power <= 0
             || !entity.building_actually_placed
-            || entity.building_up.is_some()
+            || entity.in_construction_bstate()
         {
             return;
         }
-        // The represented construction owner is the body-state==0 admission
-        // gate. General body/turret state migration is not implemented here.
         let occupied = entity
             .passenger_role
             .cargo()

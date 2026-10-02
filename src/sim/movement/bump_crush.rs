@@ -948,8 +948,14 @@ mod tests {
     }
 
     fn structure(id: u64, rx: u16, ry: u16) -> GameEntity {
-        let mut e = GameEntity::test_default(id, "GAREFN", "Allies", rx, ry);
-        e.category = EntityCategory::Structure;
+        let mut e = GameEntity::test_default_of_category(
+            id,
+            "GAREFN",
+            "Allies",
+            rx,
+            ry,
+            EntityCategory::Structure,
+        );
         e.crushable = false;
         e
     }

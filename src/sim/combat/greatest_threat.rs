@@ -3139,8 +3139,14 @@ mod tests {
     fn gsi_08_01_a_weapon_array_defence_with_no_primary_key_stays_a_target() {
         let rules = scan_rules();
         let gattling = rules.object("GATTLING").expect("GATTLING");
-        let mut building = GameEntity::test_default(2, "GATTLING", "Russians", 11, 10);
-        building.category = EntityCategory::Structure;
+        let building = GameEntity::test_default_of_category(
+            2,
+            "GATTLING",
+            "Russians",
+            11,
+            10,
+            EntityCategory::Structure,
+        );
         assert!(
             is_armed(&building, gattling),
             "a WeaponCount= defence resolves slot 0 through GetCurrentWeapon"
@@ -3330,8 +3336,14 @@ mod tests {
     fn empty_building_preserves_the_native_type_threat() {
         let rules = scan_rules();
         let obj = rules.object("POWER").expect("POWER");
-        let mut building = GameEntity::test_default(1, "POWER", "Russians", 5, 5);
-        building.category = EntityCategory::Structure;
+        let building = GameEntity::test_default_of_category(
+            1,
+            "POWER",
+            "Russians",
+            5,
+            5,
+            EntityCategory::Structure,
+        );
         assert_eq!(
             live_threat_posed(
                 &building,
@@ -3356,8 +3368,14 @@ mod tests {
              [TANK]\nStrength=100\nThreatPosed=7\n",
         ))
         .unwrap();
-        let mut building = GameEntity::test_default(1, "BUNKER", "Owner", 5, 5);
-        building.category = EntityCategory::Structure;
+        let mut building = GameEntity::test_default_of_category(
+            1,
+            "BUNKER",
+            "Owner",
+            5,
+            5,
+            EntityCategory::Structure,
+        );
         building.bunker_occupant = Some(2);
         let tank = GameEntity::test_default(2, "TANK", "Owner", 5, 5);
         let mut entities = EntityStore::new();
@@ -3384,8 +3402,8 @@ mod tests {
              [BuildingTypes]\n0=B\n[B]\nStrength=100\nThreatPosed=31\n",
         ))
         .unwrap();
-        let mut building = GameEntity::test_default(1, "B", "Owner", 5, 5);
-        building.category = EntityCategory::Structure;
+        let mut building =
+            GameEntity::test_default_of_category(1, "B", "Owner", 5, 5, EntityCategory::Structure);
         let mut cargo = PassengerCargo::new(2, 1);
         assert!(cargo.board(2, 1));
         assert!(cargo.board(3, 1));

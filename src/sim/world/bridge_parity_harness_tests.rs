@@ -267,7 +267,14 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // match exactly except tick hashes, including full actor state and all
 // three RNG streams/draws/caller positions. The temporary gate was removed.
 // Rust-only receipt: tools/spatial_oracle/astar_path_finishing_replay/main963/receipt.json.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x8DE1_6E7B_3B6F_E661;
+// 2026-10-02 Building body has one retained owner (hash composition):
+// same-binary control restores only the former two absent Up/Down
+// folds and reproduces the preceding pin. All819 control/current
+// boundaries match after only tick hashes are omitted: full actors,
+// commands, lifecycle/Logic and three RNG streams/draws/callers.
+// Rust-only receipt: tools/spatial_oracle/building_construction_replay/receipt.json.
+// Previous: 0x8DE16E7B3B6FE661. Native proof is the separate construction corpus.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x8D29_B490_A034_EEC9;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

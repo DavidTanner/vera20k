@@ -2027,7 +2027,7 @@ fn purifier_under_construction_pays_no_bonus_until_complete() {
         .entities
         .get_mut(4)
         .expect("purifier 4")
-        .building_up = None;
+        .finish_building_construction_for_test();
     assert_eq!(
         super::miner_system::count_purifiers_for_owner(&sim, &rules, "Americans"),
         2
@@ -3187,7 +3187,7 @@ fn trace_unload_presentation(
     for _ in 0..ticks {
         visit_miner(sim, rules, miner);
         // The authoritative frame tail that consumes the bale events.
-        crate::sim::world::building_anim::finalize(sim, &[], Some(rules));
+        crate::sim::world::building_anim::finalize(sim);
         trace.smoke_count.push(sim.particle_systems().len());
         trace.slot_live.push(
             sim.substrate

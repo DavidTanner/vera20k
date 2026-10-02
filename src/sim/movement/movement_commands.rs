@@ -35,7 +35,7 @@ pub(crate) fn can_accept_destination(entity: &GameEntity) -> bool {
     if entity.dying {
         return false;
     }
-    if entity.building_up.is_some() || entity.building_down.is_some() {
+    if entity.building_up() || entity.building_down() {
         return false;
     }
     true

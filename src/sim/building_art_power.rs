@@ -210,10 +210,16 @@ mod tests {
     fn building(current: i32) -> (Simulation, u64) {
         let mut sim = Simulation::new();
         let id = sim.allocate_stable_id();
-        let mut entity = GameEntity::test_default(id, "B", "A", 2, 2);
+        let mut entity = GameEntity::test_default_of_category(
+            id,
+            "B",
+            "A",
+            2,
+            2,
+            crate::map::entities::EntityCategory::Structure,
+        );
         entity.type_ref = sim.interner.intern("B");
         entity.owner = sim.interner.intern("A");
-        entity.category = crate::map::entities::EntityCategory::Structure;
         entity.health.current = current;
         entity.lifecycle.in_limbo = false;
         sim.substrate.entities.insert(entity);
@@ -367,7 +373,7 @@ mod tests {
         let rules = rules(100, "Powered=yes\nPower=-10");
         let (mut sim, id) = building(100);
         let owner = sim.entities().get(id).unwrap().owner();
-        sim.initialize_completed_building_anims(id, &rules);
+        sim.grand_opening(id, false, true, &rules, None);
         let anim = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
         assert!(
             sim.anim(anim).unwrap().runtime.paused,

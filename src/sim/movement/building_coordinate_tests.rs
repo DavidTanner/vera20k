@@ -144,8 +144,14 @@ fn building_navigation_capture_command_preserves_the_native_dock_coordinate() {
     let input = &row["input"];
     let rules = rules(input);
     let mut sim = Simulation::with_seed(0);
-    let mut building = GameEntity::test_default(2, "BUILDING", "Soviet", 5, 6);
-    building.category = EntityCategory::Structure;
+    let mut building = GameEntity::test_default_of_category(
+        2,
+        "BUILDING",
+        "Soviet",
+        5,
+        6,
+        EntityCategory::Structure,
+    );
     building.foundation = rules.object("BUILDING").unwrap().foundation.clone();
     building.radio_contacts = contacts(input);
     building.lifecycle.in_limbo = false;
@@ -215,8 +221,14 @@ fn building_navcom_reads_live_type_requester_and_radio_slots_after_restore() {
         }
         let rules = rules(input);
         let mut sim = Simulation::with_seed(0);
-        let mut building = GameEntity::test_default(2, "BUILDING", "Americans", 5, 6);
-        building.category = EntityCategory::Structure;
+        let mut building = GameEntity::test_default_of_category(
+            2,
+            "BUILDING",
+            "Americans",
+            5,
+            6,
+            EntityCategory::Structure,
+        );
         building.foundation = rules.object("BUILDING").unwrap().foundation.clone();
         building.radio_contacts = contacts(input);
         position(&mut building, current);

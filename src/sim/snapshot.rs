@@ -795,7 +795,11 @@ use crate::sim::world::Simulation;
 // 275 -> 276: each House saves its type's `Speed*Mult=` beside the cost ones.
 // 276 -> 277: terrain animations preserve native float probability, signed
 // Stage/rate and a frame-anchored CdTimer; obsolete micros/phase mirrors are gone.
-const SNAPSHOT_VERSION: u32 = 277;
+// 277 -> 278: Construction/Selling use MissionCom cadence/status and the
+// single MissionLeaf ready byte. Building persists private body/queued mode
+// and type control, without BuildingUp's duplicate mission/clock/latch or
+// BuildingDown's duplicate ready/timer. Factory primary state is lifecycle-owned.
+const SNAPSHOT_VERSION: u32 = 278;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1955,9 +1959,7 @@ fn restore_object_references(
     // These manager maps are derived/transitional mirrors rather than modeled
     // native pointer slots. Restore prunes them only after the authoritative
     // object graph has passed validation.
-    for producers in sim.production.active_producer_by_owner.values_mut() {
-        producers.retain(|_, id| entity_ids.contains(id));
-    }
+    sim.production.retain_primary_factory_links(&entity_ids);
     sim.production.airfield_docks.cleanup_dead(&entity_ids);
 
     // The produced-object link was validated above, so this legacy helper is
@@ -3761,7 +3763,8 @@ mod tests {
         // 274 -> 275: movement targets no longer save route cells.
         // 275 -> 276: each House saves its type's Speed*Mult.
         // 276 -> 277: retained native terrain animation probability and timer.
-        assert_eq!(super::SNAPSHOT_VERSION, 277);
+        // 277 -> 278: lifecycle-owned building body, ready, mission and primary.
+        assert_eq!(super::SNAPSHOT_VERSION, 278);
     }
 
     #[test]
@@ -6119,8 +6122,14 @@ mod tests {
         sim.session.map_width = 32;
         sim.session.map_height = 32;
         let entity_id = sim.allocate_stable_id();
-        let mut building = GameEntity::test_default(entity_id, "GAREFN", "AMERICANS", 10, 10);
-        building.category = EntityCategory::Structure;
+        let mut building = GameEntity::test_default_of_category(
+            entity_id,
+            "GAREFN",
+            "AMERICANS",
+            10,
+            10,
+            EntityCategory::Structure,
+        );
         building.foundation = "4x3".to_string();
         let mut profile = crate::rules::object_type::BuildingHiddenOccupancyProfile::default();
         profile.add_occupy[0] = Some((-1, 0));
@@ -6187,8 +6196,14 @@ mod tests {
 
         let mut sim = Simulation::new();
         let entity_id = sim.allocate_stable_id();
-        let mut conyard = GameEntity::test_default(entity_id, "GACNST", "AMERICANS", 10, 10);
-        conyard.category = EntityCategory::Structure;
+        let conyard = GameEntity::test_default_of_category(
+            entity_id,
+            "GACNST",
+            "AMERICANS",
+            10,
+            10,
+            EntityCategory::Structure,
+        );
         sim.substrate.entities.insert(conyard);
         // Native in-scenario load restarts Scenario RNG from Seed0; isolate
         // waypoint-edge profile persistence on that same post-load cursor.
@@ -6230,14 +6245,14 @@ mod tests {
             .append_perimeter_cell_if_absent(u32::from(3u16) | (u32::from(4u16) << 16));
         sim.houses.insert(owner, house);
         let entity_id = sim.allocate_stable_id();
-        let mut building = crate::sim::game_entity::GameEntity::test_default(
+        let mut building = crate::sim::game_entity::GameEntity::test_default_of_category(
             entity_id,
             "GAPOWR",
             "AMERICANS",
             3,
             4,
+            crate::map::entities::EntityCategory::Structure,
         );
-        building.category = crate::map::entities::EntityCategory::Structure;
         building.owner = owner;
         building.base_reservation_spacing = Some(-3);
         sim.substrate.entities.insert(building);
@@ -7808,9 +7823,15 @@ mod tests {
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Americans");
 
-        let mut structure = GameEntity::test_default(100, "GAPOWR", "Americans", 5, 5);
+        let mut structure = GameEntity::test_default_of_category(
+            100,
+            "GAPOWR",
+            "Americans",
+            5,
+            5,
+            EntityCategory::Structure,
+        );
         structure.owner = owner;
-        structure.category = EntityCategory::Structure;
         sim.substrate.entities.insert(structure);
         sim.add_entity_occupancy(100);
 

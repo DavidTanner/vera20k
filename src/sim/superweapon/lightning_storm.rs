@@ -1019,8 +1019,14 @@ Layer=ground
         let (mut sim, rules) = registry_only_warhead_lightning_test_setup();
         let owner = sim.interner.intern("Americans");
         let type_ref = sim.interner.intern("GAPOWR");
-        let mut building = GameEntity::test_default(10, "GAPOWR", "Soviet", 5, 5);
-        building.category = EntityCategory::Structure;
+        let mut building = GameEntity::test_default_of_category(
+            10,
+            "GAPOWR",
+            "Soviet",
+            5,
+            5,
+            EntityCategory::Structure,
+        );
         building.lifecycle.in_limbo = false;
         building.lifecycle.cell_marked = true;
         building.owner = sim.interner.intern("Soviet");

@@ -1125,7 +1125,7 @@ impl Simulation {
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> (u64, RevealOutcome) {
         let (stable_id, position) = self.store_with_constructor_managers(ge, rules);
-        self.unlimbo_constructed_parent(stable_id, position, rules, overlay_registry)
+        self.unlimbo_constructed_parent(stable_id, position, rules, overlay_registry, false)
     }
 
     fn store_with_constructor_managers(
@@ -1154,6 +1154,7 @@ impl Simulation {
         position: RevealPosition,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        scenario_initialization: bool,
     ) -> (u64, RevealOutcome) {
         let placement = rules.map_or(PlacementEvidence::EvaluateMark, |rules| {
             self.constructor_unlimbo_placement(
@@ -1179,7 +1180,27 @@ impl Simulation {
         if matches!(outcome, RevealOutcome::Revealed { .. }) {
             if let Some(rules) = rules {
                 self.allocate_building_light(stable_id, rules);
-                self.initialize_completed_building_anims(stable_id, rules);
+                if self
+                    .substrate
+                    .entities
+                    .get(stable_id)
+                    .is_some_and(|entity| {
+                        entity.category == EntityCategory::Structure && !entity.building_up()
+                    })
+                {
+                    if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                        entity.initialize_building_idle_body(self.session.binary_frame as i32);
+                    }
+                    // Map import carries ScenarioInit explicitly. Runtime
+                    //Construction enters through its own mission dispatcher.
+                    self.grand_opening(
+                        stable_id,
+                        false,
+                        scenario_initialization,
+                        rules,
+                        overlay_registry,
+                    );
+                }
             }
         }
         (stable_id, outcome)
@@ -1820,8 +1841,13 @@ impl Simulation {
             .map(|(id, _)| id)
             .collect();
         let _ = self.techno_limbo_with_rules(sid, rules);
-        let (new_sid, outcome) =
-            self.unlimbo_constructed_parent(new_sid, position, Some(rules), overlay_registry);
+        let (new_sid, outcome) = self.unlimbo_constructed_parent(
+            new_sid,
+            position,
+            Some(rules),
+            overlay_registry,
+            false,
+        );
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
             self.discard_constructed_limbo(new_sid);
             self.uninit_with_rules(sid, rules);
@@ -1896,8 +1922,8 @@ impl Simulation {
             return false;
         };
         if entity.category != EntityCategory::Structure
-            || entity.building_up.is_some()
-            || entity.building_down.is_some()
+            || entity.building_up()
+            || entity.building_down()
         {
             return false;
         }

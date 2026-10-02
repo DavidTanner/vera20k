@@ -111,9 +111,15 @@ mod gsi_04_03b_tests {
         let mut sim = Simulation::new();
         let refinery_type = sim.interner.intern("GAREFN");
         let harv_type = sim.interner.intern("HARV");
-        let mut refinery = GameEntity::test_default(2, "GAREFN", "Allies", 10, 10);
+        let mut refinery = GameEntity::test_default_of_category(
+            2,
+            "GAREFN",
+            "Allies",
+            10,
+            10,
+            EntityCategory::Structure,
+        );
         refinery.type_ref = refinery_type;
-        refinery.category = EntityCategory::Structure;
         // Construction stamps the type's `Foundation=4x3`.
         refinery.foundation = "4x3".to_string();
         sim.substrate.entities.insert(refinery);
@@ -1483,7 +1489,7 @@ fn refinery_accepts_can_load(
     capacity: usize,
     wide: bool,
 ) -> bool {
-    if refinery.building_up.is_some() || refinery.building_down.is_some() {
+    if refinery.building_up() || refinery.building_down() {
         return false;
     }
     if !wide && !miner_dock::would_admit(sim, refinery.stable_id(), miner_sid, capacity) {
@@ -1763,7 +1769,7 @@ pub(crate) fn counts_as_purifier(
     // took the native Limbo `DEC`.
     !e.dying
         && !e.lifecycle.in_limbo
-        && e.building_up.is_none()
+        && !e.building_up()
         && e.category == EntityCategory::Structure
         && sim
             .object_type(e.type_ref(), rules)

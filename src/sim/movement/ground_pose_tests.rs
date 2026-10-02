@@ -1218,10 +1218,16 @@ fn a_building_on_a_ramp_is_targeted_at_its_floor() {
     ))
     .unwrap();
     sim.resolved_terrain = Some(terrain);
-    let mut building = GameEntity::test_default(1, "TEST", "Americans", 2, 2);
+    let mut building = GameEntity::test_default_of_category(
+        1,
+        "TEST",
+        "Americans",
+        2,
+        2,
+        crate::map::entities::EntityCategory::Structure,
+    );
     building.owner = sim.intern("Americans");
     building.type_ref = sim.intern("TEST");
-    building.category = crate::map::entities::EntityCategory::Structure;
     let (sub_x, sub_y) = (building.position.sub_x, building.position.sub_y);
     sim.substrate.entities.insert(building);
     assert!(matches!(

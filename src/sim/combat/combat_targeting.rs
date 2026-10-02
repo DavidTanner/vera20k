@@ -649,8 +649,14 @@ mod tests {
 
         let mut sref = GameEntity::test_default(1, "SREF", "Americans", 5, 5);
         sref.category = EntityCategory::Unit;
-        let mut yaggun = GameEntity::test_default(2, "YAGGUN", "YuriCountry", 9, 9);
-        yaggun.category = EntityCategory::Structure;
+        let yaggun = GameEntity::test_default_of_category(
+            2,
+            "YAGGUN",
+            "YuriCountry",
+            9,
+            9,
+            EntityCategory::Structure,
+        );
 
         assert!(super::super::combat_weapon::is_armed(&sref, sref_obj));
         assert!(super::super::combat_weapon::is_armed(&yaggun, yaggun_obj));

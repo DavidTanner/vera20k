@@ -8,7 +8,9 @@ use crate::map::resolved_terrain::{
     AutomaticTubeAllocation, AutomaticTubeRequest, TerrainTileAnimation,
 };
 use crate::rules::art_data::AnimAssetBindError;
-use crate::sim::anim_class::{AnimDrawRuntime, AnimSpawnError, AnimWorldCoord};
+use crate::sim::anim_class::{
+    AnimConstructorInput, AnimDrawRuntime, AnimSpawnError, AnimWorldCoord,
+};
 use crate::sim::components::AnimClassSpawnDescriptor;
 use crate::sim::world::Simulation;
 
@@ -84,7 +86,12 @@ impl<'a> SimulationAuthoredLoadHost<'a> {
         descriptor.type_name = self.sim.interner.intern(anim_name);
         let native_unique_id = self.next_native_id()?;
         self.sim
-            .spawn_load_anim_at_world(self.rules, descriptor, world, native_unique_id)
+            .spawn_anim_at_world_with_constructor(
+                self.rules,
+                descriptor,
+                world,
+                AnimConstructorInput::AssignedIdentity(native_unique_id),
+            )
             .map_err(Into::into)
     }
 }

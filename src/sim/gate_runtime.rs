@@ -411,8 +411,14 @@ mod tests {
         let mut mover = GameEntity::test_default(1, "MTNK", "Americans", 8, 10);
         mover.category = EntityCategory::Unit;
         entities.insert(mover);
-        let mut gate = GameEntity::test_default(100, "GAGATE_A", "Americans", 10, 10);
-        gate.category = EntityCategory::Structure;
+        let mut gate = GameEntity::test_default_of_category(
+            100,
+            "GAGATE_A",
+            "Americans",
+            10,
+            10,
+            EntityCategory::Structure,
+        );
         gate.building_gate = Some(BuildingGateRuntime::default());
         entities.insert(gate);
 

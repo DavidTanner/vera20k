@@ -245,9 +245,8 @@ fn toggle_repair_matches_the_original() {
 /// The row's scene: the row's rules, its computer (or human) house, and the
 /// refinery YAREFN with the row's health, estimate, mission, repair and AI
 /// repair bytes, capture, retained damage state and smoke, with the Scenario
-/// RNG seeded last. VERA keeps a build-up in `building_up` without the
-/// Construction mission: a row's Construction, current or queued, is a
-/// build-up that completes on the next frame.
+/// RNG seeded last. Current/queued Construction is represented by the same
+/// MissionCom fields that native Get_Mission reads.
 fn update_scene(corpus: &Value, input: &Value) -> (Simulation, RuleSet, Option<u64>) {
     let int = |key: &str, default: i64| input[key].as_i64().unwrap_or(default) as i32;
     let flag = |key: &str, default: bool| input[key].as_bool().unwrap_or(default);
@@ -256,7 +255,7 @@ fn update_scene(corpus: &Value, input: &Value) -> (Simulation, RuleSet, Option<u
          [IQ]\nRepairSell=1\nSellBack=2\n[AudioVisual]\nConditionYellow=50%\nConditionRed=25%\n\
          GenericClick={}\nScoldSound={}\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
          [BuildingTypes]\n0=YAREFN\n[YAREFN]\nStrength=1000\nCost={}\nClickRepairable={}\n\
-         Repairable=yes\nFoundation=2x2\n[Particles]\n0=Smk\n[ParticleSystems]\n0=Sys\n\
+         Repairable=yes\nHasStupidGuardMode=no\nFoundation=2x2\n[Particles]\n0=Smk\n[ParticleSystems]\n0=Sys\n\
          [Smk]\nBehavesLike=Smoke\nMaxEC=10\nMaxDC=4\nStartStateAI=0\nEndStateAI=10\n\
          StateAIAdvance=4\n[Sys]\nBehavesLike=Smoke\nHoldsWhat=Smk\nParticleCap=10\n\
          SpawnFrames=1\nLifetime=200\n",
@@ -329,15 +328,10 @@ fn update_scene(corpus: &Value, input: &Value) -> (Simulation, RuleSet, Option<u
     let mission = |key: &str, default: &str| match input[key].as_str().unwrap_or(default) {
         "guard" => MissionId::from_known(MissionType::Guard),
         "selling" => MissionId::from_known(MissionType::Selling),
-        "none" | "construction" => MissionId::NONE,
+        "construction" => MissionId::from_known(MissionType::Construction),
+        "none" => MissionId::NONE,
         other => panic!("mission {other}"),
     };
-    if input["mission"] == "construction" || input["queue"] == "construction" {
-        building.install_building_up(
-            BuildingUp::completing_in_ticks(2, sim.session.binary_frame as i32),
-            sim.session.binary_frame as i32,
-        );
-    }
     building.mission.apply_test_fixture(MissionTestFixture {
         current: mission("mission", "guard"),
         suspended: MissionId::NONE,
@@ -477,9 +471,8 @@ fn update_repair_and_power_matches_the_original() {
 }
 
 /// The `build` rows: a damaged building's build-up on each route, frame by
-/// frame [`production::update_repair_and_power`] in the object visit, then
-/// the build-up's step (`Simulation::tick_building_up`, after the object
-/// pass). VERA completes the build-up on the frame native calls
+/// frame through the ordinary object visit: body and Construction precede
+/// [`production::update_repair_and_power`]. VERA completes on the frame native calls
 /// Grand_Opening, and the repair starts on that frame, not before (native
 /// Get_Mission reads Guard there): after each frame the health, repair byte,
 /// balance, latch and its timer, the draws and the local player's sounds.
@@ -491,6 +484,9 @@ fn a_build_up_holds_the_repair_until_its_completion_frame() {
         let input = &row["input"];
         let name = input["name"].as_str().unwrap();
         let (mut sim, rules, _smoke) = update_scene(&corpus, input);
+        // Original build() calls prepare_update with mission=none before entry.
+        sim.mission_assign_exact(1, MissionId::NONE, sim.session.binary_frame)
+            .unwrap();
         let owner = sim.interner.get("AI").unwrap();
         let control: [i32; 3] = serde_json::from_value(input["control"].clone()).unwrap();
         let start = input["frame"].as_i64().unwrap() as i32;
@@ -507,14 +503,36 @@ fn a_build_up_holds_the_repair_until_its_completion_frame() {
                 },
                 start,
             );
+        if input["route"] == "player" {
+            // The original inherited route supplies the successful yard BREAK.
+            sim.substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .begin_building_body(
+                    crate::sim::building_construction::BuildingBodyMode::Idle,
+                    start,
+                );
+        }
         for frame in row["frames"].as_array().unwrap() {
             let now = frame["frame"].as_u64().unwrap();
             sim.session.binary_frame = now as u32;
             sim.sound_events.clear();
-            let before = cursors(&sim);
-            production::update_repair_and_power(&mut sim, &rules, 1);
+            let placed_before = sim
+                .substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .building_actually_placed;
+            sim.object_ai_visit_one(1, Some(&rules), super::techno_ai::ObjectAiCtx::default());
             let after = cursors(&sim);
-            let completed = sim.tick_building_up() == [1];
+            let completed = !placed_before
+                && sim
+                    .substrate
+                    .entities
+                    .get(1)
+                    .unwrap()
+                    .building_actually_placed;
             assert_eq!(
                 completed, frame["grand_opening"],
                 "{name} {now}: the build-up completes"
@@ -544,14 +562,10 @@ fn a_build_up_holds_the_repair_until_its_completion_frame() {
             // The Guard mission's draws the fixture runs after completion
             // precede later frames' visits; the start's draw is the row's
             // first.
-            assert_eq!(
-                before == after,
-                frame["random_indices"]["before"] == frame["random_indices"]["after"],
-                "{name} {now}: draws"
-            );
-            if before != after {
-                assert_eq!(after, frame["random_indices"]["after"], "{name} {now}");
-            }
+            // Native's recorded before cursor is after the mission pieces.
+            // The production visit includes those pieces and repair, so its
+            // final cursor is the matching boundary, including Guard draws.
+            assert_eq!(after, frame["random_indices"]["after"], "{name} {now}");
             let native = native_sounds(frame);
             if local_player(input) {
                 assert_eq!(sounds(&sim, owner), native, "{name} {now}: sounds");
@@ -730,18 +744,28 @@ fn a_sale_s_first_visit_stops_the_repair() {
         let entity = s.sim.substrate.entities.get_mut(building).unwrap();
         entity.health.current = strength / 2;
         entity.repairing = repairing;
-        assert!(production::sell_back(
-            &mut s.sim,
-            &s.rules,
-            building,
-            production::SellOrder::Player
-        ));
+        let sale_order = crate::sim::command::CommandEnvelope::new(
+            s.sim.substrate.entities.get(building).unwrap().owner(),
+            s.sim.session.tick + 1,
+            crate::sim::command::Command::SellBuilding {
+                entity_id: building,
+            },
+        );
         let mut frames = Vec::new();
-        for _ in 0..2 {
+        for index in 0..2 {
             s.sim.sound_events.clear();
             let grid = s.sim.path_grid_snapshot();
-            s.sim
-                .advance_tick(&[], Some(&s.rules), grid.as_deref(), Some(overlay), 67);
+            let commands = if index == 0 {
+                std::slice::from_ref(&sale_order)
+            } else {
+                &[]
+            };
+            let tick =
+                s.sim
+                    .advance_tick(commands, Some(&s.rules), grid.as_deref(), Some(overlay), 67);
+            if index == 0 {
+                assert_eq!(tick.executed_commands, 1);
+            }
             let entity = s.sim.substrate.entities.get(building).unwrap();
             let clicks = s
                 .sim

@@ -101,25 +101,13 @@ pub(super) fn find_spawn_selection_for_owner_with_type(
     );
     let mut ordered_bases = preferred_factories.clone();
     let owner_id = sim.interner.intern(owner);
-    if let Some(active_sid) = sim
-        .production
-        .active_producer_by_owner
-        .get(&owner_id)
-        .and_then(|categories| categories.get(&queue_category))
-        .copied()
-    {
+    if let Some(active_sid) = sim.production.primary_factory(owner_id, queue_category) {
         if let Some(index) = ordered_bases
             .iter()
             .position(|candidate| candidate.0 == active_sid)
         {
             ordered_bases.rotate_left(index);
         }
-    } else if let Some(first) = preferred_factories.first() {
-        sim.production
-            .active_producer_by_owner
-            .entry(owner_id)
-            .or_default()
-            .insert(queue_category, first.0);
     }
 
     let bases: &[(u64, u16, u16, String)] = if !ordered_bases.is_empty() {

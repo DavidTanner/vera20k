@@ -667,8 +667,14 @@ mod tests {
     }
 
     fn structure(id: u64, type_id: &str, owner: &str, cell: (u16, u16)) -> GameEntity {
-        let mut entity = GameEntity::test_default(id, type_id, owner, cell.0, cell.1);
-        entity.category = EntityCategory::Structure;
+        let mut entity = GameEntity::test_default_of_category(
+            id,
+            type_id,
+            owner,
+            cell.0,
+            cell.1,
+            EntityCategory::Structure,
+        );
         entity.lifecycle.in_limbo = false;
         entity.lifecycle.cell_marked = true;
         entity

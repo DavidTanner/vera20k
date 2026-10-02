@@ -113,7 +113,7 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
                 log::warn!(
                     "[BUILD-DIAG]   structure '{}' building_up={} factory_type={:?}",
                     ts,
-                    e.building_up.is_some(),
+                    e.building_up(),
                     rules.factory_type(ts)
                 );
             }

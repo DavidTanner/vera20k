@@ -22,9 +22,9 @@ use crate::sim::cloak_disguise::{CloakRuntime, DisguiseRuntime};
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::combat::{AttackTarget, TargetKind};
 use crate::sim::components::{
-    BuildingDown, BuildingUp, C4PlantState, DriveLocomotionRuntime, HarvestOverlay, Health,
-    MovementTarget, NavigationState, OrderIntent, PendingC4Detonation, Position, RockingState,
-    ShipLocomotionRuntime, VoxelAnimation,
+    C4PlantState, DriveLocomotionRuntime, HarvestOverlay, Health, MovementTarget, NavigationState,
+    OrderIntent, PendingC4Detonation, Position, RockingState, ShipLocomotionRuntime,
+    VoxelAnimation,
 };
 use crate::sim::debug_event_log::{DebugEventKind, DebugEventLog};
 use crate::sim::deploy::DeployPhase;
@@ -824,10 +824,11 @@ pub struct GameEntity {
     /// Techno+3B8 survives target replacement and mission changes.
     #[serde(default)]
     pub weapon_burst: crate::sim::combat::burst::WeaponBurst,
-    /// Building construction animation progress.
-    pub building_up: Option<BuildingUp>,
-    /// Reverse build-up animation — building is undeploying into a mobile unit.
-    pub building_down: Option<BuildingDown>,
+    /// Sole native Building+534/+538 body state; construction/sale use the
+    /// existing private StageClass and MissionLeaf ready byte.
+    building_body: Option<crate::sim::building_construction::BuildingBody>,
+    /// Sale route metadata, never a second mission, ready byte or timer.
+    building_sale: Option<crate::sim::building_construction::BuildingDown>,
     /// `BuildingClass+0x550..+0x558`, the wait before the building's
     /// computer factory tries its finished object again. The constructor
     /// starts it with no duration (`0x0043B7A7`, `0x0043B7AD`); a placement
@@ -1682,8 +1683,8 @@ impl GameEntity {
             gattling: Default::default(),
             turret_anim_frame: 0,
             weapon_burst: Default::default(),
-            building_up: None,
-            building_down: None,
+            building_body: (category == EntityCategory::Structure).then(Default::default),
+            building_sale: None,
             ai_placement_timer: crate::sim::timer::CdTimer::default(),
             building_damage_state_active: false,
             building_anim_slots: [None; 21],
@@ -1955,6 +1956,20 @@ impl GameEntity {
     /// Create a minimal test entity with the given owner and type_ref strings.
     /// Uses a shared test interner via `test_intern()` for consistent IDs.
     pub fn test_default(stable_id: u64, type_ref: &str, owner: &str, rx: u16, ry: u16) -> Self {
+        Self::test_default_of_category(stable_id, type_ref, owner, rx, ry, EntityCategory::Unit)
+    }
+
+    /// Construct the requested class before its private class state is installed.
+    /// Tests must not turn a Unit into a Building by changing only `category`.
+    #[cfg(test)]
+    pub fn test_default_of_category(
+        stable_id: u64,
+        type_ref: &str,
+        owner: &str,
+        rx: u16,
+        ry: u16,
+        category: EntityCategory,
+    ) -> Self {
         Self::new_at_frame_zero_for_test(
             stable_id,
             rx,
@@ -1964,7 +1979,7 @@ impl GameEntity {
             crate::sim::intern::test_intern(owner),
             Health { current: 100 },
             crate::sim::intern::test_intern(type_ref),
-            EntityCategory::Unit,
+            category,
             0, // veterancy = rookie
             5, // vision_range = 5 cells
             true,
@@ -2048,29 +2063,20 @@ impl GameEntity {
         self.native_crush_immunity = raw;
     }
 
-    /// A building's current mission is Construction (0x12) or Selling
-    /// (0x13). VERA keeps a building's build-up in `building_up` without
-    /// publishing the Construction mission, so it counts; a sale publishes
-    /// Selling and carries `building_down`.
+    /// Native Get_Mission(vt184) reads current, otherwise queued. The
+    /// Construction and Selling producers publish that same authority.
     pub(crate) fn constructing_or_selling(&self) -> bool {
-        self.building_up.is_some()
-            || self.building_down.is_some()
-            || matches!(
-                self.mission.current().known(),
-                Some(MissionType::Selling | MissionType::Construction)
-            )
+        matches!(
+            self.mission.effective().known(),
+            Some(MissionType::Construction | MissionType::Selling)
+        )
     }
 
-    /// A building's BState (`+0x534`) is 0, BSTATE_CONSTRUCTION: through its
-    /// build-up (Unlimbo's `Begin_Mode(0)` until the Construction mission
-    /// completes; Grand_Opening's queued `Begin_Mode(1)` applies at the end
-    /// of that Update, `0x0043FFB4`) except the idle frame a human player's
-    /// placement shows before its mission starts, and through a pack-up from
-    /// Selling's stage-1 `Begin_Mode(0)` to the conversion. A pack-up's stage
-    /// 0 and 1 visits run in the idle BState 1.
+    /// Native Building+534 is0, independent of mission status and ready byte.
     pub(crate) fn in_construction_bstate(&self) -> bool {
-        self.building_up.as_ref().is_some_and(|up| !up.idle)
-            || (self.building_down.is_some() && self.mission.handler_state() >= 2)
+        self.building_body
+            .as_ref()
+            .is_some_and(|body| body.state() == 0)
     }
 }
 
@@ -2246,8 +2252,14 @@ mod mission_shadow_tests {
         let e = GameEntity::test_default(1, "E1", "Americans", 3, 3); // Unit
         assert_eq!(e.derived_mission(), (MissionType::Guard, 0));
 
-        let mut s = GameEntity::test_default(2, "GAPILE", "Americans", 3, 3);
-        s.category = crate::map::entities::EntityCategory::Structure;
+        let s = GameEntity::test_default_of_category(
+            2,
+            "GAPILE",
+            "Americans",
+            3,
+            3,
+            crate::map::entities::EntityCategory::Structure,
+        );
         assert_eq!(s.derived_mission(), (MissionType::None, 0));
 
         let mut i = GameEntity::test_default(3, "E1", "Americans", 3, 3);

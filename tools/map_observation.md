@@ -54,7 +54,7 @@ wrapper reports denied variables and does not silently change the environment.
 After sourcing the native development environment, explicitly remove `RA2_DIR`
 for this command as above; asset loading uses the working directory's config.
 
-A new wrapper v4 bundle contains sealed `profile.json`, `config.toml` and
+A new wrapper v5 bundle contains sealed `profile.json`, `config.toml` and
 `contract.json` copies, plus `stdout.log`, `stderr.log`, `run.json` and the child's
 atomically published `child-output/{capture.json,frame.bgra}`. Runtime still reads
 the supplied original paths; retaining copies does not redirect the game loader.
@@ -62,7 +62,7 @@ Original files and retained copies must remain unchanged during capture.
 `run.json` records exact input hashes, command, child PID/status, timeout, receipt
 validation and capture artifact identities. A valid observation requires unchanged
 profile/config/executable/contract files, matching profile and contract receipts,
-a v4 child manifest with resident UnitAtlas statistics, a checked presentation-clock
+a v5 child manifest with resident UnitAtlas statistics, a checked presentation-clock
 transcript and neutral-input evidence, zero initial tick/frame/time,
 the requested final tick/frame and endpoint step
 receipts, a loaded loose/MIX map digest, hidden unfocused rendering without input
@@ -159,9 +159,34 @@ created by the AI MCV. Seal the final profile with those IDs and observed timing
 These IDs and timings illustrate syntax; obtain actual values from the production
 probes. Command payloads are the existing Rust serde `Command`, with no separate
 order translator. Supported orders are Move, Stop, Attack, ForceAttack, Guard,
-DeployMcv and ForceAttackCell. Rust rejects ignored payload fields or argument
+DeployMcv, ForceAttackCell, QueueProduction and PlaceReadyBuilding. Rust rejects
+ignored payload fields or argument
 types. Python checks diagnostic structure and the exact typed request/receipt;
 it does not duplicate the gameplay command parser or admissions.
+
+Child/run v5 records `observations.rule_types` at L0. These are the actual
+rules-owned Infantry, Unit, Aircraft and Structure list names, their categories,
+and their existing `interned_id` numeric handles from the loaded simulation.
+The observer never interns a name. Obtain the intended type's handle from that
+same launch before sealing a production profile; handles are local to that
+world's interner and must not be copied between different launches or fixtures.
+The numeric `type_id` below illustrates serde syntax, not a stock handle:
+
+```json
+{
+  "commands": [
+    {"issue_after_step": 100, "owner": "Human1",
+     "payload": {"QueueProduction": {"type_id": 41}}},
+    {"issue_after_step": 500, "owner": "Human1",
+     "payload": {"PlaceReadyBuilding": {"type_id": 41, "rx": 87, "ry": 53}}}
+  ]
+}
+```
+
+Use the actual loaded House name, discovered type handle, placement site and
+observed ready timing. These orders use the ordinary production queue and
+placement admission. Recording an enqueued command does not imply the House
+could build it, had sufficient credits, had a ready object, or accepted the cell.
 
 Rows must be nondecreasing by `issue_after_step`, retaining input order for ties,
 and occur before the final step. An issue at step N calls the ordinary
@@ -186,6 +211,18 @@ Foot fields are null for structures. Terrain rows read only allocated real cells
 report current tile/subtile, presentation tile, level/slope and bridge fields, and
 report unallocated cells explicitly without stamping the shared Dummy.
 
+V5 actor rows add `building`, null for Foot objects. Structures read their sole
+body state, queued body request, construction control, complete serialized
+StageClass, ready latch, ActuallyPlaced and the last sampled operational byte.
+No diagnostic field advances a timer or calculates a replacement gameplay state.
+`building.animation_slots` contains occupied slots in native slot order, with
+their actual animation stable ID and the live animation's canonical type name,
+interned type ID, native object ID, world coordinates, attachment, Logic membership
+and complete retained runtime/timer. A stale occupied slot retains its ID with
+`animation: null`; it is never silently omitted or replaced. These rows allow
+construction completion and the following operational visit's allocation,
+replacement and cleanup to be inspected through the normal match path.
+
 The camera calls the existing presentation centering/clamp owner once at L0.
 `render.camera` records its requested cell and actual final top-left/zoom. The
 existing neutral-input and exact draw requirements remain in force. A terrain
@@ -194,7 +231,8 @@ production rendered output. Neither is a native comparison.
 
 Profiles are bounded to 1024 commands, 30 observed House names and 256 terrain
 cells. Captures retain at most 100000 combined actor, missing-ID and terrain
-samples. Child/run/report JSON is limited to 128 MiB on read and publication;
+samples, including occupied animation-slot samples in v5. Child/run/report JSON
+is limited to 128 MiB on read and publication;
 the shared JSON owner keeps its 16 MiB default for other tools. Observe only the
 Houses needed by the experiment and choose a bounded step budget. Comparison checks
 the complete command/actor/terrain trajectory and camera as well as fingerprints
@@ -260,7 +298,7 @@ a labeled preserved build makes that requirement durable. The report marks this
 as `EXTERNALLY_REVALIDATED`. It cannot validate a deleted or replaced executable
 from its old receipt alone.
 
-A new wrapper v4 run validates its `SEALED_COPY` inputs without requiring the
+A new wrapper v5 run validates its `SEALED_COPY` inputs without requiring the
 original profile, config or contract files to remain available. It validates the
 retained contract's v2 rules without requiring today's checkout to have identical
 contract bytes. Offline checking does not apply the current process environment
@@ -276,8 +314,10 @@ legacy wall-clock observation and a diagnostic-clock observation are `INVALID`
 together even when their pixels match.
 Differences name precise field paths and before/after values. There are no pixel
 tolerances or omitted atlas fields.
-Current v4 pairs also compare the complete command and actor/terrain transcript
-and camera. Historical v3 pairs retain their original comparison fields.
+Current v5 pairs also compare the complete command, rule-handle inventory,
+actor/building/animation/terrain transcript and camera. Historical v4 pairs
+compare their original command and actor/terrain transcript and camera, while
+v3 pairs retain their original comparison fields.
 
 `MATCH` means these checked observations are exactly equal for the compared
 fields; it neither establishes independent execution nor certifies native parity.
@@ -299,11 +339,15 @@ Offline `validate` and `compare` reject old wall-clock observations by default.
 `--allow-legacy-clock` permits child v2 with sealed wrapper v2, preserving its
 original `run.capture` projection. Validation identifies its clock separately as
 `legacy-wall-clock`; it does not invent a diagnostic transcript or neutral-input
-guarantee. Live capture accepts only child v4 and never offers this override.
-Wrapper and child generations must correspond: v4/v4, v3/v3, v2/v2, or v1/v2.
+guarantee. Live capture accepts only child v5 and never offers this override.
+Wrapper and child generations must correspond: v5/v5, v4/v4, v3/v3, v2/v2, or v1/v2.
+Historical v4 remains readable with its original observation policy and profile
+v2 trajectory, without production orders, rule-handle inventory or building
+fields. V4 and v5 comparisons are invalid because their observation policies
+differ. No historical receipt is upgraded or supplied with missing state.
 Sealed wrapper/child v3 remains readable without a clock override, with profile
 v1 only and its original projection. It cannot declare v4 actor/command/camera
-receipts. Comparisons between v3 and v4 are invalid because their observation
+receipts. Comparisons between v3 and v4/v5 are invalid because their observation
 policies differ; no missing trajectory is reconstructed.
 
 Wrapper v1 also retained only `profile.json`. It additionally requires
@@ -324,7 +368,8 @@ python -m tools.map_observation compare \
 ```
 
 Same-policy legacy runs may compare when their actual input bytes match. A
-legacy/v3 or legacy/v4 comparison remains `INVALID` with both flags, including when frame
+legacy/v3, legacy/v4 or legacy/v5 comparison remains `INVALID` with both flags,
+including when frame
 bytes are equal. Child v1 remains unsupported historical evidence: it lacks atlas
 statistics. No command rewrites historical receipts or adds evidence they did not
 record.
@@ -376,7 +421,7 @@ and native/GPU checks do not replace that production coverage.
 
 ## Resident unit-atlas measurement
 
-The final rendered frame records `render.unit_atlas` in the v4 child manifest;
+The final rendered frame records `render.unit_atlas` in the v5 child manifest;
 the validated wrapper retains it as `capture.unit_atlas` in `run.json`. The
 `UnitAtlas` owner reads actual wgpu texture descriptors and resident entries.
 It reports resident sprite count, the last actual build's rasterized sprite count,

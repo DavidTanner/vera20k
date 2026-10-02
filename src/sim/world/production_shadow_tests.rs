@@ -45,8 +45,14 @@ fn vehicle_rules() -> RuleSet {
 fn spawn_war_factory(sim: &mut Simulation, owner: InternedId) {
     let gaweap = sim.interner.intern("GAWEAP");
     let owner_name = sim.interner.resolve(owner).to_string();
-    let mut e = GameEntity::test_default(1, "GAWEAP", &owner_name, 5, 5);
-    e.category = EntityCategory::Structure;
+    let mut e = GameEntity::test_default_of_category(
+        1,
+        "GAWEAP",
+        &owner_name,
+        5,
+        5,
+        EntityCategory::Structure,
+    );
     e.owner = owner;
     e.type_ref = gaweap;
     e.lifecycle.in_limbo = false;
@@ -188,8 +194,14 @@ fn production_authoritative_hash_includes_factory_fields() {
 fn factory_shadow_trace_order_matches_logic_vector() {
     let mut sim = Simulation::new();
     for id in [3u64, 1, 2] {
-        let mut e = GameEntity::test_default(id, "GAPOWR", "Americans", 5, 5);
-        e.category = EntityCategory::Structure;
+        let e = GameEntity::test_default_of_category(
+            id,
+            "GAPOWR",
+            "Americans",
+            5,
+            5,
+            EntityCategory::Structure,
+        );
         sim.substrate.entities.insert(e);
     }
     sim.set_logic_order_for_test(vec![3, 1, 2]);

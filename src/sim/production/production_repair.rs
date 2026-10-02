@@ -62,8 +62,6 @@ use crate::map::entities::EntityCategory;
 use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::credit_income::{available_money, spend_money};
-use crate::sim::game_entity::GameEntity;
-use crate::sim::mission::MissionType;
 use crate::sim::world::{SimSoundEvent, Simulation};
 use crate::util::native_x87::{MaskedX87Chop53 as X87, MaskedX87Ordering, NativeF64Bits};
 
@@ -188,7 +186,7 @@ pub(crate) fn repair_step_cost(rules: &RuleSet, object: &ObjectType) -> i32 {
 /// `BuildingClass::UpdateRepairAndPower @ 0x00450630`, in the building's
 /// LogicVector visit. A building of an owner whose CurrentIQ (`+0x24C`)
 /// reaches `[IQ] RepairSell=`, on neither Construction nor Selling
-/// ([`constructing_or_selling`]), that the house can repair
+/// ([`GameEntity::constructing_or_selling`]), that the house can repair
 /// ([`can_repair_building`]) takes the computer's low-credit sale while the
 /// owner's available money is below `[AI] CreditReserve=` (`0x00450781`),
 /// else the computer's auto-repair start (`0x004506B2`). Every building then
@@ -202,7 +200,7 @@ pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id:
         .houses
         .get(&owner)
         .is_some_and(|house| house.current_iq >= rules.general.iq_repair_sell)
-        && !constructing_or_selling(sim, entity)
+        && !entity.constructing_or_selling()
         && can_repair_building(sim, rules, id);
     if admitted {
         if available_money(sim, owner) < rules.general.credit_reserve {
@@ -212,21 +210,6 @@ pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id:
         }
     }
     repair_step(sim, rules, id);
-}
-
-/// Get_Mission (vt+0x184) is Construction or Selling, read later in the
-/// building's own Update: by UpdateRepairAndPower (`0x00450659..0x00450679`)
-/// and Factory_AI (`0x0045025E..0x0045027A`). VERA keeps a build-up in
-/// `building_up` without the Construction mission and steps it after the
-/// object pass, where native completes it earlier in the building's own
-/// Update and commences the queued Guard (`0x0043FF91`): the completion frame
-/// reads Guard ([`BuildingUp::completes_at`](crate::sim::components::BuildingUp)).
-/// A sale commences Selling (`production_sell::begin_selling`).
-pub(super) fn constructing_or_selling(sim: &Simulation, entity: &GameEntity) -> bool {
-    (entity.building_up.is_some()
-        && !entity
-            .construction_completes_at(sim.session.binary_frame as i32, &sim.session.game_options))
-        || entity.mission.effective().known() == Some(MissionType::Selling)
 }
 
 /// The computer's low-credit sale (`0x00450781..0x0045080D`): a campaign

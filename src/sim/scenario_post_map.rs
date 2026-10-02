@@ -469,7 +469,7 @@ mod tests {
             0,
         );
         let id = sim
-            .spawn_load_anim_at_world(
+            .spawn_anim_at_world_with_constructor(
                 &rules,
                 descriptor,
                 crate::sim::anim_class::AnimWorldCoord {
@@ -477,7 +477,7 @@ mod tests {
                     y: 7 * 256 + 128,
                     z: 0,
                 },
-                1,
+                crate::sim::anim_class::AnimConstructorInput::AssignedIdentity(1),
             )
             .expect("TWNK1 spawns");
         let hidden = |sim: &Simulation| {

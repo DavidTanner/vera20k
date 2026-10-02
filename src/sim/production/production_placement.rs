@@ -112,10 +112,7 @@ pub fn active_producer_for_owner_category(
         &sim.interner,
     );
     let owner_id = sim.interner.get(owner);
-    let active_sid = owner_id
-        .and_then(|id| sim.production.active_producer_by_owner.get(&id))
-        .and_then(|categories| categories.get(&category))
-        .copied();
+    let active_sid = owner_id.and_then(|id| sim.production.primary_factory(id, category));
     let selected = active_sid
         .and_then(|sid| {
             candidates
@@ -156,22 +153,14 @@ pub fn cycle_active_producer_for_owner_category(
     }
 
     let owner_id = sim.interner.intern(owner);
-    let current = sim
-        .production
-        .active_producer_by_owner
-        .get(&owner_id)
-        .and_then(|categories| categories.get(&category))
-        .copied();
+    let current = sim.production.primary_factory(owner_id, category);
     let next_sid =
         match current.and_then(|sid| candidates.iter().position(|candidate| candidate.0 == sid)) {
             Some(index) => candidates[(index + 1) % candidates.len()].0,
             None => candidates[0].0,
         };
     sim.production
-        .active_producer_by_owner
-        .entry(owner_id)
-        .or_default()
-        .insert(category, next_sid);
+        .set_primary_factory(owner_id, category, next_sid);
     true
 }
 
@@ -215,10 +204,12 @@ pub fn place_ready_building_with_overlays(
     if !ready_queue.iter().any(|&queued| queued == type_interned) {
         return false;
     }
-    if evaluate_building_placement(sim, rules, owner, type_id, rx, ry, overlay_registry).is_err() {
-        return false;
-    }
     if obj.wall {
+        if evaluate_building_placement(sim, rules, owner, type_id, rx, ry, overlay_registry)
+            .is_err()
+        {
+            return false;
+        }
         let category = production_category_for_object(obj);
         let Some(held) =
             super::factory_lifecycle::ready_object(sim, owner_id, category, type_interned)
@@ -255,6 +246,32 @@ pub fn place_ready_building_with_overlays(
     else {
         return false;
     };
+    // Original PLACE4FB1DA keeps Object::FindFactory(0,0)'s yard through
+    // HELLO, Unlimbo, the child's C message and the yard's FirstContact BREAK.
+    // The completed object is owned by the house factory, not by this yard.
+    let Some(yard) = super::find_factory(sim, rules, owner_id, obj, false, false) else {
+        return false;
+    };
+    crate::sim::radio::transmit(
+        sim,
+        yard,
+        held.entity_id(),
+        crate::sim::radio::RadioMessage::Hello,
+        crate::sim::radio::RadioPayload::default(),
+        Some(rules),
+    );
+    // Event::Execute4C70E1..4C710B passes an admitted PLACE straight to
+    // House4FB0E0. Its placement refusal occurs after HELLO4FB1F1, and
+    // still reaches the yard's FirstContact BREAK4FB4A6.
+    if evaluate_building_placement(sim, rules, owner, type_id, rx, ry, overlay_registry).is_err() {
+        crate::sim::radio::transmit_to_contact(
+            sim,
+            yard,
+            crate::sim::radio::RadioMessage::Break,
+            Some(rules),
+        );
+        return false;
+    }
     let Some(new_sid) = sim.reveal_constructed_object_at_height(
         held.entity_id(),
         rx,
@@ -264,6 +281,14 @@ pub fn place_ready_building_with_overlays(
         crate::sim::world::PlacementEvidence::EvaluateMark,
         rules,
     ) else {
+        // The failed placement reaches the same4FB4A6 FirstContact teardown;
+        // its retained limbo object remains in the house factory for retry.
+        crate::sim::radio::transmit_to_contact(
+            sim,
+            yard,
+            crate::sim::radio::RadioMessage::Break,
+            Some(rules),
+        );
         return false;
     };
     // `0x004452FA`/`0x004FB252`: a placed building's slave manager (a Slave
@@ -307,7 +332,29 @@ pub fn place_ready_building_with_overlays(
         crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner_id);
     }
 
-    held.release_after_placement(sim, rules)
+    let released = held.release_after_placement(sim, rules);
+    if released {
+        crate::sim::radio::transmit(
+            sim,
+            new_sid,
+            yard,
+            crate::sim::radio::RadioMessage::DockArrived,
+            crate::sim::radio::RadioPayload::default(),
+            Some(rules),
+        );
+    }
+    crate::sim::radio::transmit_to_contact(
+        sim,
+        yard,
+        crate::sim::radio::RadioMessage::Break,
+        Some(rules),
+    );
+    if released {
+        // Original4FB4B7 records the successful build after FirstContact BREAK,
+        // not during CompletedProduction4FB2A1 or its C message4FB2AD.
+        super::factory_lifecycle::record_last_built(sim, rules, owner_id, type_interned);
+    }
+    released
 }
 
 fn evaluate_building_placement(

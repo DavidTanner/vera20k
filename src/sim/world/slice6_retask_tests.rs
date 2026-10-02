@@ -251,7 +251,14 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // 80b56aa1 with only those fields dropped from the hash (probe not committed)
 // printed this value; the bridge and global pins did not move. Previous:
 // 0xD06C_DAC2_416D_EDE1.
-const SLICE6_BASELINE_HASH: u64 = 0x67C2_41E9_F79C_8F43;
+// 2026-10-02 Building body has one retained owner (hash composition):
+// same-binary control restores only the former two absent Up/Down
+// folds and reproduces the preceding pin. All819 control/current
+// boundaries match after only tick hashes are omitted: full actors,
+// commands, lifecycle/Logic and three RNG streams/draws/callers.
+// Rust-only receipt: tools/spatial_oracle/building_construction_replay/receipt.json.
+// Previous: 0x67C241E9F79C8F43. Native proof is the separate construction corpus.
+const SLICE6_BASELINE_HASH: u64 = 0x8DD6_9432_8921_5676;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

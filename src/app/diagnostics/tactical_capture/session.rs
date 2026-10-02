@@ -817,7 +817,7 @@ impl TacticalCaptureSession {
                 facing: entity.body_facing_byte(sim.session.binary_frame),
                 active: entity.is_active(),
                 dying: entity.dying,
-                building_up: entity.building_up.is_some(),
+                building_up: entity.building_up(),
             })
             .collect();
         let build_options = production::build_options_for_owner(sim, rules, &owner)
@@ -1162,7 +1162,7 @@ impl TacticalCaptureSession {
             };
             if !entity.is_active()
                 || entity.dying
-                || entity.building_up.is_some()
+                || entity.building_up()
                 || sim.interner.resolve(entity.owner())
                     != self.request.profile()?.launch.player_name
                 || !sim

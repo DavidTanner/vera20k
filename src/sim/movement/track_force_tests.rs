@@ -351,10 +351,16 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
         );
         entity.bunker_link = BunkerLink::Approaching(2);
         let before_owner = owner_state(entity, true);
-        let mut building = GameEntity::test_default(2, "NATBNK", "Americans", 10, 10);
+        let mut building = GameEntity::test_default_of_category(
+            2,
+            "NATBNK",
+            "Americans",
+            10,
+            10,
+            EntityCategory::Structure,
+        );
         building.owner = sim.intern("Americans");
         building.type_ref = sim.intern("NATBNK");
-        building.category = EntityCategory::Structure;
         crate::sim::movement::ground_pose::put_location(&mut building.position, supplied(case));
         building.bunker_runtime = Some(BunkerRuntime {
             state: BunkerState::TurnToBuilding,

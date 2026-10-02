@@ -7,6 +7,39 @@ use super::NativeRulesProcessOwner;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::sound_ini::SoundRegistry;
 
+/// Original Rules66A979..66A9B7 reads AudioVisual/Construction and
+/// BuildingType460738..46078B reads BuildupSound, both through ReadString128
+/// and Voc Find7514D0. The startup catalog is fixed across the rules passes.
+#[test]
+fn construction_sound_references_follow_native_sections_and_retention() {
+    let ini = IniFile::from_str;
+    let root = ini("[BuildingTypes]\n0=POWER\n[POWER]\nBuildupSound=Build\n\
+         [VehicleTypes]\n0=TANK\n[TANK]\nBuildupSound=Build\n\
+         [AudioVisual]\nConstruction=Dummy\n[General]\nConstruction=Wrong\n");
+    let sounds = Arc::new(SoundRegistry::from_ini(&ini(
+        "[SoundList]\n0=Dummy\n1=Build\n2=Wrong\n[Dummy]\nVolume=0\n",
+    )));
+    let mut owner = NativeRulesProcessOwner::from_cold_start_sources(
+        root,
+        Some(ini(
+            "[POWER]\nBuildupSound=unknown\n[AudioVisual]\nConstruction=none\n",
+        )),
+        ini(""),
+        sounds,
+    )
+    .unwrap();
+    let (rules, _, _, _) = owner.load_noncampaign_scenario(
+        Some(&ini("[POWER]\nBuildupSound= bUiLd \n")),
+        &ini("[POWER]\nBuildupSound=\nbuildupsound=Wrong\n[AudioVisual]\nConstruction=\nconstruction=Wrong\n"),
+    ).unwrap().into_parts();
+    assert_eq!(rules.general.construction_sound.as_deref(), Some("Dummy"));
+    assert_eq!(
+        rules.object("POWER").unwrap().buildup_sound.as_deref(),
+        Some("Build")
+    );
+    assert!(rules.object("TANK").unwrap().buildup_sound.is_none());
+}
+
 #[test]
 fn sinking_sound_references_keep_valid_prior_ids_and_exact_reader_scope() {
     let ini = IniFile::from_str;

@@ -2979,8 +2979,14 @@ SpreadPercentage=.06
         let rules = RuleSet::from_ini(&rules_ini).expect("rules");
         let mut interner = StringInterner::default();
         let mut entities = EntityStore::new();
-        let mut building = GameEntity::test_default(1, "GAPOWR", "Neutral", 4, 3);
-        building.category = EntityCategory::Structure;
+        let mut building = GameEntity::test_default_of_category(
+            1,
+            "GAPOWR",
+            "Neutral",
+            4,
+            3,
+            EntityCategory::Structure,
+        );
         building.type_ref = interner.intern("GAPOWR");
         entities.insert(building);
         let mut occupancy = OccupancyGrid::new();

@@ -2484,7 +2484,7 @@ impl Simulation {
         if refinery.category != crate::map::entities::EntityCategory::Structure {
             return false;
         }
-        if refinery.health.current == 0 || refinery.dying || refinery.building_up.is_some() {
+        if refinery.health.current == 0 || refinery.dying || refinery.building_up() {
             return false;
         }
         let refinery_owner = self.interner.resolve(refinery.owner());

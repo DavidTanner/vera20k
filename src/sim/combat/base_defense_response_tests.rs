@@ -60,8 +60,14 @@ fn response_world(frame: u32, attacker_at: (u16, u16)) -> Simulation {
         sim.houses
             .insert(id, HouseState::new(id, side, None, false, 0, 10));
     }
-    let mut victim = GameEntity::test_default(1, "VICTIM", "Victim", 4, attacker_at.1);
-    victim.category = EntityCategory::Structure;
+    let victim = GameEntity::test_default_of_category(
+        1,
+        "VICTIM",
+        "Victim",
+        4,
+        attacker_at.1,
+        EntityCategory::Structure,
+    );
     sim.substrate.entities.insert(victim);
     let mut attacker =
         GameEntity::test_default(2, "ATTACKER", "Enemy", attacker_at.0, attacker_at.1);

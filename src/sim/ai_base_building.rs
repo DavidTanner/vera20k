@@ -76,7 +76,7 @@ use crate::sim::build_site::{Flush, can_place_building_at, flush_for_placement};
 use crate::sim::components::BuildingUp;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::production::has_factory;
+use crate::sim::production::find_factory;
 use crate::sim::world::{PlacementEvidence, Simulation};
 
 /// The computer's production state on its House.
@@ -213,7 +213,7 @@ pub(crate) fn economy_state_machine(
 ///   Unit, Infantry and Aircraft choosers (`sim::ai_unit_choice`);
 /// - mode 1: the building choice, then the three unit choosers unless it
 ///   holds a choice some factory of the house can build (`FindFactory`,
-///   `vt+0x94`, with all three flags: [`has_factory`]);
+///   `vt+0x94`, with all three flags: [`find_factory`]);
 /// - mode 2: the Unit chooser, then the Infantry and Aircraft choosers
 ///   unless the Unit choice is the house's harvester (the first `[General]
 ///   HarvesterUnit=` its country owns, `0x004F90F7..0x004F9194`); then the
@@ -265,7 +265,7 @@ pub(crate) fn update_production_choices(
                 .map_or(-1, |house| house.ai_production.building_choice);
             let buildable = rules
                 .building_type_at(choice)
-                .is_some_and(|ty| has_factory(sim, rules, owner, ty, true, true));
+                .is_some_and(|ty| find_factory(sim, rules, owner, ty, true, true).is_some());
             if !buildable {
                 choose_units(sim, &ALL);
             }
@@ -284,7 +284,7 @@ pub(crate) fn update_production_choices(
                 index != -1
                     && !rules
                         .type_array_at(kind.category(), index)
-                        .is_some_and(|ty| has_factory(sim, rules, owner, ty, true, true))
+                        .is_some_and(|ty| find_factory(sim, rules, owner, ty, true, true).is_some())
             });
             if none_chosen || unbuildable {
                 choose_building(sim, rules, owner, registry);

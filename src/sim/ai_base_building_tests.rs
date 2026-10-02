@@ -473,10 +473,7 @@ fn a_computer_yard_places_its_building_on_the_node_cell() {
     let building = sim.substrate.entities.get(product).unwrap();
     assert!(!building.lifecycle.in_limbo);
     assert_eq!((building.position.rx, building.position.ry), (16, 16));
-    assert!(
-        building.building_up.is_some(),
-        "the placed building builds up"
-    );
+    assert!(building.building_up(), "the placed building builds up");
     let house = &sim.houses[&owner];
     // Below the cutoff a building exit moves mode 0 to 2, and the choice is
     // forgotten.

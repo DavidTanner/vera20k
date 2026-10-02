@@ -135,7 +135,7 @@ pub(super) fn production_modifier_rules() -> RuleSet {
 
 pub(super) fn build_catalog_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
              0=E1\n\
              [VehicleTypes]\n\
              0=MTNK\n\
@@ -232,7 +232,7 @@ pub(super) fn build_catalog_rules() -> RuleSet {
 
 pub(super) fn naval_production_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          0=DEST\n\
          [AircraftTypes]\n\
@@ -253,6 +253,8 @@ pub(super) fn naval_production_rules() -> RuleSet {
          Owner=Americans\n\
          [GAYARD]\n\
          Name=Naval Yard\n\
+         Strength=1500\n\
+         Owner=Americans\n\
          Factory=UnitType\n\
          WeaponsFactory=yes\n\
          Naval=yes\n\
@@ -300,7 +302,7 @@ pub(super) fn water_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
 
 pub(super) fn placement_radius_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
              [VehicleTypes]\n\
              0=MTNK\n\
              [AircraftTypes]\n\
@@ -308,7 +310,7 @@ pub(super) fn placement_radius_rules() -> RuleSet {
              0=GACNST\n\
              1=GAPOWR\n\
              2=GAGAP\n\
-             [GACNST]\n\
+             [GACNST]\nFactory=BuildingType\n\
              Name=Construction Yard\n\
              Cost=3000\n\
              Strength=1000\n\
@@ -532,6 +534,9 @@ pub(super) fn spawn_structure(
 ) {
     let owner_id = sim.interner.intern(owner);
     let type_id_interned = sim.interner.intern(type_id);
+    sim.houses.entry(owner_id).or_insert_with(|| {
+        crate::sim::house_state::HouseState::new(owner_id, 0, None, true, STARTING_CREDITS, 10)
+    });
     let mut ge = crate::sim::game_entity::GameEntity::new_at_frame_zero_for_test(
         sid,
         rx,
@@ -548,10 +553,13 @@ pub(super) fn spawn_structure(
     );
     ge.lifecycle.in_limbo = false;
     ge.in_playfield = true;
+    ge.finish_building_construction_for_test();
+    ge.building_actually_placed = true;
     sim.substrate.entities.insert(ge);
     // Use the lifecycle boundary so the fixture is a placed (not factory-held)
     // structure and raw-store consumers see the same Mark state as gameplay.
     sim.add_entity_occupancy(sid);
+    sim.append_house_base_building_for_test(sid);
     if sim.substrate.next_stable_object_id <= sid {
         sim.substrate.next_stable_object_id = sid + 1;
     }
@@ -1011,14 +1019,14 @@ fn naval_factory_spawn_uses_water_exit_cells() {
 #[test]
 fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
     let rules = RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n[InfantryTypes]\n\
          [VehicleTypes]\n0=MTNK\n1=DEST\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n0=GAWEAP\n1=GAYARD\n\
-         [MTNK]\nCost=700\nSpeedType=Track\nTechLevel=1\nOwner=Americans\n\
-         [DEST]\nCost=1000\nNaval=yes\nSpeedType=Float\nMovementZone=Water\nTechLevel=1\nOwner=Americans\n\
-         [GAWEAP]\nFactory=UnitType\nWeaponsFactory=yes\nNaval=no\nExitCoord=512,256,0\n\
-         [GAYARD]\nFactory=UnitType\nWeaponsFactory=yes\nNaval=yes\nFoundation=4x4\n",
+         [MTNK]\nCost=700\nStrength=300\nSpeedType=Track\nTechLevel=1\nOwner=Americans\n\
+         [DEST]\nCost=1000\nStrength=600\nNaval=yes\nSpeedType=Float\nMovementZone=Water\nTechLevel=1\nOwner=Americans\n\
+         [GAWEAP]\nStrength=1000\nOwner=Americans\nFactory=UnitType\nWeaponsFactory=yes\nNaval=no\nExitCoord=512,256,0\n\
+         [GAYARD]\nStrength=1500\nOwner=Americans\nFactory=UnitType\nWeaponsFactory=yes\nNaval=yes\nFoundation=4x4\n",
     ), &IniFile::from_str("[GAYARD]\nFoundation=4x4\n"))
     .expect("mixed stock-shaped Vehicle/Ship rules");
     let mut sim = Simulation::new();
@@ -1047,6 +1055,10 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
     spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     stamp_type_foundation(&mut sim, &rules, 2);
+    // Direct fixture insertion bypasses Building::Unlimbo's 448070 call.
+    // Publish both native primary slots before testing delivery selection.
+    super::initialize_factory_primary(&mut sim, 1, &rules);
+    super::initialize_factory_primary(&mut sim, 2, &rules);
     let vehicle_candidates = super::producer_candidates_for_owner_category(
         &sim.substrate.entities,
         &rules,
@@ -1101,11 +1113,15 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
 
     let americans = sim.interner.intern("Americans");
     assert_eq!(
-        sim.production.active_producer_by_owner[&americans][&ProductionCategory::Vehicle],
+        sim.production
+            .primary_factory(americans, ProductionCategory::Vehicle)
+            .unwrap(),
         1
     );
     assert_eq!(
-        sim.production.active_producer_by_owner[&americans][&ProductionCategory::Ship],
+        sim.production
+            .primary_factory(americans, ProductionCategory::Ship)
+            .unwrap(),
         2
     );
 
@@ -1162,7 +1178,9 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
     assert_eq!((destroyer.position.rx, destroyer.position.ry), (22, 22));
     assert!(destroyer.lifecycle.cell_marked && !destroyer.lifecycle.in_limbo);
     assert_eq!(
-        sim.production.active_producer_by_owner[&americans][&ProductionCategory::Ship],
+        sim.production
+            .primary_factory(americans, ProductionCategory::Ship)
+            .unwrap(),
         2,
         "the older GAWEAP cannot receive the Ship completion"
     );
@@ -1211,6 +1229,10 @@ fn naval_delivery_nonzero_canenter_keeps_pending_and_does_not_try_second_produce
 
     spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
     spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    stamp_type_foundation(&mut sim, &rules, 1);
+    stamp_type_foundation(&mut sim, &rules, 2);
+    super::initialize_factory_primary(&mut sim, 1, &rules);
+    super::initialize_factory_primary(&mut sim, 2, &rules);
     let mut blocker =
         crate::sim::game_entity::GameEntity::test_default(50, "DEST", "Soviet", 12, 12);
     blocker.category = crate::map::entities::EntityCategory::Unit;
@@ -1257,7 +1279,9 @@ fn naval_delivery_nonzero_canenter_keeps_pending_and_does_not_try_second_produce
         .and_then(|object| object.entity_id)
         .expect("the completed queue owns one limbo Unit identity");
     assert_eq!(
-        sim.production.active_producer_by_owner[&americans][&ProductionCategory::Ship],
+        sim.production
+            .primary_factory(americans, ProductionCategory::Ship)
+            .unwrap(),
         1,
         "the already selected producer remains authoritative"
     );
@@ -1323,6 +1347,8 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     stamp_type_foundation(&mut sim, &rules, 2);
+    super::initialize_factory_primary(&mut sim, 1, &rules);
+    super::initialize_factory_primary(&mut sim, 2, &rules);
     arm_build_via(
         &mut sim,
         &rules,
@@ -1393,7 +1419,9 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
         "a refused retry records nothing"
     );
     assert_eq!(
-        sim.production.active_producer_by_owner[&americans][&ProductionCategory::Ship],
+        sim.production
+            .primary_factory(americans, ProductionCategory::Ship)
+            .unwrap(),
         1,
         "the selected producer remains authoritative after empty FNPC"
     );

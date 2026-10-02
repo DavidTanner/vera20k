@@ -479,7 +479,10 @@ fn aircraft_allows(entity: &crate::sim::game_entity::GameEntity, requested: Miss
         || AIRCRAFT_PROTECTED.contains(&requested)
 }
 
-fn commence_leaf(entity: &mut crate::sim::game_entity::GameEntity, now: u32) -> bool {
+pub(crate) fn commence_entity_mission(
+    entity: &mut crate::sim::game_entity::GameEntity,
+    now: u32,
+) -> bool {
     if entity.mission_leaf.as_aircraft().is_some() {
         let old_current = entity.mission.current();
         if old_current != AIRCRAFT_ACTION_EXCEPTION {
@@ -559,7 +562,7 @@ impl Simulation {
             .entities
             .get_mut(receiver)
             .ok_or(MissionAuthorityError::MissingReceiver(receiver))?;
-        Ok(commence_leaf(entity, now))
+        Ok(commence_entity_mission(entity, now))
     }
 
     /// Host-time queued-mission promotion at the per-object AI position.
@@ -590,7 +593,7 @@ impl Simulation {
             && self.mission_ready_to_commence(receiver, rules)
             && let Some(entity) = self.substrate.entities.get_mut(receiver)
         {
-            commence_leaf(entity, now);
+            commence_entity_mission(entity, now);
         }
     }
 
@@ -665,7 +668,7 @@ impl Simulation {
                 .entities
                 .get_mut(receiver)
                 .expect("receiver remains present during synchronous Commence");
-            commence_leaf(entity, now);
+            commence_entity_mission(entity, now);
         }
         Ok(())
     }
@@ -875,7 +878,7 @@ impl Simulation {
                 .entities
                 .get_mut(receiver)
                 .expect("receiver remains present for the second Jumpjet Commence");
-            commence_leaf(entity, now);
+            commence_entity_mission(entity, now);
         }
         Ok(())
     }
@@ -945,7 +948,7 @@ impl Simulation {
             .entities
             .get_mut(receiver)
             .expect("building-ready receiver remains present");
-        if !commence_leaf(entity, now) {
+        if !commence_entity_mission(entity, now) {
             return Ok(false);
         }
         entity.mission_leaf.set_building_ready_latch(0);

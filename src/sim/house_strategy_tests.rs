@@ -123,12 +123,7 @@ fn spawn_building(
 }
 
 fn selling(sim: &Simulation, id: u64) -> bool {
-    sim.substrate
-        .entities
-        .get(id)
-        .unwrap()
-        .building_down
-        .is_some()
+    sim.substrate.entities.get(id).unwrap().building_down()
 }
 
 #[test]

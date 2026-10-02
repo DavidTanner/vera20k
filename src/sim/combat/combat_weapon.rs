@@ -1182,8 +1182,14 @@ mod tests {
         ))
         .unwrap();
         let obj = rules.object("HOUSE").unwrap();
-        let mut building = GameEntity::test_default(1, "HOUSE", "Americans", 5, 5);
-        building.category = EntityCategory::Structure;
+        let building = GameEntity::test_default_of_category(
+            1,
+            "HOUSE",
+            "Americans",
+            5,
+            5,
+            EntityCategory::Structure,
+        );
         let facts = attacker_facts(&building, obj);
         assert_eq!(passive_scan_class_bits(&rules, obj, facts, None), 0xBC);
         // Normal OccupyWeapon=GROUND overrides AA primary even though an AA

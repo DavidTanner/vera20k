@@ -201,7 +201,7 @@ fn has_any_override_building(sim: &Simulation, owner: &str, overrides: &[String]
             && !e.lifecycle.in_limbo
             && sim.interner.resolve(e.owner()).eq_ignore_ascii_case(owner)
             && e.category == EntityCategory::Structure
-            && e.building_up.is_none()
+            && !e.building_up()
             && overrides
                 .iter()
                 .any(|ov| ov.eq_ignore_ascii_case(sim.interner.resolve(e.type_ref())))
@@ -304,7 +304,7 @@ fn first_missing_prereq(
                 && !e.lifecycle.in_limbo
                 && sim.interner.resolve(e.owner()).eq_ignore_ascii_case(owner)
                 && e.category == EntityCategory::Structure
-                && e.building_up.is_none()
+                && !e.building_up()
                 && structure_satisfies_prerequisite(rules, sim.interner.resolve(e.type_ref()), p)
         });
         if !ok {
@@ -353,7 +353,7 @@ pub(super) fn has_factory_for_owner(
             && !e.lifecycle.in_limbo
             && interner.resolve(e.owner()).eq_ignore_ascii_case(owner)
             && e.category == EntityCategory::Structure
-            && e.building_up.is_none()
+            && !e.building_up()
             && is_production_factory(rules, interner.resolve(e.type_ref()), category)
     })
 }
@@ -440,7 +440,7 @@ pub fn producer_candidates_for_owner_category(
         if e.category != EntityCategory::Structure {
             continue;
         }
-        if e.building_up.is_some() {
+        if e.building_up() {
             continue;
         }
         let type_ref_str = interner.resolve(e.type_ref());

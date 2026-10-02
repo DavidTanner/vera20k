@@ -451,10 +451,16 @@ mod tests {
     #[test]
     fn exact_enter_unit_target_returns_before_a_later_hard_building() {
         let (mut sim, rules, cell) = unit_fixture("", EntityCategory::Unit);
-        let mut b = GameEntity::test_default(92, "BUILDING", "Americans", 16, 15);
+        let mut b = GameEntity::test_default_of_category(
+            92,
+            "BUILDING",
+            "Americans",
+            16,
+            15,
+            EntityCategory::Structure,
+        );
         b.owner = sim.intern("Americans");
         b.type_ref = sim.intern("BUILDING");
-        b.category = EntityCategory::Structure;
         sim.substrate.entities.insert(b);
         sim.substrate.occupancy.add(
             16,
@@ -484,11 +490,17 @@ mod tests {
     fn contacted_building_skips_when_a_different_building_is_first() {
         let (mut sim, rules, cell) =
             unit_fixture("NumberImpassableRows=-1", EntityCategory::Structure);
-        let mut b = GameEntity::test_default(92, "HIDDEN", "Americans", 16, 15);
+        let mut b = GameEntity::test_default_of_category(
+            92,
+            "HIDDEN",
+            "Americans",
+            16,
+            15,
+            EntityCategory::Structure,
+        );
         assert!(rules.object("HIDDEN").unwrap().invisible_in_game);
         b.owner = sim.intern("Americans");
         b.type_ref = sim.intern("HIDDEN");
-        b.category = EntityCategory::Structure;
         sim.substrate.entities.insert(b);
         sim.substrate.occupancy.remove(16, 15, 91);
         for id in [92, 91] {
@@ -839,10 +851,16 @@ mod tests {
         sim.substrate.entities.get_mut(hut).unwrap().slave_manager = manager(&[slave]);
         // Supplied overlapping Building list tests native continuation, not
         // ordinary construction legality or a retail repair footprint scene.
-        let mut later = GameEntity::test_default(100, "CABHUT", "Americans", 16, 15);
+        let mut later = GameEntity::test_default_of_category(
+            100,
+            "CABHUT",
+            "Americans",
+            16,
+            15,
+            EntityCategory::Structure,
+        );
         later.owner = sim.intern("Americans");
         later.type_ref = sim.intern("CABHUT");
-        later.category = EntityCategory::Structure;
         sim.substrate.entities.insert(later);
         sim.substrate.occupancy.add(
             16,

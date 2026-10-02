@@ -40,14 +40,7 @@ impl Simulation {
             owner_outage: self.building_power_outage(id),
             needs_engineer: object.needs_engineer,
             has_engineer: entity.building_has_engineer,
-            // Actual Rust placement currently retains Construction in the
-            // BuildingUp owner, without publishing that native Mission yet.
-            // Keep its admission closed until that represented build completes.
-            effective_mission: if entity.building_up.is_some() {
-                0x12
-            } else {
-                entity.mission.effective().raw()
-            },
+            effective_mission: entity.mission.effective().raw(),
         };
         Some(power_system::is_operational_for_output(&facts, || {
             self.power_states

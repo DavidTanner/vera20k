@@ -16,8 +16,6 @@
 //! RESIDUALS (no represented reader or sender):
 //! - `RadioClass+0xD4..+0xDC`, the last three distinct received messages
 //!   (`0x0065A829`), is not kept.
-//! - Building OVER_OUT's `Begin_Mode(IDLE)` (`0x00447780`) queues the
-//!   building's IDLE BState (+0x538); VERA has no BState owner.
 //! - The bus carries no overlay registry, so RUN_AWAY's Scatter reaches an
 //!   Infantry receiver without one, and its overlay reads fail on any cell
 //!   holding an overlay (ore included); the error is logged. When
@@ -100,9 +98,58 @@ fn building_receive(
         return bunker_receive(sim, building, sender, msg);
     }
     match msg {
-        // 0x0043CD01: Begin_Mode(IDLE) (BState residual, module doc), then
-        // the Techno receiver; the answer is always ROGER.
+        // Original43CD01: Begin_Mode(IDLE) precedes the common teardown.
+        // Human PLACE reaches this while the child's body is Construction0.
         RadioMessage::Break => {
+            if let Some(entity) = sim.substrate.entities.get_mut(building) {
+                entity.begin_building_body(
+                    crate::sim::building_construction::BuildingBodyMode::Idle,
+                    sim.session.binary_frame as i32,
+                );
+            }
+            let _ = techno_receive(sim, building, sender, msg, payload, rules);
+            RadioResponse::Roger
+        }
+        // Original43CC39/43CCE0: the Construction status-zero first-contact
+        // message queues Repair, then delegates to Techno and answers ROGER.
+        RadioMessage::DockApproach => {
+            if let Some(entity) = sim.substrate.entities.get_mut(building) {
+                crate::sim::mission::authority::queue_entity_mission_deferred(
+                    entity,
+                    MissionId::from_known(MissionType::Repair),
+                );
+            }
+            let _ = techno_receive(sim, building, sender, msg, payload, rules);
+            RadioResponse::Roger
+        }
+        // Original43CC4C..43CCE0: C queues Guard unless Selling. A yard
+        // replaces PreProduction7/Idle18 with the live health's Production8.
+        RadioMessage::DockArrived => {
+            let selling = sim.substrate.entities.get(building).is_some_and(|entity| {
+                entity.mission.effective().known() == Some(MissionType::Selling)
+            });
+            if !selling {
+                if let Some(entity) = sim.substrate.entities.get_mut(building) {
+                    crate::sim::mission::authority::queue_entity_mission_deferred(
+                        entity,
+                        MissionId::from_known(MissionType::Guard),
+                    );
+                }
+                if let Some(rules) = rules
+                    && let Some(entity) = sim.substrate.entities.get(building)
+                    && let Some(object) = sim.object_type(entity.type_ref(), rules)
+                    && object.construction_yard
+                {
+                    let damaged = crate::sim::building_art::requested_damage_state(
+                        entity.health,
+                        object.strength,
+                        rules.general.condition_yellow,
+                    );
+                    sim.clear_building_anim_slot(building, 7);
+                    sim.clear_building_anim_slot(building, 18);
+                    sim.set_building_anim_slot(building, 8, damaged, false, 0, rules);
+                }
+            }
             let _ = techno_receive(sim, building, sender, msg, payload, rules);
             RadioResponse::Roger
         }
@@ -111,13 +158,11 @@ fn building_receive(
         RadioMessage::CanEnter if is_repair_depot(sim, building, rules) => {
             depot_can_load(sim, building, sender, rules)
         }
-        // 8, 0xB, 0xC, 0xD and any other 0xF (0x0043C2F8; the refinery scan
+        // 8, 0xD and any other 0xF (0x0043C2F8; the refinery scan
         // evaluates CAN_LOAD directly) have no represented bus sender.
-        RadioMessage::RequestClearance
-        | RadioMessage::DockApproach
-        | RadioMessage::DockArrived
-        | RadioMessage::AnimStop
-        | RadioMessage::CanEnter => RadioResponse::None,
+        RadioMessage::RequestClearance | RadioMessage::AnimStop | RadioMessage::CanEnter => {
+            RadioResponse::None
+        }
         _ => techno_receive(sim, building, sender, msg, payload, rules),
     }
 }
