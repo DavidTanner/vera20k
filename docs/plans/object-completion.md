@@ -20,7 +20,7 @@ requirements. Ghidra names and old investigations remain leads.
 | GGI / Guardian GI | Reuses the GI automatic-deploy mechanism and existing deployed weapon owner | Whole-object lifecycle is not certified; GGI-specific antiair/weapon ranks and crush behavior still require their own coverage | Audit after the initial basic objects |
 | MTNK / Grizzly | Selection audit pending | No whole-object certificate or exhaustive required-behavior audit yet | Trace primary/elite weapon, projectile/warhead, movement, production and fatal cleanup |
 | GACNST / Construction Yard | Construction → Grand_Opening merged in#992 | Engineer repair, capture, sale/crew/destruction and AMCV undeploy remain required; whole-object closure audit pending | Validate shared Engineer entry/repair, then ordinary destruction |
-| GAPOWR / Allied Power Plant | Reuses merged opening and Engineer repair/House consumer chain#995 | Whole-object closure remains open for sale/destruction, drain/spy/EMP and further power/art routes | Complete ordinary MTNK/AP fatal, crew, ART and deferred retirement chain |
+| GAPOWR / Allied Power Plant | Reuses merged opening and Engineer repair/House consumer chain#995 | Whole-object closure remains open for sale, incoming drain/spy and further power/art requirements; legacy EMP/power-toggle leads require active stock producer evidence | Publish validated ordinary fatal chain, then complete sale |
 | GAPILE / Allied Barracks | Reuses merged opening | Engineer/capture/sale/destruction coverage; factory delivery radio, infantry output and spy effects need closure | Complete infantry factory output |
 | ENGINEER / Allied Engineer | Ordinary damaged-GAPOWR entry/repair and required arrival-time capture/House consumers merged in#995, with native, strict Rust and repeated production validation | Live Tag/Trigger, MultiEngineer damage, Hospital/grinder and other specialized entry routes; full-object closure audit pending | Reuse merged repair/capture owners, then trace remaining entry and Tag prerequisites |
 
@@ -195,3 +195,16 @@ UndeploysIntoAMCV. GAPOWR is2×2, Strength750, Power200, PoweredSpecial,
 Drainable/Spyable/Crewed/Capturable. GAPILE is3×2, Strength500, Power-10,
 Infantry factory/Spyable/Crewed/Capturable. Their buildup/active/damaged artwork,
 ordinary prerequisites and applicable shared mechanisms remain required.
+
+## Later prerequisite: specialized Anim pointer expiry
+
+Native Anim destructor4228E0 broadcasts generic pointer expiry at422906 through
+7258D0. Building44E8F0 includes slot18/Grinding/SpecialAnim consumers beyond the
+current represented direct cleanup in `scalar_delete_building_anim`; the generic
+world notification currently represents Entity/Smudge sources. Trigger: retirement
+of an Anim referenced by those specialized Building paths. Frequency follows each
+activation/retirement; downstream risk is stale specialized references or missed
+activation/cleanup. No reached omitted consumer was established for the selected
+ordinary GAPOWR fatal route, whose compared poststates match. The completed single
+fatal critic records this as later prerequisite coverage, not a proven ordinary
+fatal defect or universal Anim destructor parity.

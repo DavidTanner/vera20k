@@ -1,27 +1,32 @@
 {
   "schema": 1,
   "mechanism": "ordinary GAPOWR fatal lifecycle",
-  "candidate_state": "code validation passed on integrated main; preserved release v3 and refreshed production pending; single critic not yet run",
+  "candidate_state": "integrated final code validated; single critic completed and allocation resolved; refreshed release v4 production pending",
   "objects_certified": 0,
   "native_comparator": "NONE",
   "parity_certification": "NONE",
   "build": {
-    "label": "object-gapowr-fatal-release-v2-20261002",
+    "label": "object-gapowr-fatal-release-v3-20261002",
     "manifest": {
-      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v2-20261002/manifest.json",
-      "byte_length": 4257,
-      "sha256": "643bc3c039d58a71f566e6f71f482dd11f26bef2fb2ad93d302dc047fc5b9f14"
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v3-20261002/manifest.json",
+      "byte_length": 1469,
+      "sha256": "7fe26c48002312ec7ecd484d8d8af82f5705048984437f65e29a4c4a530911f4"
     },
     "source": {
-      "head": "9a6b743d29bf48a06ec12026c4d43da7038a3e5d",
+      "head": "9d0ecfd8a5808dcb5552a4068a1a2cc9ad78285f",
       "branch": "feature/native-gapowr-fatal-lifecycle",
-      "status": "M README.md\n M docs/plans/object-completion-checkpoint.md\n M docs/plans/object-completion.md\n M src/render/sprite_atlas.rs\n M src/render/sprite_atlas_tests.rs\n M src/sim/ai_base_building.rs\n M src/sim/anim_class.rs\n M src/sim/building_art.rs\n M src/sim/combat/destruction_effects.rs\n M src/sim/combat/destruction_effects_tests.rs\n M src/sim/combat/fire_coord.rs\n M src/sim/combat/mod.rs\n M src/sim/combat/world_receiver.rs\n M src/sim/crew_survival.rs\n M src/sim/deploy.rs\n M src/sim/deploy_tests.rs\n M src/sim/house_tracking_tests.rs\n M src/sim/movement/ground_pose.rs\n M src/sim/production/factory_ai.rs\n M src/sim/production/factory_lifecycle.rs\n M src/sim/production/production_queue_tests.rs\n M src/sim/rng.rs\n M src/sim/scenario_bootstrap.rs\n M src/sim/superweapon/paradrop.rs\n M src/sim/temporal.rs\n M src/sim/voxel_anim.rs\n M src/sim/world/crash.rs\n M src/sim/world/damage_consequences.rs\n M src/sim/world/engineer_building_repair_tests.rs\n M src/sim/world/lifecycle.rs\n M src/sim/world/mod.rs\n M src/sim/world/object_entry.rs\n M src/sim/world/world_spawn.rs\n M src/sim/world/world_spawn/tests.rs\n M tools/spatial_oracle/anytown_damage/navigation.py\n M tools/spatial_oracle/anytown_navigation_restore.retained.meta.json\n M tools/spatial_oracle/astar_hills_bridge_inputs.meta.json\n M tools/spatial_oracle/astar_hills_markers.meta.json\n M tools/spatial_oracle/astar_hills_route.meta.json\n M tools/spatial_oracle/astar_hills_route.py\n M tools/spatial_oracle/building_construction.py\n M tools/spatial_oracle/building_construction_joined.meta.json\n M tools/spatial_oracle/building_death_anims.py\n M tools/spatial_oracle/engineer_capture_accounting.meta.json\n M tools/spatial_oracle/engineer_repair_admission.py\n M tools/spatial_oracle/engineer_repair_joined.meta.json\n M tools/spatial_oracle/house_power_consumers.meta.json\n M tools/spatial_oracle/infantry_scatter_entry.meta.json\n M tools/spatial_oracle/infantry_scatter_entry.py\n M tools/spatial_oracle/naval_head_producer.py\n M tools/spatial_oracle/refinery_dock.py\n?? src/sim/world/building_fatal_lifecycle_tests.rs\n?? src/sim/world/infantry_entry_priority_tests.rs\n?? tools/map_observation.building-fatal.example.json\n?? tools/spatial_oracle/building_death_anims_joined.json\n?? tools/spatial_oracle/building_death_anims_joined.md\n?? tools/spatial_oracle/building_death_anims_joined.meta.json\n?? tools/spatial_oracle/building_death_anims_limbo_cancel.json\n?? tools/spatial_oracle/building_death_anims_limbo_cancel.md\n?? tools/spatial_oracle/building_death_anims_limbo_cancel.meta.json\n?? tools/spatial_oracle/infantry_scatter_entry_priority.json\n?? tools/spatial_oracle/infantry_scatter_entry_priority.md\n?? tools/spatial_oracle/infantry_scatter_entry_priority.meta.json",
-      "source_sha256": "a70378094f5124c61b8135c97ed377766956b560d3b24d02dd0e6277c4f893ef"
+      "status": "",
+      "source_sha256": "fbd1bb06e76dcb0121711dfcf284dd847d22f2c00a7e2548f02ea4f0aedadf59"
     },
     "executable": {
-      "byte_length": 31507584,
-      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v2-20261002/1/vera20k",
-      "sha256": "bc8190b00c8fac789b5448bff014041f0ebbfce1a9f89fa704dc08274d675bde"
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v3-20261002/1/vera20k",
+      "byte_length": 31527744,
+      "sha256": "a897a0e2b2d97f53e0b38d35e0017976a2c34d8d912891937b7f7dd837d39dc6"
+    },
+    "asset_executable": {
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v3-20261002/0/asset",
+      "byte_length": 9120448,
+      "sha256": "602e5e39f0dd7c49a91e7400efbf9edfb179fb6724fe81797a7f5cf276199797"
     }
   },
   "inputs": {
@@ -36,9 +41,9 @@
       "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
     },
     "executable": {
-      "byte_length": 31507584,
-      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v2-20261002/1/vera20k",
-      "sha256": "bc8190b00c8fac789b5448bff014041f0ebbfce1a9f89fa704dc08274d675bde"
+      "byte_length": 31527744,
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/object-gapowr-fatal-release-v3-20261002/1/vera20k",
+      "sha256": "a897a0e2b2d97f53e0b38d35e0017976a2c34d8d912891937b7f7dd837d39dc6"
     },
     "profile": {
       "byte_length": 4041,
@@ -56,30 +61,30 @@
   },
   "runs": {
     "full": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2/run.json",
-      "byte_length": 49530533,
-      "sha256": "532f196ff8d474408013a45ffa88cfa6745615a3974df6da1d4e003d06324819"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v3/run.json",
+      "byte_length": 52360390,
+      "sha256": "715cef785d1bf26d1c681481009a35726f08328bff1d78f17786d21a0b0c9a0a"
     },
     "repeat": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-repeat/run.json",
-      "byte_length": 49530554,
-      "sha256": "c63a9104b295c9c731e6397f87c02c44b29008ffd9f95d8595efa41aad65e2bf"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v3-repeat/run.json",
+      "byte_length": 52360411,
+      "sha256": "d499c061c24cdbebfe2c578412ee886a68641a1f2d5260c953b7ea14a99044ef"
     },
     "comparison": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-match.json",
-      "byte_length": 1580693,
-      "sha256": "c0cffb98c1ad17b4d2d005de938695f1087f1e7856eefa2e4c6fcca3e2664847"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v3-match.json",
+      "byte_length": 1580695,
+      "sha256": "1d69c38d3ea7b8607ee8b495cb8083dbf8c4d626cf9db51f70646869ddfc2525"
     },
     "status": "MATCH"
   },
   "prefix_comparisons": {
-    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-prefix-receipt.json",
-    "byte_length": 4743,
-    "sha256": "e1e84ed9e4fd848cba42d8ef119e63c7f03703d056b5e20839b652d263795305"
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v3-prefix-receipt.json",
+    "byte_length": 11330,
+    "sha256": "e72c63fda03c1963443d8f6e6837d6413cfa51af681fafe45c1a848667a8ed2f"
   },
   "final": {
     "binary_frame": 2600,
-    "deterministic_state_hash": 17513880123871236127,
+    "deterministic_state_hash": 14032104367087765277,
     "simulation_tick": 2600,
     "total_simulation_ms": 57200
   },
@@ -181,7 +186,8 @@
         ],
         "stable_id": 1428,
         "target": null,
-        "type_id": "GAPOWR"
+        "type_id": "GAPOWR",
+        "unit": null
       },
       "crew": null,
       "missing_actor_ids": [
@@ -240,9 +246,10 @@
           22966,
           416
         ],
-        "stable_id": 1755,
+        "stable_id": 1759,
         "target": null,
-        "type_id": "E1"
+        "type_id": "E1",
+        "unit": null
       },
       "missing_actor_ids": [
         1371,
@@ -301,9 +308,10 @@
           22896,
           416
         ],
-        "stable_id": 1755,
+        "stable_id": 1759,
         "target": null,
-        "type_id": "E1"
+        "type_id": "E1",
+        "unit": null
       },
       "missing_actor_ids": [
         1371,
@@ -357,9 +365,10 @@
           22720,
           416
         ],
-        "stable_id": 1755,
+        "stable_id": 1759,
         "target": null,
-        "type_id": "E1"
+        "type_id": "E1",
+        "unit": null
       },
       "missing_actor_ids": [
         1371,
@@ -413,9 +422,10 @@
           22720,
           416
         ],
-        "stable_id": 1755,
+        "stable_id": 1759,
         "target": null,
-        "type_id": "E1"
+        "type_id": "E1",
+        "unit": null
       },
       "missing_actor_ids": [
         1371,
@@ -427,7 +437,7 @@
     {
       "completed_steps": 1852,
       "identity": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-images/step-1852.png",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v3-images/step-1852.png",
         "byte_length": 423953,
         "sha256": "72429f3f5879e8b48da5dde1bee7d7efaa4c010b3c16cfc28a0c3804a9e2db00"
       },
@@ -445,7 +455,7 @@
     {
       "completed_steps": 1853,
       "identity": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-images/step-1853.png",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v3-images/step-1853.png",
         "byte_length": 413933,
         "sha256": "8ce2d66772af9e19d8a4c307b6dee0a9151437512b9116e16b2c76f161a9005b"
       },
@@ -463,7 +473,7 @@
     {
       "completed_steps": 1860,
       "identity": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-images/step-1860.png",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v3-images/step-1860.png",
         "byte_length": 418691,
         "sha256": "ec1aee91dc5a5919ea256e679d4aceaab1c5d78d6be6c4822254c51f1418e074"
       },
@@ -481,7 +491,7 @@
     {
       "completed_steps": 1900,
       "identity": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-images/step-1900.png",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v3-images/step-1900.png",
         "byte_length": 422632,
         "sha256": "1121758e64acea453f81c40229e365d0a9ecdb15115e5c92707b6b11eac886a9"
       },
@@ -499,7 +509,7 @@
     {
       "completed_steps": 2600,
       "identity": {
-        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v2-images/step-2600.png",
+        "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-v3-images/step-2600.png",
         "byte_length": 412273,
         "sha256": "bf20d55e3b094fa2e651f509aaa10438ee772b071a5ee49f6422a72fc1a7ddef"
       },
@@ -551,29 +561,29 @@
   ],
   "validation_logs": {
     "strict_lib": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-strict-final-v4.log",
-      "byte_length": 960425,
-      "sha256": "ddc4fbe568bac01e1a3c4ccbf591bb88ff64d60d4e6c35ab7f57fafaa18d1d18"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-strict-final-v5.log",
+      "byte_length": 962552,
+      "sha256": "eea21dcacca9f895f98088ec3a227e29ac302fc3207feaeee9855ad4ce2a2585"
     },
     "strict_clippy": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-clippy-final-v5.log",
-      "byte_length": 426064,
-      "sha256": "336c950588dcce233934e0e39e00c418ffb807495fc6900fcd348bf7b8b9cc81"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-clippy-final-v6.log",
+      "byte_length": 427276,
+      "sha256": "ad6f1b6d64c9d50424a0f36683e719f4ab833c9b7b9888affd057098ab4e0d98"
     },
     "python_full": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-python-final-v6.log",
-      "byte_length": 89747,
-      "sha256": "d611efdee6f9d0793139f1bfc14f733bd49e69fab3b86045457fcb7723932e34"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-python-final-v7.log",
+      "byte_length": 92240,
+      "sha256": "6c22e37102d2d37419a0e05ecff7e76c8e825aa9e6b2ea25668b9595a6de3148"
     },
     "field_ratchet": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-field-ratchet-final-v3.log",
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-field-ratchet-final-v5.log",
       "byte_length": 90,
-      "sha256": "218e7007dd7838e41044be396204aea8205f5d084c108401765bfc8718bec7af"
+      "sha256": "fcb30a3b036db7dd367c8bd72ccd567d92b54a2c9061499e3e859c7f1a53ff0a"
     },
     "release_build": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-release-build-final-v3.log",
-      "byte_length": 4945,
-      "sha256": "c3a306979904830cac4749e61e125f1aa195a044ed1ca01d59ceeb20304113e7"
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-release-build-v3.log",
+      "byte_length": 5491,
+      "sha256": "8d3d221579aa92187c4ef8dae3241c48c0731328f168861672106715e0b0d41f"
     },
     "native_body": {
       "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-native-body-frame-final-v1.log",
@@ -611,30 +621,30 @@
       "sha256": "b45d095412f4407ab69de9dd3debd0559bb32f87fc2439d8572bddfc458f1e9f"
     },
     "stock_smudge_native_check": {
-      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-stock-smudge-native-integrated-check.log",
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-stock-smudge-native-final-IFV-check.log",
       "byte_length": 266,
       "sha256": "d070615c550d40a6079ac18275632050296df213ddce6f21a2111a5516b1420b"
     }
   },
   "validation_results": {
     "strict_lib": {
-      "passed": 9483,
+      "passed": 9503,
       "failed": 0,
       "ignored": 227,
       "required_retail_ini": true
     },
     "strict_clippy": {
       "exit_code": 0,
-      "warnings": 727,
+      "warnings": 728,
       "diagnostics_in_edited_rust_spans": 0
     },
     "python_full": {
-      "run": 466,
+      "run": 478,
       "skipped": 4
     },
     "sim_writable_fields": {
-      "base": 2562,
-      "candidate": 2562
+      "base": 2559,
+      "candidate": 2554
     },
     "atlas_focused": {
       "passed": 36,
@@ -649,17 +659,43 @@
     }
   },
   "review": {
-    "passes": 0,
-    "status": "not started"
+    "passes": 1,
+    "status": "completed; no blocking finding",
+    "candidate_head": "9d0ecfd8a5808dcb5552a4068a1a2cc9ad78285f",
+    "report": {
+      "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/fatal-lifecycle-critic-9d0ecfd8/review.md",
+      "byte_length": 10076,
+      "sha256": "d803d862a7a5dfd12de9f32844b32be461e50485f3d9a0c6affb000ec06e514c"
+    },
+    "optional_p3_resolution": {
+      "commit": "8d3f5759",
+      "change": "Receipt collection moved into the cfg-test numeric host; the single native loop and inline live constructors remain.",
+      "focused_results": {
+        "numeric": 12,
+        "joined_fatal": 3,
+        "debris": 30,
+        "live_constructor": 1,
+        "crash": 14,
+        "crash_ignored": 2
+      },
+      "empty_selector": "The early destruction_effects_tests selector matched zero cases and is excluded. The integrated full suite exercised the actual destruction_effects::tests module.",
+      "integrated_full_suite": {
+        "passed": 9503,
+        "ignored": 227,
+        "failed": 0
+      }
+    },
+    "repeat_review": "None; final main integration and owner fixes receive owner validation."
   },
   "limits": [
     "VALID/MATCH covers production loader, app commands, simulation and Metal output reproducibility. No original native whole-match or native pixel comparison is supplied.",
     "Production uses human friendly ForceAttack on Battle/AnyTown with full match cadence; the native joined controls start with a ready enemy shot on a supplied flat map and differ in earlier volleys, credits and cadence.",
     "Production transcript does not expose complete RNG streams, House power, tracking, passive scan words, sound or deferred graphs. Bounded original executable comparisons and Rust checks cover those owners.",
-    "The v1/v2 complete simulation transcript is unchanged after the atlas correction. Final strict suite and production v2 use the corrected loader; physical Dustbowl release lib tests ran before that presentation-only change.",
     "Tagged/captured/garrison/mind-control receivers and sale remain separate chains. Whole GAPOWR/E1/MTNK certificates remain open in docs/plans/object-completion.md.",
     "Stock native extension covers three ready-shot routes through impact frame4 / frame5 drain; full physical theater/map loading, other placements, later surviving death Anim visits and native pixels/audio are excluded. Native map-Smudge priority residual is dormant on AnyTown/Dustbowl, which have no Smudge entries.",
-    "The v2 production build predates runtime Smudge identities and current-main integration; its raw bundles are preserved in the recorded archive. Release v3 will replace the candidate production evidence."
+    "The refreshed v3 binary includes runtime Smudge identities and current-main integration. Later stable IDs and core hashes intentionally differ from v2; admitted E1/1759 retains HP119 and the recorded movement. The five final GPU frame byte hashes are unchanged from the earlier inspected v2 frames. Smudge cells/full expiry graphs are not exposed by the production observer; native and Rust joined controls compare them.",
+    "Prefix atlas residency may grow when newly admitted actors first draw. Prefix validation compares all actor/terrain observations and initial/map/camera/clock prefixes; full/repeat validation additionally compares the final atlas and GPU bytes.",
+    "Broader Anim expiry is a later prerequisite: native4228E0 broadcasts through7258D0 with slot18/Grinding/SpecialAnim consumers beyond current represented direct cleanup. No reached omitted consumer was established for this ordinary GAPOWR route; universal Anim destructor equivalence is not claimed."
   ],
   "superseded_production_archive": {
     "receipt": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-v2-production-archive.json",
@@ -667,7 +703,7 @@
     "sha256": "7d0cfc02b5d342839c620a10aee0039d6c4d9ceaae438c106e50636b16103d56",
     "note": "Raw v2 full/repeat/four-prefix directories are retained here; v2 predates runtime Smudge identity changes."
   },
-  "code_validation_head": "2f84f594821d7aaec348c6c942f099b552bc2214",
+  "code_validation_head": "b4933c86a154b3e57dc1d20ff44aca46b8620973",
   "stock_smudge_evidence": {
     "accepted_manifest": {
       "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/fatal-smudge-admission-audit/accepted-evidence-manifest.json",
@@ -684,5 +720,12 @@
       "byte_length": 26230,
       "sha256": "c09a66554abb218806600f7e478a3c1ff67ef0455757124efd7f3e5c7643316a"
     }
-  }
+  },
+  "production_validation_head": "9d0ecfd8a5808dcb5552a4068a1a2cc9ad78285f",
+  "code_validation_receipt": {
+    "path": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/gapowr-fatal-code-validation-v5.json",
+    "byte_length": 3277,
+    "sha256": "b5ff37fd1b13fa6186ea3e2de6179afa80d0ffcc7485cc5be340745885e639a4"
+  },
+  "snapshot_version": 282
 }
