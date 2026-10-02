@@ -5,6 +5,7 @@ python -m unittest tools.test_native_oracle -v
 
 from contextlib import redirect_stdout
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -13,6 +14,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+from types import ModuleType
 import unittest
 from unittest.mock import patch
 
@@ -274,7 +276,20 @@ run_checked(machine, 0x1000, 0x1002, count=4,
 
     def test_mission_rules_failure_keeps_setup_selector_and_physical_layer(self):
         from tools.rules_oracle.bridge_anim_inputs import Reader
-        from tools.spatial_oracle.anytown_damage import mission
+        from tools.spatial_oracle import anytown_damage
+
+        # Load the real Mission code with only its unused scene/asset provider
+        # isolated. That provider imports liblzo2, which this synthetic setup
+        # never uses and a contributor's test environment need not install.
+        base = ModuleType(anytown_damage.__name__ + ".mtnk_attack")
+        base.layers = base.lexical = lambda *args: self.fail("Unconfigured fixture provider")
+        path = Path(__file__).parent / "spatial_oracle/anytown_damage/mission.py"
+        spec = importlib.util.spec_from_file_location(anytown_damage.__name__ + "._diagnostic_test_mission", path)
+        mission = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {base.__name__: base}), \
+                patch.object(anytown_damage, "mtnk_attack", base, create=True), \
+                patch.dict(os.environ, {"VERA20K_LZO2_LIBRARY": "/nonexistent/unused-by-this-test"}):
+            spec.loader.exec_module(mission)
 
         machine = Uc(UC_ARCH_X86, UC_MODE_32)
         machine.mem_map(0x66D000, 0x1000)
