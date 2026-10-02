@@ -844,7 +844,11 @@ impl Simulation {
         // ObjectUnlimbo5F4FB4 Mark/CellPUT has already run. Foot4D722F calls
         // +198(owner) next; only afterward Infantry51E0EF clears +41B for
         // exactly Sight=0. Never move these producers before the Mark call.
-        self.record_foot_owner_discovery(stable_id);
+        if let Some(entity) = self.substrate.entities.get(stable_id)
+            && entity.category != EntityCategory::Structure
+        {
+            self.record_techno_discovery(stable_id, entity.owner());
+        }
         let high_flight = self.foot_neighbors_after_unlimbo(stable_id, context.rules);
         // Foot4D72B2/+54 requires high flight, then Type ConsideredAircraft
         // (+D96) admits AirTrackerAdd4D72DB, whatever the locomotor. Mark
@@ -991,6 +995,10 @@ impl Simulation {
             }
             self.append_live_build_const(stable_id);
             self.append_house_base_building(stable_id);
+            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                // Building440D2D, after native House building registration.
+                entity.reset_building_health_sample_at_unlimbo();
+            }
             if let Some(rules) = context.rules() {
                 // Unlimbo44119C clears this object's retained primary before
                 //448070 asks the owning house for another live primary.
@@ -1035,44 +1043,39 @@ impl Simulation {
         }
     }
 
-    /// The owner-receiver portion of Foot4D722F -> Techno6F4960. Constructor
-    /// classification makes an admitted current-owner entry +41A=true; another
-    /// owner writes the aggregate +41C. This is not the first foreign-current-
-    /// viewer CellPUT arm: that still requires its Tag4/House1F4 continuation.
-    /// Missing current-house/House state belongs to the admitted headless
-    /// substrate, not an invented native House0 or actor-owner fallback.
-    pub(super) fn record_foot_owner_discovery(&mut self, stable_id: u64) {
+    /// Shared TechnoDiscovered6F4960, called by CellAddContent47E9DC with
+    /// PlayerPtr and FootUnlimbo4D722F with the object's owner. The queried
+    /// House50B730 is the VIEWER; dirty flags and the1F4 notification belong
+    /// to the object's owner at the time of the callback. The whole native
+    /// capture comparison exercises this before the701735 owner swap.
+    /// ObjectDiscovered5F5930 accepts a nonnull House without mutation.
+    /// Live attached Tag event4 at6F4A18 remains a trigger residual; the
+    /// ordinary joined Engineer route carries NULL Tags. Missing House state
+    /// is an unavailable headless boundary, not an invented native identity.
+    pub(super) fn record_techno_discovery(&mut self, stable_id: u64, viewer: InternedId) {
         let Some(current_house) = self.session.current_house else {
             return;
         };
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return;
         };
-        if entity.category == EntityCategory::Structure {
-            return;
-        }
-        let current = entity.owner() == current_house;
+        let current = viewer == current_house;
         let history = entity.discovery;
         if (current && history.discovered_by_current_house)
             || (!current && history.discovered_by_other_house)
         {
             return;
         }
-        if current && !history.owned_by_current_house {
-            // The required first-current-viewer receiver is intentionally not
-            // asserted delivered from an unrepresented classification producer.
-            // Initial Jumpjet continuation must not bypass that open boundary.
-            return;
-        }
-        let Some(house) = self.houses.get(&entity.owner()) else {
+        let Some(house) = self.houses.get(&viewer) else {
             return;
         };
         let controlled = house.is_controlled_by_human(self.session.game_mode_nonzero);
+        let owner = entity.owner();
         let entity = self
             .substrate
             .entities
             .get_mut(stable_id)
-            .expect("selected Foot");
+            .expect("discovered Techno");
         if !current {
             // 6F4990 precedes base discovery and the mission inquiry.
             entity.discovery.discovered_by_other_house = true;
@@ -1090,10 +1093,50 @@ impl Simulation {
         }
         if current {
             entity.discovery.discovered_by_current_house = true;
-            // +5778/+5779 invalidate building-derived power/radar/SpySat.
-            // This Foot-only observation changes no building input; existing
-            // normal consumer evaluation is retained, not duplicate dirty bytes.
+            //6F49DE invalidates both House bytes even for a Foot. Another
+            //Building's repaired health can therefore become visible before
+            //its next own health sample, through this independent writer.
+            self.invalidate_house_power(owner, true);
+            if !history.owned_by_current_house
+                && let Some(house) = self.houses.get_mut(&owner)
+            {
+                house.notify_discovered_by_current_house();
+            }
         }
+    }
+
+    /// CellAddContent47E953..47E9DC's discovery gate. In active YR the
+    /// IsFogged5865E0 body always returns false. Any noncampaign CellPUT
+    /// therefore calls DiscoveredBy(PlayerPtr); campaigns do so only when
+    /// the height-projected Cell coordinate is shrouded. Reuse the existing
+    ///586360 and Fog authority instead of a presentation visibility cache.
+    pub(crate) fn discover_cell_put_object(&mut self, id: u64, cell: (u16, u16)) {
+        let Some(viewer) = self.session.current_house else {
+            return;
+        };
+        if !self.session.game_mode_nonzero {
+            let Some(terrain) = self.resolved_terrain.as_ref() else {
+                return;
+            };
+            let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+            let point = crate::sim::movement::target_cell_coord(cell.0, cell.1, Some(terrain));
+            let open = |cell| {
+                Ok(match cell {
+                    crate::map::cell_index::NativeCellIdentity::Real(index) => {
+                        let cell = &terrain.cells()[index];
+                        self.fog.is_ground_unshrouded(viewer, cell.rx, cell.ry)
+                    }
+                    crate::map::cell_index::NativeCellIdentity::Dummy => false,
+                })
+            };
+            if !matches!(
+                crate::sim::vision::coordinate_is_shrouded(&cells, point, &open),
+                Ok(true)
+            ) {
+                return;
+            }
+        }
+        self.record_techno_discovery(id, viewer);
     }
 
     /// `BuildingClass::Unlimbo @ 0x00440580` calls
@@ -1236,6 +1279,7 @@ impl Simulation {
                 self.substrate
                     .occupancy
                     .add(rx, ry, stable_id, layer, None, insertion);
+                self.discover_cell_put_object(stable_id, (rx, ry));
             }
             #[cfg(test)]
             self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationListLinked);
@@ -2595,24 +2639,23 @@ impl Simulation {
         self.object_conceal_with_context(stable_id, context)
     }
 
-    /// Consume the captured kill exactly once. Object's exact-zero callback
-    /// calls this before Destroy; UnInit remains the fallback for destruction
-    /// paths outside ReceiveDamage (including Temporal). House counts move elsewhere:
-    /// Removed_From_Game with the Limbo, Remove_Tracking at the drain.
+    /// Guard UnInit's legacy uncredited-loss fallback. Routed RecordTheKill
+    /// callbacks already book their immediate House statistics, including
+    /// Temporal's full-health callback. Unrouted destruction sites still book
+    /// only their loss here; this does not certify their missing kill callback.
+    /// House quantities move through Removed_From_Game and Remove_Tracking.
     pub(crate) fn record_destruction_once(&mut self, stable_id: u64) {
-        let Some((owner, category, already_recorded, destroyed, killed_by, award, dont_score)) =
+        let Some((owner, category, already_recorded, destroyed, dont_score)) =
             self.substrate.entities.get(stable_id).map(|entity| {
                 (
                     entity.owner(),
                     entity.category,
                     entity.destruction_recorded,
                     // A Temporal erase leaves at full health with its kill
-                    // already recorded (`combat::record_kill_credit`); a
+                    // already booked (`combat::record_kill_credit`); a
                     // crashing infantryman falls at Health 1 (`0x0051BC57`)
                     // after the kill that booked its loss.
                     entity.health.current == 0 || entity.killed_by.is_some() || entity.crashing,
-                    entity.killed_by,
-                    entity.kill_award_points,
                     entity.dont_score,
                 )
             })
@@ -2625,8 +2668,11 @@ impl Simulation {
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             entity.destruction_recorded = true;
         }
-        if destroyed && !dont_score {
-            self.record_match_kill_and_loss(owner, category, killed_by, award);
+        if destroyed
+            && !dont_score
+            && let Some(house) = self.houses.get_mut(&owner)
+        {
+            house.stats.record_loss(category);
         }
     }
 
@@ -2640,70 +2686,6 @@ impl Simulation {
             debug_assert_eq!(entity.health.current, 0);
             entity.destruction_recorded = false;
             entity.killed_by = None;
-            entity.kill_award_points = 0;
-        }
-    }
-
-    /// UnitAI736500 calls RecordKill(NULL) again before UnInit. Executed
-    /// naval_sink_tick terminal rows retain Health1 and increment UnitsLost
-    /// from one to two. This is separate from the once-only UnInit recorder;
-    /// no second killer or score award is invented.
-    pub(crate) fn record_sinking_terminal_kill(&mut self, id: u64) {
-        let Some(entity) = self.substrate.entities.get(id) else {
-            return;
-        };
-        if !entity.dont_score {
-            self.record_match_kill_and_loss(entity.owner(), entity.category, None, 0);
-        }
-    }
-
-    /// Score-screen bookkeeping for one RecordKill callback: a loss for its owner, a
-    /// kill for the house credited with destroying it, and that house's score
-    /// award.
-    ///
-    /// The lifecycle guard suppresses an extra UnInit record after an actual
-    /// exact-zero damage callback. A retained sinking hull can receive another
-    /// fatal hit and gets a final attacker-free record at its terminal depth.
-    /// Attribution is captured at each native-equivalent callback, not derived
-    /// from the object's later state here.
-    ///
-    /// A `DontScore=` victim never reaches this recorder at all — its loss is
-    /// suppressed alongside its kill and points, matching the single early return
-    /// gamemd takes before any of the three.
-    ///
-    /// The kill is counted regardless of how the killer relates to the victim:
-    /// gamemd increments the killing house's kill table for allied and
-    /// self-inflicted destruction too, and suppresses only the *points*. (It also
-    /// has a victim-type suppression flag with no VERA equivalent yet —
-    /// UNCHECKED, not modelled.) Sold or otherwise despawned objects reach this
-    /// helper with non-zero health and the caller filters them out.
-    fn record_match_kill_and_loss(
-        &mut self,
-        owner: InternedId,
-        category: EntityCategory,
-        killed_by: Option<InternedId>,
-        award: i32,
-    ) {
-        let structure = category == EntityCategory::Structure;
-        if let Some(house) = self.houses.get_mut(&owner) {
-            if structure {
-                house.stats.buildings_lost = house.stats.buildings_lost.saturating_add(1);
-            } else {
-                house.stats.units_lost = house.stats.units_lost.saturating_add(1);
-            }
-        }
-        let Some(killer) = killed_by else {
-            return;
-        };
-        // Destroying an ally's object (or one's own) still counts as a kill;
-        // `combat::record_the_kill` already made its award zero.
-        if let Some(house) = self.houses.get_mut(&killer) {
-            if structure {
-                house.stats.buildings_killed = house.stats.buildings_killed.saturating_add(1);
-            } else {
-                house.stats.units_killed = house.stats.units_killed.saturating_add(1);
-            }
-            house.stats.score_points = house.stats.score_points.saturating_add(award);
         }
     }
 
@@ -2713,37 +2695,21 @@ impl Simulation {
     /// timer and restores Alive/Health=1. This deliberately does not call
     /// UnInit, Limbo, record the destruction, or enqueue physical deletion.
     /// The kill callback ([`crate::sim::combat::record_the_kill`]) has already
-    /// left its award on the target.
+    /// booked its House statistics before these Destroy callbacks.
     pub(crate) fn postmortem_exact_zero_callbacks(
         &mut self,
         stable_id: u64,
-        killer_owner: Option<InternedId>,
+        _killer_owner: Option<InternedId>,
         context: UninitContext<'_>,
     ) {
-        let Some((owner, category, dont_score, award)) =
-            self.substrate.entities.get(stable_id).map(|target| {
-                (
-                    target.owner(),
-                    target.category,
-                    target.dont_score,
-                    target.kill_award_points,
-                )
-            })
-        else {
+        let Some(target) = self.substrate.entities.get(stable_id) else {
             return;
         };
 
         debug_assert_eq!(
-            self.substrate
-                .entities
-                .get(stable_id)
-                .map(|target| target.health.current),
-            Some(0),
+            target.health.current, 0,
             "PostMortem Object callbacks run at exact zero"
         );
-        if !dont_score {
-            self.record_match_kill_and_loss(owner, category, killer_owner, award);
-        }
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::PostMortemKillBookkeeping { stable_id });
         self.object_destroy_callback(stable_id, context);
@@ -3191,7 +3157,6 @@ impl Simulation {
                 .nav_queue
                 .iter()
                 .any(|target| Self::nav_ref_targets_expired(target, expired_id))
-            || listener.capture_target == Some(expired_id)
             || listener
                 .c4_plant
                 .as_ref()
@@ -3632,7 +3597,6 @@ impl Simulation {
             .iter()
             .any(|target| Self::nav_ref_targets_expired(target, expired_id));
 
-        let clear_capture_target = listener.capture_target == Some(expired_id);
         let clear_c4_plant = listener
             .c4_plant
             .as_ref()
@@ -3668,7 +3632,6 @@ impl Simulation {
             || clear_suspended_nav_com
             || clear_nav_com
             || prune_nav_queue
-            || clear_capture_target
             || clear_c4_plant
             || clear_dock
             || clear_airfield
@@ -3702,9 +3665,6 @@ impl Simulation {
                 .navigation
                 .nav_queue
                 .retain(|target| !Self::nav_ref_targets_expired(target, expired_id));
-        }
-        if clear_capture_target {
-            listener.capture_target = None;
         }
         if clear_c4_plant {
             listener.c4_plant = None;

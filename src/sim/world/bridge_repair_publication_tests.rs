@@ -667,7 +667,7 @@ fn production_fresh_head_and_raw_history_match_original_walk_producer() {
 // The legacy global-repair tests below now start at an admitted completed
 // Walk head. Actual command traversal is covered above; these cases isolate
 // PerCell's publication and live Logic-vector continuation.
-fn ready_repair_fixture(
+pub(in crate::sim::world) fn ready_repair_fixture(
     overlay: Option<u8>,
 ) -> (
     Simulation,
@@ -702,7 +702,7 @@ fn ready_repair_fixture(
     (sim, rules, registry, hut)
 }
 
-fn ready_engineer(
+pub(in crate::sim::world) fn ready_engineer(
     sim: &mut Simulation,
     rules: &RuleSet,
     registry: &crate::map::overlay_types::OverlayTypeRegistry,
@@ -728,7 +728,6 @@ fn ready_engineer(
     .unwrap();
     let e = sim.substrate.entities.get_mut(id).unwrap();
     e.navigation.nav_com = Some(NavTargetRef::Building { id: hut });
-    e.capture_target = Some(hut);
     let head = DriveCoord::cell(16, 15, 0);
     e.locomotor
         .as_mut()
@@ -746,7 +745,7 @@ fn ready_engineer(
     id
 }
 
-fn repair_frame(
+pub(in crate::sim::world) fn repair_frame(
     sim: &mut Simulation,
     rules: &RuleSet,
     registry: &crate::map::overlay_types::OverlayTypeRegistry,
@@ -1479,7 +1478,7 @@ fn hut_queries_pending_uninit_and_active_tube_exit_before_other_gates() {
     e.lifecycle.in_limbo = true;
     e.locomotor.as_mut().unwrap().set_step_head(Some(head));
     assert!(
-        !sim.scatter_bridge_hut(hut, &rules, Some(&registry))
+        !sim.scatter_building_infantry(hut, &rules, Some(&registry))
             .unwrap()
     );
     let dummy = sim

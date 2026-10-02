@@ -154,6 +154,8 @@ impl MapCaptureProfile {
                         | Command::ForceAttackCell { .. }
                         | Command::QueueProduction { .. }
                         | Command::PlaceReadyBuilding { .. }
+                        | Command::CaptureBuilding { .. }
+                        | Command::ToggleRepair { .. }
                 ),
                 "command is outside the map observation's ordinary order coverage"
             );
@@ -1198,6 +1200,10 @@ mod tests {
                 "payload": {"QueueProduction": {"type_id": 41}}},
             {"issue_after_step": 1, "owner": "Computer1",
                 "payload": {"PlaceReadyBuilding": {"type_id": 41, "rx": 87, "ry": 53}}},
+            {"issue_after_step": 2, "owner": "Computer1",
+                "payload": {"CaptureBuilding": {"engineer_id": 7, "target_building_id": 9}}},
+            {"issue_after_step": 2, "owner": "Computer1",
+                "payload": {"ToggleRepair": {"entity_id": 9}}},
         ]);
         let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
         profile.validate().unwrap();
@@ -1205,6 +1211,11 @@ mod tests {
         for invalid_id in [json!("GAPOWR"), json!(true), json!(1.5), json!(u64::MAX)] {
             let mut invalid = value.clone();
             invalid["commands"][0]["payload"]["QueueProduction"]["type_id"] = invalid_id;
+            assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
+        }
+        for invalid_id in [json!("ENGINEER"), json!(true), json!(1.5), json!(-1)] {
+            let mut invalid = value.clone();
+            invalid["commands"][2]["payload"]["CaptureBuilding"]["engineer_id"] = invalid_id;
             assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
         }
         value["commands"][1]["payload"]["PlaceReadyBuilding"]["ignored"] = json!(true);

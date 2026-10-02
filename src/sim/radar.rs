@@ -27,20 +27,14 @@ use crate::sim::world::Simulation;
 /// supplies its preferred local owner. Native's earlier, separate spy-radar
 /// blackout gate has no Rust state/writer yet and remains unsupported. The
 /// existing power-blackout timer is not that gate and must not replace it.
-pub fn has_radar_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> bool {
+pub fn has_radar_for_owner(sim: &Simulation, _rules: &RuleSet, owner: &str) -> bool {
     let Some(owner_id) = sim.interner.get(owner) else {
         return false;
     };
     if sim.session.free_radar {
         return true;
     }
-    crate::sim::power_system::has_active_radar(
-        &sim.substrate.entities,
-        &sim.power_states,
-        rules,
-        owner_id,
-        &sim.interner,
-    )
+    crate::sim::power_system::has_active_radar(&sim.power_states, owner_id)
 }
 
 /// Native runtime radar event type (`CreateRadarEvent @ 0x0065FA70`'s ECX).
@@ -161,15 +155,20 @@ mod tests {
             let power = case["power_output_drain"].as_array().unwrap();
             let output = power[0].as_i64().unwrap() as i32;
             let drain = power[1].as_i64().unwrap() as i32;
-            sim.power_states.insert(
+            let mut state = crate::sim::power_system::PowerState::default();
+            state.total_output = output;
+            state.total_drain = drain;
+            state.is_low_power = output < drain;
+            crate::sim::power_system::assess_house_radar_projection(
+                &mut state,
+                &sim.substrate.entities,
+                &[],
+                &rules,
                 owner,
-                crate::sim::power_system::PowerState {
-                    total_output: output,
-                    total_drain: drain,
-                    is_low_power: output < drain,
-                    ..Default::default()
-                },
+                &sim.interner,
+                false,
             );
+            sim.power_states.insert(owner, state);
             assert_eq!(
                 has_radar_for_owner(&sim, &rules, "Americans"),
                 case["available"].as_u64().unwrap() != 0,
@@ -191,6 +190,7 @@ mod tests {
             &mut sim.substrate.entities,
             &rules,
             &sim.interner,
+            0,
         );
         let owner = sim.interner.get("Americans").unwrap();
         assert!(sim.power_states[&owner].is_low_power);
@@ -200,7 +200,7 @@ mod tests {
         sim.power_states
             .get_mut(&owner)
             .unwrap()
-            .power_blackout_remaining = 100;
+            .start_blackout(0, 100);
         assert!(
             has_radar_for_owner(&sim, &rules, "Americans"),
             "power outage is not native radar outage"
@@ -221,6 +221,7 @@ mod tests {
             &mut sim.substrate.entities,
             &rules,
             &sim.interner,
+            0,
         );
         assert!(has_radar_for_owner(&sim, &rules, "Americans"));
     }
@@ -237,6 +238,7 @@ mod tests {
             &mut sim.substrate.entities,
             &rules,
             &sim.interner,
+            0,
         );
         assert!(!has_radar_for_owner(&sim, &rules, "Americans"));
     }
@@ -256,6 +258,7 @@ mod tests {
             &mut sim.substrate.entities,
             &rules,
             &sim.interner,
+            0,
         );
 
         assert!(

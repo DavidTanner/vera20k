@@ -45,8 +45,6 @@
 //!   (the app's `audible_to` gate), which is `IsHumanPlayer` outside
 //!   campaigns; in a campaign it reads `+0x1EC`/`+0x1ED` instead (dormant
 //!   while campaigns do not launch).
-//! - `TechnoClass::EngineerRepair`'s `ToggleRepair(0)` (`0x00701448`): VERA has
-//!   no engineer building repair.
 //! - The REPAIR event resolves any target (`0x004C6ED5`) and needs only its
 //!   `+0x90`; VERA's command also requires the sender to own the building.
 //! - `UnitClass::Deploy` marks the deployed building AI-repairable when its
@@ -131,6 +129,51 @@ pub fn toggle_repair(
             Some([owner, owner]),
             &position,
         ));
+    }
+    true
+}
+
+/// `TechnoClass::EngineerRepair @ 0x00701410` (vt+40C). Restore actual+6C
+/// and estimated+70 independently to live Strength. The Building-only tail
+/// stops paid repair, transitions its owned art slots and plays the resolved
+/// AudioVisual/BuildingRepairedSound at GetCoords(false), in that order.
+///
+/// This does not sample Building+544 or invalidate House power: original
+/// 440042..440074 owns that later building-visit boundary. Mark(2) at70141A
+/// requests presentation redraw; it does not write either health sample or
+/// House dirty flag. Executable comparisons: engineer_repair_joined.
+pub(crate) fn engineer_repair(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
+    let Some(strength) = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+        .map(|object| object.strength)
+    else {
+        return false;
+    };
+    let Some(entity) = sim.substrate.entities.get_mut(id) else {
+        return false;
+    };
+    entity.health.current = strength;
+    entity.estimated_health.reset(strength);
+    if entity.category != EntityCategory::Structure {
+        return true;
+    }
+    toggle_repair(sim, rules, id, RepairControl::Stop);
+    sim.refresh_building_damage_state(id, rules);
+    if let Some(sound) = rules.general.building_repaired_sound.clone()
+        && let Some(entity) = sim.substrate.entities.get(id)
+    {
+        let coord = crate::sim::movement::ground_pose::object_get_coords(
+            entity,
+            sim.resolved_terrain.as_ref(),
+        );
+        let mut position = entity.position.clone();
+        crate::sim::movement::ground_pose::set_position_world_xy(&mut position, [coord.x, coord.y]);
+        position.exact_z_leptons = Some(coord.z);
+        sim.sound_events
+            .push(SimSoundEvent::voc_at(sound, &position));
     }
     true
 }

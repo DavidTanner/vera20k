@@ -123,11 +123,9 @@ impl Simulation {
     /// ahead in Logic order. The fall and landing's Scenario draws then move
     /// by a frame. Frequency follows kills through those deferred lanes.
     ///
-    /// RESIDUAL (score): a second kill in the fall runs native `RecordKill @
-    /// 0x00702D40` again, which books the loss, the kill and the points twice;
-    /// VERA books the first kill only (`combat::record_kill_credit`). Trigger:
-    /// splash on a falling Rocketeer. Effect: the score screen's counts.
-    /// Frequency: rare (a two-second fall). Risk: none to the simulation.
+    /// Each exact-zero callback in the fall reaches the shared immediate
+    /// RecordKill702D40 owner again. Retained attribution does not suppress a
+    /// later native callback or defer its House statistics until UnInit.
     pub(crate) fn begin_infantry_receiver_death(
         &mut self,
         id: u64,

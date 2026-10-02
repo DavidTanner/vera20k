@@ -542,15 +542,10 @@ pub struct GameEntity {
     /// House credited with destroying this object, captured at the instant its
     /// health reached zero. gamemd's kill-record step receives the actual killer
     /// at the moment of destruction; infantry linger in the logic vector through
-    /// a death animation, so this field is that moment, recorded once.
+    /// a death animation, so this observation retains the actual callback's
+    /// attribution. It does not defer or suppress the native score callback.
     #[serde(skip)]
     pub killed_by: Option<InternedId>,
-    /// Score value this object's destruction is worth to `killed_by`, resolved at
-    /// the same instant from the type's `Cost=` and this object's veterancy.
-    /// Resolved at capture time because the rules are in hand there and the
-    /// veterancy is still the value it died at.
-    #[serde(skip)]
-    pub kill_award_points: i32,
     /// Type's `DontScore=`, copied in at spawn so the score bookkeeping and the
     /// house counts (`house_tracking`) can honor it without a `RuleSet`
     /// borrow — the same reason `foundation` is copied. Persisted: a count
@@ -624,9 +619,9 @@ pub struct GameEntity {
     /// Parsed InfantryType occupation capability used by capture-target expiry.
     #[serde(default)]
     pub occupier: bool,
-    /// Rust bookkeeping that makes the UnInit-time score record
-    /// (`Simulation::record_destruction_once`) exactly-once. This does not
-    /// stand in for native-alive or `dying`.
+    /// Rust guard suppressing extra UnInit accounting after an actual shared
+    /// RecordTheKill callback. Native callbacks themselves may record again.
+    /// This does not stand in for native-alive or `dying`.
     #[serde(default)]
     pub destruction_recorded: bool,
     /// Bucket membership in gamemd's independent 20 x 20 airborne-object
@@ -827,6 +822,12 @@ pub struct GameEntity {
     /// Sole native Building+534/+538 body state; construction/sale use the
     /// existing private StageClass and MissionLeaf ready byte.
     building_body: Option<crate::sim::building_construction::BuildingBody>,
+    /// Building+544: actual health sampled by440042..440074. Constructor
+    /// 43B78F and successful ordinary Unlimbo440D2D reset it to zero.
+    /// A repair changes actual health without invalidating its House. The
+    /// next sample does invalidate it; any other native dirty writer can
+    /// expose that live health through an earlier House assessment.
+    building_power_health_sample: i32,
     /// Sale route metadata, never a second mission, ready byte or timer.
     building_sale: Option<crate::sim::building_construction::BuildingDown>,
     /// `BuildingClass+0x550..+0x558`, the wait before the building's
@@ -1066,11 +1067,10 @@ pub struct GameEntity {
     /// When Some, the renderer should use this type's VXL model instead of `type_ref`.
     /// Set during refinery unloading (UnloadingClass= from rules.ini).
     pub display_type_override: Option<InternedId>,
-    /// Target building for an engineer-arrival intent. Set by
-    /// `CaptureBuilding`, cleared on arrival or if the target is lost.
-    /// BridgeRepairHut entry instead reads authoritative NavCom/attack Target
-    /// in Infantry PerCell2; this intent cannot drive a second hut movement path.
-    pub capture_target: Option<u64>,
+    /// Techno+338, constructor6F2EC8=-1. Infantry capture519F94 stores its
+    /// native InfantryType array index. Building consumers are diagnostics;
+    /// the Unit hijacker lifecycle is a separate mechanism.
+    capture_infantry_type_index: i32,
     /// Active C4 plant intent on this attacker. Set by `Command::PlantC4`,
     /// cleared on arrival (after the building's pending detonation is set),
     /// when the player retasks the unit, or when the target is lost.
@@ -1598,7 +1598,6 @@ impl GameEntity {
         Self {
             killed_by: None,
             cached_spatial_threat: None,
-            kill_award_points: 0,
             dont_score: false,
             tracking_facts: Default::default(),
             stable_id,
@@ -1684,6 +1683,7 @@ impl GameEntity {
             turret_anim_frame: 0,
             weapon_burst: Default::default(),
             building_body: (category == EntityCategory::Structure).then(Default::default),
+            building_power_health_sample: 0,
             building_sale: None,
             ai_placement_timer: crate::sim::timer::CdTimer::default(),
             building_damage_state_active: false,
@@ -1753,7 +1753,7 @@ impl GameEntity {
             passenger_role: PassengerRole::None,
             weapon_override: None,
             display_type_override: None,
-            capture_target: None,
+            capture_infantry_type_index: -1,
             c4_plant: None,
             pending_c4_detonation: None,
             has_been_captured: false,
@@ -2077,6 +2077,44 @@ impl GameEntity {
         self.building_body
             .as_ref()
             .is_some_and(|body| body.state() == 0)
+    }
+
+    /// Building440042..440074: compare actual health, publish the new sample
+    /// and tell the host to invalidate the owning House's derived state.
+    pub(crate) fn sample_building_health_for_power(&mut self) -> bool {
+        if self.category != EntityCategory::Structure
+            || self.building_power_health_sample == self.health.current
+        {
+            return false;
+        }
+        self.building_power_health_sample = self.health.current;
+        true
+    }
+
+    pub(crate) fn reset_building_health_sample_at_unlimbo(&mut self) {
+        if self.category == EntityCategory::Structure {
+            self.building_power_health_sample = 0;
+        }
+    }
+
+    pub(crate) fn building_power_health_sample(&self) -> Option<i32> {
+        (self.category == EntityCategory::Structure).then_some(self.building_power_health_sample)
+    }
+
+    pub(crate) fn hash_building_health_sample(&self, hasher: &mut impl std::hash::Hasher) {
+        if let Some(sample) = self.building_power_health_sample() {
+            use std::hash::Hash;
+            sample.hash(hasher);
+        }
+    }
+
+    pub(crate) fn record_infantry_capture_type(&mut self, native_index: i32) {
+        self.capture_infantry_type_index = native_index;
+    }
+
+    pub(crate) fn hash_capture_infantry_type(&self, hasher: &mut impl std::hash::Hasher) {
+        use std::hash::Hash;
+        self.capture_infantry_type_index.hash(hasher);
     }
 }
 

@@ -1192,7 +1192,6 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
     ));
 
     let engineer = sim.substrate.entities.get(engineer_id).unwrap();
-    assert_eq!(engineer.capture_target, Some(target_id));
     assert_eq!(
         engineer.navigation.nav_com,
         Some(NavTargetRef::building(target_id))

@@ -82,6 +82,27 @@ pub(super) fn record_replay_diagnostic(
             "team_override":sim.team_script_vm.member_avoids_threats(actor.stable_id()),
         })).collect::<Vec<_>>(),
         "team_count":sim.team_script_vm.teams_in_order().count(),
+        // House/Factory receipts observe shared consumers through their existing
+        // owners, including private power state; they never mutate the replay.
+        "engineer_house_attribution":{
+            "house_order":sim.session.house_order.iter().map(|owner|sim.resolve(*owner)).collect::<Vec<_>>(),
+            "current_house":sim.session.current_house.map(|owner|sim.resolve(owner)),
+            "houses":sim.houses.iter().map(|(owner,house)|serde_json::json!({
+                "owner":sim.resolve(*owner),"stats":house.stats,"economy":house.economy,
+                "capture_notified":house.building_capture_notified(),
+                "discovered_by_current_house":house.discovered_by_current_house(),
+                "building_order":house.base_projection.buildings(),
+                "eva_funds_timer":house.eva_funds_timer,"eva_low_power_guard":house.eva_low_power_guard,
+                "repair_delay_bits":house.repair_delay.to_bits(),
+                "repair_start_latch":house.repair_start_latch,"repair_latch_timer":house.repair_latch_timer,
+            })).collect::<Vec<_>>(),
+            "power_states":sim.power_states.iter().map(|(owner,state)|serde_json::json!({
+                "owner":sim.resolve(*owner),"state":state,
+            })).collect::<Vec<_>>(),
+            "factory_count":sim.production.factory_shadow.len(),
+            "factories":sim.production.factory_shadow.holders_insertion_ordered().into_iter()
+                .map(|(holder,factory)|serde_json::json!({"holder":holder,"factory":factory})).collect::<Vec<_>>(),
+        },
     });
     serde_json::to_writer(
         &mut *writer,
@@ -485,7 +506,12 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // commands, lifecycle/Logic and three RNG streams/draws/callers.
 // Rust-only receipt: tools/spatial_oracle/building_construction_replay/receipt.json.
 // Previous: 0xC3551AAB44B60A29. Native proof is the separate construction corpus.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x82E9_0C5A_A33D_9A44;
+// 2026-10-02 Engineer/House retained state (Rust-only hash composition):
+// The same-binary four-feed control reproduces the preceding main pin.
+// All819 complete current/control boundaries match except tick hashes,
+// including House/Factory state and three full RNG streams/draws/callers.
+// Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x851C_57C5_76CA_991A;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

@@ -462,7 +462,10 @@ mod tests {
             state.total_output = i["output"].as_i64().unwrap() as i32;
             state.total_drain = 100;
             state.is_low_power = state.total_output < 100;
-            state.power_blackout_remaining = i["outage"].as_u64().unwrap() as u32;
+            state.start_blackout(
+                sim.session.binary_frame,
+                i["outage"].as_u64().unwrap() as u32,
+            );
             sim.visit_building_operational(id, &rules);
             let entity = sim.entities().get(id).unwrap();
             assert_eq!(

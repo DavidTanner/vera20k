@@ -73,8 +73,10 @@ fn resolve_hut_orders(
     );
     assert_eq!(best, Some(engineer));
     assert_eq!(
-        sim.engineer_bridge_hut_action(engineer, hut, rules),
-        Some(repairable_span)
+        sim.engineer_building_action(engineer, hut, rules),
+        Some(crate::sim::world::EngineerBuildingAction::Repair(
+            repairable_span
+        ))
     );
     let feedback =
         capability_cursor_for_hover(sim, &original_selection, best, &hover, Some(rules), None);
@@ -94,8 +96,8 @@ fn resolve_hut_orders(
             .unwrap();
         let expected_action = row["output"]["action"].as_u64().unwrap();
         let expected_feedback = match expected_action {
-            29 => CursorFeedbackKind::BridgeRepair(true),
-            32 => CursorFeedbackKind::BridgeRepair(false),
+            29 => CursorFeedbackKind::RepairAction(true),
+            32 => CursorFeedbackKind::RepairAction(false),
             other => panic!("unrepresented native hut action {other}"),
         };
         assert_eq!(feedback, expected_feedback, "{name}");
@@ -255,7 +257,8 @@ fn probe_healthy_hut(
             .entities()
             .get(engineer)
             .unwrap()
-            .capture_target
+            .navigation
+            .nav_com
             .is_none()
     );
 }

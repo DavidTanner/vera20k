@@ -15,11 +15,11 @@
 //! - `techno_ai.rs` — per-object AI dispatch within each turn
 
 pub(crate) mod authored_load_host;
-mod bridge_hut_scatter;
 pub(crate) mod bridge_orchestrator;
 #[cfg(test)]
 pub(crate) mod bridge_test_evidence;
 pub(crate) mod building_anim;
+mod building_scatter;
 mod cell_content;
 mod crash;
 #[cfg(test)]
@@ -55,6 +55,7 @@ mod move_cell_input;
 mod navigation;
 mod object_turn;
 pub use frame_error::FrameAdvanceError;
+pub(crate) use world_orders::EngineerBuildingAction;
 mod shroud_refresh;
 mod track_cell_recalc;
 #[cfg(test)]
@@ -82,6 +83,10 @@ mod aircraft_deployment_tests;
 mod crash_tests;
 #[cfg(test)]
 mod damage_consequence_tests;
+#[cfg(test)]
+mod engineer_building_repair_tests;
+#[cfg(test)]
+mod engineer_power_consumer_tests;
 #[cfg(test)]
 mod eva_dispatch_tests;
 #[cfg(test)]
@@ -4392,7 +4397,9 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return;
         };
-        if let Some(house) = self.houses.get_mut(&entity.owner()) {
+        let owner = entity.owner();
+        let structure = entity.category == EntityCategory::Structure;
+        if let Some(house) = self.houses.get_mut(&owner) {
             let factors = house.cost_factors();
             if adding {
                 house.tracking.added_to_game(entity, &factors);
@@ -4400,6 +4407,69 @@ impl Simulation {
                 house.tracking.removed_from_game(entity, &factors);
             }
         }
+        // Removed_From_Game5027FA invalidates power for a Building even
+        // before its DontScore gate. Ordinary Added_To_Game has no matching
+        // writer; first GrandOpening owns that invalidation.
+        if !adding && structure {
+            self.invalidate_house_power(owner, false);
+        }
+    }
+
+    /// Private retained House dirty bytes, shared by their represented native
+    /// writers. An absent House cannot acquire derived state from a callback.
+    pub(crate) fn invalidate_house_power(&mut self, owner: InternedId, radar: bool) {
+        if self.houses.contains_key(&owner) {
+            self.power_states
+                .entry(owner)
+                .or_default()
+                .invalidate(radar);
+        }
+    }
+
+    /// BuildingAI440042..44006C samples live health before the common Techno
+    /// tail. Repair701410 itself leaves both House dirty bytes untouched.
+    pub(super) fn sample_building_health_for_house_update(&mut self, id: u64) {
+        let owner = self.substrate.entities.get_mut(id).and_then(|entity| {
+            entity
+                .sample_building_health_for_power()
+                .then_some(entity.owner())
+        });
+        if let Some(owner) = owner {
+            self.invalidate_house_power(owner, true);
+        }
+    }
+
+    /// House4F844B..4F8506: assess dirty power, rewrite all owned Factory
+    /// rates without touching timers, then refresh the radar projection.
+    /// Numeric/order evidence: the engineer-repair native consumer packet.
+    fn assess_house_derived_state(&mut self, owner: InternedId, rules: &RuleSet) {
+        if !self.houses.contains_key(&owner) {
+            return;
+        }
+        let state = self.power_states.entry(owner).or_default();
+        let (assessed, _) = power_system::assess_house_power(
+            state,
+            &self.substrate.entities,
+            rules,
+            owner,
+            &self.interner,
+            self.session.binary_frame,
+        );
+        if assessed {
+            production::refresh_factory_rates_for_house(self, rules, owner);
+        }
+        let buildings = self.houses[&owner].base_projection.buildings();
+        power_system::assess_house_radar_projection(
+            self.power_states
+                .get_mut(&owner)
+                .expect("represented House power state"),
+            &self.substrate.entities,
+            buildings,
+            rules,
+            owner,
+            &self.interner,
+            self.session.free_radar,
+        );
     }
 
     /// Append one successfully committed BuildConst Building to its owning
@@ -4624,10 +4694,50 @@ impl Simulation {
         if on_map {
             self.update_house_presence(stable_id, false);
         }
+        //7015A8 calls RecordTheKill(NULL) while the old owner is still
+        //installed, then7015D2 adds CostOf(oldHouse) to the new owner's
+        //score even when DontScore suppressed RecordTheKill itself.
+        if let Some(rules) = rules {
+            self.record_the_kill(
+                stable_id,
+                None,
+                None,
+                crate::sim::combat::KillCallback::OwnerChange,
+                rules,
+            );
+            let cost = self
+                .substrate
+                .entities
+                .get(stable_id)
+                .and_then(|entity| self.object_type(entity.type_ref(), rules))
+                .map_or(0, |object| self.cost_of(old_owner, object, rules));
+            if let Some(house) = self.houses.get_mut(&new_owner) {
+                house.stats.add_score(cost);
+            }
+        }
         self.update_house_tracking(
             stable_id,
             crate::sim::house_tracking::HouseTracking::remove_tracking,
         );
+        //7015E6 receives the NEW House before the object owner changes.
+        //Call the one native Add_Tracking owner with that explicit receiver.
+        if let Some(entity) = self.substrate.entities.get(stable_id)
+            && let Some(house) = self.houses.get_mut(&new_owner)
+        {
+            house.tracking.add_tracking(entity);
+            //701607..70164D: DontScore suppresses this captured-object
+            //count, not the preceding old-House price addition.
+            if !entity.dont_score {
+                house.stats.record_kill(category);
+            }
+        }
+        //701674 Mark(UP),70D4A0 detach and701691 Mark(DOWN) all precede
+        //the owner store. PlaceDown's Cell discovery therefore observes the
+        //old House and can dirty its radar as well as its power.
+        let mark_context = rules.map_or_else(UninitContext::default, UninitContext::with_rules);
+        if on_map {
+            self.unmark_entity_remove(stable_id, mark_context);
+        }
         // `TechnoClass::ChangeOwner` runs the live-detach targeting sweep next,
         // before the house swap: everything shooting at this object is released
         // while the object still belongs to its old house. Engineer capture and
@@ -4635,6 +4745,9 @@ impl Simulation {
         // at a building stops the instant the building changes hands instead of
         // shooting at what is now its own structure.
         self.stop_all_targeting_on_detach(stable_id, rules);
+        if on_map {
+            self.mark_entity_put(stable_id, mark_context);
+        }
         //Techno701701..719 removes from the old owner using the retained
         //Cell. The same Cell survives the owner write for701774..780.
         let spatial_threat_cell =
@@ -4643,10 +4756,6 @@ impl Simulation {
         if let Some(rules) = rules {
             self.spatial_threat_after_owner_change(stable_id, spatial_threat_cell, rules);
         }
-        self.update_house_tracking(
-            stable_id,
-            crate::sim::house_tracking::HouseTracking::add_tracking,
-        );
         if category == EntityCategory::Structure {
             self.move_house_base_tracking(stable_id, old_owner, new_owner);
         }
@@ -4757,12 +4866,6 @@ impl Simulation {
     ///   released Foot of such a type. Effect: Guard instead of AreaGuard.
     ///   Frequency: nil in stock (every `DefaultToGuardArea=` type is
     ///   psionic-immune and no stock house sets GUARD_AREA).
-    /// - The Building leaf's `0x00447780(1)` re-selects the building's idle
-    ///   animation state (BState `+0x534`/`+0x538`, the anim timer
-    ///   `+0xF8..+0x10C`); VERA keeps the current one. Trigger: engineer
-    ///   capture, Yuri Prime capture or garrison transfer. Effect: the
-    ///   captured building's animation state (presentation). Frequency: per
-    ///   building capture.
     /// - Aircraft Enter_Idle_Mode (`0x004176F0`) is not ported (no stock
     ///   aircraft can be captured); the trailing `+0x423`-gated
     ///   `vt+0x498`/`vt+0x494` and `vt+0x488(0, 0, 0, 0, 0)` calls are
@@ -4853,6 +4956,15 @@ impl Simulation {
                 queue_foot_enter_idle_mode(self, stable_id, rules);
             }
             EntityCategory::Structure => {
+                // Building Enter_Idle_Mode44D6E0 calls447780(1) before
+                // queuing Guard. The existing body owner retains+538 and
+                // applies it during the next Building visit.
+                if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                    entity.begin_building_body(
+                        crate::sim::building_construction::BuildingBodyMode::Idle,
+                        now as i32,
+                    );
+                }
                 let _ = self.mission_queue_exact(
                     stable_id,
                     MissionId::from_known(MissionType::Guard),
@@ -5551,57 +5663,36 @@ impl Simulation {
         self.apply_active_vision_structures(&effects);
     }
 
-    /// Visit the live House registry for the early House-update mechanisms.
+    /// Early mechanisms inside one reached House update.
     ///
     /// gamemd-derived: `LogicClass__PerTickUpdate @ 0x0055AFB0`, House loop
     /// `0x0055B68D..0x0055B6B1`, walks the House array forward, skips nulls,
     /// and reloads the live count after every `HouseClass__Update @ 0x004F8440`
     /// call. The bounded Rust mechanisms are anger decay before the verified
     /// AI-activation block `0x004F8564..0x004F85B7`.
-    fn update_houses_anger_and_activation(&mut self, rules: Option<&RuleSet>) {
+    fn update_house_anger_and_activation(&mut self, owner: InternedId, rules: Option<&RuleSet>) {
         let current_frame = self.session.binary_frame as i32;
         let game_mode_nonzero = self.session.game_mode_nonzero;
         let iq_production = rules.map(|rules| rules.general.iq_production);
-        let mut index = 0;
-        while index < self.session.house_order.len() {
-            let owner = self.session.house_order[index];
-            let represented = self.houses.contains_key(&owner);
-            if let Some(house) = self.houses.get_mut(&owner) {
-                house_strategy::decay_anger_scores(house, &self.session.house_order, current_frame);
-            }
-            if represented {
-                #[cfg(test)]
-                self.trace_house_ai_activation_order(
-                    HouseAiActivationOrderTestEvent::HouseAngerDecay(owner),
-                );
-                if let Some(iq_production) = iq_production {
-                    self.houses
-                        .get_mut(&owner)
-                        .expect("represented House remains registered during its update")
-                        .update_ai_activation(game_mode_nonzero, iq_production);
-                    #[cfg(test)]
-                    self.trace_house_ai_activation_order(
-                        HouseAiActivationOrderTestEvent::HouseActivation(owner),
-                    );
-                }
+        let represented = self.houses.contains_key(&owner);
+        if let Some(house) = self.houses.get_mut(&owner) {
+            house_strategy::decay_anger_scores(house, &self.session.house_order, current_frame);
+        }
+        if represented {
+            #[cfg(test)]
+            self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::HouseAngerDecay(
+                owner,
+            ));
+            if let Some(iq_production) = iq_production {
                 self.houses
                     .get_mut(&owner)
                     .expect("represented House remains registered during its update")
-                    .release_repair_latch(self.session.binary_frame);
-
+                    .update_ai_activation(game_mode_nonzero, iq_production);
                 #[cfg(test)]
-                if self
-                    .house_update_append_after_test
-                    .is_some_and(|(after_owner, _)| after_owner == owner)
-                {
-                    let (_, appended_owner) = self
-                        .house_update_append_after_test
-                        .take()
-                        .expect("append injection was just matched");
-                    self.session.house_order.push(appended_owner);
-                }
+                self.trace_house_ai_activation_order(
+                    HouseAiActivationOrderTestEvent::HouseActivation(owner),
+                );
             }
-            index += 1;
         }
     }
 
@@ -5796,7 +5887,6 @@ impl Simulation {
         // House update follows optional vision reconciliation and precedes both
         // defeat processing and strategic AI command generation. Native anger
         // decay is unconditional; only the activation substep needs RuleSet.
-        self.update_houses_anger_and_activation(rules);
         // --- Phase 8: Defeat detection, strategy and building choice ---
         // gamemd evaluates each house's defeat before its AI manage/produce
         // step. The gate reads the house's tracking counts (`house_defeat.rs`),
@@ -6260,20 +6350,6 @@ impl Simulation {
         self.refresh_fog(&vision_config, rules);
 
         if let Some(rules) = rules {
-            // --- Phase 4: Power ---
-            // DEPENDS ON: entity health (damaged buildings produce less power).
-            // PRODUCES: power_states used by combat (cloaking) and production (build speed).
-            let _power_events = power_system::tick_power_states(
-                &mut self.power_states,
-                &mut self.substrate.entities,
-                rules,
-                &self.interner,
-            );
-            // --- Phase 4.1: HouseClass::Update EVA advice ---
-            // DEPENDS ON: this tick's power totals and the house wallets.
-            // PRODUCES: `SimSoundEvent::HouseEva` (funds nag / low power) and
-            //   the per-house timer/guard state folded by the hash.
-            crate::sim::house_eva::tick_house_eva(self, rules);
             // --- Phase 4.5: Superweapons ---
             // DEPENDS ON: power state (suspend/resume gating).
             // PRODUCES: AnimClass bolts and explosions, damage to entities, sound_events.
@@ -6295,15 +6371,13 @@ impl Simulation {
             // movement. Units also committed Facing_Update. This tail hosts
             // the remaining classes;
             // tick_turret_rotation excludes Units whose facing is already owned.
-            // tick_c4_plants runs alongside tick_capture_orders — both convert
-            // walk-up intent into a state change on arrival. Detonation damage
+            // tick_c4_plants hosts the pending C4 detonation. Its damage
             // is applied here so combat-pre conditions (invulnerability, dying)
             // are honored before tick_combat runs.
             // PRODUCES: damage, deaths, bridge damage, fire events. Ordered
             // ReceiveDamage retaliation is committed inline.
-            // Repair and consumption occur synchronously at Walk's completed
-            // step in the object pass. The capture system excludes repair huts.
-            spawned_entities |= self.tick_capture_orders(rules, &tube_turn_owned_ids);
+            // Engineer repair, capture and consumption occur synchronously
+            // at Walk's completed step in the object pass.
             let c4_outcome = self.tick_c4_plants_with_overlay_registry(
                 rules,
                 overlay_registry,

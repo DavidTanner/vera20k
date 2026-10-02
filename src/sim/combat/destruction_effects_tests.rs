@@ -586,12 +586,12 @@ fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
                 "native737F7A still unmarks the hull"
             );
             let owner = retained.owner();
-            assert_eq!(sim.houses[&owner].stats.units_lost, 1);
+            assert_eq!(sim.houses[&owner].stats.units_lost(), 1);
             // An area dispatch rejects the now-unmarked hull (489A80).
             // The native repeated-hit packet is a direct Unit737C90 call.
             let before_area = sim.rng_state();
             kill(&mut sim, &rules, ship);
-            assert_eq!(sim.houses[&owner].stats.units_lost, 1);
+            assert_eq!(sim.houses[&owner].stats.units_lost(), 1);
             assert_eq!(sim.rng_state(), before_area);
             assert_eq!(sim.scenario_rng.state(), replay.state());
 
@@ -642,7 +642,7 @@ fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
             assert_eq!(u64::from(retained.lifecycle.object_alive), repeat["alive"]);
             assert_eq!(u64::from(retained.sinking.is_active()), repeat["sinking"]);
             assert_eq!(
-                u64::from(sim.houses[&owner].stats.units_lost),
+                u64::from(sim.houses[&owner].stats.units_lost()),
                 repeat["losses"]
             );
             assert!(!retained.lifecycle.cell_marked);
@@ -666,7 +666,7 @@ fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
                 .position
                 .exact_z_leptons = Some(-400);
             assert!(sim.tick_ship_sinking(ship, &rules));
-            assert_eq!(sim.houses[&owner].stats.units_lost, 3);
+            assert_eq!(sim.houses[&owner].stats.units_lost(), 3);
             assert!(sim.substrate.pending_delete.contains(&ship));
             assert!(!sim.substrate.entities.get(ship).unwrap().in_logic_vector);
         } else {

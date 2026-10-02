@@ -7,7 +7,7 @@
 //! per-object AI host promotes it via Ready→Commence on its next update. The
 //! legacy `Option<T>` machines stay the behavior drivers; the per-site field
 //! clears (`attack_target`/`order_intent`/`dock_state`/`c4_plant`/
-//! `capture_target`/aircraft dock phase) stay inline at the call site — the
+//! aircraft dock phase) stay inline at the call site — the
 //! sites cancel different field subsets, so they cannot be folded into a fixed
 //! teardown without diverging.
 

@@ -22,8 +22,7 @@ fn empty_rules() -> RuleSet {
 
 /// Rules with a costed buildable vehicle (`GRIZZLY`, Cost 700) so the per-step charge
 /// machine actually moves credits — `empty_rules()` has no type, so cost resolves to 0
-/// and the charge/cancel/stall paths are inert. The cost (700) divides to a rate of 12
-/// and a clean per-step ladder. `BEAG` (Cost 600) gives a second category for the
+/// and the charge/cancel/stall paths are inert. `BEAG` (Cost 600) gives a second category for the
 /// same-tick two-Begin ordering test.
 fn vehicle_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
@@ -32,8 +31,9 @@ fn vehicle_rules() -> RuleSet {
         // (Factory=UnitType) is the producing factory the revalidation requires.
         "[VehicleTypes]\n0=GRIZZLY\n[AircraftTypes]\n0=BEAG\n\
          [BuildingTypes]\n0=GAWEAP\n\
-         [GRIZZLY]\nCost=700\nTechLevel=1\n[BEAG]\nCost=600\nTechLevel=1\n\
-         [GAWEAP]\nFactory=UnitType\n",
+         [GRIZZLY]\nCost=700\nStrength=300\nTechLevel=1\n\
+         [BEAG]\nCost=600\nStrength=200\nTechLevel=1\n\
+         [GAWEAP]\nStrength=1000\nFactory=UnitType\n",
     ))
     .expect("vehicle rules parse")
 }
@@ -56,7 +56,14 @@ fn spawn_war_factory(sim: &mut Simulation, owner: InternedId) {
     e.owner = owner;
     e.type_ref = gaweap;
     e.lifecycle.in_limbo = false;
+    e.in_playfield = true;
+    e.finish_building_construction_for_test();
+    e.building_actually_placed = true;
     sim.substrate.entities.insert(e);
+    sim.add_entity_occupancy(1);
+    sim.append_house_base_building_for_test(1);
+    sim.substrate.next_stable_object_id = 2;
+    sim.session.house_order.push(owner);
 }
 
 /// Arm a build directly on the FactoryRegistry (the P5d queue-of-record). Replaces the
@@ -499,8 +506,15 @@ fn single_wallet_charged_once_no_double_debit() {
     sim.houses
         .insert(owner, HouseState::new(owner, 0, None, true, 1_000_000, 10));
     let ty = sim.interner.intern("GRIZZLY");
-    arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
     spawn_war_factory(&mut sim, owner); // P6: a real factory so the build is not abandoned
+    // A live build needs Begin_Production's object constructor and timer start;
+    // the queue-only `arm` fixture deliberately supplies neither.
+    assert!(crate::sim::production::enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "GRIZZLY"
+    ));
     let full_cost = sim
         .object_type(ty, &rules)
         .map(|o| o.cost.max(0))
@@ -540,9 +554,13 @@ fn stall_on_no_funds_holds() {
     let owner = sim.interner.intern("Americans");
     sim.houses
         .insert(owner, HouseState::new(owner, 0, None, true, 0, 10)); // 0 credits
-    let ty = sim.interner.intern("GRIZZLY");
-    arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
     spawn_war_factory(&mut sim, owner); // P6: factory present so the build STALLS (not abandoned)
+    assert!(crate::sim::production::enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "GRIZZLY"
+    ));
     for _ in 0..200 {
         sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
@@ -567,8 +585,13 @@ fn cancel_one_partial_refund_to_house_credits() {
     sim.houses
         .insert(owner, HouseState::new(owner, 0, None, true, 1_000_000, 10));
     let ty = sim.interner.intern("GRIZZLY");
-    arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
     spawn_war_factory(&mut sim, owner); // P6: factory present so the build is not abandoned
+    assert!(crate::sim::production::enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "GRIZZLY"
+    ));
     let full_cost = sim
         .object_type(ty, &rules)
         .map(|o| o.cost.max(0))

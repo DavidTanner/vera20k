@@ -258,7 +258,12 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // commands, lifecycle/Logic and three RNG streams/draws/callers.
 // Rust-only receipt: tools/spatial_oracle/building_construction_replay/receipt.json.
 // Previous: 0x67C241E9F79C8F43. Native proof is the separate construction corpus.
-const SLICE6_BASELINE_HASH: u64 = 0x8DD6_9432_8921_5676;
+// 2026-10-02 Engineer/House retained state (Rust-only hash composition):
+// The same-binary four-feed control reproduces the preceding main pin.
+// All819 complete current/control boundaries match except tick hashes,
+// including House/Factory state and three full RNG streams/draws/callers.
+// Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
+const SLICE6_BASELINE_HASH: u64 = 0x1AD1_4029_10CE_62D8;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

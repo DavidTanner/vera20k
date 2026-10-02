@@ -40,12 +40,17 @@ pub fn launch(
     // 1. Spawn invoke animation.
     super::spawn_cell_anim(sim, rules, &anim_name, target_rx, target_ry, true);
 
-    // 2. Trigger power blackout on owner (take max to never shorten existing).
-    if let Some(power_state) = sim.power_states.get_mut(&owner) {
-        power_state.power_blackout_remaining = power_state.power_blackout_remaining.max(blackout);
+    // 6CD18B calls the shared House50BC90 replacement setter, even when
+    // its duration is shorter than the previous outage. The native owner
+    // House already exists; Rust's derived power entry may still be lazy.
+    if sim.houses.contains_key(&owner) {
+        sim.power_states
+            .entry(owner)
+            .or_default()
+            .start_blackout(current_frame, blackout);
     } else {
         log::warn!(
-            "ForceShield: no PowerState for owner '{}', skipping blackout",
+            "ForceShield: no House for owner '{}', skipping blackout",
             sim.interner.resolve(owner)
         );
     }

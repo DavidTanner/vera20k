@@ -640,24 +640,16 @@ fn native_decide_unit_fate_corpus() {
             .unwrap()
             .economy
             .credits = int("money");
-        sim.power_states.insert(
-            controller_house,
-            crate::sim::power_system::PowerState {
-                total_output: int("produced"),
-                total_drain: int("drained"),
-                ..Default::default()
-            },
-        );
+        let mut power_state = crate::sim::power_system::PowerState::default();
+        power_state.total_output = int("produced");
+        power_state.total_drain = int("drained");
+        sim.power_states.insert(controller_house, power_state);
         let russians = sim.interner.get("Russians").unwrap();
         sim.houses.get_mut(&russians).unwrap().economy.credits = 0;
-        sim.power_states.insert(
-            russians,
-            crate::sim::power_system::PowerState {
-                total_output: 0,
-                total_drain: 100,
-                ..Default::default()
-            },
-        );
+        let mut power_state = crate::sim::power_system::PowerState::default();
+        power_state.total_output = 0;
+        power_state.total_drain = 100;
+        sim.power_states.insert(russians, power_state);
         let seed = input["seed"].as_u64().unwrap();
         sim.scenario_rng = SimRng::new(seed);
         assert_ne!(queued_mission(&sim, unit), Some(MissionType::Hunt));

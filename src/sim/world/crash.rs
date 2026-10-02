@@ -101,7 +101,13 @@ impl Simulation {
             // `0x004DEC72` zeroes Health (Foot+6AD, a Magnetron lift, would
             // keep it; VERA never sets it).
             let killer = attacker.and_then(|a| self.substrate.entities.get(a).map(|k| k.owner()));
-            self.record_the_kill(id, attacker, killer, rules);
+            self.record_the_kill(
+                id,
+                attacker,
+                killer,
+                crate::sim::combat::KillCallback::Terminal,
+                rules,
+            );
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 entity.health.current = 0;
             }
@@ -513,7 +519,13 @@ impl Simulation {
         if let Some(entity) = self.substrate.entities.get_mut(victim) {
             entity.health.current = 0;
         }
-        self.record_the_kill(victim, attacker, killer, rules);
+        self.record_the_kill(
+            victim,
+            attacker,
+            killer,
+            crate::sim::combat::KillCallback::Terminal,
+            rules,
+        );
         self.uninit_with_rules(victim, rules);
     }
 }

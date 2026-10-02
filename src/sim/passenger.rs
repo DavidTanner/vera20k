@@ -23,6 +23,7 @@ pub(crate) use departure::{
 
 use std::collections::BTreeMap;
 
+use crate::map::entities::EntityCategory;
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::game_entity::GameEntity;
@@ -602,6 +603,26 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
             .and_then(|pax| pax.mind_control.controller())
         {
             sim.free_unit(controller, pax_id, rules);
+        }
+        //Infantry51A37C/Unit73A30E invalidates positive ExtraPower
+        //absorbers before AddPassenger. Ordinary mobile transports do not
+        //write this House byte. The shared boarding owner handles both.
+        if let Some(owner) = sim
+            .substrate
+            .entities
+            .get(transport_id)
+            .and_then(|transport| {
+                rules
+                    .object(sim.interner.resolve(transport.type_ref()))
+                    .and_then(|object| {
+                        (transport.category == EntityCategory::Structure
+                            && object.extra_power > 0
+                            && (object.infantry_absorb || object.unit_absorb))
+                            .then_some(transport.owner())
+                    })
+            })
+        {
+            sim.invalidate_house_power(owner, false);
         }
         // CargoClass::AddPassenger conceals the passenger before splicing it
         // into the cargo chain. Techno Limbo owns BREAK, Mark removal, and

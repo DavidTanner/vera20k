@@ -150,6 +150,14 @@ fn discovery_owner_entry_and_lifetime_match_original_history_blocks() {
         "../../../../tools/spatial_oracle/jumpjet_entry_discovery.json"
     ))
     .unwrap();
+    let foreign = native
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| {
+            row["input"]["foreign_constructor"] == true && row["input"]["repeat_entry"] == true
+        })
+        .unwrap();
     let bytes = |history: crate::sim::game_entity::TechnoDiscoveryHistory| {
         [
             u8::from(history.owned_by_current_house),
@@ -260,8 +268,16 @@ fn discovery_owner_entry_and_lifetime_match_original_history_blocks() {
                 .is_some()
         );
         assert_eq!(
-            bytes(restored.substrate.entities.get(id).unwrap().discovery),
-            [0, 0, 1]
+            serde_json::json!(bytes(
+                restored.substrate.entities.get(id).unwrap().discovery
+            )),
+            foreign["output"]["put"]["object"],
+            "full reentry includes CellPUT47E8A0 -> Discovered6F4960(PlayerPtr); the original entry/sight boundary alone has [0,0,1]"
+        );
+        assert_eq!(
+            serde_json::json!(restored.houses[&other].discovered_by_current_house()),
+            foreign["output"]["put"]["houses"][1]["byte_1f4"],
+            "first current-viewer discovery notifies the object's noncurrent owner"
         );
     }
 }
@@ -404,7 +420,7 @@ fn first_nonhuman_owner_entry_queues_hunt_from_ambush_but_repeat_does_not() {
             });
         crate::sim::mission::authority::queue_entity_mission_deferred(entity, ambush);
         assert_eq!(entity.mission.effective(), ambush);
-        sim.record_foot_owner_discovery(id);
+        sim.record_techno_discovery(id, other);
         let entity = sim.substrate.entities.get(id).unwrap();
         assert!(entity.discovery.discovered_by_other_house);
         assert_eq!(entity.mission.queued(), if first { hunt } else { ambush });

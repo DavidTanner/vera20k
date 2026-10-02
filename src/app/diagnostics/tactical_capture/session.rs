@@ -883,8 +883,9 @@ impl TacticalCaptureSession {
         let (power_output, power_drain) = production::power_balance_for_owner(sim, rules, &owner);
         let power_state = sim.power_states.get(&owner_id);
         let power_authority_sufficient = power_output >= power_drain
-            && power_state
-                .is_some_and(|power| !power.is_low_power && power.power_blackout_remaining == 0);
+            && power_state.is_some_and(|power| {
+                !power.is_low_power && power.blackout_remaining(sim.session.binary_frame) == 0
+            });
         let radar_authority_active = crate::sim::radar::has_radar_for_owner(sim, rules, &owner);
         let radar_online = state
             .match_state
@@ -1036,7 +1037,7 @@ impl TacticalCaptureSession {
         let power_ready = power.is_some_and(|power| {
             power.total_output >= power.total_drain
                 && !power.is_low_power
-                && power.power_blackout_remaining == 0
+                && power.blackout_remaining(sim.session.binary_frame) == 0
         });
         let radar_authority = state
             .rules()
@@ -1246,7 +1247,7 @@ impl TacticalCaptureSession {
                 "output": power.total_output,
                 "drain": power.total_drain,
                 "is_low_power": power.is_low_power,
-                "blackout_remaining": power.power_blackout_remaining,
+                "blackout_remaining": power.blackout_remaining(sim.session.binary_frame),
             },
             "radar": {
                 "authority_active": state.rules().is_some_and(|rules| {

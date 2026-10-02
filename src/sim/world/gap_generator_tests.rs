@@ -80,6 +80,7 @@ fn power(sim: &mut Simulation, rules: &RuleSet) {
         &mut sim.substrate.entities,
         rules,
         &sim.interner,
+        sim.session.binary_frame,
     );
 }
 

@@ -160,7 +160,7 @@ fn gsi_04_18_spy_sat_candidate_is_independent_of_low_or_offline_power() {
     insert_structure(&mut sim, 1, owner, "GASPYSAT", 6);
     let power = sim.power_states.entry(owner).or_default();
     power.is_low_power = true;
-    power.power_blackout_remaining = 30;
+    power.start_blackout(sim.session.binary_frame, 30);
 
     sim.reconcile_active_vision_structures(&rules);
 

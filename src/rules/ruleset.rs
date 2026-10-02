@@ -962,6 +962,10 @@ pub struct GeneralRules {
     /// Rules+6C8 ctor665FE2=-1; AudioVisual Construction at66A97F..66A9B7
     /// uses ReadString128/Find7514D0 and keeps the prior index on invalid input.
     pub construction_sound: Option<String>,
+    /// Rules+1C4 ctor6658DA=-1; AudioVisual BuildingRepairedSound at
+    /// 669C68..669CA3 uses ReadString128/Find7514D0 with prior-ID retention.
+    /// Techno701494 plays it after an Engineer restores a building's health.
+    pub building_repaired_sound: Option<String>,
     /// `[AudioVisual] BombTickingSound=` (`RulesClass+0x20C`): the looping
     /// tick at a bombed object (`BombListClass::UpdateAll @ 0x00438BF0`).
     pub bomb_ticking_sound: Option<String>,
@@ -1134,6 +1138,10 @@ pub struct GeneralRules {
     pub third_crew: Option<String>,
     pub technician: Option<String>,
     pub engineer_infantry: Option<String>,
+    /// Rules+17F8: constructor667793 initializes1.0f; General671DF7
+    /// reads EngineerCaptureLevel with ReadDouble and stores an f32. The
+    /// Infantry object-action threshold is independent of arrival repair.
+    pub engineer_capture_level: NativeF32Bits,
     /// `CrewEscape=` (Rules `+0x5C0`, `ReadDouble`), the chance a crewed
     /// vehicle's crew escapes. Constructor default 0.5 (`0x00665E11..0x00665E17`).
     pub crew_escape: crate::util::native_x87::NativeF64Bits,
@@ -1768,6 +1776,7 @@ impl Default for GeneralRules {
             impact_land_sound: None,
             sinking_sound: None,
             construction_sound: None,
+            building_repaired_sound: None,
             bomb_ticking_sound: None,
             bomb_attach_sound: None,
             damage_delay_minutes: 1.0,
@@ -1806,6 +1815,7 @@ impl Default for GeneralRules {
             third_crew: None,
             technician: None,
             engineer_infantry: None,
+            engineer_capture_level: NativeF32Bits::ONE,
             crew_escape: crate::util::native_x87::NativeF64Bits::from_bits(0x3fe0_0000_0000_0000),
             refund_percent: crate::util::native_x87::NativeF64Bits::from_bits(
                 0x3fe0_0000_0000_0000,
@@ -2613,6 +2623,7 @@ impl GeneralRules {
             // Constructor -1 until the fixed SOUNDMD catalog resolves it.
             sinking_sound: None,
             construction_sound: None,
+            building_repaired_sound: None,
             bomb_ticking_sound,
             bomb_attach_sound,
             warp_in: AnimRef {
@@ -2704,6 +2715,8 @@ impl GeneralRules {
             third_crew: general.read_name("ThirdCrew", 0x80).map(str::to_owned),
             technician: general.read_name("Technician", 0x80).map(str::to_owned),
             engineer_infantry: general.read_name("Engineer", 0x80).map(str::to_owned),
+            engineer_capture_level: general
+                .read_double_to_float("EngineerCaptureLevel", defaults.engineer_capture_level),
             crew_escape: crate::util::native_x87::NativeF64Bits::from_bits(
                 general
                     .read_double("CrewEscape", f64::from_bits(defaults.crew_escape.bits()))
@@ -3245,6 +3258,9 @@ impl RuleSet {
         self.general.construction_sound = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "Construction"));
+        self.general.building_repaired_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "BuildingRepairedSound"));
         for object in &mut self.object_list {
             let section = ini.section(&object.id);
             if object.category == crate::rules::object_type::ObjectCategory::Building {

@@ -277,10 +277,11 @@ pub(crate) enum CursorFeedbackKind {
     Deploy,
     /// Enter cursor — garrison, capture, board transport, sabotage.
     Enter,
-    /// Engineer repair cursor — engineer hovering a damaged friendly building.
-    EngineerRepair,
-    /// Engineer bridge-hut object action29/32: normal Repair/NoRepair rows.
-    BridgeRepair(bool),
+    /// Engineer action28 damage cursor. Its uncommon authored-threshold
+    /// display route remains outside the ordinary repair cursor proof.
+    EngineerDamage,
+    /// Engineer object action29/32: shared normal Repair/NoRepair rows.
+    RepairAction(bool),
     /// C4 plant cursor — SEAL/Tanya/PTROOP hovering a CanC4 enemy structure
     /// (action 0x10 in gamemd, distinct mouse.shp frames from Enter).
     Demolish,

@@ -813,8 +813,8 @@ fn iron_curtain_command_forces_authored_strength_and_attributes_retained_deaths(
     // The ordinary sequence still owns the object; the existing shared UnInit
     // terminal owns score publication. Verify the attributed receipt survives it.
     sim.uninit_with_rules(wounded, &rules);
-    assert_eq!(sim.houses[&owner].stats.units_killed, 1);
-    assert_eq!(sim.houses[&enemy].stats.units_lost, 1);
+    assert_eq!(sim.houses[&owner].stats.units_killed(), 1);
+    assert_eq!(sim.houses[&enemy].stats.units_lost(), 1);
     assert!(
         sim.substrate
             .entities

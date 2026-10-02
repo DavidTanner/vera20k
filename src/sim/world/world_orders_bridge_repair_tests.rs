@@ -20,9 +20,8 @@ use crate::sim::components::{Health, NavTargetRef, PendingC4Detonation};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::timer::CdTimer;
 
-/// Minimal 20x20 flat terrain so the repair path's `(bs, terrain)` gate
-/// succeeds. has_damaged_data=false → the embedded flood-fill clear is a
-/// no-op, leaving the repair test focused on damage-state transitions.
+/// Minimal 20x20 synthetic terrain for command admission and C4 fallback
+/// controls. Live ordinary repair uses the shared resident entry fixture.
 fn dummy_resolved_terrain() -> ResolvedTerrainGrid {
     crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| ResolvedTerrainCell {
         ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
@@ -422,7 +421,6 @@ fn capture_building_command_accepts_collapsed_noncapturable_hut_for_every_relati
             "relation={relation}"
         );
         let actor = sim.substrate.entities.get(engineer).unwrap();
-        assert_eq!(actor.capture_target, Some(cabhut), "relation={relation}");
         assert_eq!(
             actor.navigation.nav_com,
             Some(NavTargetRef::building(cabhut)),
@@ -441,12 +439,27 @@ fn capture_building_command_accepts_collapsed_noncapturable_hut_for_every_relati
     }
 }
 
-/// The friendship exception is specific to the bridge-hut destination;
-/// ordinary capturable buildings retain the enemy-only admission rule.
+/// Native51E49E..51E637 returns repair action29 for ordinary friendly damaged
+/// buildings; Infantry51F190 delivers it through Capture mission8. This
+/// remains admitted with BridgeRepairHut=false, independently of hut repair.
+/// Native execution: engineer_repair_joined own_damaged/allied_damaged.
 #[test]
-fn ordinary_friendly_capture_is_not_enabled_by_hut_friendship_exception() {
+fn ordinary_friendly_repair_uses_capture_event_without_hut_exception() {
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/engineer_repair_joined.json"
+    ))
+    .unwrap();
+    let strength = native["native_building_inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|building| building["name"] == "GAPOWR")
+        .unwrap()["strength"]
+        .as_i64()
+        .unwrap();
     let rules = RuleSet::from_ini(&IniFile::from_str(
         &BRIDGE_REPAIR_TEST_INI
+            .replace("Strength=200", &format!("Strength={strength}"))
             .replace("BridgeRepairHut=yes", "BridgeRepairHut=no\nCapturable=yes"),
     ))
     .unwrap();
@@ -454,6 +467,11 @@ fn ordinary_friendly_capture_is_not_enabled_by_hut_friendship_exception() {
         let mut sim = Simulation::with_seed(0x51E49E);
         sim.resolve_type_handles(&rules);
         sim.install_resolved_terrain_for_new_map(dummy_resolved_terrain());
+        let owner = sim.interner.intern("Americans");
+        sim.houses.insert(
+            owner,
+            crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+        );
         let target = sim
             .spawn_object_at_height("CABHUT", target_owner, 9, 10, 0, 0, &rules)
             .unwrap();
@@ -462,14 +480,45 @@ fn ordinary_friendly_capture_is_not_enabled_by_hut_friendship_exception() {
             .entry("AMERICANS".into())
             .or_default()
             .insert("SOVIETS".into());
-        let before = sim.state_hash();
+        let row = native["routes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|route| {
+                route["name"]
+                    == if target_owner == "Americans" {
+                        "own_damaged"
+                    } else {
+                        "allied_damaged"
+                    }
+            })
+            .unwrap();
+        // Supply the already-damaged prior from the native witness. Only its
+        // ordinary building flags/HP and action/event admission are compared.
+        sim.substrate
+            .entities
+            .get_mut(target)
+            .unwrap()
+            .health
+            .current = row["arrivals"][0]["before"]["building"]["actual_hp"]
+            .as_i64()
+            .unwrap() as i32;
+        assert!(!rules.object("CABHUT").unwrap().bridge_repair_hut);
         let rng = (
             sim.scenario_rng.logical_state(),
             sim.main_rng.logical_state(),
             sim.mapgen_rng.logical_state(),
         );
+        let before = sim.state_hash();
+        assert_eq!(row["commands"][0]["action"], 29);
+        assert_eq!(
+            sim.engineer_building_action(engineer, target, &rules),
+            Some(EngineerBuildingAction::Repair(true)),
+            "target_owner={target_owner}"
+        );
+        assert_eq!(sim.state_hash(), before, "object-action query is read-only");
         assert!(
-            !sim.apply_command(
+            sim.apply_command(
                 "Americans",
                 &Command::CaptureBuilding {
                     engineer_id: engineer,
@@ -479,7 +528,17 @@ fn ordinary_friendly_capture_is_not_enabled_by_hut_friendship_exception() {
             ),
             "target_owner={target_owner}"
         );
-        assert_eq!(sim.state_hash(), before);
+        let actor = sim.substrate.entities.get(engineer).unwrap();
+        assert_eq!(
+            actor.navigation.nav_com,
+            Some(NavTargetRef::building(target)),
+            "target_owner={target_owner}"
+        );
+        assert_eq!(
+            i64::from(actor.mission.queued().raw()),
+            row["commands"][0]["delivered_mission"].as_i64().unwrap(),
+            "native event requests Capture"
+        );
         assert_eq!(
             (
                 sim.scenario_rng.logical_state(),
@@ -556,7 +615,6 @@ fn queued_hut_capture_survives_repair_before_event_execution() {
             "relation={relation}"
         );
         let actor = sim.substrate.entities.get(engineer).unwrap();
-        assert_eq!(actor.capture_target, Some(hut));
         assert_eq!(actor.navigation.nav_com, Some(NavTargetRef::building(hut)));
         assert_eq!(
             (
@@ -895,57 +953,33 @@ fn c4_on_cabhut_high_terminal_overlay_0xe8_uses_overlay_first_scan() {
 
 // ---- G4 damaged-variant lifecycle integration tests ------------------------
 
-/// 20×20 terrain with has_damaged_data=true and a common final_tile_index on
-/// every cell. Lets the damaged-variant flood-fill propagate freely across
-/// any bridge cells the test defines.
-fn damaged_data_resolved_terrain(tile_id: i32) -> ResolvedTerrainGrid {
-    crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| ResolvedTerrainCell {
-        source_tile_index: tile_id,
-        final_tile_index: tile_id,
-        bridge_facts: crate::map::bridge_facts::BridgeCellFacts {
-            raw_flags: if ry == 10 && matches!(rx, 10 | 11) {
-                crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF
-            } else {
-                0
-            },
-            ..Default::default()
-        },
-        has_damaged_data: true,
-        ..crate::map::resolved_terrain::test_flat_cell(rx, ry)
-    })
-}
-
 #[test]
 fn ordinary_engineer_overlay_repair_preserves_pavement_damage() {
-    let (mut sim, rules) = build_sim();
+    use super::bridge_orchestrator::{ready_engineer, ready_repair_fixture, repair_frame};
+    let (mut sim, rules, registry, hut) = ready_repair_fixture(Some(231));
+    let engineer = ready_engineer(&mut sim, &rules, &registry, hut);
     // Admit damaged-data tiles so an accidental pavement clear would
     // affect this fixture; native ordinary overlay repair must preserve it.
-    sim.resolved_terrain = Some(damaged_data_resolved_terrain(42));
-    let cabhut = spawn_cabhut(&mut sim, 9, 10);
-    let engineer = spawn_engineer(&mut sim, 9, 10);
-    sim.substrate
-        .entities
-        .get_mut(engineer)
-        .unwrap()
-        .capture_target = Some(cabhut);
-    seed_destroyed_bridge(&mut sim);
-    // Pre-flag every bridge cell as damaged-variant.
-    {
-        for &(rx, ry) in BRIDGE_CELLS {
-            sim.resolved_terrain
-                .as_mut()
-                .unwrap()
-                .cell_mut(rx, ry)
-                .unwrap()
-                .bridge_facts
-                .raw_flags |= 0x2000;
-        }
+    for &(rx, ry) in LIVE_REPAIR_STRIP {
+        let cell = sim
+            .resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(rx, ry)
+            .unwrap();
+        cell.has_damaged_data = true;
+        cell.bridge_facts.raw_flags |= crate::map::bridge_pavement::DAMAGED_PAVEMENT;
     }
 
-    step(&mut sim, &rules);
+    assert!(repair_frame(&mut sim, &rules, &registry).bridge_state_changed);
+    assert!(sim.substrate.entities.get(engineer).is_none());
 
     let terrain = sim.resolved_terrain.as_ref().unwrap();
-    for &(rx, ry) in BRIDGE_CELLS {
+    for &(rx, ry) in LIVE_REPAIR_STRIP {
+        assert_eq!(
+            terrain.cell(rx, ry).unwrap().bridge_facts.overlay_id,
+            Some(0xce)
+        );
         assert!(
             terrain.pavement_damaged_at(rx, ry),
             "cell ({rx},{ry}) pavement damage must survive native ordinary overlay repair"
@@ -955,45 +989,37 @@ fn ordinary_engineer_overlay_repair_preserves_pavement_damage() {
 
 #[test]
 fn ordinary_engineer_overlay_repair_does_not_clear_neighbor_pavement() {
-    let (mut sim, rules) = build_sim();
-    sim.resolved_terrain = Some(damaged_data_resolved_terrain(42));
-    let cabhut = spawn_cabhut(&mut sim, 9, 10);
-    let engineer = spawn_engineer(&mut sim, 9, 10);
-    sim.substrate
-        .entities
-        .get_mut(engineer)
-        .unwrap()
-        .capture_target = Some(cabhut);
-    seed_destroyed_bridge(&mut sim);
+    use super::bridge_orchestrator::{ready_engineer, ready_repair_fixture, repair_frame};
+    let (mut sim, rules, registry, hut) = ready_repair_fixture(Some(231));
+    let engineer = ready_engineer(&mut sim, &rules, &registry, hut);
 
-    // Add an off-span bridge cell at (10, 14): same tile_id as BRIDGE_CELLS,
-    // adjacent to (10, 13). NOT a member of the repaired span, so it is NOT
+    // The neighbor shares the span's tile identity and damaged-data gate.
+    // It lies outside the repaired strip, adjacent to (17, 16), so it is NOT
     // visited by the ordinary overlay repair walk. An erroneous connected
     // pavement clear would reach it from the adjacent span cell.
-    {
-        for &(rx, ry) in BRIDGE_CELLS {
-            sim.resolved_terrain
-                .as_mut()
-                .unwrap()
-                .cell_mut(rx, ry)
-                .unwrap()
-                .bridge_facts
-                .raw_flags |= 0x2000;
-        }
+    for &(rx, ry) in LIVE_REPAIR_STRIP.iter().chain(&[(17, 17)]) {
+        let cell = sim
+            .resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(rx, ry)
+            .unwrap();
+        cell.has_damaged_data = true;
+        cell.bridge_facts.raw_flags |= crate::map::bridge_pavement::DAMAGED_PAVEMENT;
     }
 
-    sim.resolved_terrain
-        .as_mut()
-        .unwrap()
-        .cell_mut(10, 14)
-        .unwrap()
-        .bridge_facts
-        .raw_flags |= 0x2000;
-    step(&mut sim, &rules);
+    assert!(repair_frame(&mut sim, &rules, &registry).bridge_state_changed);
+    assert!(sim.substrate.entities.get(engineer).is_none());
 
     let terrain = sim.resolved_terrain.as_ref().unwrap();
+    for &(rx, ry) in LIVE_REPAIR_STRIP {
+        assert_eq!(
+            terrain.cell(rx, ry).unwrap().bridge_facts.overlay_id,
+            Some(0xce)
+        );
+    }
     assert!(
-        terrain.pavement_damaged_at(10, 14),
+        terrain.pavement_damaged_at(17, 17),
         "ordinary overlay repair must not flood-clear off-span pavement"
     );
 }

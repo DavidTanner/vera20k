@@ -1396,24 +1396,6 @@ fn engineer_capture_orders(
     ) {
         return None;
     }
-    if matches!(hover.kind, HoverTargetKind::FriendlyStructure)
-        && !cursor_owner(sim, rules, selected, hover.stable_id).is_some_and(|id| {
-            sim.engineer_bridge_hut_action(id, hover.stable_id, rules)
-                .is_some()
-        })
-    {
-        return None;
-    }
-    let building = sim.entities().get(hover.stable_id)?;
-    if building.category != EntityCategory::Structure {
-        return None;
-    }
-    let object = rules.object(sim.interner.resolve(building.type_ref()))?;
-    let owner = sim.interner.resolve(building.owner());
-    let ordinary_capture = matches!(hover.kind, HoverTargetKind::EnemyStructure)
-        && object.capturable
-        && !(object.can_be_occupied
-            && (owner.eq_ignore_ascii_case("neutral") || owner.eq_ignore_ascii_case("special")));
     let mut consumed = false;
     let mut orders = Vec::new();
     selected.retain(|&id| {
@@ -1427,14 +1409,18 @@ fn engineer_capture_orders(
         {
             return true;
         }
-        let admitted =
-            if let Some(action) = sim.engineer_bridge_hut_action(id, hover.stable_id, rules) {
-                action
-            } else if ordinary_capture {
-                true
-            } else {
-                return true;
-            };
+        let Some(action) = sim.engineer_building_action(id, hover.stable_id, rules) else {
+            return true;
+        };
+        use crate::sim::world::EngineerBuildingAction;
+        let admitted = matches!(
+            action,
+            EngineerBuildingAction::Capture
+                | EngineerBuildingAction::Damage
+                | EngineerBuildingAction::Repair(true)
+        );
+        //Hospital/grinder Enter producers still require their own entry
+        //mechanism. They must not silently enqueue ordinary capture/repair.
         consumed = true;
         // Foot4D7716 calls Infantry+A0/Techno700C40 before enqueue.
         if admitted && sim.infantry_player_controllable(id, rules) {
@@ -2486,7 +2472,7 @@ mod tests {
                 sim.mapgen_rng.logical_state(),
             );
             assert_eq!(
-                sim.engineer_bridge_hut_action(engineer, hover.stable_id, &rules),
+                sim.engineer_building_action(engineer, hover.stable_id, &rules),
                 None
             );
             assert_eq!(
@@ -2561,7 +2547,7 @@ mod tests {
                 sim.mapgen_rng.logical_state(),
             );
             assert_eq!(
-                sim.engineer_bridge_hut_action(engineer, hover.stable_id, &rules),
+                sim.engineer_building_action(engineer, hover.stable_id, &rules),
                 None,
                 "gate={gate}"
             );
@@ -2714,8 +2700,8 @@ mod tests {
                 "{name}"
             );
             assert_eq!(
-                sim.engineer_bridge_hut_action(engineer, hover.stable_id, &rules),
-                Some(true),
+                sim.engineer_building_action(engineer, hover.stable_id, &rules),
+                Some(crate::sim::world::EngineerBuildingAction::Repair(true)),
                 "control admission must not change WhatAction: {name}"
             );
             let mut selected = vec![engineer];
@@ -2835,3 +2821,7 @@ mod selection_dispatch_tests;
 #[cfg(test)]
 #[path = "context_order_retail_bridge_tests.rs"]
 mod retail_bridge_tests;
+
+#[cfg(test)]
+#[path = "context_order_retail_engineer_tests.rs"]
+mod retail_engineer_tests;

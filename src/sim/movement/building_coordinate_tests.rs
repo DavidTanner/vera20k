@@ -191,7 +191,6 @@ fn building_navigation_capture_command_preserves_the_native_dock_coordinate() {
     );
     assert!(accepted);
     let engineer = sim.substrate.entities.get(1).unwrap();
-    assert_eq!(engineer.capture_target, Some(2));
     assert_eq!(
         engineer.navigation.nav_com,
         Some(NavTargetRef::Building { id: 2 })

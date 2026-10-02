@@ -79,7 +79,7 @@ fn native_sink_suffix_preserves_cadence_coordinates_and_complete_rng_states() {
         );
         assert_eq!(terminal, expected["endpoint"] == "0x4de5d0", "{name}");
         assert_eq!(
-            sim.houses[&entity.owner()].stats.units_lost,
+            sim.houses[&entity.owner()].stats.units_lost(),
             expected["owner_units_lost"].as_u64().unwrap() as u32,
             "{name}"
         );
@@ -173,7 +173,7 @@ fn sinking_state_is_hashed_and_survives_snapshot() {
             assert!(!hull.lifecycle.object_alive);
             assert!(hull.lifecycle.in_limbo);
             assert!(loaded.substrate.pending_delete.contains(&id));
-            assert_eq!(loaded.houses[&hull.owner()].stats.units_lost, 2);
+            assert_eq!(loaded.houses[&hull.owner()].stats.units_lost(), 2);
             return;
         }
     }

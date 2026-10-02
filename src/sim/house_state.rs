@@ -455,6 +455,22 @@ pub struct HouseState {
     /// live values also feed TerminalScoreSnapshot's Scenario RNG bound and
     /// participate in the deterministic hash from schema227.
     pub stats: MatchStatistics,
+    /// House+244: Engineer PerCell519F4F records that this House has had a
+    /// building captured. Constructor4F577D clears it, and the original
+    /// TEvent Evaluate71F0E1 reads it for event kind3 (tables71F328/71F350).
+    /// There is no clearing writer. Live Tag/TEvent polling remains a separate
+    /// trigger mechanism; retaining this prerequisite does not implement it.
+    #[serde(default)]
+    building_capture_notified: bool,
+    /// House+1F4: first discovery of this House's foreign object by PlayerPtr.
+    /// Constructor4F5716 clears it; TechnoDiscovered6F4A25 sets it and no
+    /// clearing writer exists. TEvent71F0FB reads it for event kind5, after
+    /// resolving the House by its CountryType index through502D30. Live
+    /// Tag/TEvent evaluation remains a separate trigger mechanism.
+    /// Native House CRC502D60 omits1F4. Like Techno41A/B/C this is a
+    /// client-relative retained observation and is excluded from peer hashing.
+    #[serde(default)]
+    discovered_by_current_house: bool,
     /// Sole credit balance and economy statistics; serialized and hashed.
     pub economy: Economy,
     /// Snapshot/hash authority for the Strategy emergency-state block.
@@ -550,6 +566,31 @@ pub struct HouseState {
 }
 
 impl HouseState {
+    /// The old House's notification before the arrival's Building ChangeOwner.
+    pub(crate) fn notify_building_capture(&mut self) {
+        self.building_capture_notified = true;
+    }
+
+    /// Retained input to original TEvent kind3, not current building ownership.
+    pub(crate) fn building_capture_notified(&self) -> bool {
+        self.building_capture_notified
+    }
+
+    pub(crate) fn notify_discovered_by_current_house(&mut self) {
+        self.discovered_by_current_house = true;
+    }
+
+    pub(crate) fn discovered_by_current_house(&self) -> bool {
+        self.discovered_by_current_house
+    }
+
+    pub(crate) fn hash_event_notifications(&self, hasher: &mut impl std::hash::Hasher) {
+        if self.building_capture_notified {
+            std::hash::Hash::hash(b"house-building-capture-notification-v1", hasher);
+            std::hash::Hash::hash(&self.building_capture_notified, hasher);
+        }
+    }
+
     pub(crate) fn spatial_threat_values(&self) -> &[i32] {
         self.spatial_threat.values()
     }
@@ -817,6 +858,8 @@ impl HouseState {
             enemy_house: None,
             waypoint_edge: 0,
             stats: MatchStatistics::default(),
+            building_capture_notified: false,
+            discovered_by_current_house: false,
             economy: Economy {
                 credits,
                 ..Economy::default()
@@ -848,20 +891,20 @@ impl HouseState {
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub struct MatchStatistics {
-    /// Non-building enemy objects this house destroyed.
-    pub units_killed: u32,
-    /// Enemy buildings this house destroyed.
-    pub buildings_killed: u32,
+    /// Non-building objects recorded as kills for this house, including allies.
+    units_killed: u32,
+    /// Buildings recorded as kills for this house, including captures.
+    buildings_killed: u32,
     /// Non-building objects of this house that were destroyed.
-    pub units_lost: u32,
+    units_lost: u32,
     /// Buildings of this house that were destroyed.
-    pub buildings_lost: u32,
+    buildings_lost: u32,
     /// Objects of this house that left their factory, `DontScore=` types
     /// excepted: placed buildings and delivered units
     /// (`production::factory_lifecycle::record_last_built`).
-    pub built: u32,
-    /// Score earned by destroying other houses' objects: the sum of each
-    /// victim's point value at the moment it died.
+    built: u32,
+    /// The kill and ChangeOwner feeders of House+54E8: RecordKill70300F adds
+    /// its award, and ChangeOwner7015D2 adds CostOf for the old House.
     ///
     /// gamemd keeps ONE score accumulator per house with two large feeders — the
     /// ore-deposit statistic and this kill-points stream — and the score screen
@@ -869,7 +912,7 @@ pub struct MatchStatistics {
     /// `Economy::harvested_credits`; this is the kill half, split out only so the
     /// hashed accumulator is not disturbed. Always read the two together through
     /// [`MatchStatistics::score`].
-    pub score_points: i32,
+    score_points: i32,
 }
 
 #[cfg(test)]
@@ -877,6 +920,82 @@ pub struct MatchStatistics {
 mod statistics_tests;
 
 impl MatchStatistics {
+    pub const fn units_killed(&self) -> u32 {
+        self.units_killed
+    }
+
+    pub const fn buildings_killed(&self) -> u32 {
+        self.buildings_killed
+    }
+
+    pub const fn units_lost(&self) -> u32 {
+        self.units_lost
+    }
+
+    pub const fn buildings_lost(&self) -> u32 {
+        self.buildings_lost
+    }
+
+    pub const fn built(&self) -> u32 {
+        self.built
+    }
+
+    pub const fn score_points(&self) -> i32 {
+        self.score_points
+    }
+
+    /// RecordKill70305C/7031A9 increment one native loss counter. Callers own
+    /// DontScore, Insignificant and sale admission; this owner only mutates it.
+    pub(crate) fn record_loss(&mut self, category: crate::map::entities::EntityCategory) {
+        let counter = if category == crate::map::entities::EntityCategory::Structure {
+            &mut self.buildings_lost
+        } else {
+            &mut self.units_lost
+        };
+        *counter = counter.wrapping_add(1);
+    }
+
+    /// RecordKill7030AC/7031DC and ChangeOwner70164D increment the kill table.
+    /// The existing total projection keeps their sum, rather than a second
+    /// per-house table. Both callers share its mutation and numeric semantics.
+    pub(crate) fn record_kill(&mut self, category: crate::map::entities::EntityCategory) {
+        let counter = if category == crate::map::entities::EntityCategory::Structure {
+            &mut self.buildings_killed
+        } else {
+            &mut self.units_killed
+        };
+        *counter = counter.wrapping_add(1);
+    }
+
+    /// Original ADD70300F/7015D0 keeps its signed 32-bit wrapped result.
+    pub(crate) fn add_score(&mut self, points: i32) {
+        self.score_points = self.score_points.wrapping_add(points);
+    }
+
+    /// The existing Record_Last_Built caller owns its DontScore admission.
+    pub(crate) fn record_built(&mut self) {
+        self.built = self.built.wrapping_add(1);
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn from_totals_for_test(
+        units_killed: u32,
+        buildings_killed: u32,
+        units_lost: u32,
+        buildings_lost: u32,
+        built: u32,
+        score_points: i32,
+    ) -> Self {
+        Self {
+            units_killed,
+            buildings_killed,
+            units_lost,
+            buildings_lost,
+            built,
+            score_points,
+        }
+    }
+
     /// Score-screen Kills column: units + buildings destroyed.
     pub const fn kills(&self) -> u32 {
         self.units_killed + self.buildings_killed

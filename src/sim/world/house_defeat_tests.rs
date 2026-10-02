@@ -420,7 +420,8 @@ fn losing_the_last_building_blows_up_the_army_next_frame() {
         "the army is blown up"
     );
     assert_eq!(
-        sim.houses[&houses[1]].stats.units_killed, 0,
+        sim.houses[&houses[1]].stats.units_killed(),
+        0,
         "no house is credited"
     );
     assert!(sim.substrate.entities.get(enemy_base).is_some());

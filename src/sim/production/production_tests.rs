@@ -537,6 +537,11 @@ pub(super) fn spawn_structure(
     sim.houses.entry(owner_id).or_insert_with(|| {
         crate::sim::house_state::HouseState::new(owner_id, 0, None, true, STARTING_CREDITS, 10)
     });
+    // LogicClass visits Houses through its constructor-ordered vector. Raw
+    // placed-building fixtures must admit their House as well as its storage.
+    if !sim.session.house_order.contains(&owner_id) {
+        sim.session.house_order.push(owner_id);
+    }
     let mut ge = crate::sim::game_entity::GameEntity::new_at_frame_zero_for_test(
         sid,
         rx,
@@ -1390,7 +1395,8 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     assert_eq!(sim.substrate.entities.len(), entity_count_before);
     assert_eq!(sim.owned_object_counts(americans).1, owned_units_before);
     assert_eq!(
-        sim.houses[&americans].stats.built, 0,
+        sim.houses[&americans].stats.built(),
+        0,
         "Record_Last_Built follows only a successful exit (0x004FB4B7)"
     );
 
@@ -1415,7 +1421,8 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
         "sentinel retry must not account for a second Unit"
     );
     assert_eq!(
-        sim.houses[&americans].stats.built, 0,
+        sim.houses[&americans].stats.built(),
+        0,
         "a refused retry records nothing"
     );
     assert_eq!(
@@ -1451,7 +1458,8 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     let delivered = sim.substrate.entities.get(held_id).unwrap();
     assert!(delivered.lifecycle.cell_marked && !delivered.lifecycle.in_limbo);
     assert_eq!(
-        sim.houses[&americans].stats.built, 1,
+        sim.houses[&americans].stats.built(),
+        1,
         "the successful retry records the delivered unit"
     );
     let promoted = sim
@@ -1481,7 +1489,8 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     );
     assert!(super::production_queue::tick_production(&mut sim, &rules,));
     assert_eq!(
-        sim.houses[&americans].stats.built, 2,
+        sim.houses[&americans].stats.built(),
+        2,
         "the promoted object's delivery records it"
     );
 }

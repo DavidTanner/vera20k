@@ -184,11 +184,13 @@ mod tests {
         // only its later death tail. Both first deaths therefore count now,
         // including TERROR while its Die2 sequence remains in Logic.
         assert_eq!(
-            sim.houses[&owner].stats.units_lost, 2,
+            sim.houses[&owner].stats.units_lost(),
+            2,
             "both fatal callbacks count; the zero-health GI revisit adds no loss"
         );
         assert_eq!(
-            sim.houses[&owner].stats.units_killed, 1,
+            sim.houses[&owner].stats.units_killed(),
+            1,
             "only TerrorBomb's first GI kill is credited"
         );
         assert!(sim.substrate.entities.get(gi).unwrap().destruction_recorded);
@@ -222,8 +224,8 @@ mod tests {
         assert!(!head.lifecycle.object_alive);
         assert!(head.destruction_recorded);
         assert!(!sim.live_object_order_snapshot().contains(&terror));
-        assert_eq!(sim.houses[&owner].stats.units_lost, 2);
-        assert_eq!(sim.houses[&owner].stats.units_killed, 1);
+        assert_eq!(sim.houses[&owner].stats.units_lost(), 2);
+        assert_eq!(sim.houses[&owner].stats.units_killed(), 1);
     }
 
     #[test]

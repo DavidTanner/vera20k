@@ -799,7 +799,7 @@ use crate::sim::world::Simulation;
 // single MissionLeaf ready byte. Building persists private body/queued mode
 // and type control, without BuildingUp's duplicate mission/clock/latch or
 // BuildingDown's duplicate ready/timer. Factory primary state is lifecycle-owned.
-const SNAPSHOT_VERSION: u32 = 278;
+const SNAPSHOT_VERSION: u32 = 279;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1636,16 +1636,7 @@ fn restore_object_references(
                 target_id,
             )?;
         }
-        if let Some(target_id) = entity.capture_target {
-            require_resolved_reference(
-                entity_ids.contains(&target_id),
-                "EntityStore",
-                entity_id,
-                "capture_target",
-                "EntityStore",
-                target_id,
-            )?;
-        }
+
         if let Some(manager) = entity.capture_manager.as_ref() {
             for target_id in manager.victims() {
                 require_resolved_reference(
@@ -3764,7 +3755,10 @@ mod tests {
         // 275 -> 276: each House saves its type's Speed*Mult.
         // 276 -> 277: retained native terrain animation probability and timer.
         // 277 -> 278: lifecycle-owned building body, ready, mission and primary.
-        assert_eq!(super::SNAPSHOT_VERSION, 278);
+        // 278 -> 279: native Building health sample; dirty House assessment,
+        // retained House discovery/capture notifications and Engineer identity;
+        // and its anchored power-blackout clock/radar projection.
+        assert_eq!(super::SNAPSHOT_VERSION, 279);
     }
 
     #[test]

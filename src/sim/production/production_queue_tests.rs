@@ -366,6 +366,7 @@ fn build_time_inputs_read_owner_power_and_matching_factories() {
         &mut sim.substrate.entities,
         &rules,
         &sim.interner,
+        sim.session.binary_frame,
     );
 
     let americans = sim.interner.intern("Americans");

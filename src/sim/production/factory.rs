@@ -1163,48 +1163,60 @@ impl FactoryRegistry {
             .collect()
     }
 
-    /// Resolve `Time_To_Build`'s inputs for every armed, steppable factory, READ-ONLY
-    /// over `Simulation`. Returned as an OWNED map so `step_all` can then run against
-    /// `&mut houses` without holding a `&Simulation` borrow.
-    pub(super) fn prepare_step_inputs(
-        &self,
+    /// `FactoryClass::Update_Build_Rate @ 0x004CA6E0`, called by the
+    /// reached House power assessment at508D88. The whole global Factory
+    /// array is walked in construction order, filtering only Owner. Held,
+    /// suspended and completed objects still receive SetRate; a null object
+    /// receives1. SetRate never restarts the already armed timer.
+    /// Native comparisons: engineer-repair power/rate consumer packet.
+    pub(super) fn refresh_rates_for_house(
+        &mut self,
         sim: &crate::sim::world::Simulation,
         rules: &RuleSet,
-    ) -> BTreeMap<FactoryHolder, TimeToBuildInputs> {
-        let mut out = BTreeMap::new();
-        for (&key, f) in &self.factories {
-            if f.suspended || f.manual || f.progress >= PRODUCTION_STEPS {
+        owner: InternedId,
+    ) {
+        let order: Vec<FactoryHolder> = self
+            .holders_insertion_ordered()
+            .into_iter()
+            .map(|(holder, _)| holder)
+            .collect();
+        for holder in order {
+            let Some(factory) = self.factories.get_mut(&holder) else {
+                continue;
+            };
+            if factory.owner != owner {
                 continue;
             }
-            let Some(obj) = f
+            let rate = factory
                 .object
                 .as_ref()
                 .and_then(|object| sim.object_type(object.type_id, rules))
-            else {
-                continue;
-            };
-            out.insert(
-                key,
-                time_to_build_inputs(sim, rules, f.owner, f.category, obj),
-            );
+                .map_or(1, |object| {
+                    time_to_build(&time_to_build_inputs(
+                        sim,
+                        rules,
+                        owner,
+                        factory.category,
+                        object,
+                    ))
+                });
+            factory.set_rate(rate);
         }
-        out
     }
 
     /// The authoritative per-tick factory sweep (the charge flip). Walks the registry in
     /// construction (`insertion_seq`) order — the SAME order the hash folds in, and the
     /// order `LogicClass` runs `FactoryClass::AI` in — and, for each armed factory whose
-    /// per-step cadence timer has expired, (re)computes the rate from `time_to_build` and
-    /// charges ONE step against the owner's REAL wallet (`house.economy.credits`).
+    /// per-step cadence timer has expired, charges ONE step against the
+    /// owner's REAL wallet (`house.economy.credits`) at its retained rate.
     /// Reproduces the engine's per-tick factory loop (C1), walked before the house tail.
     ///
     /// Borrow the house's sole economy directly, charging cash and accumulating
-    /// spent credits together. `prepared` (from `prepare_step_inputs`) carries
-    /// the producer inputs so this method holds no `&Simulation` borrow.
+    /// spent credits together. Rate changes belong to the build-start and
+    /// reached House power-assessment receivers, after this global sweep.
     pub(super) fn step_all(
         &mut self,
         houses: &mut BTreeMap<InternedId, crate::sim::house_state::HouseState>,
-        prepared: &BTreeMap<FactoryHolder, TimeToBuildInputs>,
         frame: u32,
     ) {
         // Sweep order = construction order (a strictly monotonic enqueue stamp at each
@@ -1228,16 +1240,6 @@ impl FactoryRegistry {
             let Some(house) = houses.get_mut(&owner) else {
                 continue; // a vanished house is skipped (NEVER auto-create)
             };
-
-            // (Rate) gamemd rewrites the rate at the build start and when
-            // HouseClass::AI recalculates the house's power, which it does only
-            // while House `+0x5778` is set (`0x004F84D9..0x004F84E5` -> `0x00508C30`,
-            // which calls `0x004CA6E0` at `0x00508D88`). VERA recomputes it from the
-            // live power, factory count and rules each sweep, so a change reaches
-            // the rate sooner (recorded residual).
-            if let Some(inputs) = prepared.get(&holder) {
-                f.set_rate(time_to_build(inputs));
-            }
 
             // (Cadence) `FactoryClass::AI @ 0x004C9B20` steps once the timer has run
             // out and a rate is set (`0x004C9B63..0x004C9B76`), restarting the timer
@@ -1464,6 +1466,151 @@ mod tests {
         }
     }
 
+    /// Full original4CA6E0 controls include live, held, complete, null and
+    /// foreign factories. Resolve the supplied scalars through the production
+    /// reader and existing House/type/factory-count owners, then compare the
+    /// registry receiver. Only +38 changes: the armed +2C timer is retained.
+    #[test]
+    fn house_power_rate_rewrite_matches_native_statuses_clamps_and_armed_timer() {
+        use crate::map::entities::EntityCategory;
+        use crate::rules::ini_parser::IniFile;
+        use crate::sim::components::Health;
+        use crate::sim::game_entity::GameEntity;
+        use crate::sim::house_state::HouseState;
+        use crate::sim::power_system::PowerState;
+        use crate::sim::world::Simulation;
+
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/house_power_consumers.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            corpus["native_sha256"],
+            "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
+        );
+        let rows = corpus["rewrite_controls"].as_array().unwrap();
+        assert_eq!(rows.len(), 9);
+        for row in rows {
+            let input = &row["input"];
+            let cost = input["cost"].as_i64().unwrap() as i32;
+            let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+                "[General]\nBuildSpeed=.7\nMultipleFactory=.8\n\
+                 LowPowerPenaltyModifier=1\nMinLowPowerProductionSpeed=.5\n\
+                 MaxLowPowerProductionSpeed=.8\n[Countries]\n0=Americans\n\
+                 [Americans]\nSide=GDI\n[VehicleTypes]\n0=PENDING\n\
+                 [PENDING]\nCost={cost}\nStrength=100\nBuildTimeMultiplier=1\n\
+                 [BuildingTypes]\n0=PRODUCER\n[PRODUCER]\nStrength=500\nFactory=UnitType\n",
+            )))
+            .unwrap();
+            let mut sim = Simulation::with_seed(31);
+            let owner = sim.interner.intern("Americans");
+            let foreign = sim.interner.intern("Foreign");
+            sim.houses.insert(
+                owner,
+                HouseState::new(owner, 0, Some(owner), true, 5000, 10),
+            );
+            let producer_type = sim.interner.intern("PRODUCER");
+            let mut producer = GameEntity::new_at_frame_zero_for_test(
+                1,
+                5,
+                5,
+                0,
+                0,
+                owner,
+                Health { current: 500 },
+                producer_type,
+                EntityCategory::Structure,
+                0,
+                5,
+                false,
+            );
+            producer.lifecycle.in_limbo = false;
+            sim.substrate.entities.insert(producer);
+            let mut power = PowerState::default();
+            power.total_output = input["power_output"].as_i64().unwrap() as i32;
+            power.total_drain = input["power_drain"].as_i64().unwrap() as i32;
+            sim.power_states.insert(owner, power);
+            let type_id = sim.interner.intern("PENDING");
+            let inputs = time_to_build_inputs(
+                &sim,
+                &rules,
+                owner,
+                ProductionCategory::Vehicle,
+                rules.object("PENDING").unwrap(),
+            );
+            // Pin inputs independently of the resulting rate. The shared
+            // numeric owner is already compared by time_to_build.json.
+            let supplied = native_time_to_build_inputs(input);
+            assert_eq!(inputs.cost, supplied.cost);
+            assert_eq!(inputs.factory_count, supplied.factory_count);
+            assert_eq!(inputs.build_speed, supplied.build_speed);
+            assert_eq!(inputs.country_multiplier, supplied.country_multiplier);
+            assert_eq!(inputs.build_time_multiplier, supplied.build_time_multiplier);
+            assert_eq!(inputs.multiple_factory, supplied.multiple_factory);
+            assert_eq!(inputs.low_power_penalty, supplied.low_power_penalty);
+            assert_eq!(inputs.min_low_power_speed, supplied.min_low_power_speed);
+            assert_eq!(inputs.max_low_power_speed, supplied.max_low_power_speed);
+
+            let mut registry = FactoryRegistry::default();
+            let statuses = row["statuses"].as_array().unwrap();
+            assert_eq!(statuses.len(), 5);
+            for (index, status) in statuses.iter().enumerate() {
+                let timer_hex = row["timer_bytes_before"][index].as_str().unwrap();
+                let word = |offset| {
+                    let bytes: [u8; 4] = std::array::from_fn(|byte| {
+                        u8::from_str_radix(&timer_hex[offset + byte * 2..offset + byte * 2 + 2], 16)
+                            .unwrap()
+                    });
+                    i32::from_le_bytes(bytes)
+                };
+                assert_eq!(word(8), 0, "supplied native middle timer dword");
+                registry.factories.insert(
+                    FactoryHolder::Building(100 + index as u64),
+                    Factory {
+                        owner: if status == "foreign" { foreign } else { owner },
+                        category: ProductionCategory::Vehicle,
+                        object: (status != "null").then_some(PendingObject {
+                            type_id,
+                            ..Default::default()
+                        }),
+                        progress: if status == "complete" {
+                            PRODUCTION_STEPS
+                        } else {
+                            12
+                        },
+                        suspended: status == "held" || status == "complete",
+                        manual: status == "held",
+                        on_hold: status == "held",
+                        balance: cost,
+                        step_rate_frames: 77,
+                        step_timer: CdTimer::from_raw(word(0), word(16)),
+                        insertion_seq: index as u64,
+                        ..Default::default()
+                    },
+                );
+            }
+            let prior = registry.clone();
+            registry.refresh_rates_for_house(&sim, &rules, owner);
+            for (index, actual) in registry.iter_insertion_ordered().iter().enumerate() {
+                assert_eq!(
+                    i64::from(actual.step_rate_frames),
+                    row["rates"][index].as_i64().unwrap(),
+                    "cost{cost} output{} status{}",
+                    input["power_output"],
+                    statuses[index]
+                );
+                assert_eq!(
+                    row["timer_bytes_before"][index], row["timer_bytes_after"][index],
+                    "original receiver did not rearm"
+                );
+                let holder = FactoryHolder::Building(100 + index as u64);
+                let mut expected = prior.factories[&holder].clone();
+                expected.step_rate_frames = actual.step_rate_frames;
+                assert_eq!(**actual, expected, "only the rate changes");
+            }
+        }
+    }
+
     #[test]
     fn no_object_factory_does_not_step() {
         let mut f = Factory {
@@ -1516,7 +1663,6 @@ mod tests {
                     10,
                 ),
             )]);
-            let prepared = BTreeMap::from([(FactoryHolder::House(owner, category), inputs)]);
             let deposits: BTreeMap<u32, i32> = row["deposits"]
                 .as_array()
                 .unwrap()
@@ -1559,7 +1705,7 @@ mod tests {
                 let before = reg.factories[&FactoryHolder::House(owner, category)]
                     .step_timer
                     .start_frame();
-                reg.step_all(&mut houses, &prepared, frame);
+                reg.step_all(&mut houses, frame);
                 let f = &reg.factories[&FactoryHolder::House(owner, category)];
                 if f.step_timer.start_frame() != before {
                     let credits = houses[&owner].economy.credits;
@@ -2360,7 +2506,7 @@ mod tests {
             owner,
             crate::sim::house_state::HouseState::new(owner, 0, None, true, 13, 10),
         )]);
-        reg.step_all(&mut houses, &BTreeMap::new(), 110);
+        reg.step_all(&mut houses, 110);
         let (tank_factory, soldier_factory) = (
             &reg.factories[&FactoryHolder::House(owner, vehicle)],
             &reg.factories[&FactoryHolder::House(owner, infantry)],

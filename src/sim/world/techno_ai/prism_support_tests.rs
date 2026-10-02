@@ -342,14 +342,10 @@ impl Fixture {
     /// replayed rows only the building it names asks (Mission_Guard, the
     /// support beam and the Prism walk do not).
     fn unpower(&mut self) {
-        self.sim.power_states.insert(
-            self.owner,
-            crate::sim::power_system::PowerState {
-                total_output: 0,
-                total_drain: 75,
-                ..Default::default()
-            },
-        );
+        let mut power_state = crate::sim::power_system::PowerState::default();
+        power_state.total_output = 0;
+        power_state.total_drain = 75;
+        self.sim.power_states.insert(self.owner, power_state);
     }
 
     /// `state` after the call: count, delayed-fire mode and countdown, rearm

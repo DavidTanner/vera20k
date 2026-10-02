@@ -584,7 +584,7 @@ fn completed_building_moves_into_ready_placement_pool() {
     let americans = sim.interner.intern("Americans");
     let gacnst = sim.interner.intern("GACNST");
     *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
-    let built_before = sim.houses[&americans].stats.built;
+    let built_before = sim.houses[&americans].stats.built();
     // P5d: arm the Building build directly in the registry (queue-of-record), then force it
     // to the completed-held state so `tick_production` moves it into the ready-placement pool.
     super::tests::arm_build_via(
@@ -623,7 +623,7 @@ fn completed_building_moves_into_ready_placement_pool() {
         assert!(!tick_production(&mut sim, &rules));
     }
     // Record_Last_Built waits for the placement (`0x004FB4B7`).
-    assert_eq!(sim.houses[&americans].stats.built, built_before);
+    assert_eq!(sim.houses[&americans].stats.built(), built_before);
     assert_eq!(
         super::lifecycle_tests::held_id(&sim, americans, ProductionCategory::Building),
         held_id
@@ -649,7 +649,7 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
     // The house whose Record_Last_Built counts the placement.
     super::credits_entry_for_owner(&mut sim, "Americans");
     ready_building(&mut sim, &rules, "Americans", "GACNST");
-    let built_before = sim.houses[&americans].stats.built;
+    let built_before = sim.houses[&americans].stats.built();
     let held_id = sim
         .production
         .factory_shadow
@@ -677,7 +677,7 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
     ));
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
     assert!(ready_buildings_for_owner(&sim, &rules, "Americans").is_empty());
-    assert_eq!(sim.houses[&americans].stats.built, built_before + 1);
+    assert_eq!(sim.houses[&americans].stats.built(), built_before + 1);
 
     let structures = sim
         .substrate
@@ -816,13 +816,7 @@ fn stock_gapowr_placement_restores_power_and_radar_during_buildup() {
     assert_eq!(outage.total_drain, 50);
     assert!(outage.is_low_power);
     assert!(
-        !has_active_radar(
-            &sim.substrate.entities,
-            &sim.power_states,
-            &rules,
-            americans,
-            &sim.interner,
-        ),
+        !has_active_radar(&sim.power_states, americans),
         "stock American radar must be offline during house low power"
     );
 
@@ -876,13 +870,7 @@ fn stock_gapowr_placement_restores_power_and_radar_during_buildup() {
     assert_eq!(recovered.total_drain, 50);
     assert!(!recovered.is_low_power);
     assert!(
-        has_active_radar(
-            &sim.substrate.entities,
-            &sim.power_states,
-            &rules,
-            americans,
-            &sim.interner,
-        ),
+        has_active_radar(&sim.power_states, americans),
         "existing stock American radar should recover while GAPOWR is building up"
     );
 }

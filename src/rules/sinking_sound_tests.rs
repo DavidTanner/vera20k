@@ -7,6 +7,50 @@ use super::NativeRulesProcessOwner;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::sound_ini::SoundRegistry;
 
+/// Rules669C68..669CA3 shares the fixed catalog/current-ID reader with
+/// Construction. The Engineer sound is an AudioVisual key in every pass.
+#[test]
+fn building_repaired_sound_uses_the_fixed_catalog_and_retains_prior_ids() {
+    let ini = IniFile::from_str;
+    let sounds = Arc::new(SoundRegistry::from_ini(&ini(
+        "[SoundList]\n0=Repair\n1=Wrong\n[NotRegistered]\nSounds=sample\n",
+    )));
+    let mut owner = NativeRulesProcessOwner::from_cold_start_sources(
+        ini(
+            "[AudioVisual]\nBuildingRepairedSound=Repair\n[General]\nBuildingRepairedSound=Wrong\n",
+        ),
+        Some(ini("[AudioVisual]\nBuildingRepairedSound=unknown\n")),
+        ini(""),
+        Arc::clone(&sounds),
+    )
+    .unwrap();
+    let (rules, _, _, _) = owner
+        .load_noncampaign_scenario(
+            Some(&ini("[AudioVisual]\nBuildingRepairedSound= rEpAiR \n")),
+            &ini("[AudioVisual]\nBuildingRepairedSound=\nbuildingrepairedsound=Wrong\n"),
+        )
+        .unwrap()
+        .into_parts();
+    assert_eq!(
+        rules.general.building_repaired_sound.as_deref(),
+        Some("Repair")
+    );
+    assert!(Arc::ptr_eq(owner.fixed_sounds(), &sounds));
+
+    let mut invalid = NativeRulesProcessOwner::from_cold_start_sources(
+        ini("[AudioVisual]\nBuildingRepairedSound=NotRegistered\n"),
+        None,
+        ini(""),
+        sounds,
+    )
+    .unwrap();
+    let (rules, _, _, _) = invalid
+        .load_noncampaign_scenario(None, &ini(""))
+        .unwrap()
+        .into_parts();
+    assert!(rules.general.building_repaired_sound.is_none());
+}
+
 /// Original Rules66A979..66A9B7 reads AudioVisual/Construction and
 /// BuildingType460738..46078B reads BuildupSound, both through ReadString128
 /// and Voc Find7514D0. The startup catalog is fixed across the rules passes.

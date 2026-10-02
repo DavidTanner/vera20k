@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Bounded original Building sample440042, paid repair450630, global Factory55B66A/AI4C9B20 and House4F8440 prefix through4F8511; full power508C30, Factory rate4CA6E0/Time_To_Build6F47A0, radar508DF0, whole blackout setter50BC90 and separately later advice4F8B08..4F8DB1. Selected timers/order/consumers, not whole House/object/startup equivalence.",
+  "assumptions": [
+    "Strength750/Power200/HP374 admitted generator with sample374; drain100 admitted consumer, zero-power Radar provider; House/country/type vectors and registered mode inputs supplied through existing building_repair and Time_To_Build owners. Factory starts already live; original4C9EA0 refuses restart and retains initial timer duration0. Native FactoryAI produces the frame195 joined prior.",
+    "Rules scalars supplied through existing fixture owners: BuildSpeed.7 widened from f32, MultipleFactory.8f32, Country/BuildTimeMultiplier1f32, low-power factors1/.5/.8f32, RepairStep8, RepairPercent15percent, RepairRate.016f32 widened; SpeakDelay2 and MessageDelay.6f32 widened. These are explicit scalar bindings, not new reader/default claims.",
+    "Ambient x87FPCW0E7F supplied by the reused native owner. Each control checks unchanged original executable sections, all visited PE instructions and complete Main/Scenario RNG buffers. Numeric and status controls do not establish all combinations are reachable in retail.",
+    "Global Factory loop executes before House power/radar prefix, stopped before anger4F8511. Later advice4F8B08..4F8DB1 executes separately with the interposed House prior supplied. Full House/Logic AI, startup, production delivery, SW/Spy/ForceShield and presentation are excluded.",
+    "Radar local output is Tactical+14D8, not House-persisted state. Nonlocal, EMP, independent online1/warp1 and active radar-outage controls remain native bounds; the ordinary per-owner Rust derived projection is compared only for represented local inputs.",
+    "Whole blackout setter50BC90 receives supplied frame196, prior timer/cached totals/dirty bytes and duration30/4/80/0. It writes timer+2A8 from supplied entrySP-8 opaque residue0, for which no represented reader is established. ForceShield/Spy producer lifecycle and caller numeric conversion are excluded."
+  ],
+  "substitutions": [
+    "Existing repair fixture GetCurrentFrame/flash/active-slot allocation and voice-device boundaries are retained. The synthetic374-to382 N00/N02 requests exclude real Anim allocation/lifecycle/IDs and its RNG footprint; unchanged RNG here is not full stock repair parity.",
+    "Debug log4068E0, sample/device750920, localized text734E60 and MessageList5D3BA0 are presentation-only interfaces with original calling conventions. Health, timer, Factory rate/cadence, radar and advice decisions are never answered."
+  ],
+  "entry_points": {
+    "building_health_sample": "0x00440042",
+    "paid_repair": "0x00450630",
+    "global_factory_loop": "0x0055B66A",
+    "house_prefix": "0x004F8440",
+    "house_power": "0x00508C30",
+    "factory_rate": "0x004CA6E0",
+    "time_to_build": "0x006F47A0",
+    "factory_start": "0x004C9EA0",
+    "factory_ai": "0x004C9B20",
+    "radar": "0x00508DF0",
+    "later_advice": "0x004F8B08",
+    "blackout_setter": "0x0050BC90",
+    "game_options_ctor": "0x005FA350",
+    "speed_normalize": "0x005FB2E0"
+  },
+  "source_normalized_lf_sha256": {
+    "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+    "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+    "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+    "tools/spatial_oracle/building_construction.py": "5213408818a71104ea1516e2ec4ab7fe1635562528e641760a4ada9c23d8e22b",
+    "tools/spatial_oracle/building_repair.py": "ba164757aecf8d83a588d916d07b953dd3e7f51d0cc439a29beb61886b938ba7",
+    "tools/spatial_oracle/building_sale.py": "b1d342868d59918fc51dadd160beed66c61ad6812b404c1b0c2f10fa3e9a0d64",
+    "tools/spatial_oracle/factory_cadence.py": "324fa00bb554187f9e0127cc48b5bd898e676e3ccb54e01323d66ada55ec47ff",
+    "tools/spatial_oracle/harvest_field.py": "047fd5d2333dcee593d93edfa92a69debd6ad2f7b5a53029711f3dde17b5e087",
+    "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
+    "tools/spatial_oracle/jumpjet_coordinates.py": "922eee4b7841312e85abdc52e65a65869a071de05f9644873fb3c38f9facd3b9",
+    "tools/spatial_oracle/jumpjet_entry_discovery.py": "ff8fd5cd549000345331072acf19797e494ab629fca986afacd4cf392c954d14",
+    "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+    "tools/spatial_oracle/refinery_dock.py": "4c657ce9ab3d924d08d55085408f89099712c7a77353e18be7161a7b1e459228",
+    "tools/spatial_oracle/slave_manager.py": "257ef2d170d2f5bf01e001f1e46561374677168a2d32a21181ef684c3bdb662d",
+    "tools/spatial_oracle/time_to_build.py": "5d298a5744961484485c25f587abb2f848b6261580ee4180ebd0fbd870d7f249",
+    "tools/spatial_oracle/track_destination.py": "bd33fb7c54c665ac5181682a2c5db8c7bac1b77ab108a0d3646462cceed99b26",
+    "tools/spatial_oracle/unit_entry.py": "c79e273f002fbb921942676c3747068fcb1312574e66eaaafe8bf4286740b96e",
+    "tools/spatial_oracle/unit_scatter_state.py": "9cb5b9726c02c8ef7e08aeadf006fecd90191341250f744e9307d5a62a63a4c3",
+    "tools/spatial_oracle/unit_source_scatter.py": "d2ce3dce6e7baff886f3bc6a30c545ec29e442e9866a39a0acb03c92268bbcc8",
+    "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
+    "tools/spatial_oracle/house_power_consumers.py": "848e6656739dca56d56b6f425e90002f044f474b6c929378d6ab366b3f366e5c"
+  },
+  "payload_sha256": "16b54802742d3200961eafa241b1e69c63f820807d90c5abbf0f60e76401aed2"
+}

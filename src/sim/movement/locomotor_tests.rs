@@ -423,6 +423,7 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         infantry_absorb: false,
         unit_absorb: false,
         grinding: false,
+        hospital: false,
         bunkerable: category == ObjectCategory::Vehicle,
         weapon_list: vec![None; crate::rules::object_type::WEAPON_SLOT_COUNT],
         elite_weapon_list: vec![None; crate::rules::object_type::WEAPON_SLOT_COUNT],

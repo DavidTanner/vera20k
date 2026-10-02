@@ -1624,7 +1624,13 @@ impl Simulation {
         let killer_owner = killer
             .and_then(|id| self.substrate.entities.get(id))
             .map(|entity| entity.owner());
-        self.record_the_kill(slave, killer, killer_owner, rules);
+        self.record_the_kill(
+            slave,
+            killer,
+            killer_owner,
+            crate::sim::combat::KillCallback::Terminal,
+            rules,
+        );
         self.uninit_with_context(slave, UninitContext::with_rules(rules));
     }
 

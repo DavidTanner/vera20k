@@ -2804,9 +2804,18 @@ fn award_kill_experience(
     }
 }
 
+/// The caller decides whether this callback leaves the victim alive. Native
+/// RecordKill always books immediately; this controls only VERA's fallback for
+/// teardown sites whose native callback is still unrepresented.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KillCallback {
+    Terminal,
+    OwnerChange,
+}
+
 /// `TechnoClass::Record_The_Kill @ 0x00702D40` for `victim_id`, destroyed by
 /// `killer_id` (none for a death without an attacker) and credited to
-/// `killer_owner`: the kill and score record, then the experience award
+/// `killer_owner`: the kill/score record and the experience award
 /// ([`award_kill_experience`]). Every cost it reads is Cost_Of for the victim's
 /// house, which it loads once (`0x00702D61`). One award feeds both the score
 /// (`0x0070300F`) and the experience: the victim's cost, zero when the
@@ -2814,11 +2823,13 @@ fn award_kill_experience(
 /// tripled for an elite victim, from the rank it died at. It is not
 /// `Points=`, which gamemd parses but never reads back (TS legacy).
 ///
-/// Every lethal path calls it at the instant of the kill, while the victim's
-/// veterancy is still the value it died at. The first credit wins within one
-/// fatal transaction; a qualifying PostMortem callback consumes and clears
-/// that deferred-UnInit latch before restoring the object, so a later
-/// independent lethal transaction can attribute freshly. Spawner missiles
+/// Every routed lethal path calls it at the instant of the kill, while the
+/// victim's veterancy is still the value it died at. ChangeOwner7015A8 also
+/// calls it with no attacker before the owner store: that call immediately
+/// books the old House's loss while the object remains alive. Each actual
+/// native callback books independently; there is no first-credit guard in
+/// 702D40. The UnInit fallback guard prevents an additional deferred record,
+/// rather than suppressing this callback. Spawner missiles
 /// credit their launcher's house; if the launcher dies during the missile's
 /// flight, the kill goes uncredited.
 ///
@@ -2830,19 +2841,19 @@ fn award_kill_experience(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn record_the_kill(
     entities: &mut EntityStore,
-    houses: &BTreeMap<InternedId, HouseState>,
+    houses: &mut BTreeMap<InternedId, HouseState>,
     interner: &StringInterner,
     alliances: &HouseAllianceMap,
     victim_id: u64,
     killer_id: Option<u64>,
     killer_owner: Option<InternedId>,
+    callback: KillCallback,
     rules: &RuleSet,
 ) {
     let Some(victim) = entities.get(victim_id) else {
         return;
     };
-    // `DontScore=` (`+0xC9F`) returns before any bookkeeping; the lifecycle
-    // recorder suppresses the loss half of the same early return. Stock sets
+    // `DontScore=` (`+0xC9F`) returns before any bookkeeping. Stock sets
     // it on `SLAV`, `V3ROCKET`, `DMISL` and `CMISL`: without it every missile
     // shot down would promote its interceptor.
     if victim.dont_score {
@@ -2852,9 +2863,10 @@ pub(crate) fn record_the_kill(
     let victim_house = houses
         .get(&victim_owner)
         .map(crate::sim::house_state::HouseState::cost_factors);
-    let victim_cost = rules
-        .object(interner.resolve(victim.type_ref()))
-        .map_or(0, |object| rules.cost_of(object, victim_house.as_ref()));
+    let victim_type = rules.object(interner.resolve(victim.type_ref()));
+    let insignificant_building = victim.category == EntityCategory::Structure
+        && victim_type.is_some_and(|object| object.insignificant);
+    let victim_cost = victim_type.map_or(0, |object| rules.cost_of(object, victim_house.as_ref()));
     // `0x00702E64` asks the killer's house `HouseClass::IsAlly @ 0x004F9A90`,
     // which reads only the asker's own ally bits: a one-way test.
     let asker = killer_id
@@ -2873,9 +2885,6 @@ pub(crate) fn record_the_kill(
         self::veterancy::rank_of(victim.veterancy_raw),
         allied,
     );
-    if let (Some(killer_owner), Some(victim)) = (killer_owner, entities.get_mut(victim_id)) {
-        record_kill_credit(victim, killer_owner, points);
-    }
     if let Some(killer_id) = killer_id {
         award_kill_experience(
             entities,
@@ -2887,6 +2896,17 @@ pub(crate) fn record_the_kill(
             victim_house.as_ref(),
         );
     }
+    // 702FF0 awards experience before 703003..7031DC book the House fields.
+    if let Some(victim) = entities.get_mut(victim_id) {
+        record_kill_credit(
+            victim,
+            houses,
+            killer_owner,
+            points,
+            insignificant_building,
+            callback,
+        );
+    }
 }
 
 impl crate::sim::world::Simulation {
@@ -2896,37 +2916,69 @@ impl crate::sim::world::Simulation {
         victim_id: u64,
         killer_id: Option<u64>,
         killer_owner: Option<InternedId>,
+        callback: KillCallback,
         rules: &RuleSet,
     ) {
         record_the_kill(
             &mut self.substrate.entities,
-            &self.houses,
+            &mut self.houses,
             &self.interner,
             &self.house_alliances,
             victim_id,
             killer_id,
             killer_owner,
+            callback,
             rules,
         );
     }
 }
 
-/// `Record_The_Kill`'s kill and score half: the first credit within one fatal
-/// transaction keeps its house and award for the destruction record
-/// (`record_destruction_once`), which books them. A Chrono Legionnaire's erase
-/// calls vtable `+0xE0` on a target it removes at full health
-/// (`TemporalClass::Update @ 0x0071AAC4`, then UnInit); the destruction record
-/// books the loss for a victim credited here, as for one at zero health.
+/// The immediate House-accounting half of RecordKill70300F..7031DC.
+/// MatchStatistics owns all mutations; retained fatal attribution is an
+/// observation, never a second deferred score authority. A Temporal erase
+/// calls this at full health (71AAC4), so its later UnInit must also skip the
+/// fallback. FootCrash4DEC51 calls at full health before4DEC72 zeroes it, so
+/// health/attacker alone cannot identify a terminal callback. An attacker-free
+/// live ChangeOwner callback leaves the existing death guard untouched, since
+/// the object remains alive afterwards.
+///
+/// RESIDUAL: sale completion44A1EF writes Building+53C=-1 before its NULL kill
+/// callback44A1F9, suppressing only BuildingsLost703054. VERA's existing sale
+/// route does not retain that field or call RecordKill; Selling alone is not
+/// its substitute. Live Tag callbacks and the radar redraw remain with those
+/// separate mechanisms. This accounting change does not certify either.
 fn record_kill_credit(
     victim: &mut crate::sim::game_entity::GameEntity,
-    killer_owner: InternedId,
+    houses: &mut BTreeMap<InternedId, HouseState>,
+    killer_owner: Option<InternedId>,
     points: i32,
+    insignificant_building: bool,
+    callback: KillCallback,
 ) {
-    if victim.killed_by.is_some() {
-        return;
+    victim.killed_by = killer_owner;
+    if callback == KillCallback::Terminal
+        || victim.health.current == 0
+        || killer_owner.is_some()
+        || victim.crashing
+    {
+        victim.destruction_recorded = true;
     }
-    victim.killed_by = Some(killer_owner);
-    victim.kill_award_points = points;
+    // Score is added before the Building Insignificant branch703045.
+    if let Some(killer) = killer_owner
+        && let Some(house) = houses.get_mut(&killer)
+    {
+        house.stats.add_score(points);
+    }
+    if !insignificant_building {
+        if let Some(house) = houses.get_mut(&victim.owner()) {
+            house.stats.record_loss(victim.category);
+        }
+        if let Some(killer) = killer_owner
+            && let Some(house) = houses.get_mut(&killer)
+        {
+            house.stats.record_kill(victim.category);
+        }
+    }
 }
 
 /// Squared distance in leptons from raw coordinates.

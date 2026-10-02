@@ -122,9 +122,22 @@ impl Simulation {
         let build_refinery_2 = rules
             .and_then(|rules| rules.build_refinery_types.get(2))
             .and_then(|name| self.interner.get(name));
-        for owner in self.session.house_order.clone() {
+        // Logic55B68D reloads the live House count after each complete body.
+        // A House's power/radar and activation must precede its own teams,
+        // EVA, defeat and production; no global half-body sweeps intervene.
+        let mut index = 0;
+        while index < self.session.house_order.len() {
+            let owner = self.session.house_order[index];
+            if let Some(rules) = rules {
+                self.assess_house_derived_state(owner, rules);
+            }
+            self.update_house_anger_and_activation(owner, rules);
+            if let Some(power) = self.power_states.get_mut(&owner) {
+                power.clamp_negative_totals();
+            }
             if let Some(rules) = rules {
                 crate::sim::ai_team_creation::update_team_creation(self, rules, owner);
+                crate::sim::house_eva::update_house_eva(self, rules, owner);
             }
             if defeat_gate && self.house_holds_nothing(owner, &base_units, build_refinery_2) {
                 if let Some(rules) = rules {
@@ -138,6 +151,21 @@ impl Simulation {
                     self, rules, owner, registry,
                 );
             }
+            if let Some(house) = self.houses.get_mut(&owner) {
+                house.release_repair_latch(self.session.binary_frame);
+                #[cfg(test)]
+                if self
+                    .house_update_append_after_test
+                    .is_some_and(|(after, _)| after == owner)
+                {
+                    let (_, appended) = self
+                        .house_update_append_after_test
+                        .take()
+                        .expect("matched append");
+                    self.session.house_order.push(appended);
+                }
+            }
+            index += 1;
         }
         if !defeat_pass {
             return;
