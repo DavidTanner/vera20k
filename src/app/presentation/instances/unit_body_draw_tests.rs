@@ -12,7 +12,9 @@ use crate::map::source::test_support::TestDirectory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::retail_ini_fixture::{retail_assets, retail_battle_rules};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::voxel_frame_catalog::{seed_layers_for, unit_atlas_variants, voxel_image_id};
+use crate::sim::voxel_frame_catalog::{
+    detect_hva_frame_count, seed_layers_for, unit_atlas_variants, voxel_image_id,
+};
 use crate::sim::world::Simulation;
 
 /// One body draw of `id`: its model, and whether it asks the atlas for
@@ -198,6 +200,13 @@ fn retail_voxel_bodies_draw_the_sprites_their_model_is_seeded_with() {
             let file = format!("{image}{part}.VXL");
             assert!(assets.get_ref(&file).is_none(), "{file}");
         }
+    }
+    // The body's HVA frame is `Unit+0x538` modulo the draw type's frame count
+    // (`0x0073B4DA..0x0073B4E7`); VERA draws an unloading body's frame 0. The
+    // two agree while both retail unloading models are single-frame.
+    for model in ["HORV", "CMON"] {
+        let frames = detect_hva_frame_count(&assets, model, VxlLayer::Composite, Some(rules));
+        assert_eq!(frames, 1, "{model}");
     }
     // The turret arm's second admission (`0x0073B7B1..0x0073B7C5`: a
     // `TurretCount=` type's current turret) is not represented. It is dormant

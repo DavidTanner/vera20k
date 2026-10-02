@@ -652,6 +652,12 @@ enum BodyDraw {
 /// undisguised Unit, `NoSpawnAlt` is selected from the current docked slot
 /// count at draw time; the serialized override remains solely the miner dock
 /// sub-FSM's UnloadingClass (HORV/CMON) hint.
+///
+/// RESIDUAL: `UnitClass::DrawVoxelBody` also draws a deployed unit
+/// (`Unit+0x6E0`) from its type's `UnloadingClass=`, after its disguise arm
+/// (`0x0073B4BC..0x0073B4D8`). Not represented: nothing selects that image.
+/// Trigger: a deployed retail Siege Chopper (`[SCHP] UnloadingClass=SCHD`).
+/// Effect: it keeps its SCHP model. Frequency: every Siege Chopper deployment.
 fn drawn_model_id<'a>(
     entity: &'a crate::sim::game_entity::GameEntity,
     interner: &'a crate::sim::intern::StringInterner,
@@ -709,8 +715,9 @@ fn unit_body_draw<'a>(
 ///
 /// RESIDUAL: the turret arm reads `+0x3A0` on every unit; VERA keeps it only
 /// for a unit whose own type has a turret, so one without draws its model's
-/// turret at the hull's facing. Trigger: a `Turret=no` harvester whose
-/// `UnloadingClass=` has `Turret=yes`. Frequency: zero in retail.
+/// turret at the hull's facing. Trigger: a `Turret=no` unit drawn as a
+/// `Turret=yes` model, by `UnloadingClass=` or disguise. Frequency: zero in
+/// retail.
 fn body_draw(
     entity: &crate::sim::game_entity::GameEntity,
     band: EntityDrawBand,

@@ -122,6 +122,25 @@ changes. This observes production behavior; it does not certify native combat,
 scheduler, RNG or rendering parity. See the [mission ownership notes](../src/sim/miner/README.md)
 and [original executable packet](spatial_oracle/harvest_attack_return.md).
 
+## Unloading miner and parked aircraft bodies
+
+[`map_observation.war-miner-unload.example.json`](map_observation.war-miner-unload.example.json)
+is the War Miner launch above without the attack, stopped at step3775 with the
+camera on the refinery pad. In this launch the free War Miner's Unload mission
+dumps from step3762 until Harvest resumes at step3794, so step3775 draws its
+body from `UnloadingClass=HORV`.
+[`map_observation.docked-aircraft.example.json`](map_observation.docked-aircraft.example.json)
+uses stock France, builds GAPOWR, GAREFN, GAAIRC and one ORCA by ordinary
+production and stops at step5400 with the Harrier parked on the Air Force Command.
+
+Both frames show whether a body is drawn from the sprites its model is seeded with
+(`draws_turret_parts` in [`voxel_frame_catalog.rs`](../src/sim/voxel_frame_catalog.rs)).
+Release captures of `6dab3753` drew neither body, only its health pips. With the
+turret split following the drawn model both are drawn: the simulation fingerprints
+are equal and the frames differ only inside x287..349/y246..298 (miner) and
+x295..335/y264..293 (Harrier). These observe production output; no gamemd frame
+was compared. Numeric handles are tied to each launch.
+
 ## Natural ore-spread observation
 
 [`map_observation.ore-spread.example.json`](map_observation.ore-spread.example.json)
