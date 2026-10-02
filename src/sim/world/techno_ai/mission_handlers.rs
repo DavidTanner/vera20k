@@ -1328,7 +1328,7 @@ fn foot_enter_idle_mode_selection(
 /// RESIDUAL — **the three type arms are not committed.** All three end in a
 /// `Set_Destination(Target, 1)` plus a `Queue_Mission` that VERA cannot yet
 /// execute: `Capture` and `Sabotage` are driven here by the order path's
-/// `capture_target` / `c4_plant` goal state and its own movement issue, not by
+/// NavCom / `c4_plant` goal state and its own movement issue, not by
 /// a mission handler, and neither mission has a dispatch arm — queueing one
 /// from here would park the object on a selector whose timer nothing re-arms.
 /// - `Engineer` and not `C4` and no weapon ability 14 (`0x004D53C0`) →

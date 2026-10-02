@@ -219,6 +219,20 @@ class MapObservationTests(unittest.TestCase):
                          self.actor_frames[3][0]['building'])
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
 
+    def test_engineer_and_paid_repair_orders_keep_the_existing_command_payload(self):
+        self.production_profile()
+        self.profile['commands'] = [
+            {'issue_after_step': 0, 'owner': 'Computer1',
+             'payload': {'ToggleRepair': {'entity_id': 1}}},
+            {'issue_after_step': 2, 'owner': 'Computer1',
+             'payload': {'CaptureBuilding': {'engineer_id': 7, 'target_building_id': 1}}}]
+        self.profile_path.write_text(json.dumps(self.profile))
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual([row['payload'] for row in report['capture']['observations']['commands']],
+                         [row['payload'] for row in self.profile['commands']])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
     def test_building_and_rule_handle_receipts_reject_wrong_types_or_unknown_fields(self):
         self.production_profile()
         changes = [lambda m: m['observations'].pop('rule_types'),

@@ -673,6 +673,7 @@ pub(crate) fn commit_entities(
                 target_id,
                 (attacker_id != RAD_NO_ATTACKER).then_some(attacker_id),
                 attacker_owner,
+                super::KillCallback::Terminal,
                 rules,
             );
         }
@@ -731,11 +732,11 @@ pub(crate) fn commit_entities(
                 .get_mut(target_id)
                 .expect("PostMortem exact-zero callbacks retain the represented target");
             // RecordKill already consumed this exact-zero attribution in the
-            // synchronous PostMortem hook. Native retains no killer on the
+            // shared RecordTheKill receiver before the PostMortem Destroy hook. Native retains no killer on the
             // restored object: a fresh null-source timer expiry must stay
             // uncredited, while a later sourced lethal hit captures anew.
             target.killed_by = None;
-            target.kill_award_points = 0;
+            target.destruction_recorded = false;
             let replace = target
                 .pending_c4_detonation
                 .is_none_or(|pending| duration_frames < pending.timer.remaining(current_frame));
@@ -4158,11 +4159,7 @@ fn commit_fire_bookkeeping(world: &mut Simulation, rules: &RuleSet, emit: &mut C
     for &(drainer_id, victim_id) in &drain_links {
         // `0x0070FDBD`: a drained Psychic Tower frees its captives; then the
         // drainer leaves its team without idling (`0x0070FE19..0x0070FE32`).
-        if crate::sim::credit_income::install_drain_link(
-            &mut world.substrate.entities,
-            drainer_id,
-            victim_id,
-        ) {
+        if crate::sim::credit_income::install_drain_link(world, drainer_id, victim_id) {
             world.free_all_captures(victim_id, rules);
             world.leave_team(drainer_id, true, Some(rules));
         }

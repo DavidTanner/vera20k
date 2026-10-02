@@ -147,14 +147,10 @@ fn fixture(rules: &RuleSet, input: &Value) -> (Simulation, u64, Option<u64>) {
     sim.session.binary_frame = FRAME;
     if input["operational"] == false {
         let owner = sim.interner.intern("Americans");
-        sim.power_states.insert(
-            owner,
-            crate::sim::power_system::PowerState {
-                total_drain: 100,
-                is_low_power: true,
-                ..Default::default()
-            },
-        );
+        let mut power_state = crate::sim::power_system::PowerState::default();
+        power_state.total_drain = 100;
+        power_state.is_low_power = true;
+        sim.power_states.insert(owner, power_state);
     }
     sim.scenario_rng = SimRng::new(input["seed"].as_u64().unwrap_or(1));
     let entity = sim.substrate.entities.get_mut(building).unwrap();

@@ -431,7 +431,7 @@ fn power_plant_to_splice(
     if !short
         || ty.build_const_eligible
         || drain <= 0
-        || power.power_blackout_remaining != 0
+        || power.blackout_remaining(sim.session.binary_frame) > 0
         || power.has_drained_power_source
     {
         return None;

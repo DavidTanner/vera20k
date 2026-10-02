@@ -2434,7 +2434,7 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
         if category == EntityCategory::Unit {
             entity.drive_locomotion = Some(DriveLocomotionRuntime::default());
         } else {
-            entity.capture_target = Some(2);
+            entity.navigation.nav_com = Some(crate::sim::components::NavTargetRef::building(2));
         }
         for _ in 0..41 {
             entity.mission.increment_ai_counter();
@@ -2535,7 +2535,11 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
                     entity.attack_target.as_ref().map(|target| target.target),
                     Some(crate::sim::combat::TargetKind::Cell(0, 0))
                 ));
-                assert_eq!(entity.capture_target, Some(2));
+                assert_eq!(
+                    entity.navigation.nav_com,
+                    Some(crate::sim::components::NavTargetRef::building(2)),
+                    "Tube final retains the authoritative building destination"
+                );
                 assert!(entity.c4_plant.is_some());
                 assert!(
                     entity.movement_target.is_none(),
@@ -2544,7 +2548,7 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
                 assert_eq!(
                     sim.substrate.entities.get(2).map(|building| building.owner),
                     Some(original_building_owner),
-                    "Tube final returns before Mission_Capture; ownership changes next visit"
+                    "Tube final does not run a building-entry receiver beside the destination"
                 );
                 assert!(
                     sim.substrate
@@ -3874,7 +3878,7 @@ fn defeated_house_is_flagged_has_lost_and_its_stragglers_die() {
         "Blowup_All killed the straggler"
     );
     assert!(straggler.killed_by.is_none(), "no house is credited");
-    assert_eq!(sim.houses[&survivor].stats.units_killed, 0);
+    assert_eq!(sim.houses[&survivor].stats.units_killed(), 0);
 }
 
 #[test]
@@ -8030,9 +8034,8 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
     sim.input_delay_ticks = 0;
     let grid = PathGrid::test_all_passable(64, 64);
 
-    // Two plants: selling one still leaves a structure, so power recomputes this
-    // tick. (With a single plant the owner would drop off the recompute list and
-    // retain a stale reading, masking whether the sold plant was counted.)
+    // A represented House retains its power assessment after one of its two
+    // plants sells. Its ordered AI visit must skip the dead-limbo plant.
     // Force the strings into the thread-local interner before snapshotting it.
     let _ = (
         crate::sim::intern::test_intern("GAPOWR"),
@@ -8040,6 +8043,11 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
     );
     sim.interner = crate::sim::intern::test_interner();
     let owner_id = sim.interner.intern("Americans");
+    sim.houses.insert(
+        owner_id,
+        crate::sim::house_state::HouseState::new(owner_id, 0, None, true, 0, 10),
+    );
+    sim.session.house_order.push(owner_id);
     for (id, rx, ry) in [(1u64, 10u16, 10u16), (2u64, 20u16, 20u16)] {
         let mut bld = GameEntity::test_default_of_category(
             id,

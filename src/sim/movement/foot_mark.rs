@@ -19,11 +19,10 @@
 //! - `TechnoClass::Mark` sends radio 0xD to the first contact of a tethered
 //!   object (+0x418, `0x006F4A81..0x006F4A91`). Trigger: Mark while tethered
 //!   (a unit docking at a pad or refinery). Effect and frequency: unmapped.
-//! - AddContent's discovery (`0x0047E953..0x0047E9DC`, `DiscoveredBy(Player)`
-//!   `0x006F4960`, which can raise Tag event 4) is not run; the observed PUT
-//!   below marks where it sits. Trigger: every Mark(DOWN) on a visible Cell.
-//!   Effect: an unseen object is not discovered by its first Mark. Risk: tag
-//!   actions on discovery.
+//! - AddContent's shared discovery (`0x0047E953..0x0047E9DC`, `DiscoveredBy(Player)`
+//!   `0x006F4960`) runs after linking and before the raw receiver. Its history,
+//!   House power/radar and House1F4 effects are retained. Attached Tag event4
+//!   remains with the larger live Tag/Trigger mechanism.
 //! - AddContent skips the insert when the list's second object is already this
 //!   one (`0x0047E903..0x0047E906`). Mark's +0x74 gate keeps an unmarked
 //!   object out of its lists, and the one direct Place_Down follows its own
@@ -190,6 +189,7 @@ impl Simulation {
         self.substrate
             .occupancy
             .add(cell.0, cell.1, id, layer, sub_cell, insertion);
+        self.discover_cell_put_object(id, cell);
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationListLinked);
         receive(self, id);

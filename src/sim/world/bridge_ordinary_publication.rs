@@ -319,7 +319,7 @@ mod wood_tests;
 
 #[cfg(test)]
 #[path = "bridge_repair_publication_tests.rs"]
-mod tests;
+pub(super) mod tests;
 #[cfg(test)]
 #[path = "track_fresh_response_tests.rs"]
 mod track_fresh_response_tests;

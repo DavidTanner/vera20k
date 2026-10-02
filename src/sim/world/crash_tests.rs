@@ -232,6 +232,65 @@ fn crash_matches_native_rows() {
     assert_eq!(compared, 14);
 }
 
+/// Live NULL Crash4DEC51 calls RecordKill once before zeroing Health4DEC72.
+/// Dead-Fly impact4CD89B calls UnInit5F65F0, which has no second kill callback.
+/// The native live_seed5 row records the first call; retirement must not add a
+/// compatibility fallback loss after the shared immediate accounting owner.
+#[test]
+fn live_null_crash_books_one_loss_through_impact_and_retirement() {
+    let native = oracle();
+    let row = native["crash"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["input"]["name"] == "live_seed5")
+        .unwrap();
+    let mut input = row["input"].clone();
+    input["crashing"] = serde_json::json!(0);
+    let (mut sim, rules) = fixture(&input);
+    let owner = sim.substrate.entities.get(1).unwrap().owner();
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+    );
+    sim.session.house_order.push(owner);
+    let callbacks = row["calls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|call| call["call"] == "record_kill")
+        .count() as u32;
+    assert_eq!(callbacks, 1);
+    assert!(sim.foot_crash(1, None, &rules));
+    assert_eq!(sim.houses[&owner].stats.units_lost(), callbacks);
+
+    let mut reached_impact = false;
+    for _ in 0..128 {
+        sim.session.binary_frame += 1;
+        if sim
+            .tick_air_movement_with_cell_lists_one(1, Some(&rules), None)
+            .impact
+        {
+            sim.fly_crash_impact(1, &rules, None);
+            reached_impact = true;
+            break;
+        }
+    }
+    assert!(
+        reached_impact,
+        "the ordinary dead-Fly movement reaches ground"
+    );
+    assert!(!sim.substrate.entities.get(1).unwrap().is_active());
+    assert_eq!(
+        sim.houses[&owner].stats.units_lost(),
+        callbacks,
+        "impact UnInit does not add a second loss"
+    );
+    sim.process_pending_delete_with(Some(&rules), None);
+    assert!(!sim.substrate.entities.contains(1));
+    assert_eq!(sim.houses[&owner].stats.units_lost(), callbacks);
+}
+
 /// The whole fall of a dead crashing aircraft, frame by frame, through the
 /// production Fly transaction, to the impact frame: the XYZ after every frame,
 /// then the death weapon's blast at the impact point (a 1000-strength victim
@@ -963,7 +1022,8 @@ fn a_shot_down_jumpjet_crashes_through_the_production_receiver() {
             .all(|call| call["call"] != "record_kill")
     );
     assert_eq!(
-        sim.houses[&soviets].stats.units_killed, 3,
+        sim.houses[&soviets].stats.units_killed(),
+        3,
         "the transport and both riders are credited before the wreck falls"
     );
 
@@ -1014,7 +1074,8 @@ fn a_shot_down_jumpjet_crashes_through_the_production_receiver() {
         "an Explosion= anim deals no damage"
     );
     assert_eq!(
-        sim.houses[&soviets].stats.units_killed, 3,
+        sim.houses[&soviets].stats.units_killed(),
+        3,
         "impact UnInit does not repeat the transport's fatal callback"
     );
 }
@@ -1726,7 +1787,7 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
                 assert_eq!(entity.health.current, 0);
                 assert_eq!(entity.killed_by, Some(russians));
                 if id == nighthawk {
-                    riders_killed_by_crash = Some(sim.houses[&russians].stats.units_killed);
+                    riders_killed_by_crash = Some(sim.houses[&russians].stats.units_killed());
                     assert!(
                         entity
                             .passenger_role

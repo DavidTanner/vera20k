@@ -323,6 +323,16 @@ fn qualifying_undeploy(sim: &Simulation, rules: &RuleSet, id: u64) -> bool {
 /// contact (`0x0044AB68`) and the damage-fire anims released (`+0x5C8`,
 /// `0x0044AB87..0x0044ABAA`).
 pub(crate) fn sell_stage_zero(sim: &mut Simulation, rules: Option<&RuleSet>, id: u64) {
+    //MissionSelling44AB0E/44AB1B, after the optional upgrade-sale work and
+    //before DeploySound/RUN_AWAY. Ordinary stage0 reaches both writers.
+    if let Some(owner) = sim
+        .substrate
+        .entities
+        .get(id)
+        .map(|building| building.owner())
+    {
+        sim.invalidate_house_power(owner, true);
+    }
     if let Some(rules) = rules
         && qualifying_undeploy(sim, rules, id)
     {

@@ -120,90 +120,94 @@ pub fn owns_build_power_plant(
     })
 }
 
-/// Run the advice block for every human-controlled house in
-/// `ScenarioSession::house_order`, in that order.
-pub fn tick_house_eva(sim: &mut Simulation, rules: &RuleSet) {
+/// Advice inside the reached House body, after team creation and before
+/// defeat. The deterministic per-human projection is documented above.
+pub(crate) fn update_house_eva(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
     let now = sim.session.binary_frame as i32;
     let game_mode_nonzero = sim.session.game_mode_nonzero;
     let delay = speak_delay_frames(rules, &sim.session.game_options);
-    let owners: Vec<InternedId> = sim.session.house_order.clone();
-    for owner in owners {
-        let Some(house) = sim.houses.get(&owner) else {
-            continue;
-        };
-        if !house.is_controlled_by_human(game_mode_nonzero) {
-            continue;
-        }
-        let credits = house.economy.credits;
-        let mut timer = house.eva_funds_timer;
-        let mut guard = house.eva_low_power_guard;
+    let Some(house) = sim.houses.get(&owner) else {
+        return;
+    };
+    if !house.is_controlled_by_human(game_mode_nonzero) {
+        return;
+    }
+    let credits = house.economy.credits;
+    let mut timer = house.eva_funds_timer;
+    let mut guard = house.eva_low_power_guard;
 
-        // --- Insufficient funds, `0x004F8B3C..0x004F8BE1` ---
-        // Available money (`IHouse::Available_Money`, House vtable `0x7EA834`
-        // slot `+0x18` = `0x004F6990`: credits plus stored ore) below 100 and
-        // any infantry/vehicle/building/naval factory owned → the line, the
-        // sidebar credits flash and a re-arm. VERA banks ore straight into
-        // `credits`, so the wallet is the available money.
-        if timer.expired(now)
-            && credits < FUNDS_NAG_CREDITS
-            && funds_nag_factory_count(&sim.substrate.entities, rules, owner, &sim.interner) > 0
-        {
-            sim.sound_events.push(SimSoundEvent::HouseEva {
-                owner,
-                event: EVA_INSUFFICIENT_FUNDS,
-            });
+    // --- Insufficient funds, `0x004F8B3C..0x004F8BE1` ---
+    // Available money (`IHouse::Available_Money`, House vtable `0x7EA834`
+    // slot `+0x18` = `0x004F6990`: credits plus stored ore) below 100 and
+    // any infantry/vehicle/building/naval factory owned → the line, the
+    // sidebar credits flash and a re-arm. VERA banks ore straight into
+    // `credits`, so the wallet is the available money.
+    if timer.expired(now)
+        && credits < FUNDS_NAG_CREDITS
+        && funds_nag_factory_count(&sim.substrate.entities, rules, owner, &sim.interner) > 0
+    {
+        sim.sound_events.push(SimSoundEvent::HouseEva {
+            owner,
+            event: EVA_INSUFFICIENT_FUNDS,
+        });
+        timer.start(now, delay);
+    }
+    // --- Silo re-arm, `0x004F8BE4..0x004F8C53` --- (timer re-read after
+    // the nag's own re-arm). VERA has no ore storage authority, so
+    // `stored` is 0 and the branch is unreachable on any real capacity.
+    if timer.expired(now) {
+        let capacity: i32 = sim
+            .substrate
+            .entities
+            .values()
+            .filter(|e| {
+                !e.dying
+                    && !e.lifecycle.in_limbo
+                    && e.owner() == owner
+                    && e.category == EntityCategory::Structure
+            })
+            .filter_map(|e| rules.object(sim.interner.resolve(e.type_ref())))
+            .map(|obj| obj.storage)
+            .fold(0i32, i32::saturating_add);
+        if silo_nearly_full(capacity, 0) {
             timer.start(now, delay);
         }
-        // --- Silo re-arm, `0x004F8BE4..0x004F8C53` --- (timer re-read after
-        // the nag's own re-arm). VERA has no ore storage authority, so
-        // `stored` is 0 and the branch is unreachable on any real capacity.
-        if timer.expired(now) {
-            let capacity: i32 = sim
-                .substrate
-                .entities
-                .values()
-                .filter(|e| {
-                    !e.dying
-                        && !e.lifecycle.in_limbo
-                        && e.owner() == owner
-                        && e.category == EntityCategory::Structure
-                })
-                .filter_map(|e| rules.object(sim.interner.resolve(e.type_ref())))
-                .map(|obj| obj.storage)
-                .fold(0i32, i32::saturating_add);
-            if silo_nearly_full(capacity, 0) {
-                timer.start(now, delay);
-            }
-        }
+    }
 
-        // --- Low power, `0x004F8C56..0x004F8DAB` ---
-        // Short = `PowerOutput < PowerDrain && PowerDrain != 0 && (Output == 0
-        // || Output / Drain < 1.0)` (`0x004F8C62..0x004F8C91`); otherwise the
-        // guard clears (`0x004F8DAB`). Short without a `BuildPower=` plant
-        // leaves the guard untouched (`0x004F8CFC JLE` straight out).
-        let short = sim
-            .power_states
-            .get(&owner)
-            .is_some_and(|power| power.is_low_power);
-        if !short {
-            guard = false;
-        } else if owns_build_power_plant(&sim.substrate.entities, rules, owner, &sim.interner) {
-            if !guard {
-                sim.sound_events.push(SimSoundEvent::HouseEva {
-                    owner,
-                    event: EVA_LOW_POWER,
-                });
-                guard = true;
-            }
-            // `0x004F8D6B..0x004F8DA6` re-arms `House+0x57BC` here; that
-            // timer has no reader (`search_instructions "0x57bc]"`: the
-            // constructor write and this write only), so it is not modelled.
+    // --- Low power, `0x004F8C56..0x004F8DAB` ---
+    // Short = `PowerOutput < PowerDrain && PowerDrain != 0 && (Output == 0
+    // || Output / Drain < 1.0)` (`0x004F8C62..0x004F8C91`); otherwise the
+    // guard clears (`0x004F8DAB`). Short without a `BuildPower=` plant
+    // leaves the guard untouched (`0x004F8CFC JLE` straight out).
+    let short = sim
+        .power_states
+        .get(&owner)
+        .is_some_and(|power| power.is_low_power);
+    if !short {
+        guard = false;
+    } else if owns_build_power_plant(&sim.substrate.entities, rules, owner, &sim.interner) {
+        if !guard {
+            sim.sound_events.push(SimSoundEvent::HouseEva {
+                owner,
+                event: EVA_LOW_POWER,
+            });
+            guard = true;
         }
+        // `0x004F8D6B..0x004F8DA6` re-arms `House+0x57BC` here; that
+        // timer has no reader (`search_instructions "0x57bc]"`: the
+        // constructor write and this write only), so it is not modelled.
+    }
 
-        if let Some(house) = sim.houses.get_mut(&owner) {
-            house.eva_funds_timer = timer;
-            house.eva_low_power_guard = guard;
-        }
+    if let Some(house) = sim.houses.get_mut(&owner) {
+        house.eva_funds_timer = timer;
+        house.eva_low_power_guard = guard;
+    }
+}
+
+#[cfg(test)]
+fn tick_house_eva(sim: &mut Simulation, rules: &RuleSet) {
+    for owner in sim.session.house_order.clone() {
+        update_house_eva(sim, rules, owner);
     }
 }
 
@@ -274,6 +278,7 @@ mod tests {
                 &mut sim.substrate.entities,
                 rules,
                 &sim.interner,
+                sim.session.binary_frame,
             );
             tick_house_eva(sim, rules);
             let frame = sim.session.binary_frame;

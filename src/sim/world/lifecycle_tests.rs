@@ -2999,7 +2999,6 @@ fn pointer_expiry_clears_live_target_and_navigation_refs() {
         NavTargetRef::Cell { rx: 7, ry: 8 },
         NavTargetRef::Object { id: 2 },
     ];
-    listener.capture_target = Some(2);
     listener.c4_plant = Some(C4PlantState {
         target_building_id: 2,
     });
@@ -3016,7 +3015,6 @@ fn pointer_expiry_clears_live_target_and_navigation_refs() {
         listener.navigation.nav_queue,
         vec![NavTargetRef::Cell { rx: 7, ry: 8 }]
     );
-    assert!(listener.capture_target.is_none());
     assert!(listener.c4_plant.is_none());
 }
 
@@ -3720,6 +3718,10 @@ fn gsi_04_05_reservation_processed_foundation_precedes_metadata_and_lifecycle_ma
 
 #[test]
 fn score_stats_credit_the_killer_and_charge_the_victim_once() {
+    let rules = crate::rules::ruleset::RuleSet::from_ini(
+        &crate::rules::ini_parser::IniFile::from_str("[VehicleTypes]\n0=TEST\n[TEST]\nCost=900\n"),
+    )
+    .unwrap();
     let mut sim = Simulation::new();
     let victim_owner = sim.interner.intern("Americans");
     let killer_owner = sim.interner.intern("Russians");
@@ -3734,9 +3736,15 @@ fn score_stats_credit_the_killer_and_charge_the_victim_once() {
     insert_entity(&mut sim, 1, EntityCategory::Unit);
     let victim = sim.substrate.entities.get_mut(1).unwrap();
     victim.health.current = 0;
-    victim.killed_by = Some(killer_owner);
-    // A stock Rhino (HTNK) is Cost=900, and the award is the victim's cost.
-    victim.kill_award_points = 900;
+    sim.record_the_kill(
+        1,
+        None,
+        Some(killer_owner),
+        crate::sim::combat::KillCallback::Terminal,
+        &rules,
+    );
+    assert_eq!(sim.houses[&victim_owner].stats.losses(), 1);
+    assert_eq!(sim.houses[&killer_owner].stats.kills(), 1);
 
     // A repeated uninit must not double-count: the destruction is recorded
     // exactly once.
@@ -3748,16 +3756,21 @@ fn score_stats_credit_the_killer_and_charge_the_victim_once() {
     let killer = sim.houses.get(&killer_owner).unwrap();
     assert_eq!(killer.stats.kills(), 1);
     assert_eq!(
-        killer.stats.units_killed, 1,
+        killer.stats.units_killed(),
+        1,
         "a unit victim must land in the unit bucket, not the building one"
     );
-    assert_eq!(killer.stats.score_points, 900);
+    assert_eq!(killer.stats.score_points(), 900);
 }
 
 #[test]
 fn score_stats_come_from_the_kill_record_captured_at_destruction() {
     // Dying infantry linger in the logic vector before they are removed. The
-    // kill record is captured at the instant of destruction.
+    // native accounting is already visible at the killing callback.
+    let rules = crate::rules::ruleset::RuleSet::from_ini(
+        &crate::rules::ini_parser::IniFile::from_str("[InfantryTypes]\n0=TEST\n[TEST]\nCost=200\n"),
+    )
+    .unwrap();
     let mut sim = Simulation::new();
     let victim_owner = sim.interner.intern("Americans");
     let killer_owner = sim.interner.intern("Russians");
@@ -3772,15 +3785,20 @@ fn score_stats_come_from_the_kill_record_captured_at_destruction() {
     insert_entity(&mut sim, 1, EntityCategory::Infantry);
     let victim = sim.substrate.entities.get_mut(1).unwrap();
     victim.health.current = 0;
-    victim.killed_by = Some(killer_owner);
-    // A stock GI (E1) is Cost=200.
-    victim.kill_award_points = 200;
+    sim.record_the_kill(
+        1,
+        None,
+        Some(killer_owner),
+        crate::sim::combat::KillCallback::Terminal,
+        &rules,
+    );
+    assert_eq!(sim.houses[&killer_owner].stats.score_points(), 200);
 
     sim.uninit(1);
 
     assert_eq!(sim.houses.get(&killer_owner).unwrap().stats.kills(), 1);
     assert_eq!(
-        sim.houses.get(&killer_owner).unwrap().stats.score_points,
+        sim.houses.get(&killer_owner).unwrap().stats.score_points(),
         200
     );
 }
@@ -3815,15 +3833,22 @@ fn score_stats_count_a_self_inflicted_kill_but_award_no_points() {
         .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
     insert_entity(&mut sim, 1, EntityCategory::Structure);
     sim.substrate.entities.get_mut(1).unwrap().health.current = 0;
-    sim.record_the_kill(1, None, Some(owner), &rules);
+    sim.record_the_kill(
+        1,
+        None,
+        Some(owner),
+        crate::sim::combat::KillCallback::Terminal,
+        &rules,
+    );
 
     sim.uninit(1);
 
     let house = sim.houses.get(&owner).unwrap();
-    assert_eq!(house.stats.buildings_lost, 1);
-    assert_eq!(house.stats.buildings_killed, 1);
+    assert_eq!(house.stats.buildings_lost(), 1);
+    assert_eq!(house.stats.buildings_killed(), 1);
     assert_eq!(
-        house.stats.score_points, 0,
+        house.stats.score_points(),
+        0,
         "an allied or self-inflicted victim is worth no score"
     );
 }
@@ -3849,9 +3874,8 @@ fn dont_score_victims_book_no_kill_no_loss_and_no_points() {
     let victim = sim.substrate.entities.get_mut(1).unwrap();
     victim.health.current = 0;
     victim.dont_score = true;
-    // Even with a credit already recorded, the loss half stays suppressed.
+    // Retained attribution does not bypass the victim's DontScore gate.
     victim.killed_by = Some(killer_owner);
-    victim.kill_award_points = 500;
 
     sim.uninit(1);
 
@@ -3859,7 +3883,7 @@ fn dont_score_victims_book_no_kill_no_loss_and_no_points() {
     assert_eq!(victim_house.stats.losses(), 0, "no phantom loss");
     let killer = sim.houses.get(&killer_owner).unwrap();
     assert_eq!(killer.stats.kills(), 0, "no phantom kill");
-    assert_eq!(killer.stats.score_points, 0, "no phantom points");
+    assert_eq!(killer.stats.score_points(), 0, "no phantom points");
 }
 
 #[test]
@@ -3894,10 +3918,8 @@ fn score_column_sums_the_harvest_and_kill_feeders() {
         + kill_award_points(gi.cost, VeterancyRank::Veteran, false);
     assert_eq!(kill_half, 1_300);
 
-    let stats = MatchStatistics {
-        score_points: kill_half,
-        ..Default::default()
-    };
+    let mut stats = MatchStatistics::default();
+    stats.add_score(kill_half);
     // Harvest half: 240 bales deposited at the x5.0 statistics rate.
     assert_eq!(stats.score(1_200), 2_500);
 }

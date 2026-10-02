@@ -52,7 +52,9 @@ pub(crate) use self::production_refinery::spawn_building_free_unit;
 #[cfg(test)]
 pub(crate) use self::production_repair::repair_step_cost;
 pub use self::production_repair::{RepairControl, toggle_repair};
-pub(crate) use self::production_repair::{can_repair_building, update_repair_and_power};
+pub(crate) use self::production_repair::{
+    can_repair_building, engineer_repair, update_repair_and_power,
+};
 pub use self::production_sell::{SellOrder, can_sell_building, sell_back};
 pub(crate) use self::production_sell::{
     archive_less_sale, begin_selling, eject_destruction_garrison_with_context,
@@ -76,7 +78,9 @@ pub(crate) use self::can_build::{CanBuild, can_build, find_factory, initialize_f
 pub(crate) use self::factory_ai::{detach_all as detach_building_factory, factory_ai};
 #[cfg(test)]
 pub(in crate::sim) use self::factory_lifecycle::construct_active_factory_fixture;
-pub(in crate::sim) use self::factory_lifecycle::revalidate_and_step_factories;
+pub(in crate::sim) use self::factory_lifecycle::{
+    refresh_factory_rates_for_house, revalidate_and_step_factories,
+};
 pub(in crate::sim) use self::production_queue::credits_entry_for_owner;
 pub(in crate::sim) use self::production_spawn::produced_unit_unlimbo_entry_at_resolved_cell;
 pub(crate) use self::wall_placement::stamp_wall_with_autofill;

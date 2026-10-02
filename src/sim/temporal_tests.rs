@@ -605,8 +605,8 @@ fn native_update_corpus() {
             );
             let kills = house_stats(&sim, "Russians");
             let (unit_kills, building_kills) = (
-                kills.units_killed - kills_before.units_killed,
-                kills.buildings_killed - kills_before.buildings_killed,
+                kills.units_killed() - kills_before.units_killed(),
+                kills.buildings_killed() - kills_before.buildings_killed(),
             );
             assert_eq!(
                 (unit_kills, building_kills),
@@ -700,7 +700,7 @@ fn erase_awards_price_each_cost_by_its_house() {
         veterancy(&sim, cleg),
         f32::from_bits(expected.veterancy_raw.bits())
     );
-    assert_eq!(house_stats(&sim, "Russians").score_points, 450);
+    assert_eq!(house_stats(&sim, "Russians").score_points(), 450);
 }
 
 /// A warp's start makes a victim that was itself warping let go
@@ -842,6 +842,7 @@ fn a_warped_building_goes_offline() {
             &mut sim.substrate.entities,
             &rules,
             &sim.interner,
+            sim.session.binary_frame,
         );
         sim.power_states
             .get(&americans)
@@ -986,8 +987,8 @@ fn a_chrono_legionnaire_erases_a_tank() {
     );
     assert_eq!(warp_away_anims(&sim).len(), 1);
     let stats = house_stats(&sim, "Russians");
-    assert_eq!(stats.units_killed, 1);
-    assert_eq!(house_stats(&sim, "Americans").units_lost, 1);
+    assert_eq!(stats.units_killed(), 1);
+    assert_eq!(house_stats(&sim, "Americans").units_lost(), 1);
     assert_eq!(
         veterancy(&sim, cleg),
         f32::from_bits(experienced.veterancy_raw.bits()),
@@ -1444,24 +1445,97 @@ fn a_released_mover_does_not_resume_its_order() {
 /// being warped (`0x00519EF2`); released, the building can be captured.
 #[test]
 fn a_warped_building_cannot_be_captured() {
-    let rules = rules();
-    let mut sim = sim(25);
+    let text = format!(
+        "{}\n[ENGINEER]\nEngineer=yes\nStrength=75\nSpeed=4\n\
+         Locomotor={{4A582744-9839-11D1-B709-00A024DDAFD1}}\n",
+        RULES
+            .replace("3=E1\n", "3=E1\n4=ENGINEER\n")
+            .replace("[GAPOWR]\n", "[GAPOWR]\nCapturable=yes\n")
+    );
+    let rules = rules_from(&text, ART);
+    let (mut sim, _) = arena(25, &rules);
     let plant = spawn(&mut sim, &rules, "GAPOWR", "Americans", 16, 16);
-    let engineer = spawn(&mut sim, &rules, "E1", "Russians", 15, 16);
+    let engineer = spawn(&mut sim, &rules, "ENGINEER", "Russians", 15, 16);
     let cleg = spawn(&mut sim, &rules, "CLEG", "Russians", 10, 10);
     sim.substrate
         .entities
-        .get_mut(engineer)
+        .get_mut(plant)
         .unwrap()
-        .capture_target = Some(plant);
+        .health
+        .current = 100;
     let americans = sim.interner.get("Americans").unwrap();
     let russians = sim.interner.get("Russians").unwrap();
+    // Isolate the terminal Walk/PerCell2 boundary using the real command's
+    // object destination. Full path traversal is covered by the entry tests.
+    let enter = |sim: &mut Simulation| {
+        assert!(sim.apply_command(
+            "Russians",
+            &crate::sim::command::Command::CaptureBuilding {
+                engineer_id: engineer,
+                target_building_id: plant,
+            },
+            Some(&rules),
+        ));
+        sim.mission_assign_exact(
+            engineer,
+            MissionId::from_known(MissionType::Capture),
+            sim.session.binary_frame,
+        )
+        .unwrap();
+        assert_eq!(
+            entity(sim, engineer).navigation.nav_com,
+            Some(crate::sim::components::NavTargetRef::building(plant)),
+        );
+        // The constructor and any Stop_Driver action must leave a Doing
+        // that admits the native forced Scatter on refusal.
+        assert_eq!(
+            crate::rules::infantry_sequence::scatter_allowed_by_doing(
+                entity(sim, engineer)
+                    .mission_leaf
+                    .as_infantry()
+                    .unwrap()
+                    .doing(),
+            ),
+            Some(true),
+        );
+        let head = entity(sim, engineer)
+            .locomotor
+            .as_ref()
+            .unwrap()
+            .walk_destination()
+            .expect("Capture command installed its native building coordinate");
+        sim.run_walk_boundary(engineer, head, Some(&rules), None);
+        sim.substrate
+            .entities
+            .get_mut(engineer)
+            .unwrap()
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .set_step_head(Some(head));
+        assert!(
+            !sim.run_completed_walk_step(engineer, head, Some(&rules), None)
+                .expect("ordinary capture arrival must finish")
+        );
+    };
     sim.temporal_initiate_warp(cleg, Some(plant), &rules);
-    assert!(!sim.tick_capture_orders(&rules, &std::collections::BTreeSet::new()));
+    enter(&mut sim);
     assert_eq!(entity(&sim, plant).owner(), americans, "turned away");
+    assert!(!erased(&sim, engineer), "refusal keeps the Engineer alive");
+    assert!(
+        matches!(
+            entity(&sim, engineer).navigation.nav_com,
+            Some(crate::sim::components::NavTargetRef::Cell { .. })
+        ),
+        "refusal clears the building destination and scatters away"
+    );
     sim.temporal_let_go(cleg);
-    assert!(sim.tick_capture_orders(&rules, &std::collections::BTreeSet::new()));
+    enter(&mut sim);
     assert_eq!(entity(&sim, plant).owner(), russians, "captured once free");
+    assert!(
+        erased(&sim, engineer),
+        "capture consumes the Engineer at entry"
+    );
 }
 
 /// CanEnter (0x0F) is refused while the transport is warped: a Unit tests

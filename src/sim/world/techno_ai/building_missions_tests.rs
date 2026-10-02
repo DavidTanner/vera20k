@@ -423,14 +423,10 @@ fn set_target_matches_the_original() {
         );
         if kind == "PDEF" {
             let owner = sim.interner.intern("Americans");
-            sim.power_states.insert(
-                owner,
-                crate::sim::power_system::PowerState {
-                    total_drain: 100,
-                    is_low_power: true,
-                    ..Default::default()
-                },
-            );
+            let mut power_state = crate::sim::power_system::PowerState::default();
+            power_state.total_drain = 100;
+            power_state.is_low_power = true;
+            sim.power_states.insert(owner, power_state);
         }
         let requested = (input["args"][0] != 0).then_some(TargetKind::Entity(target));
         sim.assign_target_represented(building, requested, Some(&rules))

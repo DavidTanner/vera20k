@@ -880,6 +880,7 @@ impl Simulation {
             i64::from(house.eva_funds_timer.start_frame()).hash(hasher);
             house.eva_funds_timer.duration().hash(hasher);
             house.eva_low_power_guard.hash(hasher);
+            house.hash_event_notifications(hasher);
             house.repair_delay.to_bits().hash(hasher);
             house.repair_start_latch.hash(hasher);
             i64::from(house.repair_latch_timer.start_frame()).hash(hasher);
@@ -1036,7 +1037,7 @@ impl Simulation {
             owner_id.hash(hasher);
             state.total_output.hash(hasher);
             state.total_drain.hash(hasher);
-            state.power_blackout_remaining.hash(hasher);
+            state.hash_assessment_state(hasher);
             if state.has_drained_power_source {
                 b"House.DrainedPowerSource".hash(hasher);
             }
@@ -1277,6 +1278,7 @@ impl Simulation {
             entity.native_crush_immunity().hash(hasher);
             b"building-body-v277".hash(hasher);
             entity.hash_building_body(hasher);
+            entity.hash_building_health_sample(hasher);
             entity.native_unique_id.hash(hasher);
             if let Some(manager) = entity.slave_manager.as_ref() {
                 b"slave-manager-v209".hash(hasher);
@@ -1599,7 +1601,7 @@ impl Simulation {
                 None => 0u8.hash(hasher),
             }
 
-            entity.capture_target.hash(hasher);
+            entity.hash_capture_infantry_type(hasher);
             entity.c4_plant.hash(hasher);
             match entity.pending_c4_detonation {
                 Some(pending) => {

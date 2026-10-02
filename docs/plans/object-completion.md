@@ -19,9 +19,10 @@ requirements. Ghidra names and old investigations remain leads.
 | E2 / Conscript | Ordinary infantry control; correctly refuses GI auto-deploy | Shared garrison/Hunt/Capture and fatal receiver gaps; remaining whole-object requirements not yet exhaustively audited | Reuse each corrected infantry mechanism; audit its ordinary weapon and death route |
 | GGI / Guardian GI | Reuses the GI automatic-deploy mechanism and existing deployed weapon owner | Whole-object lifecycle is not certified; GGI-specific antiair/weapon ranks and crush behavior still require their own coverage | Audit after the initial basic objects |
 | MTNK / Grizzly | Selection audit pending | No whole-object certificate or exhaustive required-behavior audit yet | Trace primary/elite weapon, projectile/warhead, movement, production and fatal cleanup |
-| GACNST / Construction Yard | Construction → Grand_Opening implementation under validation | Engineer repair, capture, sale/crew/destruction and AMCV undeploy remain required; whole-object closure audit pending | Finish the current shared opening chain, then engineer repair |
-| GAPOWR / Allied Power Plant | Reuses the current opening chain; native health-power corpus exists | Engineer/capture/sale/destruction coverage, plus ordinary drain/spy/powered-art consumers need closure | Complete ordinary power lifecycle |
-| GAPILE / Allied Barracks | Reuses the current opening chain | Engineer/capture/sale/destruction coverage; factory delivery radio, infantry output and spy effects need closure | Complete infantry factory output |
+| GACNST / Construction Yard | Construction → Grand_Opening merged in#992 | Engineer repair, capture, sale/crew/destruction and AMCV undeploy remain required; whole-object closure audit pending | Validate shared Engineer entry/repair, then ordinary destruction |
+| GAPOWR / Allied Power Plant | Reuses merged opening; shared Engineer repair/House consumer chain passed native, strict Rust and repeated production validation; single critic corrections and final release repeat pass | Whole-object closure remains open for sale/destruction, drain/spy/EMP and further power/art routes | Complete ordinary power lifecycle |
+| GAPILE / Allied Barracks | Reuses merged opening | Engineer/capture/sale/destruction coverage; factory delivery radio, infantry output and spy effects need closure | Complete infantry factory output |
+| ENGINEER / Allied Engineer | Ordinary damaged-GAPOWR entry/repair and required arrival-time capture/House consumers passed native, strict Rust and repeated production validation; single critic corrections and final release repeat pass | Live Tag/Trigger, MultiEngineer damage, Hospital/grinder and other specialized entry routes; full-object closure audit pending | Finish the current repair chain and reuse its shared owners |
 
 Rows name confirmed gaps and unaudited coverage separately. Nothing in this
 table claims that unlisted behavior is already equivalent.
@@ -93,7 +94,7 @@ fingerprints and final GPU bytes. The compact
 [production receipt](../../tools/spatial_oracle/infantry_auto_deploy.production.json)
 records the durable sealed bundle and literal state transitions.
 
-## Current chain: Construction → Grand_Opening
+## Merged chain: Construction → Grand_Opening
 
 Native Building Update43FB20 runs animation43FE22, ready/commence, shared
 Techno AI43FE56, then ready/commence43FF91, repair/power4401B6 and factory AI.
@@ -153,16 +154,16 @@ before the fixes. The corrected candidate again passes9420 strict-retail lib
 tests and clippy (732 repository warnings), with457 Python tests passing and
 four skipped. The final v2 release repeats all1450 steps and GPU bytes, and
 the updated production receipt retains its source/binary hashes. The final frame
-was inspected; publication is now ready.
+was inspected. [PR#992](https://github.com/YuriPlanet/vera20k/pull/992) merged at
+35fb0944b8a46efc171be82afc8bb356b5209665; all three supported OS checks passed.
 No whole-object or loaded-native-scenario certificate follows from these bounded
 comparisons.
 
-Ordinary engineer repair is a subsequent required chain: active
+Ordinary engineer repair is the current required chain: active
 PerCellProcess519630 calls inherited EngineerRepair701410 through vt+40C at
 519FF0 after engineer/contact/allied or occupiable-owner admission. It restores
 Health and EstimatedHealth, stops repair, updates damaged art, then processes
-the tag and engineer teardown. VERA currently has no ordinary allied production
-producer. The friendly click, arrival, full-health terminal Scatter, repaired sound
+the tag and engineer teardown. The friendly click, arrival, full-health terminal Scatter, repaired sound
 read, damaged-art update and teardown require one shared repair chain. Tagged
 arrival event1 and consumed-engineer event48 need a larger live tag mechanism;
 existing tag corpus coverage does not establish a production receiver.

@@ -124,6 +124,21 @@ in [`spatial_oracle/ore_queue.md`](spatial_oracle/ore_queue.md) and its
 
 ## Ordinary scheduled commands and actor trajectories
 
+[`map_observation.engineer-repair.example.json`](map_observation.engineer-repair.example.json)
+uses ordinary Battle/AnyTown orders to deploy the MCV, construct GAPOWR/GAPILE,
+deliver an ENGINEER, damage the power plant by MTNK ForceAttack, stop the tank,
+enable paid repair and send the Engineer through CaptureBuilding. The
+[production receipt](spatial_oracle/engineer_repair.production.json) records the
+1650-step release capture and exact repeat: all fingerprints, complete observed
+trajectories and full Metal BGRA bytes MATCH. At frame1602, actual health changes
+304→750, damaged slot1581 is replaced by healthy slot1742 and Engineer1557 is
+absent after deferred cleanup. Separate frame1601 and1650 GPU images were inspected.
+These are observed production timings/IDs, not native goldens. The profile's
+numeric handles/IDs belong to this exact stock launch; discover them again when
+changing launch inputs. Native fixtures and the physical retail input test cover
+the health sample, House consumers and sound request that the map observer does
+not expose. Native whole-clock, pixel and audible output remain outside this run.
+
 For TIBTRE observation, use
 [`map_observation.tibtre.example.json`](map_observation.tibtre.example.json).
 It loads retail AnyTown (`XMP03T4.MAP`), advances 800 simulation steps and looks
@@ -174,7 +189,9 @@ created by the AI MCV. Seal the final profile with those IDs and observed timing
 These IDs and timings illustrate syntax; obtain actual values from the production
 probes. Command payloads are the existing Rust serde `Command`, with no separate
 order translator. Supported orders are Move, Stop, Attack, ForceAttack, Guard,
-DeployMcv, ForceAttackCell, QueueProduction and PlaceReadyBuilding. Rust rejects
+DeployMcv, ForceAttackCell, QueueProduction, PlaceReadyBuilding and
+CaptureBuilding (the resolved Engineer repair/capture mission) and ToggleRepair.
+Rust rejects
 ignored payload fields or argument
 types. Python checks diagnostic structure and the exact typed request/receipt;
 it does not duplicate the gameplay command parser or admissions.

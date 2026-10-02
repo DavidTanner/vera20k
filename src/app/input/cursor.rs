@@ -535,9 +535,21 @@ pub(super) fn capability_cursor_for_hover(
                 hover.kind,
                 HoverTargetKind::FriendlyStructure | HoverTargetKind::EnemyStructure
             ) && let Some(action) = rules.and_then(|rules| {
-                sim.engineer_bridge_hut_action(sel_entity.stable_id(), hover.stable_id, rules)
+                sim.engineer_building_action(sel_entity.stable_id(), hover.stable_id, rules)
             }) {
-                return CursorFeedbackKind::BridgeRepair(action);
+                return match action {
+                    crate::sim::world::EngineerBuildingAction::Repair(valid) => {
+                        CursorFeedbackKind::RepairAction(valid)
+                    }
+                    crate::sim::world::EngineerBuildingAction::Damage => {
+                        CursorFeedbackKind::EngineerDamage
+                    }
+                    crate::sim::world::EngineerBuildingAction::Capture
+                    | crate::sim::world::EngineerBuildingAction::EnterHospital
+                    | crate::sim::world::EngineerBuildingAction::EnterGrinder => {
+                        CursorFeedbackKind::Enter
+                    }
+                };
             }
 
             // 2. C4 plant: SEAL / Tanya / Psi-Corp Trooper hovering an enemy
@@ -559,23 +571,6 @@ pub(super) fn capability_cursor_for_hover(
             }
 
             let is_infantry = sel_entity.category == EntityCategory::Infantry;
-
-            if sel_obj.engineer {
-                // 4. Engineer on capturable enemy building → capture (Enter cursor).
-                if matches!(hover.kind, HoverTargetKind::EnemyStructure) {
-                    if hovered_obj.map_or(false, |o| o.capturable) {
-                        return CursorFeedbackKind::Enter;
-                    }
-                }
-                // 5. Engineer on damaged friendly building → repair.
-                if matches!(hover.kind, HoverTargetKind::FriendlyStructure) {
-                    if let Some(he) = hovered_entity {
-                        if hovered_obj.is_some_and(|obj| he.health.current < obj.strength) {
-                            return CursorFeedbackKind::EngineerRepair;
-                        }
-                    }
-                }
-            }
 
             // 5. Infantry boarding a friendly transport (Passengers > 0).
             if is_infantry && matches!(hover.kind, HoverTargetKind::FriendlyUnit) {
@@ -1083,8 +1078,8 @@ pub(crate) fn cursor_id_for_feedback(kind: CursorFeedbackKind) -> Option<CursorI
         CursorFeedbackKind::PanBlocked(dir) => Some(pan_dir_to_cursor_id(dir)),
         CursorFeedbackKind::MinimapMove => Some(CursorId::MinimapMove),
         CursorFeedbackKind::Enter => Some(CursorId::Enter),
-        CursorFeedbackKind::EngineerRepair => Some(CursorId::EngineerRepair),
-        CursorFeedbackKind::BridgeRepair(valid) => Some(if valid {
+        CursorFeedbackKind::EngineerDamage => Some(CursorId::EngineerRepair),
+        CursorFeedbackKind::RepairAction(valid) => Some(if valid {
             CursorId::Repair
         } else {
             CursorId::NoRepair
@@ -2068,7 +2063,7 @@ mod tests {
                 assert_eq!(row["output"]["action"], if collapsed { 29 } else { 32 });
                 assert_eq!(
                     actual,
-                    CursorFeedbackKind::BridgeRepair(collapsed),
+                    CursorFeedbackKind::RepairAction(collapsed),
                     "{relation} collapsed={collapsed}"
                 );
                 assert_eq!(

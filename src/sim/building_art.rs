@@ -87,6 +87,7 @@ impl Simulation {
             return;
         };
         let first_opening = !entity.building_actually_placed;
+        let owner = entity.owner();
         let refinery = object.refinery;
         let powered = object.powered;
         let damaged = requested_damage_state(
@@ -122,9 +123,9 @@ impl Simulation {
         if powered {
             self.apply_building_anim_power(id, false, rules);
         }
-        //446A61/446A6E/446A77/446A84: VERA's production options, power and
-        //radar are derived from the same house/entity owners instead of dirty
-        //flags. Publishing placement here makes all following visits see it.
+        //446A77 invalidates retained House power and radar on every reached
+        //opening (including capture), before publishing placement at446A84.
+        self.invalidate_house_power(owner, true);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.building_actually_placed = true;
         }

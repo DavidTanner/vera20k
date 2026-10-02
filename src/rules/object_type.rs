@@ -1298,6 +1298,9 @@ pub struct ObjectType {
     /// gamemd 0x45E0D8 defaults false; 0x460968..0x460982 reads `Grinding=`.
     /// The Unit cell-entry receiver tests this separately from UnitAbsorb.
     pub grinding: bool,
+    /// BuildingType+16C1, ctor45E151=false; ReadBool460AD4..460AFD
+    /// exact Hospital key. The treatment lifecycle is a separate mechanism.
+    pub hospital: bool,
 
     /// Whether this techno type can enter a Tank Bunker.
     /// Parsed from `Bunkerable=` in rules.ini. UnitTypeClass entries default
@@ -2474,6 +2477,7 @@ impl ObjectType {
             infantry_absorb: section.read_bool("InfantryAbsorb", false),
             unit_absorb: section.read_bool("UnitAbsorb", false),
             grinding: section.read_bool("Grinding", false),
+            hospital: category == ObjectCategory::Building && section.read_bool("Hospital", false),
             bunkerable: section.read_bool("Bunkerable", category == ObjectCategory::Vehicle),
             weapon_list,
             elite_weapon_list,

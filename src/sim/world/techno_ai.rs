@@ -687,6 +687,10 @@ fn techno_ai_shell(
             // The ready check after the Techno AI (`0x0043FF91`).
             building_missions::ready_commence(sim, id, false);
             building_missions::apply_queued_body(sim, id);
+            // Building440042..440074 samples Health AFTER its queued body
+            // and BEFORE delayed fire/paid repair. Engineer701410 itself
+            // deliberately does not invalidate the House.
+            sim.sample_building_health_for_house_update(id);
             // ProcessDelayedFire (`0x004400F4`), then
             // BuildingClass::UpdateRepairAndPower (`0x004401B6`): the
             // computer's low-credit sale or auto-repair start, then the
@@ -3266,14 +3270,10 @@ mod tests {
             );
         }
         let owner = sim.interner.intern("Americans");
-        sim.power_states.insert(
-            owner,
-            crate::sim::power_system::PowerState {
-                total_drain: 100,
-                is_low_power: true,
-                ..Default::default()
-            },
-        );
+        let mut power = crate::sim::power_system::PowerState::default();
+        power.total_drain = 100;
+        power.is_low_power = true;
+        sim.power_states.insert(owner, power);
 
         let before = sim.scenario_rng.state();
         passive_acquire_step(&mut sim, 1, Some(&rules), ObjectAiCtx::default());

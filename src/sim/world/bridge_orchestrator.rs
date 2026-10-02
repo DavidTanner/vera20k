@@ -25,6 +25,9 @@ mod live_publication;
 
 pub(crate) use live_publication::repair_from_engineer;
 
+#[cfg(test)]
+pub(super) use live_publication::{ready_engineer, ready_repair_fixture, repair_frame};
+
 use crate::map::bridge_facts::{BRIDGE_FLAG_ANCHOR_SELF, BRIDGE_FLAG_STRUCTURAL};
 use crate::map::bridge_rim_tiles::HighBridgeRimTiles;
 use crate::map::cell_index::NativeCellIdentity;

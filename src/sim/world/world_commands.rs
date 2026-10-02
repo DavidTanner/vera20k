@@ -1687,7 +1687,6 @@ impl Simulation {
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
                     e.dock_state = None;
-                    e.capture_target = None;
                     e.c4_plant = Some(crate::sim::components::C4PlantState {
                         target_building_id: *target_building_id,
                     });
@@ -1731,22 +1730,6 @@ impl Simulation {
                 if !self.entity_owned_by_id(command_owner, *engineer_id) {
                     return false;
                 }
-                if self
-                    .substrate
-                    .entities
-                    .get(*engineer_id)
-                    .is_some_and(|e| e.is_deployed())
-                {
-                    return false;
-                }
-                // Validate engineer has Engineer=yes flag.
-                let eng_ok = self.substrate.entities.get(*engineer_id).and_then(|e| {
-                    let obj = self.object_type(e.type_ref(), rules)?;
-                    obj.engineer.then_some(())
-                });
-                if eng_ok.is_none() {
-                    return false;
-                }
                 // Validate target is a capturable enemy building.
                 let target_info = self
                     .substrate
@@ -1756,18 +1739,15 @@ impl Simulation {
                         if b.category != crate::map::entities::EntityCategory::Structure {
                             return None;
                         }
-                        if b.dying {
-                            return None;
-                        }
-                        let obj = self.object_type(b.type_ref(), rules)?;
-                        if !obj.capturable && !obj.bridge_repair_hut {
+                        if !b.lifecycle.object_alive
+                            || b.health.current <= 0
+                            || b.lifecycle.in_limbo
+                        {
                             return None;
                         }
                         Some((
                             b.position.rx,
                             b.position.ry,
-                            b.owner(),
-                            obj.bridge_repair_hut,
                             crate::sim::movement::nav_target_coordinate(
                                 crate::sim::components::NavTargetRef::Building {
                                     id: *target_building_id,
@@ -1780,21 +1760,12 @@ impl Simulation {
                             .ok()?,
                         ))
                     });
-                let Some((trx, try_, target_owner, bridge_hut, target_coord)) = target_info else {
+                let Some((trx, try_, target_coord)) = target_info else {
                     return false;
                 };
-                // Object51F190/Foot4D74E0 already resolved the action before
-                // the delayed Capture event. Hut repair admits every relation;
-                // do not re-query changing span state at this receiver.
-                if !bridge_hut
-                    && crate::map::houses::are_houses_friendly(
-                        &self.house_alliances,
-                        command_owner,
-                        self.interner.resolve(target_owner),
-                    )
-                {
-                    return false;
-                }
+                // Infantry51F190 maps actions28/29 toFootaction9 before
+                // delayed Event delivery. Mutable type, relation and HP
+                // action predicates are re-evaluated only at actual arrival.
                 // Native order admission (actor + Destination token).
                 if !self.order_actor_admits(*engineer_id)
                     || !self.order_object_token_admits(*target_building_id)
@@ -1814,7 +1785,6 @@ impl Simulation {
                 if let Some(e) = self.substrate.entities.get_mut(*engineer_id) {
                     e.order_intent = None;
                     e.dock_state = None;
-                    e.capture_target = Some(*target_building_id);
                     // Event4C747C -> Infantry51AA40 -> Foot4D9510 writes
                     // the actual object destination before locomotor approach.
                     e.navigation.nav_com = Some(crate::sim::components::NavTargetRef::Building {

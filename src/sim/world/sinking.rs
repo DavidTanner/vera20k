@@ -147,7 +147,16 @@ impl Simulation {
             entity.position.exact_z_leptons = Some(coord.z);
         }
         if coord.z.wrapping_sub(floor) < -400 {
-            self.record_sinking_terminal_kill(id);
+            // UnitAI736500's terminal RecordKill(NULL) is a second callback,
+            // not a second accounting implementation. Native naval_sink_tick
+            // retains Health1 and records two total losses across both calls.
+            self.record_the_kill(
+                id,
+                None,
+                None,
+                crate::sim::combat::KillCallback::Terminal,
+                rules,
+            );
             self.uninit_with_rules(id, rules);
             self.sound_events
                 .push(SimSoundEvent::ObjectSoundReleased { owner: id });

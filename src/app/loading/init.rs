@@ -1200,15 +1200,11 @@ mod map_wall_owner_candidate_tests {
         assert!(low_detail.point_lights.is_empty());
         assert_ne!(lit, low_detail);
 
-        sim.power_states.insert(
-            owner,
-            PowerState {
-                total_output: 0,
-                total_drain: 100,
-                is_low_power: true,
-                ..PowerState::default()
-            },
-        );
+        let mut power_state = PowerState::default();
+        power_state.total_output = 0;
+        power_state.total_drain = 100;
+        power_state.is_low_power = true;
+        sim.power_states.insert(owner, power_state);
         let offline = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         // House508C30->454CE0 RET and Building4549B0 animation-only
         // effects do not call LightSource disable on ordinary power loss.
@@ -1253,15 +1249,11 @@ mod map_wall_owner_candidate_tests {
         let before_capture = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         assert_eq!(before_capture.point_lights.len(), 1);
 
-        sim.power_states.insert(
-            captured_owner,
-            PowerState {
-                total_output: 0,
-                total_drain: 100,
-                is_low_power: true,
-                ..PowerState::default()
-            },
-        );
+        let mut power_state = PowerState::default();
+        power_state.total_output = 0;
+        power_state.total_drain = 100;
+        power_state.is_low_power = true;
+        sim.power_states.insert(captured_owner, power_state);
         sim.change_owner(41, captured_owner);
         let captured_offline = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         assert_eq!(captured_offline.point_lights, before_capture.point_lights);

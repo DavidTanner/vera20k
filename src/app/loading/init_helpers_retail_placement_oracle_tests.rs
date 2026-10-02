@@ -537,6 +537,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         &mut sim.substrate.entities,
         &rules,
         &sim.interner,
+        sim.session.binary_frame,
     );
     let power = sim
         .power_states

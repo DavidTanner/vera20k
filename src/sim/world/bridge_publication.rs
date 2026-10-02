@@ -37,6 +37,11 @@ mod ordinary_publication;
 pub(crate) use ordinary_publication::{damage_ordinary, repair_from_engineer};
 
 #[cfg(test)]
+pub(in crate::sim::world) use ordinary_publication::tests::{
+    ready_engineer, ready_repair_fixture, repair_frame,
+};
+
+#[cfg(test)]
 #[path = "bridge_pavement_publication_tests.rs"]
 mod pavement_tests;
 

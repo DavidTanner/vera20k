@@ -166,7 +166,13 @@ impl Simulation {
                 if let Some(entity) = self.substrate.entities.get_mut(victim) {
                     entity.health.current = 0;
                 }
-                self.record_the_kill(victim, Some(id), owner, rules);
+                self.record_the_kill(
+                    victim,
+                    Some(id),
+                    owner,
+                    crate::sim::combat::KillCallback::Terminal,
+                    rules,
+                );
                 self.apply_lifecycle_request_with_rules(
                     LifecycleRequest::Uninit {
                         stable_id: victim,
@@ -188,10 +194,10 @@ impl Simulation {
     }
 
     /// `InfantryClass::Per_Cell_Process @ 0x00519630`: for reason 2 its
-    /// engineer receiver (`0x00519948..0x00519D36`), then the Foot body for
+    /// Engineer building receiver (`0x00519948..0x0051A02E`), then the Foot body for
     /// a live owner (`0x0051A9EB` tests only IsAlive, `+0x90`).
     ///
-    /// RESIDUAL: the override's other reason-2 arms (Capture, Eaten, Enter,
+    /// RESIDUAL: the override's other reason-2 arms (other Capture branches, Eaten, Enter,
     /// the transport and C4 receivers, `0x00519675..0x0051A9E8`) are not
     /// dispatched from here. Some have ports with their own owners and
     /// callers (`capture_manager`, `passenger`, `world_orders`); native runs
@@ -205,16 +211,16 @@ impl Simulation {
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<bool, FrameAdvanceError> {
-        let changed = match rules {
+        let entry = match rules {
             Some(rules) if reason == PerCellReason::Arrival => {
-                self.infantry_per_cell_bridge_repair(id, rules, registry)?
+                self.infantry_per_cell_engineer_entry(id, rules, registry)?
             }
-            _ => false,
+            _ => Default::default(),
         };
-        if self.per_cell_owner_alive(id) {
+        if !entry.return_before_foot && self.per_cell_owner_alive(id) {
             self.foot_per_cell_process(id, reason, rules, registry);
         }
-        Ok(changed)
+        Ok(entry.bridge_state_changed)
     }
 
     fn per_cell_owner_alive(&self, id: u64) -> bool {

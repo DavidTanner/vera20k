@@ -500,6 +500,11 @@ impl Simulation {
             self.gattling_update(target, rules, 1);
         }
         // 0x0071B14E..0x0071B162: a victim that was itself warping lets go.
+        if let Some(owner) = self.substrate.entities.get(target).and_then(|entity| {
+            (entity.category == EntityCategory::Structure).then_some(entity.owner())
+        }) {
+            self.invalidate_house_power(owner, false); //71B126, before release
+        }
         self.temporal_release_if_warping(target);
         // 0x0071B16D: ObjectClass::Deselect.
         if let Some(entity) = self.substrate.entities.get_mut(target) {
@@ -739,7 +744,13 @@ impl Simulation {
             self.dispatch_unit_lost_events(&[event]);
         }
         // vtable +0xE0 Record_The_Kill(Owner): experience, kill and score.
-        self.record_the_kill(target, Some(head), killer_owner, rules);
+        self.record_the_kill(
+            target,
+            Some(head),
+            killer_owner,
+            crate::sim::combat::KillCallback::Terminal,
+            rules,
+        );
         // vtable +0xF8 UnInit: no death effects, no survivors.
         self.uninit_with_context(target, UninitContext::with_rules(rules));
         // 0x0071AAD5..0x0071AB02: idle, clear, idle again (the UnInit's
@@ -847,6 +858,11 @@ impl Simulation {
                     }
                 } else if let Some(target) = link.target {
                     self.set_temporal_head(target, None);
+                    if let Some(owner) = self.substrate.entities.get(target).and_then(|entity| {
+                        (entity.category == EntityCategory::Structure).then_some(entity.owner())
+                    }) {
+                        self.invalidate_house_power(owner, false); //71AC36
+                    }
                 }
             }
             Some(prev) => {
@@ -873,6 +889,11 @@ impl Simulation {
             return;
         };
         self.set_temporal_head(target, None);
+        if let Some(owner) = self.substrate.entities.get(target).and_then(|entity| {
+            (entity.category == EntityCategory::Structure).then_some(entity.owner())
+        }) {
+            self.invalidate_house_power(owner, false); //ClearWarp71AD04
+        }
         if let Some(stored) = self.temporal_link_mut(attacker) {
             stored.target = None;
         }
@@ -907,6 +928,11 @@ impl Simulation {
         };
         if let Some(target) = target {
             self.set_temporal_head(target, None);
+            if let Some(owner) = self.substrate.entities.get(target).and_then(|entity| {
+                (entity.category == EntityCategory::Structure).then_some(entity.owner())
+            }) {
+                self.invalidate_house_power(owner, false); //ClearWarp71AD04
+            }
             if let Some(stored) = self.temporal_link_mut(attacker) {
                 stored.target = None;
             }

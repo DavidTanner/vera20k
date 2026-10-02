@@ -239,14 +239,10 @@ fn an_unpowered_defence_drops_its_target() {
         );
         store.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
         let mut power = std::collections::BTreeMap::new();
-        power.insert(
-            test_interner().intern("Soviet"),
-            crate::sim::power_system::PowerState {
-                total_output: output,
-                total_drain: 75,
-                ..Default::default()
-            },
-        );
+        let mut power_state = crate::sim::power_system::PowerState::default();
+        power_state.total_output = output;
+        power_state.total_drain = 75;
+        power.insert(test_interner().intern("Soviet"), power_state);
         combat_frame(&mut store, &rules, &power);
         (
             store.get(2).unwrap().health.current,

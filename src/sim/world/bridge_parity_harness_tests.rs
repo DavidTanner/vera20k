@@ -274,7 +274,12 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // commands, lifecycle/Logic and three RNG streams/draws/callers.
 // Rust-only receipt: tools/spatial_oracle/building_construction_replay/receipt.json.
 // Previous: 0x8DE16E7B3B6FE661. Native proof is the separate construction corpus.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x8D29_B490_A034_EEC9;
+// 2026-10-02 Engineer/House retained state (Rust-only hash composition):
+// The same-binary four-feed control reproduces the preceding main pin.
+// All819 complete current/control boundaries match except tick hashes,
+// including House/Factory state and three full RNG streams/draws/callers.
+// Scope and receipt: tools/spatial_oracle/engineer_repair_replay/receipt.json.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xE3FD_9DD3_63C9_8F82;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

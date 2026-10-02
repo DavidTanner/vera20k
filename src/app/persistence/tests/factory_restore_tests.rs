@@ -91,7 +91,16 @@ fn prepare_saved(
 
 #[test]
 fn wallet_survives_prepared_load_and_active_cancellation() {
-    let (mut saved, rules, owner, _) = factory_fixture("PARENT", ProductionCategory::Building);
+    let rules = factory_rules();
+    let mut saved = load_fixture_simulation(true);
+    saved.intern_rule_type_ids(&rules);
+    saved.resolve_type_handles(&rules);
+    let owner = saved.interner.intern("Americans");
+    saved.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, 50_000, 10),
+    );
+    saved.session.house_order.push(owner);
     // An on-map factory keeps the held build eligible after restore. Its
     // placement uses the same raw fixture boundary as production replay tests.
     let producer_id = saved.allocate_stable_id();
@@ -112,14 +121,25 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
     );
     producer.lifecycle.in_limbo = false;
     producer.in_playfield = true;
+    producer.finish_building_construction_for_test();
+    producer.building_actually_placed = true;
     saved.substrate.entities.insert(producer);
     saved.add_entity_occupancy(producer_id);
+    saved.append_house_base_building_for_test(producer_id);
     saved
         .houses
         .get_mut(&owner)
         .unwrap()
         .tracking
         .set_buildings_for_test(1);
+    // Execute the build start before saving: it constructs the held graph and
+    // arms its timer. A queue kernel alone is intentionally not a running build.
+    assert!(crate::sim::production::enqueue_by_type(
+        &mut saved,
+        &rules,
+        "Americans",
+        "PARENT"
+    ));
     // Seed a partially paid held object, then exercise a different live credit
     // writer before saving. The old factory balance could be stale at this edge.
     for _ in 0..5 {

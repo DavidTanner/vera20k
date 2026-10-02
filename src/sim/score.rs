@@ -109,7 +109,7 @@ impl Simulation {
                 survived,
                 kills: stats.kills(),
                 losses: stats.losses(),
-                built: stats.built,
+                built: stats.built(),
                 raw_score,
                 score,
             });
@@ -145,12 +145,14 @@ mod tests {
         house.is_defeated = fixture.defeated;
         house.multiplay_passive = fixture.passive;
         house.economy.harvested_credits = fixture.harvested;
-        house.stats.score_points = fixture.kill_score;
-        house.stats.units_killed = fixture.units_killed;
-        house.stats.buildings_killed = fixture.buildings_killed;
-        house.stats.units_lost = fixture.units_lost;
-        house.stats.buildings_lost = fixture.buildings_lost;
-        house.stats.built = fixture.built;
+        house.stats = crate::sim::house_state::MatchStatistics::from_totals_for_test(
+            fixture.units_killed,
+            fixture.buildings_killed,
+            fixture.units_lost,
+            fixture.buildings_lost,
+            fixture.built,
+            fixture.kill_score,
+        );
         sim.houses.insert(owner, house);
         owner
     }

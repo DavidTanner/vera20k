@@ -436,7 +436,7 @@ pub(super) fn record_last_built(
         .object_type(type_id, rules)
         .is_some_and(|ty| !ty.dont_score);
     if scores && let Some(house) = sim.houses.get_mut(&owner) {
-        house.stats.built = house.stats.built.saturating_add(1);
+        house.stats.record_built();
     }
 }
 
@@ -549,8 +549,18 @@ pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules:
             .expect("validated revalidation promotion must construct one Techno");
     }
     let mut registry = std::mem::take(&mut sim.production.factory_shadow);
-    let prepared = registry.prepare_step_inputs(sim, rules);
-    registry.step_all(&mut sim.houses, &prepared, sim.session.binary_frame);
+    registry.step_all(&mut sim.houses, sim.session.binary_frame);
+    sim.production.factory_shadow = registry;
+}
+
+/// House508D88 invokes the existing Factory rate owner after power changes.
+pub(in crate::sim) fn refresh_factory_rates_for_house(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+) {
+    let mut registry = std::mem::take(&mut sim.production.factory_shadow);
+    registry.refresh_rates_for_house(sim, rules, owner);
     sim.production.factory_shadow = registry;
 }
 

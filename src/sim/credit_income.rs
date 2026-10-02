@@ -216,30 +216,37 @@ pub(crate) fn building_at_cell_in_store(entities: &EntityStore, rx: u16, ry: u16
 /// `target+0x1D0 = drainer` (`DrainingMe`), `drainer+0x1CC = target`
 /// (`DrainTarget`), flag the victim house's power recalc (`+0x5778`), free any
 /// mind-controlled captives, create the `DrainAnim` and drop the drainer from
-/// its team. Only the two pointers are modelled here, the captives and the
-/// team by the caller; the power recalc (drained buildings output no power)
-/// and the anim are recorded residuals.
+/// its team. This owner installs the pointers and dirties House power; the
+/// captives and team belong to the caller. The reached House assessment
+/// suppresses the drained output. DrainAnim remains a separate residual.
 ///
 /// Returns whether the link was made.
-pub(crate) fn install_drain_link(
-    entities: &mut EntityStore,
-    drainer_id: u64,
-    victim_id: u64,
-) -> bool {
-    let Some((rx, ry)) = entities
+pub(crate) fn install_drain_link(sim: &mut Simulation, drainer_id: u64, victim_id: u64) -> bool {
+    let Some((rx, ry)) = sim
+        .substrate
+        .entities
         .get(drainer_id)
         .map(|entity| (entity.position.rx, entity.position.ry))
     else {
         return false;
     };
-    if building_at_cell_in_store(entities, rx, ry) != Some(victim_id) {
+    if building_at_cell_in_store(&sim.substrate.entities, rx, ry) != Some(victim_id) {
         return false;
     }
-    if let Some(victim) = entities.get_mut(victim_id) {
+    if let Some(victim) = sim.substrate.entities.get_mut(victim_id) {
         victim.draining_me = Some(drainer_id);
     }
-    if let Some(drainer) = entities.get_mut(drainer_id) {
+    if let Some(drainer) = sim.substrate.entities.get_mut(drainer_id) {
         drainer.drain_target = Some(victim_id);
+    }
+    if let Some(owner) = sim
+        .substrate
+        .entities
+        .get(victim_id)
+        .map(|victim| victim.owner())
+    {
+        //70FDAC, before capture release/animation/team callbacks.
+        sim.invalidate_house_power(owner, false);
     }
     true
 }
@@ -261,6 +268,8 @@ pub(crate) fn stop_drain(sim: &mut Simulation, drainer_id: u64) {
         && victim.draining_me == Some(drainer_id)
     {
         victim.draining_me = None;
+        let owner = victim.owner();
+        sim.invalidate_house_power(owner, false); //70FE93 /6FA217
     }
     if let Some(drainer) = sim.substrate.entities.get_mut(drainer_id) {
         drainer.drain_target = None;
@@ -284,12 +293,22 @@ pub(crate) fn clear_drain_links_on_expiry(sim: &mut Simulation, expired_id: u64)
         && victim.draining_me == Some(expired_id)
     {
         victim.draining_me = None;
+        let owner = victim.owner();
+        sim.invalidate_house_power(owner, false); //7020AA /70789F
     }
     if let Some(drainer_id) = draining_me
         && let Some(drainer) = sim.substrate.entities.get_mut(drainer_id)
         && drainer.drain_target == Some(expired_id)
     {
         drainer.drain_target = None;
+        let owner = sim
+            .substrate
+            .entities
+            .get(expired_id)
+            .map(|entity| entity.owner());
+        if let Some(owner) = owner {
+            sim.invalidate_house_power(owner, false);
+        } //7020FB /70791D
     }
     if let Some(entity) = sim.substrate.entities.get_mut(expired_id) {
         entity.drain_target = None;
@@ -313,7 +332,7 @@ pub(crate) fn clear_drain_links_on_expiry(sim: &mut Simulation, expired_id: u64)
 ///    only the `Fire_At` link gate at `0x006FDF7B` reads. So a drained
 ///    building loses money only when its type is a resource destination (the
 ///    refineries `GAREFN`/`NAREFN`/`YAREFN`); a drained `GAPOWR` loses power
-///    (the `+0x5778` recalc, a recorded residual) but no credits.
+///    (the `+0x5778` recalc, retained House assessment) but no credits.
 /// 2. Drainer side `0x006FA1C5..0x006FA224`: with `DrainTarget` (`+0x1CC`)
 ///    set and `HouseClass::IsAlliedWith(target->Owner, this)` true, stop the
 ///    drain inline.
@@ -437,6 +456,7 @@ mod tests {
         let id = sim.interner.intern(name);
         sim.houses
             .insert(id, HouseState::new(id, 0, None, human, credits, 10));
+        sim.session.house_order.push(id);
         id
     }
 
@@ -587,7 +607,7 @@ mod tests {
             sim.power_states
                 .entry(owner)
                 .or_default()
-                .power_blackout_remaining = u32::from(outage);
+                .start_blackout(0, if outage { 1000 } else { 0 });
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             entity.produce_cash_timer = CdTimer::started(0, 100);
             entity.mission.apply_test_fixture(MissionTestFixture {
@@ -666,11 +686,7 @@ mod tests {
             .spawn_object("DISK", "YuriCountry", 21, 21, 0, &rules)
             .expect("disc spawns");
         assert_eq!(building_at_cell(&sim, 21, 21), Some(refinery));
-        assert!(install_drain_link(
-            &mut sim.substrate.entities,
-            disk,
-            refinery
-        ));
+        assert!(install_drain_link(&mut sim, disk, refinery));
         assert_eq!(
             sim.substrate.entities.get(disk).unwrap().drain_target,
             Some(refinery)
@@ -723,7 +739,7 @@ mod tests {
         let disk = sim
             .spawn_object("DISK", "YuriCountry", 21, 21, 0, &rules)
             .expect("disc spawns");
-        assert!(install_drain_link(&mut sim.substrate.entities, disk, plant));
+        assert!(install_drain_link(&mut sim, disk, plant));
         run_ticks(&mut sim, &rules, 150);
         assert_eq!(credits(&sim, americans), 75, "no credits leave a GAPOWR");
         assert_eq!(credits(&sim, yuri), 500);
@@ -849,15 +865,11 @@ mod tests {
         let disk = sim
             .spawn_object("DISK", "YuriCountry", 30, 30, 0, &rules)
             .expect("disc spawns");
-        assert!(!install_drain_link(
-            &mut sim.substrate.entities,
-            disk,
-            plant
-        ));
+        assert!(!install_drain_link(&mut sim, disk, plant));
         assert_eq!(sim.substrate.entities.get(plant).unwrap().draining_me, None);
 
         move_disc(&mut sim, disk, 20, 21);
-        assert!(install_drain_link(&mut sim.substrate.entities, disk, plant));
+        assert!(install_drain_link(&mut sim, disk, plant));
         run_ticks(&mut sim, &rules, 40);
         assert_eq!(
             sim.substrate.entities.get(disk).unwrap().drain_target,
@@ -871,7 +883,7 @@ mod tests {
 
         // Pointer expiry drops both halves.
         move_disc(&mut sim, disk, 20, 21);
-        assert!(install_drain_link(&mut sim.substrate.entities, disk, plant));
+        assert!(install_drain_link(&mut sim, disk, plant));
         sim.uninit_with_rules(disk, &rules);
         assert_eq!(sim.substrate.entities.get(plant).unwrap().draining_me, None);
     }

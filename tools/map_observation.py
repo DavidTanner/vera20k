@@ -40,7 +40,7 @@ PROFILE_V2 = 'vera20k.map-observation-profile.v2'
 MAX_OBSERVATION_SAMPLES = 100_000
 MAX_RECEIPT_BYTES = 128 * 1024 * 1024
 ORDER_VARIANTS = frozenset(('Move', 'Stop', 'Attack', 'ForceAttack', 'Guard',
-                            'DeployMcv', 'ForceAttackCell'))
+                            'DeployMcv', 'ForceAttackCell', 'CaptureBuilding', 'ToggleRepair'))
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
 EXTENSION_FIELDS = frozenset(('commands', 'observe_owners', 'camera_cell', 'terrain_cells'))
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}

@@ -48,6 +48,23 @@ enum InfantryPerCellBuildingAdmission {
     GroundBuilding(u64),
 }
 
+/// The native Engineer object-action arm. Input and cursor consumers share
+/// this result rather than independently guessing from relation or health.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EngineerBuildingAction {
+    Capture,
+    Damage,
+    Repair(bool),
+    EnterHospital,
+    EnterGrinder,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct EngineerEntryResult {
+    pub(crate) bridge_state_changed: bool,
+    pub(crate) return_before_foot: bool,
+}
+
 #[cfg(test)]
 #[path = "bridge_engineer_admission_tests.rs"]
 mod bridge_engineer_admission_tests;
@@ -113,17 +130,17 @@ impl Simulation {
         true
     }
 
-    /// Object-route Engineer hut action in Infantry51E49E..51E55D.
-    /// Native caller/display vectors: engineer_bridge_cursor_caller.{py,json};
-    /// complete geometric query: bridge_repair_query.{py,json}.
-    /// Some(false) is terminal action32, not an ordinary capture fallback.
+    /// Object-route Engineer action in Infantry51E49E..51E637. Ordinary
+    /// action/threshold vectors: engineer_repair_joined; hut caller/display
+    /// vectors: engineer_bridge_cursor_caller; shared geometric query:
+    /// bridge_repair_query. Repair(false) is terminal action32.
     /// Admission belongs to the input producer, before a delayed mission event.
-    pub(crate) fn engineer_bridge_hut_action(
+    pub(crate) fn engineer_building_action(
         &self,
         actor_id: u64,
         target_id: u64,
         rules: &RuleSet,
-    ) -> Option<bool> {
+    ) -> Option<EngineerBuildingAction> {
         let actor = self.substrate.entities.get(actor_id)?;
         if actor.category != EntityCategory::Infantry
             || !self.object_type(actor.type_ref(), rules)?.engineer
@@ -136,20 +153,78 @@ impl Simulation {
             return None;
         }
         let object = self.object_type(target.type_ref(), rules)?;
-        if object.is_1x1_with_undeploy() || !object.repairable || !object.bridge_repair_hut {
+        if object.is_1x1_with_undeploy() || !object.repairable {
             return None;
+        }
+        if !object.bridge_repair_hut {
+            let allied = crate::map::houses::is_allied_with(
+                &self.house_alliances,
+                self.interner.resolve(actor.owner()),
+                self.interner.resolve(target.owner()),
+            );
+            let passive_occupation = self
+                .houses
+                .get(&target.owner())
+                .is_some_and(|house| house.multiplay_passive)
+                && object.can_be_occupied
+                && !target.is_warped_out();
+            if !allied && !passive_occupation {
+                if !object.capturable {
+                    return None;
+                }
+                //51E5C6 compares threshold < health ratio (C0), not the
+                //opposite. Equality returns Capture; masked NaN keeps C0=1.
+                use crate::util::native_x87::{MaskedX87Chop53 as X87, MaskedX87Ordering};
+                return Some(
+                    if matches!(
+                        X87::compare(
+                            X87::load_f32(rules.general.engineer_capture_level),
+                            target.health.ratio(object.strength),
+                        ),
+                        MaskedX87Ordering::Less | MaskedX87Ordering::Unordered
+                    ) {
+                        EngineerBuildingAction::Damage
+                    } else {
+                        EngineerBuildingAction::Capture
+                    },
+                );
+            }
+            //ConditionGreen is the native forced1.0, not an authored key.
+            if object.hospital
+                && matches!(
+                    actor
+                        .health
+                        .compare_ratio(self.object_type(actor.type_ref(), rules)?.strength, 1.0,),
+                    crate::util::native_x87::MaskedX87Ordering::Less
+                        | crate::util::native_x87::MaskedX87Ordering::Unordered
+                )
+            {
+                return Some(EngineerBuildingAction::EnterHospital);
+            }
+            let full = matches!(
+                target.health.compare_ratio(object.strength, 1.0),
+                crate::util::native_x87::MaskedX87Ordering::Equal
+                    | crate::util::native_x87::MaskedX87Ordering::Unordered
+            );
+            return Some(if !full {
+                EngineerBuildingAction::Repair(true)
+            } else if object.grinding {
+                EngineerBuildingAction::EnterGrinder
+            } else {
+                EngineerBuildingAction::Repair(false)
+            });
         }
         let coord = crate::sim::movement::ground_pose::object_get_coords(
             target,
             self.resolved_terrain.as_ref(),
         );
         //51E52F..51E547: signed truncation by256 then packed-word narrowing.
-        Some(
+        Some(EngineerBuildingAction::Repair(
             crate::sim::world::bridge_orchestrator::bridge_hut_can_repair(
                 self,
                 ((coord.x / 256) as u16, (coord.y / 256) as u16),
             ),
-        )
+        ))
     }
 
     fn announce_bridge_repair(
@@ -339,100 +414,6 @@ impl Simulation {
         }
     }
 
-    /// Tick engineer capture orders: check if any engineer with a capture_target
-    /// has arrived adjacent to its target building. If so, transfer ownership and
-    /// consume the engineer.
-    ///
-    /// `BridgeRepairHut=yes` targets belong to the ordinary Walk/Infantry
-    /// PerCell2 receiver, which repairs and consumes the Engineer inside the
-    /// hut. This adjacent capture pass cannot capture or move toward a hut.
-    /// Returns true if any capture occurred (triggers atlas rebuild for new owner color).
-    pub(crate) fn tick_capture_orders(
-        &mut self,
-        rules: &RuleSet,
-        turn_suppressed: &BTreeSet<u64>,
-    ) -> bool {
-        let mut any_captured = false;
-        // Snapshot engineers with active capture targets.
-        let captures: Vec<(u64, u64, InternedId)> = self
-            .substrate
-            .entities
-            .values()
-            .filter(|e| {
-                e.capture_target.is_some()
-                    && !e.dying
-                    // A warped engineer never reaches PerCellProcess.
-                    && !e.ai_frozen()
-                    && !turn_suppressed.contains(&e.stable_id())
-            })
-            .map(|e| (e.stable_id(), e.capture_target.unwrap(), e.owner()))
-            .collect();
-
-        for (engineer_id, building_id, engineer_owner) in captures {
-            // Skip BridgeRepairHut targets — repair tick handles them.
-            let target_bridge_hut = self
-                .substrate
-                .entities
-                .get(building_id)
-                .and_then(|b| {
-                    self.object_type(b.type_ref(), rules)
-                        .map(|t| t.bridge_repair_hut)
-                })
-                .unwrap_or(false);
-            if target_bridge_hut {
-                continue;
-            }
-
-            // Check building still exists and is capturable.
-            let building_ok = self
-                .substrate
-                .entities
-                .get(building_id)
-                .is_some_and(|b| b.category == EntityCategory::Structure && !b.dying);
-            if !building_ok {
-                // Target lost — clear capture order.
-                if let Some(e) = self.substrate.entities.get_mut(engineer_id) {
-                    e.capture_target = None;
-                }
-                continue;
-            }
-
-            // Distance check: adjacent = Chebyshev distance <= 1 cell.
-            let (eng_rx, eng_ry) = self
-                .substrate
-                .entities
-                .get(engineer_id)
-                .map(|e| (e.position.rx, e.position.ry))
-                .unwrap_or((0, 0));
-            let (bld_rx, bld_ry) = self
-                .substrate
-                .entities
-                .get(building_id)
-                .map(|e| (e.position.rx, e.position.ry))
-                .unwrap_or((0, 0));
-            let dx = (eng_rx as i32 - bld_rx as i32).abs();
-            let dy = (eng_ry as i32 - bld_ry as i32).abs();
-
-            // InfantryClass::PerCellProcess turns the engineer away from a
-            // building being warped (`0x00519EF2`): no capture.
-            let target_warped = self
-                .substrate
-                .entities
-                .get(building_id)
-                .is_some_and(crate::sim::game_entity::GameEntity::is_warped_out);
-            if dx <= 1 && dy <= 1 && !target_warped {
-                self.announce_engineer_capture(building_id, engineer_owner, rules);
-                // CAPTURE: the ownership chokepoint moves HouseState counts
-                // and the entity owner exactly once.
-                self.change_owner_with_rules(building_id, engineer_owner, rules);
-                // Destroy engineer (consumed on capture).
-                self.uninit_with_rules(engineer_id, rules);
-                any_captured = true;
-            }
-        }
-        any_captured
-    }
-
     /// `BuildingClass::ChangeOwner @ 0x00448260` announce block
     /// (`0x004483C0..0x0044848F`), run before the owner swap because native
     /// reads `this->Owner` (the OLD owner) there. The engineer capture site
@@ -534,8 +515,8 @@ impl Simulation {
         //457620 ->465D40;5199B8 also requires Building RTTI6 before the
         //separate5199A6 conversion/destination continuation can proceed,
         //which must not be treated as ordinary bridge repair. Stock CABHUT
-        //has no UndeploysInto. Existing regular capture remains separately
-        //owned by tick_capture_orders; this does not port that native branch.
+        //has no UndeploysInto. One-cell building conversion remains a separate mechanism; ordinary
+        //Engineer entry below shares this admitted ground-building identity.
         if let Some(target) = nav_object.and_then(|id| self.substrate.entities.get(id))
             && target.category == EntityCategory::Structure
             && self
@@ -565,22 +546,22 @@ impl Simulation {
 
     /// Ordinary Infantry PerCell2 engineer receiver. The active object cursor
     /// owns removal/next-object cadence; there is no second sorted repair pass.
-    pub(crate) fn infantry_per_cell_bridge_repair(
+    pub(crate) fn infantry_per_cell_engineer_entry(
         &mut self,
         engineer_id: u64,
         rules: &RuleSet,
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) -> Result<bool, super::FrameAdvanceError> {
+    ) -> Result<EngineerEntryResult, super::FrameAdvanceError> {
         let Some(engineer) = self.substrate.entities.get(engineer_id) else {
-            return Ok(false);
+            return Ok(EngineerEntryResult::default());
         };
         if engineer.category != EntityCategory::Infantry {
-            return Ok(false);
+            return Ok(EngineerEntryResult::default());
         }
         let InfantryPerCellBuildingAdmission::GroundBuilding(building_id) =
             self.infantry_per_cell_building_admission(engineer, rules)
         else {
-            return Ok(false);
+            return Ok(EngineerEntryResult::default());
         };
         //519B3E's optional hut Tag event1 precedes this type gate. The live
         //Tag receiver remains a separate required chain; ordinary Hills has
@@ -589,18 +570,94 @@ impl Simulation {
             .object_type(engineer.type_ref(), rules)
             .is_some_and(|t| t.engineer)
         {
-            return Ok(false);
+            return Ok(EngineerEntryResult::default());
         }
         let cell = (engineer.position.rx, engineer.position.ry);
         let owner = engineer.owner();
         let Some(building) = self.substrate.entities.get(building_id) else {
-            return Ok(false);
+            return Ok(EngineerEntryResult::default());
         };
-        if !self
-            .object_type(building.type_ref(), rules)
-            .is_some_and(|t| t.bridge_repair_hut)
-        {
-            return Ok(false);
+        let Some(object) = self.object_type(building.type_ref(), rules) else {
+            return Ok(EngineerEntryResult::default());
+        };
+        if !object.bridge_repair_hut {
+            let allied = crate::map::houses::is_allied_with(
+                &self.house_alliances,
+                self.interner.resolve(owner),
+                self.interner.resolve(building.owner()),
+            );
+            //519D6E's passive-occupation repair branch has no warp gate.
+            let repair = allied
+                || (object.can_be_occupied
+                    && self
+                        .houses
+                        .get(&building.owner())
+                        .is_some_and(|house| house.multiplay_passive));
+            let full = building.health.current == object.strength;
+            let refused_capture = building.mission.current().known() == Some(MissionType::Selling)
+                || building.is_warped_out();
+            let capturable = object.capturable;
+            let native_type_index = rules
+                .type_array_index(
+                    crate::rules::object_type::ObjectCategory::Infantry,
+                    self.interner.resolve(engineer.type_ref()),
+                )
+                .unwrap_or(-1);
+            if (repair && full) || (!repair && capturable && refused_capture) {
+                //519FB9/519EBB/519EFC: SetDestination(NULL,true), then
+                //Scatter(real Building GetCoords,true,true), immediate return
+                //before FootPerCell. The real-coordinate arm does not Process.
+                let coord = crate::sim::movement::ground_pose::object_get_coords(
+                    building,
+                    self.resolved_terrain.as_ref(),
+                );
+                self.assign_null_destination(engineer_id, Some(rules));
+                self.infantry_scatter_from(
+                    engineer_id,
+                    (coord.x, coord.y),
+                    crate::sim::movement::ScatterFlags::new(true, true),
+                    rules,
+                    registry,
+                )
+                .map_err(|cause| {
+                    super::FrameAdvanceError::bridge_repair(
+                        self.session.tick,
+                        self.session.binary_frame,
+                        engineer_id,
+                        cause,
+                    )
+                })?;
+                return Ok(EngineerEntryResult {
+                    return_before_foot: true,
+                    ..Default::default()
+                });
+            }
+            let mut changed = false;
+            if repair {
+                crate::sim::production::engineer_repair(self, rules, building_id);
+            } else if capturable {
+                //519DA1's MultiEngineer damage/C4Warhead branch remains a
+                //separate required numeric/damage chain; stock ordinary single
+                //Engineer admission (session option false) reaches this arm.
+                //Attached Building/Engineer Tag events and transfer likewise
+                //remain the trigger mechanism's synchronous residual.
+                if let Some(old_house) = self.houses.get_mut(&building.owner()) {
+                    old_house.notify_building_capture(); //519F4F, Trigger event3 latch
+                }
+                self.announce_engineer_capture(building_id, owner, rules);
+                self.change_owner_with_rules(building_id, owner, rules);
+                if let Some(building) = self.substrate.entities.get_mut(building_id) {
+                    building.record_infantry_capture_type(native_type_index);
+                }
+                changed = self.scatter_building_infantry(building_id, rules, registry)?;
+            }
+            //519EAACapturable=false consumes too.519FF0 repair and519F9A
+            //capture join Tag event48 then virtualUnInit, with no Foot tail.
+            self.uninit_with_rules(engineer_id, rules);
+            return Ok(EngineerEntryResult {
+                bridge_state_changed: changed,
+                return_before_foot: true,
+            });
         }
         let building_cell = (building.position.rx, building.position.ry);
         //519BB6 supplies the ENGINEER cell;519C02 supplies building XYZ.
@@ -623,10 +680,13 @@ impl Simulation {
         //519D17..519D36 descends Infantry's registry with +28(hut,false).
         //Clearing NavCom does not stop a retained Walk head/destination.
         self.expire_infantry_bridge_hut_targets(building_id);
-        changed |= self.scatter_bridge_hut(building_id, rules, registry)?;
+        changed |= self.scatter_building_infantry(building_id, rules, registry)?;
         // Attached Tag6E53A0 remains a separate synchronous receiver boundary.
         self.uninit_with_rules(engineer_id, rules);
-        Ok(changed)
+        Ok(EngineerEntryResult {
+            bridge_state_changed: changed,
+            return_before_foot: true,
+        })
     }
 
     /// Tick C4 plant orders.
