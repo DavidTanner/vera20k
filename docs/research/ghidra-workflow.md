@@ -510,6 +510,19 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   formal made Ghidra invent a widened `_NewStep` alias. Keep `undefined4` storage
   when the source declaration is unproved, and qualify the incoming low-byte flag
   in the plate. Inspect widened aliases as well as `in_stack_` warnings in rehearsals.
+- A new `Type propagation algorithm not settling` warning needs native producer and
+  consumer checks alongside artifact and frame comparisons. Ghidra 12.1.2's
+  [seven-round guard](https://github.com/NationalSecurityAgency/ghidra/blob/c0f584bf229fffba61b36431f3ce30c0c3e4e682/Ghidra/Features/Decompiler/src/decompile/cpp/coreaction.cc#L5425-L5467)
+  can stop inference before checking whether the next round changes anything. A
+  matched private replay of `0x574600` converged with identical final p-code and C
+  after removing only the warning; that result covers this candidate alone.
+  Other callers repeatedly alternated inferred coordinate homes between 8 and 12
+  bytes. Those inferred widths do not establish native write spans: `0x4C93D0`
+  and `0x565660` each write one DWORD to their output buffer. Check actual byte
+  offsets, result consumers and branch inputs in each warned function, and record
+  unresolved virtual targets or lifetimes. Keep established native receiver,
+  argument and return contracts; changing them to silence a warning can conceal
+  the underlying analysis problem.
 - `set_function_prototype` applies the parameters under the function's old convention
   and sets the new convention afterwards. Ghidra stores a stack purge only for a function
   that has none, and computes it from that first step. So a `__fastcall` prototype on a
