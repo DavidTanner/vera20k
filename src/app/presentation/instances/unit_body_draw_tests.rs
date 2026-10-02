@@ -192,10 +192,22 @@ fn retail_voxel_bodies_draw_the_sprites_their_model_is_seeded_with() {
             ("HARV".to_string(), "HORV".to_string(), false),
         ]
     );
-    // No retail aircraft image ships a gun part the loader would find and
-    // `AircraftClass::Draw_It` would not draw.
-    for type_id in &rules.aircraft_ids {
-        let image = voxel_image_id(type_id, Some(rules));
+    // Only a vehicle model loads `%sTUR` and `%sBARL`. No other retail model
+    // ships one: not an aircraft, whose `AircraftClass::Draw_It` would not
+    // draw it, and not a building's voxel `TurretAnim=` model, of which
+    // YAGGUN's is named as its building.
+    let turret_models: Vec<&str> = rules
+        .building_ids
+        .iter()
+        .filter_map(|type_id| rules.object(type_id))
+        .filter(|object| object.turret_anim_is_voxel)
+        .filter_map(|object| object.turret_anim.as_deref())
+        .collect();
+    assert_eq!(turret_models.len(), 8, "{turret_models:?}");
+    assert!(turret_models.contains(&"YAGGUN"), "{turret_models:?}");
+    let aircraft_models = rules.aircraft_ids.iter().map(String::as_str);
+    for model in aircraft_models.chain(turret_models) {
+        let image = voxel_image_id(model, Some(rules));
         for part in ["TUR", "BARL"] {
             let file = format!("{image}{part}.VXL");
             assert!(assets.get_ref(&file).is_none(), "{file}");

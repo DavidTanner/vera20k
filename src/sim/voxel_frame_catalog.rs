@@ -88,8 +88,9 @@ pub(crate) fn voxel_image_id(type_id: &str, rules: Option<&RuleSet>) -> String {
 /// loader formats no `%sBARREL` name.
 ///
 /// A name that is not a rules type has none. A `%sWO` model stands in for its
-/// type's body. A building loads its `TurretAnim=` model's barrel through its
-/// own loader, which rewrites `TUR` to `BARL` in that name
+/// type's body. A building's voxel `TurretAnim=` model has none either, even
+/// where its name is a rules type (the retail YAGGUN): the building's own
+/// loader loads that model's barrel, rewriting `TUR` to `BARL` in the name
 /// (`0x0045FC73..0x0045FC82`); VERA does not port that yet.
 ///
 /// RESIDUALS (named trigger, effect, frequency):
