@@ -97,12 +97,13 @@ pub(crate) fn voxel_image_id(type_id: &str, rules: Option<&RuleSet>) -> String {
 /// - The turret arm also admits a `Turret=no` draw type whose `TurretCount=`
 ///   is positive while the unit's current turret (`TechnoClass+0x124`) is set
 ///   (`0x0070DC60`, `0x0070DCE0` at `0x0073B7B1..0x0073B7C5`). Not represented:
-///   such a unit draws its hull alone. Frequency: zero in retail, where every
-///   `TurretCount=` vehicle sets `Turret=yes`.
+///   such a unit draws its hull alone. Frequency: zero in the tested stock
+///   Hills/Battle rules, where every `TurretCount=` vehicle sets `Turret=yes`.
+///   Other map, mode and campaign layers remain unverified.
 /// - The turretless arm draws a loaded barrel voxel alone, at the barrel's
 ///   pitch (`0x0073B7CB..0x0073B8D4`). The loader gives a `Turret=no` vehicle
 ///   none, so only a type whose `Turret=` a later INI pass clears keeps one.
-///   Not represented. Frequency: zero in retail, where no layer does.
+///   Not represented. Frequency: not audited across INI layers.
 pub(crate) fn draws_turret_parts(type_id: &str, rules: Option<&RuleSet>) -> bool {
     rules
         .and_then(|rules| rules.object(type_id))

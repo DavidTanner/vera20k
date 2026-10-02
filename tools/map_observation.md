@@ -144,6 +144,13 @@ at step5200 and stop at step5300 with the camera on (41,95). These observe
 production output; no gamemd frame was compared. Numeric handles are tied to
 each launch.
 
+The [validation receipt](map_observation.unit-body-draw.validation.json) records
+the source and executable identities, frame hashes, changed-pixel bounds and
+test results. The step3745 frame immediately before dumping is byte-identical.
+Original runs, raw frames, profiles, native disassembly and logs are retained
+in the receipt's local evidence archive; executables remain with the shared
+build owner. The deployed Siege Chopper image and aircraft shadows remain open.
+
 ## Natural ore-spread observation
 
 [`map_observation.ore-spread.example.json`](map_observation.ore-spread.example.json)

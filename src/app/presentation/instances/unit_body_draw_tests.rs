@@ -125,9 +125,10 @@ Turret=yes
     assert!(matches!(body, BodyDraw::Turret { turret, .. } if turret == hull));
 }
 
-/// Every retail body must ask the atlas for the sprites its drawn model was
-/// seeded with: the unloading War Miner for HORV's one body sprite, an
-/// aircraft for its one body sprite.
+/// Every voxel body in the stock Hills/Battle fixture must ask the atlas for
+/// the sprites its drawn model was seeded with: the unloading War Miner for
+/// HORV's one body sprite, an aircraft for its one body sprite. Other map,
+/// mode and campaign layers are not covered by this fixture.
 #[test]
 fn retail_voxel_bodies_draw_the_sprites_their_model_is_seeded_with() {
     let Some(battle) = retail_battle_rules() else {
@@ -180,7 +181,7 @@ fn retail_voxel_bodies_draw_the_sprites_their_model_is_seeded_with() {
         voxel_vehicles > 40,
         "{voxel_vehicles} retail voxel vehicles"
     );
-    // Every retail aircraft is one body sprite.
+    // Every aircraft in this stock Hills/Battle fixture is one body sprite.
     assert_eq!(aircraft.len(), 12, "{aircraft:?}");
     assert!(aircraft.iter().all(|(_, parts)| !parts), "{aircraft:?}");
     // The War Miner's HARV has `Turret=yes`; its unloading HORV has none.
@@ -222,7 +223,8 @@ fn retail_voxel_bodies_draw_the_sprites_their_model_is_seeded_with() {
     }
     // The turret arm's second admission (`0x0073B7B1..0x0073B7C5`: a
     // `TurretCount=` type's current turret) is not represented. It is dormant
-    // while every retail `TurretCount=` vehicle also sets `Turret=yes`.
+    // in these stock Hills/Battle rules: every `TurretCount=` vehicle also
+    // sets `Turret=yes`. This does not cover other INI-layer combinations.
     for type_id in &rules.vehicle_ids {
         let object = rules.object(type_id).expect("a listed type");
         assert!(

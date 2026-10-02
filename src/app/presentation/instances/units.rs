@@ -716,8 +716,9 @@ fn unit_body_draw<'a>(
 /// RESIDUAL: the turret arm reads `+0x3A0` on every unit; VERA keeps it only
 /// for a unit whose own type has a turret, so one without draws its model's
 /// turret at the hull's facing. Trigger: a `Turret=no` unit drawn as a
-/// `Turret=yes` model, by `UnloadingClass=` or disguise. Frequency: zero in
-/// retail.
+/// `Turret=yes` model, by `UnloadingClass=` or disguise. The stock miner
+/// conversions in the Hills/Battle regression do not trigger it; other
+/// disguise and layered-rule combinations remain unverified.
 fn body_draw(
     entity: &crate::sim::game_entity::GameEntity,
     band: EntityDrawBand,
