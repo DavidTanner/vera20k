@@ -31,5 +31,8 @@
     "overlay_destructor": "0x005FDF70",
     "base_destructor": "0x005F3B80"
   },
+  "source_normalized_lf_sha256": {
+    "producer": "9a0155e48cb24c11b34dd28be4580a28bf3821e4ef034109dd494921f4d598a6"
+  },
   "payload_sha256": "081e9ef61f9de40bb2f4b1a2db8dd9ffe83846f86d1cf771143c2dd496c6aede"
 }

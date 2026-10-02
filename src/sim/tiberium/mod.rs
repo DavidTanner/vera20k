@@ -83,7 +83,12 @@ pub fn tiberium_cell_view(
         overlay_data: overlay.overlay_data,
         tiberium_type,
         resource_type: resource_type_for_tiberium_image(ty.image),
-        nominal_value: ty.value.wrapping_mul(i32::from(overlay.overlay_data) + 1),
+        nominal_value: crate::map::tiberium_cell::tiberium_value(
+            Some(overlay_id),
+            overlay.overlay_data,
+            overlay_registry,
+            tiberium_types,
+        ),
     })
 }
 
@@ -311,23 +316,41 @@ pub struct PlaceTiberiumContext<'a> {
     pub tactical_dirty_cells: Option<&'a mut Vec<(u16, u16)>>,
 }
 
+/// Cell result plus an ordered constructor effect for the shared transient
+/// Overlay owner. Existing-cell growth produces no constructor effect.
+#[derive(Debug)]
+pub(crate) struct TiberiumPlacement {
+    cell: (u16, u16),
+    overlay_construction: Option<crate::sim::world::OverlayConstructionReceipt>,
+}
+
+impl TiberiumPlacement {
+    pub(crate) fn cell(&self) -> (u16, u16) {
+        self.cell
+    }
+
+    pub(crate) fn into_overlay_construction(
+        self,
+    ) -> Option<crate::sim::world::OverlayConstructionReceipt> {
+        self.overlay_construction
+    }
+}
+
 /// Place a new tiberium overlay or grow a matching existing overlay.
 ///
 /// This keeps the retail write order: new placement stamps one of the twelve
-/// flat image variants, invokes `AddToGrowthQueue` while data is still zero,
-/// then writes the caller's exact data byte. Existing growth writes the
+/// flat image variants, lets Mark germinate its intermediate density, invokes
+/// `AddToGrowthQueue`, then writes the caller's exact data byte. Existing growth writes the
 /// low-byte sum clamped to 11 and feeds the same type's spread queue.
-pub fn place_tiberium(
+pub(crate) fn place_tiberium(
     ctx: &mut PlaceTiberiumContext<'_>,
     cell: (u16, u16),
     type_id: TiberiumTypeId,
     amount: u8,
-) -> bool {
-    let Some(ty) = ctx.tiberium_types.get(type_id) else {
-        return false;
-    };
+) -> Option<TiberiumPlacement> {
+    let ty = ctx.tiberium_types.get(type_id)?;
     if amount >= 12 || cell.0 >= ctx.overlay_grid.width() || cell.1 >= ctx.overlay_grid.height() {
-        return false;
+        return None;
     }
 
     let flat = ctx.resolved_terrain.is_none_or(|terrain| {
@@ -337,15 +360,11 @@ pub fn place_tiberium(
     });
     let current = *ctx.overlay_grid.cell(cell.0, cell.1);
     if current.overlay_id.is_none() {
-        let Some(admission) = ctx.new_cell_admission else {
-            return false;
-        };
+        let admission = ctx.new_cell_admission?;
         if !can_place_new_tiberium(ctx.overlay_grid, ctx.source_object_cells, admission, cell) {
-            return false;
+            return None;
         }
-        let Some(variants) = ctx.overlay_registry.flat_tiberium_variant_ids(ty) else {
-            return false;
-        };
+        let variants = ctx.overlay_registry.flat_tiberium_variant_ids(ty)?;
         let overlay_id = variants[ctx.rng.next_range_u32(12) as usize];
         // Overlay ctor5FC380 ->Cell47C550 refuses Unlimbo on any Terrain,
         // including an ordinary tree which CanGerminate4838E0 admitted.
@@ -360,6 +379,52 @@ pub fn place_tiberium(
         if !terrain_blocks_overlay {
             ctx.overlay_grid
                 .place_overlay(cell.0, cell.1, overlay_id, 0);
+            // Mark5FD0DB..5FD0F1: Land5 starts at data1, then original
+            // SpreadCellGerminate4818E0 rewrites it before AddGrowth7235A0.
+            // Eight matching neighbors produce 11 and refuse growth admission
+            // without a priority draw, even though Place later stores amount3.
+            // Native executable controls: ore_queue.json interior_hole_*.
+            if ctx
+                .overlay_registry
+                .flags(overlay_id)
+                .is_some_and(|flags| flags.land == crate::rules::terrain_rules::LandType::Tiberium)
+            {
+                ctx.overlay_grid.cell_mut(cell.0, cell.1).overlay_data = 1;
+                let grid: &OverlayGrid = ctx.overlay_grid;
+                let germinated =
+                    crate::map::tiberium_cell::spread_cell_germinate_without_randomization(
+                        ctx.tiberium_types,
+                        ctx.overlay_registry,
+                        Some(overlay_id),
+                        (cell.0 as i16, cell.1 as i16),
+                        |(x, y)| {
+                            let real = crate::map::cell_index::canonical_cell_coord(
+                                i32::from(x),
+                                i32::from(y),
+                            )
+                            .filter(|&(rx, ry)| {
+                                rx < grid.width()
+                                    && ry < grid.height()
+                                    && ctx.resolved_terrain.is_none_or(|terrain| {
+                                        terrain.native_fixed_cell_index(x, y).is_some()
+                                    })
+                            });
+                            if let Some((rx, ry)) = real {
+                                let neighbor = grid.cell(rx, ry);
+                                (neighbor.overlay_id, neighbor.overlay_data)
+                            } else if let Some(terrain) = ctx.resolved_terrain {
+                                let dummy = terrain.shared_cell_dummy();
+                                dummy.stamp_coord(i32::from(x), i32::from(y));
+                                dummy.overlay_fields()
+                            } else {
+                                (None, 0)
+                            }
+                        },
+                    );
+                if let Some(germinated) = germinated {
+                    ctx.overlay_grid.cell_mut(cell.0, cell.1).overlay_data = germinated.density;
+                }
+            }
         }
         ctx.ore_growth_state.add_native_growth_queue_cell(
             ctx.overlay_grid,
@@ -378,24 +443,28 @@ pub fn place_tiberium(
         ctx.overlay_grid.cell_mut(cell.0, cell.1).overlay_data = amount;
         mark_place_tactical_dirty(ctx, cell);
         mark_place_radar_dirty(ctx, cell);
-        return true;
+        return Some(TiberiumPlacement {
+            cell,
+            overlay_construction: Some(crate::sim::world::OverlayConstructionReceipt::new(
+                cell,
+                terrain_blocks_overlay,
+            )),
+        });
     }
 
-    let Some(view) = tiberium_cell_view(
+    let view = tiberium_cell_view(
         ctx.overlay_grid,
         ctx.overlay_registry,
         ctx.tiberium_types,
         cell,
-    ) else {
-        return false;
-    };
+    )?;
     if !ctx.growth_enabled
         || !flat
         || view.tiberium_type != type_id
         || view.overlay_data >= 11
         || !crate::sim::ore_growth::native_percentage_admits(ty.growth_percentage_bits)
     {
-        return false;
+        return None;
     }
 
     let new_data = view.overlay_data.wrapping_add(amount).min(11);
@@ -415,7 +484,10 @@ pub fn place_tiberium(
         ctx.spread_enabled,
         ctx.rng,
     );
-    true
+    Some(TiberiumPlacement {
+        cell,
+        overlay_construction: None,
+    })
 }
 
 /// One port of CellClass::SpreadTiberium483780 for terrain's force1 call
@@ -427,7 +499,7 @@ pub(crate) fn spread_tiberium(
     ctx: &mut PlaceTiberiumContext<'_>,
     source: (u16, u16),
     forced: bool,
-) -> Option<(u16, u16)> {
+) -> Option<TiberiumPlacement> {
     let source_type = if forced {
         tiberium_cell_view(
             ctx.overlay_grid,
@@ -471,7 +543,7 @@ pub(crate) fn spread_tiberium(
         }
         //48385C returns this first PlaceTiberium result; it does not retry
         // another neighbour after a failed placement on an admitted target.
-        return place_tiberium(ctx, target, source_type, 3).then_some(target);
+        return place_tiberium(ctx, target, source_type, 3);
     }
     None
 }
@@ -813,7 +885,7 @@ SpreadPercentage=.06
                 radar_dirty_generation: Some(&mut radar_generation),
                 tactical_dirty_cells: Some(&mut tactical_dirty),
             };
-            assert!(!place_tiberium(&mut ctx, (0, 0), TiberiumTypeId(0), 3));
+            assert!(place_tiberium(&mut ctx, (0, 0), TiberiumTypeId(0), 3).is_none());
         }
 
         assert_eq!(overlay.cell(0, 0).overlay_id, None);
@@ -867,7 +939,7 @@ SpreadPercentage=.06
                 radar_dirty_generation: Some(&mut radar_generation),
                 tactical_dirty_cells: Some(&mut tactical_dirty),
             };
-            assert!(place_tiberium(&mut ctx, (4, 4), TiberiumTypeId(0), 11));
+            assert!(place_tiberium(&mut ctx, (4, 4), TiberiumTypeId(0), 11).is_some());
         }
         assert_eq!(overlay.cell(4, 4).overlay_id, Some(expected_overlay));
         assert_eq!(overlay.cell(4, 4).overlay_data, 11);
@@ -901,12 +973,7 @@ SpreadPercentage=.06
             radar_dirty_generation: Some(&mut radar_generation),
             tactical_dirty_cells: Some(&mut tactical_dirty),
         };
-        assert!(!place_tiberium(
-            &mut reject_ctx,
-            (5, 5),
-            TiberiumTypeId(0),
-            12,
-        ));
+        assert!(place_tiberium(&mut reject_ctx, (5, 5), TiberiumTypeId(0), 12,).is_none());
         assert_eq!(rng.logical_state(), state_before_reject);
         assert_eq!(overlay.cell(5, 5).overlay_id, None);
     }
@@ -949,7 +1016,7 @@ SpreadPercentage=.06
             };
 
             assert_eq!(
-                place_tiberium(&mut ctx, (4, 4), TiberiumTypeId(0), 7),
+                place_tiberium(&mut ctx, (4, 4), TiberiumTypeId(0), 7).is_some(),
                 succeeds,
                 "GrowthPercentage={growth_percentage}"
             );

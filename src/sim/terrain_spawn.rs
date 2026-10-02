@@ -29,7 +29,8 @@ use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::rng::SimRng;
 use crate::sim::terrain_object::{TerrainObjectState, mark_terrain_raw_occupation};
 use crate::sim::tiberium::{
-    NewTiberiumAdmission, PlaceTiberiumContext, TiberiumPlacementObjectContext, spread_tiberium,
+    NewTiberiumAdmission, PlaceTiberiumContext, TiberiumPlacement, TiberiumPlacementObjectContext,
+    spread_tiberium,
 };
 use crate::sim::timer::CdTimer;
 use crate::util::native_x87::{MaskedX87Chop53, MaskedX87Ordering, NativeF32Bits, NativeF64Bits};
@@ -262,7 +263,7 @@ pub(crate) fn tick_terrain_spawner_stateful_one(
     cell: (u16, u16),
     spawner_cells: &BTreeSet<(u16, u16)>,
     mut ctx: TerrainSpawnContext<'_>,
-) -> Option<(u16, u16)> {
+) -> Option<TiberiumPlacement> {
     tick_terrain_spawner_one_inner(spawners, cell, spawner_cells, &mut ctx)
 }
 
@@ -271,7 +272,7 @@ fn tick_terrain_spawner_one_inner(
     cell: (u16, u16),
     spawner_cells: &BTreeSet<(u16, u16)>,
     ctx: &mut TerrainSpawnContext<'_>,
-) -> Option<(u16, u16)> {
+) -> Option<TiberiumPlacement> {
     let spawner = spawners.get_mut(&cell)?;
     let source_cells = ctx.spawning_terrain_cells.unwrap_or(spawner_cells);
     let is_animated = ctx
@@ -390,8 +391,9 @@ pub(crate) fn tick_terrain_object_ai(
     );
     // Overlay Mark5FC570 ->Cell Recalc47D2B0 is synchronous: a later
     // Logic object (including a miner) sees the new LandType this frame.
+    let placed_cell = placed.as_ref().map(TiberiumPlacement::cell);
     if let (Some(cell), Some(grid), Some(terrain), Some(registry)) = (
-        placed,
+        placed_cell,
         sim.overlay_grid.as_mut(),
         sim.resolved_terrain.as_mut(),
         overlay_registry,
@@ -399,6 +401,9 @@ pub(crate) fn tick_terrain_object_ai(
     {
         grid.recalculate_runtime_cell(terrain, registry, cell);
     }
+    sim.publish_overlay_constructions(
+        placed.and_then(TiberiumPlacement::into_overlay_construction),
+    );
 }
 
 fn live_object_context<'a>(

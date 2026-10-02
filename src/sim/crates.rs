@@ -965,7 +965,7 @@ fn execute_low_bridge_crate_mark(
 /// Crate Mark seam of `CellClass::SpreadCellGerminate @ 0x004818E0` (argument
 /// 0), called synchronously by `OverlayClass::Mark @ 0x005FD0EC` for a Land-5
 /// overlay. The receiver and every neighbour resolve through the crate Mark
-/// real-or-dummy lookup; the shared helper in `sim::tiberium_germinate` owns
+/// real-or-dummy lookup; the shared helper in `map::tiberium_cell` owns
 /// the native neighbour order, table, and modulo.
 fn spread_cell_germinate_without_randomization(
     sim: &mut Simulation,
@@ -976,7 +976,7 @@ fn spread_cell_germinate_without_randomization(
     let (receiver_id, _) = read_crate_mark_fields(sim, cell);
     let germinated = {
         let view: &Simulation = sim;
-        crate::sim::tiberium_germinate::spread_cell_germinate_without_randomization(
+        crate::map::tiberium_cell::spread_cell_germinate_without_randomization(
             &rules.tiberium_types,
             registry,
             receiver_id,

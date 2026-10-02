@@ -1044,41 +1044,21 @@ impl LiveOverlayCells {
         tiberium_types: &TiberiumTypeRegistry,
         anchor: AuthoredOverlayCellRef,
     ) {
-        // gamemd-derived: CellClass::SpreadCellGerminate(0) @ 0x004818E0,
-        // called by OverlayClass::Mark @ 0x005FD0EC.
-        const ADJACENT_8: [(i16, i16); 8] = [
-            (0, -1),
-            (1, -1),
-            (1, 0),
-            (1, 1),
-            (0, 1),
-            (-1, 1),
-            (-1, 0),
-            (-1, -1),
-        ];
-        const DENSITY_FOR_MATCHING_NEIGHBORS: [u8; 9] = [0, 1, 3, 4, 6, 7, 8, 10, 11];
-
-        let current = self.read(anchor.target);
-        let Some(overlay_id) = current.overlay_id() else {
-            return;
-        };
-        let Some(tiberium_type) =
-            overlay_types.tiberium_type_for_overlay(tiberium_types, overlay_id)
-        else {
-            return;
-        };
-
-        let mut matching = 0usize;
-        for offset in ADJACENT_8 {
-            let coord = wrapping_step(anchor.coord, offset);
-            let neighbor = self.cell_ref(coord.0, coord.1);
-            let neighbor_type = self
-                .read(neighbor.target)
-                .overlay_id()
-                .and_then(|id| overlay_types.tiberium_type_for_overlay(tiberium_types, id));
-            matching += usize::from(neighbor_type == Some(tiberium_type));
+        let receiver_id = self.read(anchor.target).overlay_id();
+        let germinated = crate::map::tiberium_cell::spread_cell_germinate_without_randomization(
+            tiberium_types,
+            overlay_types,
+            receiver_id,
+            anchor.coord,
+            |(x, y)| {
+                let neighbor = self.cell_ref(x, y);
+                let fields = self.read(neighbor.target);
+                (fields.overlay_id(), fields.state())
+            },
+        );
+        if let Some(germinated) = germinated {
+            self.write_state(anchor.target, germinated.density);
         }
-        self.write_state(anchor.target, DENSITY_FOR_MATCHING_NEIGHBORS[matching]);
     }
 
     /// Execute the active-retail fixed-map low-overlay branch. The caller owns

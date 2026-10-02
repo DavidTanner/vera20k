@@ -3,7 +3,7 @@
 use super::*;
 use crate::sim::ore_growth::OreGrowthConfig;
 use crate::sim::ore_growth::queue_oracle_tests::{
-    SuppliedFixture, compare_cells, compare_state, corpus, supplied_fixture,
+    SuppliedFixture, compare_cells, compare_overlay_state, compare_state, corpus, supplied_fixture,
 };
 use serde_json::{Value, json};
 
@@ -43,6 +43,11 @@ fn world(
     sim.production.terrain_object_cells = trees;
     sim.production.tiberium_spawning_terrain_cells = sources;
     let input = &row["input"];
+    sim.native_unique_ids = Some(
+        crate::sim::native_identity::NativeUniqueIdCursor::test_at_current_value(
+            input["scenario_serial"].as_u64().unwrap_or(0) as u32,
+        ),
+    );
     let width = input["size"][0].as_i64().unwrap() as i32;
     let height = input["size"][1].as_i64().unwrap() as i32;
     sim.playfield_bounds = Some(
@@ -72,6 +77,7 @@ fn ore_rung_publishes_native_cell_attributes_before_live_object_turns() {
     let name = row["input"]["name"].as_str().unwrap();
     sim.session.binary_frame = row["input"]["frame"].as_i64().unwrap() as u32;
     sim.tick_ore_growth_rungs(&rules, Some(&registry));
+    compare_overlay_state(&sim, &row["steps"][0]["state"], name);
     compare_cells(
         sim.overlay_grid.as_ref().unwrap(),
         sim.resolved_terrain.as_ref().unwrap(),
@@ -117,7 +123,7 @@ fn app_frames_match_original_ore_driver_histories_and_rng_continuation() {
             )
         })
         .collect();
-    assert_eq!(rows.len(), 18, "original driver histories");
+    assert_eq!(rows.len(), 21, "original driver histories");
     for row in rows {
         let input = &row["input"];
         let name = input["name"].as_str().unwrap();
@@ -168,9 +174,66 @@ fn app_frames_match_original_ore_driver_histories_and_rng_continuation() {
                 &step["cells"],
                 name,
             );
+            assert_eq!(
+                json!(sim.native_unique_ids.as_ref().unwrap().current_raw()),
+                step["state"]["scenario_serial"],
+                "{name}: app constructor IDs follow the native ore history",
+            );
+            assert_eq!(
+                sim.load_objects.queue_count(),
+                0,
+                "{name}: app tail drains dead Overlays"
+            );
         }
         assert_eq!(json!(total_draws), row["draw_count"], "{name}: total draws");
         let next: Vec<_> = (0..4).map(|_| sim.scenario_rng.next_u32()).collect();
         assert_eq!(json!(next), row["next_random"], "{name}: RNG continuation");
+    }
+}
+
+#[test]
+fn app_ore_constructor_terminal_cleanup_matches_original_deferred_drain() {
+    let corpus = corpus();
+    let rows: Vec<_> = corpus["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["input"]["drain_deferred"] == true)
+        .collect();
+    assert!(!rows.is_empty(), "original deferred-lifecycle controls");
+    for row in rows {
+        let name = row["input"]["name"].as_str().unwrap();
+        let (mut sim, rules, registry) = world(row);
+        sim.session.binary_frame = row["input"]["frame"].as_i64().unwrap() as u32;
+        let (output, draws) = crate::sim::rng::trace_draws(|| {
+            sim.advance_app_frame(
+                &[],
+                Some(&rules),
+                Some(&registry),
+                67,
+                TickLane::Ordinary,
+                None,
+            )
+            .unwrap()
+        });
+        assert!(output.tick.frame_committed, "{name}: admitted app frame");
+        compare_overlay_state(&sim, &row["after_drains"][0]["state"], name);
+        compare_cells(
+            sim.overlay_grid.as_ref().unwrap(),
+            sim.resolved_terrain.as_ref().unwrap(),
+            &row["after_drains"][0]["cells"],
+            name,
+        );
+        assert_eq!(
+            json!(draws.len()),
+            row["draw_count"],
+            "{name}: constructor path RNG"
+        );
+        let next: Vec<_> = (0..4).map(|_| sim.scenario_rng.next_u32()).collect();
+        assert_eq!(
+            json!(next),
+            row["next_random"],
+            "{name}: constructor RNG continuation"
+        );
     }
 }

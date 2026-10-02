@@ -1,89 +1,17 @@
-//! `CellClass::SpreadCellGerminate` without randomization and the generated
-//! launch's final `MapClass::InitCellAttributes(1)` ore-density rewrite.
+//! The generated launch's final `MapClass::InitCellAttributes(1)` ore-density rewrite.
 //!
 //! Depends on `map::authored_overlay` (native cell-iterator shape),
 //! `map::cell_index`, `map::overlay_types`, `map::resolved_terrain`, `rules`,
-//! `sim::overlay_grid`, `sim::ore_twinkle`, and `util::direction`; never on
+//! `map::tiberium_cell`, and `sim::overlay_grid`; never on
 //! render/, ui/, app/, sidebar/, audio/, or net/.
 
 use crate::map::authored_overlay::NativeOverlayMapShape;
 use crate::map::cell_index::canonical_cell_coord;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::map::tiberium_cell::{GerminatedCell, spread_cell_germinate_without_randomization};
 use crate::rules::tiberium_type::TiberiumTypeRegistry;
-use crate::sim::ore_twinkle::tiberium_value;
 use crate::sim::overlay_grid::OverlayGrid;
-use crate::util::direction::DIRECTION_DELTAS;
-
-/// `g_OreDensityByNeighborCount @ 0x0081CD28` (twelve dwords, low bytes):
-/// the stored `OverlayData` for a same-class neighbour count modulo
-/// `TiberiumClass+0xE4 (MaxDensity)`.
-pub(crate) const ORE_DENSITY_BY_NEIGHBOR_COUNT: [u8; 12] = [0, 1, 3, 4, 6, 7, 8, 10, 11, 7, 0, 1];
-
-/// One `SpreadCellGerminate(0)` result for a resource receiver.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GerminatedCell {
-    /// New `CellClass+0x11E` (OverlayData) of the receiver.
-    pub(crate) density: u8,
-    /// Native return `(density + 1) * TiberiumClass+0xB8 (Value)`, signed
-    /// wrapping 32-bit.
-    pub(crate) value: i32,
-}
-
-/// `CellClass::SpreadCellGerminate @ 0x004818E0` with `randomizeType = 0`.
-///
-/// gamemd-derived (decompiled 2026-09-01): the helper returns 0 without any
-/// write when the receiver's `OverlayTypeIndex` (`+0x44`) is -1 or
-/// `CellClass::OverlayToTiberiumIndex @ 0x005FDD20` is -1. Otherwise it
-/// captures `TiberiumClass+0xB8 (Value)`, resolves all eight
-/// `g_DirectionOffsets @ 0x0089F688` neighbours (N, NE, E, SE, S, SW, W, NW;
-/// `AND EDX,0x7` on a copy of the loop counter at `0x00481966..0x00481968`) through the stamping
-/// `MapClass::Get_CellClass @ 0x005657A0` (`0x004819A6`; a miss stamps the
-/// shared dummy's coordinate and the read continues on that dummy), counts
-/// those whose `OverlayToTiberiumIndex` equals the receiver's, writes
-/// `+0x11E = g_OreDensityByNeighborCount[count % MaxDensity]` (`IDIV` on
-/// `TiberiumClass+0xE4` at `0x004819CA`), and returns `(data + 1) * Value`.
-/// No RNG is drawn for argument 0.
-///
-/// The caller owns the receiver write and performs each neighbour lookup
-/// through `read_neighbor_fields`, including its dummy stamp, so the crate
-/// Mark seam and the generated final pass share one helper.
-pub(crate) fn spread_cell_germinate_without_randomization(
-    tiberium_types: &TiberiumTypeRegistry,
-    overlay_registry: &OverlayTypeRegistry,
-    receiver_overlay_id: Option<u8>,
-    cell: (i16, i16),
-    mut read_neighbor_fields: impl FnMut((i16, i16)) -> (Option<u8>, u8),
-) -> Option<GerminatedCell> {
-    let overlay_id = receiver_overlay_id?;
-    let type_id = overlay_registry.tiberium_type_for_overlay(tiberium_types, overlay_id)?;
-    let tiberium_type = tiberium_types.get(type_id)?;
-    // VERA-internal: the native `IDIV` faults on a zero MaxDensity; no retail
-    // TiberiumType sets it to zero.
-    if tiberium_type.max_density == 0 {
-        return None;
-    }
-    let mut matching: i32 = 0;
-    for (dx, dy) in DIRECTION_DELTAS {
-        let neighbor = (
-            cell.0.wrapping_add(dx as i16),
-            cell.1.wrapping_add(dy as i16),
-        );
-        let (neighbor_id, _) = read_neighbor_fields(neighbor);
-        if neighbor_id.and_then(|id| overlay_registry.tiberium_type_for_overlay(tiberium_types, id))
-            == Some(type_id)
-        {
-            matching += 1;
-        }
-    }
-    // At most eight neighbours, so the remainder never leaves the table.
-    let index = matching % i32::from(tiberium_type.max_density);
-    let density = ORE_DENSITY_BY_NEIGHBOR_COUNT[index as usize];
-    Some(GerminatedCell {
-        density,
-        value: tiberium_value(Some(overlay_id), density, overlay_registry, tiberium_types),
-    })
-}
 
 /// Logging/test receipt of one generated final `InitCellAttributes(1)` pass.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -184,6 +112,7 @@ pub(crate) fn run_generated_final_cell_attributes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::tiberium_cell::ORE_DENSITY_BY_NEIGHBOR_COUNT;
 
     use crate::map::basic::{BasicSection, SpecialFlagsSection};
     use crate::map::resolved_terrain::ResolvedTerrainCell;

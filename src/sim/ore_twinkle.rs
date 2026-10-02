@@ -1,4 +1,4 @@
-//! Post-load `OreTwinkle` pass and the value-only `Get_Tiberium_Value` helper.
+//! Post-load `OreTwinkle` pass using the shared map-owned resource value helper.
 //!
 //! Depends on `map::authored_overlay` (native cell-iterator shape),
 //! `map::overlay_types`, `rules`, `sim::anim_class`, and `util::lepton`;
@@ -6,7 +6,9 @@
 
 use crate::map::authored_overlay::NativeOverlayMapShape;
 use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::map::tiberium_cell::tiberium_value;
 use crate::rules::ruleset::RuleSet;
+#[cfg(test)]
 use crate::rules::tiberium_type::TiberiumTypeRegistry;
 use crate::sim::anim_class::AnimWorldCoord;
 use crate::sim::components::AnimClassSpawnDescriptor;
@@ -22,34 +24,6 @@ const ORE_TWINKLE_DRAW_FLAGS: u32 = 0x600;
 /// Constructor `loop` argument of the twinkle spawn.
 const ORE_TWINKLE_LOOP_ARG: i32 = 1;
 const CELL_CENTRE_LEPTONS: i32 = LEPTONS_PER_CELL_I32 / 2;
-
-/// `CellClass::Get_Tiberium_Value @ 0x00485020`: zero unless
-/// `CellClass::OverlayToTiberiumIndex` resolves the overlay to a
-/// TiberiumClass, otherwise `TiberiumClass+0xB8 (Value) * (OverlayData + 1)`
-/// in native signed 32-bit arithmetic.
-///
-/// A resolved class index whose TiberiumClass slot is absent dereferences null
-/// natively; VERA returns zero for that malformed registry state.
-pub(crate) fn tiberium_value(
-    overlay_id: Option<u8>,
-    overlay_data: u8,
-    overlay_registry: &OverlayTypeRegistry,
-    tiberium_types: &TiberiumTypeRegistry,
-) -> i32 {
-    let Some(overlay_id) = overlay_id else {
-        return 0;
-    };
-    let Some(type_id) = overlay_registry.tiberium_type_for_overlay(tiberium_types, overlay_id)
-    else {
-        return 0;
-    };
-    let Some(tiberium) = tiberium_types.get(type_id) else {
-        return 0;
-    };
-    tiberium
-        .value
-        .wrapping_mul(i32::from(overlay_data).wrapping_add(1))
-}
 
 /// Logging/test receipt of one post-load twinkle pass.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

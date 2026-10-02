@@ -451,7 +451,7 @@ impl NativeGrowthProcessStats {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeSpreadProcessStats {
     pub processor_calls: u32,
     pub budget_rng_draws: u32,
@@ -462,6 +462,7 @@ pub struct NativeSpreadProcessStats {
     pub placed_entries: u32,
     pub reinserted_entries: u32,
     pub bitmap_clears: u32,
+    overlay_constructions: Vec<crate::sim::world::OverlayConstructionReceipt>,
 }
 
 impl NativeSpreadProcessStats {
@@ -475,6 +476,14 @@ impl NativeSpreadProcessStats {
         self.placed_entries += other.placed_entries;
         self.reinserted_entries += other.reinserted_entries;
         self.bitmap_clears += other.bitmap_clears;
+        self.overlay_constructions
+            .extend(other.overlay_constructions);
+    }
+
+    pub(crate) fn into_overlay_constructions(
+        self,
+    ) -> Vec<crate::sim::world::OverlayConstructionReceipt> {
+        self.overlay_constructions
     }
 }
 
@@ -903,7 +912,7 @@ impl OreGrowthState {
                         radar_dirty_generation: radar_dirty_generation.as_deref_mut(),
                         tactical_dirty_cells: tactical_dirty_cells.as_deref_mut(),
                     };
-                    place_tiberium(&mut context, (entry.rx, entry.ry), type_id, 1)
+                    place_tiberium(&mut context, (entry.rx, entry.ry), type_id, 1).is_some()
                 };
                 if placed {
                     stats.grown_entries += 1;
@@ -1170,8 +1179,11 @@ impl OreGrowthState {
                 radar_dirty_generation: radar_dirty_generation.as_deref_mut(),
                 tactical_dirty_cells: tactical_dirty_cells.as_deref_mut(),
             };
-            if spread_tiberium(&mut placement, (entry.rx, entry.ry), false).is_some() {
+            if let Some(placed) = spread_tiberium(&mut placement, (entry.rx, entry.ry), false) {
                 stats.placed_entries += 1;
+                stats
+                    .overlay_constructions
+                    .extend(placed.into_overlay_construction());
             }
 
             // `0x0072259A..0x00722614`: more than one valid target reinserts
@@ -2957,7 +2969,7 @@ SpreadPercentage=.06
         assert_eq!(
             class.growth.heap_entry(0).unwrap().priority_bits,
             growth_queue_priority(200, growth_priority_raw).to_bits(),
-            "AddToGrowthQueue runs immediately after the zero-data overlay stamp"
+            "AddToGrowthQueue runs after Mark germination and before the final amount write"
         );
         assert!(class.growth_bitmap.contains(&(4, 3)));
         assert_eq!(radar_dirty, vec![(4, 3)]);

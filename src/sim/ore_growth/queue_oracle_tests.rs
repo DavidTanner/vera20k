@@ -11,6 +11,7 @@ use crate::sim::intern::StringInterner;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
 use crate::sim::tiberium::{ReduceTiberiumContext, reduce_tiberium};
+use crate::sim::world::Simulation;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -488,6 +489,13 @@ fn compare_case(row: &Value) {
         sources,
     } = supplied_fixture(row);
     let types = &rules.tiberium_types;
+    let mut constructors = Simulation::with_seed(0);
+    constructors.native_unique_ids = Some(
+        crate::sim::native_identity::NativeUniqueIdCursor::test_at_current_value(
+            input["scenario_serial"].as_u64().unwrap_or(0) as u32,
+        ),
+    );
+    compare_overlay_state(&constructors, &row["before"], name);
     compare_state(&state, &rng, &row["before"], capacity, name);
     let receiver = TiberiumTypeId(input["receiver"].as_u64().unwrap() as u8);
     let cell = at(&input["target"]);
@@ -506,6 +514,7 @@ fn compare_case(row: &Value) {
     );
     let mut total_draws = 0;
     for (step, frame) in frames.into_iter().enumerate() {
+        let mut constructed = Vec::new();
         let (_, draws) = crate::sim::rng::trace_draws(|| match input["entry"].as_str().unwrap() {
             "enqueue" if input["queue"] == "growth" => {
                 state.add_native_growth_queue_cell(
@@ -582,7 +591,7 @@ fn compare_case(row: &Value) {
                 );
             }
             "spread_processor" => {
-                state.process_native_spread_for_type_with_placement(
+                let result = state.process_native_spread_for_type_with_placement(
                     receiver,
                     &mut grid,
                     &registry,
@@ -597,6 +606,7 @@ fn compare_case(row: &Value) {
                     None,
                     None,
                 );
+                constructed.extend(result.into_overlay_constructions());
             }
             "spread_driver" | "growth_then_spread_driver" => {
                 if input["entry"] == "growth_then_spread_driver" {
@@ -617,7 +627,7 @@ fn compare_case(row: &Value) {
                         None,
                     );
                 }
-                state.tick_native_spread_driver(
+                let result = state.tick_native_spread_driver(
                     &mut grid,
                     &registry,
                     types,
@@ -632,9 +642,11 @@ fn compare_case(row: &Value) {
                     None,
                     None,
                 );
+                constructed.extend(result.into_overlay_constructions());
             }
             other => panic!("unhandled native entry {other}"),
         });
+        constructors.publish_overlay_constructions(constructed);
         if matches!(
             input["entry"].as_str().unwrap(),
             "spread_processor" | "spread_driver" | "growth_then_spread_driver"
@@ -648,6 +660,7 @@ fn compare_case(row: &Value) {
         }
         total_draws += draws.len();
         if let Some(expected) = row["steps"].get(step) {
+            compare_overlay_state(&constructors, &expected["state"], name);
             assert_eq!(
                 json!(draws.len()),
                 expected["draw_count"],
@@ -662,12 +675,39 @@ fn compare_case(row: &Value) {
             );
             compare_cells(&grid, &terrain, &expected["cells"], name);
         }
+        if let Some(expected) = row["after_drains"].get(step) {
+            constructors.load_objects.drain_deferred().unwrap();
+            compare_overlay_state(&constructors, &expected["state"], name);
+            compare_cells(&grid, &terrain, &expected["cells"], name);
+        }
     }
     assert_eq!(json!(total_draws), row["draw_count"], "{name}: RNG draws");
     compare_state(&state, &rng, &row["state"], capacity, name);
+    compare_overlay_state(&constructors, &row["state"], name);
     compare_cells(&grid, &terrain, &row["cells"], name);
     let next: Vec<_> = (0..4).map(|_| rng.next_u32()).collect();
     assert_eq!(json!(next), row["next_random"], "{name}: RNG continuation");
+}
+
+pub(crate) fn compare_overlay_state(sim: &Simulation, expected: &Value, name: &str) {
+    if expected["scenario_serial"].is_null() {
+        return;
+    }
+    assert_eq!(
+        json!(sim.native_unique_ids.as_ref().unwrap().current_raw()),
+        expected["scenario_serial"],
+        "{name}: Scenario constructor ID continuation",
+    );
+    assert_eq!(
+        json!(sim.load_objects.registry_counts()[4]),
+        expected["overlay_registrations"],
+        "{name}: registered Overlay constructors",
+    );
+    assert_eq!(
+        json!(sim.load_objects.queue_count()),
+        expected["pending_deletes"],
+        "{name}: deferred Overlay retirement",
+    );
 }
 
 fn timer_from_input(input: &Value, key: &str, class: usize, start: i32, duration: i32) -> CdTimer {
@@ -750,7 +790,27 @@ fn natural_spread_processors_and_drivers_match_native_cells_queues_timers_and_rn
             )
         })
         .collect();
-    assert_eq!(rows.len(), 58, "native natural-spread coverage");
+    assert_eq!(rows.len(), 66, "native natural-spread coverage");
+    for row in rows {
+        compare_case(row);
+    }
+}
+
+#[test]
+fn natural_spread_dense_hole_germination_controls_growth_admission_and_rng() {
+    let corpus = corpus();
+    let rows: Vec<_> = corpus["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| {
+            row["input"]["name"]
+                .as_str()
+                .unwrap()
+                .starts_with("spread_processor_interior_hole_")
+        })
+        .collect();
+    assert_eq!(rows.len(), 3, "native eight-versus-seven-neighbor controls");
     for row in rows {
         compare_case(row);
     }

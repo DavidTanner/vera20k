@@ -1120,7 +1120,7 @@ impl Simulation {
                 .and_then(grid_fields)
                 .unwrap_or_else(|| self.effective_shared_cell_dummy().overlay_fields()),
         };
-        crate::sim::ore_twinkle::tiberium_value(
+        crate::map::tiberium_cell::tiberium_value(
             overlay_id,
             overlay_data,
             overlay_registry,

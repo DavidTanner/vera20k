@@ -322,8 +322,12 @@ fn forced_spread_matches_original_admission_placement_queues_and_rng() {
             coords[0],
             true,
         );
+        let succeeded = result.is_some();
+        s.sim.publish_overlay_constructions(
+            result.and_then(crate::sim::tiberium::TiberiumPlacement::into_overlay_construction),
+        );
         assert_eq!(
-            json!(u8::from(result.is_some())),
+            json!(u8::from(succeeded)),
             case["result"],
             "{} result",
             case["input"]["name"]

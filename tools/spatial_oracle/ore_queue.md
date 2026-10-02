@@ -4,10 +4,10 @@
 [`harvest_field` fixture](harvest_field.py) and, for natural spread, the
 [`TIBTRE` fixture](tibtre.py) with original Overlay construction. It supplies prior map/queue state;
 the enqueue, rebuild, Cell predicates, iterator, heap operations and Scenario RNG
-run original instructions. `ore_queue.json` contains 118 body cases: the retained
+run original instructions. `ore_queue.json` contains 126 body cases: the retained
 52 direct enqueue calls, three full `CellClass::Reduce_Tiberium` callers, five full
-`TiberiumClass::GrowthProcessor` callers, 40 full natural `SpreadProcessor` calls,
-14 complete `SpreadDriver_AllTypes` histories, and four growth-before-spread
+`TiberiumClass::GrowthProcessor` callers, 45 full natural `SpreadProcessor` calls,
+16 complete `SpreadDriver_AllTypes` histories, and five growth-before-spread
 driver histories. Sixteen selected constructor/INI reader rows independently
 establish signed timer values and stock percentages. The sidecar records executable identity,
 Unicorn version, payload hash and fixture boundaries.
@@ -107,12 +107,29 @@ occupancy and Scenario spread-bit gates. On success, original
 `RandomRanged(0,7)` selects the start of the N..NW scan, then the first admitted
 target enters full `PlaceTiberium @ 0x00487190` with amount 3. The original flat
 variant draw, `OverlayClass::Constructor @ 0x005FC380`, Mark `0x005FC570` and
-RecalcAttributes `0x0047D2B0` execute. Growth queue admission runs before the new
-density write and can synchronously rebuild its existing owner. The case with
-a growth counter of 55 captures the new cell's zero-density rebuild seed followed
+RecalcAttributes `0x0047D2B0` execute. Original Mark calls
+`SpreadCellGerminate(0) @ 0x004818E0` at `0x005FD0EC`, rewriting the installed
+cell's density from its eight neighbors before growth admission. Growth queue
+admission runs before Place's final amount write and can synchronously rebuild
+its existing owner. The case with
+a growth counter of 55 captures the new cell's density-1 rebuild seed followed
 by the already-admitted duplicate append and density 3. The ordinary-Terrain
 control retains the native constructor refusal: Place still returns, appends
 growth and writes density 3 while the overlay remains -1.
+
+Three interior-hole controls select the empty `(5,4)` cell from queued source
+`(4,4)`, with all eight of the hole's neighbors allocated. Original Mark's
+germination reads the constructor's initial density 1 and counts native
+matching-class neighbors. Eight Ore neighbors write density 11; original
+AddToGrowth's compare at `0x007235C1` observes 11 and rejects before any rebuild
+or priority draw. The growth queue remains empty and the full processor draws
+three times. Replacing one neighbor with Gem or empty gives seven matches and
+density 10; growth appends once and the processor draws four times. All three
+finish with the same new overlay 103 and density 3, while their queue and RNG
+continuations differ. `germinate_cell` events retain original entry/return,
+matching count, MaxDensity, before/after density and return value. Natural
+`enqueue_growth` events retain the actual Cell density and overlay read at the
+original compare, using its resolved EAX pointer rather than a host lookup.
 
 Target controls execute with native `GameActive=1` over the shared real
 Unit/Building/Terrain vtables: live visible Buildings and spawning Terrain refuse
@@ -153,6 +170,45 @@ count includes these inline words as well as calls to `Random::Next`; hashes,
 cursors and four following draws compare the entire continuation. Entry events
 also retain actual instruction addresses and CanPlace return values.
 
+## Executed Overlay identity and retirement
+
+Every natural row records the actual Scenario serial at `+0x214`, Overlay registry
+count at `0x00A8EC60` and pending-finalization count at `0x00B0F6A8` before, after
+and per step. Original Overlay construction calls `Create_ID @ 0x00410230` with
+the object+4 argument, then original `NextUniqueID @ 0x0068BCB0` pre-increments
+the cursor. Events retain the actual returned cursor and constructor's stored
+object `+0x10` identity; they also observe original Mark, Object UnInit
+`0x005F65F0` and AnnounceExpired `0x007258D0`. This allocation happens before the
+constructor's Terrain admission, so ordinary Terrain refusal still consumes
+one serial and leaves an alive, registered limbo Overlay. Constructor-return
+flags and native registry counts distinguish that survivor from successful
+placement's dead, queued transient. Existing-cell augmentation and admission
+failures consume no Overlay serial. Two controls supply initial cursor
+`0xFFFFFFFF`: both successful placement and Terrain-refused construction assign
+stored ID zero through the executed wrapping increment.
+
+Two explicit `drain_deferred=true` driver controls invoke complete original
+`DrainDeferredFinalizationQueue @ 0x00725C70` after advancing the frame by one,
+the ordering observed at MainTick `0x0055DE7E..0x0055DE9F`. Their `steps` remain
+pre-drain output; `after_drains` holds post-drain state/cells/events, and top-level
+`state` is after the final explicit drain. Successful placement's registry/pending
+counts change from 1/1 to 0/0 while its consumed cursor and placed cells remain.
+The original deleting Overlay destructor `0x005FDF70` and Object destructor
+`0x005F3B80` run, including the second AnnounceExpired call. The Terrain-refused
+Overlay remains registered in limbo with pending count zero. These controls reuse
+the existing `OriginalBridgeConstructor.prepare_deferred_services` owner for
+Windows SEH and mapped-memory-validated IsBadReadPtr responses. Allocation/free
+are storage services; the constructor, ID allocator, logical cleanup, queue
+compaction, RTTI/class decisions and destructors execute original instructions.
+
+The explicit post-driver drain supplies a MainTick composition seam, excluding
+its surrounding callbacks and admission. External pointer-expiry recipients are
+empty in this fixture. Broader persistence of refused limbo Overlays, populated
+observer effects and full native save/load are outside this lifecycle comparison.
+The companion retail audit establishes absent CellAnim on the selected stock
+TIB/GEM inputs; authored nonempty CellAnim requires its separate Anim constructor
+and identity/lifecycle dependency.
+
 ## Native timer and percentage inputs
 
 The selected original constructor member block `0x007216CF..0x007217A6`
@@ -190,7 +246,7 @@ The shared fixture answers OS Interlocked imports and presentation sinks.
 rectangles; radar/tactical dirtiness are service sinks. The full-removal
 RecalcAttributes sink publishes declared bare land. No admission, growth, density,
 queue, rebuild, iterator, timer or RNG return is substituted. The five retained
-growth-processor controls use existing-cell Place. The 58 natural-spread/driver
+growth-processor controls use existing-cell Place. The 63 natural-spread/driver
 rows inherit TIBTRE's allocator/free storage services and empty dirty sinks;
 original Overlay construction/Mark and cell attribute recalculation run. Timers'
 opaque `+4` padding is declared zero, including the uninitialized driver caller
@@ -267,3 +323,12 @@ resource image-3/4 placement and arbitrary long histories remain outside this
 bounded comparison. Existing snapshot timer reset/rebuild behavior is retained;
 original Load721E80 resets timers via 46B640 at721FA9..721FC2, while Rust's saved
 state/restore integration is covered separately by the library suite.
+
+The shared nonrandom germination port and signed cell-value helper now live in
+`src/map/tiberium_cell.rs`, below simulation consumers. Authored Overlay Mark,
+generated final cell attributes, crate Mark, and live Place call that one owner.
+The authored copy's separate neighbor/density tables were removed (refactor
+issue #714); `MaxDensity` remains the existing constructor constant 12, without
+adding a new INI reader. Rust native fixtures explicitly set the resource
+OverlayType's `Land=Tiberium`, matching the original fixture's `+0x298=5`;
+`Tiberium=yes` alone does not establish that independent Mark gate.

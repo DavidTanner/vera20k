@@ -107,7 +107,7 @@ pub(crate) use lifecycle::{
 };
 #[cfg(test)]
 pub(crate) use lifecycle::{LifecycleTestEvent, RevealFailure};
-pub(crate) use load_object_lifecycle::LoadObjectLifecycle;
+pub(crate) use load_object_lifecycle::{LoadObjectLifecycle, OverlayConstructionReceipt};
 pub(crate) use logic_vector::LogicVector;
 pub(crate) use object_entry::FootEntryReceiver;
 pub use substrate::EnterOrderCounter;
@@ -3562,7 +3562,7 @@ impl Simulation {
                     Some(&mut self.radar_terrain_dirty_generation),
                     Some(&mut self.tactical_dirty_cells),
                 );
-                self.production.ore_growth_state.tick_native_spread_driver(
+                let spread = self.production.ore_growth_state.tick_native_spread_driver(
                     grid,
                     registry,
                     &rules.tiberium_types,
@@ -3590,10 +3590,36 @@ impl Simulation {
                         grid.recalculate_runtime_cell(terrain, registry, cell);
                     }
                 }
+                // No identity allocator runs between these ordinary ore
+                // constructors. Their stock CellAnim branch is absent. Apply
+                // their ordered registry/ID effects before live-object AI;
+                // Scenario IDs and retirement order are preserved independently
+                // of the intervening Scenario RNG and queue mutations.
+                self.publish_overlay_constructions(spread.into_overlay_constructions());
             }
             // Use the existing publication owner before movement/path readers,
             // retaining dirty cells for the normal render-output finalizer.
             self.finish_terrain_navigation_changes(rules, &[]);
+        }
+    }
+
+    pub(crate) fn publish_overlay_constructions(
+        &mut self,
+        receipts: impl IntoIterator<Item = OverlayConstructionReceipt>,
+    ) {
+        for receipt in receipts {
+            let stable_id = self.allocate_stable_id();
+            let handle = self
+                .load_objects
+                .construct_overlay(stable_id, receipt.cell(), || {
+                    crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(
+                        &mut self.native_unique_ids,
+                    )
+                })
+                .expect("runtime Overlay constructor must join its owned registries");
+            self.load_objects
+                .finish_cell_construction(handle, receipt)
+                .expect("runtime Overlay constructor must finish its owned lifecycle");
         }
     }
 
@@ -5849,7 +5875,7 @@ impl Simulation {
         self.process_pending_delete_with(rules, overlay_registry);
 
         // Original55DE9F calls725C70 at this admitted late-frame boundary.
-        // Stock bridge Overlay objects publish only Cell state; their isolated
+        // Stock bridge/ore Overlay objects publish only Cell state; their isolated
         // destructor has no gameplay-object callback effects and cannot allocate
         // IDs. Drain the shared authored/runtime owner after gameplay objects.
         self.load_objects

@@ -27,6 +27,7 @@ RANGED = 0x65C7E0
 GROWTH_PROCESSOR, GROW_CELL = 0x722F00, 0x483710
 SPREAD_PROCESSOR, SPREAD_DRIVER, GROWTH_DRIVER = 0x722440, 0x7221B0, 0x722C40
 SPREAD_CELL, CAN_PLACE, PLACE = 0x483780, 0x4838E0, 0x487190
+SPREAD_GERMINATE, GROWTH_DENSITY_GUARD = 0x4818E0, 0x7235C1
 ARENA, ARENA_SIZE = FIELD + 0x200000, 0x20000
 FIELDS = {'growth': (0x10C, 0x110, 0x114, 0x118), 'spread': (0xF0, 0xF4, 0xF8, 0xFC)}
 DEFAULT_CELLS = [
@@ -211,7 +212,8 @@ def natural_case(name, **overrides):
                          cells=[source], queue_states=queues,
                          growth_timers=[[-1, 0, 3]] * 4,
                          spread_timers=[[-1, 0, 0], [-1, 0, 5], [-1, 0, 7], [-1, 0, 11]],
-                         growth_frames=[3, 5, 7, 11], spread_frames=[3, 5, 7, 11])
+                         growth_frames=[3, 5, 7, 11], spread_frames=[3, 5, 7, 11],
+                         scenario_serial=0)
     return dict(base, **overrides)
 
 
@@ -343,6 +345,38 @@ def natural_cases():
                                  growth_timers=[[-1, 0, 0]] * 4,
                                  frames=[100, 101, 102],
                                  queue_states=[supplied_queue(k, q) for k in range(4) for q in FIELDS]))
+    rows += [natural_case('spread_processor_overlay_serial_wrap', scenario_serial=0xFFFFFFFF, next_raw=0),
+             natural_case('spread_processor_refused_overlay_serial_wrap', scenario_serial=0xFFFFFFFF,
+                          next_raw=0, blocked=[[*c, 'ordinary_tree'] for c in ring])]
+    rows += [natural_case('spread_driver_overlay_lifecycle_deferred_drain', entry='spread_driver',
+                          next_raw=0, drain_deferred=True),
+             natural_case('spread_driver_refused_overlay_limbo_survives_drain', entry='spread_driver',
+                          next_raw=0, drain_deferred=True,
+                          blocked=[[*c, 'ordinary_tree'] for c in ring])]
+    queues = natural_case('unused')['queue_states']
+    queues[0] = supplied_queue(0, 'growth', [[4, 4]])
+    queues[1] = supplied_queue(0, 'spread')
+    rows.append(natural_case('growth_then_spread_existing_cell_consumes_no_overlay_serial',
+                             entry='growth_then_spread_driver', queue_states=queues, spreads=False,
+                             growth_timers=[[-1, 0, 0], [-1, 0, 5], [-1, 0, 7], [-1, 0, 11]],
+                             next_raw=0))
+    # The empty (5,4) hole and all eight neighbors are allocated interior
+    # Cells. Block the source's other empty neighbors so the original scan
+    # selects this hole; the variant/density/queue effects execute unchanged.
+    hole_neighbors = [(5, 3), (6, 3), (6, 4), (6, 5),
+                      (5, 5), (4, 5), (4, 4), (4, 3)]
+    for suffix, replacement in [('eight_same_class', None),
+                                ('seven_same_one_gem', 1),
+                                ('seven_same_one_empty', -1)]:
+        neighbors = [dict(cell=list(c), type_id=0, variant=0, density=3,
+                          slope=0, occupied=False) for c in hole_neighbors]
+        if replacement == 1:
+            neighbors[1]['type_id'] = 1
+        elif replacement == -1:
+            del neighbors[1]
+        rows.append(natural_case(f'spread_processor_interior_hole_{suffix}',
+                                 cells=neighbors, next_raw=0,
+                                 blocked=[[*c, 'overlay'] for c in [(3, 5), (3, 4), (3, 3)]]))
     return rows
 
 
@@ -373,7 +407,7 @@ def read_queue(u, read32, kind, name, capacity, bitmap_coordinates):
                 bitmap_cells=bitmap_cells)
 
 
-def output_state(u, read32, capacity, bitmap_coordinates):
+def output_state(u, read32, capacity, bitmap_coordinates, lifecycle=False):
     classes = []
     for kind in range(4):
         tib = TIBS + kind * 0x200
@@ -383,8 +417,12 @@ def output_state(u, read32, capacity, bitmap_coordinates):
                             growth_timer=list(struct.unpack('<3i', u.mem_read(tib + 0x11C, 12))),
                             spread_timer=list(struct.unpack('<3i', u.mem_read(tib + 0x100, 12)))))
     rng = bytes(u.mem_read(SCENARIO + 0x218, 0x3F4))
-    return dict(classes=classes, rng_indices=[read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)],
-                rng_sha256=hashlib.sha256(rng).hexdigest())
+    result = dict(classes=classes, rng_indices=[read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)],
+                  rng_sha256=hashlib.sha256(rng).hexdigest())
+    if lifecycle:
+        result.update(scenario_serial=read32(SCENARIO + 0x214),
+                      overlay_registrations=read32(0xA8EC60), pending_deletes=read32(0xB0F6A8))
+    return result
 
 
 def execute(case):
@@ -398,6 +436,9 @@ def execute(case):
         # declared blocked-target object controls.
         from tools.spatial_oracle.tibtre import fixture as tibtre_fixture
         u, call, read32, _coords, _events = tibtre_fixture(inherited)
+        if case.get('drain_deferred'):
+            from tools.spatial_oracle.bridge_constructor import OriginalBridgeConstructor
+            OriginalBridgeConstructor.prepare_deferred_services(u)
     else:
         u, call, read32, _events, _unused = fixture(inherited)
     u.mem_map(ARENA, ARENA_SIZE)
@@ -430,6 +471,7 @@ def execute(case):
     if natural:
         flags = (0x80 if case['spreads'] else 0) | (0x40 if case.get('fast_growth', False) else 0)
         u.mem_write(SCENARIO, dwords(flags))
+        u.mem_write(SCENARIO + 0x214, dwords(case.get('scenario_serial', 0)))
     for kind in range(4):
         tib = TIBS + kind * 0x200
         u.mem_write(tib + 0xA0, struct.pack('<d', case['spread_percentages'][kind]))
@@ -476,9 +518,12 @@ def execute(case):
         first, second = read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)
         a, b = SCENARIO + 0x224 + first * 4, SCENARIO + 0x224 + second * 4
         u.mem_write(a, dwords(case['next_raw'] ^ read32(b)))
-    before = output_state(u, read32, capacity, bitmap_coordinates)
+    before = output_state(u, read32, capacity, bitmap_coordinates, lifecycle=natural)
     events, pending_random, pending_ranged, pending_can_place = [], [], [], []
     ranged_draw_index = None
+    pending_constructor, pending_serial = [], []
+    pending_growth_guard, pending_germinate = [], []
+    constructed = {}
 
     def observe(_u, address, _size, _data):
         nonlocal ranged_draw_index
@@ -494,6 +539,22 @@ def execute(case):
         if pending_can_place and address == pending_can_place[-1][0]:
             _, index = pending_can_place.pop()
             events[index]['result'] = bool(u.reg_read(UC_X86_REG_EAX) & 0xFF)
+        if pending_constructor and address == pending_constructor[-1][0]:
+            _, index, obj = pending_constructor.pop()
+            assert u.reg_read(UC_X86_REG_EAX) == obj
+            events[index].update(native_id=read32(obj + 0x10),
+                                 scenario_serial=read32(SCENARIO + 0x214),
+                                 alive=bool(u.mem_read(obj + 0x90, 1)[0]),
+                                 limbo=bool(u.mem_read(obj + 0x81, 1)[0]),
+                                 on_map=bool(u.mem_read(obj + 0x74, 1)[0]))
+        if pending_serial and address == pending_serial[-1][0]:
+            _, index = pending_serial.pop()
+            events[index].update(result=u.reg_read(UC_X86_REG_EAX),
+                                 serial_after=read32(SCENARIO + 0x214))
+        if pending_germinate and address == pending_germinate[-1][0]:
+            _, index, obj = pending_germinate.pop()
+            events[index].update(density=u.mem_read(obj + 0x11E, 1)[0],
+                                 result=u.reg_read(UC_X86_REG_EAX))
         if address == RANDOM:
             events.append(dict(kind='random', rng_before=[read32(SCENARIO + 0x21C),
                                                          read32(SCENARIO + 0x220)]))
@@ -502,6 +563,29 @@ def execute(case):
             events.append(dict(kind='enqueue_growth' if address == ADD_GROWTH else 'enqueue_spread',
                                receiver=(this - TIBS) // 0x200,
                                cell=list(struct.unpack('<hh', u.mem_read(read32(sp + 4), 4)))))
+            if natural and address == ADD_GROWTH:
+                pending_growth_guard.append(len(events) - 1)
+        elif natural and address == GROWTH_DENSITY_GUARD:
+            # EAX is the original Get_CellClass result used by this CMP,
+            # including any resident dummy. This is the density admission
+            # sees after Mark, before Place's final amount store.
+            index = pending_growth_guard.pop()
+            obj = u.reg_read(UC_X86_REG_EAX)
+            assert list(struct.unpack('<hh', u.mem_read(obj + 0x24, 4))) == events[index]['cell']
+            events[index].update(density=u.mem_read(obj + 0x11E, 1)[0],
+                                 overlay=struct.unpack('<i', u.mem_read(obj + 0x44, 4))[0])
+        elif natural and address == SPREAD_GERMINATE:
+            events.append(dict(kind='germinate_cell',
+                               cell=list(struct.unpack('<hh', u.mem_read(this + 0x24, 4))),
+                               caller=f'{read32(sp):08x}', randomize=bool(read32(sp + 4) & 0xFF),
+                               before_density=u.mem_read(this + 0x11E, 1)[0],
+                               overlay=struct.unpack('<i', u.mem_read(this + 0x44, 4))[0]))
+            pending_germinate.append((read32(sp), len(events) - 1, this))
+        elif natural and address == 0x4819CA:
+            # The original IDIV consumes the completed matching-class count
+            # in EAX and the native class's MaxDensity through ECX.
+            events[pending_germinate[-1][1]].update(
+                matching_neighbors=u.reg_read(UC_X86_REG_EAX), max_density=read32(this + 0xE4))
         elif address in (REBUILD_GROWTH, REBUILD_SPREAD):
             events.append(dict(kind='rebuild_growth' if address == REBUILD_GROWTH else 'rebuild_spread',
                                receiver=(this - TIBS) // 0x200))
@@ -525,9 +609,28 @@ def execute(case):
                                caller=f'{read32(sp):08x}', argument=read32(sp + 4)))
             pending_can_place.append((read32(sp), len(events) - 1))
         elif natural and address == 0x5FC380:
+            assert this not in constructed
+            constructed[this] = len(constructed)
             events.append(dict(kind='overlay_constructor',
                                cell=list(struct.unpack('<hh', u.mem_read(read32(sp + 8), 4))),
-                               overlay=read32(read32(sp + 4) + 0x294)))
+                               overlay=read32(read32(sp + 4) + 0x294), object_index=constructed[this]))
+            pending_constructor.append((read32(sp), len(events) - 1, this))
+        elif natural and address == 0x410230:
+            events.append(dict(kind='create_id', object_index=constructed[read32(sp + 4) - 4],
+                               serial_before=read32(SCENARIO + 0x214)))
+        elif natural and address == 0x68BCB0:
+            assert this == SCENARIO
+            events.append(dict(kind='next_unique_id', serial_before=read32(SCENARIO + 0x214)))
+            pending_serial.append((read32(sp), len(events) - 1))
+        elif natural and address in (0x5FC570, 0x5F65F0, 0x7258D0, 0x5FDF70, 0x5F3B80):
+            if this in constructed:
+                events.append(dict(kind={0x5FC570: 'overlay_mark', 0x5F65F0: 'object_uninit',
+                                         0x7258D0: 'announce_expired', 0x5FDF70: 'overlay_destructor',
+                                         0x5F3B80: 'object_destructor'}[address],
+                                   object_index=constructed[this], native_id=read32(this + 0x10),
+                                   pending_deletes=read32(0xB0F6A8)))
+        elif natural and address == 0x725C70:
+            events.append(dict(kind='drain_deferred', pending_deletes=read32(0xB0F6A8)))
         elif natural and address == RANGED:
             events.append(dict(kind='ranged', lo=read32(sp + 4), hi=read32(sp + 8)))
             pending_ranged.append((read32(sp), len(events) - 1))
@@ -557,7 +660,7 @@ def execute(case):
         return result
 
     u.hook_add(UC_HOOK_CODE, observe)
-    steps = []
+    steps, after_drains = [], []
     if natural:
         for frame in case.get('frames', [case['frame']]):
             first = len(events)
@@ -573,10 +676,23 @@ def execute(case):
                 u.mem_write(SP - 0x100, bytes(0x100))
                 call(SPREAD_DRIVER, 0, [])
             assert not pending_random and not pending_ranged and not pending_can_place and ranged_draw_index is None
+            assert not pending_constructor and not pending_serial
+            assert not pending_growth_guard and not pending_germinate
             step_events = events[first:]
-            steps.append(dict(frame=frame, state=output_state(u, read32, capacity, bitmap_coordinates),
+            steps.append(dict(frame=frame, state=output_state(u, read32, capacity, bitmap_coordinates, lifecycle=True),
                               cells=cell_state(), events=step_events,
                               draw_count=sum(e['kind'] == 'random' for e in step_events)))
+            if case.get('drain_deferred'):
+                # Original MainTick advances the frame before725C70. The
+                # surrounding callbacks are excluded from this explicit seam.
+                drain_frame = struct.unpack('<i', dwords(frame + 1))[0]
+                u.mem_write(0xA8ED84, dwords(drain_frame))
+                first = len(events)
+                call(0x725C70, 0, [])
+                assert not pending_constructor and not pending_serial
+                after_drains.append(dict(frame=drain_frame,
+                                         state=output_state(u, read32, capacity, bitmap_coordinates, lifecycle=True),
+                                         cells=cell_state(), events=events[first:]))
         returned = None
     elif case['entry'] == 'reduce':
         call(REDUCE, cell(*case['target']), [case.get('amount', 1)])
@@ -589,7 +705,7 @@ def execute(case):
         call(entry, TIBS + case['receiver'] * 0x200, [cell(*case['target']) + 0x24])
         returned = None
     assert not pending_random
-    final = output_state(u, read32, capacity, bitmap_coordinates)
+    final = output_state(u, read32, capacity, bitmap_coordinates, lifecycle=natural)
     observed_events = list(events)
     next_random = []
     for _ in range(4):
@@ -602,6 +718,8 @@ def execute(case):
                 next_random=next_random, returned=returned, cells=cell_state())
     if natural:
         result['steps'] = steps
+        if after_drains:
+            result['after_drains'] = after_drains
     return result
 
 
@@ -620,7 +738,12 @@ if __name__ == '__main__':
               'and spread-counter rebuild admission. Full natural SpreadProcessor722440, '
               'SpreadDriver7221B0, ordered GrowthDriver722C40-before-SpreadDriver histories, '
               'active-match target selection/Overlay constructor and timer cadence; selected '
-              'original Tiberium constructor defaults and ReadINI timer/percentage stores.',
+              'original Tiberium constructor defaults and ReadINI timer/percentage stores. '
+              'Original Mark SpreadCellGerminate density before growth admission, including '
+              'eight same-class versus seven matching neighbors in an interior empty hole. '
+              'Natural rows observe original Scenario serial allocation, ObjectUnInit/announce '
+              'and pending Overlay state; two explicit full deferred drains preserve serial/cell '
+              'effects while finalizing successful transient Overlays and retaining Terrain-refused limbo.',
         entry_points={'add_growth': ADD_GROWTH, 'add_spread': ADD_SPREAD,
                       'rebuild_growth': REBUILD_GROWTH, 'rebuild_spread': REBUILD_SPREAD,
                       'can_grow': 0x483620, 'can_spread': 0x483690,
@@ -633,6 +756,12 @@ if __name__ == '__main__':
                       'spread_driver': SPREAD_DRIVER, 'growth_driver': GROWTH_DRIVER,
                       'ranged': RANGED, 'ranged_inline_draw': 0x65C837,
                       'overlay_constructor': 0x5FC380, 'overlay_mark': 0x5FC570,
+                      'spread_cell_germinate': SPREAD_GERMINATE,
+                      'growth_density_guard': GROWTH_DENSITY_GUARD,
+                      'create_id': 0x410230, 'next_unique_id': 0x68BCB0,
+                      'object_uninit': 0x5F65F0, 'announce_expired': 0x7258D0,
+                      'deferred_drain': 0x725C70, 'overlay_destructor': 0x5FDF70,
+                      'object_destructor': 0x5F3B80,
                       'tiberium_constructor_members': 0x7216CF,
                       'tiberium_timer_readers': 0x721A78},
         assumptions=['Shared harvest_field/refinery_dock fixture: original Cell/Unit vtables, '
@@ -650,6 +779,9 @@ if __name__ == '__main__':
                      'Declared source/target objects, tile/land/slope/structural flags and '
                      'adequate allocator storage are prepared state; original admission, '
                      'Overlay constructor/Mark/Recalc and target placement execute. '
+                     'Natural germination events read the original matching-count IDIV inputs '
+                     'and return density; enqueue_growth density/overlay are read from the '
+                     'original Get_CellClass EAX pointer at7235C1 before its admission compare. '
                      'The existing tree at16,16 is outside this Size4x4 diamond and is used '
                      'only as the real object identity of declared spawner-blocked targets.',
                      'Driver rows invoke the complete original functions per declared frame. '
@@ -663,6 +795,14 @@ if __name__ == '__main__':
                      'full type registry discovery and physical INI file loading are excluded. '
                      'Four retail RULESMD sections carry physical file identity and original '
                      'reader-established timer/percentage outputs used by selected driver rows.',
+                     'Natural Scenario+214 serial is explicitly supplied before dispatch, normally0 '
+                     'with twoFFFFFFFF wrapping controls. Original410230/68BCB0 assign the actual '
+                     'stored Object+10 values. Registry/pending counts are read from native vectors; '
+                     'constructor return alive/limbo/on-map flags are native fields, never inferred '
+                     'from cell installation. Two drain_deferred rows invoke original725C70 at '
+                     'frame+1 matching MainTick ordering, with predrain steps and after_drains '
+                     'state. Surrounding MainTick callbacks, populated external observers, broader '
+                     'limbo-survivor persistence and full native save/load are excluded.',
                      'Timer+4 padding is supplied zero; sentinel frame/duration values are compared '
                      'for every class. X87 control0x0E7F comes from the shared fixture; signed frame '
                      'wrap and >2^24 chopped FILD/FSTP boundaries execute. Four next_raw controls '
@@ -674,7 +814,11 @@ if __name__ == '__main__':
                        'Natural spread rows inherit the existing TIBTRE allocation/free storage '
                        'service hooks and empty tactical/radar dirty sinks; original Overlay '
                        'attribute recalculation executes. No ore admission, queue, rebuild, '
-                       'iterator, timer, direction/variant choice or RNG return is substituted.']),
+                       'iterator, timer, direction/variant choice or RNG return is substituted. '
+                       'The two explicit drains reuse OriginalBridgeConstructor Windows SEH '
+                       'empty-chain and IsBadReadPtr storage services; every supplied successful '
+                       'probe validates mapped memory. Original queue/drain/destructor/announce '
+                       'instructions execute, with existing allocation/free services as storage sinks.']),
         source_paths={'producer': Path(__file__), 'harvest_field': Path(__file__).with_name('harvest_field.py'),
                       'refinery_dock': Path(__file__).with_name('refinery_dock.py'),
                       'tibtre': Path(__file__).with_name('tibtre.py'),

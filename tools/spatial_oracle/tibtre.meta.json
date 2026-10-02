@@ -49,7 +49,7 @@
     "type_inputs": "489e7999c957edfc1141d6ca8b5d72e36e570cb4065b2f208564875ed81174e5",
     "physical_shapes": "62b855dba1836bf484bb6c112b9249003ff4427c3004a1ef3d95c3aac985ba9b",
     "resident_tmp": "6c28a1ab004aa2fbfbfec58382bc8653b451514e21daab802cc0666b7bb8c80c",
-    "overlay_registries": "e9ca6535f248ec03225f113ee9624ec9471b2ab1ed3c4c1210c4a240c3f937f9"
+    "overlay_registries": "9a0155e48cb24c11b34dd28be4580a28bf3821e4ef034109dd494921f4d598a6"
   },
   "payload_sha256": "d9e857ee1cdbd72a3e0a8a04e10845d5530aad4c9bc2d3daa8f4e58bc65caf50"
 }
