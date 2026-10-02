@@ -1,12 +1,12 @@
 {
   "scope": "Stock HARV full cargo -> ordered refinery selection/admission -> shared Enter/per-cell docking -> Unload/payment -> release/resume. Required depot consumers and fatal Building wrapper ordering are included. One PR and one fresh read-only critic after validation.",
-  "base_main": "eea32db2dff2906a41d1c106ec48abf1fc72e81d",
+  "base_main": "1cfd3081e5fd2ca6cb26af953f8710f2329eec86",
   "rust_source_sha256": {
     "src/app/diagnostics/tactical_capture/manifest.rs": "68848a44d201b10306557da2b30c96bd6642e9232461a1372efd9d8d7111abf4",
-    "src/app/diagnostics/tactical_capture/map_observation.rs": "a9a594d36ef7adbe32b4c80bc6c5bd5f683cf2027fff5a045ab7c1a33fc028ef",
+    "src/app/diagnostics/tactical_capture/map_observation.rs": "3639e4a8bdebfc4dbe08ca14c61b3fa319c3822e1f2d2cdfa3aef349fcf81964",
     "src/rules/mission_data.rs": "a69512e28fb8901a2127ba4e97683129d02778d05d9e76a766efee61e373af10",
     "src/sim/combat/receiver_fixture.rs": "aa1ef1491dba244ac7304e01f034a63c27417d6840ceb84e64919ded5208ecb6",
-    "src/sim/combat/world_receiver.rs": "f8ff1f3f0840ebaaef6c47ef64c2fc9fd777fa316ee20c14529339deaf21e0ab",
+    "src/sim/combat/world_receiver.rs": "ed9cec198210ea95ac8c1aa563259dca9efb34f95c721a2546fe6fc562b2af8c",
     "src/sim/components.rs": "d995f31f415216c253dbb47756c903527408cd99d2772fab7ad1f600ba5139a9",
     "src/sim/docking/aircraft_dock.rs": "99f53c79ffa55fa54eedc34550e4ee9b33a4cee51153f733f3495ad70ecbcd7a",
     "src/sim/docking/building_dock.rs": "cd25acbe499281754120e5fb7fa76f24bda5d661cb63d6800b25bc9e6996695b",
@@ -23,26 +23,26 @@
     "src/sim/radio/contacts.rs": "c5d809a123f28c028478795de2a8cfc9ba1bb1ac7db03aa8f37921f12638b753",
     "src/sim/radio/mod.rs": "7bf1ff5eca39690466e9d489060835d8b19268fd6363f7ba34d5ddaf12fcad16",
     "src/sim/radio/receive.rs": "2f5d10a35692eea9bcf0b8e404fb5a364deb6b5b4e6ab94b36bd21468abde5ec",
-    "src/sim/snapshot.rs": "5cbbc0ab92abe302e9b03df925b4d1daf855579b855a5eeb53d99b940cc48e4a",
+    "src/sim/snapshot.rs": "751b015b0db34d283dff27a9bc7508b365b1da5733900841c14dbdc15d9a822d",
     "src/sim/world/cmin_dock_oracle_tests.rs": "7fa3dd190bae37c9e5fc0ccc8e5aa0d125acb34f11ae84f2ed450fac3a2f1556",
     "src/sim/world/lifecycle.rs": "836b683f795775673f0772cad900b06950483e14220deebe451519feaa7a5983",
-    "src/sim/world/mod.rs": "bc4f6ad9641873bde6f990e8581e49e0afa11444b8ad5e0043b2359bfd0bc72b",
+    "src/sim/world/mod.rs": "6084fcfac70f9476047e56702099f0123538d8b32db1c0d82890879cb2ea7ac0",
     "src/sim/world/object_turn.rs": "57425dad21a853dc21f0961879d4289c0328f173a8bd8f0078fe3075f0be1ed0",
     "src/sim/world/refinery_dock_continuation_tests.rs": "79c6b3f72f2b9f314501c117d2e0da77a47bd7548e98e30cfa00b2380fd7f089",
     "src/sim/world/refinery_dock_cycle_tests.rs": "3489ac29f474c4659de43302763b3728c32ac36db148d7d782da81572025c707",
     "src/sim/world/refinery_dock_oracle_tests.rs": "08c99a23f7d59b747b94a7bb60d3d1c68ec517a25b0613b2671f94aabc7102d1",
     "src/sim/world/refinery_dock_retail_tests.rs": "3a480ce81e4384fa4db99bbf885144823bc3a0803b5c4ec61b40cb768955e54a",
-    "src/sim/world/techno_ai.rs": "f5c010493ce913ac7897ecba4b7d863b7086714c68cd23a25556316cfe9d4b84",
+    "src/sim/world/techno_ai.rs": "438b21c4ce98dbc4670daabe0c9c3c6449045f486e3c04aae729dfe6b403c615",
     "src/sim/world/techno_ai/mission_handlers.rs": "7881411bae7b4ea3e8dd8d012b359f392dfc221efd20b122f61622abb5e8fe40",
     "src/sim/world/track_path_continuation_tests.rs": "af87d5d4faf7c5e1aad82b72480bb0dbcdebdb7e9d091bdc67c4f11f8d01e234",
     "src/sim/world/world_commands.rs": "3e3f204bb61f5a5a32391f5072ddd1331d807ee92eb62f11a19e3caac0790838",
-    "src/sim/world/world_hash.rs": "89ca9e7811a77ceb048744674954e08e13b550ea41cdf057876f8c2cb06c2f5e",
-    "src/sim/world/world_spawn/construction.rs": "dd33eac6172fe6ccabe2943d8c8e95ab3803a20263835031c1f0e79d99a78b34",
+    "src/sim/world/world_hash.rs": "19651bc4e796be889a062a4f15c277183d92cd07aaf1f86d7651eccd312da454",
+    "src/sim/world/world_spawn/construction.rs": "29c35ec63b2d629bafa0dfcf16809191bfd52f9628be7c3e6a8f3390a8db6b55",
     "src/sim/world/world_spawn/tests.rs": "aea0b4b8a12c4f57cd52ed1756fab31324e61374bbb68ea85c12ecb8531ca82d"
   },
   "python_source_sha256": {
-    "tools/map_observation.py": "22e16c7bf41ed9e3497b7cffcb959ff164fa1bda09bbda19803d4ad166183e24",
-    "tools/tests/test_map_observation.py": "f7fbfab1204cd175c9fd2e6889146bb3c968ab448fa547ac82d9db45efcf9638",
+    "tools/map_observation.py": "ee2883eaae102feed7a9ade8cb861a88cd22163d6035424a0845af056638dd05",
+    "tools/tests/test_map_observation.py": "90f810068c1e91d79fc51d449d18904d1bd48fa69920ddaccf9625dc347cdae4",
     "tools/tactical_certification/core.py": "957d0b4dd00542cd8823bb03e9f0ac8ad62edc3fe6d517b28252fd43eb0559be",
     "tools/tactical_certification/tests/test_core.py": "2c2a1b339e7c3a562ec61184ba3387c8b7d3406a4e4ea84903e80ebca39fcc18"
   },
@@ -71,14 +71,14 @@
   "retail_data_test": "sim::world::refinery_dock_retail_tests::retail_docking_inputs_match_original_readers_and_installed_art",
   "checks": {
     "retail_lib": {
-      "result": "9482 passed;0 failed;227 ignored;VERA20K_REQUIRE_RETAIL_INI=1",
-      "log_relative_to_checkout": ".local-audit/refinery-docking/lib-owner-final.log",
-      "log_sha256": "76389bc2f14aa47ede87347d02d69b91dd31c137bf1126bcce7f23084bc20049"
+      "result": "9502 passed;0 failed;227 ignored;VERA20K_REQUIRE_RETAIL_INI=1;final integrated candidate",
+      "log_relative_to_checkout": ".local-audit/refinery-docking/lib-ifv-main.log",
+      "log_sha256": "f440539e6dc40b0314d5586bcd7cceac2d6e0e7cd692168cc24a634e0b122a0d"
     },
     "retail_clippy": {
-      "result": "exit0;731 warnings;0 errors;VERA20K_REQUIRE_RETAIL_INI=1",
-      "log_relative_to_checkout": ".local-audit/refinery-docking/clippy-owner-final.log",
-      "log_sha256": "a5b1fdb9548a9d4e49a7372486932d29227004faf0b9c2ea61980f5b6fca28b2"
+      "result": "exit0;732 warnings;0 errors;VERA20K_REQUIRE_RETAIL_INI=1;final integrated candidate",
+      "log_relative_to_checkout": ".local-audit/refinery-docking/clippy-ifv-main.log",
+      "log_sha256": "02d2ed284eb060c78b192a81d3f9a889999aa0ca94e947621cb05dd241b03ab8"
     },
     "capture_publisher": {
       "result": "49 passed;0 failed",
@@ -115,19 +115,19 @@
       "log_sha256": "e9b17a9a419a3b2e0bf5d82ec6ed25c1152ab1f91a681ff0fe420b22a54912bb"
     },
     "field_ratchet": {
-      "result": "2557 vs2562 at tested base eea32db2;PASS",
-      "log_relative_to_checkout": ".local-audit/refinery-docking/field-ratchet-final.log",
-      "log_sha256": "6a1f7d399025c4e9a03078f70d1da8e3b5cbea4289d68d09adb03f30a57e55b8"
+      "result": "2554 vs2559 at main1cfd3081;PASS",
+      "log_relative_to_checkout": ".local-audit/refinery-docking/field-ratchet-ifv-main.log",
+      "log_sha256": "fcb30a3b036db7dd367c8bd72ccd567d92b54a2c9061499e3e859c7f1a53ff0a"
     },
     "python": {
-      "result": "137 tests;1 skipped;0 failures;observer,Cargo and tactical certification owners",
-      "log_relative_to_checkout": ".local-audit/refinery-docking/observer-compact-tests.log",
-      "log_sha256": "f035c12658c3ceb3daf3b3d46951b83595b4851ff35ffaa8d94852bb146e2ee5"
+      "result": "111 tests;1 skipped;0 failures;merged observer/core/profile/orchestrator",
+      "log_relative_to_checkout": ".local-audit/refinery-docking/python-ifv-main.log",
+      "log_sha256": "04d584df0ca91c70288545a07c631f5243914344ef8b9ebb3e3e4027efb43398"
     },
     "python_optimized": {
-      "result": "137 tests;1 skipped;0 failures;Python -O",
-      "log_relative_to_checkout": ".local-audit/refinery-docking/observer-compact-optimized-tests.log",
-      "log_sha256": "4cce9960934d1d1dec7594c5170dc4a24762f79a77f97de160a9936c95d16421"
+      "result": "111 tests;1 skipped;0 failures;python -O merged observer/core/profile/orchestrator",
+      "log_relative_to_checkout": ".local-audit/refinery-docking/python-ifv-main-optimized.log",
+      "log_sha256": "2d93c3f5bc35f09e093416c819c92c8d8594685952ecba54842f0dac4a833b08"
     },
     "expected_readiness_failure": {
       "result": "9458 passed;2 failed;227ignored before pending QueueEnter1 used live world/rules readiness inputs",
@@ -142,7 +142,8 @@
     "focused_contacts": {
       "result": "58 passed;0 failed;includes all nine slot controls, four constructor controls and required airfield HELLO consumer",
       "log_relative_to_checkout": ".local-audit/refinery-docking/contact-after-fix.log",
-      "log_sha256": "0d859f68cc97c2ced2e9b97331c26e0a7fc30db0cf6494e60a17b7ce404467fa"
+      "log_sha256": "0d859f68cc97c2ced2e9b97331c26e0a7fc30db0cf6494e60a17b7ce404467fa",
+      "candidate_scope": "Before main IFV integration;all58 tests also pass in final full library suite."
     },
     "expected_contact_failures": {
       "result": "55 passed;3 failed before production correction: sparse admission, native receiver/scanner replay, constructor slots",
@@ -151,36 +152,36 @@
     },
     "runtime_offline_validation": {
       "result": "VALID;7200 ordinary retail steps,7201 boundaries,2 deposits of40 bales/1000credits,release/Harvest and collection after each",
-      "log_relative_to_checkout": ".local-audit/refinery-docking/runtime-owner-final-validation.json",
-      "log_sha256": "0903074f5e50b80a5b0fad1eb8af865ca8778a9b2312bcc5967c59bc93b9b8d2"
+      "log_relative_to_checkout": ".local-audit/refinery-docking/runtime-ifv-main-validation.json",
+      "log_sha256": "8c33f84f6bfca4dd24c45b4b5fcbe091a08af24f619ed021144ac98c27b2ce6d"
     }
   },
   "release": {
-    "label": "refinery-docking-contact-owner-20261002",
+    "label": "refinery-docking-ifv-main-20261002",
     "source": {
-      "head": "eea32db2dff2906a41d1c106ec48abf1fc72e81d",
+      "head": "5e05a62a86ecf0502bac5c89ce9e173618647237",
       "branch": "feature/war-miner-refinery-docking",
-      "status": "M  README.md\n M src/app/diagnostics/tactical_capture/manifest.rs\nMM src/app/diagnostics/tactical_capture/map_observation.rs\nM  src/rules/mission_data.rs\nM  src/sim/combat/receiver_fixture.rs\nM  src/sim/combat/world_receiver.rs\nM  src/sim/components.rs\n M src/sim/docking/aircraft_dock.rs\nMM src/sim/docking/building_dock.rs\nMM src/sim/miner/README.md\nM  src/sim/miner/exit_cell_search.rs\n M src/sim/miner/miner_dock.rs\nMM src/sim/miner/miner_system.rs\nMM src/sim/miner/miner_tests.rs\nM  src/sim/miner/mod.rs\nM  src/sim/miner/refinery_dock.rs\nM  src/sim/mission/mod.rs\nM  src/sim/movement/per_cell.rs\nM  src/sim/movement/track_path.rs\n M src/sim/radio/contacts.rs\nM  src/sim/radio/mod.rs\nMM src/sim/radio/receive.rs\nM  src/sim/snapshot.rs\nM  src/sim/world/cmin_dock_oracle_tests.rs\nM  src/sim/world/lifecycle.rs\nM  src/sim/world/mod.rs\nM  src/sim/world/object_turn.rs\nMM src/sim/world/refinery_dock_cycle_tests.rs\nM  src/sim/world/refinery_dock_oracle_tests.rs\nM  src/sim/world/techno_ai.rs\nM  src/sim/world/techno_ai/mission_handlers.rs\nM  src/sim/world/track_path_continuation_tests.rs\nM  src/sim/world/world_commands.rs\nM  src/sim/world/world_hash.rs\n M src/sim/world/world_spawn/construction.rs\n M src/sim/world/world_spawn/tests.rs\nMM tools/map_observation.md\nMM tools/map_observation.py\nMM tools/spatial_oracle/harvest_attack_return.meta.json\nM  tools/spatial_oracle/harvest_attack_return.py\nMM tools/spatial_oracle/refinery_dock.json\nMM tools/spatial_oracle/refinery_dock.meta.json\nMM tools/spatial_oracle/refinery_dock.py\n M tools/tactical_certification/core.py\n M tools/tactical_certification/tests/test_core.py\nMM tools/tests/test_map_observation.py\n?? src/sim/mission/enter.rs\n?? src/sim/world/refinery_dock_continuation_tests.rs\n?? src/sim/world/refinery_dock_retail_tests.rs\n?? tools/map_observation.refinery-docking.example.json\n?? tools/spatial_oracle/refinery_dock.md\n?? tools/spatial_oracle/refinery_dock.validation.json",
-      "source_sha256": "ab7932d6922f81ad9b317cafcb83a2d6fcfe4e4ac0f456d55920121fb2c0ef42"
+      "status": "",
+      "source_sha256": "0105b518d153cfe738c17af9b37803ed592599dacf76221ef9ca7e3a738d941a"
     },
-    "manifest_sha256": "d6af84d9c43f8adb4da991117285b691281651a129dd6739cd5ffef14349eeea",
+    "manifest_sha256": "f8c354652fc89e4c2a8d8749e155f6cd6f4babdbfa40d1790cec7c8d440f117b",
     "artifacts": [
       {
         "source": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/target/owned-worktrees/e4583e3b7a54843e/release/vera20k",
         "file": "0/vera20k",
-        "sha256": "3eae21219b44c10a92f04e6c995408e62d6fa6cb18386bfe68288b61911aa3e8"
+        "sha256": "7f12beed901f90aa2db2b8ecb1e62c20476fd02cae2ff1c0fca17ccb1a4e0eb6"
       }
     ],
     "rust_source_hashes_match_validated_candidate": true,
-    "source_scope": "All37 Rust leaves match the full-tested and built candidate. Validation receipt finalized afterward;no full-source fingerprint equivalence is claimed.",
+    "source_scope": "All37 Rust leaves in this PR match the final full-tested and built candidate after main IFV integration. Validation receipt finalized afterward;no full-source fingerprint equivalence is claimed.",
     "log": {
       "result": "release build exit0",
-      "log_relative_to_checkout": ".local-audit/refinery-docking/release-owner-final.log",
-      "log_sha256": "617ea3b4721766cfd4207fe0c11d7560d7875fa09d5f0f8442de11a5c0e5d231"
+      "log_relative_to_checkout": ".local-audit/refinery-docking/release-ifv-main.log",
+      "log_sha256": "ffb1134b491aa91568e3558471155fa294128dae64de34fed4a7a3ce24d22c72"
     }
   },
   "runtime": {
-    "evidence_level": "Rust ordinary production integration; no native scheduler or pixel comparison",
+    "evidence_level": "Rust ordinary production integration;no native scheduler or pixel comparison",
     "status": "VALID",
     "miner_id": 1714,
     "refinery_id": 1468,
@@ -261,17 +262,17 @@
     },
     "artifacts": {
       "run": {
-        "path": ".local-audit/refinery-docking/runtime-owner-final/run.json",
-        "byte_length": 58904846,
-        "sha256": "80378160997cc0cd4a14b4da708fc468ec001edaa36401a4ee1f28e782dc6fa9"
+        "path": ".local-audit/refinery-docking/runtime-ifv-main/run.json",
+        "byte_length": 60153336,
+        "sha256": "74fb484a6727a3edda445cd418ee1ed8e17abfb949a6772dbcb687ddd06ea889"
       },
       "capture": {
-        "path": ".local-audit/refinery-docking/runtime-owner-final/child-output/capture.json",
-        "byte_length": 58907445,
-        "sha256": "b1604eb59a15a98aa49f2c55f0c25bb8248921855dca2203b68a8bd329438b60"
+        "path": ".local-audit/refinery-docking/runtime-ifv-main/child-output/capture.json",
+        "byte_length": 60155949,
+        "sha256": "478dda03ebad30b23ebbcb22b635f509846399c97354e21c57dabccc55d49112"
       },
       "frame": {
-        "path": ".local-audit/refinery-docking/runtime-owner-final/child-output/frame.bgra",
+        "path": ".local-audit/refinery-docking/runtime-ifv-main/child-output/frame.bgra",
         "byte_length": 1920000,
         "sha256": "aa84aac57a4445584902a3c6bcfc5a61b3cadb4b09b2a698abe28e1c3b92ec13"
       }
@@ -852,7 +853,7 @@
         "spent_credits": 2600
       }
     },
-    "image": ".local-audit/refinery-docking/runtime-owner-final-frame.png",
+    "image": ".local-audit/refinery-docking/runtime-ifv-main-frame.png",
     "native_comparator": "NONE",
     "parity_certification": "NONE"
   },
@@ -869,8 +870,8 @@
     "failed_run_sha256": "eeba322e7a209711d93ccbf80d7ab514a843b9d4a5b3a345e67a698b4c99c922",
     "trigger": "The complete7200-step indented transcript exceeded128MiB before publication.",
     "change": "Existing transactional publisher owns compact JSON encoding and exact map preflight bytes;existing Python writer adds optional compact output for sealed map runs/checks. Observations and128MiB limit preserved;historical default Python receipts unchanged.",
-    "successful_capture_bytes": 58907445,
-    "successful_run_bytes": 58904846
+    "successful_capture_bytes": 60155949,
+    "successful_run_bytes": 60153336
   },
   "critic": {
     "critic_passes": 1,
@@ -889,15 +890,15 @@
       "failed": 0
     },
     "full_strict_retail_lib": {
-      "log": ".local-audit/refinery-docking/lib-owner-final.log",
-      "passed": 9482,
+      "log": ".local-audit/refinery-docking/lib-ifv-main.log",
+      "passed": 9502,
       "failed": 0,
       "ignored": 227
     },
     "strict_retail_clippy": {
-      "log": ".local-audit/refinery-docking/clippy-owner-final.log",
+      "log": ".local-audit/refinery-docking/clippy-ifv-main.log",
       "exit_code": 0,
-      "warnings": 731
+      "warnings": 732
     },
     "new_native_controls": {
       "actual_slot_rows": 9,
@@ -907,9 +908,9 @@
       "both_harness_checks": "PASS"
     },
     "rust_files_sha256_checked": 37,
-    "runtime_status": "Corrected release7200steps VALID;offline VALID;2 full40-bale payments of1000credits;release/Harvest and collection;GPU inspected",
+    "runtime_status": "Final integrated release7200steps VALID;offline VALID;two40-bale/1000credit deposits,released/Harvest and collection;GPU inspected",
     "second_critic_pass": false,
-    "status": "Single fresh read-only critic completed;one confirmed P2 corrected and revalidated by owner;no second pass."
+    "status": "Single fresh read-only critic completed;one confirmed P2 corrected;owner revalidated correction and later main integration;no second pass."
   },
   "residuals": [
     "Native movement/world membership and zone producer state are supplied; physical arrivals are supplied.",
@@ -926,5 +927,15 @@
     "https://github.com/YuriPlanet/vera20k/issues/675",
     "https://github.com/YuriPlanet/vera20k/issues/937"
   ],
-  "closes": "https://github.com/YuriPlanet/vera20k/issues/842"
+  "closes": "https://github.com/YuriPlanet/vera20k/issues/842",
+  "integration": {
+    "main": "1cfd3081e5fd2ca6cb26af953f8710f2329eec86",
+    "merge_commit": "5e05a62a86ecf0502bac5c89ce9e173618647237",
+    "conflicts_resolved": [
+      "Shared constructor keeps Building slot initialization and Unit Gunner setup.",
+      "Snapshot281 belongs to main IFV;docking version and hash tag advanced to282."
+    ],
+    "revalidation": "Strict full library,Clippy,Python normal/optimized and release retail map observation repeated after resolution.",
+    "second_critic_pass": false
+  }
 }
