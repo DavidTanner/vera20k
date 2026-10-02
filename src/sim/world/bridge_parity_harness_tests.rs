@@ -291,7 +291,11 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // hash feed is omitted. Behavior and RNG assertions reach the final pin in
 // both modes. The temporary control is removed; native expected values stay
 // unchanged. Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xC666_E760_E83F_FF72;
+// 2026-10-02 IFV owner migration: u8 last-shot hashing becomes signed i32
+// current-weapon hashing and the redundant None override feed is removed.
+// All 201 recorded boundaries retain gameplay/RNG after guarded field migration;
+// tools/spatial_oracle/ifv_turret_replay/receipt.json records this Rust attribution.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xC40E_68BD_B392_AF79;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

@@ -56,28 +56,19 @@ pub(crate) fn depart_cargo_head(
         .passenger_role
         .cargo_mut()
         .ok_or(DepartureFailure::NoCargo)?;
-    let (passenger_id, passenger_size) = cargo.unload_first().ok_or(DepartureFailure::NoCargo)?;
+    let removed = cargo.unload_first();
     // FUN_004DE710's empty-hold weapon reset occurs before placement for these
-    // callers. Paradrop does not reset the carrier override at all.
+    // callers. Paradrop does not call RemoveGunner.
     let emptied = matches!(
         route,
         DepartureRoute::Vehicle | DepartureRoute::LandedAircraft | DepartureRoute::DeathEscape
     ) && cargo.is_empty();
     if emptied {
-        transport.weapon_override = None;
-        // The same pop's `+0x4D8` for a `Gunner=` type (`0x004DE72E..
-        // 0x004DE742` -> `0x007464E0`): an IFV's TemporalClass returns to the
-        // gunner, which lets its target go.
-        let gunner = sim
-            .substrate
-            .entities
-            .get(transport_id)
-            .and_then(|transport| sim.object_type(transport.type_ref(), rules))
-            .is_some_and(|object| object.gunner);
-        if gunner {
-            sim.temporal_remove_gunner(transport_id, passenger_id);
-        }
+        // Foot4DE710 also calls the empty-hold reset when RemoveFirst returns
+        // null. Keep that lifecycle effect before reporting NoCargo.
+        super::remove_gunner(sim, rules, transport_id, removed.map(|(id, _)| id));
     }
+    let (passenger_id, passenger_size) = removed.ok_or(DepartureFailure::NoCargo)?;
     // A failed Unlimbo re-attaches the passenger with `+0x82` untouched; only
     // a successful unload clears it (`0x0073DB98`).
     let open_topped = sim
@@ -181,7 +172,7 @@ fn restore_departure(
         || (route == DepartureRoute::LandedAircraft
             && !matches!(failure, DepartureFailure::GroundReveal(_)))
     {
-        reapply_gunner_weapon(sim, rules, transport_id, passenger_id);
+        super::receive_gunner(sim, rules, transport_id, passenger_id);
     }
 }
 
@@ -238,30 +229,4 @@ pub(crate) fn reveal_unloaded_passenger(
         RevealOutcome::Revealed { .. } => Ok(()),
         other => Err(DepartureFailure::GroundReveal(other)),
     }
-}
-
-/// Vehicle failure tail `0x0073DC71`..`0x0073DCA6`: AddPassenger precedes
-/// UnitClass `+0x4D4` (`0x00746420`), which re-adopts the passenger's attachment
-/// and applies InfantryType+0x688 (IFVMode) through `FUN_0070DC70`. It reverses
-/// the empty-pop `+0x4D8` (`0x007464E0`). Aircraft/Techno bind those slots to
-/// stubs `0x004DE750`/`0x004DE760`; preserve the represented Rust Gunner gate.
-/// Gates UnitClass `+0x4D4` ([`super::receive_gunner`]) on a `Gunner=yes`
-/// transport for the re-added head passenger.
-fn reapply_gunner_weapon(sim: &mut Simulation, rules: &RuleSet, transport_id: u64, pax_id: u64) {
-    let Some(transport) = sim.substrate.entities.get(transport_id) else {
-        return;
-    };
-    if !sim
-        .object_type(transport.type_ref(), rules)
-        .is_some_and(|obj| obj.gunner)
-    {
-        return;
-    }
-    let Some(passenger) = sim.substrate.entities.get(pax_id) else {
-        return;
-    };
-    let ifv_mode = sim
-        .object_type(passenger.type_ref(), rules)
-        .map_or(0, |obj| obj.ifv_mode);
-    super::receive_gunner(sim, transport_id, pax_id, ifv_mode);
 }

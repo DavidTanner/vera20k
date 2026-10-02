@@ -1200,9 +1200,14 @@ pub struct ObjectType {
     /// transport's active weapon changes based on the passenger's IFVMode.
     pub gunner: bool,
 
-    /// Which IFV weapon turret index this infantry type selects when inside
-    /// a Gunner=yes transport. Parsed from `IFVMode=N` in rules.ini. Default 0.
-    pub ifv_mode: u32,
+    /// Weapon mode selected when this passenger enters a Gunner transport.
+    /// TechnoType+688: constructor7110F2 initializes 0; ReadINI714780..71479A
+    /// uses signed ReadInt(current). The gunner selector owns mode validation.
+    pub ifv_mode: i32,
+
+    /// Retained charge flag and IFV weapon-to-turret mapping. The native Rules
+    /// process owns per-pass writes; this is its immutable runtime projection.
+    pub gunner_turrets: crate::rules::gunner_turrets::GunnerTurrets,
 
     /// `OpenTransportWeapon=` from rules.ini. Slot selector when this infantry
     /// is riding inside an open-topped transport that is NOT `Gunner=yes`:
@@ -2461,7 +2466,10 @@ impl ObjectType {
                 .max(0) as u32,
             open_topped: section.read_bool("OpenTopped", false),
             gunner: section.read_bool("Gunner", false),
-            ifv_mode: section.read_int("IFVMode", 0).max(0) as u32,
+            ifv_mode: section.read_int("IFVMode", 0),
+            gunner_turrets: crate::rules::gunner_turrets::GunnerTurrets::from_ini_section(
+                id, section, category,
+            ),
             open_transport_weapon: section.read_int("OpenTransportWeapon", -1),
             deploy_fire: section.read_bool("DeployFire", false),
             // `TechnoTypeClass::Constructor @ 0x00711187` seeds -1, and

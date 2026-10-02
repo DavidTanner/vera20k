@@ -33,7 +33,9 @@ use crate::rules::house_colors::{self, HouseColorIndex};
 use crate::sim::components::HarvestOverlay;
 #[cfg(test)]
 use crate::sim::movement::slope_transition::SLOPE_TRANSITION_FRAMES;
-use crate::sim::voxel_frame_catalog::{NO_SPAWN_ALT_SUFFIX, draws_turret_parts};
+use crate::sim::voxel_frame_catalog::{
+    NO_SPAWN_ALT_SUFFIX, draws_turret_parts, voxel_turret_index,
+};
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -417,8 +419,10 @@ pub(crate) fn build_unit_instances(
             0.0
         };
 
+        let turret_index =
+            voxel_turret_index(type_str, state.rules(), entity.current_turret_index());
         let (anim_frame, turret_frame) =
-            unit_animation_frames(entity, type_str, &atlas.frame_counts);
+            unit_animation_frames(entity, type_str, turret_index, &atlas.frame_counts);
 
         // Chrono teleport doesn't tint the unit — the visual effect is the
         // WarpOut animation overlay; the unit itself stays fully opaque.
@@ -432,6 +436,7 @@ pub(crate) fn build_unit_instances(
         if let BodyDraw::CrashPose(tilt) = body {
             let key = UnitSpriteKey {
                 type_id: type_str.to_string(),
+                turret_index,
                 facing: canonical_unit_facing(body_facing),
                 layer: VxlLayer::Composite,
                 frame: anim_frame,
@@ -463,6 +468,7 @@ pub(crate) fn build_unit_instances(
                 type_str,
                 body_facing,
                 turret_facing,
+                turret_index,
                 barrel_elevation,
                 hc,
                 center_x,
@@ -481,11 +487,17 @@ pub(crate) fn build_unit_instances(
                 &mut pieces,
             );
         } else {
-            // Non-turret unit: single composite sprite.
+            // A type with indexed gun models shares its bare hull key when
+            // current=-1 suppresses the gun arm; ordinary types use Composite.
             let key: UnitSpriteKey = UnitSpriteKey {
                 type_id: type_str.to_string(),
+                turret_index: 0,
                 facing: canonical_unit_facing(body_facing),
-                layer: VxlLayer::Composite,
+                layer: if draws_turret_parts(type_str, state.rules(), 0) {
+                    VxlLayer::Body
+                } else {
+                    VxlLayer::Composite
+                },
                 frame: anim_frame,
                 slope_type: stable_slope_for_key(slope_state),
                 barrel_pitch: 0,
@@ -645,7 +657,8 @@ enum BodyDraw {
 fn unit_animation_frames(
     entity: &crate::sim::game_entity::GameEntity,
     model: &str,
-    frame_counts: &std::collections::BTreeMap<(String, VxlLayer), u32>,
+    turret_index: i32,
+    frame_counts: &std::collections::BTreeMap<(String, VxlLayer, i32), u32>,
 ) -> (u32, u32) {
     let body = if entity.category != EntityCategory::Unit {
         entity
@@ -653,8 +666,8 @@ fn unit_animation_frames(
             .map_or(0, |animation| animation.frame)
     } else {
         let frames = frame_counts
-            .get(&(model.to_string(), VxlLayer::Body))
-            .or_else(|| frame_counts.get(&(model.to_string(), VxlLayer::Composite)))
+            .get(&(model.to_string(), VxlLayer::Body, 0))
+            .or_else(|| frame_counts.get(&(model.to_string(), VxlLayer::Composite, 0)))
             .copied()
             .unwrap_or(1)
             .max(1);
@@ -664,7 +677,7 @@ fn unit_animation_frames(
         body
     } else {
         frame_counts
-            .get(&(model.to_string(), VxlLayer::Turret))
+            .get(&(model.to_string(), VxlLayer::Turret, turret_index))
             .filter(|&&frames| frames > 1)
             .map_or(0, |&frames| {
                 (entity.turret_anim_frame % frames as i32) as u32
@@ -737,7 +750,7 @@ fn unit_body_draw<'a>(
     let tilt_crash_jumpjet = rules
         .and_then(|rules| rules.object(&model))
         .is_some_and(|object| object.tilt_crash_jumpjet);
-    let turret_parts = draws_turret_parts(&model, rules);
+    let turret_parts = draws_turret_parts(&model, rules, entity.current_turret_index());
     let body = body_draw(entity, band, binary_frame, tilt_crash_jumpjet, turret_parts);
     Some((model, body))
 }
@@ -1010,6 +1023,7 @@ fn transition_key_for_unit(
             phase_den,
         } => Some(TransitionUnitSpriteKey {
             type_id: key.type_id.clone(),
+            turret_index: key.turret_index,
             facing: key.facing,
             layer: key.layer,
             frame: key.frame,
@@ -1072,6 +1086,7 @@ fn prepare_unit_shadow(
     }
     let key = UnitSpriteKey {
         type_id: type_id.to_owned(),
+        turret_index: 0,
         facing: canonical_unit_facing(body_facing),
         layer: VxlLayer::Shadow,
         frame: 0,
@@ -1145,6 +1160,7 @@ fn emit_unit_shadow_sprite(
     }
     let key = UnitSpriteKey {
         type_id: type_id.to_string(),
+        turret_index: 0,
         facing: canonical_unit_facing(body_facing),
         layer: VxlLayer::Shadow,
         frame: 0,
@@ -1328,6 +1344,7 @@ fn emit_turret_unit_sprites(
     type_id: &str,
     body_facing: u8,
     turret_facing: u16,
+    turret_index: i32,
     barrel_elevation: u16,
     _hc: HouseColorIndex,
     center_x: f32,
@@ -1349,6 +1366,7 @@ fn emit_turret_unit_sprites(
     let voxel_adjust = super::foot_depth::unit_z_adjust(state, entity, true) as f32;
     let body_key = UnitSpriteKey {
         type_id: type_id.to_string(),
+        turret_index: 0,
         facing: canonical_unit_facing(body_facing),
         layer: VxlLayer::Body,
         frame: anim_frame,
@@ -1357,6 +1375,7 @@ fn emit_turret_unit_sprites(
     };
     let turret_key = UnitSpriteKey {
         type_id: type_id.to_string(),
+        turret_index,
         facing: canonical_turret_facing(turret_facing),
         layer: VxlLayer::Turret,
         frame: turret_frame,
@@ -1365,6 +1384,7 @@ fn emit_turret_unit_sprites(
     };
     let mut barrel_key = UnitSpriteKey {
         type_id: type_id.to_string(),
+        turret_index,
         facing: canonical_turret_facing(turret_facing),
         layer: VxlLayer::Barrel,
         frame: anim_frame,
@@ -1679,6 +1699,7 @@ mod tests {
         entity.category = EntityCategory::Unit;
         let key = UnitSpriteKey {
             type_id: "GENERATED".into(),
+            turret_index: 0,
             facing: 0,
             layer: VxlLayer::Shadow,
             frame: 0,

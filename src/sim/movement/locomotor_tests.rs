@@ -412,6 +412,7 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         size: 3,
         open_topped: false,
         gunner: false,
+        gunner_turrets: Default::default(),
         ifv_mode: 0,
         open_transport_weapon: -1,
         deploy_fire: false,

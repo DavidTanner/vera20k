@@ -523,7 +523,12 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // hash feed is omitted. Behavior and RNG assertions reach the final pin in
 // both modes. The temporary control is removed; native expected values stay
 // unchanged. Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB6FF_0072_0C60_9F26;
+// 2026-10-02 IFV owner migration: u8 last-shot hashing becomes signed i32
+// current-weapon hashing and the redundant None override feed is removed.
+// All 601 boundaries retain gameplay/RNG; each new saved charge delay is the
+// last of the 13 unchanged FireAt rearm writes. Bounded Rust attribution:
+// tools/spatial_oracle/ifv_turret_replay/receipt.json (not native replay evidence).
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x11C7_DD74_4E2A_1928;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

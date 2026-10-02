@@ -149,6 +149,11 @@ impl Simulation {
             install_authored_bridge(ge, origin);
             return;
         };
+        // Unit constructor735678 and InitFromType74689B initialize the empty
+        // Gunner through the shared selector, including its charge-type gate.
+        if category == EntityCategory::Unit && obj.gunner {
+            ge.set_gunner_weapon(0, obj);
+        }
         ge.crushable = obj.crushable;
         ge.deployed_crushable = obj.deployed_crushable;
         ge.omni_crusher = obj.omni_crusher;

@@ -275,7 +275,11 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // hash feed is omitted. Behavior and RNG assertions reach the final pin in
 // both modes. The temporary control is removed; native expected values stay
 // unchanged. Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-const SLICE6_BASELINE_HASH: u64 = 0xA739_CF89_5070_DB7A;
+// 2026-10-02 IFV owner migration: u8 last-shot hashing becomes signed i32
+// current-weapon hashing and the redundant None override feed is removed.
+// All 17 recorded boundaries retain gameplay/RNG after guarded field migration;
+// tools/spatial_oracle/ifv_turret_replay/receipt.json records this Rust attribution.
+const SLICE6_BASELINE_HASH: u64 = 0x5605_0F10_EACE_5E86;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

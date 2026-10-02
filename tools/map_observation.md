@@ -176,6 +176,98 @@ in the receipt's local evidence archive; executables remain with the shared
 build owner. Siege Chopper deployment is tracked separately below; aircraft
 shadows remain open.
 
+## IFV passenger turret observation
+
+[`map_observation.ifv-turret.example.json`](map_observation.ifv-turret.example.json)
+uses ordinary America/Battle startup, retail rules and an authored map with four
+IFVs, a Prism Tank, and GI, Engineer and Tesla Trooper passengers. The command
+schedule boards at step 10, unloads at 160 and boards again at 300; it ends at 400.
+The empty IFV is a control. Commands pass through the existing synchronized input
+queue and gameplay admission; the observation adds no passenger or turret state.
+
+Generate the exact map and a profile copy using the existing fixture owner:
+
+```sh
+python - /absolute/evidence/ifv-turret-switching-owned.map /absolute/evidence/ifv-profile.json <<'PYGEN'
+from pathlib import Path
+import json, re, sys
+from tools.render_depth_fixture import build_fixture
+
+map_path, profile_path = map(Path, sys.argv[1:])
+assert all(path.is_absolute() and not path.exists() for path in (map_path, profile_path))
+mission = build_fixture(walls_only=True).replace(
+    'Name=Depth Continuation - Walls and Cliff', 'Name=IFV Turret Switching')
+units = [('FV',46,46), ('FV',51,46), ('FV',46,51), ('FV',51,51), ('SREF',56,48)]
+infantry = [('E1',50,46), ('ENGINEER',45,51), ('SHK',50,51)]
+sections = {
+    'Structures': '',
+    'Units': '\n'.join(f'{i}=VERA-OBSERVER,{t},256,{x},{y},64,Guard,None,0,-1,0,-1,1,1'
+                      for i,(t,x,y) in enumerate(units)),
+    'Infantry': '\n'.join(f'{i}=VERA-OBSERVER,{t},256,{x},{y},2,Guard,64,None,0,-1,0,1,1'
+                         for i,(t,x,y) in enumerate(infantry)),
+}
+for name, body in sections.items():
+    mission, count = re.subn(
+        r'(?ms)^\[' + re.escape(name) + r'\]\n.*?(?=^\[|\Z)',
+        lambda match: f'[{name}]\n{body}\n\n', mission)
+    assert count == 1, (name, count)
+map_path.write_text(mission, encoding='ascii')
+profile = json.loads(Path('tools/map_observation.ifv-turret.example.json').read_text())
+profile['launch']['selected_map_file'] = str(map_path)
+profile_path.write_text(json.dumps(profile, indent=2) + '\n')
+PYGEN
+```
+
+The map SHA-256 is
+`7116830f605a9dc9c4be383bad0152b5ac11243f1813f3b2c04f6a69c85af2cd`.
+It retains the fixture's terrain and walls and supplies no type/rules overrides.
+Recorded unit IDs are IFVs 13–16 and SREF 17; passengers 18–20. Recheck L0 IDs
+after changing a launch or fixture input. Shorter captures set `ticks` to the
+chosen completed step and retain only commands with `issue_after_step < ticks`.
+
+Unit observations expose the existing owner words `current_weapon_138` and
+`current_turret_124` as paired signed integers. Historical rows without both
+remain readable. They establish selected state; retained GPU frames separately
+establish rendered output. Neither establishes native raster parity.
+
+The [validation receipt](map_observation.ifv-turret.validation.json) records the
+native corpus, build/source identities, capture hashes and inspected images.
+All three passengers board at step 12: GI selects weapon/turret `(2,1)`, Engineer
+`(1,2)`, and Tesla Trooper `(6,3)`. Departure restores `(0,0)` at step 164;
+Engineer and Tesla board again at 309 and GI at 322. The empty control remains
+`(0,0)`. These timings are production observations, not native cadence goldens.
+
+Retained GPU frames show the initial empty models at step 10, all four models
+at 100, the reset models and departed passengers at 280, and restored passenger
+models at 400. The empty frame is byte-identical to the preceding build. A second
+full cycle matches all 401 observation rows, fingerprints and final BGRA bytes;
+each shorter phase matches the corresponding full-cycle trajectory prefix.
+
+The shared charge-model prerequisite is exercised by replacing the commands
+with `ForceAttackCell { attacker_id: 17, target_rx: 60, target_ry: 48 }` at step
+10 and `Stop { entity_id: 17 }` at 30, ending at 150. SREF selects index 0 at step
+1, 3 at 13, 2 at 38, 1 at 63 and 0 at 88. Separate frames at steps 25 and 50 show
+the selected models; their trajectories match the full charge run's prefixes.
+This establishes model selection through the existing fire/rearm path, not
+whole Prism weapon or combat parity.
+
+At step 25, the preceding build still draws SREFTUR. Selecting SREFTUR3 changes
+156 pixels, all inside the Prism Tank's rectangle; all previously exposed
+command/actor/terrain observations match across the 26 retained boundaries.
+
+The fixture's resident atlas grows from 5,568 to 8,832 sprites and from
+23,394,168 to 34,689,699 R8Uint texel bytes to retain the six additional gun
+models. Bodies and shadows remain shared. These are measured atlas resources,
+not whole-process GPU memory or a 20,000-unit performance result.
+
+The [native component comparison](spatial_oracle/ifv_turret_switching.md) covers
+rules, selection, cargo-head reset, draw/load decisions and shared charge-index
+arithmetic. Rust passenger regressions additionally cover Guardian GI, failed
+exit, save/load and selected-weapon firing. Existing Temporal gunner reload
+handover, malformed custom content and whole Prism combat remain outside this
+bounded ordinary IFV cycle.
+
+
 ## Siege Chopper deployment observation
 
 [`map_observation.siege-chopper.example.json`](map_observation.siege-chopper.example.json)
@@ -368,7 +460,8 @@ These IDs and timings illustrate syntax; obtain actual values from the productio
 probes. Command payloads are the existing Rust serde `Command`, with no separate
 order translator. Supported orders are Move, Stop, Attack, ForceAttack, Guard,
 DeployMcv, ForceAttackCell, QueueProduction, PlaceReadyBuilding and
-CaptureBuilding (the resolved Engineer repair/capture mission) and ToggleRepair.
+CaptureBuilding (the resolved Engineer repair/capture mission), ToggleRepair,
+EnterTransport and UnloadPassengers.
 Rust rejects
 ignored payload fields or argument
 types. Python checks diagnostic structure and the exact typed request/receipt;

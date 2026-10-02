@@ -3216,6 +3216,15 @@ impl RuleSet {
                 weapon.projectile = projectile.map(str::to_owned);
             }
         }
+        for (category, name, gunner_turrets) in processed.gunner_turret_states() {
+            if let Some(object) = rules
+                .object_list
+                .iter_mut()
+                .find(|object| object.category == category && object.id == name)
+            {
+                object.gunner_turrets = *gunner_turrets;
+            }
+        }
         rules.anim_type_art_read_states = processed
             .anim_type_art_read_states()
             .map(|(name, read)| (name.to_owned(), read))
@@ -4193,7 +4202,7 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v10".hash(&mut hasher);
+        b"rules-simulation-config-v11".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
         // Process-resident Gravity and Weapon postpass results can differ for
         // identical current source stacks because earlier passes retained them.
@@ -4291,6 +4300,25 @@ impl RuleSet {
                 (
                     object.id.to_ascii_uppercase(),
                     self.building_launch_height(object),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .hash(&mut hasher);
+        // The same current source stack can retain different FV mappings from
+        // earlier Process calls. Gunner initialization and passenger entry use
+        // these fields, so restore must compare the effective owner state.
+        b"gunner-turret-config-v1".hash(&mut hasher);
+        self.object_list
+            .iter()
+            .map(|object| {
+                (
+                    (object.category, object.id.to_ascii_uppercase()),
+                    (
+                        object.gunner,
+                        object.ifv_mode,
+                        object.turret_count,
+                        object.gunner_turrets,
+                    ),
                 )
             })
             .collect::<BTreeMap<_, _>>()

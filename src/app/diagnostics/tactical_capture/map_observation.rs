@@ -156,6 +156,8 @@ impl MapCaptureProfile {
                         | Command::PlaceReadyBuilding { .. }
                         | Command::CaptureBuilding { .. }
                         | Command::ToggleRepair { .. }
+                        | Command::EnterTransport { .. }
+                        | Command::UnloadPassengers { .. }
                 ),
                 "command is outside the map observation's ordinary order coverage"
             );
@@ -715,7 +717,9 @@ impl TacticalCaptureSession {
                         "undeploying_6e2": leaf.deploy_reverse_active(),
                         "landing_for_deploy_134": entity.landing_for_deploy(),
                         "deploy_anim_130": animation, "stage_f8": entity.native_stage().value(),
-                        "body_counter_538": entity.body_frame_counter})
+                        "body_counter_538": entity.body_frame_counter,
+                        "current_weapon_138": entity.current_weapon_number(),
+                        "current_turret_124": entity.current_turret_index()})
                 });
                 let building = if entity.category == crate::map::entities::EntityCategory::Structure
                 {
@@ -1218,6 +1222,10 @@ mod tests {
                 "payload": {"CaptureBuilding": {"engineer_id": 7, "target_building_id": 9}}},
             {"issue_after_step": 2, "owner": "Computer1",
                 "payload": {"ToggleRepair": {"entity_id": 9}}},
+            {"issue_after_step": 2, "owner": "Computer1",
+                "payload": {"EnterTransport": {"passenger_id": 7, "transport_id": 8}}},
+            {"issue_after_step": 2, "owner": "Computer1",
+                "payload": {"UnloadPassengers": {"transport_id": 8}}},
         ]);
         let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
         profile.validate().unwrap();

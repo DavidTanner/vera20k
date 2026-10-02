@@ -304,13 +304,8 @@ pub(crate) fn current_weapon_is_omni_fire(
     let Some(obj) = rules.object(interner.resolve(entity.type_ref())) else {
         return false;
     };
-    let index: i32 = if obj.turret_count > 0 {
-        i32::from(entity.current_weapon_index)
-    } else {
-        0
-    };
-    crate::sim::combat::combat_weapon::weapon_for_index(obj, entity.veterancy(), index)
-        .and_then(|(weapon_id, _)| rules.weapon(weapon_id))
+    crate::sim::combat::combat_weapon::current_weapon(entity, obj)
+        .and_then(|weapon_id| rules.weapon(weapon_id))
         .is_some_and(|weapon| weapon.omni_fire)
 }
 
@@ -438,6 +433,38 @@ pub fn tick_turret_rotation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gunner_selection_controls_omni_fire_before_the_first_shot_and_after_reset() {
+        use crate::rules::ini_parser::IniFile;
+        use crate::sim::combat::AttackTarget;
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[VehicleTypes]\n0=FV\n[InfantryTypes]\n[AircraftTypes]\n[BuildingTypes]\n\
+             [FV]\nTurret=yes\nTurretCount=4\nGunner=yes\nWeaponCount=3\n\
+             NormalTurretWeapon=0\nMachineGunTurretWeapon=2\n\
+             Weapon1=Direct\nWeapon2=Direct\nWeapon3=Omni\n\
+             [Direct]\nDamage=10\nROF=20\nRange=6\nWarhead=WH\n\
+             [Omni]\nDamage=10\nROF=20\nRange=6\nWarhead=WH\nOmniFire=yes\n\
+             [WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+        ))
+        .unwrap();
+        let object = rules.object("FV").unwrap();
+        let mut entity = GameEntity::test_default(1, "FV", "Americans", 5, 5);
+        entity.barrel_facing = Some(crate::sim::movement::FacingClass::new(0, 5));
+        entity.attack_target = Some(AttackTarget::for_cell(10, 5));
+        let interner = crate::sim::intern::test_interner();
+        let store = EntityStore::new();
+        for (mode, turns) in [(0, true), (2, false), (0, true)] {
+            entity.set_gunner_weapon(mode, object);
+            assert_eq!(
+                facing_update(&entity, &store, Some(&rules), &interner, 100)
+                    .turret_destination
+                    .is_some(),
+                turns,
+                "selected mode {mode} must govern facing without a previous shot",
+            );
+        }
+    }
 
     #[test]
     fn test_shortest_rotation_clockwise() {

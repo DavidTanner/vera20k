@@ -843,7 +843,6 @@ mod tests {
     }
     #[test]
     fn cargo_departure_paradrop_preserves_early_state_and_unwinds_reveal_failure() {
-        use crate::sim::combat::combat_weapon::WeaponOverride;
         use crate::sim::movement::locomotor::LocomotorState;
         for post_attach in [false, true] {
             let mut sim = Simulation::new();
@@ -862,7 +861,7 @@ mod tests {
             sim.substrate.entities.insert(peer);
             {
                 let aircraft = sim.substrate.entities.get_mut(1).unwrap();
-                aircraft.weapon_override = Some(WeaponOverride::IfvSlot(99));
+                aircraft.set_gunner_selection_for_test(99, -1);
                 let cargo = aircraft.passenger_role.cargo_mut().unwrap();
                 cargo.passenger_sizes[0] = 7;
                 cargo.total_size = 7;
@@ -890,7 +889,7 @@ mod tests {
                 serde_json::to_value(aircraft.passenger_role.cargo()).unwrap(),
                 held
             );
-            assert_eq!(aircraft.weapon_override, Some(WeaponOverride::IfvSlot(99)));
+            assert_eq!(aircraft.current_weapon_number(), 99);
             let passenger = sim.substrate.entities.get(2).unwrap();
             assert_eq!(passenger.passenger_role.inside_transport_id(), Some(1));
             assert!(passenger.lifecycle.in_limbo);

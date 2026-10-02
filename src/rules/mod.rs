@@ -114,6 +114,7 @@ pub mod error;
 pub mod flh;
 pub mod foundation;
 pub mod gattling_type;
+pub mod gunner_turrets;
 pub mod house_colors;
 pub mod infantry_sequence;
 pub mod ini_parser;

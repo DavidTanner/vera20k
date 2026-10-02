@@ -35,7 +35,6 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::SpeedCostProfile;
 use crate::sim::combat::TargetKind;
-use crate::sim::combat::combat_weapon::WeaponOverride;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::crew_survival::DyingTransport;
 use crate::sim::movement::locomotor::MovementLayer;
@@ -212,7 +211,7 @@ fn scene(input: &Value) -> Scene {
         body.snap(facing, frame);
         unit.body_facing = body;
         if input["gunner"] == true {
-            unit.weapon_override = Some(WeaponOverride::IfvSlot(0));
+            unit.set_gunner_selection_for_test(0, -1);
         }
         if unit.passenger_role.cargo().is_none() {
             unit.passenger_role = PassengerRole::Transport {
@@ -520,8 +519,8 @@ fn compare(row: &Value) {
                 .entities
                 .get(transport)
                 .unwrap()
-                .weapon_override,
-            None,
+                .current_weapon_number(),
+            0,
             "{context}: the emptying pop hands the gunner's weapon back"
         );
     }

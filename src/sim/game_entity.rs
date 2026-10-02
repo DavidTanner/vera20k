@@ -621,11 +621,15 @@ pub struct GameEntity {
     /// (`0x0044AF9F`, `0x0044B0ED`) reset it.
     #[serde(default)]
     pub prism_support_count: i32,
-    /// TechnoClass `CurrentWeaponNumber`: the last live weapon slot selected
-    /// for this object. Slot zero is the constructor state. Fatal receiver
-    /// logic reuses this exact slot for the Suicide gate and death fallback.
-    #[serde(default)]
-    pub current_weapon_index: u8,
+    /// Techno+138, constructor6F2B99..6F2BCA=0; SetGunnerWeapon70DC70 owns writes.
+    /// Combat selection and turret facing read the same signed weapon number.
+    current_weapon_number: i32,
+    /// Techno+124, constructor6F2B99..6F2BCA=-1. SetGunnerWeapon70DC70 and
+    /// charge AI6FA4FB own writes; indexed voxel drawing is its consumer.
+    current_turret_index: i32,
+    /// Techno+2F8, constructor6F2E98=0. FireAt saves the final rearm duration
+    /// independently of later timer writers; charge AI reads it for drawing.
+    charge_turret_delay: i32,
     /// RadioClass-style live contacts for this entity, stored as stable IDs.
     /// Used by runtime building-entry/pathing exceptions such as contacted
     /// war factory exits and refinery dock entry. Kept per mover; a building
@@ -734,9 +738,9 @@ pub struct GameEntity {
     /// - `CanDeploySlashUnload @ 0x00700D50` reads it only for a type with
     ///   `UndeployDelay > -1` (`0x00700DF9..0x00700E23`); that type refuses
     ///   deployment while it runs. Stock GI/GGI keep the reader default-1.
-    /// - The charge-turret frame (`IsChargeTurret=`, the Prism Tank) reads it
-    ///   with the `+0x2F8` ROF copy (`0x006FA540`), which VERA does not keep
-    ///   or draw.
+    ///
+    /// The charge-turret model index reads this with the saved +2F8 duration
+    /// (6FA540); `game_entity::gunner` owns that presentation state.
     #[serde(default)]
     pub rearm_timer: crate::sim::timer::CdTimer,
     /// Gattling stage, value and report latch (`TechnoClass+0x140`,
@@ -994,14 +998,6 @@ pub struct GameEntity {
     /// Combined passenger/transport role — replaces separate passenger_cargo,
     /// transport_id, and boarding_state fields. See `PassengerRole` variants.
     pub passenger_role: PassengerRole,
-    /// Weapon-selection override applied when this entity is acting as a
-    /// transport firing a passenger's weapon. See `WeaponOverride` for the
-    /// semantics of each variant — `IfvSlot` for Gunner=yes transports,
-    /// `OpenTransport` for open-topped non-Gunner transports.
-    ///
-    /// Set by `passenger.rs` when a passenger boards; cleared when the
-    /// transport is empty.
-    pub weapon_override: Option<crate::sim::combat::combat_weapon::WeaponOverride>,
     /// Temporary VXL model override for visual-only state changes.
     /// When Some, the renderer should use this type's VXL model instead of `type_ref`.
     /// Set during refinery unloading (UnloadingClass= from rules.ini).
@@ -1189,6 +1185,7 @@ pub struct GameEntity {
 }
 
 mod construction_stage;
+mod gunner;
 mod simple_deploy;
 
 impl GameEntity {
@@ -1646,7 +1643,9 @@ impl GameEntity {
             attack_target: None,
             pending_building_fire: None,
             prism_support_count: 0,
-            current_weapon_index: 0,
+            current_weapon_number: 0,
+            current_turret_index: -1,
+            charge_turret_delay: 0,
             radio_contacts: Contacts::default(),
             dock_entered_with: None,
             was_attacked_by_enemy: false,
@@ -1730,7 +1729,6 @@ impl GameEntity {
             crashing_seen: false,
             sinking: crate::sim::world::SinkingState::default(),
             passenger_role: PassengerRole::None,
-            weapon_override: None,
             display_type_override: None,
             capture_infantry_type_index: -1,
             c4_plant: None,
