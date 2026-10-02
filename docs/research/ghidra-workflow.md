@@ -30,6 +30,12 @@ the analyzed program. Re-importing or enabling analysis is not routine reconnect
 - Names, signatures and pseudocode are interpretations. Resolve consequential
   ambiguity from bytes/instructions, receiver/argument flow and actual callers.
   A nearby label or attractive decompile is not proof of identity.
+- Check enum values against the native reader and dispatcher. YRpp `8468aab5`
+  declares `BehavesLike::Smoke = 0` and `Gas = 1`, but ParticleTypeClass's INI
+  reader uses `Gas, Smoke, Fire, Spark, Railgun` at `0x8370BC` and stores that
+  table index at type `+0x314` (`0x6453D7..0x6453FF`). ParticleClass's dispatcher
+  reads the same field and switches on it (`0x62CE43..0x62CE54`), so those two
+  header values would misidentify the native particle handlers.
 - Check pointer types: `int *p; p[0xac]` addresses byte offset `0x2b0` on this
   32-bit target. Addition to an integer address uses byte offsets.
 - For virtual calls, establish the table/subobject owner, read the actual slot,
