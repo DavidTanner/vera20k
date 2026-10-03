@@ -1436,13 +1436,14 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
         let gis = (0..count)
             .map(|i| {
                 let id = sim
-                    .spawn_object(
+                    .spawn_object_with_overlay_registry(
                         "E1",
                         "Americans",
                         tx - 1 + i % 3,
                         if i < 3 { ty + 1 } else { ty - 1 },
                         0,
                         rules,
+                        &resources.overlay_registry,
                     )
                     .unwrap_or_else(|| {
                         panic!(

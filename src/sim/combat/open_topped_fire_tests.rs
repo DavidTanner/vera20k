@@ -100,13 +100,14 @@ fn retail_dustbowl_battle_fortress_boarded(riders: u16) -> Fortress {
     let gis: Vec<u64> = (0..riders)
         .map(|i| {
             let id = sim
-                .spawn_object(
+                .spawn_object_with_overlay_registry(
                     "E1",
                     "Americans",
                     x - 1 + i % 3,
                     if i < 3 { y + 1 } else { y - 1 },
                     0,
                     rules,
+                    &resources.overlay_registry,
                 )
                 .expect("GI spawns");
             sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Boarding {
@@ -539,7 +540,15 @@ fn retail_dustbowl_battle_fortress_rider_walks_in_and_stays_put() {
             resources,
         } = &mut fortress.scenario.runtime;
         let id = sim
-            .spawn_object("E1", "Americans", x - 2, y + 2, 0, &resources.rules)
+            .spawn_object_with_overlay_registry(
+                "E1",
+                "Americans",
+                x - 2,
+                y + 2,
+                0,
+                &resources.rules,
+                &resources.overlay_registry,
+            )
             .expect("GI spawns");
         sim.resolve_type_handles(&resources.rules);
         id
