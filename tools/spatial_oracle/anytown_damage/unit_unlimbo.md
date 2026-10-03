@@ -746,3 +746,18 @@ fields, FPCW, original text and declared RNG assertions. Their receipt
 `3bfd039c44020066e5da7e0dc212a454058d331099eb000ec640efa56d62912b`.
 The source hash inventory's omitted Gate entry was corrected from the existing
 owner's two actual changed pins. No whole corpus/performance claim is added.
+
+The final diagnostics-merged candidate `08005785` passes the required-retail
+full lib suite (9,537 passed/0 failed/227 ignored), lib Clippy (725 warnings)
+and release game/asset build through the shared Cargo owner.
+External `unit-unlimbo-pr1018-diagnostics-final-validation-20261003.json`
+records the exact candidate, commands and log hashes. The release executable
+remains byte-exact to the previously observed binary
+`9a3cbe2f2e1df8ea8763088bbfffbf694a30efc45193b1b0a4c33ce599e6104c`
+(31,667,312 bytes). Both existing R10/R11 runs are ordinarily revalidated
+against that same executable; no new run is claimed. The continuity receipt
+`pr1018-diagnostics-release-continuity-20261003.json` has SHA-256
+`d6413cf7fc50e5e763aeacec6f34ef53e9994ad1dd03a4050b8d88854af07cfd`.
+The current writable-field ratchet is2,538 versus2,549; the earlier2,554
+comparison above records its pre-merge baseline. These checks do not include
+the separately scheduled63 ignored retail asset assertions.

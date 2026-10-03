@@ -951,3 +951,13 @@ validation and complete comparisons, SHA-256
 The earlier R8 actor data also matches; its overwritten executable basename is
 historical evidence and is not newly strict-validated. Stock/zero rule inputs
 differ, so this actor/pixel comparison is not whole-run equality or native parity.
+
+After main2909aba80 failure-diagnostic integration, candidate08005785's release
+build retains exactly the recorded R10/R11 executable SHA-256
+`9a3cbe2f2e1df8ea8763088bbfffbf694a30efc45193b1b0a4c33ce599e6104c`.
+Both existing runs revalidate with ordinary v6 against those same current
+bytes. This is same-executable evidence continuity, not a new execution.
+External `pr1018-diagnostics-release-continuity-20261003.json` records the
+identity and validations (SHA-256
+`d6413cf7fc50e5e763aeacec6f34ef53e9994ad1dd03a4050b8d88854af07cfd`).
+The previous bounded actor/GPU comparisons and native-parity limits remain.
