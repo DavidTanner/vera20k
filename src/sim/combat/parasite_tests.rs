@@ -446,6 +446,58 @@ fn third_party_fire_above_the_threshold_makes_the_drone_die_with_its_host() {
 }
 
 #[test]
+fn a_paid_repair_radio_request_releases_the_drone_after_the_heal() {
+    // Techno radio6F4D70 arms suppression50 and calls the existing ExitUnit
+    // owner after payment and heal. A failed charge must leave it attached.
+    // This is a Rust integration check of that caller, not a native infection
+    // or depot-arrival comparison. MTNK's supplied cost0 has native floor1.
+    use crate::sim::radio::{RadioMessage, RadioPayload, RadioResponse};
+    let rules = rules();
+    let mut arena = Arena::new(&rules);
+    let drone = arena.spawn(&rules, "DRON", "Russians", (10, 10));
+    let tank = arena.spawn(&rules, "MTNK", "Americans", (11, 10));
+    arena.hit(&rules, tank, None, 10, "AP");
+    arena.infect(&rules, drone, tank);
+    let owner = arena.sim.entities().get(tank).unwrap().owner();
+    arena.sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+    );
+    let hp = arena.health(tank).unwrap();
+    assert!(hp <= 290);
+    assert_eq!(
+        crate::sim::radio::receive_radio(
+            &mut arena.sim,
+            tank,
+            None,
+            RadioMessage::RepairTick,
+            RadioPayload::default(),
+            Some(&rules),
+        ),
+        RadioResponse::InsufficientFunds
+    );
+    assert_eq!(arena.eater_of(tank), Some(drone));
+    assert_eq!(arena.health(tank), Some(hp));
+    arena.sim.houses.get_mut(&owner).unwrap().economy.credits = 1;
+    assert_eq!(
+        crate::sim::radio::receive_radio(
+            &mut arena.sim,
+            tank,
+            None,
+            RadioMessage::RepairTick,
+            RadioPayload::default(),
+            Some(&rules),
+        ),
+        RadioResponse::Roger
+    );
+    assert_eq!(arena.health(tank), Some(hp + 8));
+    assert!(arena.gone(drone));
+    assert_eq!(arena.eater_of(tank), None);
+    assert_eq!(arena.sim.houses[&owner].economy.credits, 0);
+    assert_eq!(arena.sim.houses[&owner].economy.spent_credits, 1);
+}
+
+#[test]
 fn a_heal_forces_the_drone_off_and_its_running_suppression_kills_it() {
     // 0x004D73D4..0x004D740E: negative damage arms 50 frames of suppression and
     // calls ExitUnit, whose suppressed non-Naval arm (0x0062A89B) kills the owner.

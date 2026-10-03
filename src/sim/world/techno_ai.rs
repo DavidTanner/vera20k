@@ -1768,7 +1768,6 @@ mod tests {
     use crate::sim::components::{
         DriveCoord, DriveLocomotionRuntime, MovementTarget, NavTargetRef,
     };
-    use crate::sim::docking::building_dock::{DockPhase, DockState};
     use crate::sim::game_entity::{BunkerLink, GameEntity};
     use crate::sim::miner::{Miner, MinerConfig, MinerKind};
     use crate::sim::mission::leaf::MissionLeafState;
@@ -4925,7 +4924,7 @@ mod tests {
         if entity.miner.is_some() {
             return Err(HostTraceError::MinerPath);
         }
-        if entity.dock_state.is_some() {
+        if entity.pending_entry().is_some() || !entity.radio_contacts.is_empty() {
             return Err(HostTraceError::DockPath);
         }
         if entity.low_bridge_tube_state.is_some() {
@@ -5869,7 +5868,7 @@ mod tests {
         assert_eq!(entity.mission.current().known(), Some(MissionType::Move));
         assert!(entity.movement_target.is_none());
         assert!(entity.attack_target.is_none());
-        assert!(entity.dock_state.is_none());
+        assert!(entity.pending_entry().is_none() && entity.radio_contacts.is_empty());
         assert!(entity.miner.is_none());
 
         let trace = ordinary_drive_host_trace_ok(&sim, 110, HostTraceGates::ordinary());
@@ -6026,7 +6025,7 @@ mod tests {
             .entities
             .get_mut(ORDINARY_DRIVE_HOST_ID)
             .unwrap()
-            .dock_state = Some(DockState::new(99, DockPhase::EnterDock));
+            .set_pending_entry(Some(99));
         assert_ordinary_drive_host_error(&dock, &control, 120, ordinary, HostTraceError::DockPath);
 
         let mut aircraft = ordinary_drive_host_sim(13);

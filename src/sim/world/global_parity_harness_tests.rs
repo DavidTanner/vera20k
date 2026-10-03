@@ -532,11 +532,21 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // off/on boundaries equal except tick_result.state_hash. Omitting only Door
 // restores incoming main; the temporary control is removed. Bounded Rust
 // attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-// Snapshot286: the entity-level absent Teleport tag is removed; the complete
-//class payload owns its fold. Restoring only that old0 tag recovers the prior
-//hash exactly, with all existing pose/gameplay and absolute RNG tripwires intact.
+// Snapshot287: the entity-level absent Teleport tag is removed; the complete
+// class payload owns its fold. Restoring only that old zero tag recovers the prior
+// hash exactly, with all existing pose/gameplay and absolute RNG tripwires intact.
 // See tools/spatial_oracle/infantry_teleport_destination.md. Rust hash ratchet only.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x72DE_989C_EC3F_71B1;
+// Depot Mission_Repair Stage620 is independently owned and hashed. The
+// same-binary control omitting only this feed restores incoming main; all
+// 601 complete rows match after removing only tick_result.state_hash.
+// Integrated Rust attribution (not native parity):
+// tools/spatial_oracle/depot_service_replay/main1018/receipt.json.
+// The preceding-main attribution remains in depot_service_replay/receipt.json.
+// After main1024 integration, restoring only that absent tag recovers incoming
+// CDA10AEE6EA0AE46 in the same test binary. All 601 complete observations remain
+// equal except tick_result.state_hash. The control is removed in this candidate.
+// tools/spatial_oracle/infantry_teleport_replay/main1024/receipt.json.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x534C_7788_BB49_A3D8;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

@@ -68,6 +68,8 @@ pub(crate) struct AircraftMissionLeaf {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BuildingMissionLeaf {
     ready_latch: u8,
+    /// Independent Building+620 StageClass (ctor43B7F5; Repair44BBF2).
+    repair_progress: crate::sim::stage::StageClass,
 }
 
 /// A Doing value rejected by the verified Infantry writer domain.
@@ -76,14 +78,53 @@ pub(crate) struct BuildingMissionLeaf {
 pub(crate) struct InvalidInfantryDoing(pub(crate) i32);
 
 impl MissionLeafState {
-    /// Construct the exact initial leaf for an entity's concrete category.
+    /// Frame-zero constructor used by prepared test fixtures.
+    #[cfg(test)]
     pub(crate) const fn for_entity_category(category: EntityCategory) -> Self {
+        Self::constructed(category, 0)
+    }
+
+    /// Each native Building constructs its independent progress timer at Frame.
+    pub(crate) const fn constructed(category: EntityCategory, now: i32) -> Self {
         match category {
             EntityCategory::Unit => Self::Unit(UnitMissionLeaf::initial()),
             EntityCategory::Infantry => Self::Infantry(InfantryMissionLeaf::initial()),
             EntityCategory::Aircraft => Self::Aircraft(AircraftMissionLeaf::initial()),
-            EntityCategory::Structure => Self::Building(BuildingMissionLeaf::initial()),
+            EntityCategory::Structure => Self::Building(BuildingMissionLeaf {
+                ready_latch: 0,
+                repair_progress: crate::sim::stage::StageClass::constructed(now),
+            }),
         }
+    }
+
+    /// Repair44C577 starts the building-owned progress clock.
+    pub(crate) fn start_building_repair_progress(&mut self, now: i32) {
+        self.expect_building_mut()
+            .repair_progress
+            .restart(0, now, 1);
+    }
+
+    /// Repair44BC18 arms a stopped stage;44BC35 advances at most once per visit.
+    pub(crate) fn advance_building_repair_progress(&mut self, now: i32) -> i32 {
+        let stage = &mut self.expect_building_mut().repair_progress;
+        if stage.rate() == 0 {
+            stage.set_rate(1);
+        }
+        stage.advance(now);
+        stage.value()
+    }
+
+    ///44BD5F resets only the value, retaining rate/timer/changed/increment.
+    pub(crate) fn reset_building_repair_progress(&mut self) {
+        self.expect_building_mut().repair_progress.set_value(0);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn install_building_repair_progress_fixture(
+        &mut self,
+        stage: crate::sim::stage::StageClass,
+    ) {
+        self.expect_building_mut().repair_progress = stage;
     }
 
     /// Borrow the Unit inputs without permitting mutation.
@@ -306,8 +347,10 @@ impl MissionLeafState {
     }
 
     #[cfg(test)]
-    pub(crate) const fn building_raw_for_test(ready_latch: u8) -> Self {
-        Self::Building(BuildingMissionLeaf { ready_latch })
+    pub(crate) fn building_raw_for_test(ready_latch: u8) -> Self {
+        let mut leaf = Self::constructed(EntityCategory::Structure, 0);
+        leaf.set_building_ready_latch(ready_latch);
+        leaf
     }
 }
 
@@ -395,8 +438,8 @@ impl AircraftMissionLeaf {
 }
 
 impl BuildingMissionLeaf {
-    const fn initial() -> Self {
-        Self { ready_latch: 0 }
+    pub(crate) const fn repair_progress(&self) -> &crate::sim::stage::StageClass {
+        &self.repair_progress
     }
 
     pub(crate) const fn ready_latch(&self) -> u8 {

@@ -62,7 +62,7 @@ The selected setter preserves these responsibilities and ordering:
 adapter in the complete locomotor payload. Active queries and Process read the
 active instance. The Foot effect view can also read a suspended instance;
 BEGIN/END, snapshots and hashing retain that same payload, with no entity copy
-or cell-centre destination mirror. Snapshot286 changes this layout. The child
+or cell-centre destination mirror. Snapshot287 changes this layout after integration with main1024’s independent depot snapshot286. The child
 `teleport_cell_destination_tests` compares native states and all three full RNG
 objects after each boundary; its save/load, hash, suspension and command-route
 checks are separately identified Rust regressions.
@@ -136,8 +136,10 @@ bindings and full old-corpus guards. CPP SHA256 is
 canonical SHA256 is
 `018ac9143882ed3aaab11cb407e2eafa5503850ba7581f72e0e291fc57a707e4`.
 Three older selected sidecars receive a binding-only refresh through their
-existing publishers; all670 tracked JSON/gzip payloads retain exact bytes. That refresh
-does not extend their native coverage.
+existing publishers. After main1024 integration, those sidecars and this CLEG
+sidecar receive40 source-pin updates; all697 tracked CPP/data files retain exact
+bytes, including the incoming depot and expiry corpora. The final central
+binding checks pass. These refreshes do not extend native coverage.
 
 ## Production integration and validation
 

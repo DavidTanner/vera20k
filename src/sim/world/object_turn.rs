@@ -911,13 +911,11 @@ impl Simulation {
         // FootClass::AI 0x004DAED0..0x004DAEDC: with vt+0x1D8 (the warp-in)
         // clear, the pending entry (`Unit+0x500`) asks for its slot.
         if let Some(rules) = rules
-            && sim.substrate.entities.get(stable_id).is_some_and(|entity| {
-                !entity.is_warping_in()
-                    && entity
-                        .dock_state
-                        .as_ref()
-                        .is_some_and(|dock| dock.pending_entry().is_some())
-            })
+            && sim
+                .substrate
+                .entities
+                .get(stable_id)
+                .is_some_and(|entity| !entity.is_warping_in() && entity.pending_entry().is_some())
         {
             crate::sim::docking::building_dock::try_pending_entry(sim, rules, stable_id);
         }

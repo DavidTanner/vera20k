@@ -235,7 +235,7 @@ pub(crate) fn build_anim_class_instances(
         };
         // DrawIt422CA0..4238AF does not read native19B. Display membership
         // supplies live generic draws; retained Building slots have their own pass.
-        if anim.building_slot.is_some() {
+        if anim.is_building_anim() {
             continue;
         }
         // The canopy is placed by `build_parachute_instances`, on its owner's

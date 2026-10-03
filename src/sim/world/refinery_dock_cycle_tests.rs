@@ -413,9 +413,6 @@ fn a_refinery_destroyed_mid_unload_hands_the_miner_to_harvest() {
             .entities
             .get(s.miner)
             .unwrap()
-            .dock_state
-            .as_ref()
-            .unwrap()
             .pending_entry(),
         Some(s.other),
     );
@@ -453,9 +450,7 @@ fn a_refinery_destroyed_mid_unload_hands_the_miner_to_harvest() {
             .entities
             .get(s.miner)
             .unwrap()
-            .dock_state
-            .as_ref()
-            .and_then(|dock| dock.pending_entry()),
+            .pending_entry(),
         None,
         "NowDead clears pending500 even though it names another building",
     );

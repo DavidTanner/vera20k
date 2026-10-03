@@ -28,7 +28,6 @@ use crate::sim::components::{
 };
 use crate::sim::debug_event_log::{DebugEventKind, DebugEventLog};
 use crate::sim::docking::aircraft_dock::AircraftAmmo;
-use crate::sim::docking::building_dock::DockState;
 use crate::sim::intern::InternedId;
 use crate::sim::miner::Miner;
 use crate::sim::mission::{MissionCom, MissionLeafState, MissionTimer, MissionType};
@@ -912,9 +911,9 @@ pub struct GameEntity {
     /// ShipLocomotion destination/head-to and target speed state.
     #[serde(default)]
     pub ship_locomotion: Option<ShipLocomotionRuntime>,
-    /// Docking state machine — present when unit is approaching, waiting,
-    /// or servicing at a repair depot.
-    pub dock_state: Option<DockState>,
+    /// Native Foot/Unit+500 entry target, independent of Radio contacts.
+    /// Unit741D9F installs it; Foot70D84F/70D889 and expiry clear it.
+    pending_entry: Option<u64>,
     /// Aircraft ammo tracking and airfield docking state.
     /// Present on all Aircraft, including signed negative native Ammo counts.
     /// Non-aircraft entities have no aircraft ammo owner.
@@ -1225,6 +1224,15 @@ impl GameEntity {
             && self.door_phase() == crate::sim::door::DoorPhase::OpenStable
     }
 
+    pub(crate) const fn pending_entry(&self) -> Option<u64> {
+        self.pending_entry
+    }
+
+    /// Native Unit741D9F / Foot70D84F / Techno707AE7 entry-pointer writer.
+    pub(crate) fn set_pending_entry(&mut self, target: Option<u64>) {
+        self.pending_entry = target;
+    }
+
     pub(crate) const fn cached_spatial_threat(&self) -> Option<i32> {
         self.cached_spatial_threat
     }
@@ -1514,7 +1522,7 @@ impl GameEntity {
                 AircraftMission::ParaDropOverfly { .. } => (MissionType::ParadropOverfly, 0),
             };
         }
-        if self.dock_state.is_some() {
+        if self.pending_entry.is_some() {
             return (MissionType::Enter, 0);
         }
         if self.attack_target.is_some() {
@@ -1702,7 +1710,7 @@ impl GameEntity {
             berserk: BerserkState::default(),
             drive_locomotion: None,
             ship_locomotion: None,
-            dock_state: None,
+            pending_entry: None,
             aircraft_ammo: None,
             aircraft_mission: None,
             // Infantry get sub-cell 2 (first distinct position) at spawn so
@@ -1757,7 +1765,7 @@ impl GameEntity {
             last_target_scan_frame: construction_frame,
             passively_acquired_target: false,
             foot_retarget_after_stop: false,
-            mission_leaf: MissionLeafState::for_entity_category(category),
+            mission_leaf: MissionLeafState::constructed(category, construction_frame as i32),
             suspended_attack_target: None,
             base_defense_response: BaseDefenseResponseState::default(),
             damage_particle_live_until: 0,

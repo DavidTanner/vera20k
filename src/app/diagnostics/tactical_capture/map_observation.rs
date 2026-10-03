@@ -166,6 +166,8 @@ impl MapCaptureProfile {
                         | Command::ToggleRepair { .. }
                         | Command::EnterTransport { .. }
                         | Command::UnloadPassengers { .. }
+                        | Command::RepairAtDepot { .. }
+                        | Command::SellBuilding { .. }
                 ),
                 "command is outside the map observation's ordinary order coverage"
             );
@@ -1426,6 +1428,10 @@ mod tests {
                 "payload": {"EnterTransport": {"passenger_id": 7, "transport_id": 8}}},
             {"issue_after_step": 2, "owner": "Computer1",
                 "payload": {"UnloadPassengers": {"transport_id": 8}}},
+            {"issue_after_step": 2, "owner": "Computer1",
+                "payload": {"RepairAtDepot": {"entity_id": 7, "depot_id": 9}}},
+            {"issue_after_step": 2, "owner": "Computer1",
+                "payload": {"SellBuilding": {"entity_id": 10}}},
         ]);
         let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
         profile.validate().unwrap();
@@ -1439,6 +1445,21 @@ mod tests {
             let mut invalid = value.clone();
             invalid["commands"][2]["payload"]["CaptureBuilding"]["engineer_id"] = invalid_id;
             assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
+        }
+        for (index, variant, fields) in [
+            (6, "RepairAtDepot", &["entity_id", "depot_id"][..]),
+            (7, "SellBuilding", &["entity_id"][..]),
+        ] {
+            for field in fields {
+                for invalid_id in [json!("HTNK"), json!(true), json!(1.5), json!(-1)] {
+                    let mut invalid = value.clone();
+                    invalid["commands"][index]["payload"][variant][*field] = invalid_id;
+                    assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
+                }
+                let mut invalid = value.clone();
+                invalid["commands"][index]["payload"][variant]["ignored"] = json!(true);
+                assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
+            }
         }
         value["commands"][1]["payload"]["PlaceReadyBuilding"]["ignored"] = json!(true);
         assert!(serde_json::from_value::<MapCaptureProfile>(value).is_err());

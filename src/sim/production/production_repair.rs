@@ -200,8 +200,8 @@ pub(crate) fn can_repair_building(sim: &Simulation, rules: &RuleSet, id: u64) ->
         && !(foundation_dimensions(&object.foundation) == (1, 1) && undeploys(rules, object))
 }
 
-/// A BuildingType's repair step cost, TechnoTypeClass vt+0xB0 (`0x007120D0`):
-/// its GetCost (vt+0xAC, [`RuleSet::building_actual_cost`]) over the
+/// Shared TechnoType repair step cost, vt+0xB0 (`0x007120D0`):
+/// its virtual GetCost (vt+0xAC, [`RuleSet::type_cost`]) over the
 /// `Strength / RepairStep` steps (both IDIV), times `RepairPercent=` under the
 /// ambient PC53/chop x87 word, through `ftol`, and at least 1. Retail 15% is
 /// just below .15, so per-step shares of 20, 40 and 100 cost 2, 5 and 14.
@@ -213,7 +213,7 @@ pub(crate) fn repair_step_cost(rules: &RuleSet, object: &ObjectType) -> i32 {
             object.strength
         )
     });
-    let cost = rules.building_actual_cost(object);
+    let cost = rules.type_cost(object);
     let share = cost.checked_div(steps).unwrap_or_else(|| {
         panic!("native repair step cost IDIV fault at 007120F7: cost={cost} steps={steps}")
     });

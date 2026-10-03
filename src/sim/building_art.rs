@@ -12,6 +12,9 @@ use crate::util::native_x87::MaskedX87Ordering::Greater;
 
 #[path = "building_art_admission.rs"]
 mod admission;
+#[cfg(test)]
+#[path = "building_art_expiry_tests.rs"]
+mod expiry_tests;
 #[path = "building_art_power.rs"]
 mod power;
 #[path = "building_art_storage.rs"]
@@ -270,6 +273,9 @@ impl Simulation {
                 return None;
             }
         };
+        // Original45199B stores Anim+118 independently of the later55C slot
+        // installation. Clearing the reference never clears this native flag.
+        self.substrate.anims.get_mut(new_id)?.mark_building_anim();
         let old = self.substrate.entities.get(id)?.building_anim_slots[usize::from(slot)];
         if let Some(frame) = old
             .and_then(|old_id| self.anim(old_id))
@@ -316,6 +322,121 @@ impl Simulation {
     pub(crate) fn clear_all_building_anim_slots(&mut self, id: u64) {
         for slot in 0..21 {
             self.clear_building_anim_slot(id, slot);
+        }
+    }
+
+    fn building_anim_delayed_fire(&self, id: u64, rules: &RuleSet) -> bool {
+        let Some(entity) = self.substrate.entities.get(id) else {
+            return false;
+        };
+        let name = self.interner.resolve(entity.type_ref());
+        rules
+            .object(name)
+            .and_then(|object| rules.art().resolve_metadata_entry(name, &object.image))
+            .is_some_and(|entry| entry.is_anim_delayed_fire)
+    }
+
+    /// Anim arm of Building PointerExpired44E8F0. Production8 restores Idle18;
+    /// Grinding's Special10 restores Active3 before the general slot callback.
+    /// The reverse index skips listeners whose slot array cannot name this Anim.
+    /// Evidence: tools/spatial_oracle/building_slot_replacement.expiry.{json,md}.
+    pub(crate) fn building_anim_pointer_expired(&mut self, expired: u64, rules: Option<&RuleSet>) {
+        let Some((owner, slot)) = self.anim(expired).and_then(|anim| anim.building_slot) else {
+            return;
+        };
+        let Some(rules) = rules else {
+            // Rules-less teardown is the defensive destructor route; ordinary
+            // Anim AI and service destruction always carry the live RuleSet.
+            self.clear_building_anim_reference(expired);
+            return;
+        };
+        let Some(entity) = self.substrate.entities.get(owner) else {
+            return;
+        };
+        let Some(object) = rules.object(self.interner.resolve(entity.type_ref())) else {
+            return;
+        };
+        let damaged = requested_damage_state(
+            entity.health,
+            object.strength,
+            rules.general.condition_yellow,
+        );
+        let grinding = object.grinding;
+        if slot == 8 {
+            self.set_building_anim_slot(owner, 18, damaged, false, 0, rules);
+        }
+        if slot == 10 && grinding {
+            self.set_building_anim_slot(owner, 3, damaged, false, 0, rules);
+        }
+        self.building_anim_slot_expired(expired, rules);
+    }
+
+    /// Building451B40: find and clear the matched slot before constructing
+    /// its successor. Anim+179 is normal completion, independent of damage.
+    /// Scalar slot replacement/deletion does not call this UnInit receiver.
+    fn building_anim_slot_expired(&mut self, expired: u64, rules: &RuleSet) {
+        let Some((owner, slot, completed)) = self.anim(expired).and_then(|anim| {
+            anim.is_building_anim()
+                .then_some(anim.building_slot)
+                .flatten()
+                .map(|(owner, slot)| (owner, slot, anim.completed()))
+        }) else {
+            return;
+        };
+        let Some(entity) = self.substrate.entities.get(owner) else {
+            return;
+        };
+        if !entity.is_object_alive()
+            || entity.building_anim_slots[usize::from(slot)] != Some(expired)
+        {
+            return;
+        }
+        let Some(object) = rules.object(self.interner.resolve(entity.type_ref())) else {
+            return;
+        };
+        let unit_repair = object.unit_repair;
+        let damaged = requested_damage_state(
+            entity.health,
+            object.strength,
+            rules.general.condition_yellow,
+        );
+        let servicing = entity.radio_contacts.iter_live().next().is_some()
+            && entity.mission.effective()
+                == crate::sim::mission::MissionId::from_known(
+                    crate::sim::mission::MissionType::Repair,
+                );
+        let garrisoned = entity
+            .passenger_role
+            .cargo()
+            .is_some_and(|cargo| !cargo.passengers.is_empty());
+        let delayed_fire = self.building_anim_delayed_fire(owner, rules);
+        self.clear_building_anim_reference(expired);
+        let next = match slot {
+            10 if unit_repair => Some((if servicing { 11 } else { 18 }, false)),
+            10 if delayed_fire && completed => Some((3, garrisoned)),
+            12 if unit_repair && completed => Some((18, false)),
+            15 if completed => Some((16, false)),
+            17 if completed => Some((14, false)),
+            _ => None,
+        };
+        if let Some((slot, garrisoned)) = next {
+            self.set_building_anim_slot(owner, slot, damaged, garrisoned, 0, rules);
+        }
+    }
+
+    /// Clear the source slot and its derived reverse index without generating
+    /// a successor. Scalar deletion and defensive final removal use this owner.
+    pub(crate) fn clear_building_anim_reference(&mut self, id: u64) {
+        let slot = self
+            .substrate
+            .anims
+            .get_mut(id)
+            .and_then(|anim| anim.building_slot.take());
+        if let Some((owner, slot)) = slot
+            && let Some(entity) = self.substrate.entities.get_mut(owner)
+            && entity.building_anim_slots[usize::from(slot)] == Some(id)
+        {
+            entity.building_anim_slots[usize::from(slot)] = None;
         }
     }
 
@@ -824,10 +945,7 @@ mod slot_tests {
             sim.visit_anim(missing, &rules, None);
             assert!(sim.substrate.pending_delete.contains(&missing));
             assert!(!sim.anim(missing).unwrap().in_logic_vector);
-            assert_eq!(
-                sim.entities().get(id).unwrap().building_anim_slots[5],
-                Some(missing)
-            );
+            assert_eq!(sim.entities().get(id).unwrap().building_anim_slots[5], None);
         }
     }
     #[test]
@@ -880,16 +998,15 @@ mod slot_tests {
         assert_eq!(sim.state_hash(), unchanged);
     }
     #[test]
-    fn slot_survives_destroy_until_deferred_physical_expiry() {
+    fn slot_uninit_clears_reference_before_deferred_physical_expiry() {
         let (mut sim, rules, id) = slot_test_fixture();
         let anim = sim
             .set_building_anim_slot(id, 3, false, false, 0, &rules)
             .unwrap();
         sim.destroy_anim(anim, &rules);
-        assert_eq!(
-            sim.entities().get(id).unwrap().building_anim_slots[3],
-            Some(anim)
-        );
+        // Object UnInit5F6616 broadcasts before Limbo/storage removal;
+        // Building44EA3A→451B40 clears the matched slot synchronously.
+        assert_eq!(sim.entities().get(id).unwrap().building_anim_slots[3], None);
         assert!(sim.substrate.pending_delete.contains(&anim));
         assert!(!sim.anim(anim).unwrap().in_logic_vector);
         sim.process_pending_delete();

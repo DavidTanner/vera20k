@@ -147,7 +147,6 @@ use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::command::CommandEnvelope;
 use crate::sim::components::{AnimClassSpawnDescriptor, Position};
 use crate::sim::docking::aircraft_dock;
-use crate::sim::docking::building_dock;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::house_state::HouseState;
 use crate::sim::house_strategy;
@@ -539,8 +538,16 @@ pub enum SimSoundEvent {
     /// `BuildingClass::ToggleRepair @ 0x00446FF0` (`0x004470B7`): repair
     /// switched on while `Health != Type.Strength` (`0x00447059`) and the
     /// owner is the local player (`0x004470A4 CALL 0x0050B6F0`). App plays
-    /// `EVA_Repairing` for the local owner.
+    /// `EVA_Repairing` for the local owner. Depot MissionRepair44C507 emits
+    /// the same request when its first paid service step starts.
     Repairing { owner: InternedId },
+    /// Depot MissionRepair44BDB2 reaches CreateRadarEvent8 after a service
+    /// request completes. The app resolves the local-owner+41A gate and
+    /// existing client radar admission before playing EVA_UnitRepaired.
+    UnitRepaired {
+        owner: InternedId,
+        radar: RadarEventRequest,
+    },
     /// `BuildingClass::ChangeOwner @ 0x00448260` announce block
     /// (`0x004483C0..0x0044848F`) for an engineer capture
     /// (`InfantryClass::PerCellProcess 0x00519A27 PUSH 1` = announce). Native
@@ -6478,24 +6485,9 @@ impl Simulation {
             // insertion_seq (temporal) order; the spawn/placement pass below then
             // delivers completed builds and advances the queue-of-record.
             //
-            // DRIFT (same-tick transaction ordering; the depot repair's to fix):
-            // `LogicClass::PerTickUpdate @ 0x0055AFB0` runs the object loop
-            // first — every depot repair debit
-            // (`BuildingClass::MissionRepairAndProduce @ 0x0044B780`) is spent
-            // inside that object's `AI` visit, as a building's own repair debit
-            // already is here (`production::update_repair_and_power`) — then
-            // Tactical, then a SEPARATE pass over `g_FactoryClass_Array` at
-            // 0x0055B66A where each factory's per-step charge
-            // (`FactoryClass::AI`) sees the wallet, then the houses (see
-            // docs/research/ADVANCE_TICK_PHASE_PARTITION_NATIVE_SPINE_GHIDRA_REPORT.md).
-            // So within one frame EVERY depot debit precedes EVERY factory step
-            // natively; VERA charges every factory here first, then
-            // `tick_building_docks` below. Trigger: a house whose credits fall
-            // below one factory step plus one depot repair step in the same
-            // frame. Player effect: which of the two stalls for that frame
-            // differs. Frequency: only while a player is nearly broke with both
-            // a factory and a depot repair running. Downstream risk: credit
-            // trajectory and stall cadence, no lifecycle or RNG effect.
+            // Native55AFB0 visits all objects before55B66A's Factory sweep.
+            // Depot service now spends inside its Building mission visit, so
+            // every factory observes the wallet after that object's repair.
             production::revalidate_and_step_factories(self, rules);
             spawned_entities |=
                 production::tick_production_with_overlay_registry(self, rules, overlay_registry);
@@ -6503,7 +6495,6 @@ impl Simulation {
             self.trace_house_ai_activation_order(
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
             );
-            building_dock::tick_building_docks(self, rules);
             crate::sim::docking::bunker_install::tick_bunker_install(self, rules, overlay_registry);
             aircraft_dock::tick_aircraft_docks(self, rules);
             if spawned_entities {

@@ -494,7 +494,7 @@ fn building_dock_now(
     // mission; VERA's depot and bunker flows own those links.
     if object.unit_repair {
         // Building43C7B5..C7DC: service request and the occupant's Sleep
-        // queue. DockState's service phase consumes the admitted pad contact.
+        // queue. The Building mission owns the admitted pad contact.
         let now = sim.session.binary_frame;
         let _ = sim.mission_queue_exact(
             building_id,
@@ -513,7 +513,6 @@ fn building_dock_now(
         if let Some(building) = sim.substrate.entities.get_mut(building_id) {
             building.mission_leaf.set_building_ready_latch(1);
         }
-        crate::sim::docking::building_dock::begin_service(sim, rules, from, building_id);
         return RadioResponse::Roger;
     }
     if object.bunker {
@@ -715,8 +714,22 @@ fn foot_receive(
             techno_receive(sim, foot, sender, msg, payload, rules)
         }
         RadioMessage::IsOccupied => foot_is_occupied(sim, foot, sender),
-        // 0x11 and 0x1C have no represented sender.
-        RadioMessage::IsUnitLinked | RadioMessage::RepairTick => RadioResponse::None,
+        // Foot4D900E..4D9028: a live NavCom blocks the repair request before
+        // the shared Techno cost/heal/payment receiver is reached.
+        RadioMessage::RepairTick => {
+            if sim
+                .substrate
+                .entities
+                .get(foot)
+                .is_some_and(|entity| entity.navigation.nav_com.is_some())
+            {
+                RadioResponse::Negatory
+            } else {
+                techno_receive(sim, foot, sender, msg, payload, rules)
+            }
+        }
+        // 0x11 has no represented sender.
+        RadioMessage::IsUnitLinked => RadioResponse::None,
         _ => techno_receive(sim, foot, sender, msg, payload, rules),
     }
 }
@@ -944,13 +957,75 @@ fn techno_receive(
                 crate::sim::radio::transmit_to_contact(sim, techno, RadioMessage::Break, rules)
             }
         }
-        // 0x1A..0x1C, 0x1E and 0x1F have no represented sender.
+        RadioMessage::RepairTick => techno_repair_tick(sim, techno, rules),
+        // 0x1A, 0x1B, 0x1E and 0x1F have no represented sender.
         RadioMessage::SecondaryLockSet
         | RadioMessage::SecondaryLockClear
-        | RadioMessage::RepairTick
         | RadioMessage::DeploySetNav
         | RadioMessage::LinkPassenger => RadioResponse::None,
         _ => radio_receive(sim, techno, sender, msg),
+    }
+}
+
+/// REPAIR_TICK1C, Techno6F4CD7..6F4E3B. The type's shared repair-cost
+/// getter7120D0 owns its virtual GetCost; default712120 and Unit747F20 heal
+/// getters both read RepairStep. Payment precedes the actual/estimated adds,
+/// forced parasite release and damage-smoke retirement, then full-health clamp.
+/// Original execution: building_repair.depot_service.json receiver/history rows.
+fn techno_repair_tick(sim: &mut Simulation, techno: u64, rules: Option<&RuleSet>) -> RadioResponse {
+    let Some(rules) = rules else {
+        return RadioResponse::None;
+    };
+    let Some(entity) = sim.substrate.entities.get(techno) else {
+        return RadioResponse::None;
+    };
+    let Some(object) = sim.object_type(entity.type_ref(), rules) else {
+        return RadioResponse::None;
+    };
+    if entity.health.is_fully_repaired(object.strength) {
+        return RadioResponse::Negatory;
+    }
+    // InfantryType5247A0/524790 overrides cost0 and Rules+16D8 IRepairStep.
+    // That Hospital-family dependency is outside the selected Unit service
+    // chain; do not give it the inherited Unit/default getters.
+    if entity.category == EntityCategory::Infantry {
+        return RadioResponse::None;
+    }
+    let strength = object.strength;
+    let cost = crate::sim::production::repair_step_cost(rules, object);
+    let heal = rules.general.repair_step.max(1);
+    let owner = entity.owner();
+    if crate::sim::credit_income::available_money(sim, owner) < cost {
+        return RadioResponse::InsufficientFunds;
+    }
+    if cost != 0 {
+        crate::sim::credit_income::spend_money(sim, owner, cost);
+    }
+    let Some(entity) = sim.substrate.entities.get_mut(techno) else {
+        return RadioResponse::None;
+    };
+    entity.health.current = entity.health.current.wrapping_add(heal);
+    entity.estimated_health.add_repair(heal);
+    let eater = entity.parasite_eating_me;
+    if let Some(eater) = eater {
+        sim.parasite_force_release(
+            eater,
+            crate::sim::combat::parasite::FORCED_RELEASE_SUPPRESSION_FRAMES,
+            rules,
+        );
+    }
+    // Radio6F4DAB..6F4DE5 uses the same two-clause health/height gate as
+    // SelfHeal6FA75A. Its existing owner retires the retained smoke system.
+    sim.retire_damage_smoke_after_self_heal(techno, rules);
+    let Some(entity) = sim.substrate.entities.get_mut(techno) else {
+        return RadioResponse::None;
+    };
+    if entity.health.is_fully_repaired(strength) {
+        entity.health.current = strength;
+        entity.estimated_health.reset(strength);
+        RadioResponse::RepairComplete
+    } else {
+        RadioResponse::Roger
     }
 }
 

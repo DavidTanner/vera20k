@@ -1118,14 +1118,6 @@ impl Simulation {
                     depot_fast_return = true;
                 }
             }
-            let pending = self.substrate.entities.get(id).is_some_and(|unit| {
-                unit.dock_state
-                    .as_ref()
-                    .is_some_and(|dock| dock.pending_entry().is_some())
-            });
-            if !pending || depot_fast_return {
-                crate::sim::docking::building_dock::begin_approach(self, id, depot);
-            }
         } else if clear_queue && let Some(unit) = self.substrate.entities.get_mut(id) {
             unit.navigation.nav_queue.clear();
         }
@@ -1133,6 +1125,7 @@ impl Simulation {
             if teleporter {
                 let _ = self.unit_teleporter_arm(id, None, rules);
             }
+            self.unit_destination_power_on(id, Some(rules));
             self.foot_null_destination(id, Some(rules), None);
             if let Some(actor) = self.substrate.entities.get_mut(id) {
                 super::retain_committed_movement(actor);
@@ -1146,6 +1139,9 @@ impl Simulation {
             _ => None,
         };
         let skip_move_to = teleporter && self.unit_teleporter_arm(id, requested_cell, rules);
+        if !depot_fast_return {
+            self.unit_destination_power_on(id, Some(rules));
+        }
         if !self.begin_foot_destination(id, true) {
             if depot_fast_return && let Some(actor) = self.substrate.entities.get_mut(id) {
                 actor.navigation.path_replay.clear_live_head();
@@ -1243,6 +1239,72 @@ impl Simulation {
             actor.navigation.path_replay.clear_live_head();
         }
         accepted
+    }
+
+    /// Unit741970's shared tail742F48..74314C, before Foot4D94B0.
+    /// An unpowered locomotor powers on when the raw Object5F6960 current
+    /// cell has a UnitRepair/Bunker building on its ground list and lacks
+    /// the high-bridge flag0x100. House53A130 returns false in active YR.
+    /// This is independent of contacts and the requested destination; the
+    /// successful depot handshake742D24 and earlier setter guards skip it.
+    /// Original executable controls: building_repair.depot_service.{json,md}.
+    fn unit_destination_power_on(&mut self, id: u64, rules: Option<&RuleSet>) {
+        let Some(actor) = self.substrate.entities.get(id) else {
+            return;
+        };
+        if !actor
+            .locomotor
+            .as_ref()
+            .is_some_and(|loco| !loco.is_powered())
+        {
+            return;
+        }
+        let Some(terrain) = self.resolved_terrain.as_ref() else {
+            return;
+        };
+        let cells = NativeCellQuery::canonical(terrain);
+        let cell = ground_pose::query_object_cell(
+            &cells,
+            ground_pose::position_world_coord(&actor.position),
+        );
+        if cells.flags(cell) & 0x100 != 0 {
+            return;
+        }
+        // The canonical dummy currently owns no ground object list. Do not
+        // select a real cell's members through its mutable fallback coordinate.
+        if cell == crate::map::cell_index::NativeCellIdentity::Dummy {
+            return;
+        }
+        let (rx, ry) = cells.coord(cell);
+        let service_building = self
+            .cell_objects((rx as u16, ry as u16), MovementLayer::Ground)
+            .any(|member| {
+                let crate::sim::occupancy::CellObjectMember::Entity(candidate) = member else {
+                    return false;
+                };
+                candidate != id
+                    && self
+                        .substrate
+                        .entities
+                        .get(candidate)
+                        .is_some_and(|building| {
+                            building.category == EntityCategory::Structure
+                                && rules
+                                    .and_then(|rules| self.object_type(building.type_ref(), rules))
+                                    .is_some_and(|object| object.unit_repair || object.bunker)
+                        })
+            });
+        if service_building
+            && let Some(loco) = self
+                .substrate
+                .entities
+                .get_mut(id)
+                .and_then(|actor| actor.locomotor.as_mut())
+        {
+            // ILoco+58 -> PowerOn55A8F0 writes the same power flag as the
+            // explicit depot state1 release, then re-reads it via55A930.
+            loco.power_on();
+        }
     }
 
     /// The Teleporter arm of Unit Assign_Destination
@@ -1359,7 +1421,7 @@ impl Simulation {
     ///   FootClass::AI tail ends again once it is stopped.
     ///
     /// Residual (not represented): the BalloonHover arm (0x741983), the
-    /// +2B0 linked-object branches (0x741ABD /0x742E3A) and the unpowered-locomotor PowerOn (0x742F48).
+    /// +2B0 linked-object branches (0x741ABD /0x742E3A).
     /// A Jumpjet Stop's failed search retains the caller's overlay context
     /// for synchronous damage; callers without that context retain their
     /// existing damage-closure limitation.
@@ -1414,6 +1476,7 @@ impl Simulation {
             return false;
         }
         actor.navigation.nav_queue.clear();
+        self.unit_destination_power_on(id, rules);
         self.foot_null_destination(id, rules, registry);
         // The scheduling adapter keeps only the committed head step: the
         // locomotor Stop keeps the head, so the running track still finishes,

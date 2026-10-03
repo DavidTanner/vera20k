@@ -386,14 +386,22 @@ pub struct AnimObject {
     pub in_logic_vector: bool,
     pub owner_entity: Option<u64>,
     /// Derived reverse index of Building+55C's slot reference, rebuilt on load.
-    /// Native Anim+118 suppresses its independent draw; the building draws it.
-    /// This is not the distinct Anim+CC Object-owner attachment.
+    /// Independent of both Anim+118 and the Anim+CC Object-owner attachment.
     #[serde(skip)]
     pub building_slot: Option<(u64, u8)>,
+    /// Anim+118: ctor421F44 clears it; Building45199B sets it. It suppresses
+    /// independent drawing and admits451B40, even after the slot is cleared.
+    #[serde(default)]
+    building_anim: bool,
     /// Derived reverse index of Building+5C8's damage-fire slot, rebuilt on
     /// load. It survives owner expiry until the Anim's own UnInit broadcast.
     #[serde(skip)]
     pub(crate) damage_fire_slot: Option<(u64, u8)>,
+    /// Anim+179: constructor421FB0 clears it; normal AI completion424B31
+    /// sets it before UnInit. Building451B40 distinguishes a completed
+    /// retraction from an animation removed for another reason.
+    #[serde(default)]
+    completed: bool,
     pub start_sound_active: bool,
     pub stop_sound_id: Option<InternedId>,
     pub(crate) display: AnimDisplayState,
@@ -406,6 +414,24 @@ pub struct AnimObject {
 impl AnimObject {
     pub fn remap(&self) -> Option<AnimRemap> {
         self.remap
+    }
+
+    pub(crate) fn completed(&self) -> bool {
+        self.completed
+    }
+
+    pub fn is_building_anim(&self) -> bool {
+        self.building_anim
+    }
+
+    pub(crate) fn mark_building_anim(&mut self) {
+        self.building_anim = true;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn install_building_expiry_fixture(&mut self, marker: bool, completed: bool) {
+        self.building_anim = marker;
+        self.completed = completed;
     }
 
     /// Minimal unattached object for tests of storage, lifecycle and checksum
@@ -435,7 +461,9 @@ impl AnimObject {
             in_logic_vector: false,
             owner_entity: None,
             building_slot: None,
+            building_anim: false,
             damage_fire_slot: None,
+            completed: false,
             start_sound_active: false,
             stop_sound_id: None,
             display: AnimDisplayState::default(),
@@ -465,6 +493,8 @@ impl AnimObject {
         self.building_slot.hash(hasher);
         self.start_sound_active.hash(hasher);
         self.stop_sound_id.hash(hasher);
+        self.completed.hash(hasher);
+        self.building_anim.hash(hasher);
     }
 }
 
@@ -956,7 +986,9 @@ impl Simulation {
             in_logic_vector: false,
             owner_entity: None,
             building_slot: None,
+            building_anim: false,
             damage_fire_slot: None,
+            completed: false,
             start_sound_active: false,
             stop_sound_id,
             display: AnimDisplayState {
@@ -1280,7 +1312,12 @@ impl Simulation {
         }
         match action {
             VisitAction::None => {}
-            VisitAction::Destroy => self.destroy_anim(id, rules),
+            VisitAction::Destroy => {
+                if let Some(anim) = self.anim_mut_by_id(id) {
+                    anim.completed = true;
+                }
+                self.destroy_anim(id, rules);
+            }
             VisitAction::DestroyAfterMakeInfantryClear => {
                 // Native clears before validating AnimToInfantry, resolving an
                 // owner, allocating the infantry, or attempting Unlimbo. The
@@ -1293,6 +1330,9 @@ impl Simulation {
                         location,
                         AnimOccupationOperation::Clear,
                     );
+                }
+                if let Some(anim) = self.anim_mut_by_id(id) {
+                    anim.completed = true;
                 }
                 self.destroy_anim(id, rules);
             }
@@ -1359,8 +1399,15 @@ impl Simulation {
             });
         }
         // Object::UnInit5F6616 broadcasts the Anim's expiry before Limbo;
-        // Building44EA1A..44EA4F then clears its matching damage-fire slot.
+        // Building44EA1A..44EA4F clears its matching damage-fire slot or
+        // runs the building-slot transition before this Anim leaves Logic.
         self.clear_damage_fire_anim_reference(id);
+        self.building_anim_pointer_expired(id, rules);
+        // Limbo5F4D30→DetachAll5F4D61 announces again. The first callback
+        // normally removed the reverse index; preserve the second visit for
+        // native dead-building gates that retained the matched slot. Both
+        // notifications precede Display5F4D79 and Logic5F4DD3 removal.
+        self.building_anim_pointer_expired(id, rules);
         self.conceal_anim(id);
         self.substrate.pending_delete.push(id);
     }
@@ -1383,20 +1430,6 @@ impl Simulation {
         self.conceal_anim(id);
         self.substrate.pending_delete.retain(|queued| *queued != id);
         self.substrate.anims.remove(id);
-    }
-
-    pub(crate) fn clear_building_anim_reference(&mut self, id: AnimId) {
-        let slot = self
-            .substrate
-            .anims
-            .get_mut(id)
-            .and_then(|anim| anim.building_slot.take());
-        if let Some((owner, slot)) = slot
-            && let Some(entity) = self.substrate.entities.get_mut(owner)
-            && entity.building_anim_slots[usize::from(slot)] == Some(id)
-        {
-            entity.building_anim_slots[usize::from(slot)] = None;
-        }
     }
 
     pub(crate) fn clear_damage_fire_anim_reference(&mut self, id: AnimId) {

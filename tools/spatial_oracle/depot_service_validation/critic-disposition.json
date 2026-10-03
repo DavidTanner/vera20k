@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "passes": 1,
+  "critic": "/root/depot_service_critic",
+  "mode": "fresh read-only; no tests, generators or mutations",
+  "scope": "Selected stock HTNK/NADEPT chain and required shared prerequisites",
+  "findings": [
+    {
+      "priority": 2,
+      "trigger": "Repair status0 admission failure or status1 NEED_MOVE rejection",
+      "native": "44C808 PowerOn;44C61B conditional PowerOn after IsPowered",
+      "defect": "Rust powered off in status0 and omitted state1 recovery",
+      "correction": "Existing mission_repair owner invokes canonical locomotor power_on, conditional in status1",
+      "consequence": "Retained power/hash and later status1 admission differ; physical Drive stall is not established"
+    },
+    {
+      "priority": 2,
+      "trigger": "Repair status0 without contact, readiness0",
+      "native": "44C6EA queues Guard without+6DD write;44C18E state1 sets ready1",
+      "defect": "Rust forced readiness1 in both states",
+      "correction": "Existing owner writes readiness1 only for state1; state0 preserves it before Queue",
+      "consequence": "Premature Guard commencement changes mission, queue and readiness"
+    }
+  ],
+  "owner_validation": {
+    "before_fix": {
+      "command_filter": "repair_service_oracle_tests::native_repair_",
+      "failed": 2,
+      "passed": 0,
+      "exit_code": 101,
+      "log": "postreview-native-regression-failure.log.gz"
+    },
+    "after_fix": {
+      "native_service_tests": 13,
+      "linked_native_fallback_controls": 18,
+      "no_contact_native_fallback_controls": 4,
+      "connected_depot_tests": 17,
+      "ungated_global_replay_tests": 1,
+      "global_pin": "0xCDA10AEE6EA0AE46",
+      "all_exit_codes": 0,
+      "release_label": "depot-repair-service-reviewed-20261003",
+      "retail_repeat": {
+        "summary": "postreview-runtime-summary.json",
+        "summary_sha256": "37ac7d90c43d476ae4028a96b60937f68a7b8bddc33345ebb3ad41582c553acc",
+        "wrapper_and_offline_validators_passed": 4,
+        "complete_projected_observations_equal_pre_review_release": true,
+        "alternate_power_and_no_contact_fallbacks": "Separate native/Rust controls; not projected in this retail success scenario."
+      }
+    }
+  },
+  "no_additional_confirmed_defect_or_competing_owner_in_pass": true,
+  "repeated_review": false,
+  "bounds": "Original component/terminal comparisons and Rust retail integration at the recorded release identity; no native whole-match, pixels or disk serialization certification. All four reviewed-release retail repeats passed."
+}

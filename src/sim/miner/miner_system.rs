@@ -1845,6 +1845,9 @@ mod harvest_scan_dispatch_tests {
             5,
             true,
         );
+        // This prepared Harvest scene represents an Unlimboed actor; the
+        // player re-order check takes native actor admission before retasking.
+        ge.lifecycle.in_limbo = false;
         ge.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                 crate::rules::locomotor_type::LocomotorKind::Drive,

@@ -545,6 +545,34 @@ records two observed deposits at steps 3778 and 5670, release and Harvest at
 while spent credits stayed at 2,600. Both complete compact receipts are about
 59 MB and retain all 7,201 observed boundaries within the 128 MiB limit.
 
+## Repair-depot service observation
+
+[The depot profile](map_observation.depot-repair.example.json) uses stock
+Russia/Battle/AnyTown and ordinary Deploy, Build, ForceAttack, Stop,
+RepairAtDepot and SellBuilding commands. It damages one starting HTNK, spends
+the initial 5900 credits on prerequisites, stops the produced HARV before it
+harvests, orders repair, then sells the barracks to fund the retained occupant.
+No administrative health, wallet or contact edits are used.
+
+The final release observation on 2026-10-03 reconfirmed HTNK 1375,
+NADEPT 1811, barracks 1536 and HARV 1754 before sealing the 6900-step profile.
+The tank arrives at the pad at 5484 with 40 HP and zero credits. It retains
+the contact through 607 unfunded frames until the sale refund at 6091.
+There are 45 paid steps of 8 HP/2 credits: first 6126, second 6211, then 15-frame
+intervals. Health reaches 400 and both contacts clear at 6856. Physical movement
+starts 6869, the tank leaves the pad cell at 6876 and reaches (35,94) on Guard
+by 6900. Final cash is 160, spent credits 5990 and harvested credits 0.
+
+The capture and offline validator both returned `VALID`, retaining 99,286
+samples and 63,016,494 run-receipt bytes. The final Metal readback and executable,
+source, map, config, profile and validation identities are recorded in
+[the validation receipt](map_observation.depot-repair.validation.json).
+[The native comparisons and coverage report](spatial_oracle/building_repair.depot_service.validation.md)
+separately establish the service arithmetic, timers, radio/arrival and animation
+dependencies. These measured runtime IDs/timings are Rust integration evidence;
+they are not native whole-match or pixel goldens. Reconfirm IDs before adapting
+the profile to different inputs.
+
 ## Natural ore-spread observation
 
 [`map_observation.ore-spread.example.json`](map_observation.ore-spread.example.json)
@@ -639,7 +667,10 @@ probes. Command payloads are the existing Rust serde `Command`, with no separate
 order translator. Supported orders are Move, Stop, Attack, ForceAttack, Guard,
 DeployMcv, ForceAttackCell, QueueProduction, PlaceReadyBuilding and
 CaptureBuilding (the resolved Engineer repair/capture mission), ToggleRepair,
-EnterTransport and UnloadPassengers.
+EnterTransport, UnloadPassengers, RepairAtDepot and SellBuilding. RepairAtDepot
+uses the ordinary damaged-vehicle order with `entity_id` and `depot_id` stable
+handles. SellBuilding uses `entity_id` and the production sale lifecycle; it can
+restore funds for a repair experiment without writing a House wallet.
 Rust rejects
 ignored payload fields or argument
 types. Python checks diagnostic structure and the exact typed request/receipt;

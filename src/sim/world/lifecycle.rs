@@ -3152,10 +3152,7 @@ impl Simulation {
                 .c4_plant
                 .as_ref()
                 .is_some_and(|plant| plant.target_building_id == expired_id)
-            || listener
-                .dock_state
-                .as_ref()
-                .is_some_and(|dock| dock.references(expired_id))
+            || listener.pending_entry() == Some(expired_id)
             || listener
                 .aircraft_ammo
                 .as_ref()
@@ -3623,13 +3620,10 @@ impl Simulation {
             .as_ref()
             .is_some_and(|plant| plant.target_building_id == expired_id);
         // Techno707AE7..707AF5 clears private pending+500 only on control1.
-        // Non-destructive DetachAll(false) retains the independent service
-        // adapter too; its BREAK/service owners still terminate that visit.
-        let clear_dock = control == PointerExpiryControl::Uninit
-            && listener
-                .dock_state
-                .as_ref()
-                .is_some_and(|dock| dock.references(expired_id));
+        // Non-destructive DetachAll(false) retains this independent entry;
+        // radio contact expiry owns the admitted visit.
+        let clear_dock =
+            control == PointerExpiryControl::Uninit && listener.pending_entry() == Some(expired_id);
         let clear_airfield = listener
             .aircraft_ammo
             .as_ref()
@@ -4291,7 +4285,7 @@ impl Simulation {
             // UnInit/drain control: building_death_anims joined evidence,
             // gamemd SHA1cdd1180e49024fbda8ad568caac2e86e.
             self.clear_all_building_anim_slots(stable_id);
-            self.clear_building_damage_fire_slots(stable_id, None);
+            self.clear_building_damage_fire_slots(stable_id, context.rules());
             // Active-frame Building43BEF5..43BF11 compares Health+6C with
             // the retained AI sample+544 after its slot/fire destructors.
             // A mismatch dirties power only, without publishing a sample or
@@ -4325,7 +4319,7 @@ impl Simulation {
             .get_mut(stable_id)
             .and_then(|entity| entity.take_deploy_anim())
         {
-            self.destroy_anim_with_context(anim, None);
+            self.destroy_anim_with_context(anim, context.rules());
         }
         self.destroy_building_light(stable_id);
         if self.substrate.anims.contains_key(stable_id) {

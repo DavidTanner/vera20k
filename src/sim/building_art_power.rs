@@ -22,17 +22,6 @@ impl Simulation {
             })
     }
 
-    fn building_anim_delayed_fire(&self, id: u64, rules: &RuleSet) -> bool {
-        let Some(entity) = self.substrate.entities.get(id) else {
-            return false;
-        };
-        let name = self.interner.resolve(entity.type_ref());
-        rules
-            .object(name)
-            .and_then(|object| rules.art().resolve_metadata_entry(name, &object.image))
-            .is_some_and(|entry| entry.is_anim_delayed_fire)
-    }
-
     fn create_power_slot(&mut self, id: u64, slot: u8, rules: &RuleSet) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;

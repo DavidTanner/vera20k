@@ -2168,7 +2168,7 @@ fn megamission_before_the_unload_breaks_the_refinery_contact() {
         sim.queue_megamission_with_teardown(
             miner_id,
             crate::sim::mission::MissionType::Move,
-            crate::sim::mission::DockTeardown::All,
+            crate::sim::mission::DockTeardown::AircraftOnly,
             Some(&rules),
         );
 
@@ -2209,7 +2209,7 @@ fn megamission_mid_unload_abandons_the_unload_and_commences_the_order() {
     sim.queue_megamission_with_teardown(
         miner_id,
         crate::sim::mission::MissionType::Move,
-        crate::sim::mission::DockTeardown::All,
+        crate::sim::mission::DockTeardown::AircraftOnly,
         Some(&rules),
     );
     assert!(!crate::sim::miner::miner_dock::has_contact(

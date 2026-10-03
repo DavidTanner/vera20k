@@ -1,0 +1,224 @@
+{
+  "status": "SLEEP_PRESERVATION_HYPOTHESIS_REJECTED_BY_ORIGINAL_NATIVE_EXECUTION",
+  "historical_hypothesis_trace_preserved": {
+    "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/fresh-service6900.arrival-trace.json",
+    "byte_length": 176343,
+    "sha256": "c26a3dc23119d65f55dbc4ca6e5b7d278ca8a0865c331435ec521e53a7803c15"
+  },
+  "historical_outcome_summary_preserved": {
+    "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/fresh-service6900-sale6040.summary.json",
+    "byte_length": 73522,
+    "sha256": "99b7420494b3ee4df2350ecac871c93f4e93ea4a3e69d68c4fb5c7ff342b686c"
+  },
+  "native_payload": {
+    "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/tools/spatial_oracle/building_repair.depot_service.json",
+    "byte_length": 13513044,
+    "sha256": "fc9d418aaa0baef5bf89e3565d8b6cedc6a7cb5a850284494903b26ed24cabb3"
+  },
+  "native_report": {
+    "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/tools/spatial_oracle/building_repair.depot_service.md",
+    "byte_length": 25787,
+    "sha256": "adc0b9ce83f981aa2e5738b67d396e8a8b10f8d402350a013c0dc7e3eebd5ffa"
+  },
+  "control_family": "arrival_terminal7",
+  "coverage": "7 bounded original native terminal/navigation/idle controls; prepared scene and retained saved-order/tube/earlier-track/full-frame scheduling limits remain as corpus records",
+  "stock_control_input": {
+    "building": "NADEPT",
+    "building_mission": 5,
+    "entry": "terminal_drive",
+    "foot_constructor_inputs": [
+      "tube_index",
+      "saved_megamission"
+    ],
+    "health": 200,
+    "linked": true,
+    "name": "stock_enter_terminal_untethered",
+    "nav": true,
+    "powered": true,
+    "status": 0,
+    "tether": false,
+    "unit": "HTNK",
+    "unit_mission": 7,
+    "unit_queued": -1,
+    "unit_repair": true
+  },
+  "original_native_text_sha256": "4cd5557a7490debc493ff965afc4483d8d2f1065f434f6b665cbb8fc4835b0cc",
+  "original_code_and_vtables_unchanged": true,
+  "actual_slots": {
+    "actual_per_cell_slot": "0x739ec0",
+    "actual_power_off_slot": "0x55a910",
+    "actual_navigation_gate_slot": "0x4db9b0"
+  },
+  "stock_before": {
+    "unit_mission": 7,
+    "unit_queued": -1,
+    "unit_nav": "refinery",
+    "unit_nav_aux": null,
+    "unit_archive": null,
+    "unit_tether": 0,
+    "building_mission": 5,
+    "building_queued": -1,
+    "building_tether": 0,
+    "repairing": 0,
+    "locomotor_powered": 1,
+    "locomotor_destination": [
+      2176,
+      2688,
+      0
+    ]
+  },
+  "stock_interior": [
+    {
+      "marker": "reached_true_writer",
+      "pc": "0x4b21b1",
+      "state": {
+        "unit_mission": 7,
+        "unit_queued": -1,
+        "unit_nav": "refinery",
+        "unit_nav_aux": null,
+        "unit_archive": null,
+        "unit_tether": 0,
+        "building_mission": 5,
+        "building_queued": -1,
+        "building_tether": 0,
+        "repairing": 0,
+        "locomotor_powered": 1,
+        "locomotor_destination": [
+          2176,
+          2688,
+          0
+        ]
+      }
+    },
+    {
+      "marker": "successful_dock_before_unit_return",
+      "pc": "0x73a540",
+      "state": {
+        "unit_mission": 7,
+        "unit_queued": 0,
+        "unit_nav": "refinery",
+        "unit_nav_aux": null,
+        "unit_archive": null,
+        "unit_tether": 0,
+        "building_mission": 5,
+        "building_queued": 20,
+        "building_tether": 0,
+        "repairing": 1,
+        "locomotor_powered": 0,
+        "locomotor_destination": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "marker": "after_per_cell",
+      "pc": "0x4b2215",
+      "state": {
+        "unit_mission": 7,
+        "unit_queued": 0,
+        "unit_nav": "refinery",
+        "unit_nav_aux": null,
+        "unit_archive": null,
+        "unit_tether": 0,
+        "building_mission": 5,
+        "building_queued": 20,
+        "building_tether": 0,
+        "repairing": 1,
+        "locomotor_powered": 0,
+        "locomotor_destination": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "marker": "after_stop_moving",
+      "pc": "0x4b2247",
+      "state": {
+        "unit_mission": 7,
+        "unit_queued": 0,
+        "unit_nav": null,
+        "unit_nav_aux": null,
+        "unit_archive": null,
+        "unit_tether": 0,
+        "building_mission": 5,
+        "building_queued": 20,
+        "building_tether": 0,
+        "repairing": 1,
+        "locomotor_powered": 0,
+        "locomotor_destination": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "marker": "after_navigation_gate",
+      "pc": "0x4b2291",
+      "state": {
+        "unit_mission": 7,
+        "unit_queued": 5,
+        "unit_nav": null,
+        "unit_nav_aux": null,
+        "unit_archive": null,
+        "unit_tether": 0,
+        "building_mission": 5,
+        "building_queued": 20,
+        "building_tether": 0,
+        "repairing": 1,
+        "locomotor_powered": 0,
+        "locomotor_destination": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "marker": "track_return",
+      "pc": "0x4b25f9",
+      "state": {
+        "unit_mission": 7,
+        "unit_queued": 5,
+        "unit_nav": null,
+        "unit_nav_aux": null,
+        "unit_archive": null,
+        "unit_tether": 0,
+        "building_mission": 5,
+        "building_queued": 20,
+        "building_tether": 0,
+        "repairing": 1,
+        "locomotor_powered": 0,
+        "locomotor_destination": [
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "stock_after": {
+    "unit_mission": 7,
+    "unit_queued": 5,
+    "unit_nav": null,
+    "unit_nav_aux": null,
+    "unit_archive": null,
+    "unit_tether": 0,
+    "building_mission": 5,
+    "building_queued": 20,
+    "building_tether": 0,
+    "repairing": 1,
+    "locomotor_powered": 0,
+    "locomotor_destination": [
+      0,
+      0,
+      0
+    ]
+  },
+  "all_seven_controls_RNG_indices_and_250_words_unchanged": true,
+  "conclusion": "For stock armed HTNK with untethered UnitRepair contact, native PerCell DOCK_NOW queues Sleep, native StopMoving clears Nav, and original navigation gate invokes UnitIdle(0,0), which queues Guard over Sleep. Rust first at-pad Guard/Repair observations therefore agree with this terminal control; no Sleep-preservation implementation change is warranted. Later promotion from current Enter/queued Guard to current Guard is a separate production scheduler observation."
+}
