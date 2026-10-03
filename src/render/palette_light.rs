@@ -1,4 +1,4 @@
-//! Native LightConvert color resolution for ordinary clear-A draws.
+//! Native LightConvert color resolution for ordinary indexed draws.
 //!
 //! `0x00556090 -> 0x007DE200` constructs RGB565 rows; `0x00420140`
 //! selects them from brightness and A-buffer. The captured retail process uses
@@ -8,6 +8,21 @@
 //! per-index mask remain separate. Zero/default means precomposed RGBA/UI.
 
 use crate::map::lighting::CellLightGrid;
+
+/// House50B840/500DF7 initializes +56F9 from ColorScheme+330 (index16),
+/// Convert+174 (the middle N53 row), then unpacks the RGB565 word. Raw house
+/// ramps remain palette inputs; this is the shared resolved house RGB reader.
+/// The separate normalized laser color at +56FC is not this value.
+/// Native execution: tools/procedural_drawing_oracle/house_color.
+pub(crate) fn house_color_rgb(
+    ramps: &crate::rules::house_colors::HouseColorRamps,
+    index: crate::rules::house_colors::HouseColorIndex,
+) -> [u8; 3] {
+    let color = ramps.ramp(index)[0];
+    let word =
+        PaletteLight::color_scheme([1000; 3], 1000).rgb565([color.r, color.g, color.b], 16, 127);
+    crate::render::native_surface_format::RGB565.unpack_rgb8(word)
+}
 
 /// RGB scale uses bits 0..17; red's high byte stores N, green bit 31 the
 /// ColorScheme mask. The fourth word retains the signed brightness argument.
@@ -212,6 +227,54 @@ pub(crate) fn native_fixtures() -> [NativePaletteFixture; 9] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retail_house_colors_match_original_normal_and_campaign_initialization() {
+        use crate::rules::house_colors::{HouseColorIndex, NO_REMAP};
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let rules = crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap();
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/procedural_drawing_oracle/house_color.json"
+        ))
+        .unwrap();
+        assert_eq!(native["constructor_palette_index"], 16);
+        let colors = native["colors"].as_array().unwrap();
+        assert_eq!(colors.len(), 21);
+        assert_eq!(rules.color_schemes.len(), colors.len());
+        for (index, row) in colors.iter().enumerate() {
+            let scheme = &rules.color_schemes[index];
+            assert_eq!(scheme.name, row["name"].as_str().unwrap());
+            assert_eq!(serde_json::json!(scheme.hsv), row["hsv"], "{}", scheme.name);
+            let index = HouseColorIndex(index as u8);
+            let ramp: Vec<_> = rules
+                .house_color_ramps
+                .ramp(index)
+                .iter()
+                .map(|color| [color.r, color.g, color.b])
+                .collect();
+            assert_eq!(serde_json::json!(ramp), row["ramp_rgb"], "{}", scheme.name);
+            let rgb = serde_json::json!(house_color_rgb(&rules.house_color_ramps, index));
+            for mode in ["scalar", "cmov", "mmx"] {
+                assert_eq!(rgb, row["modes"][mode]["rgb"], "{} {mode}", scheme.name);
+                assert_eq!(
+                    rgb, row["modes"][mode]["campaign_rgb"],
+                    "{} {mode}",
+                    scheme.name
+                );
+            }
+        }
+        assert_eq!(
+            serde_json::json!(house_color_rgb(&rules.house_color_ramps, NO_REMAP)),
+            colors[crate::rules::house_colors::DEFAULT_SCHEME_ENTRY]["modes"]["scalar"]["rgb"]
+        );
+        // The negative-index control supplies a synthetic lookup table. It
+        // establishes registry index5 (N53 variant of physical entry2), not
+        // the RGB of the stock LightGrey table checked above.
+        assert_eq!(native["negative_scheme"]["normal"]["scheme_index"], 5);
+        assert_eq!(native["negative_scheme"]["campaign"]["scheme_index"], 5);
+    }
 
     #[test]
     fn all_clamped_base_scales_match_original_x87_bytes() {

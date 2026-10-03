@@ -54,6 +54,9 @@ mod lifecycle;
 mod load_object_lifecycle;
 mod logic_vector;
 mod move_cell_input;
+#[cfg(test)]
+mod native_cell_input_test_fixture;
+mod rally_cell_input;
 mod navigation;
 mod object_turn;
 pub use frame_error::FrameAdvanceError;

@@ -1680,6 +1680,12 @@ impl PristineTmpHeader {
 pub struct ResolvedTerrainGrid {
     width: u16,
     height: u16,
+    /// Immutable projection of the scenario's TerrainRules speed rows. Real
+    /// cells retain their resolved row; the shared Dummy retains only Land
+    /// (+EC), so CheckCellPassability4834A0 indexes this same rule source.
+    /// Rebuilt with the grid on each scenario load, including empty grids;
+    /// independent of whether a theater/bridge asset catalog was available.
+    land_speed_costs: [SpeedCostProfile; LandType::ALL.len()],
     /// Pristine TMP dimensions used by Techno draw depth (0x547150/0x704350).
     /// Derived asset data, keyed by tile identity rather than mutable cell:
     /// never serialized or included in simulation hashes.
@@ -1930,6 +1936,16 @@ pub(crate) fn test_flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
     }
 }
 
+fn land_speed_cost_profiles(
+    rules: Option<&TerrainRules>,
+) -> [SpeedCostProfile; LandType::ALL.len()] {
+    std::array::from_fn(|index| {
+        rules
+            .and_then(|rules| rules.semantics_for_land_type(LandType::ALL[index].as_index()))
+            .map_or_else(SpeedCostProfile::default, |row| row.speed_costs)
+    })
+}
+
 impl ResolvedTerrainGrid {
     pub fn from_cells(width: u16, height: u16, cells: Vec<ResolvedTerrainCell>) -> Self {
         Self::from_cells_with_tubes(width, height, cells, Vec::new())
@@ -1960,6 +1976,7 @@ impl ResolvedTerrainGrid {
             width,
             height,
             cells,
+            land_speed_costs: land_speed_cost_profiles(None),
             native_tmp_draw_heights: HashMap::new(),
             shared_cell_dummy: SharedCellDummy::fresh(),
             mutation_epoch: std::cell::Cell::new(0),
@@ -1980,6 +1997,23 @@ impl ResolvedTerrainGrid {
             destroyable_cliff_catalog: None,
             bridge_recalc_catalog: None,
         }
+    }
+
+    /// Original4835D5..4835DE indexes the 89EA40 table using retained Land.
+    /// The existing TerrainRules owner supplies these rows; this grid does
+    /// not parse or independently mutate rules. Missing/invalid rows keep the
+    /// existing unbound-profile compatibility policy, also used by real cells.
+    pub(crate) fn land_speed_costs(&self, land: i32) -> SpeedCostProfile {
+        usize::try_from(land)
+            .ok()
+            .and_then(|index| self.land_speed_costs.get(index))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_land_speed_rules_for_test(&mut self, rules: &TerrainRules) {
+        self.land_speed_costs = land_speed_cost_profiles(Some(rules));
     }
 
     /// Terrain animations to spawn once at map load, in native creation order.
@@ -4083,6 +4117,7 @@ impl ResolvedTerrainGrid {
                 width: 0,
                 height: 0,
                 cells: Vec::new(),
+                land_speed_costs: land_speed_cost_profiles(terrain_rules),
                 native_tmp_draw_heights: HashMap::new(),
                 shared_cell_dummy,
                 mutation_epoch: std::cell::Cell::new(0),
@@ -4819,6 +4854,7 @@ impl ResolvedTerrainGrid {
             width,
             height,
             cells,
+            land_speed_costs: land_speed_cost_profiles(terrain_rules),
             native_tmp_draw_heights: load_native_tmp_draw_heights(theater_data, asset_manager),
             shared_cell_dummy,
             mutation_epoch: std::cell::Cell::new(0),
@@ -6260,6 +6296,49 @@ mod tests {
             special_flags: crate::map::basic::SpecialFlagsSection::default(),
             explicit_tubes: Vec::new(),
             ini: IniFile::from_str(""),
+        }
+    }
+
+    #[test]
+    fn scenario_land_speed_rows_survive_nonempty_and_empty_grid_construction() {
+        // Actual startup/Battle/map rule layering supplies the sole speed-row
+        // authority. The grid must retain it even without a bridge catalog.
+        let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
+            return;
+        };
+        for cells in [
+            Vec::new(),
+            vec![MapCell {
+                rx: 0,
+                ry: 0,
+                tile_index: 0,
+                sub_tile: 0,
+                z: 0,
+            }],
+        ] {
+            let map = make_map(cells, Vec::new(), Vec::new());
+            let grid = ResolvedTerrainGrid::build(
+                &map,
+                None,
+                None,
+                Some(&retail.rules.terrain_rules),
+                None,
+                false,
+                0,
+            );
+            assert_eq!(grid.cells.is_empty(), map.cells.is_empty());
+            assert!(grid.bridge_recalc_catalog.is_none());
+            for land in LandType::ALL {
+                let row = retail
+                    .rules
+                    .terrain_rules
+                    .semantics_for_land_type(land.as_index())
+                    .expect("retail authors every land row");
+                assert_eq!(
+                    grid.land_speed_costs(i32::from(land.as_index())),
+                    row.speed_costs
+                );
+            }
         }
     }
 

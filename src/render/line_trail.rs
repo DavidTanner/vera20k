@@ -4,6 +4,7 @@
 //! dominates. Its output is consumed in order against the shared live Z and
 //! RGB565 destination; it never writes Z. Native goldens: line_trail.json.
 
+use super::surface_line::clip_line;
 use crate::sim::projectile::ProjectileCoord;
 use crate::util::native_x87::adjust_for_z_standard;
 
@@ -168,59 +169,6 @@ pub(crate) fn rasterize(
                     errors[axis] -= 2 * count;
                 }
             }
-        }
-    }
-}
-
-fn clip_line(a: &mut [i32; 2], b: &mut [i32; 2], clip: [i32; 4]) -> bool {
-    let left = f64::from(clip[0]);
-    let top = f64::from(clip[1]);
-    let right = f64::from(clip[0] + clip[2]);
-    let bottom = f64::from(clip[1] + clip[3]);
-    let mut p = a.map(f64::from);
-    let mut q = b.map(f64::from);
-    let xy = (q[0] - p[0]) / (q[1] - p[1]);
-    let yx = (q[1] - p[1]) / (q[0] - p[0]);
-    let code = |v: [f64; 2]| -> u8 {
-        (if v[0] < left {
-            1
-        } else if v[0] >= right {
-            2
-        } else {
-            0
-        }) | (if v[1] < top {
-            8
-        } else if v[1] >= bottom {
-            4
-        } else {
-            0
-        })
-    };
-    loop {
-        let pc = code(p);
-        let qc = code(q);
-        if pc | qc == 0 {
-            *a = p.map(|v| v as i32);
-            *b = q.map(|v| v as i32);
-            return true;
-        }
-        if pc & qc != 0 {
-            return false;
-        }
-        let c = if pc != 0 { pc } else { qc };
-        let v = if c & 8 != 0 {
-            [(top - p[1]) * xy + p[0], top]
-        } else if c & 4 != 0 {
-            [(bottom - 1.0 - p[1]) * xy + p[0], bottom - 1.0]
-        } else if c & 2 != 0 {
-            [right - 1.0, (right - 1.0 - p[0]) * yx + p[1]]
-        } else {
-            [left, (left - p[0]) * yx + p[1]]
-        };
-        if c == pc {
-            p = v;
-        } else {
-            q = v;
         }
     }
 }

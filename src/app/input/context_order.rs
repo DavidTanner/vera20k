@@ -155,15 +155,17 @@ fn command_actor_id(command: &Command) -> Option<u64> {
         Command::CaptureBuilding { engineer_id, .. } => Some(*engineer_id),
         Command::UnloadPassengers { transport_id } => Some(*transport_id),
         Command::EjectBunker { bunker_id } => Some(*bunker_id),
+        Command::SetRally { producer_ids, .. } if producer_ids.len() == 1 => Some(producer_ids[0]),
         _ => None,
     }
 }
 
-/// Selection4AE750 object loop4AE829..4AE85A resolves each object's action in the selection-array order.
+/// Selection4AE750 object loop4AE829..4AE85A and ground loop4AE95B..4AE990
+/// resolve each object's action in selection-array order.
 /// Capability batches may remove handled actors, but must not reorder their
-/// single-object events. Aggregated commands such as SetRally cannot be placed
-/// at one object's index; retain their dispatcher order until that separate
-/// batch representation is migrated. This index derives from input selection.
+/// single-object events, including each prepared factory rally. Legacy aggregate
+/// commands cannot be placed at one actor's index and keep dispatcher order.
+/// This index derives from input selection.
 fn restore_selection_dispatch_order(queued: &mut [CommandEnvelope], selected: &[u64]) {
     if queued
         .iter()
@@ -309,7 +311,19 @@ fn finish_order(
     if queued.is_empty() {
         return false;
     }
-    restore_selection_dispatch_order(&mut queued, &selected_stable_ids_in_order(state));
+    restore_selection_dispatch_order(
+        &mut queued,
+        &selected_stable_ids_in_order(
+            state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .map(|rt| &rt.simulation),
+            state.rules(),
+            &state.match_state.input.selection_order,
+            state.match_state.input.selection_order_pending,
+        ),
+    );
     if let Some(speaker_id) = speaker_id {
         emit_resolved_order_voice(state, speaker_id, &queued);
     }
@@ -540,7 +554,16 @@ pub(crate) fn try_queue_context_order_at_screen_point(
     // The one object that speaks the order-ack line. Retail lets only the first
     // entry of the selection array speak.
     let mut speaker_id: Option<u64> = None;
-    let selected_ids = selected_stable_ids_in_order(state);
+    let selected_ids = selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
     // `EVA_NewRallyPointEstablished` is spoken by the click handler itself,
     // after the sim borrow below ends.
     let mut rally_announce = false;
@@ -753,25 +776,43 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     // a `ConstructionYard=` nor a `ResourceDestination=`.
                     // One `PlayEVA` per factory; VoxClass drops same-entry
                     // duplicates, so one request per click is equivalent.
-                    rally_announce = producer_ids.iter().any(|id| {
-                        sim.entities().get(*id).is_some_and(|entity| {
-                            Some(&resources.rules)
-                                .and_then(|r| r.object(sim.interner.resolve(entity.type_ref())))
-                                .is_some_and(
-                                    crate::app::match_runtime::eva_producers::rally_point_announces,
-                                )
-                        })
-                    });
-                    if !producer_ids.is_empty() {
+                    for id in producer_ids {
+                        let target = match sim.factory_rally_cell_input(
+                            id,
+                            (target_rx, target_ry),
+                            &resources.rules,
+                        ) {
+                            Ok(target) => target,
+                            Err(error) => {
+                                log::warn!("factory rally input: {error}");
+                                None
+                            }
+                        };
+                        let Some((rx, ry)) = target else {
+                            continue;
+                        };
+                        // Event1E carries this factory's already prepared cell.
+                        // Different selected factories can resolve different zones.
                         queued.push(CommandEnvelope::new(
                             owner_id,
                             execute_tick,
                             Command::SetRally {
-                                rx: target_rx,
-                                ry: target_ry,
-                                producer_ids,
+                                rx,
+                                ry,
+                                producer_ids: vec![id],
                             },
                         ));
+                        rally_announce |= sim
+                            .entities()
+                            .get(id)
+                            .and_then(|entity| {
+                                resources
+                                    .rules
+                                    .object(sim.interner.resolve(entity.type_ref()))
+                            })
+                            .is_some_and(
+                                crate::app::match_runtime::eva_producers::rally_point_announces,
+                            );
                     }
                 }
                 // Also issue Move commands for any mobile units in the
@@ -1618,14 +1659,14 @@ fn selected_rally_producer_ids(
     owner: InternedId,
 ) -> Vec<u64> {
     let owner = sim.interner.resolve(owner);
-    let mut producer_ids: Vec<u64> = selected_ids
+    let mut seen = std::collections::HashSet::with_capacity(selected_ids.len());
+    selected_ids
         .iter()
         .copied()
-        .filter(|&stable_id| sim.takes_rally_point(stable_id, owner, rules))
-        .collect();
-    producer_ids.sort_unstable();
-    producer_ids.dedup();
-    producer_ids
+        .filter(|&stable_id| {
+            seen.insert(stable_id) && sim.takes_rally_point(stable_id, owner, rules)
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -1712,6 +1753,7 @@ mod tests {
             (2, 11, owner, tank_type, EntityCategory::Unit),
             (3, 12, owner, power_type, EntityCategory::Structure),
             (4, 13, other, factory_type, EntityCategory::Structure),
+            (5, 14, owner, factory_type, EntityCategory::Structure),
         ] {
             sim.entities_mut()
                 .insert(GameEntity::new_at_frame_zero_for_test(
@@ -1730,9 +1772,9 @@ mod tests {
                 ));
         }
 
-        let producer_ids = selected_rally_producer_ids(&sim, &rules, &[4, 3, 2, 1], owner);
+        let producer_ids = selected_rally_producer_ids(&sim, &rules, &[5, 4, 3, 2, 1, 5], owner);
 
-        assert_eq!(producer_ids, vec![1]);
+        assert_eq!(producer_ids, vec![5, 1]);
     }
 
     /// The retail modifier map, one row per chord. Ctrl force-fires, Alt forces

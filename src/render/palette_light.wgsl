@@ -30,16 +30,18 @@ fn native_palette_word(rgb: vec3u, index: u32, light: vec4u, a: u32) -> u32 {
     return ((lit.r >> 3u) << 11u) | ((lit.g >> 2u) << 5u) | (lit.b >> 3u);
 }
 fn resolve_palette(rgb_linear: vec3f, tint: vec3f, effect: vec3f,
-                   light: vec4u, index: u32) -> vec3f {
+                   light: vec4u, index: u32, a: u32) -> vec3f {
     if light.x >> 24u == 0u || any(effect != vec3f(1.0)) {
-        // Precomposed RGBA/UI and brightness-effect branches retain their
-        // existing path. Effect scalar production is a separately tracked drift.
-        return palette_light(rgb_linear, tint * effect);
+        // Precomposed RGBA, alpha and FX lack native palette/packed-composition
+        // metadata. Retain their compatibility source shading, now at the
+        // source store rather than multiplying previously drawn surface lines.
+        // Surface/UI bindings supply neutral A. This is not native alpha parity.
+        return palette_light(rgb_linear, tint * effect) * (f32(a) / 127.0);
     }
     let rgb = vec3u(round(clamp(srgb_encode(rgb_linear), vec3f(0.0), vec3f(1.0)) * 255.0));
-    // Clear tactical A=127, 006D3F9F. Non-clear shroud composition remains
-    // unresolved; the current later curtain is not a substitute for native A.
-    let word = native_palette_word(rgb, index, light, 127u);
+    // 493E52/494BDD/4991F4 read A only after source-hole/Z admission. A=0
+    // still stores palette row zero; N1 and special indices keep their rules.
+    let word = native_palette_word(rgb, index, light, a);
     let encoded = vec3f(f32(RETAIL_FIVE[(word >> 11u) & 31u]),
                         f32(RETAIL_SIX[(word >> 5u) & 63u]), f32(RETAIL_FIVE[word & 31u])) / 255.0;
     return srgb_decode(encoded);

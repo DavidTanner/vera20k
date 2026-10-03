@@ -703,8 +703,14 @@ fn walk_destination_search_observes_route_opened_before_process() {
     // Scatter's prepublished setter must also leave an execution request,
     // even though its caller ignores the helper's return value.
     let (mut sim, _rules, actor, _) = walk_pursuit_scene();
-    let destination_coord =
-        crate::sim::movement::target_cell_coord(14, 10, sim.resolved_terrain.as_ref());
+    let destination_coord = crate::sim::movement::target_cell_coord(
+        14,
+        10,
+        sim.resolved_terrain
+            .as_ref()
+            .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+            .as_ref(),
+    );
     assert!(crate::sim::movement::prepare_walk_destination(
         &mut sim.substrate.entities,
         actor,

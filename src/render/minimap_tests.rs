@@ -197,21 +197,15 @@ fn test_owner_dot_color_unknown_defaults_to_default_scheme() {
         mk("Gold", [43, 239, 255]),
         mk("LightGrey", [0, 0, 240]),
     ]);
-    let map: HouseColorMap = HouseColorMap::new();
+    let map: HouseColorMap = [("Known".to_owned(), HouseColorIndex(2))].into();
     let dot: [u8; 4] = owner_dot_color("Unknown", &map, &ramps);
     // Unknown owner resolves to the default scheme (entry 2), not entry 0.
     assert_eq!(
         dot,
-        owner_dot_color_for_index(&ramps, HouseColorIndex(2)),
+        owner_dot_color("Known", &map, &ramps),
         "unknown owner should use DEFAULT_SCHEME_ENTRY (2)"
     );
     assert_eq!(dot[3], 255, "Alpha should be fully opaque");
-}
-
-/// Helper: dot color for a known index (mirrors owner_dot_color's ramp[0] pick).
-fn owner_dot_color_for_index(ramps: &HouseColorRamps, idx: HouseColorIndex) -> [u8; 4] {
-    let c = ramps.ramp(idx)[0];
-    [c.r, c.g, c.b, 255]
 }
 
 #[test]

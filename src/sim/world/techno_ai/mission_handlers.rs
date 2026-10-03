@@ -819,7 +819,13 @@ fn infantry_automatic_guard_delay(
         use crate::util::lepton::lepton_to_cell_packed;
         let terrain = sim.resolved_terrain.as_ref();
         let here = object_get_coords(actor, terrain);
-        let Some(post) = target_get_coords(archive, &sim.substrate.entities, terrain) else {
+        let Some(post) = target_get_coords(
+            archive,
+            &sim.substrate.entities,
+            terrain
+                .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                .as_ref(),
+        ) else {
             return -1;
         };
         //521584..5215F3 uses Object virtual+48, truncates each XY/256,
@@ -1266,7 +1272,10 @@ fn foot_distance_to_target(
         crate::sim::movement::ground_pose::target_get_coords(
             target,
             &sim.substrate.entities,
-            sim.resolved_terrain.as_ref(),
+            sim.resolved_terrain
+                .as_ref()
+                .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                .as_ref(),
         )
     };
     let from = coords(crate::sim::combat::TargetKind::Entity(id))?;
@@ -1348,7 +1357,10 @@ fn evaluate_foot_rescue(
             crate::sim::movement::ground_pose::target_get_coords(
                 target,
                 &sim.substrate.entities,
-                sim.resolved_terrain.as_ref(),
+                sim.resolved_terrain
+                    .as_ref()
+                    .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                    .as_ref(),
             )
             .map(|coord| [coord.x, coord.y, coord.z])
         };
@@ -1503,7 +1515,10 @@ fn evaluate_foot_area_guard(
                 crate::sim::movement::ground_pose::target_get_coords(
                     post,
                     &sim.substrate.entities,
-                    sim.resolved_terrain.as_ref(),
+                    sim.resolved_terrain
+                        .as_ref()
+                        .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                        .as_ref(),
                 )
             })
             .map(|coord| [coord.x, coord.y, coord.z]);

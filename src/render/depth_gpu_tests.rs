@@ -39,7 +39,7 @@ enum Shader {
 
 impl Shader {
     fn source(self) -> String {
-        super::tactical_shader::source(match self {
+        super::tactical_shader::world_source(match self {
             Self::Batch => include_str!("batch_shader.wgsl"),
             Self::Terrain => include_str!("zdepth_shader.wgsl"),
             Self::SpriteRead | Self::SpriteWrite => include_str!("zsprite_shader.wgsl"),
@@ -169,6 +169,8 @@ impl Gpu {
                 }),
                 usage: wgpu::BufferUsages::UNIFORM,
             });
+        let (neutral_a, neutral_a_uniform) =
+            super::shroud_buffer::neutral_gpu_source(&self.device, &self.queue);
         let sampler = self
             .device
             .create_sampler(&wgpu::SamplerDescriptor::default());
@@ -251,10 +253,20 @@ impl Gpu {
             let camera_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Depth test camera group"),
                 layout: &pipeline.get_bind_group_layout(0),
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera.as_entire_binding(),
-                }],
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: camera.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&neutral_a),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: neutral_a_uniform.as_entire_binding(),
+                    },
+                ],
             });
             let voxel = matches!(layer.shader, Shader::Voxel);
             let color_source = if voxel {
@@ -787,14 +799,30 @@ fn bridge_split_height_threshold_and_zoom_keep_original_quad_sampling() {
             };
         }
     }
+    let size = [48, 64];
     for zoom in [0.75, 1.25, 2.0] {
         tall.instance.z_gradient = pack_voxel_z_gradient(ZGradient::Vertical, false);
-        let ordinary = gpu.render_sized_zoom(&[tall.clone()], [48, 64], zoom);
+        let ordinary = gpu.render_sized_zoom(&[tall.clone()], size, zoom);
         tall.instance.z_gradient = pack_voxel_z_gradient(ZGradient::Vertical, true);
+        let split = gpu.render_sized_zoom(&[tall.clone()], size, zoom);
+        let mut mismatches = split
+            .iter()
+            .zip(&ordinary)
+            .enumerate()
+            .filter(|(_, (split, ordinary))| split != ordinary)
+            .map(|(index, (split, ordinary))| {
+                (
+                    index % size[0] as usize,
+                    index / size[0] as usize,
+                    *split,
+                    *ordinary,
+                )
+            });
+        let first = mismatches.next();
+        let count = usize::from(first.is_some()) + mismatches.count();
         assert_eq!(
-            gpu.render_sized_zoom(&[tall.clone()], [48, 64], zoom),
-            ordinary,
-            "split changed palette sampling at zoom {zoom}"
+            count, 0,
+            "split changed palette sampling at zoom {zoom}; first (x,y,split,ordinary)={first:?}"
         );
     }
 }

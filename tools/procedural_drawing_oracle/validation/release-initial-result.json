@@ -1,0 +1,22 @@
+{
+  "scope": "initial optimized current rally chain and shroud source; before cached row spans",
+  "result": "21 passed, 1 unrelated timestamp benchmark failed (issue1037); all selected current-chain correctness checks passed",
+  "artifacts": [
+    {
+      "path": "logs/procedural-drawing/release-validation.log",
+      "sha256": "b35cb98fbe1038641684f32c6fac4e8113872ae9e8c0a6c9729326a6fc520af1",
+      "bytes": 78311
+    },
+    {
+      "path": "logs/procedural-drawing/rally-perf-release.json",
+      "sha256": "92f1c84adc40eff42267512cbe4ac9bdd2e1b94486e9eb26c4b0a1697346836e",
+      "bytes": 21785
+    },
+    {
+      "path": "logs/procedural-drawing/shroud-perf-release.json",
+      "sha256": "54185fdd145194a0ebc50a64a04e5c99db0f502d600de6ab6788fa1ce9b39a24",
+      "bytes": 17480
+    }
+  ],
+  "timestamp_limit": "Metal query intervals mostly unavailable; do not average only the surviving samples as representative GPU time"
+}

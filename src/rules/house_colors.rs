@@ -69,7 +69,8 @@ fn modulated_sv(hsv: [u8; 3], shade: usize) -> [u8; 2] {
 /// Active-YR per-scheme 16-shade team band (palette indices 16..31): fixed hue
 /// H with saturation and value scaled by the exact sampled factors. Each
 /// `(modS, modV)` pair goes through the 6-sextant integer HSV→RGB conversion.
-/// Shade 0 is the brightest (the radar/UI/target-line color).
+/// Shade 0 is the brightest palette input. House radar/rally RGB additionally
+/// passes through LightConvert's middle row; see render::palette_light.
 pub fn build_scheme_ramp(hsv: [u8; 3]) -> [Color; RAMP_SIZE] {
     let h = hsv[0];
     let mut ramp = [Color {

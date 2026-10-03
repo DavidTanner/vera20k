@@ -366,15 +366,18 @@ pub(crate) fn object_get_coords(
 pub(crate) fn target_get_coords(
     target: crate::sim::combat::TargetKind,
     entities: &crate::sim::entity_store::EntityStore,
-    terrain: Option<&ResolvedTerrainGrid>,
+    cells: Option<&NativeCellQuery<'_>>,
 ) -> Option<DriveCoord> {
     match target {
         crate::sim::combat::TargetKind::Cell(rx, ry) => {
-            Some(super::navcom::target_cell_coord(rx, ry, terrain))
+            Some(super::navcom::target_cell_coord(rx, ry, cells))
         }
         crate::sim::combat::TargetKind::Entity(id) => {
             let entity = entities.get(id)?;
-            Some(object_get_coords(entity, terrain))
+            Some(object_get_coords(
+                entity,
+                cells.map(NativeCellQuery::terrain),
+            ))
         }
     }
 }

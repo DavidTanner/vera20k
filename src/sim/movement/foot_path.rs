@@ -1120,8 +1120,14 @@ impl Simulation {
             return Ok(());
         }
         super::movement_commands::clear_destination_path_head(actor);
-        let coord =
-            super::navcom::target_cell_coord(target.0, target.1, self.resolved_terrain.as_ref());
+        let coord = super::navcom::target_cell_coord(
+            target.0,
+            target.1,
+            self.resolved_terrain
+                .as_ref()
+                .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                .as_ref(),
+        );
         if !super::prepare_walk_destination(
             &mut self.substrate.entities,
             id,

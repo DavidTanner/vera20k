@@ -185,7 +185,7 @@ impl TerrainDrawRenderer {
         let shp = include_str!("zsprite_shader.wgsl");
         let vertex = shp[..shp.find("fn apply_fx(").expect("SHP projection boundary")]
             .replace("@group(2) @binding(0) var t_zshape: texture_2d<f32>;", "");
-        let source = super::tactical_shader::source(&format!(
+        let source = super::tactical_shader::world_source(&format!(
             "{vertex}\n{}\n{}",
             include_str!("terrain_edit.wgsl"),
             include_str!("terrain_read_only.wgsl")

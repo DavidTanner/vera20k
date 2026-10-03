@@ -603,17 +603,61 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
             .map(|rt| &rt.simulation),
         &state.height_map(),
     );
-    let factory_rally = crate::app::presentation::target_lines::build_factory_rally_line_instances(
+    let input = &state.match_state.input;
+    let camera = [input.camera_x.round() as i32, input.camera_y.round() as i32];
+    let (x, y, width, height) = crate::app::input::camera::tactical_viewport_px(state);
+    let view = crate::app::presentation::target_lines::RallyViewport {
+        camera,
+        clip: [
+            x as i32,
+            y as i32,
+            (width as f32 / input.zoom_level).ceil() as i32,
+            (height as f32 / input.zoom_level).ceil() as i32,
+        ],
+        zoom: input.zoom_level,
+    };
+    let selected = crate::app::input::dispatch::selected_stable_ids_in_order(
         state
             .match_state
             .sim_runtime
             .as_ref()
             .map(|rt| &rt.simulation),
         state.rules(),
-        &state.height_map(),
-        &state.match_state.match_presentation.house_color_map,
-        preferred_local_owner(state).as_deref(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
     );
+    let [factory_rally_first, factory_rally_second] =
+        crate::app::presentation::target_lines::build_factory_rally_line_instances(
+            state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .map(|rt| &rt.simulation),
+            state.rules(),
+            &selected,
+            &state.match_state.match_presentation.house_color_map,
+            preferred_local_owner(state).as_deref(),
+            view,
+            |point| {
+                if state.match_state.sandbox_full_visibility {
+                    return 127;
+                }
+                state
+                    .match_state
+                    .match_presentation
+                    .shroud_buffer
+                    .as_ref()
+                    .and_then(|buffer| {
+                        buffer.sample_world(
+                            (point[0] + camera[0] - view.clip[0]) as f32,
+                            (point[1] + camera[1] - view.clip[1]) as f32,
+                            input.camera_x,
+                            input.camera_y,
+                        )
+                    })
+                    .unwrap_or(127)
+            },
+        );
 
     UiInstances {
         bracket_back: bracket.back,
@@ -635,8 +679,8 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
         ghost_page,
         wall_ghost,
         target_line,
-        factory_rally_first: factory_rally.clone(),
-        factory_rally_second: factory_rally,
+        factory_rally_first,
+        factory_rally_second,
     }
 }
 

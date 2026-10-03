@@ -162,10 +162,19 @@ fn native_depth(in: VertexOutput) -> f32 {
             in.fx_params.w,
             in.fx_params.w > 0.0,
         );
-        let bottom: f32 = min(rect_top + f32(height), f32(camera_row) + round(clip_height));
+        let region_top: f32 = rect_top;
+        let region_bottom: f32 = rect_top + f32(height);
+        let bottom: f32 = min(region_bottom, f32(camera_row) + round(clip_height));
         rect_top = max(rect_top, f32(camera_row));
         height = i32(bottom - rect_top);
-        if (height <= 0 || in.world_pos.y < rect_top || in.world_pos.y >= bottom) {
+        // VERA zoom padding belongs to the full quad. Re-testing untouched
+        // natural edges against a smooth interpolant can discard a padded
+        // source row through rounding (observed at 2x). Only actual tactical
+        // clip intersections cut coverage; the existing row clamp owns natural
+        // edges. Native 1x geometry and split/depth selection are unchanged.
+        if (height <= 0
+            || (rect_top > region_top && in.world_pos.y < rect_top)
+            || (bottom < region_bottom && in.world_pos.y >= bottom)) {
             discard;
         }
     }
@@ -251,7 +260,7 @@ fn fs_main(in: VertexOutput) -> FragOutput {
     // The waterline changes geometry admission only. It must not opt an
     // otherwise opaque body out of the native packed-palette conversion.
     let color_flags = in.fx_flags & ~128u;
-    var color: vec4f = vec4f(resolve_palette(rgb, in.tint, in.effect_tint.rgb, opaque_palette(in.palette_light, in.alpha, color_flags), byte), in.alpha);
+    var color: vec4f = vec4f(resolve_palette(rgb, in.tint, in.effect_tint.rgb, opaque_palette(in.palette_light, in.alpha, color_flags), byte, tactical_a_at(in.clip_position.xy)), in.alpha);
     color = apply_fx(color, in.fx_flags, in.fx_params, in.effect_tint);
     out.color = color;
     if (camera.pad1 > 0.5) {

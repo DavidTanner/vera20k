@@ -1288,8 +1288,9 @@ impl GameEntity {
     /// A factory's rally point is its ArchiveTarget: `BuildingClass::
     /// SetRallyPoint @ 0x00443860` archives the clicked cell through event
     /// 0x1E (`Set_ArchiveTarget`), and `BuildingClass::ExitObject_Main @
-    /// 0x00443C60` reads `+0x218` for the object leaving it. The rally click
-    /// is the only writer that archives a cell on a rally-line building.
+    /// 0x00443C60` reads `+0x218` for the object leaving it. The shared
+    /// Building destination setter (`0x00455D50`) can also replace this
+    /// archive; Stop reaches its null arm and removes the rally.
     pub(crate) fn rally_cell(&self) -> Option<(u16, u16)> {
         match self.archive_target() {
             Some(crate::sim::combat::TargetKind::Cell(rx, ry)) => Some((rx, ry)),

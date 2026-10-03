@@ -1106,7 +1106,10 @@ impl Simulation {
             let there = super::ground_pose::target_get_coords(
                 target,
                 &self.substrate.entities,
-                self.resolved_terrain.as_ref(),
+                self.resolved_terrain
+                    .as_ref()
+                    .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                    .as_ref(),
             )?;
             let cell = |coord: DriveCoord| ((coord.x / 256) as i16, (coord.y / 256) as i16);
             (cell(here) != cell(there)).then_some((

@@ -41,7 +41,7 @@ pub(super) struct DrawPassData<'a> {
 ///
 /// Tactical submission: terrain, bridge/overlay bodies, overlay shadows and
 /// railings, native Ground parents, particles and upper-layer bodies, then
-/// debug, shroud/fog and UI. A bridge body split stays within its unit parent.
+/// debug and UI. World blitters sample the shared ABuffer. A bridge body split stays within its unit parent.
 pub(super) fn dispatch_draw_passes(
     state: &mut AppState,
     encoder: &mut wgpu::CommandEncoder,
@@ -175,14 +175,25 @@ pub(super) fn dispatch_draw_passes(
         "overlay_bridge_railing",
     );
 
-    // Building selection bracket back/left edges. Drawn before object bodies so
-    // the normal SHP merge naturally occludes the hidden bracket edges.
     let bracket_tex = state
         .match_state
         .match_presentation
         .selection_overlay
         .as_ref()
         .map(|o| o.white_texture());
+    // Original6D4648 draws the first rally pass BEFORE the object loop at
+    // 6D465F. Bodies may cover its source and any crossed object; the second
+    // pass belongs after effects and BandBox. Both leaves bypass Z.
+    draw_pooled_ui_passthrough(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        bracket_tex,
+        "factory_rally_first",
+    );
+
+    // Building selection bracket back/left edges. Drawn before object bodies so
+    // the normal SHP merge naturally occludes the hidden bracket edges.
     draw_pooled_passthrough_texture(
         &mut pass,
         &state.renderer.batch_renderer,
@@ -252,10 +263,11 @@ pub(super) fn dispatch_draw_passes(
             .as_ref(),
         pool.get("weapon_waves"),
     ) {
-        state.renderer.batch_renderer.draw_with_buffer_passthrough(
+        state.renderer.batch_renderer.draw_passthrough_range(
             &mut pass,
             overlay.white_texture(),
             buffer,
+            0,
             count,
         );
     }
@@ -329,19 +341,6 @@ pub(super) fn dispatch_draw_passes(
     let mut pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
     pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
 
-    // --- Step 7.8: Persistent combat-light vector ---
-    // gamemd edits the completed tactical object surface here, tail-to-head,
-    // before the later debug/shroud/UI families. End the sRGB/depth pass while
-    // the dedicated renderer performs its encoded RGB565 destination edits,
-    // then resume both attachments with Load.
-    drop(pass);
-    state
-        .renderer
-        .combat_light_renderer
-        .draw(encoder, [tac_x, tac_y, tac_w, tac_h]);
-    let mut pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
-    pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
-
     // --- Step 8: Debug overlays ---
     // Drawn above entities, below fog and UI.
     // Use filled-diamond texture so cells appear as isometric diamonds, not rectangles.
@@ -386,20 +385,21 @@ pub(super) fn dispatch_draw_passes(
         "debug_heightmap",
     );
 
-    // --- Step 9: Shroud (GPU ABuffer multiply pass) ---
-    // Darkens every scene pixel by the shroud brightness value via
-    // per-pixel ABuffer lookup.
-    // Fully shrouded areas → black, edge cells → gradient, explored → no change.
-    if let Some(ref buf) = state.match_state.match_presentation.shroud_buffer {
-        if !state.match_state.sandbox_full_visibility {
-            buf.draw(&mut pass);
-        }
-    }
+    // A is consumed by each world blitter, before storing its source color.
+    // Native surface stores and destination shadows must not be multiplied
+    // again after object drawing (493DF0/4990E0 versus4C0750/497390).
+
+    // Original6D4664 -> Spotlight5FFFA0 edits the destination after the first
+    // rally pass. Preserve this overlap, including the rally's black shadow.
+    drop(pass);
+    state
+        .renderer
+        .combat_light_renderer
+        .draw(encoder, [tac_x, tac_y, tac_w, tac_h]);
 
     // Tactical LineTrail556D40 edits the completed tactical destination and
     // samples the same native Z authority as bridge/object rendering. End the
     // attachment pass while the ordered RGB565 stores execute, then load it.
-    drop(pass);
     state
         .renderer
         .terrain_draw_renderer
@@ -407,29 +407,40 @@ pub(super) fn dispatch_draw_passes(
     let mut pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
     pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
 
-    // --- Step 10: UI elements ---
-    // Factory rally and selected action lines are separate line families.
-    draw_pooled_no_depth(
+    // BandBox6DA180 is between the two rally passes (native6D46BD).
+    // Drag rectangle — screen-fixed, use UI camera (zoom=1.0).
+    let drag_tex = state
+        .match_state
+        .match_presentation
+        .selection_overlay
+        .as_ref()
+        .map(|o| o.drag_texture());
+    draw_pooled_ui_passthrough(
         &mut pass,
         &state.renderer.batch_renderer,
         pool,
-        bracket_tex,
-        "factory_rally_first",
+        drag_tex,
+        "drag",
     );
-    draw_pooled_no_depth(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        bracket_tex,
-        "target_lines",
-    );
-    draw_pooled_no_depth(
+    // Tactical6D46CF redraws rally pixels whose ABuffer sample is zero.
+    draw_pooled_ui_passthrough(
         &mut pass,
         &state.renderer.batch_renderer,
         pool,
         bracket_tex,
         "factory_rally_second",
     );
+    // Original6D4750 calls the selected Techno's vt+438 (Foot4DC060)
+    // AFTER rally pass1 at6D46CF. Its solid surface stores do not read/write Z.
+    // See tools/procedural_drawing_oracle/rally-caller.instructions.json.
+    draw_pooled_passthrough_texture(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        bracket_tex,
+        "target_lines",
+    );
+    // --- Step 10: UI elements ---
     // Isometric selection brackets for buildings: white 1px stub lines at 3 roof corners.
     draw_pooled_no_depth(
         &mut pass,
@@ -559,20 +570,6 @@ pub(super) fn dispatch_draw_passes(
         pool,
         cargo_pip_tex,
         "cargo_pips",
-    );
-    // Drag rectangle — screen-fixed, use UI camera (zoom=1.0).
-    let drag_tex = state
-        .match_state
-        .match_presentation
-        .selection_overlay
-        .as_ref()
-        .map(|o| o.drag_texture());
-    draw_pooled_ui(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        drag_tex,
-        "drag",
     );
     // Placement preview — world-space, uses world camera (zoom).
     let ghost_tex = state
@@ -898,7 +895,19 @@ fn draw_pooled_passthrough_overlay<'a>(
     key: &'static str,
 ) {
     if let (Some(a), Some((buf, count))) = (atlas, pool.get(key)) {
-        batch.draw_with_buffer_passthrough(pass, &a.texture, buf, count);
+        batch.draw_passthrough_range(pass, &a.texture, buf, 0, count);
+    }
+}
+
+fn draw_pooled_ui_passthrough<'a>(
+    pass: &mut wgpu::RenderPass<'a>,
+    batch: &'a BatchRenderer,
+    pool: &'a InstanceBufferPool,
+    tex: Option<&'a BatchTexture>,
+    key: &'static str,
+) {
+    if let (Some(t), Some((buf, count))) = (tex, pool.get(key)) {
+        batch.draw_with_buffer_ui_passthrough(pass, t, buf, count);
     }
 }
 
@@ -1027,7 +1036,7 @@ fn draw_pooled_bridge_railing<'a>(
     key: &'static str,
 ) {
     if let (Some(a), Some((buf, count))) = (atlas, pool.get(key)) {
-        batch.draw_with_buffer_passthrough(pass, &a.texture, buf, count);
+        batch.draw_passthrough_range(pass, &a.texture, buf, 0, count);
     }
 }
 
@@ -1048,13 +1057,18 @@ mod tests {
 
     fn source_offset(needle: &str) -> usize {
         SOURCE
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source before tests")
             .find(needle)
             .unwrap_or_else(|| panic!("missing production draw anchor {needle:?}"))
     }
 
     #[test]
     fn gsi_13_01_pixel_fx_is_last_tactical_write_before_screen_chrome() {
-        let shroud = source_offset("// --- Step 9: Shroud");
+        let first_rally = source_offset("\"factory_rally_first\"");
+        let combat_lights = source_offset(".combat_light_renderer");
+        let second_rally = source_offset("\"factory_rally_second\"");
         let target_lines = source_offset("\"target_lines\"");
         let status = source_offset("\"status_unit_fill\"");
         let placement = source_offset("\"placement_invalid\"");
@@ -1065,7 +1079,11 @@ mod tests {
         );
         let first_screen_submission = source_offset("\"minimap\"");
 
-        assert!(shroud < target_lines);
+        // Original6D4648,6D4664,6D46CF,6D4750. A is now consumed by
+        // each world blitter, so there is no final framebuffer multiply.
+        assert!(first_rally < combat_lights);
+        assert!(combat_lights < second_rally);
+        assert!(second_rally < target_lines);
         assert!(target_lines < status);
         assert!(status < placement);
         assert!(placement < sparkle);

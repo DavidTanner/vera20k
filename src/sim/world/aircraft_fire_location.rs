@@ -34,7 +34,14 @@ impl Simulation {
     pub(super) fn fire_location_center(&self, target: NavTargetRef) -> Option<DriveCoord> {
         let id = match target {
             NavTargetRef::Cell { rx, ry } => {
-                return Some(target_cell_coord(rx, ry, self.resolved_terrain.as_ref()));
+                return Some(target_cell_coord(
+                    rx,
+                    ry,
+                    self.resolved_terrain
+                        .as_ref()
+                        .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                        .as_ref(),
+                ));
             }
             NavTargetRef::Entity { id }
             | NavTargetRef::Object { id }

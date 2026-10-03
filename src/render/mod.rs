@@ -33,6 +33,7 @@ pub mod frame_readback;
 pub(crate) mod foot_depth;
 pub mod gpu;
 pub(crate) mod line_trail;
+pub(crate) mod surface_line;
 pub mod loading_screen_chrome;
 pub mod locomotor_visual;
 pub mod main_menu_shell_chrome;
@@ -71,6 +72,8 @@ pub mod shell_text;
 pub mod shell_text_reveal;
 pub mod shell_transition_pass;
 pub mod shroud_buffer;
+#[cfg(test)]
+mod shroud_gpu_tests;
 pub(crate) mod sinking;
 pub mod sidebar_cameo_atlas;
 pub mod sidebar_chrome;

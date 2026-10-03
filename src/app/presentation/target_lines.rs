@@ -155,44 +155,98 @@ pub(crate) fn build_target_line_instances(
     instances
 }
 
-/// Build selected local factory rally-line instances from per-producer state.
+/// Integer logical viewport plus VERA's presentation-only zoom. Native6DA9D0
+/// operates in unzoomed surface pixels. Scaling happens after rasterization.
+#[derive(Clone, Copy)]
+pub(crate) struct RallyViewport {
+    pub camera: [i32; 2],
+    pub clip: [i32; 4],
+    pub zoom: f32,
+}
+
+/// Tactical6DA9D0: reverse CurrentObjects (the player's selection vector),
+/// live local Building, HasRallyPoint455DA0 and ArchiveTarget. The coordinate
+/// owners retain foundation offsets and native ground/slope/bridge semantics.
+/// No RNG draws, timer writes, detach calls, Z reads or Z writes occur here.
+/// Evidence: tools/procedural_drawing_oracle/rally.{py,json,meta.json}.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_factory_rally_line_instances(
     sim: Option<&Simulation>,
     rules: Option<&RuleSet>,
-    height_map: &BTreeMap<(u16, u16), u8>,
+    selected_ids: &[u64],
     house_color_map: &HouseColorMap,
     local_owner: Option<&str>,
-) -> Vec<SpriteInstance> {
-    let (Some(sim), Some(rules), Some(local_owner)) = (sim, rules, local_owner) else {
-        return Vec::new();
+    viewport: RallyViewport,
+    mut alpha_at: impl FnMut([i32; 2]) -> u8,
+) -> [Vec<SpriteInstance>; 2] {
+    use crate::map::resolved_terrain::NativeCellQuery;
+    use crate::sim::movement::ground_pose::{
+        object_get_coords, query_ground_height, target_get_coords,
     };
-    let mut instances = Vec::new();
-    for entity in sim.entities().values() {
-        if !entity.selected || entity.category != EntityCategory::Structure {
+    let mut instances = [Vec::new(), Vec::new()];
+    let (Some(sim), Some(rules), Some(local_owner)) = (sim, rules, local_owner) else {
+        return instances;
+    };
+    let Some(terrain) = sim.resolved_terrain.as_ref() else {
+        return instances;
+    };
+    // Presentation must not stamp the simulation's shared fallback CellClass.
+    let cells = NativeCellQuery::isolated(terrain);
+    let project = |coord: crate::sim::components::DriveCoord| {
+        let (x, y) = crate::util::lepton::absolute_leptons_to_screen(coord.x, coord.y, coord.z);
+        [
+            x as i32 - viewport.camera[0] + viewport.clip[0],
+            y as i32 - viewport.camera[1] + viewport.clip[1],
+        ]
+    };
+    for &id in selected_ids.iter().rev() {
+        let Some(entity) = sim.entities().get(id) else {
+            continue;
+        };
+        if !entity.selected
+            || !entity.is_object_alive()
+            || entity.category != EntityCategory::Structure
+        {
             continue;
         }
         let owner = sim.interner.resolve(entity.owner());
         if owner != local_owner {
             continue;
         }
-        let Some((rx, ry)) = entity.rally_cell() else {
-            continue;
-        };
         let Some(obj) = rules.object(sim.interner.resolve(entity.type_ref())) else {
             continue;
         };
         if !obj.has_rally_line() {
             continue;
         }
-
-        let (start_x, start_y) = crate::render::locomotor_visual::screen_position(entity);
-        let start = ScreenPoint {
-            x: start_x,
-            y: start_y,
+        let Some(mut target) = entity
+            .archive_target()
+            .and_then(|target| target_get_coords(target, sim.entities(), Some(&cells)))
+        else {
+            continue;
         };
-        let end = project_cell_destination(rx, ry, height_map, None, Some(sim)).into();
+        let Ok(ground) = query_ground_height(&cells, target) else {
+            continue;
+        };
+        target.z = ground.wrapping_add(
+            if cells.flags(cells.lookup_world(target.x, target.y)) & 0x100 != 0 {
+                crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
+            } else {
+                0
+            },
+        );
+        let start = project(object_get_coords(entity, Some(terrain)));
+        let end = project(target);
         let tint = rally_tint_for_owner(owner, house_color_map, &rules.house_color_ramps);
-        emit_rally_line(&mut instances, start, end, tint, sim.session.tick);
+        emit_rally_line(
+            &mut instances,
+            start,
+            end,
+            tint,
+            sim.session.binary_frame,
+            viewport,
+            &mut alpha_at,
+        );
     }
     instances
 }
@@ -308,14 +362,8 @@ fn rally_tint_for_owner(
     // Unknown owner → NO_REMAP, which ramp() resolves to the default scheme
     // (matching the producers' DEFAULT_SCHEME_ENTRY fallback), not entry 0.
     let index = house_color_map.get(owner).copied().unwrap_or(NO_REMAP);
-    // Shade 0 = the scheme's brightest band (palette index 16) — gamemd's
-    // radar/target-line color.
-    let color = ramps.ramp(index)[0];
-    [
-        color.r as f32 / 255.0,
-        color.g as f32 / 255.0,
-        color.b as f32 / 255.0,
-    ]
+    crate::render::palette_light::house_color_rgb(ramps, index)
+        .map(|channel| f32::from(channel) / 255.0)
 }
 
 fn push_line_pixel(instances: &mut Vec<SpriteInstance>, x: f32, y: f32, tint: [f32; 3]) {
@@ -375,25 +423,107 @@ fn emit_selected_action_line(
     emit_solid_line(instances, start, end, tint);
 }
 
+/// Original static pattern842930. The producer phase has period15 even though
+/// the leaf repeats16 entries; signed subtraction/remainder survive frame wrap.
+const RALLY_PATTERN: [u8; 16] = [1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0];
+
 fn emit_rally_line(
-    instances: &mut Vec<SpriteInstance>,
-    start: ScreenPoint,
-    end: ScreenPoint,
+    instances: &mut [Vec<SpriteInstance>; 2],
+    mut from: [i32; 2],
+    mut to: [i32; 2],
     tint: [f32; 3],
-    tick: u64,
+    frame: u32,
+    viewport: RallyViewport,
+    mut alpha_at: impl FnMut([i32; 2]) -> u8,
 ) {
-    let _phase = (0x7fff_ffffu64.saturating_sub(tick)) % 15;
-    emit_solid_line(instances, start, end, tint);
+    use crate::render::surface_line::{clip_line, patterned_line};
+    let phase = i32::MAX.wrapping_sub(frame as i32) % 15;
+    let rgb = tint.map(|v| (v * 255.).round() as u8);
+    let rgba = crate::render::native_surface_format::ACTIVE_RETAIL_RGB565_PRESENTATION
+        .quantize_rgba8([rgb[0], rgb[1], rgb[2], 255]);
+    let tint = [rgba[0], rgba[1], rgba[2]].map(|v| f32::from(v) / 255.);
+    from[1] += 2;
+    to[1] += 2;
+    for color in [[0.; 3], tint, tint] {
+        // The original mutates and reuses these clipped points, including when
+        // one row misses the clip. Independent offset/clip calls differ at edges.
+        if clip_line(&mut from, &mut to, viewport.clip) {
+            patterned_line(from, to, &RALLY_PATTERN, phase, |point| {
+                let pass = usize::from(alpha_at(point) == 0);
+                push_rally_pixel(&mut instances[pass], point, color, viewport);
+            });
+        }
+        from[1] -= 1;
+        to[1] -= 1;
+    }
+}
+
+/// Nearest sampling of the native logical pixel grid. Use the existing UI
+/// passthrough pipeline so zoom never pads adjacent 1px quads or writes Z.
+/// Adjacent stores of the same row/color become one horizontal span.
+fn push_rally_pixel(
+    instances: &mut Vec<SpriteInstance>,
+    point: [i32; 2],
+    tint: [f32; 3],
+    view: RallyViewport,
+) {
+    let edge = |v: i32| (v as f32 * view.zoom - 0.5).ceil();
+    let x = edge(point[0]);
+    let y = edge(point[1]);
+    let size = [edge(point[0] + 1) - x, edge(point[1] + 1) - y];
+    if size[0] <= 0. || size[1] <= 0. {
+        return;
+    }
+    let position = [x + view.camera[0] as f32, y + view.camera[1] as f32];
+    if let Some(last) = instances.last_mut()
+        && last.tint == tint
+        && last.position[1] == position[1]
+        && last.size[1] == size[1]
+        && last.position[0] + last.size[0] == position[0]
+    {
+        last.size[0] += size[0];
+        return;
+    }
+    instances.push(SpriteInstance {
+        position,
+        size,
+        uv_size: [1.; 2],
+        tint,
+        alpha: 1.,
+        ..Default::default()
+    });
 }
 
 #[cfg(test)]
 mod tests {
+    use super::rally_tests::{alpha_fixture, assert_native_passes, rally_native};
     use super::*;
     use crate::rules::house_colors::HouseColorIndex;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
     use crate::sim::components::MovementTarget;
     use crate::sim::game_entity::GameEntity;
+
+    #[test]
+    fn rally_pattern_matches_original_producer_pixels() {
+        let row = &rally_native()["producer_cases"][0];
+        let view = RallyViewport {
+            camera: [0, 0],
+            clip: [0, 0, 160, 120],
+            zoom: 1.,
+        };
+        let mut actual = [Vec::new(), Vec::new()];
+        emit_rally_line(
+            &mut actual,
+            [20, 25],
+            [140, 85],
+            [248. / 255., 40. / 255., 8. / 255.],
+            0,
+            view,
+            |p| alpha_fixture(p, "mixed"),
+        );
+        assert_native_passes(&actual, row, view);
+    }
 
     fn active_line_state_for_tick(tick: u64) -> TargetLineState {
         TargetLineState {
@@ -471,7 +601,23 @@ mod tests {
         power.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(16, 10)));
         sim.entities_mut().insert(factory);
         sim.entities_mut().insert(power);
+        use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
+        sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(
+            40,
+            40,
+            (0..40)
+                .flat_map(|y| (0..40).map(move |x| ResolvedTerrainCell::clear_for_test(x, y)))
+                .collect(),
+        ));
         sim
+    }
+
+    fn test_viewport() -> RallyViewport {
+        RallyViewport {
+            camera: [-320, 0],
+            clip: [0, 0, 1000, 1000],
+            zoom: 1.,
+        }
     }
 
     fn test_house_colors() -> HouseColorMap {
@@ -614,11 +760,13 @@ mod tests {
         let lines = build_factory_rally_line_instances(
             Some(&sim),
             Some(&rules),
-            &BTreeMap::new(),
+            &[10, 11],
             &test_house_colors(),
             Some("Americans"),
+            test_viewport(),
+            |_| 127,
         );
-        assert!(!lines.is_empty());
+        assert!(!lines[0].is_empty());
     }
 
     #[test]
@@ -633,10 +781,12 @@ mod tests {
             !build_factory_rally_line_instances(
                 Some(&sim),
                 Some(&rules),
-                &BTreeMap::new(),
+                &[10, 11],
                 &test_house_colors(),
                 Some("Americans"),
-            )
+                test_viewport(),
+                |_| 127,
+            )[0]
             .is_empty()
         );
     }
@@ -651,11 +801,17 @@ mod tests {
             build_factory_rally_line_instances(
                 None,
                 None,
-                &BTreeMap::new(),
+                &[],
                 &HouseColorMap::new(),
-                Some("Americans")
-            )
+                Some("Americans"),
+                test_viewport(),
+                |_| 127,
+            )[0]
             .is_empty()
         );
     }
 }
+
+#[cfg(test)]
+#[path = "rally_line_tests.rs"]
+mod rally_tests;

@@ -901,7 +901,14 @@ impl Simulation {
             .and_then(|l| l.fly_runtime())
             .is_some();
         let coordinate = if is_fly {
-            super::navcom::target_cell_coord(target.0, target.1, self.resolved_terrain.as_ref())
+            super::navcom::target_cell_coord(
+                target.0,
+                target.1,
+                self.resolved_terrain
+                    .as_ref()
+                    .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                    .as_ref(),
+            )
         } else {
             DriveCoord::cell(target.0, target.1, 0)
         };
@@ -973,7 +980,13 @@ impl Simulation {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return Some(false);
         };
-        let input = super::navcom::target_cell_coord(target.0, target.1, Some(terrain));
+        let input = super::navcom::target_cell_coord(
+            target.0,
+            target.1,
+            Some(&crate::map::resolved_terrain::NativeCellQuery::canonical(
+                terrain,
+            )),
+        );
         let entity = self.substrate.entities.get_mut(id).expect("selected mover");
         super::navcom::publish_nav_com(
             entity,

@@ -38,6 +38,18 @@ pub const RGB555: DirectDrawPixelFormat = DirectDrawPixelFormat {
     destination_bytes_per_pixel: 2,
 };
 
+impl DirectDrawPixelFormat {
+    /// Native packed-word extraction (House50B840 and WriteSurfaceAsPCX7B05C0).
+    /// Channel losses are zero-filled; display expansion is a later operation.
+    pub(crate) fn unpack_rgb8(self, word: u16) -> [u8; 3] {
+        [
+            ((u32::from(word) >> self.red_shift) << self.red_loss) as u8,
+            ((u32::from(word) >> self.green_shift) << self.green_loss) as u8,
+            ((u32::from(word) >> self.blue_shift) << self.blue_loss) as u8,
+        ]
+    }
+}
+
 /// Expansion codebooks observed in the enrolled native presentation chain.
 ///
 /// These values are tied to the sealed local gamemd/DDrawCompat/AMD capture,
@@ -64,11 +76,7 @@ impl NativeSurfacePresentationProfile {
     /// active DirectDraw word. Non-key pixels retain their incoming alpha.
     ///
     /// Retail provenance: packed flag-image transparency — `OwnerDraw_Static_006153E0` @ `0x006153E0`.
-    pub(crate) fn apply_packed_color_key_rgba8(
-        self,
-        rgba: &mut [u8],
-        transparent_rgb: [u8; 3],
-    ) {
+    pub(crate) fn apply_packed_color_key_rgba8(self, rgba: &mut [u8], transparent_rgb: [u8; 3]) {
         assert_eq!(rgba.len() % 4, 0, "RGBA8 input must contain whole pixels");
         let transparent_word = self.pack_rgb8(transparent_rgb);
         for pixel in rgba.chunks_exact_mut(4) {
@@ -209,8 +217,7 @@ mod tests {
             247, 3, 249, 37, // adjacent red word
         ];
 
-        ACTIVE_RETAIL_RGB565_PRESENTATION
-            .apply_packed_color_key_rgba8(&mut rgba, [255, 0, 255]);
+        ACTIVE_RETAIL_RGB565_PRESENTATION.apply_packed_color_key_rgba8(&mut rgba, [255, 0, 255]);
 
         assert_eq!(&rgba[0..4], &[255, 0, 255, 0]);
         assert_eq!(&rgba[4..8], &[248, 3, 249, 0]);

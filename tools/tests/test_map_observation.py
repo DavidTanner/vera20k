@@ -62,6 +62,7 @@ class MapObservationTests(unittest.TestCase):
         directory.mkdir()
         frame = self.frame
         (directory / 'frame.bgra').write_bytes(frame)
+        width, height = self.profile['width'], self.profile['height']
         ticks = self.profile['ticks']
         fingerprint = lambda tick: {'simulation_tick': tick, 'binary_frame': tick,
                                    'total_simulation_ms': tick * 22,
@@ -87,17 +88,19 @@ class MapObservationTests(unittest.TestCase):
             'lifecycle': {'window_hidden': True, 'window_focused': False,
                           'focus_violations': 0, 'input_violations': 0},
             'render': {'ready': True, 'sidebar_view_present': True,
-                       'surface_extent': [2, 2], 'internal_extent': [2, 2],
+                       'surface_extent': [width, height], 'internal_extent': [width, height],
                        'unit_atlas': deepcopy(self.unit_atlas),
                        'presentation_clock': self.clock(ticks),
                        'camera': {'requested_cell': self.profile.get('camera_cell'),
                                   'top_left': [0.0, 0.0], 'zoom': 1.0},
                        'neutral_input': {'static_default_cursor': True, 'camera_input_idle': True}},
-            'frame': {'file_name': 'frame.bgra', 'width': 2, 'height': 2, 'row_stride': 8,
-                      'byte_length': 16, 'sha256': sha256_bytes(frame),
+            'frame': {'file_name': 'frame.bgra', 'width': width, 'height': height,
+                      'row_stride': width * 4, 'byte_length': len(frame), 'sha256': sha256_bytes(frame),
                       'pixel_layout': 'BGRA8', 'surface_format': 'Bgra8UnormSrgb'},
             'native_comparator': 'NONE', 'parity_certification': 'NONE',
         }
+        if 'cursor_position' in self.profile:
+            manifest['render']['cursor_position'] = [float(value) for value in self.profile['cursor_position']]
         seen = set()
         frames = []
         for step in range(ticks + 1):
@@ -208,6 +211,78 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(transcript['frames'][0]['actors'][0]['nav'], {'Object': {'id': 9}})
         self.assertEqual(report['capture']['camera']['requested_cell'], [87, 53])
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def cursor_profile(self):
+        self.profile.update(schema_version=observation.PROFILE_V2,
+                            width=4, height=4, cursor_position=[2, 1])
+        self.frame = bytes(range(64))
+        self.profile_path.write_text(json.dumps(self.profile))
+
+    def test_cursor_position_preserves_profile_presence_and_binds_actual_render_position(self):
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertNotIn('cursor_position', report['capture'])
+        self.cursor_profile()
+        self.output = self.root / 'positioned-cursor'
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['cursor_position'], [2.0, 1.0])
+        sealed = json.loads((self.output / 'profile.json').read_text())
+        self.assertEqual(sealed, self.profile)
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_cursor_position_requires_v2_integer_pair_inside_the_outermost_pixel(self):
+        modern = dict(self.profile, schema_version=observation.PROFILE_V2, width=800, height=600)
+        for position in ([1, 1], [798, 598], [720, 556]):
+            observation._profile_extensions(dict(modern, cursor_position=position))
+        with self.assertRaises(ValidationError):
+            observation._profile_extensions(dict(modern, schema_version=observation.PROFILE_V1,
+                                                 cursor_position=[720, 556]))
+        for position in (None, [], [1], [1, 1, 1], [True, 1], [1, False], [1.0, 1],
+                         ['1', 1], [-1, 1], [0, 1], [1, 0], [799, 1], [1, 599],
+                         [800, 1], [1, 600], [1 << 32, 1]):
+            with self.subTest(position=position), self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(modern, cursor_position=position))
+
+    def test_cursor_position_receipt_rejects_absence_changes_or_unrequested_position(self):
+        self.cursor_profile()
+        for index, position in enumerate((None, [1.0, 1.0], [2.25, 1.0], [True, 1.0],
+                                           [2, 1], [], [2.0, 1.0, 0.0])):
+            with self.subTest(position=position):
+                self.output = self.root / f'bad-cursor-{index}'
+                self.change = lambda manifest, value=position: manifest['render'].update(cursor_position=value)
+                report = self.run_capture()
+                self.assertEqual(report['status'], 'INVALID', report)
+                self.assertIn('cursor_position', report['errors'][0])
+        self.output = self.root / 'missing-cursor'
+        self.change = lambda manifest: manifest['render'].pop('cursor_position')
+        self.assertEqual(self.run_capture()['status'], 'INVALID')
+        self.profile.pop('cursor_position')
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.output = self.root / 'unrequested-cursor'
+        self.change = lambda manifest: manifest['render'].update(cursor_position=[2.0, 1.0])
+        self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_frame_wall_mean_is_optional_metadata_and_not_deterministic_comparison(self):
+        self.change = lambda manifest: manifest['render'].update(frame_wall_mean_ms=0.0)
+        before = self.output
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['frame_wall_mean_ms'], 0.0)
+        self.output = self.root / 'different-wall-cadence'
+        self.change = lambda manifest: manifest['render'].update(frame_wall_mean_ms=16.25)
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['frame_wall_mean_ms'], 16.25)
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+        self.assertEqual(observation.compare_runs(before, self.output)['status'], 'MATCH')
+
+    def test_frame_wall_mean_rejects_nonfinite_negative_or_nonnumeric_metadata(self):
+        for index, value in enumerate((None, True, -1, float('nan'), float('inf'), '16', [], {})):
+            with self.subTest(value=value):
+                self.output = self.root / f'bad-cadence-{index}'
+                self.change = lambda manifest, value=value: manifest['render'].update(frame_wall_mean_ms=value)
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
 
     def test_pending_entry_projection_round_trips_null_and_stable_target(self):
         self.scripted_profile()
@@ -597,7 +672,7 @@ class MapObservationTests(unittest.TestCase):
         for key, value in (('issue_after_step', True), ('issue_after_step', 3),
                            ('issue_after_step', -1), ('issue_after_step', 0.0), ('owner', ''),
                            ('owner', 1), ('extra', True), ('payload', {}),
-                           ('payload', {'Select': {'entity_ids': [1], 'additive': False}})):
+                           ('payload', {'UnknownOrder': {'entity_ids': [1], 'additive': False}})):
             cases.append(dict(modern, commands=[dict(valid_command, **{key: value})]))
         cases.append(dict(modern, commands=[dict(valid_command, issue_after_step=2), valid_command]))
         cases.append(dict(modern, commands=[valid_command] * 1025))
@@ -679,6 +754,8 @@ class MapObservationTests(unittest.TestCase):
         self.profile['commands'] = [
             {'issue_after_step': 0, 'owner': 'Computer1',
              'payload': {'EnterTransport': {'passenger_id': 2, 'transport_id': 1}}},
+            {'issue_after_step': 0, 'owner': 'Computer1',
+             'payload': {'Select': {'entity_ids': [1, 2], 'additive': False}}},
             {'issue_after_step': 2, 'owner': 'Computer1',
              'payload': {'UnloadPassengers': {'transport_id': 1}}}]
         self.profile_path.write_text(json.dumps(self.profile))

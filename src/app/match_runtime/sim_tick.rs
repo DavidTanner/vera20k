@@ -800,17 +800,6 @@ fn advance_in_game_runtime_mode(
         crate::app::input::camera::animate_zoom(state);
         update_building_placement_preview(state);
     }
-    let sw = state.render_width() as f32;
-    let sh = state.render_height() as f32;
-    state.renderer.batch_renderer.update_camera(
-        &state.renderer.gpu,
-        sw,
-        sh,
-        state.match_state.input.camera_x,
-        state.match_state.input.camera_y,
-        state.match_state.input.zoom_level,
-        crate::app::presentation::instances::depth_axis(state),
-    );
 }
 
 /// Tick simulation: advance movement and animation systems.

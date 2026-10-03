@@ -139,7 +139,10 @@ fn project_geometry(
             crate::sim::movement::target_cell_coord(
                 origin.0,
                 origin.1,
-                sim.resolved_terrain.as_ref(),
+                sim.resolved_terrain
+                    .as_ref()
+                    .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                    .as_ref(),
             )
         };
         let distance = crate::util::native_x87::object_distance(
@@ -327,7 +330,7 @@ impl Simulation {
         let base = if origin == (0, 0) {
             DriveCoord { x: 0, y: 0, z: 0 }
         } else {
-            crate::sim::movement::target_cell_coord(origin.0, origin.1, Some(terrain))
+            crate::sim::movement::target_cell_coord(origin.0, origin.1, Some(&native_cells))
         };
         let (x, y) = crate::sim::combat::inviso_scatter::random_direction_coord(
             &mut self.scenario_rng,
