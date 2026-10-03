@@ -268,14 +268,27 @@ def agreement(dec, real):
 
 def read_frame(client, addr, image):
     try:
-        data = json.loads(client.get('/get_function_pcode', function_address=addr, granularity='high'))
+        # MCP 5.14.2 obtains a fresh HighFunction for either granularity. In
+        # Ghidra 12.1.2 its AST decoder inserts every new operation into its
+        # block, and this endpoint does not mutate that graph. Block iteration
+        # therefore retains its decoded SSA operations without serializing
+        # them twice. An arbitrary mutated PcodeSyntaxTree can also have dead
+        # bank operations; that general case is not this endpoint's contract.
+        data = json.loads(client.get('/get_function_pcode', function_address=addr, granularity='basic'))
         if not isinstance(data, dict) or any(key == 'error' or key.endswith('_error') for key in data):
             raise ReadError(f'P-code read contains an error: {str(data)[:200]}')
         if address(data['address']) != addr or data.get('address_space') not in (None, 'ram'):
             raise ReadError('P-code entry/address space differs from the requested x86 function')
-        ops = data['high_pcodes']
-        if not isinstance(ops, list) or not ops:
-            raise ReadError('Missing or empty high p-code')
+        blocks = data['basic_blocks']
+        if not isinstance(blocks, list) or not blocks:
+            raise ReadError('Missing or empty decoded high p-code blocks')
+        ops = []
+        for block in blocks:
+            if not isinstance(block, dict) or not isinstance(block.get('pcodes'), list):
+                raise ReadError('Incomplete decoded high p-code block')
+            ops.extend(block['pcodes'])
+        if not ops:
+            raise ReadError('Empty decoded high p-code')
         for op in ops:
             op['seq']['address'] = address(op['seq']['address'])[2:].lower()
             if op['seq'].get('address_space') not in (None, 'ram'):
@@ -286,7 +299,7 @@ def read_frame(client, addr, image):
                 if not isinstance(var['space'], str) or not isinstance(var['size'], int) or var['size'] <= 0:
                     raise ReadError('Malformed p-code varnode')
                 var['offset'] = format(int(var['offset'], 16), 'x')
-        return pcode_frame(data, image)
+        return pcode_frame({'high_pcodes': ops}, image)
     except (KeyError, TypeError, ValueError, OSError) as error:
         raise ReadError(f'{addr}: unreadable high p-code: {error}') from error
 

@@ -31,6 +31,19 @@ Empty discovery does not prove Ghidra is stopped. Inspect the process and config
 connection before relaunching; use machine-local `ghidra-up` when available. Reuse
 the analyzed program. Re-importing or enabling analysis is not routine reconnection.
 
+GhidraMCP 5.14.2 headless can abandon a large p-code reply before sending headers.
+At `0x675210`, the full export exhausted its 2 GB Java heap in Gson serialization;
+replacement HTTP workers were idle while the client waited. A timeout alone does
+not establish that decompilation or the server stopped. `granularity=basic` returned
+the complete 248,735-operation graph while exporting each operation once. In this
+installed Ghidra 12.1.2 path, both modes obtain a fresh `HighFunction`; its AST
+decoder links every decoded operation into a block. These block operations retain
+the decompiled SSA view. Reject export errors and incomplete blocks, and preserve
+all operations and varnode widths. This equivalence is specific to the unchanged
+decoded graph: a generally edited `PcodeSyntaxTree` may also contain dead operations
+outside its blocks. The comparison tool uses the block export and still requires
+complete reads and native frame checks.
+
 ## Interpret evidence
 
 - Names, signatures and pseudocode are interpretations. Resolve consequential
