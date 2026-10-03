@@ -79,9 +79,17 @@ Python tool changes also run `python -m tools.run_tests` with Python 3.12+ and
    the files you changed with `rustfmt --edition 2024 <file>` (not `cargo fmt`; a `mod.rs`
    also reformats its submodules, so leave those out).
 5. **Keep the README status honest** if your change makes a feature work or stop working.
-6. **Open the PR against `main`** and fill in the template. PR CI runs Rust Clippy and
-   Python tool tests on Windows, Linux and macOS. The Rust library test workflows
-   are manually dispatched; run the required library suite locally before publishing.
+6. **Open the PR against `main`** and fill in the template. The quick simulation field
+   ratchet is the only automatic merge check. Cross-platform Clippy, Python tool tests
+   and Rust library tests are run manually by the maintainer and do not block merges.
+   Run the required local checks before publishing.
+
+To run the platform checks on GitHub, open **Actions**, select **Linux**, **macOS** or
+**Windows**, then choose **Run workflow** and the branch. These run the library tests;
+**Clippy** and **Python tools** each run their checks on all three systems when dispatched.
+The **Linux ARM** and **Windows ARM** library tests are also manual. The same checks can
+be started with `gh workflow run <file> --ref <branch>`, using `linux.yml`, `macos.yml`,
+`windows.yml`, `rust.yml`, `python-tools.yml`, `linux-arm.yml` or `windows-arm.yml`.
 
 ## Project rules, in short
 
