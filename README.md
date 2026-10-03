@@ -1,5 +1,15 @@
 <img src="docs/images/new-conscirpt-hero-image.png" alt="VERA20k hero image" width="100%">
 
+<p align="center">
+  <strong>English</strong> · <a href="README.sv.md" lang="sv">Svenska</a> · <a href="README.zh-CN.md" lang="zh-CN">简体中文</a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml?query=branch%3Amain" title="Latest macOS library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml/badge.svg?branch=main" alt="macOS library tests"></a>
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Latest Linux library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux library tests"></a>
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Latest Windows library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows library tests"></a>
+</p>
+
+<!-- Keep README.sv.md and README.zh-CN.md in sync when changing the text below. -->
+
 # VERA20k
 
 Red Alert 2: Yuri's Revenge — rebuilt in Rust for large multiplayer battles.

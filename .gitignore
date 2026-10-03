@@ -53,6 +53,8 @@ tools/vendor-eval/
 
 /*.md
 !/README.md
+!/README.sv.md
+!/README.zh-CN.md
 !/CLAUDE.md
 !/AGENTS.md
 !/CONTRIBUTING.md
