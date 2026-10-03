@@ -57,7 +57,8 @@ fn advance_integer_coordinate(origin: i32, speed: i32, coefficient: u32) -> i32 
 
 /// Walk75C067..75C0CB and Fly4CDA84..4CDAE5 use this same full-direction math.
 /// The caller chooses the direction (Walk's request, Fly's Primary.Current,
-/// Hover's steering facing at 0x00514803..0x00514860).
+/// Hover's steering facing at 0x00514803..0x00514860, or DropPayload's
+/// wrapped +/-3FFF heading at 0x00415CC7/0x00415CEA).
 /// Inputs/outputs are whole world leptons, with Z
 /// and subsequent placement owned by the caller. Table products remain exact
 /// at the simulation's bounded integer movement speeds; final truncation is
