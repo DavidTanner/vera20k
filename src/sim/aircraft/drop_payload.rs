@@ -5,13 +5,12 @@
 //! left/right by post-decrement payload-count parity. With initial count=8
 //! the visible drop sequence is L, R, L, R, L, R, L, R (first drop LEFT).
 //!
-//! The 0x3FFF binary-angle quarter-circle in the original collapses to
-//! a 64-step facing offset under our 256-facing convention (0x3FFF/0xFFFF
-//! ≈ 0.25, and 64/256 = 0.25). The existing 256-entry SIN_TABLE/COS_TABLE
-//! in util/facing_table covers all the trig.
+//! The original retains the full facing word, wraps it by +/-0x3FFF and
+//! truncates only after adding the retail-table displacement to world XY.
+//! `native_trig` owns that shared coordinate math; `ground_pose` owns Location.
 //!
 //! ## Dependency rules
-//! - Part of sim/ — depends on util/facing_table, util/fixed_math.
+//! - Part of sim/ — depends on util/native_trig and movement/ground_pose.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use crate::map::entities::EntityCategory;
@@ -20,15 +19,15 @@ use crate::sim::cell_rect::{
     IsClearToMoveResult, LiveCellPassabilityQuery, evaluate_live_cell_passability,
 };
 use crate::sim::movement::bump_crush;
+use crate::sim::movement::ground_pose;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::parachute_descent::begin_parachute_descent;
 use crate::sim::passenger::{DepartureFailure, DepartureRoute, PassengerRole, depart_cargo_head};
 use crate::sim::world::{
     PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, SimSoundEvent, Simulation,
 };
-use crate::util::facing_table::facing_to_movement;
-use crate::util::fixed_math::{SimFixed, sim_to_i32};
 use crate::util::lepton;
+use crate::util::native_trig::facing_step_world_xy;
 
 /// V-pattern lateral radius. From gamemd constant at 0x7E2808 = 128.0 leptons
 /// (= 0.5 cell). Each paratrooper lands half a cell to the left or right of
@@ -37,38 +36,37 @@ pub const V_PATTERN_RADIUS_LEPTONS: i32 = 128;
 
 /// Drop interval in native gameplay frames between consecutive drops.
 ///
-/// Hardcoded in gamemd's `Mission_Rescue` (0x00415960): every code path returns
-/// 5, meaning the rescue mission re-fires every 5 game frames while in range
+/// Hardcoded in gamemd's ParadropOverfly mission (0x00415960): every code path returns
+/// 5, meaning the overfly mission re-fires every 5 game frames while in range
 /// and drops one passenger per call. This is NOT driven by `[ParaDropWeapon]
 /// ROF=` (that weapon is a dummy — its rules.ini comment says so).
 ///
 /// One admitted simulation advance is one native gameplay frame.
 pub const PARADROP_DROP_INTERVAL_FRAMES: u16 = 5;
 
-/// Compute the V-pattern lateral offset for the next drop, in leptons.
+/// Candidate drop Location XY, in whole world leptons.
 ///
-/// `facing`: aircraft body facing 0..=255 (RA2 convention: 0=N, 64=E, 128=S, 192=W).
+/// `facing`: full body FacingClass::Current word (0=N, 0x4000=E).
 /// `payload_count_post_dec`: payload count AFTER decrement (matches gamemd's order).
 ///
-/// Returns `(dx, dy)` in leptons. EVEN parity → CW 90° from heading (RIGHT);
-/// ODD parity → CCW 90° from heading (LEFT). With initial count=8 the
-/// post-decrement sequence 7,6,5,4,3,2,1,0 produces drop sides L,R,L,R,L,R,L,R.
-pub fn v_offset(facing: u8, payload_count_post_dec: u8) -> (i32, i32) {
+/// DropPayload415CA6..415D78 wraps the word by +/-3FFF, then uses the same
+/// signed-angle/table math as Walk/Fly. Rounding a separate offset loses the
+/// original final-coordinate truncation and can change the landing cell.
+/// Native corpus: tools/spatial_oracle/paradrop_coordinates.{py,json,md}.
+fn drop_world_xy(current: [i32; 2], facing: u16, payload_count_post_dec: u8) -> [i32; 2] {
     let drop_facing = if (payload_count_post_dec & 1) == 0 {
-        facing.wrapping_add(64) // EVEN → CW 90° (RIGHT of heading)
+        facing.wrapping_add(0x3FFF) // EVEN → RIGHT
     } else {
-        facing.wrapping_sub(64) // ODD  → CCW 90° (LEFT of heading)
+        facing.wrapping_sub(0x3FFF) // ODD → LEFT
     };
-    let radius = SimFixed::from_num(V_PATTERN_RADIUS_LEPTONS);
-    let (dx, dy) = facing_to_movement(drop_facing, radius);
-    (sim_to_i32(dx), sim_to_i32(dy))
+    facing_step_world_xy(current, drop_facing, V_PATTERN_RADIUS_LEPTONS)
 }
 
 /// Outcome of a single Drop_Payload attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DropResult {
     /// Passenger placed, parachute descent attached. Caller resets cooldown
-    /// to the Mission_Rescue 5-frame cadence and
+    /// to the ParadropOverfly 5-frame cadence and
     /// decrements payload_count.
     Success,
     /// Drop cell impassable. Passenger was re-inserted at cargo HEAD; caller
@@ -85,7 +83,7 @@ pub enum DropResult {
 ///
 /// Pre-conditions (caller-enforced):
 ///   - aircraft entity exists and has PassengerRole::Transport with non-empty cargo
-///   - Rescue-equivalent mission cadence is ready for another Drop_Payload call
+///   - ParadropOverfly mission cadence is ready for another Drop_Payload call
 ///
 /// Drop-cell passability reads the canonical path grid at the drop; a
 /// headless fixture without one or terrain defaults to "always passable".
@@ -104,24 +102,17 @@ pub fn try_drop(
     // The drop coordinate is the plane's GetCoords (`0x00415C93`), and only
     // its XY moves to the landing spot (`0x00415DD7..0x00415DDF`): each
     // passenger starts falling at the plane's Z.
-    let (facing, drop_z, aircraft_x_lep, aircraft_y_lep) =
-        match sim.substrate.entities.get(aircraft_id) {
-            Some(a) => {
-                let drop_z = crate::sim::movement::ground_pose::object_world_z_leptons(
-                    a,
-                    sim.resolved_terrain.as_ref(),
-                );
-                let x_lep = a.position.rx as i32 * 256 + sim_to_i32(a.position.sub_x);
-                let y_lep = a.position.ry as i32 * 256 + sim_to_i32(a.position.sub_y);
-                (
-                    a.body_facing_byte(sim.session.binary_frame),
-                    drop_z,
-                    x_lep,
-                    y_lep,
-                )
-            }
-            None => return DropResult::NoCargo,
-        };
+    let (facing, drop_z, aircraft_position) = match sim.substrate.entities.get(aircraft_id) {
+        Some(a) => {
+            let drop_z = ground_pose::object_world_z_leptons(a, sim.resolved_terrain.as_ref());
+            (
+                a.body_facing_current(sim.session.binary_frame),
+                drop_z,
+                a.position,
+            )
+        }
+        None => return DropResult::NoCargo,
+    };
 
     // Remove the native cargo HEAD (last boarded), and complete any retry here.
     let result = depart_cargo_head(
@@ -170,20 +161,18 @@ pub fn try_drop(
                 return Err(DepartureFailure::NotReady);
             }
 
-            // 3. Compute V-offset in leptons, then split into (cell, sub-cell).
-            // Using `div_euclid`/`rem_euclid` so negative offsets cross cell
-            // boundaries correctly (left-side drops walk one cell west when the
-            // aircraft is in the western half of its cell).
+            // 3. Compute the final native coordinate before splitting it through
+            // the Location owner. Signed off-map remainders must survive too.
             let payload_count_post = payload_count_pre_dec.saturating_sub(1);
-            let (dx, dy) = v_offset(facing, payload_count_post);
-            let drop_x_lep = aircraft_x_lep + dx;
-            let drop_y_lep = aircraft_y_lep + dy;
-            let drop_rx =
-                crate::util::lepton::lepton_to_cell(drop_x_lep).clamp(0, u16::MAX as i32) as u16;
-            let drop_ry =
-                crate::util::lepton::lepton_to_cell(drop_y_lep).clamp(0, u16::MAX as i32) as u16;
-            let drop_sub_x = SimFixed::from_num(drop_x_lep.rem_euclid(256));
-            let drop_sub_y = SimFixed::from_num(drop_y_lep.rem_euclid(256));
+            let xy = drop_world_xy(
+                ground_pose::position_world_xy(&aircraft_position),
+                facing,
+                payload_count_post,
+            );
+            let mut drop_position = aircraft_position;
+            ground_pose::set_position_world_xy(&mut drop_position, xy);
+            let (drop_rx, drop_ry) = (drop_position.rx, drop_position.ry);
+            let (drop_sub_x, drop_sub_y) = (drop_position.sub_x, drop_position.sub_y);
 
             // Paradrop refuses a structural bridge cell (`+0x140 & 0x100`)
             // without the `0x200` flag (`0x005F597B..0x005F5996`).
@@ -369,10 +358,7 @@ mod tests {
     use crate::rules::ruleset::RuleSet;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::passenger::PassengerCargo;
-
-    fn magnitude_sq(dx: i32, dy: i32) -> i64 {
-        (dx as i64) * (dx as i64) + (dy as i64) * (dy as i64)
-    }
+    use crate::util::fixed_math::SimFixed;
 
     fn drop_test_rules() -> RuleSet {
         let ini = IniFile::from_str(
@@ -428,99 +414,160 @@ mod tests {
     }
 
     #[test]
-    fn test_v_pattern_radius_is_128_for_all_facings() {
-        // Magnitude of (dx, dy) should be ~128 leptons regardless of facing.
-        // sin/cos LUT is exact at multiples of 64 (cardinal facings) and accurate
-        // to <1 lepton elsewhere.
-        for facing in 0..=255u8 {
-            let (dx, dy) = v_offset(facing, 0); // EVEN parity (RIGHT)
-            let mag_sq = magnitude_sq(dx, dy);
-            let expected_sq = (V_PATTERN_RADIUS_LEPTONS as i64).pow(2);
-            // Allow ±2 leptons of error (LUT discretization at 256 facings).
-            let tolerance: i64 = 2 * (V_PATTERN_RADIUS_LEPTONS as i64) * 2 + 4;
-            assert!(
-                (mag_sq - expected_sq).abs() < tolerance,
-                "facing={} produced offset ({},{}), mag²={}, expected ~{}",
-                facing,
-                dx,
-                dy,
-                mag_sq,
-                expected_sq,
-            );
+    fn paradrop_landing_cell_matches_original_coordinate_prefix() {
+        let oracle: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/paradrop_coordinates.json"
+        ))
+        .unwrap();
+        let rules = drop_test_rules();
+        let mut checked = 0;
+        // All selected headings for both parities at (12928,5248). These are
+        // original coordinate outputs, before native admission/subcell choice.
+        for sweep in &oracle["sweeps"].as_array().unwrap()[..2] {
+            assert_eq!(sweep["origin"], serde_json::json!([12928, 5248]));
+            for row in sweep["samples"].as_array().unwrap() {
+                let mut sim = Simulation::new();
+                insert_loaded_paradrop_pair(&mut sim, 1, 2);
+                let plane = sim.substrate.entities.get_mut(1).unwrap();
+                crate::sim::movement::ground_pose::set_position_world_xy(
+                    &mut plane.position,
+                    [12928, 5248],
+                );
+                plane
+                    .body_facing
+                    .snap(row["facing"].as_u64().unwrap() as u16, 0);
+                let expected_cell = (
+                    lepton::lepton_to_cell(row["world_xy"][0].as_i64().unwrap() as i32) as u16,
+                    lepton::lepton_to_cell(row["world_xy"][1].as_i64().unwrap() as i32) as u16,
+                );
+                assert_eq!(
+                    try_drop(
+                        &mut sim,
+                        &rules,
+                        1,
+                        sweep["post_count"].as_u64().unwrap() as u8 + 1,
+                        None
+                    ),
+                    DropResult::Success,
+                );
+                let passenger = sim.substrate.entities.get(2).unwrap();
+                assert_eq!(
+                    (passenger.position.rx, passenger.position.ry),
+                    expected_cell,
+                    "native row={row}, post_count={}",
+                    sweep["post_count"],
+                );
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 52);
+    }
+
+    #[test]
+    fn paradrop_world_coordinates_match_all_native_headings() {
+        use crate::util::sha256::{Sha256, digest_hex};
+        let oracle: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/paradrop_coordinates.json"
+        ))
+        .unwrap();
+        let sweeps = oracle["sweeps"].as_array().unwrap();
+        assert_eq!(sweeps.len(), 6);
+        for (index, sweep) in sweeps.iter().enumerate() {
+            let origin = [[12928, 5248], [0, 0], [131071, 130816]][index / 2];
+            let post_count = (index % 2) as u8;
+            assert_eq!(sweep["origin"], serde_json::json!(origin));
+            assert_eq!(sweep["post_count"], post_count);
+            assert_eq!(sweep["facing_count"], 65536);
+            for sample in sweep["samples"].as_array().unwrap() {
+                assert_eq!(
+                    serde_json::json!(drop_world_xy(
+                        origin,
+                        sample["facing"].as_u64().unwrap() as u16,
+                        post_count
+                    )),
+                    sample["world_xy"],
+                    "origin={origin:?}, post={post_count}, sample={sample}",
+                );
+            }
+            let mut digest = Sha256::new();
+            for facing in 0..=u16::MAX {
+                for coordinate in drop_world_xy(origin, facing, post_count) {
+                    digest.update(&coordinate.to_le_bytes());
+                }
+            }
+            assert_eq!(digest_hex(digest.finalize()), sweep["world_xy_sha256"]);
         }
     }
 
     #[test]
-    fn test_v_pattern_alternates_starting_left() {
-        // gamemd: with initial count=8, post-decrement sequence is 7,6,5,4,3,2,1,0.
-        // Parity: 7→ODD→LEFT, 6→EVEN→RIGHT, 5→ODD→LEFT, ...
-        // Visible drop sequence = L, R, L, R, L, R, L, R (first drop LEFT).
-        let facing = 0u8; // North → LEFT = -X (west), RIGHT = +X (east)
-        let (dx_first, _) = v_offset(facing, 7); // first drop, payload_post=7 ODD
-        let (dx_second, _) = v_offset(facing, 6); // second drop, payload_post=6 EVEN
-        assert!(
-            dx_first < 0,
-            "first drop (count=7, ODD) should be LEFT (-X), got dx={}",
-            dx_first,
+    fn paradrop_uses_native_cell_for_occupancy_admission() {
+        let oracle: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/paradrop_coordinates.json"
+        ))
+        .unwrap();
+        let row = oracle["sweeps"][0]["samples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["facing"] == 0x7F)
+            .unwrap();
+        let native_cell = (
+            lepton::lepton_to_cell(row["world_xy"][0].as_i64().unwrap() as i32) as u16,
+            lepton::lepton_to_cell(row["world_xy"][1].as_i64().unwrap() as i32) as u16,
         );
-        assert!(
-            dx_second > 0,
-            "second drop (count=6, EVEN) should be RIGHT (+X), got dx={}",
-            dx_second,
-        );
-    }
-
-    #[test]
-    fn test_v_pattern_facing_north_right_is_east() {
-        // Facing 0 (North): RIGHT 90° → facing 64 (East) → +X direction.
-        let (dx, dy) = v_offset(0, 0); // EVEN → RIGHT
-        assert!(dx > 100, "North-RIGHT should give +X, got dx={}", dx);
-        assert!(
-            dy.abs() < 30,
-            "North-RIGHT should have ~zero Y, got dy={}",
-            dy,
-        );
-    }
-
-    #[test]
-    fn test_v_pattern_facing_east_right_is_south() {
-        // Facing 64 (East): RIGHT 90° → facing 128 (South) → +Y direction.
-        let (dx, dy) = v_offset(64, 0); // EVEN → RIGHT
-        assert!(dy > 100, "East-RIGHT should give +Y, got dy={}", dy);
-        assert!(
-            dx.abs() < 30,
-            "East-RIGHT should have ~zero X, got dx={}",
-            dx,
-        );
-    }
-
-    #[test]
-    fn test_v_pattern_facing_north_left_is_west() {
-        // Facing 0 (North): LEFT 90° → facing 192 (West) → -X direction.
-        let (dx, dy) = v_offset(0, 1); // ODD → LEFT
-        assert!(dx < -100, "North-LEFT should give -X, got dx={}", dx);
-        assert!(
-            dy.abs() < 30,
-            "North-LEFT should have ~zero Y, got dy={}",
-            dy,
-        );
-    }
-
-    #[test]
-    fn test_v_pattern_facing_south_alternates_correctly() {
-        // Facing 128 (South): LEFT = facing 64 (East, +X), RIGHT = facing 192 (West, -X).
-        let (dx_left, _) = v_offset(128, 1); // ODD → LEFT
-        let (dx_right, _) = v_offset(128, 0); // EVEN → RIGHT
-        assert!(
-            dx_left > 100,
-            "South-LEFT should be +X (East), got {}",
-            dx_left
-        );
-        assert!(
-            dx_right < -100,
-            "South-RIGHT should be -X (West), got {}",
-            dx_right
-        );
+        let rules = drop_test_rules();
+        for blocked in [false, true] {
+            let mut sim = Simulation::new();
+            insert_loaded_paradrop_pair(&mut sim, 1, 2);
+            sim.substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .body_facing
+                .snap(0x7F, 0);
+            // Opposite admission outcomes on the two adjacent cells: the old
+            // byte-facing/offset path chose (51,20), the native row (50,20).
+            let blocked_cell = if blocked { native_cell } else { (51, 20) };
+            for (id, subcell) in [(90, 2), (91, 3), (92, 4)] {
+                let mut blocker =
+                    GameEntity::test_default(id, "E1", "Americans", blocked_cell.0, blocked_cell.1);
+                blocker.owner = sim.interner.intern("Americans");
+                blocker.type_ref = sim.interner.intern("E1");
+                blocker.category = EntityCategory::Infantry;
+                blocker.is_voxel = false;
+                blocker.sub_cell = Some(subcell);
+                (blocker.position.sub_x, blocker.position.sub_y) =
+                    lepton::subcell_lepton_offset(Some(subcell));
+                sim.substrate.entities.insert(blocker);
+                assert!(matches!(sim.reveal(id), RevealOutcome::Revealed { .. }));
+            }
+            assert_eq!(
+                try_drop(&mut sim, &rules, 1, 1, None),
+                if blocked {
+                    DropResult::ImpassableRetry
+                } else {
+                    DropResult::Success
+                },
+            );
+            let cargo = sim
+                .substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .passenger_role
+                .cargo()
+                .unwrap();
+            let passenger = sim.substrate.entities.get(2).unwrap();
+            if blocked {
+                assert_eq!(cargo.passengers, vec![2]);
+                assert!(passenger.lifecycle.in_limbo);
+                assert!(passenger.parachute_state.is_none());
+            } else {
+                assert!(cargo.passengers.is_empty());
+                assert_eq!((passenger.position.rx, passenger.position.ry), native_cell);
+                assert!(!passenger.lifecycle.in_limbo);
+            }
+        }
     }
 
     /// The production path end to end: the drop attaches the canopy, the
@@ -717,8 +764,8 @@ mod tests {
         );
         assert_ne!(
             (
-                sim_to_i32(passenger.position.sub_x),
-                sim_to_i32(passenger.position.sub_y)
+                passenger.position.sub_x.to_num::<i32>(),
+                passenger.position.sub_y.to_num::<i32>()
             ),
             (0, 128),
             "raw V-pattern half-cell coordinate must not be the final infantry XY"
