@@ -15,6 +15,7 @@ use crate::map::overlay_types::{
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::sim::intern::InternedId;
 use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
+use crate::util::direction_tables::CELL_DELTAS;
 use crate::util::lepton::{LEPTONS_PER_LEVEL, ground_height_leptons};
 use crate::util::native_x87::object_distance;
 use std::collections::BTreeSet;
@@ -145,17 +146,7 @@ fn increment_wall_neighbor_plane(
     rx: u16,
     ry: u16,
 ) {
-    const ADJACENT_8: [(i32, i32); 8] = [
-        (0, -1),
-        (1, -1),
-        (1, 0),
-        (1, 1),
-        (0, 1),
-        (-1, 1),
-        (-1, 0),
-        (-1, -1),
-    ];
-    for (dx, dy) in ADJACENT_8 {
+    for (dx, dy) in CELL_DELTAS {
         let target = native_runtime_overlay_cell_lookup(
             width,
             height,
@@ -477,22 +468,13 @@ impl OverlayGrid {
         let counts = &mut self.retained_neighbor_counts;
         let terrain = terrain.expect("retained neighbor counts need native CellClass lookup");
         self.mutation_epoch = self.mutation_epoch.wrapping_add(1);
-        for (dx, dy) in [
-            (0i16, -1i16),
-            (1, -1),
-            (1, 0),
-            (1, 1),
-            (0, 1),
-            (-1, 1),
-            (-1, 0),
-            (-1, -1),
-        ] {
+        for (dx, dy) in CELL_DELTAS {
             let target = native_runtime_overlay_cell_lookup(
                 self.width,
                 self.height,
                 Some(terrain),
-                i32::from(source.0.wrapping_add(dx)),
-                i32::from(source.1.wrapping_add(dy)),
+                i32::from(source.0.wrapping_add(dx as i16)),
+                i32::from(source.1.wrapping_add(dy as i16)),
             );
             match target {
                 Some(NativeRuntimeOverlayCell::Real(x, y)) => {
@@ -555,17 +537,7 @@ impl OverlayGrid {
             "retained wall-neighbor authority must match overlay shape"
         );
 
-        const ADJACENT_8: [(i32, i32); 8] = [
-            (0, -1),
-            (1, -1),
-            (1, 0),
-            (1, 1),
-            (0, 1),
-            (-1, 1),
-            (-1, 0),
-            (-1, -1),
-        ];
-        for (dx, dy) in ADJACENT_8 {
+        for (dx, dy) in CELL_DELTAS {
             // Adjacent_Cell rereads the receiver's packed coordinate for each
             // probe. This matters when the receiver itself is the shared
             // dummy: a miss restamps +0x24 before the next direction.

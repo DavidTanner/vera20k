@@ -19,18 +19,6 @@ use crate::rules::terrain_rules::LandType;
 use crate::sim::bridge_state::BridgeEndpointRecord;
 use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 
-/// 8-directional neighbor offsets: (dx, dy, is_diagonal).
-pub(crate) const NEIGHBORS: [(i32, i32, bool); 8] = [
-    (0, -1, false), // N
-    (1, -1, true),  // NE
-    (1, 0, false),  // E
-    (1, 1, true),   // SE
-    (0, 1, false),  // S
-    (-1, 1, true),  // SW
-    (-1, 0, false), // W
-    (-1, -1, true), // NW
-];
-
 /// Shared persistent topology projected through all 13 MovementZone rows.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BaseZoneTopology {

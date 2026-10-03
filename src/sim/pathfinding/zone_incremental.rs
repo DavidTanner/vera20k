@@ -249,7 +249,7 @@ fn decide_base_zone_repair(
     }
 
     let neighbors: [(u8, ZoneId); 8] = std::array::from_fn(|neighbor_index| {
-        let (dx, dy, _) = super::zone_build::NEIGHBORS[neighbor_index];
+        let (dx, dy) = crate::util::direction_tables::CELL_DELTAS[neighbor_index];
         let (nx, ny) = if let Some(size) = base.native_bridge_source_size {
             // The target was clamped once. Neighbors use raw pointer offsets
             // around that canonical native record, not separately clamped coords.

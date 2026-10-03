@@ -42,7 +42,7 @@ fn retained_base_repair_matches_native_selectors_and_adoption_without_live_publi
             ids[i] = values[2].as_u64().unwrap() as u16;
         };
         put(target, &input["target"]);
-        for ((dx, dy, _), value) in super::super::zone_build::NEIGHBORS
+        for ((dx, dy), value) in crate::util::direction_tables::CELL_DELTAS
             .iter()
             .zip(input["neighbors"].as_array().unwrap())
         {

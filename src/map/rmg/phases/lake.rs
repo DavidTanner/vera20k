@@ -59,7 +59,7 @@ const MAX_SEED_ATTEMPTS: i32 = 200;
 const BAND_RINGS: i32 = 2;
 const BAND_TAG: i32 = -2;
 
-/// The four cardinal directions, as `DIRECTION_OFFSETS` indices (N, E, S, W).
+/// The four cardinal directions, as `CELL_DELTAS` indices (N, E, S, W).
 const CARDINALS: [usize; 4] = [0, 2, 4, 6];
 
 /// The seeder's cross-attempt accumulators.

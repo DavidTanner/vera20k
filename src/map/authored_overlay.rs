@@ -16,6 +16,7 @@ use crate::map::resolved_terrain::{
 };
 use crate::rules::terrain_rules::LandType;
 use crate::rules::tiberium_type::TiberiumTypeRegistry;
+use crate::util::direction_tables::CELL_DELTAS;
 
 pub(crate) const NO_OVERLAY_IDENTITY: i32 = -1;
 
@@ -1195,16 +1196,6 @@ impl LiveOverlayCells {
     ) -> Result<AuthoredWallMarkResult, E> {
         const CARDINAL: [(i16, i16); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
         const CLEANUP_CROSS: [(i16, i16); 5] = [(0, -1), (1, 0), (0, 1), (-1, 0), (0, 0)];
-        const ADJACENT_8: [(i16, i16); 8] = [
-            (0, -1),
-            (1, -1),
-            (1, 0),
-            (1, 1),
-            (0, 1),
-            (-1, 1),
-            (-1, 0),
-            (-1, -1),
-        ];
 
         let anchor = self.cell_ref(x, y);
         let NativeOverlayCellTarget::Real(_) = anchor.target else {
@@ -1262,10 +1253,10 @@ impl LiveOverlayCells {
             apply_effect(self, AuthoredWallEffect::CleanupRecalcAndZone(recalc))?;
         }
 
-        for (dx, dy) in ADJACENT_8 {
+        for (dx, dy) in CELL_DELTAS {
             let neighbor = self.cell_ref(
-                anchor_coord.0.wrapping_add(dx),
-                anchor_coord.1.wrapping_add(dy),
+                anchor_coord.0.wrapping_add(dx as i16),
+                anchor_coord.1.wrapping_add(dy as i16),
             );
             self.wrapping_increment_authored_wall_count(neighbor.target);
             apply_effect(self, AuthoredWallEffect::BlockerCountIncrement(neighbor))?;

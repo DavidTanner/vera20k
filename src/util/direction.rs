@@ -26,6 +26,11 @@ pub const DIRECTION_COUNT: usize = 8;
 pub const TUBE_STEP_DIRECTION: u8 = 8;
 pub const FACING_UNITS_PER_DIRECTION: u8 = 32;
 
+/// Cell compass values initialized at `0x0049F2F0` into `0x0089F688`.
+/// Original initializer execution through RET `0x0049F39B` is preserved in
+/// `tools/spatial_oracle/locomotor_head_coordinates.json::initializer_controls`.
+/// `direction_tables::cell` exposes this owner to simulation consumers; the
+/// lepton table derives the same order in its own coordinate units.
 pub const DIRECTION_DELTAS: [(i32, i32); DIRECTION_COUNT] = [
     (0, -1),  // 0 = N
     (1, -1),  // 1 = NE

@@ -25,18 +25,18 @@ pub mod tiles;
 pub mod trig;
 pub mod x87;
 
-pub use grid::{DIRECTION_OFFSETS, DiamondScan, GridCell, RmgGrid};
-pub use options::RmgOptions;
 pub use description::SeedDescription;
+pub use grid::{DiamondScan, GridCell, RmgGrid};
+pub use options::RmgOptions;
 pub use rng::RmgRng;
 pub use scratch::RmgScratch;
 pub use settings::RmgSettings;
 pub use tiles::TileIds;
 pub use x87::{Gaussian, TruncF64};
 
-pub(crate) use crate::map::construction_trace::{RmgConstructionPhase, RmgConstructionTrace};
 #[cfg(test)]
 pub(crate) use crate::map::construction_trace::{RmgConstructionEvent, RmgConstructionOutcome};
+pub(crate) use crate::map::construction_trace::{RmgConstructionPhase, RmgConstructionTrace};
 use crate::map::map_file::MapFile;
 use crate::rng_continuation::MapGenRngContinuation;
 
