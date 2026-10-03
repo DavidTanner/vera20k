@@ -16,8 +16,8 @@ from tools.spatial_oracle.unit_entry import EXTRA, HOUSE, CELL
 from tools.spatial_oracle.unit_scatter_state import SP
 
 
-def make_destination_fixture(case):
-    u, call, read32 = make_source_fixture(dict(case, live_entry=True))
+def make_destination_fixture(case, *, uc=None):
+    u, call, read32 = make_source_fixture(dict(case, live_entry=True), uc=uc)
     u.mem_map(EXTRA, 0x30000)
     family = case['family']
     if family == 'ship':
@@ -37,8 +37,21 @@ def make_destination_fixture(case):
         call(0x4E0E80, ACTOR + offset, [0, 0])
         u.mem_write(ACTOR + offset, dwords(0x7E91EC))
         u.mem_write(ACTOR + offset + 0x10, dwords(0, 10))
-    u.mem_write(0x8871E0, dwords(EXTRA + 0x10000))
-    u.mem_write(EXTRA + 0x10000 + 0x1768, dwords(22))
+    rules = case.get('rules_pointer', EXTRA + 0x10000)
+    u.mem_write(0x8871E0, dwords(rules))
+    if 'rules_pointer' not in case:
+        u.mem_write(rules + 0x1768, dwords(22))
+    if family == 'jumpjet':
+        # Original constructor54AC40 reads this supplied Rules rotation before
+        # native Link54AD30 replaces it with the retained type's actual ROT.
+        # A retained original Rules constructor/reader supplies its own value.
+        if 'rules_pointer' not in case:
+            u.mem_write(rules + 0x40C, dwords(4))
+        call(0x54AC40, LOCO, [])
+        u.mem_write(LOCO + 0xC, dwords(ACTOR))
+        u.mem_write(LOCO + 0x14, dwords(1))
+        u.mem_write(LOCO + 0x10, bytes([not case.get('power_off', False)]))
+        u.mem_write(ACTOR + 0x6C0, dwords(TYPE))
     u.mem_write(ACTOR + 0x270, bytes([case.get('warp_out', False), case.get('warp_in', False)]))
     u.mem_write(ACTOR + 0x5A0, dwords(CELLS))
     u.mem_write(ACTOR + 0x5A4, dwords(CELL if case.get('same_nav') else 0))
@@ -55,8 +68,9 @@ def make_destination_fixture(case):
         u.mem_write(items, dwords(*([CELL] * case['nav_queue'])))
         u.mem_write(ACTOR + 0x588 + 4, dwords(items, case['nav_queue']))
         u.mem_write(ACTOR + 0x598, dwords(case['nav_queue']))
-    u.mem_write(LOCO + 0x34, dwords(*case.get('prior', [700, 800, 900])))
-    u.mem_write(LOCO + 0x40, dwords(*case.get('head', [2816, 2688, 123])))
+    if family != 'jumpjet':
+        u.mem_write(LOCO + 0x34, dwords(*case.get('prior', [700, 800, 900])))
+        u.mem_write(LOCO + 0x40, dwords(*case.get('head', [2816, 2688, 123])))
     u.mem_write(CELL + 0x140, dwords(0x100 if case.get('bridge') else 0))
     # Original bridge-scale leaves, with their established level scale104.
     for address in (0x8A07D0, 0xB07838):

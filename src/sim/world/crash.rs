@@ -14,7 +14,7 @@
 //! A `Crashable=` Unit crashes the same way from `UnitClass::ReceiveDamage @
 //! 0x00737C90` (`0x00738457..0x00738475`), after its `Death_Explosion`, its
 //! passengers and its crew; a Jumpjet falls under the locomotor's State 5
-//! (`movement::jumpjet_flight`) and its impact notice finishes it
+//! (`movement::jumpjet_movement::jumpjet_flight`) and its impact notice finishes it
 //! ([`Simulation::jumpjet_crash_impact`]). A `Crashable=` `JumpJet=`
 //! infantryman crashes from `InfantryClass::ReceiveDamage` (`0x005185F1`,
 //! `world::infantry_terminal`) and falls and lands in its AirDeath actions

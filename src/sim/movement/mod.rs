@@ -132,7 +132,6 @@ pub mod facing_class;
 pub mod fly_height;
 pub mod group_destination;
 pub mod hover;
-pub mod jumpjet_flight;
 pub mod jumpjet_movement;
 pub mod locomotion;
 pub mod locomotor;

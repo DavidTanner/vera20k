@@ -10051,13 +10051,13 @@ fn gsi_08_08_kirov_vertical_bomb_falls_and_detonates() {
     // the airship is then placed at the top of its climb. Assert the rules hop
     // at its source so a broken parse fails here rather than downstream.
     assert_eq!(
-        locomotor.jumpjet_runtime().unwrap().params.height,
+        locomotor.jumpjet_runtime().unwrap().params().height,
         750,
         "`JumpjetHeight=750` must reach the locomotor's hover target; a 500 here \
          means the rules->locomotor hop is broken, not the flight model"
     );
     locomotor.altitude = crate::util::fixed_math::SimFixed::from_num(
-        locomotor.jumpjet_runtime().unwrap().params.height,
+        locomotor.jumpjet_runtime().unwrap().params().height,
     );
     kirov.locomotor = Some(locomotor);
     store.insert(kirov);

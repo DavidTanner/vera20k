@@ -66,7 +66,24 @@ fn run(cli: Cli) -> Result<(), ErrorReport> {
     match cli.verb {
         Verb::Help => unreachable!("handled before dispatch"),
         Verb::IniGet { section, key } => {
-            let report = verb_ini::run(&mut manager, &ra2_dir, &section, &key, &cli.ini)?;
+            let report = verb_ini::run(
+                &mut manager,
+                &ra2_dir,
+                verb_ini::IniQuery::Accessor {
+                    section: &section,
+                    key: &key,
+                },
+                &cli.ini,
+            )?;
+            println!("{}", to_json(&report));
+        }
+        Verb::IniType { type_id } => {
+            let report = verb_ini::run(
+                &mut manager,
+                &ra2_dir,
+                verb_ini::IniQuery::Type { type_id: &type_id },
+                &cli.ini,
+            )?;
             println!("{}", to_json(&report));
         }
 

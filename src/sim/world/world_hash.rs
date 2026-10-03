@@ -1287,8 +1287,19 @@ impl Simulation {
                     bale.value.hash(hasher);
                 }
             }
-            entity.air_spatial_bucket.hash(hasher);
-            entity.air_spatial_enter_order.hash(hasher);
+            entity.air_spatial_bucket().hash(hasher);
+            entity.air_spatial_enter_order().hash(hasher);
+            // Foot+560/+564 are independent retained native Cells. Constructor
+            // NativeNull contributes no bytes, like the other sparse native
+            // fields; either non-null cache independently affects continuation.
+            if entity.air_tracker_cell() != (0, 0) {
+                b"foot-air-tracker-cell-v289".hash(hasher);
+                entity.air_tracker_cell().hash(hasher);
+            }
+            if entity.air_slot_cell() != (0, 0) {
+                b"foot-air-slot-cell-v289".hash(hasher);
+                entity.air_slot_cell().hash(hasher);
+            }
             // Independent lifecycle axes and deterministic Rust bookkeeping.
             // Keep this order fixed: it is part of the lockstep hash contract.
             entity.lifecycle.object_alive.hash(hasher);
@@ -4369,16 +4380,30 @@ mod bridge161_hash_projection_tests {
                 _ => unreachable!(),
             },
             LocomotorRuntimePayload::Hover(state) => state.set_head(Some(coord)),
-            LocomotorRuntimePayload::Jumpjet(state) => match field {
-                0 => state.destination = coord,
-                1 => state.moving = true,
-                2 => state.phase = 2,
-                3 => state.flight.target_height = 7,
-                4 => state.flight.current_speed_bits = 1.0f64.to_bits(),
-                5 => state.params.speed = 99,
-                6 => state.landing_latched = true,
-                _ => unreachable!(),
-            },
+            LocomotorRuntimePayload::Jumpjet(state) => {
+                *state = match field {
+                    0 => state.clone().with_destination_for_test(coord),
+                    1 => state.clone().with_moving_for_test(true),
+                    2 => state.clone().with_phase_for_test(2),
+                    3 => {
+                        let mut flight = state.flight();
+                        flight.target_height = 7;
+                        state.clone().with_flight_for_test(flight)
+                    }
+                    4 => {
+                        let mut flight = state.flight();
+                        flight.current_speed_bits = 1.0f64.to_bits();
+                        state.clone().with_flight_for_test(flight)
+                    }
+                    5 => {
+                        let mut params = state.params();
+                        params.speed = 99;
+                        state.clone().with_params_for_test(params)
+                    }
+                    6 => state.clone().with_landing_latched_for_test(true),
+                    _ => unreachable!(),
+                };
+            }
             _ => unreachable!("supplied bridge payload only"),
         }
     }

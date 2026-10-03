@@ -565,9 +565,15 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
         // Keep the admitted high-flight height through the actual Process below.
 
         let runtime = loco.jumpjet_runtime_mut().expect("jumpjet runtime");
-        runtime.phase = crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
+        let mut flight = runtime.flight();
         // The kernel flies toward its own retained target height.
-        runtime.flight.target_height = 208;
+        flight.target_height = 208;
+        *runtime = runtime
+            .clone()
+            .with_phase_for_test(
+                crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_TRANSLATE,
+            )
+            .with_flight_for_test(flight);
         entity.locomotor = Some(loco);
     }
     sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
@@ -657,7 +663,8 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
             .or_default()
             .insert(right.to_ascii_uppercase());
     }
-    sim.substrate
+    let runtime = sim
+        .substrate
         .entities
         .get_mut(2)
         .unwrap()
@@ -665,8 +672,10 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
         .as_mut()
         .unwrap()
         .jumpjet_runtime_mut()
-        .unwrap()
-        .phase = crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
+        .unwrap();
+    *runtime = runtime.clone().with_phase_for_test(
+        crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_TRANSLATE,
+    );
     sim.refresh_high_flying_sight_before_process(2, None);
     assert_eq!(
         sim.substrate

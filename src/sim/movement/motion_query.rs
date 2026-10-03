@@ -25,7 +25,7 @@ pub(crate) fn is_moving(entity: &GameEntity) -> Option<bool> {
         LocomotorKind::Fly => locomotor
             .fly_runtime()
             .map(|state| state.moving() || entity.flight_attitude.blocks_landing()),
-        LocomotorKind::Jumpjet => locomotor.jumpjet_runtime().map(|state| state.moving),
+        LocomotorKind::Jumpjet => locomotor.jumpjet_runtime().map(|state| state.moving()),
         LocomotorKind::Hover => locomotor
             .hover_runtime()
             .map(super::hover::HoverRuntime::is_moving),

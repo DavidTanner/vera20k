@@ -5,7 +5,7 @@ FireAt/Bullet/Anim, collapse/target release and deferred retirement execute.
 Single supplied House, cropped map and omitted global phases remain boundaries.
 """
 from pathlib import Path
-import argparse,hashlib,json,struct,sys,uuid
+import argparse,hashlib,json,struct,sys
 from collections import deque
 from unicorn import UC_HOOK_CODE,UC_HOOK_MEM_INVALID
 from unicorn.x86_const import *
@@ -14,7 +14,7 @@ from capstone import Cs,CS_ARCH_X86,CS_MODE_32
 HERE=Path(__file__).resolve().parent
 from . import mtnk_attack as base
 from .mission_publication import finish_vectors
-from tools.native_oracle import NATIVE_SHA256,RET_MAGIC,run_checked,finish_vectors as finish_unpublished_vectors,provenance
+from tools.native_oracle import NATIVE_SHA256,RET_MAGIC,run_checked,finish_vectors as finish_unpublished_vectors,provenance,initialize_empty_windows_seh
 from tools.spatial_oracle.building_body_rules import SP,RULES,dwords
 
 class Mission:
@@ -59,14 +59,7 @@ class Mission:
   if a==0x7413D3:
    b=u.reg_read(UC_X86_REG_EAX);assert b==self.bullets[-1]
    self.shots.append(dict(frame=self.frame,bullet=hex(b),rearm=[base.i32(u,self.src+0x2EC),base.i32(u,self.src+0x2F4)],position=base.xyz(u,b+0x9C),velocity=base.vec(u,b+0xE8),damage=base.i32(u,b+0x6C),rng_after=base.sr.rng_state(u,self.resident.rngs['scenario'])))
-  if a==0x527AF9:
-   codepage,flags,source,length,dest,capacity=struct.unpack('<6I',u.mem_read(sp,24));assert (codepage,flags,length)==(0,1,0xffffffff)
-   value=m.string(source);assert value.isascii();raw=(value+'\0').encode('utf-16-le');assert len(raw)//2<=capacity
-   u.mem_write(dest,raw);u.reg_write(UC_X86_REG_EAX,len(raw)//2);u.reg_write(UC_X86_REG_ESP,sp+24);u.reg_write(UC_X86_REG_EIP,0x527AFF);self.events.append(dict(kind='OS_ascii_to_utf16',value=value));return
-  if a==0x527B0C:
-   source,dest=struct.unpack('<2I',u.mem_read(sp,8));s=[]
-   while (v:=struct.unpack('<H',u.mem_read(source+len(s)*2,2))[0]):s.append(chr(v))
-   value=''.join(s);raw=uuid.UUID(value).bytes_le;u.mem_write(dest,raw);u.reg_write(UC_X86_REG_EAX,0);u.reg_write(UC_X86_REG_ESP,sp+8);u.reg_write(UC_X86_REG_EIP,0x527B12);self.events.append(dict(kind='OS_CLSIDFromString',value=value,bytes=raw.hex()));return
+  if m.guid_transport(u,a,sp,self.events):return
   if a in (0x41C27D,0x41C2CB):
    clsid,outer,context,iid,ppv=struct.unpack('<5I',u.mem_read(sp,20));assert bytes(u.mem_read(clsid,16))==bytes(u.mem_read(0x7E9A30,16));assert outer==0 and context==7
    u.mem_write(sp,dwords(a+6,0,outer,iid,ppv));u.reg_write(UC_X86_REG_EIP,0x6C4010);self.events.append(dict(kind='COM_Drive_original_factory'));return
@@ -99,7 +92,7 @@ class Mission:
    'setup':dict(fixture=fixture,phase=self.phase,frame=self.frame,continuation=self.continuation)}
   m=self.m;u=self.u
   # Existing native retirement owner supplies a valid empty Windows SEH chain.
-  u.mem_map(0,0x1000);u.mem_write(0,dwords(-1))
+  initialize_empty_windows_seh(u)
   # Actual MissionControl static construction, then the original Rules loop for
   # each physical layer. Source-order caches remain the existing INI boundary.
   m.invoke(0x4E7CF0,0);mission_rows=[]

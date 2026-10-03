@@ -40,7 +40,8 @@ from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_EBP, UC_X86_REG_EBX, UC_X86_REG_ECX,
                                UC_X86_REG_EDI, UC_X86_REG_EDX, UC_X86_REG_EIP, UC_X86_REG_ESI,
                                UC_X86_REG_ESP, UC_X86_REG_FPCW)
-from tools.native_oracle import RET_MAGIC, finish_vectors, provenance, run_checked
+from tools.native_oracle import (NativeCallTrace, RET_MAGIC, changed_byte_spans,
+                                finish_vectors, provenance, run_checked)
 from tools.spatial_oracle.map_queries import dwords
 from tools.spatial_oracle import refinery_dock as dock
 from tools.spatial_oracle.refinery_dock import (ACTOR, LOCO, BLD, OTHER, MINER_ITEMS, BLD_ITEMS,
@@ -466,26 +467,7 @@ def instance_state(u, read32, cell_baseline, padding, lifetime):
         # The existing fixture supplies this one mapped queue allocation.
         assert queue_items == EXTRA + 0x2C000, ('unexpected NavQueue allocation', hex(queue_items))
     cells = raw(CELLS, INSTANCE_CELL_BYTES)
-    changed = []
-    # Skip equal cell-sized chunks before finding contiguous changed bytes.
-    for offset in range(0, len(cells), 0x200):
-        before, after = cell_baseline[offset:offset + 0x200], cells[offset:offset + 0x200]
-        if before == after:
-            continue
-        index = 0
-        while index < len(after):
-            if before[index] == after[index]:
-                index += 1
-                continue
-            start = index
-            while index < len(after) and before[index] != after[index]:
-                index += 1
-            changed.append([offset + start, after[start:index].hex()])
-    # Validate that the independently published deltas cover all mapped bytes.
-    reconstructed = bytearray(cell_baseline)
-    for offset, value in changed:
-        reconstructed[offset:offset + len(value) // 2] = bytes.fromhex(value)
-    assert bytes(reconstructed) == cells
+    changed = changed_byte_spans(cell_baseline, cells)
     occupation_lists = b''.join(cells[index * 0x200 + offset:index * 0x200 + offset + 4]
                                for index in range(32 * 32) for offset in (0x124, 0x128, 0xE4, 0xE8))
     return dict(
@@ -561,14 +543,11 @@ def instance_control(case):
                     'drive_object': (0x7E7F7C, 0x20), 'teleport_locomotion': (0x7F5000, 0xC0)}
     vtables_before = {name: hashlib.sha256(bytes(u.mem_read(pointer, size))).hexdigest()
                       for name, (pointer, size) in vtable_spans.items()}
-    boundaries, native_calls, steps, pending = [], [], [], {}
+    boundaries, native_calls, steps = [], [], []
+    call_trace = NativeCallTrace(u, read32, native_calls)
+    pending = call_trace.pending
+    returned = call_trace.returned
     current_drive = LOCO if case.get('loco') == 'drive_piggy' else None
-
-    def returned(pc, sp):
-        for index in pending.pop((pc, sp), []):
-            native_calls[index].update(return_eax=u.reg_read(UC_X86_REG_EAX),
-                                       return_pc=hex(pc), return_sp=hex(sp),
-                                       return_fpcw=u.reg_read(UC_X86_REG_FPCW))
 
     def snapshot(label, drive=None):
         nonlocal current_drive
@@ -622,14 +601,7 @@ def instance_control(case):
         elif pc == DRIVE_CTOR:
             current_drive = u.reg_read(UC_X86_REG_ECX)
         if pc in call_specs:
-            name, count, cleanup = call_specs[pc]
-            caller = read32(sp)
-            index = len(native_calls)
-            native_calls.append(dict(name=name, entry=hex(pc), ecx=hex(u.reg_read(UC_X86_REG_ECX)),
-                                     entry_sp=hex(sp), caller=hex(caller),
-                                     args=[read32(sp + 4 + i * 4) for i in range(count)],
-                                     cleanup=cleanup, entry_fpcw=u.reg_read(UC_X86_REG_FPCW)))
-            pending.setdefault((caller, sp + 4 + cleanup), []).append(index)
+            call_trace.entered(pc, sp, call_specs[pc])
         if pc in INSTANCE_BOUNDARIES:
             snapshot(INSTANCE_BOUNDARIES[pc])
 

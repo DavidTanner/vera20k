@@ -549,11 +549,11 @@ fn ordinary_commands_land_animate_deploy_reverse_and_resume_flight() {
         .jumpjet_runtime()
         .unwrap();
     assert!(
-        jumpjet.moving,
+        jumpjet.moving(),
         "reverse completion must start Jumpjet movement: {jumpjet:?}"
     );
     assert_ne!(
-        jumpjet.destination,
+        jumpjet.destination(),
         crate::sim::movement::jumpjet_movement::JumpjetRuntime::NULL
     );
     advance_until(

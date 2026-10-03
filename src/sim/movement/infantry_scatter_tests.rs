@@ -174,8 +174,10 @@ fn forced_no_kidding_gates_match_native_walk_and_jumpjet_rows() {
             }
             let mut loco = LocomotorState::for_test_kind(kind);
             if let Some(state) = loco.jumpjet_runtime_mut() {
-                state.moving = flag("moving");
-                state.phase = 2;
+                *state = state
+                    .clone()
+                    .with_moving_for_test(flag("moving"))
+                    .with_phase_for_test(2);
             } else {
                 loco.set_walk_destination(flag("moving").then(|| DriveCoord::cell(6, 5, 0)));
             }

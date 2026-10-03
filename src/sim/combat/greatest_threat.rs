@@ -572,14 +572,14 @@ impl<'a> ScanIndex<'a> {
             .filter(|entity| {
                 let x = i32::from(entity.position.rx);
                 let y = i32::from(entity.position.ry);
-                entity.air_spatial_bucket.is_some()
+                entity.air_spatial_bucket().is_some()
                     && x >= min.0
                     && x <= max.0
                     && y >= min.1
                     && y <= max.1
             })
             .collect();
-        ordered.sort_by_key(|entity| (entity.air_spatial_enter_order, entity.stable_id()));
+        ordered.sort_by_key(|entity| (entity.air_spatial_enter_order(), entity.stable_id()));
         let mut airborne: BTreeMap<(u16, u16), Vec<u64>> = BTreeMap::new();
         for entity in ordered {
             airborne
@@ -2309,7 +2309,7 @@ mod tests {
                         .entities
                         .get(3)
                         .unwrap()
-                        .air_spatial_bucket
+                        .air_spatial_bucket()
                         .is_some()
                 );
                 let acquire = |sim: &Simulation| {
@@ -2363,7 +2363,7 @@ mod tests {
                         .entities
                         .get(3)
                         .unwrap()
-                        .air_spatial_bucket
+                        .air_spatial_bucket()
                         .is_some()
                 );
                 assert_eq!(
@@ -2424,12 +2424,9 @@ mod tests {
         locomotor.altitude = SimFixed::from_num(200);
         sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(locomotor);
         sim.add_entity_occupancy(1);
-        // Registered with the AirTracker, as an airborne jumpjet is.
-        sim.substrate
-            .entities
-            .get_mut(2)
-            .unwrap()
-            .air_spatial_bucket = Some(6 + 5 * 20);
+        // The fixture starts after native takeoff's explicit AirTracker Add;
+        // Mark alone does not register a Jumpjet or establish its+560 Cell.
+        sim.aircraft_tracker_add(2);
         let target = super::super::acquire_best_target_for_entity(
             &sim.substrate.entities,
             &sim.substrate.occupancy,

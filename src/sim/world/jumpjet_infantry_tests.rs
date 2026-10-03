@@ -19,7 +19,7 @@ fn pose(sim: &super::Simulation, id: u64) -> Pose {
     let entity = sim.substrate.entities.get(id).expect("rocketeer");
     let locomotor = entity.locomotor.as_ref().expect("locomotor");
     Pose {
-        phase: locomotor.jumpjet_runtime().expect("Jumpjet").phase,
+        phase: locomotor.jumpjet_runtime().expect("Jumpjet").phase(),
         fraction: entity.foot_speed.applied_fraction().to_bits(),
         doing: entity.mission_leaf.as_infantry().expect("Infantry").doing(),
         // The Doing owns an infantryman's sequence (`infantry_sprite_pose`).
@@ -414,7 +414,7 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
             .jumpjet_runtime()
             .unwrap();
         if entity.position.rx == 56
-            && runtime.phase == 2
+            && runtime.phase() == 2
             && entity.navigation.nav_com == Some(crate::sim::components::NavTargetRef::cell(56, 52))
         {
             parked = true;
@@ -840,17 +840,24 @@ fn rocketeer_crash_fixture(
         let loco = entity.locomotor.as_mut().unwrap();
         loco.altitude = SimFixed::from_num(height);
         let runtime = loco.jumpjet_runtime_mut().unwrap();
-        runtime.phase = input["owner"]["phase"].as_i64().unwrap() as i32;
-        runtime.moving = input["owner"]["moving"].as_bool().unwrap();
-        runtime.destination = crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 };
-        runtime.flight.facing.snap(0x4000, 1000);
+        let mut flight = runtime.flight();
+        flight.facing.snap(0x4000, 1000);
         // The oracle's locomotor holds `JumpjetHeight=` as its target height
         // whatever the row's height (`jumpjet_infantry_actions` ROCKETEER).
-        runtime.flight.target_height = 500;
+        flight.target_height = 500;
+        *runtime = runtime
+            .clone()
+            .with_phase_for_test(input["owner"]["phase"].as_i64().unwrap() as i32)
+            .with_moving_for_test(input["owner"]["moving"].as_bool().unwrap())
+            .with_destination_for_test(crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 })
+            .with_flight_for_test(flight);
     }
     sim.add_entity_occupancy(1);
     if height > 0 {
-        assert!(sim.substrate.air_slots.claim(52, 52, 1));
+        // This oracle midpoint is already airborne: native takeoff has added
+        // its tracker entry before the held-cell slot is established.
+        sim.aircraft_tracker_add(1);
+        assert!(sim.set_cell_air_slot((52, 52), Some(1)));
     }
     // The row's action, started by Do_Action (forced) as the oracle starts it.
     let doing = input["doing"].as_i64().unwrap() as i32;
@@ -1167,7 +1174,7 @@ fn a_ground_route_order_gives_a_rocketeer_his_navcom_and_move_to() {
         .unwrap()
         .jumpjet_runtime()
         .unwrap();
-    assert!(runtime.moving, "his Move_To ran with the order");
+    assert!(runtime.moving(), "his Move_To ran with the order");
 }
 
 /// So a grounded Rocketeer's Move order survives the frame after it. The
@@ -1210,7 +1217,7 @@ fn a_grounded_rocketeers_move_order_survives_its_first_mission_visit() {
 #[test]
 fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
     use crate::sim::command::Command;
-    use crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
+    use crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_TRANSLATE;
     let input = serde_json::json!({
         "doing": 0,
         "height": 0,
@@ -1236,7 +1243,7 @@ fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
             .unwrap()
             .jumpjet_runtime()
             .unwrap();
-        runtime.phase == STATE_TRANSLATE && rocketeer.position.rx >= 55
+        runtime.phase() == STATE_TRANSLATE && rocketeer.position.rx >= 55
     };
     for _ in 0..240 {
         if cruising(&sim) {
@@ -1265,9 +1272,9 @@ fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
         .unwrap()
         .jumpjet_runtime()
         .unwrap();
-    assert!(runtime.moving, "Stop_Moving re-targets, it does not null");
+    assert!(runtime.moving(), "Stop_Moving re-targets, it does not null");
     assert_eq!(
-        (runtime.destination.x / 256, runtime.destination.y / 256),
+        (runtime.destination().x / 256, runtime.destination().y / 256),
         here,
         "the re-target is the cell he is over"
     );

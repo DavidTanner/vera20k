@@ -192,12 +192,14 @@ def _bounded_int(value: Any, label: str, minimum: int, maximum: int) -> int:
     return number
 
 
-def _coordinate(value: Any, label: str, *, leptons: bool = False) -> list[int]:
+def _coordinate(value: Any, label: str, *, leptons: bool = False,
+                packed_cell: bool = False) -> list[int]:
     coordinate = require_array(value, label)
     size = 3 if leptons else 2
     if len(coordinate) != size:
         raise ValidationError(f'{label} must contain exactly {size} coordinates')
-    limits = (-(1 << 31), (1 << 31) - 1) if leptons else (0, (1 << 16) - 1)
+    limits = ((-(1 << 31), (1 << 31) - 1) if leptons else
+              (-(1 << 15), (1 << 15) - 1) if packed_cell else (0, (1 << 16) - 1))
     return [_bounded_int(item, f'{label}[{index}]', *limits)
             for index, item in enumerate(coordinate)]
 
@@ -454,6 +456,59 @@ def _docking_state(actor: Mapping[str, Any], label: str) -> None:
             raise ValidationError(f'{label}.miner.{key} must be a boolean')
 
 
+def _jumpjet(value: Any, label: str) -> None:
+    if value is None:
+        return
+    runtime = require_object(value, label)
+    require_exact_keys(runtime, ('destination_leptons', 'moving', 'phase', 'landing_latched',
+                                 'params', 'flight'), label)
+    _coordinate(runtime['destination_leptons'], f'{label}.destination_leptons', leptons=True)
+    _bounded_int(runtime['phase'], f'{label}.phase', -(1 << 31), (1 << 31) - 1)
+    for key in ('moving', 'landing_latched'):
+        if type(runtime[key]) is not bool:
+            raise ValidationError(f'{label}.{key} must be a boolean')
+    params = require_object(runtime['params'], f'{label}.params')
+    require_exact_keys(params, ('turn_rate', 'speed', 'climb_bits', 'crash_bits', 'height',
+                                'accel_bits', 'wobbles_bits', 'deviation', 'no_wobbles'),
+                       f'{label}.params')
+    for key in ('turn_rate', 'speed', 'height', 'deviation'):
+        _bounded_int(params[key], f'{label}.params.{key}', -(1 << 31), (1 << 31) - 1)
+    for key in ('climb_bits', 'crash_bits', 'accel_bits', 'wobbles_bits'):
+        _bounded_int(params[key], f'{label}.params.{key}', 0, (1 << 32) - 1)
+    if type(params['no_wobbles']) is not bool:
+        raise ValidationError(f'{label}.params.no_wobbles must be a boolean')
+    flight = require_object(runtime['flight'], f'{label}.flight')
+    require_exact_keys(flight, ('facing', 'current_speed_bits', 'target_speed_bits',
+                                'target_height', 'bob_phase_bits'), f'{label}.flight')
+    for key in ('current_speed_bits', 'target_speed_bits', 'bob_phase_bits'):
+        _bounded_int(flight[key], f'{label}.flight.{key}', 0, (1 << 64) - 1)
+    _bounded_int(flight['target_height'], f'{label}.flight.target_height',
+                 -(1 << 31), (1 << 31) - 1)
+    facing = require_object(flight['facing'], f'{label}.flight.facing')
+    require_exact_keys(facing, ('current', 'prev', 'start_frame', 'duration_frames',
+                                'rot_per_frame'), f'{label}.flight.facing')
+    for key in ('current', 'prev', 'duration_frames', 'rot_per_frame'):
+        _bounded_int(facing[key], f'{label}.flight.facing.{key}', 0, (1 << 16) - 1)
+    if facing['start_frame'] is not None:
+        _bounded_int(facing['start_frame'], f'{label}.flight.facing.start_frame',
+                     0, (1 << 32) - 1)
+
+
+def _foot_air(value: Any, label: str) -> None:
+    air = require_object(value, label)
+    holders = ('current_cell_slot_holder', 'tracker_cell_slot_holder', 'slot_cell_slot_holder')
+    require_exact_keys(air, ('tracker_cell_560', 'slot_cell_564', 'spatial_bucket',
+                             'spatial_enter_order', *holders), label)
+    for key in ('tracker_cell_560', 'slot_cell_564'):
+        _coordinate(air[key], f'{label}.{key}', packed_cell=True)
+    if air['spatial_bucket'] is not None:
+        _bounded_int(air['spatial_bucket'], f'{label}.spatial_bucket', 0, (1 << 16) - 1)
+    _bounded_int(air['spatial_enter_order'], f'{label}.spatial_enter_order', 0, (1 << 64) - 1)
+    for key in holders:
+        if air[key] is not None:
+            _bounded_int(air[key], f'{label}.{key}', 1, (1 << 64) - 1)
+
+
 def _houses(value: Any, owners: list[str], label: str) -> int:
     houses = require_array(value, label)
     if len(houses) != len(owners):
@@ -480,6 +535,7 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                               'in_limbo', 'dying', 'mission', 'target', 'archive', 'nav', 'foot',
                               *(('building',) if building_state else ()),
                               *(('unit',) if 'unit' in actor else ()),
+                              *(('jumpjet',) if 'jumpjet' in actor else ()),
                               *(('miner', 'radio') if docking_state else ())), label)
     identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
     owner = require_string(actor['owner'], f'{label}.owner')
@@ -500,6 +556,10 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
             _unit(actor['unit'], f'{label}.unit')
         else:
             require_value(actor['unit'], None, f'{label}.unit')
+    # Additive instance projections preserve historical sealed v6 receipts.
+    # The diagnostic never supplies an absent runtime or derives either cache.
+    if 'jumpjet' in actor:
+        _jumpjet(actor['jumpjet'], f'{label}.jumpjet')
     _coordinate(actor['cell'], f'{label}.cell')
     _coordinate(actor['physical_leptons'], f'{label}.physical_leptons', leptons=True)
     _bounded_int(actor['health'], f'{label}.health', -(1 << 31), (1 << 31) - 1)
@@ -525,8 +585,11 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
     else:
         foot = require_object(foot, f'{label}.foot')
         require_exact_keys(foot, ('retarget_after_stop_688', 'firing_sequence_latch_68d',
-                                  'infantry_doing', 'navigation_leptons', 'navigation_unavailable'),
+                                  'infantry_doing', 'navigation_leptons', 'navigation_unavailable',
+                                  *(('air',) if 'air' in foot else ())),
                            f'{label}.foot')
+        if 'air' in foot:
+            _foot_air(foot['air'], f'{label}.foot.air')
         if type(foot['retarget_after_stop_688']) is not bool:
             raise ValidationError(f'{label}.foot.retarget_after_stop_688 must be a boolean')
         _bounded_int(foot['firing_sequence_latch_68d'], f'{label}.foot.firing_sequence_latch_68d', 0, 255)

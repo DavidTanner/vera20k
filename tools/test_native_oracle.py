@@ -4,6 +4,7 @@ python -m unittest tools.test_native_oracle -v
 """
 
 from contextlib import redirect_stdout
+import gzip
 import hashlib
 import importlib.util
 import io
@@ -336,7 +337,9 @@ class IdentityAndReferenceTests(unittest.TestCase):
     def finish(self, data, *args, **kwargs):
         with redirect_stdout(io.StringIO()):
             oracle.finish_vectors(data, self.target, provenance=kwargs.get("provenance", self.metadata),
-                                  argv=list(args), source_paths=kwargs.get("source_paths"))
+                                  argv=list(args), source_paths=kwargs.get("source_paths"),
+                                  projection=kwargs.get("projection"),
+                                  raw_archive_sha256=kwargs.get("raw_archive_sha256"))
 
     def test_wrong_executable_is_rejected_explicitly(self):
         self.target.write_bytes(b"not the original executable")
@@ -381,6 +384,69 @@ class IdentityAndReferenceTests(unittest.TestCase):
         self.finish({"value": 42}, "--write")
         with self.assertRaisesRegex(oracle.OracleError, "Provenance mismatch"):
             self.finish({"value": 42}, provenance=dict(self.metadata, unicorn_core=[2, 2, 0]))
+
+    def test_projection_preserves_full_raw_and_checks_deterministic_archive(self):
+        data = {"value": 42, "raw": {"bytes": "001122", "retained": [1, 2, 3]}}
+        projection = lambda raw: {"value": raw["value"]}
+        self.finish(data, "--write", projection=projection)
+        archive = self.target.with_suffix(".raw.json.gz")
+        compressed = archive.read_bytes()
+        uncompressed = gzip.decompress(compressed)
+        self.assertEqual(json.loads(uncompressed), data)
+        self.assertEqual(json.loads(self.target.read_text()), {"value": 42})
+        self.assertEqual(compressed[4:8], bytes(4))
+        self.assertEqual(compressed[9], 255)
+        metadata = json.loads(self.target.with_suffix(".meta.json").read_text())
+        raw_metadata = json.loads(self.target.with_suffix(".raw.meta.json").read_text())
+        self.assertEqual(metadata["raw_archive"], raw_metadata["raw_archive"])
+        self.assertEqual(metadata["raw_archive"]["uncompressed_sha256"],
+                         hashlib.sha256(uncompressed).hexdigest())
+        before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.target.parent.iterdir()}
+        self.finish(data, "--check", projection=projection)
+        self.assertEqual(before, {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in before})
+        self.finish(data, "--write", projection=projection)
+        self.assertEqual(archive.read_bytes(), compressed)
+
+    def test_projection_optional_raw_hash_guard_rejects_before_publication(self):
+        data = {"value": 42, "raw": [1, 2, 3]}
+        projection = lambda raw: {"value": raw["value"]}
+        self.finish(data, "--write", projection=projection)
+        before = {p: p.read_bytes() for p in self.target.parent.iterdir()}
+        digest = hashlib.sha256(gzip.decompress(
+            self.target.with_suffix(".raw.json.gz").read_bytes())).hexdigest()
+        self.finish(data, projection=projection, raw_archive_sha256=digest)
+        with self.assertRaisesRegex(oracle.OracleError, "Full raw evidence changed before projection"):
+            self.finish(data, "--write", projection=projection, raw_archive_sha256="0" * 64)
+        self.assertEqual(before, {p: p.read_bytes() for p in before})
+
+    def test_raw_hash_requires_projection(self):
+        def forbidden():
+            self.fail("invalid publication options evaluated the generator")
+        with self.assertRaisesRegex(oracle.OracleError, "requires a projection"):
+            self.finish(forbidden, "--write", raw_archive_sha256="0" * 64)
+        self.assertEqual(list(self.target.parent.iterdir()), [])
+
+    def test_projection_rejects_altered_raw_archive(self):
+        data = {"value": 42, "raw": [1, 2, 3]}
+        projection = lambda raw: {"value": raw["value"]}
+        self.finish(data, "--write", projection=projection)
+        archive = self.target.with_suffix(".raw.json.gz")
+        archive.write_bytes(gzip.compress(b'{"value":42,"raw":[1,2,4]}', mtime=0))
+        before = {p: p.read_bytes() for p in self.target.parent.iterdir()}
+        with self.assertRaisesRegex(oracle.OracleError, "Full raw archive mismatch"):
+            self.finish(data, projection=projection)
+        self.assertEqual(before, {p: p.read_bytes() for p in before})
+
+    def test_projection_rejects_raw_archive_metadata_change(self):
+        data = {"value": 42, "raw": [1, 2, 3]}
+        projection = lambda raw: {"value": raw["value"]}
+        self.finish(data, "--write", projection=projection)
+        sidecar = self.target.with_suffix(".raw.meta.json")
+        metadata = json.loads(sidecar.read_text())
+        metadata["native_sha256"] = "altered-only-in-raw-receipt"
+        sidecar.write_text(json.dumps(metadata))
+        with self.assertRaisesRegex(oracle.OracleError, "Full raw archive provenance mismatch"):
+            self.finish(data, projection=projection)
 
     def test_bad_metadata_cannot_partially_replace_reference(self):
         self.finish({"value": 42}, "--write")

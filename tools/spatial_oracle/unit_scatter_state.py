@@ -19,12 +19,21 @@ ACTOR, TYPE, LOCO, SOURCE = [SCRATCH + i * 0x2000 for i in range(4)]
 SP = STACK_BASE + STACK_SIZE - 0x1000
 
 
-def make_fixture(case):
-    u = Uc(UC_ARCH_X86, UC_MODE_32)
-    load_image(u)
-    u.mem_map(SCRATCH, 0x10000)
-    u.mem_map(STACK_BASE, STACK_SIZE)
-    u.mem_map(RET_MAGIC, 0x1000)
+def make_fixture(case, *, uc=None):
+    # A composed reader/gameplay history can retain the reader owner's VM and
+    # original type allocations. Existing standalone fixtures still create
+    # exactly their former VM, addresses and constructor sequence.
+    if uc is None:
+        u = Uc(UC_ARCH_X86, UC_MODE_32)
+        load_image(u)
+        u.mem_map(SCRATCH, 0x10000)
+        u.mem_map(STACK_BASE, STACK_SIZE)
+        u.mem_map(RET_MAGIC, 0x1000)
+    else:
+        u = uc
+        # Only the supplied Unit prestate is reset; retained Type/INI storage
+        # is owned by the original reader which prepared this same VM.
+        u.mem_write(ACTOR, bytes(0x700))
 
     def read32(a):
         return struct.unpack('<I', u.mem_read(a, 4))[0]
@@ -51,7 +60,11 @@ def make_fixture(case):
 
     frame = case.get('frame', 100)
     u.mem_write(0xA8ED84, dwords(frame))
-    call(0x718000 if case.get('teleport') else 0x4AF540, LOCO, [])
+    # Jumpjet construction needs Rules+40C. The destination fixture constructs
+    # it after its existing Rules binding, instead of first constructing Drive
+    # or borrowing a synthetic Jumpjet controller/vtable.
+    if case.get('family') != 'jumpjet':
+        call(0x718000 if case.get('teleport') else 0x4AF540, LOCO, [])
     u.mem_write(LOCO + 0xC, dwords(ACTOR))
     u.mem_write(LOCO + 0x14, dwords(1))
     u.mem_write(LOCO + 0x10, bytes([not case.get('power_off', False)]))

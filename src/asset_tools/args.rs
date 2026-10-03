@@ -16,7 +16,7 @@ use crate::asset_tools::verb_csf::CsfOptions;
 use crate::asset_tools::verb_extract::ExtractOptions;
 use crate::asset_tools::verb_find::FindOptions;
 use crate::asset_tools::verb_info::InfoOptions;
-use crate::asset_tools::verb_ini::IniOptions;
+use crate::asset_tools::verb_ini::{IniOptions, IniQuery};
 use crate::asset_tools::verb_ls::{LsOptions, SortKey};
 use crate::asset_tools::verb_palette::PaletteForOptions;
 use crate::asset_tools::verb_parse_check::ParseCheckOptions;
@@ -42,6 +42,7 @@ pub enum Verb {
     CorpusBaseline,
     Compare { name: String },
     IniGet { section: String, key: String },
+    IniType { type_id: String },
     Help,
 }
 
@@ -76,6 +77,7 @@ USAGE
 
 VERBS
   ini-get <SECTION> <KEY>  Inspect exact authored values and a production INI accessor.
+  ini-type <TYPE>          Inspect final scenario ObjectType movement/flight fields.
   find <NAME>          Which archive wins, what shadows it, and what is
                        catalogued but unreachable by name lookup.
   ls <ARCHIVE>         Paged listing of one archive's entries.
@@ -106,6 +108,14 @@ ini-get
   --map <NAME/PATH>   Required with rules; production loose/MIX map selection.
   --mode-id <ID>      Required with rules; selected skirmish MPModesMD row.
                        --all-mixes is rejected. No campaign/extra TMCJ4F pass.
+
+ini-type
+  --domain rules     Required; final types belong to the scenario RuleSet.
+  --map <NAME/PATH>  Required; same production source selection as ini-get.
+  --mode-id <ID>     Required; selected skirmish MPModesMD row.
+                      Reports source identities and complete Jumpjet type parameters,
+                      including exact stored float/fixed bits. No runtime Link clamp.
+                      --reader/--default/--capacity/--all-mixes are rejected.
 
 GLOBAL OPTIONS
   --ra2-dir <PATH>     Retail install root. Overrides $RA2_DIR and config.toml.
@@ -220,7 +230,7 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
         return Ok(cli);
     }
 
-    if verb_word == "ini-get"
+    if matches!(verb_word.as_str(), "ini-get" | "ini-type")
         && args
             .peek()
             .is_some_and(|arg| matches!(arg.as_str(), "-h" | "--help"))
@@ -246,6 +256,9 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
         "ini-get" => Verb::IniGet {
             section: require_target(target, "ini-get", "<SECTION> <KEY>")?,
             key: value(&mut args, "ini-get key")?,
+        },
+        "ini-type" => Verb::IniType {
+            type_id: require_target(target, "ini-type", "<TYPE>")?,
         },
         "find" => Verb::Find {
             name: require_target(target, "find", "<NAME>")?,
@@ -289,7 +302,7 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
     };
 
     while let Some(flag) = args.next() {
-        if matches!(cli.verb, Verb::IniGet { .. })
+        if matches!(cli.verb, Verb::IniGet { .. } | Verb::IniType { .. })
             && !matches!(
                 flag.as_str(),
                 "--ra2-dir"
@@ -321,7 +334,7 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
             "--ra2-dir" => cli.ra2_dir = Some(PathBuf::from(value(&mut args, "--ra2-dir")?)),
             "--all-mixes" => cli.all_mixes = true,
             "--domain" | "--reader" | "--default" | "--capacity" | "--map" | "--mode-id" => {
-                if !matches!(cli.verb, Verb::IniGet { .. }) {
+                if !matches!(cli.verb, Verb::IniGet { .. } | Verb::IniType { .. }) {
                     return Err(flag_not_valid(&flag, &cli.verb));
                 }
                 match flag.as_str() {
@@ -455,8 +468,10 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
         }
     }
 
-    if matches!(cli.verb, Verb::IniGet { .. }) {
-        cli.ini.validate()?;
+    match &cli.verb {
+        Verb::IniGet { section, key } => cli.ini.validate(IniQuery::Accessor { section, key })?,
+        Verb::IniType { type_id } => cli.ini.validate(IniQuery::Type { type_id })?,
+        _ => {}
     }
     if matches!(cli.verb, Verb::CorpusBaseline) {
         if !cli.all_mixes {
@@ -516,6 +531,7 @@ fn flag_not_valid(flag: &str, verb: &Verb) -> String {
         Verb::ParseCheck => "parse-check",
         Verb::CorpusBaseline => "corpus-baseline",
         Verb::IniGet { .. } => "ini-get",
+        Verb::IniType { .. } => "ini-type",
         Verb::Help => "help",
     };
     format!("{flag} is not valid for `{verb_name}`")
@@ -748,5 +764,58 @@ mod tests {
             ]))
             .is_err()
         );
+    }
+
+    #[test]
+    fn ini_type_requires_rules_scenario_and_rejects_accessor_options() {
+        let cli = parse(args(&[
+            "ini-type",
+            "SHAD",
+            "--domain",
+            "rules",
+            "--map",
+            "XMP03T4.MAP",
+            "--mode-id",
+            "1",
+        ]))
+        .unwrap();
+        assert!(matches!(cli.verb, Verb::IniType { type_id } if type_id == "SHAD"));
+        assert!(cli.ini.reader.is_none());
+        assert_eq!(cli.ini.map.as_deref(), Some("XMP03T4.MAP"));
+        assert_eq!(cli.ini.mode_id, Some(1));
+        for words in [
+            vec!["ini-type"],
+            vec!["ini-type", "SHAD"],
+            vec!["ini-type", "SHAD", "--domain", "art"],
+            vec!["ini-type", "SHAD", "--domain", "rules"],
+            vec!["ini-type", "SHAD", "--domain", "rules", "--map", "x"],
+            vec!["ini-type", "SHAD", "--domain", "rules", "--mode-id", "1"],
+        ] {
+            assert!(parse(args(&words)).is_err(), "accepted {words:?}");
+        }
+        for extra in [
+            vec!["--reader", "raw"],
+            vec!["--default", "false"],
+            vec!["--capacity", "128"],
+            vec!["--all-mixes"],
+            vec!["--out", "somewhere"],
+        ] {
+            let mut words = vec![
+                "ini-type",
+                "SHAD",
+                "--domain",
+                "rules",
+                "--map",
+                "x",
+                "--mode-id",
+                "1",
+            ];
+            words.extend(extra);
+            assert!(parse(args(&words)).is_err(), "accepted {words:?}");
+        }
+        assert!(matches!(
+            parse(args(&["ini-type", "--help"])).unwrap().verb,
+            Verb::Help
+        ));
     }
 }

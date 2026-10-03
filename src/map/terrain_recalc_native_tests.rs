@@ -51,6 +51,26 @@ pub(crate) fn install_ordinary_repair_test_catalog(grid: &mut ResolvedTerrainGri
     install_repair_test_catalog(grid, false, false, 11);
 }
 
+/// Bind the supplied empty IsoTileType array from the Jumpjet native fixture.
+/// Its Cell+38=0 is unregistered, so original Recalc47D2B0 reads Clear land
+/// through the supplied retail TerrainRules. No TMP metadata is substituted.
+pub(crate) fn install_no_registered_tiles_test_catalog(
+    grid: &mut ResolvedTerrainGrid,
+    rules: &TerrainRules,
+) {
+    let theater = synthetic_theater_from_ini(b"");
+    assert_eq!(theater.lookup.len(), 0);
+    let (_directory, assets) = gsi_04_02_asset_manager_with_loose_tmps(&[]);
+    grid.bridge_recalc_catalog = Some(Arc::new(BridgeRecalcCatalog::for_tiles(
+        &theater,
+        &assets,
+        rules,
+        false,
+        0,
+        [],
+    )));
+}
+
 /// Sparse physical TMP headers for supplied-state native587410 comparisons.
 /// Use the production registered-file reader; no query-origin substitution.
 pub(crate) fn install_bridge_query_test_catalog(

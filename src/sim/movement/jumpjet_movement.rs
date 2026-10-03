@@ -15,11 +15,14 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use super::foot_path::coord_cell;
-use super::jumpjet_flight::{FlightOwnerKind, STATE_ASCEND, STATE_DESCEND};
+#[path = "jumpjet_flight.rs"]
+pub mod jumpjet_flight;
+
 use crate::sim::components::DriveCoord;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 use crate::util::lepton::lepton_to_cell_packed;
+use jumpjet_flight::{FlightOwnerKind, STATE_ASCEND, STATE_DESCEND};
 
 /// Persistent Jumpjet instance fields: cached XYZ at +40, moving at +4C,
 /// phase at +50 (interface-relative offsets are four bytes smaller).
@@ -27,17 +30,17 @@ use crate::util::lepton::lepton_to_cell_packed;
 /// AirMovePhase describes the older motion adapter and is not this authority.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct JumpjetRuntime {
-    pub destination: DriveCoord,
-    pub moving: bool,
-    pub phase: i32,
+    destination: DriveCoord,
+    moving: bool,
+    phase: i32,
     /// The type block `Link_To_Object @ 0x0054AD30` copies (`+0x1C..+0x3C`).
-    pub params: super::jumpjet_flight::JumpjetFlightParams,
+    params: jumpjet_flight::JumpjetFlightParams,
     /// Facing, speeds, target height and bob (`+0x54..+0x8C`).
-    pub flight: super::jumpjet_flight::JumpjetFlight,
+    flight: jumpjet_flight::JumpjetFlight,
     /// Locomotor `+0x90`: State 4 sets this once it has admitted a landing, so
     /// later descent frames stop re-testing the cell. Touchdown clears it.
     #[serde(default)]
-    pub landing_latched: bool,
+    landing_latched: bool,
 }
 
 impl Default for JumpjetRuntime {
@@ -77,6 +80,9 @@ pub(crate) enum StopOutcome {
 /// The owner and map seams `Move_To` and `Stop_Moving` reach. Coordinates are
 /// world leptons.
 pub(crate) trait JumpjetOrderHost {
+    /// Owner virtual+F4 at the retained landing destination, before either
+    /// order changes the destination or calls FNPC.
+    fn withdraw_landing(&mut self, destination: DriveCoord);
     /// Owner RTTI (vtable `+0x2C`).
     fn owner_kind(&self) -> FlightOwnerKind;
     /// `TechnoTypeClass+0xD6A` `BalloonHover=`.
@@ -144,6 +150,98 @@ fn unit_destination(centre: DriveCoord, host: &impl JumpjetOrderHost) -> DriveCo
 impl JumpjetRuntime {
     pub(crate) const NULL: DriveCoord = DriveCoord { x: 0, y: 0, z: 0 };
 
+    pub(crate) fn destination(&self) -> DriveCoord {
+        self.destination
+    }
+
+    pub(crate) fn moving(&self) -> bool {
+        self.moving
+    }
+
+    pub(crate) fn phase(&self) -> i32 {
+        self.phase
+    }
+
+    pub(crate) fn params(&self) -> jumpjet_flight::JumpjetFlightParams {
+        self.params
+    }
+
+    pub(crate) fn flight(&self) -> jumpjet_flight::JumpjetFlight {
+        self.flight
+    }
+
+    pub(crate) fn landing_latched(&self) -> bool {
+        self.landing_latched
+    }
+
+    /// Publish the in-progress instance before an owner callback, then keep
+    /// the instance that callback leaves installed. State1's class setter
+    /// returns at54BB32 before Mark and the phase3 write; State3's tail at
+    ///54C4FD reads the destination that setter changed. The working value is
+    /// never an independent destination authority across either callback.
+    pub(crate) fn with_owner_call<R>(
+        &mut self,
+        sim: &mut Simulation,
+        id: u64,
+        call: impl FnOnce(&mut Simulation) -> R,
+    ) -> R {
+        *sim.substrate
+            .entities
+            .get_mut(id)
+            .and_then(|entity| entity.locomotor.as_mut())
+            .and_then(|locomotor| locomotor.jumpjet_runtime_mut())
+            .expect("Jumpjet callback retains its installed instance") = self.clone();
+        let result = call(sim);
+        *self = sim
+            .substrate
+            .entities
+            .get(id)
+            .and_then(|entity| entity.locomotor.as_ref())
+            .and_then(|locomotor| locomotor.jumpjet_runtime())
+            .expect("Jumpjet callback retains its installed instance")
+            .clone();
+        result
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_destination_for_test(mut self, destination: DriveCoord) -> Self {
+        self.destination = destination;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_moving_for_test(mut self, moving: bool) -> Self {
+        self.moving = moving;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_phase_for_test(mut self, phase: i32) -> Self {
+        self.phase = phase;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_params_for_test(
+        mut self,
+        params: jumpjet_flight::JumpjetFlightParams,
+    ) -> Self {
+        self.params = params;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_flight_for_test(mut self, flight: jumpjet_flight::JumpjetFlight) -> Self {
+        self.flight = flight;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_landing_latched_for_test(mut self, landing_latched: bool) -> Self {
+        self.landing_latched = landing_latched;
+        self
+    }
+
     /// Jumpjet54D9B0, before Foot4DBDF0 applies its full NullCoord fallback.
     pub(crate) fn coordinate(&self, current: DriveCoord) -> DriveCoord {
         if self.phase == 0 {
@@ -156,18 +254,18 @@ impl JumpjetRuntime {
     /// `Link_To_Object @ 0x0054AD30`: copy the type block and rebuild the
     /// locomotor facing at the type's turn rate, snapped to `0x4000`.
     pub(crate) fn link(&mut self, type_params: &crate::rules::jumpjet_params::JumpjetParams) {
-        self.params = super::jumpjet_flight::JumpjetFlightParams::link(type_params);
-        self.flight = super::jumpjet_flight::JumpjetFlight::linked(&self.params);
+        self.params = jumpjet_flight::JumpjetFlightParams::link(type_params);
+        self.flight = jumpjet_flight::JumpjetFlight::linked(&self.params);
     }
 
     /// The prologue both orders share (`0x0054B1C3..0x0054B21A`,
     /// `0x0054B4F2..0x0054B537`): a landing State 4 admitted is withdrawn
     /// before the destination moves. Native withdraws it through the owner's
     /// vtable `+0xF4` (a Unit clears its cell occupation bit `0x20`,
-    /// `0x00744210`); VERA's admission raises only the latch
-    /// (`world::jumpjet_cruise`), so only the latch drops here.
-    fn withdraw_landing(&mut self) {
+    /// `0x00744210`). The callback precedes clearing the admission byte.
+    fn withdraw_landing(&mut self, host: &mut impl JumpjetOrderHost) {
         if self.destination != Self::NULL && self.phase != 0 && self.landing_latched {
+            host.withdraw_landing(self.destination);
             self.landing_latched = false;
         }
     }
@@ -177,15 +275,21 @@ impl JumpjetRuntime {
     /// Location in State 0. The owner's vtable `+0xF4` runs there while
     /// grounded, or at Head_To_Coord for an admitted landing, and the landing
     /// byte clears (`0x0054D97B..0x0054D99C`). The null-coordinate skip
-    /// (`0x0054D962..0x0054D979`) never meets a live owner's Location. VERA's
-    /// admission placed no bit ([`Self::withdraw_landing`]), so only the
-    /// grounded call reaches a receiver. Whether it does.
-    pub(crate) fn mark_all_occupation_bits_remove(&mut self) -> bool {
-        let grounded = self.phase == 0;
-        if grounded || self.landing_latched {
-            self.landing_latched = false;
+    /// (`0x0054D962..0x0054D979`) leaves the latch unchanged. The callback
+    /// precedes its clear at54D99C. Nonzero/latch flow is instruction-established;
+    /// the composed UnInit control executes the phase0 path.
+    fn mark_all_occupation_bits_remove(
+        &mut self,
+        current: DriveCoord,
+        remove: impl FnOnce(DriveCoord),
+    ) -> bool {
+        let head = self.coordinate(current);
+        if head == Self::NULL || (self.phase != 0 && !self.landing_latched) {
+            return false;
         }
-        grounded
+        remove(head);
+        self.landing_latched = false;
+        true
     }
 
     /// `JumpjetLocomotionClass::Move_To @ 0x0054B1C0`.
@@ -210,7 +314,7 @@ impl JumpjetRuntime {
         request: DriveCoord,
         host: &mut impl JumpjetOrderHost,
     ) -> MoveToOutcome {
-        self.withdraw_landing();
+        self.withdraw_landing(host);
         self.destination = request;
         if request == Self::NULL {
             self.moving = false;
@@ -263,7 +367,7 @@ impl JumpjetRuntime {
         if !self.moving {
             return StopOutcome::Idle;
         }
-        self.withdraw_landing();
+        self.withdraw_landing(host);
         let here = host.location();
         let Some(cell) = host.stop_search(coord_cell(here)) else {
             return StopOutcome::SearchFailed;
@@ -280,7 +384,7 @@ impl JumpjetRuntime {
     /// original constantfalse leaf, not a house-policy input.
     ///
     /// Test-only since the locomotor took over the tick. Production reaches the
-    /// same promotion through [`super::jumpjet_flight::state0_ground`], which
+    /// same promotion through [`jumpjet_flight::state0_ground`], which
     /// `world::jumpjet_cruise` dispatches from `Process 0x0054AEC0`; that is the
     /// single authority. This mirror survives only because the
     /// `jumpjet_coordinates` corpus drives `activate` as one of its actions.
@@ -365,34 +469,30 @@ pub(crate) fn infantry_destination_coordinate(
     Some(adjusted)
 }
 
-/// The world's answers to [`JumpjetOrderHost`], borrowed for one order.
+/// Mutable owner/map receiver for one class order. The raw landing callback
+/// and NavCom publication execute before later reads in that same order.
 struct WorldOrderHost<'a> {
-    terrain: &'a crate::map::resolved_terrain::ResolvedTerrainGrid,
-    raw: &'a crate::sim::occupancy::RawCellOccupationGrid,
-    occupancy: &'a crate::sim::occupancy::OccupancyGrid,
-    entities: &'a crate::sim::entity_store::EntityStore,
+    sim: &'a mut Simulation,
+    id: u64,
     rules: Option<&'a crate::rules::ruleset::RuleSet>,
-    interner: &'a crate::sim::intern::StringInterner,
-    rng: &'a mut crate::sim::rng::SimRng,
-    path_grid: Option<&'a crate::sim::pathfinding::PathGrid>,
-    overlay_grid: Option<&'a crate::sim::overlay_grid::OverlayGrid>,
-    zone_grid: Option<&'a crate::sim::pathfinding::zone_map::ZoneGrid>,
-    playfield_bounds: Option<crate::sim::cell_rect::PlayfieldBounds>,
+    path_grid: Option<std::sync::Arc<crate::sim::pathfinding::PathGrid>>,
     radius_cap: u16,
-    frame: u32,
-    kind: FlightOwnerKind,
-    balloon_hover: bool,
-    entering: bool,
-    location: DriveCoord,
-    speed_type: crate::rules::locomotor_type::SpeedType,
-    movement_zone: crate::rules::locomotor_type::MovementZone,
-    /// The NavCom cell the order wrote, applied once the world is free again.
-    nav_com: Option<(u16, u16)>,
 }
 
 impl WorldOrderHost<'_> {
-    /// FNPC over the world's grids from `seed`, with the caller's passability
-    /// and bridge admission.
+    fn owner(&self) -> &crate::sim::game_entity::GameEntity {
+        self.sim
+            .substrate
+            .entities
+            .get(self.id)
+            .expect("Jumpjet order owner exists")
+    }
+    fn terrain(&self) -> &crate::map::resolved_terrain::ResolvedTerrainGrid {
+        self.sim
+            .resolved_terrain
+            .as_ref()
+            .expect("Jumpjet order map admitted")
+    }
     fn search(
         &self,
         seed: (i16, i16),
@@ -404,7 +504,7 @@ impl WorldOrderHost<'_> {
             (i32::from(seed.0), i32::from(seed.1)),
             &NearbyQuery {
                 native_cells: None,
-                raw_occupation: Some(self.raw),
+                raw_occupation: Some(&self.sim.substrate.raw_cell_occupation),
                 passability,
                 footprint: NearbyFootprint::SINGLE,
                 anchor_gate: NearbyAnchorGate::NativeHeightAware,
@@ -413,133 +513,161 @@ impl WorldOrderHost<'_> {
                 check_occupancy: false,
                 radius_cap: self.radius_cap,
                 target_cell: None,
-                path_grid: self.path_grid,
-                resolved_terrain: Some(self.terrain),
-                overlay_grid: self.overlay_grid,
-                occupancy: Some(self.occupancy),
-                entities: Some(self.entities),
-                zone_grid: self.zone_grid,
-                playfield_bounds: self.playfield_bounds,
+                path_grid: self.path_grid.as_deref(),
+                resolved_terrain: Some(self.terrain()),
+                overlay_grid: self.sim.overlay_grid.as_ref(),
+                occupancy: Some(&self.sim.substrate.occupancy),
+                entities: Some(&self.sim.substrate.entities),
+                zone_grid: self.sim.zone_grid.as_ref(),
+                playfield_bounds: self.sim.playfield_bounds,
             },
-            self.frame,
+            self.sim.session.binary_frame,
         )
-        // Both orders compare the answer with NullCell, cell (0, 0).
         .filter(|cell| *cell != (0, 0))
         .map(|(x, y)| (x as i16, y as i16))
     }
-
     fn cell_identity(&self, xy: [i32; 2]) -> crate::map::cell_index::NativeCellIdentity {
-        self.terrain
+        self.terrain()
             .native_cell_identity((lepton_to_cell_packed(xy[0]), lepton_to_cell_packed(xy[1])))
     }
 }
 
 impl JumpjetOrderHost for WorldOrderHost<'_> {
+    fn withdraw_landing(&mut self, destination: DriveCoord) {
+        self.sim.object_raw_receiver_at(self.id, destination, false);
+    }
     fn owner_kind(&self) -> FlightOwnerKind {
-        self.kind
+        FlightOwnerKind::of(self.owner().category)
     }
-
     fn balloon_hover(&self) -> bool {
-        self.balloon_hover
+        self.owner().locomotor.as_ref().unwrap().balloon_hover
     }
-
     fn mission_is_enter(&self) -> bool {
-        self.entering
+        owner_mission_is_enter(self.owner())
     }
-
     fn location(&self) -> DriveCoord {
-        self.location
+        super::ground_pose::position_world_coord(&self.owner().position)
     }
-
     fn stop_search(&mut self, seed: (i16, i16)) -> Option<(i16, i16)> {
+        let locomotor = self.owner().locomotor.as_ref().unwrap();
         let passability = crate::sim::find_nearby_cell::PassabilityArgs {
-            speed_type: self.speed_type,
+            speed_type: locomotor.speed_type,
             required_zone_id: None,
-            movement_zone: self.movement_zone,
+            movement_zone: locomotor.movement_zone,
             bridge_aware_zone: false,
         };
         self.search(seed, passability, true)
     }
-
     fn move_search(
         &mut self,
         seed: (i16, i16),
         alt: bool,
         allow_bridge: bool,
     ) -> Option<(i16, i16)> {
-        let passability = crate::sim::find_nearby_cell::PassabilityArgs {
-            speed_type: crate::rules::locomotor_type::SpeedType::Hover,
-            required_zone_id: None,
-            movement_zone: crate::rules::locomotor_type::MovementZone::Fly,
-            bridge_aware_zone: alt,
-        };
-        self.search(seed, passability, allow_bridge)
+        self.search(
+            seed,
+            crate::sim::find_nearby_cell::PassabilityArgs {
+                speed_type: crate::rules::locomotor_type::SpeedType::Hover,
+                required_zone_id: None,
+                movement_zone: crate::rules::locomotor_type::MovementZone::Fly,
+                bridge_aware_zone: alt,
+            },
+            allow_bridge,
+        )
     }
-
     fn cell_coords(&self, xy: [i32; 2]) -> [i32; 2] {
-        cell_centre(self.terrain.native_cell_coord(self.cell_identity(xy)))
+        cell_centre(self.terrain().native_cell_coord(self.cell_identity(xy)))
     }
-
     fn floor_height(&self, xy: [i32; 2]) -> i32 {
-        super::ground_pose::ground_surface_z_at(xy, false, Some(self.terrain), None).unwrap_or(0)
+        super::ground_pose::ground_surface_z_at(xy, false, Some(self.terrain()), None).unwrap_or(0)
     }
-
     fn cell_high_bridge(&self, xy: [i32; 2]) -> bool {
-        self.terrain.native_cell_flags(self.cell_identity(xy)) & 0x100 != 0
+        self.terrain().native_cell_flags(self.cell_identity(xy)) & 0x100 != 0
     }
-
     fn infantry_destination(&mut self, centre: DriveCoord) -> Option<DriveCoord> {
         infantry_destination_coordinate(
             centre,
-            self.terrain,
-            self.raw,
-            self.occupancy,
-            self.entities,
+            self.sim.resolved_terrain.as_ref().unwrap(),
+            &self.sim.substrate.raw_cell_occupation,
+            &self.sim.substrate.occupancy,
+            &self.sim.substrate.entities,
             self.rules,
-            self.interner,
-            self.rng,
+            &self.sim.interner,
+            &mut self.sim.scenario_rng,
         )
     }
-
     fn set_nav_com(&mut self, destination: DriveCoord) {
         let (x, y) = self
-            .terrain
+            .terrain()
             .native_cell_coord(self.cell_identity([destination.x, destination.y]));
-        self.nav_com = Some((x as u16, y as u16));
+        self.sim
+            .substrate
+            .entities
+            .get_mut(self.id)
+            .unwrap()
+            .navigation
+            .nav_com = Some(crate::sim::components::NavTargetRef::cell(
+            x as u16, y as u16,
+        ));
     }
 }
 
 impl Simulation {
+    /// Work on the installed Jumpjet instance through its owner. Reentrant
+    /// class callbacks publish and reacquire this same instance through
+    /// `with_owner_call`; the caller cannot commit separate flight fields.
+    pub(crate) fn with_jumpjet_process<R>(
+        &mut self,
+        id: u64,
+        process: impl FnOnce(&mut JumpjetRuntime, &mut Simulation) -> R,
+    ) -> Option<R> {
+        let mut runtime = self
+            .substrate
+            .entities
+            .get(id)?
+            .locomotor
+            .as_ref()?
+            .jumpjet_runtime()?
+            .clone();
+        let result = process(&mut runtime, self);
+        *self
+            .substrate
+            .entities
+            .get_mut(id)?
+            .locomotor
+            .as_mut()?
+            .jumpjet_runtime_mut()? = runtime;
+        Some(result)
+    }
+
     /// Foot Limbo's first Limbo calls ILocomotion `+0x9C(0)` (`0x004DB324`):
     /// Jumpjet's [`JumpjetRuntime::mark_all_occupation_bits_remove`]. For an
     /// infantryman that is what clears his sub-cell: Infantry Mark clears none
     /// (`0x0047EAFE`).
     pub(crate) fn release_jumpjet_occupation_before_foot_limbo(&mut self, id: u64) {
-        let Some(entity) = self.substrate.entities.get_mut(id) else {
+        let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
         if entity.lifecycle.in_limbo {
             return;
         }
-        let Some(runtime) = entity
-            .locomotor
-            .as_mut()
-            .filter(|locomotor| {
-                locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
-            })
-            .and_then(|locomotor| locomotor.jumpjet_runtime_mut())
-        else {
+        let eligible = entity.locomotor.as_ref().is_some_and(|locomotor| {
+            locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
+        });
+        if !eligible {
             return;
-        };
-        if runtime.mark_all_occupation_bits_remove() {
-            let coord = super::ground_pose::position_world_coord(&entity.position);
-            self.object_raw_receiver_at(id, coord, false);
         }
+        let current = super::ground_pose::position_world_coord(&entity.position);
+        self.with_jumpjet_process(id, |runtime, sim| {
+            runtime.mark_all_occupation_bits_remove(current, |head| {
+                sim.object_raw_receiver_at(id, head, false);
+            });
+        });
     }
 
     /// Run one Jumpjet order on a live owner over the world's grids. The
-    /// runtime is worked on a copy and written back with the NavCom the order
-    /// set, so the host can borrow the rest of the world. `None` for an owner
+    /// private runtime retains reentrant writes; callbacks and NavCom writes
+    /// execute over the live world in order. `None` for an owner
     /// without a Jumpjet runtime, or a world without a map to search.
     fn run_jumpjet_order<R>(
         &mut self,
@@ -551,40 +679,18 @@ impl Simulation {
         let size = self
             .map_size_diamond()
             .or_else(|| self.bridge_state.as_ref()?.native_zone_source_size())?;
-        let terrain = self.resolved_terrain.as_ref()?;
-        let entity = self.substrate.entities.get(id)?;
-        let locomotor = entity.locomotor.as_ref()?;
-        let mut runtime = locomotor.jumpjet_runtime()?.clone();
-        let mut host = WorldOrderHost {
-            terrain,
-            raw: &self.substrate.raw_cell_occupation,
-            occupancy: &self.substrate.occupancy,
-            entities: &self.substrate.entities,
-            rules,
-            interner: &self.interner,
-            rng: &mut self.scenario_rng,
-            path_grid: path_grid.as_deref(),
-            overlay_grid: self.overlay_grid.as_ref(),
-            zone_grid: self.zone_grid.as_ref(),
-            playfield_bounds: self.playfield_bounds,
-            radius_cap: crate::sim::find_nearby_cell::map_owned_radius_cap(size.0, size.1),
-            frame: self.session.binary_frame,
-            kind: FlightOwnerKind::of(entity.category),
-            balloon_hover: locomotor.balloon_hover,
-            entering: owner_mission_is_enter(entity),
-            location: super::ground_pose::position_world_coord(&entity.position),
-            speed_type: locomotor.speed_type,
-            movement_zone: locomotor.movement_zone,
-            nav_com: None,
-        };
-        let result = order(&mut runtime, &mut host);
-        let nav_com = host.nav_com;
-        let entity = self.substrate.entities.get_mut(id)?;
-        if let Some((x, y)) = nav_com {
-            entity.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(x, y));
-        }
-        *entity.locomotor.as_mut()?.jumpjet_runtime_mut()? = runtime;
-        Some(result)
+        self.resolved_terrain.as_ref()?;
+        let radius_cap = crate::sim::find_nearby_cell::map_owned_radius_cap(size.0, size.1);
+        self.with_jumpjet_process(id, |runtime, sim| {
+            let mut host = WorldOrderHost {
+                sim,
+                id,
+                rules,
+                path_grid,
+                radius_cap,
+            };
+            order(runtime, &mut host)
+        })
     }
 
     /// [`JumpjetRuntime::move_to`] on a Jumpjet owner, then the lift's mission
@@ -900,19 +1006,31 @@ mod tests {
     /// `0x0054D930` on REMOVE: a grounded owner's receiver runs; an airborne
     /// one's runs only for an admitted landing, whose byte clears either way.
     #[test]
-    fn mark_all_occupation_bits_remove_runs_the_receiver_only_when_grounded() {
+    fn mark_all_occupation_remove_uses_the_retained_landing_head_and_null_gate() {
+        let current = DriveCoord {
+            x: 2688,
+            y: 2688,
+            z: 0,
+        };
+        let destination = DriveCoord {
+            x: 3456,
+            y: 2944,
+            z: 0,
+        };
+        let mut calls = Vec::new();
         let mut runtime = JumpjetRuntime::default();
-        assert!(runtime.mark_all_occupation_bits_remove());
-
+        assert!(runtime.mark_all_occupation_bits_remove(current, |head| calls.push(head)));
         runtime.phase = 4;
+        runtime.destination = destination;
+        assert!(!runtime.mark_all_occupation_bits_remove(current, |head| calls.push(head)));
         runtime.landing_latched = true;
-        assert!(!runtime.mark_all_occupation_bits_remove());
+        assert!(runtime.mark_all_occupation_bits_remove(current, |head| calls.push(head)));
         assert!(!runtime.landing_latched);
-
-        runtime.phase = 0;
+        runtime.destination = JumpjetRuntime::NULL;
         runtime.landing_latched = true;
-        assert!(runtime.mark_all_occupation_bits_remove());
-        assert!(!runtime.landing_latched);
+        assert!(!runtime.mark_all_occupation_bits_remove(current, |head| calls.push(head)));
+        assert!(runtime.landing_latched);
+        assert_eq!(calls, [current, destination]);
     }
 
     /// The `jumpjet_coordinates` corpus owner: an Infantry at `(2496, 2624)`
@@ -928,6 +1046,7 @@ mod tests {
     }
 
     impl JumpjetOrderHost for CorpusHost<'_> {
+        fn withdraw_landing(&mut self, _destination: DriveCoord) {}
         fn owner_kind(&self) -> FlightOwnerKind {
             FlightOwnerKind::Infantry
         }

@@ -5,6 +5,7 @@ from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE
 from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EIP, UC_X86_REG_ESP, UC_X86_REG_FPCW
 from tools.native_oracle import load_image,run_checked,STACK_BASE,STACK_SIZE,SCRATCH,RET_MAGIC,finish_vectors,provenance
 from tools.spatial_oracle.map_queries import dwords,packed
+from tools.spatial_oracle.nearby_raw_occupation import nearby_arguments
 ACTOR,TYPE,HOUSE,LOCO,VT,BASE,RAW,RECORDS,OUT,CLICK=[SCRATCH+i*0x1000 for i in range(10)]
 CELLS=SCRATCH+0x10000
 ACTION=SCRATCH+0xF000
@@ -47,7 +48,7 @@ def query(row):
   elif a==0x56D100:
    args=[r32(sp+4+i*4) for i in range(6)];events.append(['reach',list(struct.unpack('<hh',u.mem_read(args[0],4))),list(struct.unpack('<hh',u.mem_read(args[1],4))),*args[2:]])
   elif a==0x56DC20:
-   args=[r32(sp+4+i*4) for i in range(15)];events.append(['fnpc',list(struct.unpack('<hh',u.mem_read(args[1],4))),*args[2:12],list(struct.unpack('<hh',u.mem_read(args[12],4))),*args[13:]])
+   request=nearby_arguments(u,r32,sp);args=request['args'];events.append(['fnpc',request['seed'],*args[2:12],request['target'],*args[13:]])
  u.hook_add(UC_HOOK_CODE,observe)
  u.mem_write(CLICK,packed(*row.get('clicked',[11,5])));before=bytes(u.mem_read(ACTOR,0x700));before_loco=bytes(u.mem_read(LOCO,0x38));call(0x4DE1D0,ACTOR,[OUT,CLICK,0]);assert bytes(u.mem_read(ACTOR,0x700))==before;assert bytes(u.mem_read(LOCO,0x38))==before_loco
  return dict(input=row,cell=list(struct.unpack('<hh',u.mem_read(OUT,4))),dummy=list(struct.unpack('<hh',u.mem_read(DUMMY+0x24,4))),events=events)

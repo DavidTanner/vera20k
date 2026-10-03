@@ -85,6 +85,19 @@ pub(super) fn raw_occupation_plane(
 }
 
 impl Simulation {
+    /// Save/clear/restore Object+74 without changing cell lists. Locomotors
+    /// use this around setters (Jumpjet54D0FF/54D6B4 and54C189/54C1A3).
+    /// This is distinct from Mark4D3780, whose pickup/place callbacks run
+    /// only when the native caller actually invokes Mark.
+    pub(crate) fn replace_foot_marked_byte(&mut self, id: u64, marked: bool) -> bool {
+        let entity = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .expect("marked Foot exists");
+        std::mem::replace(&mut entity.lifecycle.cell_marked, marked)
+    }
+
     /// Mark(UP). +0x74 is cleared (`0x005F5913`) before the layer query, so
     /// a Jumpjet answers as an unmarked object. The list unlink and the raw
     /// clear use the Cell and OnBridge the object holds now.

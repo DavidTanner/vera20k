@@ -24,6 +24,22 @@ MAP = 8910824
 TABLE = 12582912
 DUMMY = 11263056
 
+
+def initialize_nearby_zone_plane(u, *, size, plane, rows):
+    """Existing flat FNPC fixture storage, shared with composed locomotion.
+
+    This supplies an empty base-group plane and one Normal row (labels1/2);
+    original zone/FNPC/projection bodies own every later query. It does not
+    claim native map loading or connectivity construction.
+    """
+    width, height = size
+    count = (width + height + 1) ** 2
+    u.mem_write(MAP + 0x68, dwords(plane, count))
+    u.mem_write(plane, bytes(count * 4))
+    u.mem_write(MAP + 0x18, dwords(rows))
+    u.mem_write(rows, packed(1, 2))
+
+
 def make_fixture(row):
     """Shared physical House/Building/Map fixture; no original code is patched."""
     u = Uc(UC_ARCH_X86, UC_MODE_32)
@@ -64,10 +80,7 @@ def make_fixture(row):
     u.mem_write(MAP + 244, dwords(8, 8, 0, 0, 8, 8))
     u.mem_write(MAP + 316, dwords(TABLE, 262144))
     u.mem_write(TABLE, bytes(1048576))
-    u.mem_write(MAP + 104, dwords(BASE, 289))
-    u.mem_write(BASE, bytes(289 * 4))
-    u.mem_write(MAP + 24, dwords(RAW))
-    u.mem_write(RAW, packed(1, 2))
+    initialize_nearby_zone_plane(u, size=(8, 8), plane=BASE, rows=RAW)
     u.mem_write(9038400, struct.pack('<90f', *[1.0] * 90))
     u.mem_write(11070852, dwords(100))
     u.mem_write(DUMMY, bytes(512))

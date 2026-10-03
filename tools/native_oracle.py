@@ -11,11 +11,14 @@ import argparse
 from collections import deque
 from functools import lru_cache
 import hashlib
+import gzip
+import io
 import json
 import os
 from pathlib import Path
 import struct
 import uuid
+import zlib
 
 import unicorn
 from unicorn import Uc, UcError, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE, UC_QUERY_TIMEOUT
@@ -39,6 +42,111 @@ NATIVE_FPCW = 0x0E7F
 
 class OracleError(RuntimeError):
     """No trustworthy result was obtained; do not publish reference outputs."""
+
+
+class NativeCallTrace:
+    """Observe nested x86 returns by caller PC and the callee-cleaned ESP.
+
+    Promoted from cmin_dock's complete-instance observer. A repeated PC alone
+    cannot distinguish a nested call or recursion from its actual return. The
+    observer never executes a callable or changes registers/memory. Callers
+    also resolve ``returned`` at runner stop boundaries, which run_checked
+    reaches before executing the boundary instruction.
+
+    Specs are (name, argument count, callee cleanup bytes). Raw EAX is a
+    receipt, not a semantic return for void or x87-returning functions.
+    """
+
+    def __init__(self, uc: Uc, read32, calls: list | None = None):
+        self.uc = uc
+        self.read32 = read32
+        self.calls = [] if calls is None else calls
+        self.pending = {}
+
+    def returned(self, pc: int, sp: int) -> list[int]:
+        completed = self.pending.pop((pc, sp), [])
+        for index in completed:
+            self.calls[index].update(
+                return_eax=self.uc.reg_read(UC_X86_REG_EAX),
+                return_pc=hex(pc), return_sp=hex(sp),
+                return_fpcw=self.uc.reg_read(UC_X86_REG_FPCW))
+        return completed
+
+    def entered(self, pc: int, sp: int, spec: tuple) -> int:
+        name, count, cleanup = spec
+        caller = self.read32(sp)
+        index = len(self.calls)
+        self.calls.append(dict(
+            name=name, entry=hex(pc), ecx=hex(self.uc.reg_read(UC_X86_REG_ECX)),
+            entry_sp=hex(sp), caller=hex(caller),
+            args=[self.read32(sp + 4 + i * 4) for i in range(count)],
+            cleanup=cleanup, entry_fpcw=self.uc.reg_read(UC_X86_REG_FPCW)))
+        self.pending.setdefault((caller, sp + 4 + cleanup), []).append(index)
+        return index
+
+
+def reconstruct_byte_spans(before: bytes, changed: list) -> bytes:
+    """Reconstruct the exact byte-delta receipt without executing a VM."""
+    reconstructed = bytearray(before)
+    for offset, value in changed:
+        raw = bytes.fromhex(value)
+        assert 0 <= offset <= len(before) - len(raw)
+        reconstructed[offset:offset + len(raw)] = raw
+    return bytes(reconstructed)
+
+
+def changed_byte_spans(before: bytes, after: bytes, chunk_size: int = 0x200) -> list:
+    """CMIN's exact memory receipt deltas, shared without any VM mutation.
+
+    Equal chunks are skipped; differing contiguous bytes within each chunk
+    retain their exact offsets and values. The reconstruction assertion covers
+    every supplied byte, including unused mapped tails and spare list storage.
+    """
+    assert len(before) == len(after) and chunk_size > 0
+    changed = []
+    for offset in range(0, len(after), chunk_size):
+        old, new = before[offset:offset + chunk_size], after[offset:offset + chunk_size]
+        if old == new:
+            continue
+        index = 0
+        while index < len(new):
+            if old[index] == new[index]:
+                index += 1
+                continue
+            start = index
+            while index < len(new) and old[index] != new[index]:
+                index += 1
+            changed.append([offset + start, new[start:index].hex()])
+    assert reconstruct_byte_spans(before, changed) == after
+    return changed
+
+
+def initialize_empty_windows_seh(uc: Uc) -> None:
+    """Mission/IFV's supplied empty Windows exception chain (flat FS base).
+
+    This is platform storage, not a skipped RTTI or gameplay body. Original
+    CRT dynamic_cast still executes its exception prologue and restores FS.
+    """
+    uc.mem_map(0, 0x1000)
+    uc.mem_write(0, struct.pack('<I', 0xFFFFFFFF))
+
+
+def checked_is_bad_read_ptr_transport(uc: Uc, pc: int, sp: int, events: list) -> bool:
+    """IFV's checked IsBadReadPtr import at original RTTI7CAA5E.
+
+    Only the Windows memory-readability service is supplied. A failed actual
+    mapped-memory read raises rather than inventing a readable pointer.
+    Original RTTI/dynamic_cast and all receiver bodies remain executable.
+    """
+    if pc != 0x7CAA5E:
+        return False
+    pointer, length = struct.unpack('<2I', uc.mem_read(sp, 8))
+    uc.mem_read(pointer, length)
+    events.append(dict(event='OSIsBadReadPtr', pointer=hex(pointer), length=length, supplied_result=0))
+    uc.reg_write(UC_X86_REG_EAX, 0)
+    uc.reg_write(UC_X86_REG_ESP, sp + 8)
+    uc.reg_write(UC_X86_REG_EIP, 0x7CAA64)
+    return True
 
 
 class NativeExecutionError(OracleError):
@@ -393,7 +501,8 @@ def first_difference(expected, actual, path="$", limit=180) -> str | None:
 
 
 def finish_vectors(data, default_path: Path, *, provenance: dict, argv=None,
-                   source_paths: dict[str, Path] | None = None) -> None:
+                   source_paths: dict[str, Path] | None = None,
+                   projection=None, raw_archive_sha256: str | None = None) -> None:
     """Default: check without writing. --write deliberately replaces the reference.
 
     Existing payloads retain their Rust-facing schema. A .meta.json sidecar records
@@ -401,6 +510,11 @@ def finish_vectors(data, default_path: Path, *, provenance: dict, argv=None,
     compared, but their historical provenance is explicitly unknown. Optional
     source_paths captures UTF-8/LF source identity before invoking the lazy
     generator and rejects drift immediately before comparison or publication.
+    Optional projection keeps a native-derived expected subset alongside a
+    deterministic full raw .json.gz archive. An optional raw-byte identity
+    guards compaction of already accepted evidence. Without that guard,
+    --write deliberately accepts a newly executed reference; --check still
+    compares the full archive, decompressed bytes and both metadata records.
     """
     parser = argparse.ArgumentParser(description="Compare native outputs with recorded reference data")
     mode = parser.add_mutually_exclusive_group()
@@ -408,6 +522,8 @@ def finish_vectors(data, default_path: Path, *, provenance: dict, argv=None,
     mode.add_argument("--write", action="store_true", help="explicitly write outputs and provenance")
     parser.add_argument("--output", type=Path, default=default_path)
     args = parser.parse_args(argv)
+    if projection is None and raw_archive_sha256 is not None:
+        raise OracleError("Full raw archive SHA256 requires a projection")
     def source_identity():
         return {name: hashlib.sha256(path.read_text(encoding="utf-8").encode("utf-8")).hexdigest()
                 for name, path in (source_paths or {}).items()}
@@ -421,18 +537,49 @@ def finish_vectors(data, default_path: Path, *, provenance: dict, argv=None,
         provenance = dict(provenance, source_normalized_lf_sha256=sources)
     # Normalize tuples before comparisons; reject NaN/Infinity in either workflow.
     normalized = json.loads(_canonical(data))
-    metadata = dict(provenance, payload_sha256=hashlib.sha256(_canonical(normalized)).hexdigest())
-    payload_text = json.dumps(normalized, indent=2, allow_nan=False) + "\n"
-    metadata_text = json.dumps(metadata, indent=2, allow_nan=False) + "\n"
     target = args.output
     sidecar = target.with_suffix(".meta.json")
+    archive_path = target.with_suffix(".raw.json.gz")
+    archive_sidecar = target.with_suffix(".raw.meta.json")
+    archive_record = archive_bytes = raw_archive = None
+    if projection is not None:
+        raw_archive = (json.dumps(normalized, indent=2, allow_nan=False) + "\n").encode("utf-8")
+        digest = hashlib.sha256(raw_archive).hexdigest()
+        if raw_archive_sha256 is not None and digest != raw_archive_sha256:
+            raise OracleError(f"Full raw evidence changed before projection: expected {raw_archive_sha256}, got {digest}")
+        buffer = io.BytesIO()
+        with gzip.GzipFile(filename="", fileobj=buffer, mode="wb", compresslevel=9, mtime=0) as output:
+            output.write(raw_archive)
+        archive_bytes = buffer.getvalue()
+        assert archive_bytes[4:8] == bytes(4) and archive_bytes[9] == 255
+        assert gzip.decompress(archive_bytes) == raw_archive
+        archive_record = dict(file=archive_path.name, sha256=hashlib.sha256(archive_bytes).hexdigest(),
+                              bytes=len(archive_bytes), uncompressed_sha256=digest,
+                              uncompressed_bytes=len(raw_archive),
+                              canonical_payload_sha256=hashlib.sha256(_canonical(normalized)).hexdigest(),
+                              compression=dict(format="gzip", level=9, mtime=0, filename="", os_byte=255,
+                                               zlib_runtime=zlib.ZLIB_RUNTIME_VERSION))
+        normalized = json.loads(_canonical(projection(normalized)))
+    metadata = dict(provenance, payload_sha256=hashlib.sha256(_canonical(normalized)).hexdigest())
+    if archive_record is not None:
+        metadata["raw_archive"] = archive_record
+        archive_metadata = dict(provenance, payload_sha256=archive_record["canonical_payload_sha256"],
+                                raw_archive=archive_record, projected_payload_sha256=metadata["payload_sha256"])
+        archive_metadata_text = json.dumps(archive_metadata, indent=2, allow_nan=False) + "\n"
+    payload_text = json.dumps(normalized, indent=2, allow_nan=False) + "\n"
+    metadata_text = json.dumps(metadata, indent=2, allow_nan=False) + "\n"
     if difference := first_difference(sources, source_identity()):
         raise OracleError(f"Source changed during native generation: {difference}")
     if args.write:
         target.parent.mkdir(parents=True, exist_ok=True)
+        if archive_record is not None:
+            archive_path.write_bytes(archive_bytes)
+            archive_sidecar.write_text(archive_metadata_text, encoding="utf-8")
         target.write_text(payload_text, encoding="utf-8")
         sidecar.write_text(metadata_text, encoding="utf-8")
         print(f"WROTE {target} and {sidecar}; review before accepting changed native references")
+        if archive_record is not None:
+            print(f"WROTE {archive_path} and {archive_sidecar}; full raw evidence preserved")
         return
     if not target.is_file():
         raise OracleError(f"Reference missing: {target}; use --write to deliberately create it")
@@ -445,4 +592,12 @@ def finish_vectors(data, default_path: Path, *, provenance: dict, argv=None,
             raise OracleError(f"Provenance mismatch in {sidecar}: {difference}")
     else:
         print("NOTE: legacy reference has no provenance sidecar; historical environment is unknown")
+    if archive_record is not None:
+        if not archive_path.is_file() or not archive_sidecar.is_file():
+            raise OracleError(f"Full raw archive or provenance missing: {archive_path}")
+        expected_archive = archive_path.read_bytes()
+        if expected_archive != archive_bytes or gzip.decompress(expected_archive) != raw_archive:
+            raise OracleError(f"Full raw archive mismatch: {archive_path}")
+        if difference := first_difference(json.loads(archive_sidecar.read_text(encoding="utf-8")), archive_metadata):
+            raise OracleError(f"Full raw archive provenance mismatch: {difference}")
     print(f"PASS {target}: native outputs match; no files written")

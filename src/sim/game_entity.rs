@@ -39,6 +39,9 @@ use crate::sim::superweapon::invulnerability::InvulnerabilityState;
 use crate::sim::timer::CdTimer;
 use crate::util::native_x87::NativeF64Bits;
 
+#[path = "movement/foot_air.rs"]
+mod foot_air;
+
 /// Frames the passive target-scan timer is armed for at object construction.
 /// The original's Techno constructor anchors the timer at the current frame and
 /// writes 45 as its duration, so a freshly built object waits that long before
@@ -560,15 +563,10 @@ pub struct GameEntity {
     /// This does not stand in for native-alive or `dying`.
     #[serde(default)]
     pub destruction_recorded: bool,
-    /// Bucket membership in gamemd's independent 20 x 20 airborne-object
-    /// spatial grid. Air movement updates this only on entry, exit, or a real
-    /// bucket crossing; the ordinary cell-list insertion order is separate.
+    /// Foot's independent tracker Cell, slot-notification Cell and retained
+    /// airborne-vector membership. Only the shared Foot air owner writes them.
     #[serde(default)]
-    pub air_spatial_bucket: Option<u16>,
-    /// Append order inside `air_spatial_bucket`. The native bucket is a vector,
-    /// so crossing into a bucket moves the object to that vector's tail.
-    #[serde(default)]
-    pub air_spatial_enter_order: u64,
+    foot_air: foot_air::FootAirState,
 
     // --- Optional subsystem components ---
     /// Locomotor state — present on moving types and on zero-speed Foot
@@ -1631,8 +1629,7 @@ impl GameEntity {
             dirty_rect_eligible: false,
             occupier: false,
             destruction_recorded: false,
-            air_spatial_bucket: None,
-            air_spatial_enter_order: stable_id,
+            foot_air: foot_air::FootAirState::new(stable_id),
             locomotor: None,
             movement_target: None,
             navigation: NavigationState::at_frame(construction_frame),

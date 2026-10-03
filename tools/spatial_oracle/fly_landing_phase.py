@@ -20,6 +20,36 @@ LOCO, HOUSE, AIR_BUFFERS, RULES, DISPLAY_BUFFERS = [
 AIR_TRACKER = 0x887888
 
 
+def initialize_air_tracker(u, sp, *, buffers, extent, capacity=16, stride=64,
+                           construct=True):
+    """Bind this owner's original tracker startup and spare-capacity storage.
+
+    ``construct=False`` preserves entry_discovery's legacy supplied zero
+    headers. Composed histories and Fly use the actual constructor prefix;
+    original Add/Remove/Update own all subsequent membership and cached cells.
+    """
+    assert capacity * 4 <= stride
+    u.mem_write(0x87F914, dwords(*extent))
+    if construct:
+        u.reg_write(UC_X86_REG_ESP, sp)
+        run_checked(u, 0x412870, 0x4128D6, count=10000)
+    for bucket in range(400):
+        u.mem_write(AIR_TRACKER + bucket * 24 + 4,
+                    dwords(buffers + bucket * stride, capacity))
+        if not construct:
+            u.mem_write(AIR_TRACKER + bucket * 24 + 0x10, dwords(0))
+
+
+def initialize_display_layers(u, sp, *, buffers, capacity=16, stride=0x100):
+    """Original five-layer startup before atexit, with caller-owned buffers."""
+    assert capacity * 4 <= stride
+    u.reg_write(UC_X86_REG_ESP, sp)
+    run_checked(u, 0x4A8630, 0x4A866D, count=100)
+    for layer in range(5):
+        u.mem_write(LAYERS + 24 * layer + 4,
+                    dwords(buffers + layer * stride, capacity))
+
+
 def fixture(case):
     x, y = case.get('cell', [64, 64])
     level, slope = case.get('level', 0), case.get('slope', 0)
@@ -65,11 +95,7 @@ def fixture(case):
 
     # Original tracker-vector startup, stopping immediately before CRT atexit.
     # Preallocated storage avoids allocator growth; the actual Add/Remove run.
-    u.mem_write(0x87F914, dwords(128, 128))
-    u.reg_write(UC_X86_REG_ESP, f.sp)
-    run_checked(u, 0x412870, 0x4128D6, count=10000)
-    for bucket in range(400):
-        u.mem_write(AIR_TRACKER + bucket * 24 + 4, dwords(AIR_BUFFERS + bucket * 64, 16))
+    initialize_air_tracker(u, f.sp, buffers=AIR_BUFFERS, extent=(128, 128))
     if case.get("air_registered", True):
         f.call(0x4134A0, AIR_TRACKER, [OWNER])
     else:
@@ -90,10 +116,7 @@ def fixture(case):
 
     # Retain a registration from before the supplied physical descent. No
     # fake GetLayer return is used: the original submit reads actual object Z.
-    u.reg_write(UC_X86_REG_ESP, f.sp)
-    run_checked(u, 0x4A8630, 0x4A866D, count=100)
-    for layer in range(5):
-        u.mem_write(LAYERS + 24 * layer + 4, dwords(DISPLAY_BUFFERS + layer * 0x100, 16))
+    initialize_display_layers(u, f.sp, buffers=DISPLAY_BUFFERS)
     u.mem_write(OWNER + 0xA4, dwords(case.get('registration_z', 900)))
     u.mem_write(OWNER + 0x74, b'\0')
     f.call(0x4D3780, OWNER, [1])

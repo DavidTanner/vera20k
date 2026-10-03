@@ -61,7 +61,7 @@ fn a_parachute_landing_in_its_own_cell_runs_the_foot_body() {
 #[test]
 fn a_jumpjet_touchdown_without_a_target_runs_the_class_null_setter() {
     use crate::sim::components::{DriveCoord, NavTargetRef};
-    use crate::sim::movement::jumpjet_flight::{STATE_DESCEND, STATE_GROUND};
+    use crate::sim::movement::jumpjet_movement::jumpjet_flight::{STATE_DESCEND, STATE_GROUND};
     use crate::sim::timer::CdTimer;
     use crate::util::fixed_math::SimFixed;
 
@@ -99,10 +99,12 @@ fn a_jumpjet_touchdown_without_a_target_runs_the_class_null_setter() {
         .unwrap()
         .jumpjet_runtime_mut()
         .unwrap();
-    runtime.phase = STATE_DESCEND;
-    runtime.moving = true;
-    runtime.landing_latched = true;
-    runtime.destination = DriveCoord::cell(10, 10, 0);
+    *runtime = runtime
+        .clone()
+        .with_phase_for_test(STATE_DESCEND)
+        .with_moving_for_test(true)
+        .with_landing_latched_for_test(true)
+        .with_destination_for_test(DriveCoord::cell(10, 10, 0));
     let scenario_before = sim.scenario_rng.native_state_hex();
 
     let process = sim.process_air_locomotor(id, Some(&rules), None).unwrap();
@@ -115,8 +117,8 @@ fn a_jumpjet_touchdown_without_a_target_runs_the_class_null_setter() {
         .unwrap()
         .jumpjet_runtime()
         .unwrap();
-    assert_eq!(runtime.phase, STATE_GROUND);
-    assert!(!runtime.moving);
+    assert_eq!(runtime.phase(), STATE_GROUND);
+    assert!(!runtime.moving());
     assert!(entity.attack_target.is_none(), "no conditional range stop");
     assert_eq!(entity.navigation.nav_com, None);
     assert_eq!(entity.navigation.nav_com_aux, None);

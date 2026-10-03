@@ -758,18 +758,49 @@ impl TacticalCaptureSession {
                 let coord =
                     crate::sim::movement::ground_pose::position_world_coord(&entity.position);
                 let timer = entity.mission.dispatch_timer();
+                // Only the installed class owns this runtime. These value
+                // getters preserve retained integer/float bits without running
+                // a movement, facing, height or owner callback.
+                let jumpjet = entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|locomotor| locomotor.jumpjet_runtime())
+                    .map(|runtime| {
+                        let destination = runtime.destination();
+                        json!({"destination_leptons": [destination.x, destination.y, destination.z],
+                            "moving": runtime.moving(), "phase": runtime.phase(),
+                            "landing_latched": runtime.landing_latched(),
+                            "params": runtime.params(), "flight": runtime.flight()})
+                    });
                 let foot = if entity.category != crate::map::entities::EntityCategory::Structure {
                     let (navigation_leptons, navigation_unavailable) =
                         match sim.foot_navigation_coordinate(id) {
                             Ok(coord) => (Some([coord.x, coord.y, coord.z]), None),
                             Err(cause) => (None, Some(cause)),
                         };
+                    let tracker_cell = entity.air_tracker_cell();
+                    let slot_cell = entity.air_slot_cell();
                     Some(json!({
                         "retarget_after_stop_688": entity.foot_retarget_after_stop(),
                         "firing_sequence_latch_68d": entity.mission_leaf.foot_firing_sequence_latch(),
                         "infantry_doing": entity.mission_leaf.as_infantry().map(|leaf| leaf.doing()),
                         "navigation_leptons": navigation_leptons,
                         "navigation_unavailable": navigation_unavailable,
+                        // Foot +560 and +564 are independent native retained
+                        // Cells. NativeNull remains [0,0]; slot holders are
+                        // immutable raw Cell+E0 reads, never inferred from pose.
+                        "air": {
+                            "tracker_cell_560": [tracker_cell.0, tracker_cell.1],
+                            "slot_cell_564": [slot_cell.0, slot_cell.1],
+                            "spatial_bucket": entity.air_spatial_bucket(),
+                            "spatial_enter_order": entity.air_spatial_enter_order(),
+                            "current_cell_slot_holder": sim.substrate.air_slots.holder(
+                                entity.position.rx, entity.position.ry),
+                            "tracker_cell_slot_holder": sim.substrate.air_slots.holder(
+                                tracker_cell.0 as u16, tracker_cell.1 as u16),
+                            "slot_cell_slot_holder": sim.substrate.air_slots.holder(
+                                slot_cell.0 as u16, slot_cell.1 as u16),
+                        },
                     }))
                 } else {
                     None
@@ -855,6 +886,7 @@ impl TacticalCaptureSession {
                         "dispatch_timer": {"start_frame": timer.start_frame(), "delay": timer.delay()}},
                     "target": entity.attack_target.as_ref().map(|target| target.target),
                     "archive": entity.archive_target(), "nav": entity.navigation.nav_com, "foot": foot,
+                    "jumpjet": jumpjet,
                     "building": building, "unit": unit,
                     "miner": miner,
                     "radio": {"contacts": contacts, "dock_entered_with": entity.dock_entered_with},
@@ -1463,6 +1495,54 @@ mod tests {
         }
         value["commands"][1]["payload"]["PlaceReadyBuilding"]["ignored"] = json!(true);
         assert!(serde_json::from_value::<MapCaptureProfile>(value).is_err());
+    }
+
+    #[test]
+    fn jumpjet_discovery_profile_preserves_verified_production_prefix_without_guessed_actor() {
+        let profile: MapCaptureProfile = serde_json::from_str(include_str!(
+            "../../../../tools/map_observation.jumpjet-instance.example.json"
+        ))
+        .unwrap();
+        profile.validate().unwrap();
+        let cmin: Value = serde_json::from_str(include_str!(
+            "../../../../tools/map_observation.cmin-instance.example.json"
+        ))
+        .unwrap();
+        let factory: Value = serde_json::from_str(include_str!(
+            "../../../../tools/map_observation.factory-tank-exit.example.json"
+        ))
+        .unwrap();
+        let value = serde_json::to_value(&profile).unwrap();
+        for key in ["launch", "seed", "input_delay_ticks", "ticks"] {
+            assert_eq!(value[key], cmin[key], "{key}");
+        }
+        let commands = value["commands"].as_array().unwrap();
+        let factory_commands = factory["commands"].as_array().unwrap();
+        assert_eq!(
+            &commands[..commands.len() - 1],
+            &factory_commands[..factory_commands.len() - 1]
+        );
+        assert_eq!(
+            commands.last().unwrap(),
+            &json!({"issue_after_step": 4600, "owner": "VERA-OBSERVER",
+                "payload": {"QueueProduction": {"type_id": 210}}})
+        );
+        assert!(profile.commands().iter().all(|command| {
+            matches!(
+                command.payload,
+                Command::DeployMcv { .. }
+                    | Command::QueueProduction { .. }
+                    | Command::PlaceReadyBuilding { .. }
+            )
+        }));
+        assert!(
+            profile
+                .observe_types
+                .as_ref()
+                .unwrap()
+                .iter()
+                .any(|name| name == "SHAD")
+        );
     }
 
     #[test]

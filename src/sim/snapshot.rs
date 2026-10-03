@@ -824,7 +824,12 @@ use crate::sim::world::Simulation;
 // 287 -> 288: Drive and Ship retain slope, destination, progress, speed and
 // occupation together in installed or suspended locomotor payloads. Entity
 // copies are removed; the prior layout cannot resume these instances.
-const SNAPSHOT_VERSION: u32 = 288;
+// 288 -> 289: one private Foot air owner saves the independent native+560
+// tracker Cell and+564 slot-notification Cell beside its retained bucket/order.
+// These Cells affect synchronous Jumpjet callbacks and lockstep continuation;
+// neither can be reconstructed from position, phase or Cell+E0. Prior bincode
+// records lack the Cells and cannot resume the callback chain.
+const SNAPSHOT_VERSION: u32 = 289;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3826,7 +3831,9 @@ mod tests {
         // 286 -> 287: the complete Teleport locomotor owns resolved XYZ,
         // request byte and warp effect, including suspended instances.
 
-        assert_eq!(super::SNAPSHOT_VERSION, 288);
+        // 287 -> 288: complete Drive/Ship instance-owned retained state.
+        // 288 -> 289: independent Foot air tracker/slot Cells and callbacks.
+        assert_eq!(super::SNAPSHOT_VERSION, 289);
     }
 
     #[test]
@@ -5759,8 +5766,7 @@ mod tests {
             11,
             7,
         );
-        aircraft.air_spatial_bucket = Some(143);
-        aircraft.air_spatial_enter_order = 91;
+        aircraft = aircraft.with_air_spatial_membership_for_test(Some(143), 91);
         aircraft.armor_multiplier =
             crate::util::native_x87::NativeF64Bits::from_bits(1.5_f64.to_bits());
         aircraft.berserk.active = true;
@@ -5834,23 +5840,26 @@ mod tests {
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
         let expected_hash = sim.state_hash();
 
-        sim.substrate
-            .entities
-            .get_mut(entity_id)
-            .unwrap()
-            .air_spatial_enter_order = 92;
+        {
+            let entity = sim.substrate.entities.get_mut(entity_id).unwrap();
+            *entity = entity
+                .clone()
+                .with_air_spatial_membership_for_test(Some(143), 92);
+        }
         assert_ne!(sim.state_hash(), expected_hash, "vector order is hashed");
         {
             let entity = sim.substrate.entities.get_mut(entity_id).unwrap();
-            entity.air_spatial_enter_order = 91;
-            entity.air_spatial_bucket = Some(144);
+            *entity = entity
+                .clone()
+                .with_air_spatial_membership_for_test(Some(144), 91);
         }
         assert_ne!(sim.state_hash(), expected_hash, "bucket identity is hashed");
-        sim.substrate
-            .entities
-            .get_mut(entity_id)
-            .unwrap()
-            .air_spatial_bucket = Some(143);
+        {
+            let entity = sim.substrate.entities.get_mut(entity_id).unwrap();
+            *entity = entity
+                .clone()
+                .with_air_spatial_membership_for_test(Some(143), 91);
+        }
         assert_eq!(sim.state_hash(), expected_hash);
         sim.substrate
             .entities
@@ -5965,8 +5974,8 @@ mod tests {
             .restore_after_snapshot_load()
             .expect("damage-Smoke pointer resolves through ParticleSystemStore");
         let entity = restored.substrate.entities.get(entity_id).unwrap();
-        assert_eq!(entity.air_spatial_bucket, Some(143));
-        assert_eq!(entity.air_spatial_enter_order, 91);
+        assert_eq!(entity.air_spatial_bucket(), Some(143));
+        assert_eq!(entity.air_spatial_enter_order(), 91);
         assert_eq!(entity.armor_multiplier.bits(), 1.5_f64.to_bits());
         assert!(entity.berserk.active);
         assert_eq!(entity.berserk.timer, -17);
@@ -6064,11 +6073,11 @@ mod tests {
     fn air_slot_snapshot_roundtrip_preserves_the_cell_holders() {
         let empty_hash = Simulation::new().state_hash();
         let mut sim = Simulation::new();
-        assert!(sim.substrate.air_slots.claim(17, 23, 41));
-        assert!(sim.substrate.air_slots.claim(2, 31, 99));
+        assert!(sim.set_cell_air_slot((17, 23), Some(41)));
+        assert!(sim.set_cell_air_slot((2, 31), Some(99)));
         // `0x00487D70` refuses a claim while another object holds the slot,
         // which is what keeps one hovering Jumpjet per cell.
-        assert!(!sim.substrate.air_slots.claim(17, 23, 42));
+        assert!(!sim.set_cell_air_slot((17, 23), Some(42)));
         assert_eq!(sim.substrate.air_slots.holder(17, 23), Some(41));
         let expected_hash = sim.state_hash();
         assert_ne!(
@@ -6108,6 +6117,188 @@ mod tests {
             control.state_hash(),
             "restored air slots must still reach the state hash"
         );
+    }
+
+    /// Native r8 slot_claim_replacement_release retains+560=(10,10) while
+    /// replacement_claim stores+564=(11,10). A save must retain both Cells and
+    /// continue the executed same-owner/empty-release behavior from that point.
+    #[test]
+    fn foot_air_distinct_native_caches_roundtrip_and_continue_notifications() {
+        use crate::map::entities::EntityCategory;
+        use crate::sim::components::Health;
+        use crate::sim::game_entity::GameEntity;
+
+        let mut sim = Simulation::with_seed(0);
+        sim.session.map_width = 40;
+        sim.session.map_height = 40;
+        let id = sim.allocate_stable_id();
+        let owner = sim.intern("Americans");
+        let type_ref = sim.intern("SHAD");
+        let entity = GameEntity::new_at_frame_zero_for_test(
+            id,
+            10,
+            10,
+            0,
+            0,
+            owner,
+            Health { current: 100 },
+            type_ref,
+            EntityCategory::Unit,
+            0,
+            5,
+            true,
+        );
+        sim.substrate.entities.insert(entity);
+        sim.add_entity_occupancy(id);
+        sim.aircraft_tracker_add(id);
+        assert!(sim.set_cell_air_slot((10, 10), Some(id)));
+        assert!(sim.set_cell_air_slot((11, 10), Some(id)));
+        let retained = sim.substrate.entities.get(id).unwrap().clone();
+        let expected_hash = sim.state_hash();
+
+        // Independent values affect lockstep even when the raw grid, vector
+        // membership, position and the other cache are unchanged.
+        *sim.substrate.entities.get_mut(id).unwrap() =
+            retained.clone().with_air_tracker_cell_for_test((11, 10));
+        assert_ne!(
+            sim.state_hash(),
+            expected_hash,
+            "Foot+560 is independently hashed"
+        );
+        *sim.substrate.entities.get_mut(id).unwrap() =
+            retained.clone().with_air_slot_cell_for_test((10, 10));
+        assert_ne!(
+            sim.state_hash(),
+            expected_hash,
+            "Foot+564 is independently hashed"
+        );
+        *sim.substrate.entities.get_mut(id).unwrap() = retained;
+
+        let bytes = GameSnapshot::save(&sim, 0, 0, "foot_air_caches", 0);
+        let mut restored = GameSnapshot::load(&bytes)
+            .expect("v289 Foot air snapshot")
+            .sim;
+        restored
+            .restore_after_snapshot_load()
+            .expect("restore Foot air continuation");
+        let actor = restored.substrate.entities.get(id).unwrap();
+        assert_eq!(actor.air_tracker_cell(), (10, 10));
+        assert_eq!(actor.air_slot_cell(), (11, 10));
+        assert_eq!(restored.substrate.air_slots.holder(10, 10), None);
+        assert_eq!(restored.substrate.air_slots.holder(11, 10), Some(id));
+        assert_eq!(restored.state_hash(), expected_hash);
+
+        for owner in [Some(id), None] {
+            assert!(sim.set_cell_air_slot((11, 10), owner));
+            assert!(restored.set_cell_air_slot((11, 10), owner));
+            assert_eq!(restored.substrate.air_slots.holder(11, 10), None);
+            let actor = restored.substrate.entities.get(id).unwrap();
+            assert_eq!(actor.air_tracker_cell(), (10, 10));
+            assert_eq!(actor.air_slot_cell(), (11, 10));
+            assert_eq!(restored.state_hash(), sim.state_hash());
+        }
+
+        // A non-null slot Cell can coexist with an empty raw grid. Save that
+        // executed stale-cache state too; load must not infer+564 from Cell+E0.
+        let stale = GameSnapshot::save(&restored, 0, 0, "foot_air_stale_slot", 0);
+        let mut stale = GameSnapshot::load(&stale)
+            .expect("stale Foot slot snapshot")
+            .sim;
+        stale
+            .restore_after_snapshot_load()
+            .expect("restore stale slot cache");
+        assert_eq!(
+            stale.substrate.entities.get(id).unwrap().air_slot_cell(),
+            (11, 10)
+        );
+        assert_eq!(
+            stale.substrate.entities.get(id).unwrap().air_tracker_cell(),
+            (10, 10)
+        );
+        assert_eq!(stale.substrate.air_slots.holder(11, 10), None);
+        assert_eq!(stale.state_hash(), restored.state_hash());
+        assert!(stale.set_cell_air_slot((12, 10), Some(id)));
+        assert!(stale.set_cell_air_slot((12, 10), None));
+        assert_eq!(
+            stale.substrate.entities.get(id).unwrap().air_slot_cell(),
+            (0, 0)
+        );
+        assert_eq!(
+            stale.substrate.entities.get(id).unwrap().air_tracker_cell(),
+            (10, 10)
+        );
+    }
+
+    /// The executed unit_uninit_live_slot control retires the live Foot while
+    /// keeping+564 and its occupied Cell+E0. Only the later selected destructor
+    /// block clears that matching slot; a save between these phases is valid.
+    #[test]
+    fn foot_air_retired_cached_slot_survives_restore_until_physical_destruction() {
+        use crate::map::entities::EntityCategory;
+        use crate::sim::components::Health;
+        use crate::sim::game_entity::GameEntity;
+
+        let mut sim = Simulation::with_seed(0);
+        sim.session.map_width = 40;
+        sim.session.map_height = 40;
+        let owner = sim.intern("Americans");
+        let type_ref = sim.intern("SHAD");
+        for rx in [10, 12] {
+            let id = sim.allocate_stable_id();
+            let entity = GameEntity::new_at_frame_zero_for_test(
+                id,
+                rx,
+                10,
+                0,
+                0,
+                owner,
+                Health { current: 100 },
+                type_ref,
+                EntityCategory::Unit,
+                0,
+                5,
+                true,
+            );
+            sim.substrate.entities.insert(entity);
+            sim.add_entity_occupancy(id);
+        }
+        sim.aircraft_tracker_add(1);
+        assert!(sim.set_cell_air_slot((10, 10), Some(1)));
+        assert!(sim.set_cell_air_slot((12, 10), Some(2)));
+        let foreign_cache = sim.substrate.entities.get(2).unwrap().air_slot_cell();
+        sim.uninit(1);
+        let retired_hash = sim.state_hash();
+        assert_eq!(sim.substrate.air_slots.holder(10, 10), Some(1));
+
+        let bytes = GameSnapshot::save(&sim, 0, 0, "retired_foot_air_slot", 0);
+        let mut restored = GameSnapshot::load(&bytes)
+            .expect("retired Foot snapshot")
+            .sim;
+        restored
+            .restore_after_snapshot_load()
+            .expect("restore retired Foot before drain");
+        let actor = restored.substrate.entities.get(1).unwrap();
+        assert!(!actor.lifecycle.object_alive);
+        assert!(actor.lifecycle.in_limbo);
+        assert_eq!(actor.air_tracker_cell(), (0, 0));
+        assert_eq!(actor.air_slot_cell(), (10, 10));
+        assert_eq!(restored.substrate.air_slots.holder(10, 10), Some(1));
+        assert_eq!(restored.substrate.pending_delete, vec![1]);
+        assert_eq!(restored.state_hash(), retired_hash);
+
+        // This exercises the existing Rust drain and shared finalization
+        // integration; native proof here is bounded to the slot-cache block.
+        restored.process_pending_delete();
+        sim.process_pending_delete();
+        assert!(restored.substrate.entities.get(1).is_none());
+        assert_eq!(restored.substrate.air_slots.holder(10, 10), None);
+        assert_eq!(restored.substrate.air_slots.holder(12, 10), Some(2));
+        assert_eq!(
+            restored.substrate.entities.get(2).unwrap().air_slot_cell(),
+            foreign_cache
+        );
+        assert!(restored.substrate.pending_delete.is_empty());
+        assert_eq!(restored.state_hash(), sim.state_hash());
     }
 
     #[test]

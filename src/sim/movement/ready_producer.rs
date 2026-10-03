@@ -202,7 +202,7 @@ fn jumpjet(locomotor: &LocomotorState) -> LocomotorReadyState {
     LocomotorReadyState::Jumpjet {
         state: locomotor
             .jumpjet_runtime()
-            .map_or(0, |runtime| runtime.phase),
+            .map_or(0, |runtime| runtime.phase()),
     }
 }
 

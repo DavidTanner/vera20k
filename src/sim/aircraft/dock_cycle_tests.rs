@@ -58,7 +58,7 @@ fn run_cycle(sim: &mut Simulation, rules: &RuleSet, orca: u64, airfield: u64) ->
                 sim.resolved_terrain.as_ref(),
             ) > 0;
             if airborne {
-                seen.relaunched_tracked |= entity.air_spatial_bucket.is_some();
+                seen.relaunched_tracked |= entity.air_spatial_bucket().is_some();
             }
         }
         if seen.relaunched_tracked {

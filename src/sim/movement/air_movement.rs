@@ -286,8 +286,9 @@ pub struct AirMovementTickStats {
     /// A dead Fly's fall reached the ground this visit: Process ends in the
     /// impact (`Simulation::fly_crash_impact`), which its caller commits.
     pub impact: bool,
-    /// A Jumpjet touched down (`0x0054C8F0`): its caller runs
-    /// `Per_Cell_Process(2)` next.
+    /// A Jumpjet touched down54C8F0. The native Unit host has already run
+    /// PerCell2 and class NULL synchronously; the Infantry caller continues
+    /// its still separate class path.
     pub touched_down: bool,
 }
 
@@ -830,9 +831,9 @@ mod tests {
             .as_ref()
             .and_then(|l| l.jumpjet_runtime())
             .expect("jumpjet runtime");
-        assert!(runtime.moving);
+        assert!(runtime.moving());
         assert_eq!(
-            runtime.destination,
+            runtime.destination(),
             crate::sim::components::DriveCoord {
                 x: 20 * 256 + 128,
                 y: 15 * 256 + 128,

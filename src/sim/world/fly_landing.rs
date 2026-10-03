@@ -9,39 +9,6 @@ use crate::sim::movement::{air_movement, ground_pose, locomotor::MovementLayer};
 use crate::util::fixed_math::SIM_ZERO;
 
 impl Simulation {
-    /// `AircraftTracker::Add` (`0x004134A0`): the bucket of the object's
-    /// cell, appended in enter order. BeginTakeoff4CF9B9 adds only when no
-    /// existing bucket is retained; Foot Unlimbo (`0x004D72DB`) adds an object
-    /// just placed, which holds none.
-    pub(crate) fn aircraft_tracker_add(&mut self, id: u64) {
-        let Some(e) = self.substrate.entities.get(id) else {
-            return;
-        };
-        if e.air_spatial_bucket.is_some() {
-            return;
-        }
-        let bucket = crate::sim::occupancy::air_spatial_bucket_index(
-            e.position.rx,
-            e.position.ry,
-            self.session.map_width,
-            self.session.map_height,
-        );
-        let order = self.substrate.next_air_tracker_order.next();
-        let e = self.substrate.entities.get_mut(id).unwrap();
-        e.air_spatial_bucket = Some(bucket);
-        e.air_spatial_enter_order = order;
-    }
-
-    /// `AircraftTracker::Remove @ 0x004135D0`: a Fly leaves the airborne index
-    /// at its touchdown or its crash impact, a Jumpjet at its crash impact
-    /// (`0x0054D075`).
-    pub(crate) fn aircraft_tracker_remove(&mut self, id: u64) {
-        if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.air_spatial_bucket = None;
-            entity.air_spatial_enter_order = 0;
-        }
-    }
-
     /// `FootClass::Limbo` (`0x004DB260`) on its first Limbo removes a tracked
     /// Foot (+0x560 not the empty cell) at `0x004DB37C..0x004DB3AA`, before
     /// `TechnoClass::Limbo`. Mark(REMOVE) itself never touches the tracker.
@@ -49,7 +16,7 @@ impl Simulation {
         if self.substrate.entities.get(id).is_some_and(|entity| {
             entity.category != EntityCategory::Structure
                 && !entity.lifecycle.in_limbo
-                && entity.air_spatial_bucket.is_some()
+                && entity.air_tracker_cell() != (0, 0)
         }) {
             self.aircraft_tracker_remove(id);
         }
@@ -765,7 +732,7 @@ mod tests {
                 "{input}"
             );
             assert_eq!(
-                e.air_spatial_bucket.is_some(),
+                e.air_spatial_bucket().is_some(),
                 expected["state"]["air_members"] == 1,
                 "{input}"
             );
@@ -1059,7 +1026,7 @@ mod tests {
                 row["input"]
             );
             assert_eq!(
-                u64::from(e.air_spatial_bucket.is_some()),
+                u64::from(e.air_spatial_bucket().is_some()),
                 after["air_members"].as_u64().unwrap(),
                 "{}",
                 row["input"]
@@ -1115,7 +1082,7 @@ mod tests {
         let (mut sim, rules) = fixture(row);
         sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
         let e = sim.substrate.entities.get(1).unwrap();
-        assert!(e.air_spatial_bucket.is_some());
+        assert!(e.air_spatial_bucket().is_some());
         assert!(
             e.locomotor
                 .as_ref()
@@ -1142,7 +1109,7 @@ mod tests {
         }
         let e = sim.substrate.entities.get(1).unwrap();
         assert_eq!(e.position.exact_z_leptons, Some(0));
-        assert_eq!(e.air_spatial_bucket, None);
+        assert_eq!(e.air_spatial_bucket(), None);
         assert!(
             !e.locomotor
                 .as_ref()

@@ -7,7 +7,7 @@ from collections import deque
 from unicorn import UC_HOOK_CODE,UC_HOOK_MEM_INVALID
 from unicorn.x86_const import *
 from capstone import Cs,CS_ARCH_X86,CS_MODE_32
-from tools.native_oracle import NATIVE_SHA256,RET_MAGIC,run_checked,finish_vectors,provenance
+from tools.native_oracle import NATIVE_SHA256,RET_MAGIC,run_checked,finish_vectors,provenance,initialize_empty_windows_seh,checked_is_bad_read_ptr_transport
 from tools.spatial_oracle.building_body_rules import SP,dwords,INI
 from tools.projectile_oracle.bridge_render_inputs import lexical,assets_root
 # Isolate fixture adapters from other consumers of the shared launch harness.
@@ -70,9 +70,7 @@ def execute(bridge=True,origin=(2688,5248,1030),bridge_band=None,changes=()):
    sp=u.reg_read(UC_X86_REG_ESP);ptr=m.read32(sp);value=(m.read32(ptr)-1)&0xffffffff
    u.mem_write(ptr,dwords(value));u.reg_write(UC_X86_REG_EAX,value);u.reg_write(UC_X86_REG_ESP,sp+4);u.reg_write(UC_X86_REG_EIP,0x46b00d)
    events.append(dict(event='OSInterlockedDecrement',field=hex(ptr),result=value))
-  if a==0x7caa5e:
-   sp=u.reg_read(UC_X86_REG_ESP);ptr,length=struct.unpack('<2I',u.mem_read(sp,8));u.mem_read(ptr,length)
-   events.append(dict(event='OSIsBadReadPtr',pointer=hex(ptr),length=length,supplied_result=0));u.reg_write(UC_X86_REG_EAX,0);u.reg_write(UC_X86_REG_ESP,sp+8);u.reg_write(UC_X86_REG_EIP,0x7caa64)
+  checked_is_bad_read_ptr_transport(u,a,u.reg_read(UC_X86_REG_ESP),events)
   if a>=0x20000000 and a!=RET_MAGIC:raise AssertionError(('non-image-code',hex(a)))
  h=u.hook_add(UC_HOOK_CODE,obs);hi=u.hook_add(UC_HOOK_MEM_INVALID,invalid)
  frames=[]
@@ -86,7 +84,7 @@ def execute(bridge=True,origin=(2688,5248,1030),bridge_band=None,changes=()):
    frames.append(dict(frame=frame,position=xyz(u,b+0x9c),velocity=vec(u,b+0xe8),alive=u.mem_read(b+0x90,1)[0]))
    if area:break
   result['before_drain']=dict(alive=u.mem_read(b+0x90,1)[0],queue_count=i32(u,0xb0f6a8),bullet_count=i32(u,0xa8ed50),anim_count=i32(u,0xa8e9b8))
-  u.mem_map(0,0x1000);u.mem_write(0,dwords(-1))
+  initialize_empty_windows_seh(u)
   m.invoke(0x725c70,0)
   result['after_drain']=dict(alive=u.mem_read(b+0x90,1)[0],queue_count=i32(u,0xb0f6a8),bullet_count=i32(u,0xa8ed50),anim_count=i32(u,0xa8e9b8))
   result['anim_frames']=[]
