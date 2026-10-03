@@ -70,7 +70,7 @@
     "src/sim/pathfinding/zone_incremental.rs": "f3675f5d1b82589e1d53037dda666b39fabbf27e59c9d397f7883764c908a7b0",
     "src/sim/transport_unload/tests.rs": "cc61a623b11e77868bd3ed9b9c645c0f0023fbf0b75d3723867a248f0aa6f0d9",
     "src/sim/pathfinding/base_zone_repair_native_tests.rs": "aa8a2ed0ef028f85a1c9fca3920d8268f9d646d924e068457cd5b945d75b0a19",
-    "src/app/frontend/skirmish.rs": "11d2a9586c22cf0f20817130cfe405d16fd1342e75aa7049ed7743add1e5d7e3"
+    "src/app/frontend/skirmish.rs": "5d3f115f35bb1af11ddc87a84376be2802f910fe9d113a09ad970529dff71be7"
   },
   "payload_sha256": "1eefc8ff72d7c353895cb8647043f622d96137df43d52066f29e4582e621365e"
 }

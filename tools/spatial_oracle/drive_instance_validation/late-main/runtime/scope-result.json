@@ -1,0 +1,100 @@
+{
+  "status": "VALID",
+  "offline_status": "VALID",
+  "steps": 6000,
+  "final_tick": 6000,
+  "observations": 6001,
+  "type_samples": {
+    "GAPOWR": 5930,
+    "GAREFN": 4700,
+    "CMIN": 3150
+  },
+  "CMIN_id": 1453,
+  "CMIN_first_step": 2851,
+  "CMIN_unique_positions": 1137,
+  "maximum_cargo_bales": 20,
+  "harvesting_samples": 1806,
+  "unloading_samples": 96,
+  "large_xy_jump_metric": "Manhattan delta >1024 leptons; observational definition",
+  "large_xy_jumps": [
+    {
+      "step": 3465,
+      "from": [
+        8320,
+        20864,
+        416
+      ],
+      "to": [
+        8832,
+        22144,
+        416
+      ],
+      "xy_manhattan_delta": 1792
+    },
+    {
+      "step": 4328,
+      "from": [
+        8320,
+        20352,
+        416
+      ],
+      "to": [
+        8832,
+        22144,
+        416
+      ],
+      "xy_manhattan_delta": 2304
+    },
+    {
+      "step": 5257,
+      "from": [
+        8320,
+        19840,
+        416
+      ],
+      "to": [
+        8832,
+        22144,
+        416
+      ],
+      "xy_manhattan_delta": 2816
+    }
+  ],
+  "final_CMIN": {
+    "stable_id": 1453,
+    "physical_leptons": [
+      8576,
+      19584,
+      416
+    ],
+    "miner": {
+      "capacity_bales": 20,
+      "cargo_bales": 6,
+      "harvesting": true,
+      "unload_active": false
+    },
+    "mission": {
+      "ai_counter": 680,
+      "current": 10,
+      "dispatch_timer": {
+        "delay": 1,
+        "start_frame": 5999
+      },
+      "effective": 10,
+      "handler_state": 1,
+      "queued": -1,
+      "start_frame": 5319,
+      "suspended": -1
+    },
+    "nav": null
+  },
+  "observations_equal_main9f": true,
+  "native_comparator": "NONE",
+  "parity_certification": "NONE",
+  "source_receipts": [
+    "drive-instance-680-runtime-final-d2-terminal-20261003.json",
+    "drive-instance-680-runtime-final-d2-offline-20261003.json"
+  ],
+  "frame_sha256": "09e7a78b33d4d97b50bc80d32b43ac2be5469f19b50c8ddd9eb3d9c068379e15",
+  "frame_equal_main9f": true
+}

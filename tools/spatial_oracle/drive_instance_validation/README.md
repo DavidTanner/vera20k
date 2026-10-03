@@ -31,13 +31,16 @@ from the native fixture's Rules+1768 input, read through the production [AI] rea
 no native after-state supplies inputs. Native Stop promotes float32 0.3. The
 existing SimFixed fraction and early Foot-zero/Stop unwind policies are unchanged.
 
-The actual [integrated final checks](main-integration/final/receipt.json), after
-main 9f631a2a, are required-retail lib 9,572 passed, zero failed/227 ignored;
-Clippy exit 0; normal release exit 0; and 63 selected ignored retail tests passed,
-zero failed/ignored, with no fixture skips. All 1,911 frozen Rust/Python files
-remain exact. Repository Python checks succeed with 552 tests and five optional
-skips; skill mirrors match. The [prior candidate](final/receipt.json) passed
-9,575/0/227 before main replaced its paradrop tests. Clippy exposed 18 inspection getters used only by tests;
+The actual [final checks](late-main/final/receipt.json), after main d2a64dd8,
+are required-retail lib 9,571 passed, zero failed/231 ignored; Clippy exit 0;
+normal release exit 0. All 1,913 frozen Rust/Python files remain exact. The
+[prior integrated sweep](main-integration/final/receipt.json) executed all 63
+selected ignored retail tests, zero failed/ignored or fixture skips. The later
+bridge-render update preserves those simulation bodies and admission inputs;
+its clean integration repeats full lib, Clippy and release on the final source.
+Repository Python checks succeed with 552 tests and five optional skips; skill
+mirrors match. [Earlier validation](final/receipt.json) preserves 9,575/0/227
+before main replaced/reclassified its paradrop and GPU tests. Clippy exposed 18 inspection getters used only by tests;
 those now compile under cfg(test). [Prior API checks](final-api/receipt.json)
 record the subsequent 30 focused owner/CMIN/all-three-replay tests, Clippy and
 rebuilt release, each exit 0. That guard changes no production logic. The field
@@ -46,13 +49,13 @@ ratchet is 2,513 <= 2,532: 19 fewer writable simulation fields.
 The [ordinary release profile](../../map_observation.cmin-instance.example.json)
 uses the established AnyTown power/barracks/refinery route: refinery queue at
 step 1,300 and placement at 2,800, using captured retail interned type 273.
-[Integrated runtime evidence](main-integration/runtime/scope-result.json) records
+[Final runtime evidence](late-main/runtime/scope-result.json) records
 6,000 steps and 6,001
 observations. CMIN 1453 appears at step 2,851: 3,150 samples, 1,137 distinct
 positions, maximum cargo 20 bales, 1,806 harvesting samples, 96 unloading samples
 and three return hops. Capture and offline validation both report VALID. The
 actual GPU BGRA frame and PNG inspection view are retained. Complete observations
-and final GPU bytes equal the [prior accepted run](runtime/scope-result.json). This is production
+and final GPU bytes equal the [prior accepted runs](main-integration/runtime/scope-result.json). This is production
 integration evidence; native comparator and parity certification are NONE.
 The first profile omitted the refinery commands and never spawned CMIN; its
 missing-coverage result remains preserved and is superseded by the corrected run.
@@ -68,6 +71,9 @@ After main integration, [six binding-only calls](main-integration/binding/receip
 refresh three comment-only INI-reader source stamps while all 522 tracked JSON
 files and nonbinding metadata stay exact. Two pre-binding harness mistakes are
 preserved in that archive; neither changed repository files or native outcomes.
+The [late Compass refresh](late-main/binding/receipt.json) updates the frontend
+atlas-call source stamp with two successful checks. All 538 tracked JSON bytes
+and nonbinding provenance remain exact; no VM or wider native comparison occurs.
 
 The single independent [read-only critic](review/critic.md) found no actionable
 defect in this ownership migration. Its reviewed source, original byte checks,
