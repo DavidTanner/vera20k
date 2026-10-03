@@ -1,5 +1,16 @@
 <img src="docs/images/new-conscirpt-hero-image.png" alt="VERA20k hero image" width="100%">
 
+<p align="center">
+  <strong>English</strong> · <a href="README.sv.md" lang="sv">Svenska</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.zh-CN.md" lang="zh-CN">简体中文</a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml?query=branch%3Amain" title="Latest macOS library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml/badge.svg?branch=main" alt="macOS library tests" height="20"></a>
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Latest Linux library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux library tests" height="20"></a>
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Latest Windows library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows library tests" height="20"></a>
+  <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="20"></a>
+</p>
+
+<!-- Keep README.sv.md, README.de.md and README.zh-CN.md in sync when changing the text below. -->
+
 # VERA20k
 
 Red Alert 2: Yuri's Revenge — rebuilt in Rust for large multiplayer battles.
@@ -15,7 +26,7 @@ Ultimate Collection* on [Steam](https://store.steampowered.com/bundle/39394/) an
 
 1. Keep the gameplay, visuals and atmosphere of the original Yuri's Revenge.
 2. Support bigger battles: up to **30 players** and **20,000 units** on larger maps.
-3. Make room for new RTS features the original engine couldn't support.
+3. Incorporate new RTS features the original engine couldn't support.
 
 ## Current status
 
