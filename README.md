@@ -1,15 +1,15 @@
 <img src="docs/images/new-conscirpt-hero-image.png" alt="VERA20k hero image" width="100%">
 
-<p align="center">
-  <strong>English</strong> · <a href="README.sv.md" lang="sv">Svenska</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.zh-CN.md" lang="zh-CN">简体中文</a>
+<p align="center" dir="ltr">
+  <strong>English</strong> · <a href="README.sv.md" lang="sv">Svenska</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.zh-CN.md" lang="zh-CN">简体中文</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.ru.md" lang="ru">Русский</a> · <a href="README.th.md" lang="th">ไทย</a> · <a href="README.tr.md" lang="tr">Türkçe</a>
   &nbsp;&nbsp;
-  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml?query=branch%3Amain" title="Latest macOS library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml/badge.svg?branch=main" alt="macOS library tests" height="20"></a>
-  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Latest Linux library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux library tests" height="20"></a>
-  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Latest Windows library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows library tests" height="20"></a>
-  <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="20"></a>
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml?query=branch%3Amain" title="Latest macOS library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml/badge.svg?branch=main" alt="macOS library tests" height="20" align="middle"></a>
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Latest Linux library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux library tests" height="20" align="middle"></a>
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Latest Windows library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows library tests" height="20" align="middle"></a>
+  <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="20" align="middle"></a>
 </p>
 
-<!-- Keep README.sv.md, README.de.md and README.zh-CN.md in sync when changing the text below. -->
+<!-- Keep all translated READMEs in sync when changing the text below. -->
 
 # VERA20k
 
@@ -26,7 +26,7 @@ Ultimate Collection* on [Steam](https://store.steampowered.com/bundle/39394/) an
 
 1. Keep the gameplay, visuals and atmosphere of the original Yuri's Revenge.
 2. Support bigger battles: up to **30 players** and **20,000 units** on larger maps.
-3. Incorporate new RTS features the original engine couldn't support.
+3. Incorporate new RTS features.
 
 ## Current status
 
