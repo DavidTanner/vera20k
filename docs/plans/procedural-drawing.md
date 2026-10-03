@@ -9,7 +9,8 @@ per PR, with native execution, production pixels/performance and one fresh criti
 
 - Worktree `/Users/halvor/.codex/worktrees/procedural-drawing/vera20k`, branch
   `feature/procedural-target-lines`, HEAD/base `7229c2df25` (latest documentation/manual-CI integration).
-  Implementation/evidence remains uncommitted; no PR yet. The one fresh critic
+  Implementation/evidence is committed as `b4b537a34` and submitted in
+  [PR1042](https://github.com/YuriPlanet/vera20k/pull/1042). The one fresh critic
   completed; its single selection-scaling finding is fixed and revalidated.
 - First chain: selected local factory rally, Tactical6DA9D0 through DSurface4C0750.
   Reverse selection order; live/selected/local/HasRally/ArchiveTarget gates;
@@ -54,7 +55,7 @@ per PR, with native execution, production pixels/performance and one fresh criti
   assertion (9648 passed,238 ignored); its fix passed the44 rendering checks.
   Clippy and122 final cleanup checks passed. After the critic fix, full retail
   lib9651 passed/238 ignored, Clippy passed, Python580 passed/five skipped and
-  the field ratchet2505/2505 passed. The final release capture/native archive also passed; publication remains.
+  the field ratchet2505/2505 passed. The final release capture/native archive also passed; PR1042 is published.
 
 ## Measured performance
 
@@ -111,7 +112,8 @@ observer/simulation/pacing; not isolated GPU time or ordinary play FPS.
   the validation directory. Final release v4 `c3aaa9ba6e930ca359cbddc1f2b7a7569e148f6b28365d6947fa95a830b72404`
   produced `rally-clear-v4`: all480,000 frame pixels and1501 state boundaries
   match v2, and all native mask/floor checks pass. Runtime Rust is frozen.
-  Next: commit, one PR and integration. No second critic. Then action lines.
+  Next: authorized auto-merge of PR1042, confirm integration and dry-run owned
+  label retirement. No second critic. Then action lines on fresh main.
 - Cargo uses `/Users/halvor/Documents/vera20k-dev/.venv/bin/python -m tools.cargo_run`.
   An earlier admission was blocked below16GiB; later admission succeeded without
   manual deletion. Freeze all source/metadata during Cargo. Preserve ignored
