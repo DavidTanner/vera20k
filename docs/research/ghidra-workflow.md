@@ -580,6 +580,12 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   `0x5687F0` retained `<UNASSIGNED>` with no return varnodes before and after a
   checked `__thiscall` receiver write. Inspect the saved return datatype and
   storage, and establish any native result from its producers and consumers.
+- A neutral `undefined4` return can still force `EAX:4`. Factory AI
+  `0x004C9B20` gained a `CONCAT31` expression using `in_EAX` when a native exit
+  defined only `AL`, leaving upper EAX bits untouched. Check each exit and result-using
+  caller before assigning a width; retain unassigned metadata when no common
+  return contract is established. A caller discarding the result does not prove
+  a `void` declaration.
 - When checking saved storage through Ghidra's Java API,
   `VariableStorage.toString()` includes ` (auto)` for automatic parameters, such
   as `ECX:4 (auto)`. Compare the literal storage and `isAutoParameter()` together.

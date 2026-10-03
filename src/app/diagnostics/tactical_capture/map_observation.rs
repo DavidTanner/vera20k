@@ -781,6 +781,7 @@ impl TacticalCaptureSession {
                     let tracker_cell = entity.air_tracker_cell();
                     let slot_cell = entity.air_slot_cell();
                     Some(json!({
+                        "pending_entry_500": entity.pending_entry(),
                         "retarget_after_stop_688": entity.foot_retarget_after_stop(),
                         "firing_sequence_latch_68d": entity.mission_leaf.foot_firing_sequence_latch(),
                         "infantry_doing": entity.mission_leaf.as_infantry().map(|leaf| leaf.doing()),

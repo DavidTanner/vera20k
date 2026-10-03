@@ -1,0 +1,109 @@
+{
+  "schema_version": "vera20k.allied-waiter-native-checks.v1",
+  "native_executable_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "runs": [
+    {
+      "command": [
+        "python",
+        "-m",
+        "tools.spatial_oracle.building_repair",
+        "--depot-waiters",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": {
+        "file": "spatial_oracle/depot_service_validation/allied-waiters-waiters-check.log.gz",
+        "encoding": "gzip",
+        "bytes": 145,
+        "sha256": "a3c3511cdaf939953a38e331dd5ef449e65857bf7b328f33685c815d71fc021b",
+        "raw_bytes": 154,
+        "raw_sha256": "3b8b6830f4c646aae4cf9bfe502d04416c410f79812c3b40f2e3ce327c42362c"
+      },
+      "environment": {
+        "VERA20K_DEPOT_SERVICE_INPUTS": ".local-audit/war-miner-attack/inputs/extract"
+      }
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "tools.spatial_oracle.building_repair",
+        "--depot-service",
+        "--write",
+        "--output",
+        ".local-audit/allied-depot/native-evidence/service-preservation-final.json"
+      ],
+      "exit_code": 0,
+      "log": {
+        "file": "spatial_oracle/depot_service_validation/allied-waiters-service-preservation-final.log.gz",
+        "encoding": "gzip",
+        "bytes": 137,
+        "sha256": "41505ec16829b974c363c37e8fe4d522cac5298e74c43f97cea5e54ca2e6939d",
+        "raw_bytes": 214,
+        "raw_sha256": "70c33a1eae63505fdc814348574889bd7e15d5d52c413d35812f26241d21a869"
+      },
+      "environment": {
+        "VERA20K_DEPOT_SERVICE_INPUTS": ".local-audit/war-miner-attack/inputs/extract"
+      }
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "tools.spatial_oracle.building_slot_replacement",
+        "--expiry",
+        "--write",
+        "--output",
+        ".local-audit/allied-depot/native-evidence/expiry-preservation-final.json"
+      ],
+      "exit_code": 0,
+      "log": {
+        "file": "spatial_oracle/depot_service_validation/allied-waiters-expiry-preservation-final.log.gz",
+        "encoding": "gzip",
+        "bytes": 137,
+        "sha256": "d596e212f98c2cd9d4308a076cc5c095494952428bb81bfd0a998cf7940c2652",
+        "raw_bytes": 212,
+        "raw_sha256": "ccd19ee17bc369d28b653a2959a0316a81c9f25e3a73f39d7cba1e26bddea382"
+      },
+      "environment": {
+        "VERA20K_DEPOT_SERVICE_INPUTS": ".local-audit/war-miner-attack/inputs/extract",
+        "VERA20K_BUILDING_SLOT_EXPIRY_ASSETS": ".local-audit/depot-service/animation-assets/extract"
+      }
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "tools.spatial_oracle.building_repair",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": {
+        "file": "spatial_oracle/depot_service_validation/allied-waiters-legacy-check-final.log.gz",
+        "encoding": "gzip",
+        "bytes": 137,
+        "sha256": "f7ba3335ee51db3335c2d8b5ed2802863b9f3bd7c63d97df913fbd9f39f0233f",
+        "raw_bytes": 140,
+        "raw_sha256": "4a7a3b96031aba4eb97fb5513311b5bbaa1cdee3b93bf9deab4eb0221af43e69"
+      },
+      "environment": {}
+    }
+  ],
+  "preservation": [
+    {
+      "payload": "tools/spatial_oracle/building_repair.depot_service.json",
+      "reexecuted": ".local-audit/allied-depot/native-evidence/service-preservation-final.json",
+      "byte_identical": true,
+      "sha256": "76614921afb7ac9e87c94c7644588a69aa03b4f1069de911982ed08bbfd19172"
+    },
+    {
+      "payload": "tools/spatial_oracle/building_slot_replacement.expiry.json",
+      "reexecuted": ".local-audit/allied-depot/native-evidence/expiry-preservation-final.json",
+      "byte_identical": true,
+      "sha256": "21f851dbcb3f964921ba1c06cec3cbfe131609890c1429deed8a2d3a48cb00f7"
+    }
+  ],
+  "physical_input_directory": ".local-audit/war-miner-attack/inputs/extract",
+  "expiry_animation_input_directory": ".local-audit/depot-service/animation-assets/extract",
+  "coverage_limit": "Prepared native controls at flat levels0/4, including an actual Unit-entry classified ally and supplied FindPath route. Excludes entire native path search, multi-object Logic scheduling and captured whole-match/pixel parity."
+}
