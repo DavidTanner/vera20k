@@ -1408,3 +1408,435 @@ fn idle_receiver_cancels_burst_through_the_shared_target_setter() {
         }
     }
 }
+
+/// Original Drive4B1F97..RET4 joins PerCell739EC0, radio21, StopMoving4DF0D0
+/// and Foot vt5044DB9B0. The selected armed Enter tail queues Guard after
+/// DOCK_NOW queues Sleep. This comparison includes the actual intermediate
+/// PerCell result; preserving Sleep would regress the native arrival path.
+#[test]
+fn native_depot_arrival_uses_the_original_terminal_handoff() {
+    use crate::map::resolved_terrain::test_flat_ground_grid;
+    use crate::rules::art_data::ArtRegistry;
+    use crate::rules::ini_parser::IniFile;
+    use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
+    use crate::sim::combat::{AttackTarget, TargetKind};
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::estimated_health::EstimatedHealth;
+    use crate::sim::mission::MissionDispatchTimer;
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::pathfinding::PathGrid;
+    use crate::sim::rng::SimRng;
+    use crate::sim::stage::StageClass;
+    use crate::sim::timer::CdTimer;
+    use serde_json::{Value, json};
+    use std::sync::Arc;
+
+    fn integer(value: &Value) -> i32 {
+        value.as_i64().unwrap() as i32
+    }
+
+    fn ini_text(sections: &Value) -> String {
+        let mut text = String::new();
+        for (section, keys) in sections.as_object().unwrap() {
+            text.push_str(&format!("[{section}]\n"));
+            for (key, value) in keys.as_object().unwrap() {
+                text.push_str(&format!("{key}={}\n", value.as_str().unwrap()));
+            }
+        }
+        text
+    }
+
+    fn observed(sim: &Simulation, tank: u64, depot: u64, other: Option<u64>) -> Value {
+        let unit = sim.substrate.entities.get(tank).unwrap();
+        let building = sim.substrate.entities.get(depot).unwrap();
+        let house = &sim.houses[&unit.owner()];
+        let name = |id: Option<u64>| match id {
+            None => Value::Null,
+            Some(id) if id == tank => json!("miner"),
+            Some(id) if id == depot => json!("refinery"),
+            Some(id) if Some(id) == other => json!("other"),
+            Some(id) => panic!("unrepresented arrival object {id}"),
+        };
+        let nav = |target: Option<NavTargetRef>| match target {
+            None => Value::Null,
+            Some(NavTargetRef::Cell { rx, ry }) => json!([rx, ry]),
+            Some(
+                NavTargetRef::Building { id }
+                | NavTargetRef::Entity { id }
+                | NavTargetRef::Object { id },
+            ) => name(Some(id)),
+        };
+        let target = |target: Option<TargetKind>| match target {
+            None => Value::Null,
+            Some(TargetKind::Cell(rx, ry)) => json!([rx, ry]),
+            Some(TargetKind::Entity(id)) => name(Some(id)),
+        };
+        let at = super::super::ground_pose::object_get_coords(unit, sim.resolved_terrain.as_ref());
+        let destination = unit.drive_locomotion.as_ref().unwrap().destination;
+        let stage = building
+            .mission_leaf
+            .as_building()
+            .unwrap()
+            .repair_progress();
+        let raw_stage = serde_json::to_value(stage).unwrap();
+        let rng = sim.scenario_rng.logical_view();
+        json!({
+            "frame": sim.session.binary_frame,
+            "unit_coordinate": [at.x,at.y,at.z],
+            "health": unit.health.current,
+            "estimate": unit.estimated_health.get(),
+            "balance": house.economy.credits,
+            "spent": house.economy.spent_credits,
+            "unit_mission": unit.mission.current().raw(),
+            "unit_queued": unit.mission.queued().raw(),
+            "unit_nav": nav(unit.navigation.nav_com),
+            "unit_nav_aux": nav(unit.navigation.nav_com_aux),
+            "unit_archive": target(unit.archive_target()),
+            "pending_entry": name(unit.pending_entry()),
+            "unit_contacts": (0..unit.radio_contacts.capacity()).map(|n| name(unit.radio_contacts.slot(n))).collect::<Vec<_>>(),
+            "building_contacts": (0..building.radio_contacts.capacity()).map(|n| name(building.radio_contacts.slot(n))).collect::<Vec<_>>(),
+            "unit_tether": u8::from(unit.dock_entered_with.is_some()),
+            "building_tether": u8::from(building.dock_entered_with.is_some()),
+            "building_mission": building.mission.current().raw(),
+            "building_queued": building.mission.queued().raw(),
+            "status": building.mission.handler_state(),
+            "dispatch_words": [building.mission.dispatch_timer().start_frame(),building.mission.dispatch_timer().delay()],
+            "stage": [json!(stage.value()),raw_stage["changed"].clone(),json!(stage.timer().start_frame()),json!(stage.timer().duration()),json!(stage.rate()),raw_stage["increment"].clone()],
+            "repairing": building.building_ready_latch(),
+            "locomotor_powered": u8::from(unit.locomotor.as_ref().unwrap().is_powered()),
+            "locomotor_destination": destination.map_or_else(|| json!([0,0,0]), |at| json!([at.x,at.y,at.z])),
+            "scenario_rng": {"disabled":rng.disabled,"index_a":rng.index_a,"index_b":rng.index_b,"state":rng.words}
+        })
+    }
+
+    fn compare(
+        sim: &Simulation,
+        tank: u64,
+        depot: u64,
+        other: Option<u64>,
+        native: &Value,
+        context: &str,
+    ) {
+        for (field, actual) in observed(sim, tank, depot, other).as_object().unwrap() {
+            assert_eq!(actual, &native[field], "{context}: {field}");
+        }
+    }
+
+    let golden: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/building_repair.depot_service.json"
+    ))
+    .unwrap();
+    let arrival = &golden["arrival_terminal"];
+    let controls = arrival["controls"].as_array().unwrap();
+    assert_eq!(controls.len(), 7);
+    for row in controls {
+        let input = &row["input"];
+        let before = &row["before"];
+        let context = input["name"].as_str().unwrap();
+        let mut stack = None;
+        for (base, extra) in golden["inputs"]["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(arrival["native_inputs"]["layers"].as_array().unwrap())
+        {
+            if base["absent"] == true {
+                continue;
+            }
+            assert_eq!(base["file"], extra["file"]);
+            let mut sections = base["selected"].clone();
+            for line in extra["source_lines"].as_array().unwrap() {
+                let section = line["section"].as_str().unwrap();
+                let key = line["key"].as_str().unwrap();
+                if sections[section].is_null() {
+                    sections[section] = json!({});
+                }
+                sections[section][key] = line["value"].clone();
+            }
+            let text = format!(
+                "[VehicleTypes]\n0=HTNK\n1=MTNK\n[BuildingTypes]\n0=NADEPT\n1=GADEPT\n{}",
+                ini_text(&sections)
+            );
+            let ini = IniFile::from_str(&text);
+            match base["file"].as_str().unwrap() {
+                "RULESMD.INI" => stack = Some(RulesLayerStack::new(ini)),
+                name => stack.as_mut().unwrap().push(
+                    match name {
+                        "LANGRULE.INI" => RulesLayerKind::LangRule,
+                        "MPBattleMD.ini" => RulesLayerKind::GameMode,
+                        "XMP03T4.MAP" => RulesLayerKind::Scenario,
+                        other => panic!("unrepresented arrival layer {other}"),
+                    },
+                    ini,
+                ),
+            }
+        }
+        let unit_name = row["unit"].as_str().unwrap();
+        let building_name = row["building"].as_str().unwrap();
+        let service = input["unit_repair"].as_bool().unwrap_or(true);
+        let mut stack = stack.unwrap();
+        stack.push(
+            RulesLayerKind::Scenario,
+            IniFile::from_str(&format!(
+                "[{unit_name}]\nLocomotor={{4A582741-9839-11D1-B709-00A024DDAFD1}}\n\
+                 [{building_name}]\nUnitRepair={}\n",
+                if service { "yes" } else { "no" }
+            )),
+        );
+        let art = IniFile::from_str(&ini_text(&golden["inputs"]["art"]["selected"]));
+        let mut rules =
+            RuleSet::from_processed_rules(&stack.process_with_fixed_art(&art).unwrap()).unwrap();
+        rules.install_art_data(ArtRegistry::from_ini(&art));
+        let mut sim = Simulation::new();
+        sim.session.binary_frame = integer(&before["frame"]) as u32;
+        sim.intern_rule_type_ids(&rules);
+        sim.resolve_type_handles(&rules);
+        // Same declared clear-map membership as the native joined fixture.
+        let bounds = crate::map::playfield::PlayfieldBounds::from_normalized_local_size(
+            16, -16, -16, 64, 64,
+        );
+        sim.playfield_bounds = Some(bounds);
+        sim.playfield_size_height = Some(16);
+        sim.session.map_width = 16;
+        sim.session.map_height = 16;
+        let terrain = test_flat_ground_grid(32);
+        sim.path_grid = Some(Arc::new(PathGrid::from_resolved_terrain(&terrain)));
+        sim.install_resolved_terrain_for_new_map(terrain);
+        let owner = sim.intern("Russians");
+        sim.houses.insert(
+            owner,
+            crate::sim::house_state::HouseState::new(owner, 1, None, true, 0, 0),
+        );
+        let depot = sim
+            .spawn_object(building_name, "Russians", 6, 9, 0, &rules)
+            .unwrap();
+        let tank = sim
+            .spawn_object(unit_name, "Russians", 10, 10, 0, &rules)
+            .unwrap();
+        let object = rules.object(unit_name).unwrap();
+        assert_eq!(
+            object.primary.as_deref(),
+            arrival["native_inputs"]["after"]["types"][unit_name]["primary_name"].as_str(),
+            "{context}: production Primary reader"
+        );
+        let native_getter = arrival["native_inputs"]["original_getters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|getter| getter["type"] == unit_name)
+            .unwrap();
+        assert_eq!(
+            crate::sim::combat::combat_weapon::is_armed(
+                sim.substrate.entities.get(tank).unwrap(),
+                object
+            ),
+            native_getter["is_armed_eax"] != 0,
+            "{context}: canonical IsArmed"
+        );
+        let other = (row["supplied_before"]["target"] == "other").then(|| {
+            sim.spawn_object(building_name, "Russians", 20, 20, 0, &rules)
+                .unwrap()
+        });
+        for (id, peer, mission, queued, contacts, tether) in [
+            (
+                tank,
+                depot,
+                "unit_mission",
+                "unit_queued",
+                "unit_contacts",
+                "unit_tether",
+            ),
+            (
+                depot,
+                tank,
+                "building_mission",
+                "building_queued",
+                "building_contacts",
+                "building_tether",
+            ),
+        ] {
+            let entity = sim.substrate.entities.get_mut(id).unwrap();
+            entity.mission.apply_test_fixture(MissionTestFixture {
+                current: MissionId::from_raw(integer(&before[mission])),
+                suspended: MissionId::NONE,
+                queued: MissionId::from_raw(integer(&before[queued])),
+                movement_bypass_latch: 0,
+                handler_state: if id == depot {
+                    integer(&before["status"]) as u32
+                } else {
+                    0
+                },
+                mission_start_frame: integer(&before["frame"]) as u32,
+                ai_counter: 0,
+                dispatch_timer: MissionDispatchTimer::from_raw(-1, 0),
+            });
+            entity.radio_contacts.clear_all();
+            entity
+                .radio_contacts
+                .set_capacity(before[contacts].as_array().unwrap().len());
+            if before[contacts][0].is_string() {
+                entity.radio_contacts.insert(peer);
+            }
+            entity.dock_entered_with = (integer(&before[tether]) != 0).then_some(peer);
+        }
+        let at = &before["unit_coordinate"];
+        let coordinate = DriveCoord {
+            x: integer(&at[0]),
+            y: integer(&at[1]),
+            z: integer(&at[2]),
+        };
+        let unit = sim.substrate.entities.get_mut(tank).unwrap();
+        unit.position.rx = (coordinate.x / 256) as u16;
+        unit.position.ry = (coordinate.y / 256) as u16;
+        unit.position.sub_x = SimFixed::from_num(coordinate.x % 256);
+        unit.position.sub_y = SimFixed::from_num(coordinate.y % 256);
+        unit.position.exact_z_leptons = Some(coordinate.z);
+        unit.health.current = integer(&before["health"]);
+        unit.estimated_health = EstimatedHealth::from_raw(integer(&before["estimate"]));
+        unit.navigation.nav_com = before["unit_nav"]
+            .is_string()
+            .then_some(NavTargetRef::Building { id: depot });
+        unit.navigation.nav_com_aux = None;
+        unit.attack_target = other.map(AttackTarget::new);
+        let destination = &before["locomotor_destination"];
+        let destination = DriveCoord {
+            x: integer(&destination[0]),
+            y: integer(&destination[1]),
+            z: integer(&destination[2]),
+        };
+        let terminal = input["entry"] == "terminal_drive";
+        unit.drive_locomotion = Some(DriveLocomotionRuntime {
+            destination: (destination != DriveCoord { x: 0, y: 0, z: 0 }).then_some(destination),
+            head_to: terminal.then_some(coordinate),
+            track: TrackProgress {
+                turn_index: integer(&row["supplied_before"]["track_selector"]),
+                cursor: integer(&row["supplied_before"]["track_cursor"]),
+                reversed: false,
+                residual: 0,
+            },
+            track_valid: terminal,
+            ..Default::default()
+        });
+        if integer(&before["locomotor_powered"]) == 0 {
+            unit.locomotor.as_mut().unwrap().power_off();
+        }
+        let building = sim.substrate.entities.get_mut(depot).unwrap();
+        building
+            .mission_leaf
+            .set_building_ready_latch(integer(&before["repairing"]) as u8);
+        let stage = &before["stage"];
+        building
+            .mission_leaf
+            .install_building_repair_progress_fixture(StageClass::from_native_fixture(
+                integer(&stage[0]),
+                integer(&stage[1]) as u8,
+                CdTimer::from_raw(integer(&stage[2]), integer(&stage[3])),
+                integer(&stage[4]),
+                integer(&stage[5]),
+            ));
+        let house = sim.houses.get_mut(&owner).unwrap();
+        house.economy.credits = integer(&before["balance"]);
+        house.economy.spent_credits = integer(&before["spent"]);
+        sim.substrate.occupancy =
+            crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
+        sim.scenario_rng = SimRng::new(input["seed"].as_u64().unwrap_or(1));
+        assert!(sim.track_survives(tank), "{context}: admitted live Unit");
+        let building = sim.substrate.entities.get(depot).unwrap();
+        let center =
+            super::super::ground_pose::object_get_coords(building, sim.resolved_terrain.as_ref());
+        assert_eq!(
+            json!([center.x, center.y, center.z]),
+            row["center_coordinate"],
+            "{context}: original Building GetCoords"
+        );
+        if service {
+            // The negative control clears UnitRepair after choosing the stock
+            // placement point. Its saved dock_coordinate is that supplied
+            // placement, not a getter observation of the altered type.
+            let dock = super::super::navcom::building_dock_coordinate(
+                &sim.substrate.entities,
+                depot,
+                Some(tank),
+                sim.resolved_terrain.as_ref(),
+                &rules,
+                &sim.interner,
+            )
+            .unwrap();
+            assert_eq!(
+                json!([dock.x, dock.y, dock.z]),
+                row["dock_coordinate"],
+                "{context}: original stock Building GetDockCoord"
+            );
+        }
+        compare(&sim, tank, depot, other, before, context);
+
+        if input["entry"] == "unit_idle" {
+            // Both original second-argument controls have ctor TubeIndex=-1.
+            // This owner has no retained tube continuation to resume.
+            sim.unit_enter_idle_mode(tank, Some(&rules), false);
+        } else if input["entry"] == "navigation_gate" {
+            let returns = sim.track_navigation_gate(tank, Some(&rules));
+            assert_eq!(
+                u8::from(returns),
+                row["returned_al"].as_u64().unwrap() as u8,
+                "{context}: Foot gate AL"
+            );
+        } else {
+            assert!(terminal, "{context}: declared terminal admission");
+            let sample = &arrival["native_inputs"]["terminal_sample"];
+            assert_eq!(
+                sample["original_sample"]["budget"], row["entry_registers"]["local_budget"],
+                "{context}: native terminal entry follows original point payment"
+            );
+            let mut per_cell_calls = 0;
+            let pass = sim
+                .try_run_track_points_observed(
+                    TrackInvocation {
+                        entity_id: tank,
+                        family: TrackFamily::Drive,
+                        apply_fresh_occupation: false,
+                        active_gate: false,
+                        retry: false,
+                    },
+                    // Rust starts before point payment; the original joined
+                    // terminal body starts after it. OriginalCursor executes
+                    // this supplied budget and records the paid entry budget.
+                    integer(&sample["supplied_budget"]),
+                    Some(&rules),
+                    None,
+                    &mut |world, _, event| {
+                        if event == TrackWorldEvent::PerCell {
+                            per_cell_calls += 1;
+                            let native = row["interior_snapshots"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .find(|snapshot| snapshot["marker"] == "after_per_cell")
+                                .unwrap();
+                            compare(world, tank, depot, other, &native["state"], context);
+                        }
+                    },
+                )
+                .unwrap();
+            assert_eq!(per_cell_calls, 1, "{context}: original terminal PerCell");
+            assert_eq!(
+                u8::from(pass.aborted),
+                row["returned_al"].as_u64().unwrap() as u8,
+                "{context}: terminal AL"
+            );
+        }
+        compare(&sim, tank, depot, other, &row["after"], context);
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(tank)
+                .unwrap()
+                .attack_target
+                .as_ref()
+                .map(|target| target.target),
+            (row["supplied_after"]["target"] == "other")
+                .then(|| TargetKind::Entity(other.unwrap())),
+            "{context}: retained target"
+        );
+    }
+}

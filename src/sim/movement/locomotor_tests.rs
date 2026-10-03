@@ -311,6 +311,7 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         deploying_anim: None,
         ammo: -1,
         initial_ammo: -1,
+        manual_reload: false,
         spawns: None,
         spawns_number: 0,
         spawn_regen_rate: 0,

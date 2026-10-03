@@ -3703,10 +3703,16 @@ fn native_frame_committed_late_gate_captures_pre_increment_frame() {
     let gate_id = sim
         .spawn_object("GAGATE_A", "Americans", 10, 10, 0, &rules)
         .expect("spawn gate");
-    sim.mission_assign_exact(gate_id, crate::sim::mission::MissionId::NONE, 0).unwrap();
-    sim.mission_queue_exact(gate_id,
-        crate::sim::mission::MissionId::from_known(MissionType::Open), 0, 0,
-        &crate::sim::mission::authority::EntityReadyInputProvider).unwrap();
+    sim.mission_assign_exact(gate_id, crate::sim::mission::MissionId::NONE, 0)
+        .unwrap();
+    sim.mission_queue_exact(
+        gate_id,
+        crate::sim::mission::MissionId::from_known(MissionType::Open),
+        0,
+        0,
+        &crate::sim::mission::authority::EntityReadyInputProvider,
+    )
+    .unwrap();
     sim.mission_commence_exact(gate_id, 0).unwrap();
     assert_eq!(sim.session.binary_frame, 0, "fresh sim starts at frame 0");
 
@@ -3721,8 +3727,11 @@ fn native_frame_committed_late_gate_captures_pre_increment_frame() {
     let gate = sim.substrate.entities.get(gate_id).expect("gate entity");
     assert_eq!(gate.door_phase(), crate::sim::door::DoorPhase::Opening);
     assert_eq!(gate.mission.handler_state(), 1);
-    assert_eq!(gate.door_timer_fields().0, 0,
-        "gate captured pre-increment frame 0, not post-increment 1");
+    assert_eq!(
+        gate.door_timer_fields().0,
+        0,
+        "gate captured pre-increment frame 0, not post-increment 1"
+    );
 }
 
 #[test]
@@ -8598,9 +8607,11 @@ fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
     );
 }
 
-/// The route a Unit's first Find_Path (`0x004D3920`) installs for a Move to
-/// `goal`, on the retail stacking map with `building` placed at `origin`.
-/// `contact` gives the tank a live radio contact with the building first.
+/// The route a Unit's first Find_Path (`0x004D3920`) installs after a class
+/// destination to `goal`, with `building` placed at `origin` and a supplied
+/// live contact. A synchronized player Move first sends BREAK at4C72F8 and
+/// cannot supply that contact to the search. This fixture isolates the shared
+/// class/search owner; command cleanup has its own native lifecycle consumer.
 /// Foundations are art keys, so the retail artmd.ini is installed too.
 fn unit_route_beside_building(
     building: &str,
@@ -8624,18 +8635,32 @@ fn unit_route_beside_building(
         e.radio_contacts.insert(building_id);
     }
     let grid = PathGrid::clone(&sim.path_grid_snapshot().expect("navigation built"));
-    let cmd = cmd_envelope(
-        &sim,
-        "Americans",
-        1,
-        Command::Move {
+    let info = sim.resolve_move_info(tank, Some(&rules)).unwrap();
+    sim.mission_assign_exact(tank, MissionId::from_known(MissionType::Move), 0)
+        .unwrap();
+    assert!(sim.issue_ground_move(
+        super::ground_move::GroundMove {
             entity_id: tank,
-            target_rx: goal.0,
-            target_ry: goal.1,
+            target: goal,
+            speed: info.speed,
             queue: false,
+            speed_type: Some(info.speed_type),
+            owner_blocks: true,
+            object_destination: None,
         },
+        Some(&rules),
+    ));
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(tank)
+            .unwrap()
+            .radio_contacts
+            .contains(building_id),
+        contact,
+        "the class destination preserves the supplied contact"
     );
-    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
+    let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     Some(
         sim.substrate

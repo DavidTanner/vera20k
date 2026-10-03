@@ -62,7 +62,8 @@ pub(crate) fn dispatch_foot_mission(
             return bridge_changed;
         }
         let mission = entity.mission.current().known();
-        let depot_dock_state = crate::sim::docking::building_dock::depot_owns_enter(entity);
+        let depot_dock_state =
+            crate::sim::docking::building_dock::depot_owns_enter(sim, Some(rules), id);
         let refinery_dock_miner = !depot_dock_state
             && matches!(
                 mission,
@@ -734,10 +735,10 @@ pub(super) struct MissionHandlerInput {
     /// and every out-of-range id take the switch's default arm rather than
     /// being skipped.
     pub(super) mission: Option<MissionType>,
-    /// The object holds a repair-depot `DockState`: its Enter dispatch is
+    /// The object holds a repair-depot contact or independent pending entry: its Enter dispatch is
     /// the shared `mission::enter::mission_enter`.
     pub(super) depot_dock_state: bool,
-    /// A harvester on Enter or Unload without a depot `DockState`: its
+    /// A harvester on Enter or Unload without a depot contact/entry: its
     /// refinery dock missions (`miner::refinery_dock`).
     pub(super) refinery_dock_miner: bool,
     pub(super) timer_due: bool,

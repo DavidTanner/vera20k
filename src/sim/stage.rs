@@ -1,4 +1,4 @@
-//! One native Techno stage clock, shared by Infantry actions, harvesting and
+//! Native StageClass clock operations, shared by Infantry actions, harvesting and
 //! building controls. Original identities: constructor6F2B5E..6F2B81;
 //! Techno6FABC4..6FAC31; Building4509DE..450A38. Native Building steps before
 //! its Techno AI and skips the latter block; other classes step after Mission
@@ -12,7 +12,8 @@
 
 use crate::sim::timer::CdTimer;
 
-/// The single retained +F8/+FC/+100/+108/+10C/+110 state on a GameEntity.
+/// The retained +F8/+FC/+100/+108/+10C/+110 Techno clock; Building repair
+/// owns a distinct instance at+620 (constructor43B7F5, Repair44BBF2).
 /// Fields remain private; family receivers use the owner's operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct StageClass {
@@ -67,6 +68,11 @@ impl StageClass {
     #[cfg(test)]
     pub(crate) const fn timer(&self) -> CdTimer {
         self.timer
+    }
+
+    /// Repair44BCD6 changes only the rate, retaining the existing timer.
+    pub(crate) fn set_rate(&mut self, rate: i32) {
+        self.rate = rate;
     }
 
     pub(crate) const fn rate(&self) -> i32 {

@@ -246,6 +246,27 @@ class MapObservationTests(unittest.TestCase):
                          [row['payload'] for row in self.profile['commands']])
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
 
+    def test_depot_repair_and_sale_orders_keep_payloads_and_fail_changed_receipts(self):
+        self.production_profile()
+        self.profile['commands'] = [
+            {'issue_after_step': 0, 'owner': 'Computer1',
+             'payload': {'RepairAtDepot': {'entity_id': 7, 'depot_id': 1}}},
+            {'issue_after_step': 2, 'owner': 'Computer1',
+             'payload': {'SellBuilding': {'entity_id': 9}}}]
+        self.profile_path.write_text(json.dumps(self.profile))
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual([row['payload'] for row in report['capture']['observations']['commands']],
+                         [row['payload'] for row in self.profile['commands']])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+        for index, variant, key in ((0, 'RepairAtDepot', 'depot_id'),
+                                    (1, 'SellBuilding', 'entity_id')):
+            with self.subTest(variant=variant):
+                self.output = self.root / f'changed-{variant}'
+                self.change = lambda m, i=index, v=variant, k=key: \
+                    m['observations']['commands'][i]['payload'][v].update({k: 99})
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
+
     def test_building_and_rule_handle_receipts_reject_wrong_types_or_unknown_fields(self):
         self.production_profile()
         changes = [lambda m: m['observations'].pop('rule_types'),

@@ -300,9 +300,7 @@ fn compare(s: &Scene, native: &Value, context: &str) {
         TargetKind::Entity(id) => NavTargetRef::Entity { id },
     });
     let pending = e
-        .dock_state
-        .as_ref()
-        .and_then(|d| d.pending_entry())
+        .pending_entry()
         .map(|id| s.name(id))
         .unwrap_or(Value::Null);
     let storage = e.miner.as_ref().map_or_else(
@@ -500,7 +498,7 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
         "repair_release_power" => {
             // The packet supplies completed service, then executes only the
             // original PowerOn prefix. Production depot release is separately
-            // checked through tick_building_docks, including exit movement.
+            // checked through the Building repair mission, including exit movement.
             let e = s.sim.substrate.entities.get_mut(s.miner).unwrap();
             e.health.current = int(&step["after"]["strength"]);
             e.locomotor.as_mut().unwrap().power_on();
@@ -669,7 +667,28 @@ fn independent_pending_entry_survives_save_load_and_changes_the_state_hash() {
         .find(|r| r["input"]["name"] == "repair_per_cell_enter_object")
         .unwrap();
     let mut s = fixture(row);
-    building_dock::begin_service(&mut s.sim, &s.rules, s.miner, s.refinery);
+    s.sim
+        .substrate
+        .entities
+        .get_mut(s.miner)
+        .unwrap()
+        .mark_live_contact_with(s.refinery);
+    s.sim
+        .substrate
+        .entities
+        .get_mut(s.refinery)
+        .unwrap()
+        .mark_live_contact_with(s.miner);
+    s.sim
+        .mission_assign_exact(
+            s.refinery,
+            MissionId::from_known(crate::sim::mission::MissionType::Repair),
+            200,
+        )
+        .unwrap();
+    let building = s.sim.substrate.entities.get_mut(s.refinery).unwrap();
+    building.mission.set_handler_state(2);
+    building.mission_leaf.start_building_repair_progress(200);
     let without_pending = s.sim.state_hash();
     building_dock::set_pending_entry(&mut s.sim, s.miner, Some(s.other));
     assert_ne!(
@@ -677,38 +696,29 @@ fn independent_pending_entry_survives_save_load_and_changes_the_state_hash() {
         without_pending,
         "pending influences future admission"
     );
-    let hash_dock = |dock: &building_dock::DockState| {
-        use std::hash::Hasher;
-        let mut state = std::collections::hash_map::DefaultHasher::new();
-        dock.hash_state(&mut state);
-        state.finish()
-    };
-    let before = hash_dock(
-        s.sim
-            .substrate
-            .entities
-            .get(s.miner)
-            .unwrap()
-            .dock_state
-            .as_ref()
-            .unwrap(),
-    );
     // Save/load the actual retained state. Map reattachment and Scenario load
     // reset are separate contracts; this bincode roundtrip pins these owners.
     let bytes = crate::sim::snapshot::GameSnapshot::save(&s.sim, 0, 0, "independent pending", 0);
     let restored = crate::sim::snapshot::GameSnapshot::load(&bytes)
         .unwrap()
         .sim;
-    let dock = restored
-        .substrate
-        .entities
-        .get(s.miner)
-        .unwrap()
-        .dock_state
-        .as_ref()
-        .unwrap();
-    assert_eq!(dock.pending_entry(), Some(s.other));
-    assert_eq!(dock.dock_building_id(), s.refinery);
-    assert_eq!(dock.phase(), building_dock::DockPhase::Servicing);
-    assert_eq!(hash_dock(dock), before);
+    let unit = restored.substrate.entities.get(s.miner).unwrap();
+    assert_eq!(unit.pending_entry(), Some(s.other));
+    assert!(unit.radio_contacts.contains(s.refinery));
+    let building = restored.substrate.entities.get(s.refinery).unwrap();
+    assert!(building.radio_contacts.contains(s.miner));
+    assert_eq!(
+        building.mission.current(),
+        MissionId::from_known(crate::sim::mission::MissionType::Repair)
+    );
+    assert_eq!(building.mission.handler_state(), 2);
+    assert_eq!(
+        building
+            .mission_leaf
+            .as_building()
+            .unwrap()
+            .repair_progress()
+            .value(),
+        0
+    );
 }

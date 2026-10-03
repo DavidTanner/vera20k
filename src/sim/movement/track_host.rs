@@ -1218,6 +1218,15 @@ impl Simulation {
     }
 
     fn track_navigation_gate(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
+        // Foot vt+504 ->4DB9B0, called after terminal PerCell and
+        // StopMoving4DF0D0. Stock Enter7 + Building contact + UnitRepair
+        // calls Unit738970(0,0) at4DBA15; other admitted paths use(0,1).
+        // The second argument only admits the retained tube-resume arm
+        // 4D8403..8440. Ordinary ctor4D31F1 sets TubeIndex=-1, so both
+        // arguments reach the same Unit tail here. Tube continuation remains
+        // outside this receiver. Original arrival_terminal controls in
+        // tools/spatial_oracle/building_repair.depot_service.json pin the
+        // stock armed Enter -> queued Guard result and unchanged full RNG.
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };

@@ -532,7 +532,13 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // off/on boundaries equal except tick_result.state_hash. Omitting only Door
 // restores incoming main; the temporary control is removed. Bounded Rust
 // attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x3388_4CED_CDBD_70FD;
+// Depot Mission_Repair Stage620 is independently owned and hashed. The
+// same-binary control omitting only this feed restores incoming main; all
+// 601 complete rows match after removing only tick_result.state_hash.
+// Integrated Rust attribution (not native parity):
+// tools/spatial_oracle/depot_service_replay/main1018/receipt.json.
+// The preceding-main attribution remains in depot_service_replay/receipt.json.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xCDA1_0AEE_6EA0_AE46;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

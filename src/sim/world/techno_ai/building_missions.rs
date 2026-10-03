@@ -91,25 +91,14 @@
 //!   the beams are invisible; damage, timing and anims are unaffected (no
 //!   RNG, no sim state). Later owner: laser drawing, its own presentation
 //!   chain.
-//! - The docking radio of an unarmed building's Guard (the depot/airfield
-//!   docking chain). Status 1 of a `UnitRepair=` (`+0x16A9`), `UnitReload=`
-//!   (`+0x16AA`) or `Bunker=` (`+0x16AB`) type walks its radio contacts
-//!   (`0x00449817..0x00449918`): one on Enter under 64 leptons away that answers
-//!   ROGER to message `0x13` gets the building a queued Repair and the
-//!   handler returns 1 without its `RandomRanged(0, 2)`
-//!   (`0x00449942..0x0044995C`). A `UnitReload=` type also sends its contact
-//!   `0x1D`, then `0x13`, and queues Repair on ROGER before its usual draw
-//!   (`0x00449970..0x004499B5`). VERA's handler stays on Guard and draws.
-//!   Trigger: a Service Depot's repair, an airfield's reload, a Tank Bunker
-//!   entry (GADEPT, NADEPT, YADEPT, GAAIRC, AMRADR, NATBNK). Effect: the
-//!   building's queued mission and the Scenario draw count differ while the
-//!   contact docks, so every later Scenario draw differs from native.
-//!   Frequency: common in ordinary play. The contacts' answers to `0x13` and
-//!   `0x1D`, and whether that Repair commences (the unarmed arm sets no
-//!   `+0x6DD`), belong to that chain with BuildingClass::Mission_Repair
-//!   (`0x0044B780`); the dock owners run the repair and reload meanwhile.
-//!   The WeaponsFactory's ClearBibArea (`0x00449540`) after the walk is
-//!   dormant: no retail WeaponsFactory type clears HasStupidGuardMode.
+//! - UnitReload/Bunker Guard contact admission remains with those separate
+//!   families (449817..499B5). UnitRepair's raw-distance/NEED_MOVE/Repair
+//!   queue is ported here; DOCK_NOW independently supplies its ready latch.
+//!   Trigger: airfield reload or bunker entry. Effect: Guard's queued mission
+//!   and Scenario draw count still differ on those paths. Foundation waiters
+//!   and the full arrival position producer are bounded by the depot corpus.
+//!   WeaponsFactory ClearBibArea449540 is dormant with retail data because
+//!   every stock WeaponsFactory retains HasStupidGuardMode.
 //! - Voxel HVA frames now reach `emit_building_turret_vxl`: original43DA80
 //!   selects +148 modulo the turret's frames (or the barrel's frames on the
 //!   barrel-only arm); a separate barrel uses frame0. Native component
@@ -230,10 +219,18 @@ pub(super) fn dispatch(
             None => return,
         },
         Some(MissionType::Open) => crate::sim::gate_runtime::mission_open(sim, id, rules),
-        // BuildingClass's own Repair (`0x0044B780`), Missile (`0x0044C980`)
-        // keep
-        // their existing owners.
-        Some(MissionType::Repair | MissionType::Missile) => return,
+        // BuildingRepair44B780 runs at this visit before the Factory sweep;
+        // unsupported repair families leave dispatch with their current owner.
+        Some(MissionType::Repair) => match crate::sim::docking::building_dock::mission_repair(
+            sim,
+            rules,
+            id,
+            ctx.overlay_registry,
+        ) {
+            Some(delay) => delay,
+            None => return,
+        },
+        Some(MissionType::Missile) => return,
         // Every other slot of the building's table, and no mission (above
         // `0x1F`, `0x005B30BB`), is a MissionClass stub.
         _ => DEFAULT_MISSION_DELAY,
@@ -590,6 +587,59 @@ fn mission_guard(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
             sim.session.binary_frame as i32,
         );
         entity.mission.set_handler_state(1);
+    }
+    if status == 1 && obj.unit_repair {
+        //449815..44994A: scan contacts in slot order, raw GetCoords 3D
+        //distance <64 (no Building foundation discount), then NEED_MOVE.
+        let contacts: Vec<_> = sim
+            .substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .radio_contacts
+            .iter_live()
+            .collect();
+        for contact in contacts {
+            let Some(unit) = sim.substrate.entities.get(contact) else {
+                continue;
+            };
+            if unit.mission.effective() != MissionId::from_known(MissionType::Enter) {
+                continue;
+            }
+            let center = crate::sim::movement::ground_pose::object_get_coords(
+                sim.substrate.entities.get(id).unwrap(),
+                sim.resolved_terrain.as_ref(),
+            );
+            let position = crate::sim::movement::ground_pose::object_get_coords(
+                unit,
+                sim.resolved_terrain.as_ref(),
+            );
+            if crate::util::native_x87::distance_3d_leptons(
+                [center.x, center.z, center.y],
+                [position.x, position.z, position.y],
+            ) >= 64
+            {
+                continue;
+            }
+            if crate::sim::radio::transmit(
+                sim,
+                id,
+                contact,
+                crate::sim::radio::RadioMessage::NeedToMove,
+                crate::sim::radio::RadioPayload::default(),
+                Some(rules),
+            ) == crate::sim::radio::RadioResponse::Roger
+            {
+                let _ = sim.mission_queue_exact(
+                    id,
+                    MissionId::from_known(MissionType::Repair),
+                    0,
+                    sim.session.binary_frame,
+                    &LiveReadyInputProvider { rules },
+                );
+                return 1;
+            }
+        }
     }
     // `0x004499BB..0x00449A36`: Rate for a depot, three times it otherwise.
     let frames = rules.mission_control.rate_frames(current);
@@ -1317,3 +1367,7 @@ mod opening_oracle_tests;
 #[cfg(test)]
 #[path = "factory_unload_tests.rs"]
 mod factory_unload_tests;
+
+#[cfg(test)]
+#[path = "../../docking/building_repair_service_oracle_tests.rs"]
+mod repair_service_oracle_tests;

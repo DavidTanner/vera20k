@@ -812,7 +812,12 @@ use crate::sim::world::Simulation;
 // deferred destructor, separately from its persistent cell marks.
 // 284 -> 285: every Techno saves one shared DoorClass; Gate Open/handler
 // status come from MissionCom rather than a second gate mission/transition.
-const SNAPSHOT_VERSION: u32 = 285;
+// 285 -> 286: native Foot+500 replaces the duplicate Unit depot FSM;
+// BuildingMissionLeaf retains the independent+620 progress StageClass. The
+// hash includes that clock and the pending entry. Anim+179 retains normal
+// completion and+118's independent Building-Anim marker for slot expiry and
+// presentation. Prior layout cannot resume.
+const SNAPSHOT_VERSION: u32 = 286;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1706,25 +1711,15 @@ fn restore_object_references(
             )?;
         }
 
-        if let Some(dock) = entity.dock_state.as_ref() {
+        if let Some(pending) = entity.pending_entry() {
             require_resolved_reference(
-                entity_ids.contains(&dock.dock_building_id()),
+                entity_ids.contains(&pending),
                 "EntityStore",
                 entity_id,
-                "dock_state.dock_building_id",
+                "pending_entry",
                 "EntityStore",
-                dock.dock_building_id(),
+                pending,
             )?;
-            if let Some(pending) = dock.pending_entry() {
-                require_resolved_reference(
-                    entity_ids.contains(&pending),
-                    "EntityStore",
-                    entity_id,
-                    "dock_state.pending_entry",
-                    "EntityStore",
-                    pending,
-                )?;
-            }
         }
         if let Some(ammo) = entity.aircraft_ammo.as_ref()
             && let Some(target_id) = ammo.target_airfield
@@ -3818,8 +3813,10 @@ mod tests {
         // 280 -> 281: authoritative weapon/turret pair and saved charge duration.
         // 281 -> 282: independent depot pending entry and sole MissionCom cadence.
         // 282 -> 283: private optional turret/barrel recoil components.
-        // 284 -> 285: shared Techno Door/Gate plus retained Smudge identities.
-        assert_eq!(super::SNAPSHOT_VERSION, 285);
+        // 283 -> 284: retained runtime Smudge identities/pending deletion.
+        // 284 -> 285: shared Techno Door/Gate.
+        // 285 -> 286: pending entry, independent repair Stage and Anim completion.
+        assert_eq!(super::SNAPSHOT_VERSION, 286);
     }
 
     #[test]
@@ -5058,7 +5055,7 @@ mod tests {
     }
 
     #[test]
-    fn building_anim_slot_restore_accepts_unattached_deferred_destroy() {
+    fn building_anim_slot_restore_keeps_expired_slots_clear_during_deferred_destroy() {
         let (mut sim, rules, owner) = crate::sim::building_art::slot_test_fixture();
         let anim = sim
             .set_building_anim_slot(owner, 3, false, false, 0, &rules)
@@ -5066,14 +5063,25 @@ mod tests {
         assert!(sim.anim(anim).unwrap().owner_entity.is_none());
         sim.destroy_anim(anim, &rules);
         assert!(sim.substrate.pending_delete.contains(&anim));
+        // Anim UnInit4255B0 broadcasts before deferred physical deletion;
+        // Building451B40 clears slot3 immediately but retains Anim+118.
         assert_eq!(
             sim.entities().get(owner).unwrap().building_anim_slots[3],
-            Some(anim)
+            None
         );
-        sim.substrate.anims.get_mut(anim).unwrap().building_slot = None;
-        sim.restore_after_snapshot_load().unwrap();
-        assert_eq!(sim.anim(anim).unwrap().building_slot, Some((owner, 3)));
-        assert!(sim.substrate.pending_delete.contains(&anim));
+        assert!(sim.anim(anim).unwrap().building_slot.is_none());
+        assert!(sim.anim(anim).unwrap().is_building_anim());
+        let bytes = GameSnapshot::save(&sim, 0, 0, "expired-slot.map", 0);
+        // Scenario load consumes the saved RNG state and reseeds zero; keep
+        // the animation-constructor draw in the saved input, as above.
+        sim.scenario_rng = crate::sim::rng::SimRng::new(0);
+        let hash = sim.state_hash();
+        let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
+        restored.restore_after_snapshot_load().unwrap();
+        assert_eq!(restored.anim(anim).unwrap().building_slot, None);
+        assert!(restored.anim(anim).unwrap().is_building_anim());
+        assert!(restored.substrate.pending_delete.contains(&anim));
+        assert_eq!(restored.state_hash(), hash);
     }
 
     #[test]

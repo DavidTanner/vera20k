@@ -26,6 +26,22 @@ use crate::sim::world::Simulation;
 use crate::sim::world::entry_test_fixture::fixture_with_rules_and_fixed_art;
 use serde_json::{Value, json};
 
+/// Observe the authoritative depot contact, Building mission state and the
+/// contact's power latch; no unit service-phase adapter remains.
+fn depot_is_servicing(sim: &Simulation, depot: u64, unit: u64) -> bool {
+    sim.substrate.entities.get(depot).is_some_and(|building| {
+        building.radio_contacts.contains(unit)
+            && building.mission.current().known() == Some(MissionType::Repair)
+            && building.mission.handler_state() == 2
+    }) && sim.substrate.entities.get(unit).is_some_and(|contact| {
+        contact.radio_contacts.contains(depot)
+            && contact
+                .locomotor
+                .as_ref()
+                .is_some_and(|locomotor| !locomotor.is_powered())
+    })
+}
+
 const UNITS: &str = "[VehicleTypes]\n0=DRV\n1=SHP\n\
     [DRV]\nStrength=300\nSpeed=6\nSpeedType=Track\nMovementZone=Normal\n\
     Locomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
@@ -448,6 +464,9 @@ fn depot_release_and_pad_entry_route_through_find_path() {
             "[CABHUT]\nFoundation=1x1\n[DEPOT]\nFoundation=3x3\n",
         ),
     );
+    // This synthetic fixture supplies normalized LocalSize and a 16x16
+    // Map Size; native exit search568300 also needs its retained height.
+    sim.playfield_size_height = Some(16);
     let owner = sim.interner.intern("Americans");
     let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 5000, 0);
     house.player_control = true;
@@ -474,14 +493,6 @@ fn depot_release_and_pad_entry_route_through_find_path() {
             Some(&rules),
         ));
     }
-    use crate::sim::docking::building_dock::DockPhase;
-    let phase = |sim: &Simulation, id: u64| {
-        sim.substrate
-            .entities
-            .get(id)
-            .and_then(|e| e.dock_state.as_ref())
-            .map(|state| state.phase())
-    };
     let exit = (16, 12);
     let mut first_released = false;
     let mut first_exited = false;
@@ -496,7 +507,15 @@ fn depot_release_and_pad_entry_route_through_find_path() {
                 "tank {tank} entered the impassable west column at {at:?}"
             );
         }
-        if !first_released && phase(&sim, first).is_none() {
+        if !first_released
+            && !sim
+                .substrate
+                .entities
+                .get(first)
+                .unwrap()
+                .radio_contacts
+                .contains(depot)
+        {
             first_released = true;
             let a = sim.substrate.entities.get(first).unwrap();
             assert_eq!(
@@ -507,7 +526,7 @@ fn depot_release_and_pad_entry_route_through_find_path() {
         }
         let a = sim.substrate.entities.get(first).unwrap();
         first_exited |= first_released && (a.position.rx, a.position.ry) == exit;
-        if first_exited && phase(&sim, waiter) == Some(DockPhase::Servicing) {
+        if first_exited && depot_is_servicing(&sim, depot, waiter) {
             let e = sim.substrate.entities.get(waiter).unwrap();
             assert_eq!((e.position.rx, e.position.ry), pad);
             waiter_on_pad = true;
@@ -517,10 +536,10 @@ fn depot_release_and_pad_entry_route_through_find_path() {
     let e = sim.substrate.entities.get(waiter).unwrap();
     assert!(
         first_exited && waiter_on_pad,
-        "released {first_released} exited {first_exited}: waiter at {:?} dock {:?} nav {:?} \
+        "released {first_released} exited {first_exited}: waiter at {:?} pending {:?} nav {:?} \
          mission {:?}",
         (e.position.rx, e.position.ry),
-        e.dock_state.as_ref().map(|state| state.phase()),
+        e.pending_entry(),
         e.navigation.nav_com,
         e.mission.current(),
     );
@@ -548,6 +567,9 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
             "[CABHUT]\nFoundation=1x1\n[DEPOT]\nFoundation=3x3\n",
         ),
     );
+    // This synthetic fixture supplies normalized LocalSize and a 16x16
+    // Map Size; native exit search568300 also needs its retained height.
+    sim.playfield_size_height = Some(16);
     let owner = sim.interner.intern("Americans");
     let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 5000, 0);
     house.player_control = true;
@@ -577,13 +599,12 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
     for _ in 0..1200 {
         sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
         let e = sim.substrate.entities.get(miner).unwrap();
-        let phase = e.dock_state.as_ref().map(|state| state.phase());
-        serviced |= phase == Some(crate::sim::docking::building_dock::DockPhase::Servicing);
+        serviced |= depot_is_servicing(&sim, depot, miner);
         let on_footprint = (16..19).contains(&e.position.rx) && (9..12).contains(&e.position.ry);
         let teleport = e.locomotor.as_ref().is_some_and(|loco| {
             loco.active_kind() == crate::rules::locomotor_type::LocomotorKind::Teleport
         });
-        if serviced && phase.is_none() && !on_footprint && teleport {
+        if serviced && !e.radio_contacts.contains(depot) && !on_footprint && teleport {
             left = true;
             break;
         }
@@ -591,9 +612,9 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
     let e = sim.substrate.entities.get(miner).unwrap();
     assert!(
         serviced && left,
-        "serviced {serviced}: cell {:?} dock {:?} nav {:?} loco {:?}",
+        "serviced {serviced}: cell {:?} pending {:?} nav {:?} loco {:?}",
         (e.position.rx, e.position.ry),
-        e.dock_state.as_ref().map(|state| state.phase()),
+        e.pending_entry(),
         e.navigation.nav_com,
         e.locomotor.as_ref().map(|loco| loco.active_kind()),
     );
@@ -626,6 +647,9 @@ fn three_depot_waiters_are_repaired_in_turn_without_pad_intrusion() {
                 "[CABHUT]\nFoundation=1x1\n[DEPOT]\nFoundation=3x3\n",
             ),
         );
+        // This synthetic fixture supplies normalized LocalSize and a 16x16
+        // Map Size; native exit search568300 also needs its retained height.
+        sim.playfield_size_height = Some(16);
         let owner = sim.interner.intern("Americans");
         let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 50_000, 0);
         house.player_control = true;
@@ -657,7 +681,6 @@ fn three_depot_waiters_are_repaired_in_turn_without_pad_intrusion() {
         // The second tank is the late one.
         order(&mut sim, tanks[0]);
         order(&mut sim, tanks[2]);
-        use crate::sim::docking::building_dock::DockPhase;
         let mut serviced = Vec::new();
         for frame in 0..4000 {
             if frame == late {
@@ -668,24 +691,25 @@ fn three_depot_waiters_are_repaired_in_turn_without_pad_intrusion() {
                 let e = sim.substrate.entities.get(tank).unwrap();
                 assert!(
                     (e.position.rx, e.position.ry) != pad
-                        || e.dock_state.is_none()
+                        || e.health.current == 300
                         || e.radio_contacts.contains(depot),
                     "{arrival}: tank {tank} on the pad without the slot at frame {}",
                     sim.session.binary_frame
                 );
-                let phase = e.dock_state.as_ref().map(|state| state.phase());
-                if phase == Some(DockPhase::Servicing) && !serviced.contains(&tank) {
+                if depot_is_servicing(&sim, depot, tank) && !serviced.contains(&tank) {
                     serviced.push(tank);
                 }
             }
             if frame > late
                 && tanks.iter().all(|&tank| {
-                    sim.substrate
-                        .entities
-                        .get(tank)
-                        .unwrap()
-                        .dock_state
-                        .is_none()
+                    sim.substrate.entities.get(tank).unwrap().health.current == 300
+                        && !sim
+                            .substrate
+                            .entities
+                            .get(tank)
+                            .unwrap()
+                            .radio_contacts
+                            .contains(depot)
                 })
             {
                 break;
@@ -696,9 +720,9 @@ fn three_depot_waiters_are_repaired_in_turn_without_pad_intrusion() {
             assert_eq!(
                 e.health.current,
                 300,
-                "{arrival}: tank {tank} at {:?} dock {:?} nav {:?} serviced {serviced:?}",
+                "{arrival}: tank {tank} at {:?} pending {:?} nav {:?} serviced {serviced:?}",
                 (e.position.rx, e.position.ry),
-                e.dock_state.as_ref().map(|state| state.phase()),
+                e.pending_entry(),
                 e.navigation.nav_com,
             );
         }
@@ -1303,7 +1327,6 @@ fn queued_waypoint_arrival_returns_before_the_continuation() {
 /// admits the pad through `Find_Path` and `Can_Enter_Cell`.
 #[test]
 fn damaged_hover_unit_reaches_a_free_depot_pad() {
-    use crate::sim::docking::building_dock::DockPhase;
     let depot_rules = format!(
         "{}[HOV]\nStrength=300\nSpeed=6\nSpeedType=Hover\nMovementZone=Normal\n\
          Locomotor={{4A582742-9839-11d1-B709-00A024DDAFD1}}\n\
@@ -1338,16 +1361,15 @@ fn damaged_hover_unit_reaches_a_free_depot_pad() {
     ));
     for _ in 0..1500 {
         sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);
-        let e = sim.substrate.entities.get(hov).unwrap();
-        if e.dock_state.as_ref().map(|s| s.phase()) == Some(DockPhase::Servicing) {
+        if depot_is_servicing(&sim, depot, hov) {
             return;
         }
     }
     let e = sim.substrate.entities.get(hov).unwrap();
     panic!(
-        "hover never docked: at {:?}, phase {:?}",
+        "hover never docked: at {:?}, pending {:?}",
         (e.position.rx, e.position.ry),
-        e.dock_state.as_ref().map(|s| s.phase())
+        e.pending_entry()
     );
 }
 

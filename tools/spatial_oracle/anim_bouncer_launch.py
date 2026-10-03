@@ -247,6 +247,8 @@ def constructor_state(uc, anim):
     This extends the shared decoder without changing existing launch vectors.
     Stores421EB8..422016 and422241..4222BD establish these fields;4226BF..422707
     completes the loop count and invokes Start when the delay is zero.
+    Inactive is+19B (constructor clear422003, AI cancel test42435F);+198 is
+    independent sound suppression (clear421FF1, UnInit sound gate4255DA).
     """
     word = lambda offset: signed(read32(uc, anim + offset))
     byte = lambda offset: uc.mem_read(anim + offset, 1)[0]
@@ -257,7 +259,7 @@ def constructor_state(uc, anim):
                     delay_remaining=word(0x184), rate_reload=word(0xC0),
                     frame_timer=[word(0xB4), word(0xBC)],
                     loop_remaining=byte(0x195), first_ai_guard=byte(0x19C),
-                    constructor_reverse=byte(0x120), inactive=byte(0x198),
+                    constructor_reverse=byte(0x120), inactive=byte(0x19B),
                     paused=byte(0x19E)))
 
 

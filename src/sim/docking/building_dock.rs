@@ -44,20 +44,22 @@
 //!   Harvest unless a human owner stands off ore.
 //! - **Release of a repaired occupant** is the building's repair mission
 //!   (`BuildingClass::MissionRepairAndProduce` 0x0044B780, 0x0044C2AE..C4B0 and
-//!   0x0044BD5E..): on `0x1C` reply 0x21 the occupant gets `Queue_Mission(Move)`,
-//!   `Set_Destination(exit cell)` and BREAK, and its ArchiveTarget and pending
-//!   entry cleared. The exit cell is the depot's own rally point (its
+//!   0x0044BD5E..). A first paid step, even one reaching full health, starts
+//!   the independent service progress. Its next repair request releases on
+//!   replies other than Roger or InsufficientFunds. The occupant gets
+//!   `Queue_Mission(Move)`, `Set_Destination(exit cell)` and BREAK, and its
+//!   pending entry is cleared. State1 clears ArchiveTarget after a valid
+//!   release; state2 clears it only when returning an AI unit to its archive.
+//!   The exit cell is the depot's own rally point (its
 //!   ArchiveTarget, 0x0044C40D..C454) when set, else
 //!   `BuildingClass::GetDockCellForObject` 0x0044EFB0: the foundation exit list
 //!   (`Type+0xED4`, initializer 0x0045C300) walked in order until the unit can
 //!   enter the cell. Scatter (`FootClass::Receive_Radio 0x17`) is only reached
 //!   from the Hospital/Armory loop and is not part of the depot flow.
 //!
-//! The repair step itself (Techno `0x1C`, cost via the type vtable) is an
-//! adjacent lane: `repair_tick` keeps the pre-existing VERA-internal cost math
-//! (gamemd equivalent UNCHECKED). Native never ejects for insufficient funds
-//! (0x20 ⇒ state 1 and retry); the `NO_FUNDS_GRACE_TICKS` eject below is
-//! VERA-internal drift retained from the previous FSM.
+//! Repair payment/heal is the canonical Techno radio receiver6F4AB0.
+//! The Building mission44B780 owns status and its independent+620 progress.
+//! Evidence and coverage: tools/spatial_oracle/building_repair.depot_service.md.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/radio, sim/movement, sim/mission.
@@ -65,178 +67,10 @@
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
-use crate::sim::components::Health;
-use crate::sim::intern::InternedId;
 use crate::sim::mission::authority::LiveReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
-use crate::sim::world::Simulation;
-use std::hash::{Hash, Hasher};
-
-/// Dock state machine phase for a unit interacting with a repair depot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum DockPhase {
-    /// Pending-only projection, with no admitted service visit: ordered while
-    /// the depot held a contact, the unit holds no slot and no destination
-    /// toward the pad. Its Enter dispatch parks it near the depot
-    /// (`0x0070D8F0`) and its `FootClass::AI` asks for the slot every frame
-    /// ([`try_pending_entry`], `0x0070D7E0`).
-    WaitForDock,
-    /// Holds a contact slot and drives onto the pad (NavCom = the depot).
-    /// Ordered onto an offline depot, it holds only the depot as its
-    /// ArchiveTarget until its next Enter dispatch.
-    EnterDock,
-    /// On the dock pad, receiving repair (HP restored, credits deducted).
-    Servicing,
-    /// Repaired or out of funds — being released off the pad.
-    ExitDock,
-}
-
-/// Per-entity docking state, stored as `Option<DockState>` on `GameEntity`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DockState {
-    /// StableEntityId of the target repair depot building.
-    dock_building_id: u64,
-    /// Current phase of the dock state machine.
-    phase: DockPhase,
-    /// Ticks remaining until the next repair step fires.
-    service_timer: u32,
-    /// Consecutive ticks with insufficient credits (triggers exit after grace).
-    no_funds_ticks: u32,
-    /// Native Unit+0x500, independent of the admitted depot visit. The class
-    /// setter writes it at 0x00741D9F; Foot70D84F/70D889 and NowDead4425AA
-    /// clear it. A linked refinery or depot service does not overwrite it.
-    #[serde(default)]
-    pending_entry: Option<u64>,
-}
-
-impl DockState {
-    /// A depot entry in `phase`, no timers.
-    pub fn new(dock_building_id: u64, phase: DockPhase) -> Self {
-        Self {
-            dock_building_id,
-            phase,
-            service_timer: 0,
-            no_funds_ticks: 0,
-            pending_entry: (phase == DockPhase::WaitForDock).then_some(dock_building_id),
-        }
-    }
-
-    /// Read the admitted visit without exposing its lifecycle writers.
-    pub(crate) fn dock_building_id(&self) -> u64 {
-        self.dock_building_id
-    }
-
-    #[cfg(test)]
-    pub(crate) fn phase(&self) -> DockPhase {
-        self.phase
-    }
-
-    /// Read the native Unit+0x500 pointer without exposing its writers.
-    pub(crate) fn pending_entry(&self) -> Option<u64> {
-        self.pending_entry
-    }
-
-    /// Both the admitted visit and native pending pointer participate in
-    /// pointer-expiry admission; neither reference owns the other.
-    pub(crate) fn references(&self, building: u64) -> bool {
-        self.dock_building_id == building || self.pending_entry == Some(building)
-    }
-
-    /// Hash the existing depot adapter and its independently owned Unit+0x500
-    /// pointer. Explicit byte tags avoid platform-sized enum/Option tags in
-    /// this deterministic projection; timers remain part of service state.
-    pub(crate) fn hash_state(&self, state: &mut impl Hasher) {
-        self.dock_building_id.hash(state);
-        let phase = match self.phase {
-            DockPhase::WaitForDock => 0u8,
-            DockPhase::EnterDock => 1u8,
-            DockPhase::Servicing => 2u8,
-            DockPhase::ExitDock => 3u8,
-        };
-        phase.hash(state);
-        self.service_timer.hash(state);
-        self.no_funds_ticks.hash(state);
-        match self.pending_entry {
-            Some(id) => {
-                1u8.hash(state);
-                id.hash(state);
-            }
-            None => 0u8.hash(state),
-        }
-    }
-}
-
-/// Grace period in ticks before a docked unit exits due to insufficient funds.
-/// ~2 seconds at 15 Hz. VERA-internal (native retries without ejecting).
-const NO_FUNDS_GRACE_TICKS: u32 = 30;
-
-/// Outcome of one repair-depot service step — the depot's `REPAIR_TICK`
-/// trichotomy. Carries the per-step payload the caller applies, so the money/
-/// heal math lives in one pure place (`repair_tick`) instead of inline in the
-/// dock FSM. Maps to the dock-bus [`RadioResponse`] code via [`Self::radio_response`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RepairResponse {
-    /// A repair step fired: heal `heal` HP and deduct `cost` credits.
-    Roger { heal: i32, cost: i32 },
-    /// Not enough credits for this step. `grace` is the incremented no-funds
-    /// counter; the caller exits the dock once it reaches [`NO_FUNDS_GRACE_TICKS`].
-    InsufficientFunds { grace: u32 },
-    /// Fully repaired — exit the dock.
-    RepairComplete,
-}
-
-impl RepairResponse {
-    /// The `RadioClass` response code this maps to on the dock bus.
-    #[cfg(test)]
-    pub fn radio_response(self) -> RadioResponse {
-        match self {
-            RepairResponse::Roger { .. } => RadioResponse::Roger,
-            RepairResponse::InsufficientFunds { .. } => RadioResponse::InsufficientFunds,
-            RepairResponse::RepairComplete => RadioResponse::RepairComplete,
-        }
-    }
-}
-
-/// Decide one repair-depot service step (the `REPAIR_TICK` trichotomy). Pure
-/// Cost arithmetic retains the existing VERA adapter:
-/// `total = cost * repair_percent / 100`, `cost_per_step = max(1, total *
-/// repair_step / max_hp)`, funded ⇒ `Roger`, unfunded ⇒ `InsufficientFunds`
-/// (grace incremented), native ratio already-full ⇒ `RepairComplete`. No clock/RNG.
-/// VERA-internal cost math. Natively the depot's repair reads the type's
-/// vt+0xB0/+0xB4 (`0x006F4CFE`): the repair step cost and `RepairStep=` the
-/// building repair uses (`production::repair_step_cost`); porting it is the
-/// depot repair's chain.
-pub fn repair_tick(
-    hp: i32,
-    strength: i32,
-    unit_cost: i32,
-    repair_percent: u16,
-    repair_step: u16,
-    credits: i32,
-    no_funds_ticks: u32,
-) -> RepairResponse {
-    if (Health { current: hp }).is_fully_repaired(strength) {
-        return RepairResponse::RepairComplete;
-    }
-    let total_repair_cost = (unit_cost as i64 * repair_percent as i64 / 100) as i32;
-    let cost_per_step = if strength > 0 {
-        (total_repair_cost as i64 * repair_step as i64 / i64::from(strength)).max(1) as i32
-    } else {
-        1
-    };
-    if credits >= cost_per_step {
-        RepairResponse::Roger {
-            heal: i32::from(repair_step),
-            cost: cost_per_step,
-        }
-    } else {
-        RepairResponse::InsufficientFunds {
-            grace: no_funds_ticks + 1,
-        }
-    }
-}
+use crate::sim::world::{SimSoundEvent, Simulation};
 
 ///Type+ED4: original45C300 startup's22 terminated rows at89D368+id*78.
 ///The row order is native data, including refinery/special foundations that
@@ -966,58 +800,43 @@ const FOUNDATION_EXIT_ROWS: [[(i32, i32); 30]; 22] = [
 ];
 
 /// `BuildingClass::GetDockCellForObject` 0x0044EFB0 for a depot: the first
-/// exit-list cell the unit can enter (in bounds, walkable, no vehicle/building
-/// occupant on the ground layer). Native asks the unit's `vtable+0x1AC`
-/// (cell, -1, -1, 0, 0); VERA stands the grid + occupancy test in for it
-/// (infantry-only occupants are not rejected — UNCHECKED against native).
+/// exit-list cell admitted by Map InBounds568300 followed by the unit's
+/// canonical CanEnterCell(+1AC) with (cell, -1, -1, 0, 0). This deliberately
+/// uses native entry admission rather than the path-search walkability cache.
 pub fn depot_exit_cell(
     sim: &Simulation,
+    unit: u64,
     building_rx: u16,
     building_ry: u16,
     foundation: &str,
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> Option<(u16, u16)> {
     for (dx, dy) in foundation_exit_list(foundation) {
-        let x = i32::from(building_rx) + dx;
-        let y = i32::from(building_ry) + dy;
-        if x < 0 || y < 0 || x > i32::from(u16::MAX) || y > i32::from(u16::MAX) {
+        // Original44F374 adds the exit offsets in signed16 cells.
+        let x = (building_rx as i16).wrapping_add(dx as i16);
+        let y = (building_ry as i16).wrapping_add(dy as i16);
+        if !sim.map_cell_in_bounds((x, y)) {
             continue;
         }
-        let (x, y) = (x as u16, y as u16);
-        if let Some(grid) = sim.path_grid()
-            && (x >= grid.width() || y >= grid.height() || !grid.is_walkable(x, y))
+        let terrain = sim.resolved_terrain.as_ref()?;
+        let cell = terrain.native_cell_identity((x, y));
+        if sim
+            .foot_can_enter(
+                unit,
+                cell,
+                crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+                rules,
+                registry,
+            )
+            .ok()?
+            != 0
         {
             continue;
         }
-        let blocked = sim
-            .substrate
-            .occupancy
-            .get(x, y)
-            .is_some_and(|cell| cell.has_blockers_on(MovementLayer::Ground));
-        if blocked {
-            continue;
-        }
-        return Some((x, y));
+        return Some((x as u16, y as u16));
     }
     None
-}
-
-/// The occupant's Unit class setter `vt+0x480(cell, 1)` (`0x00741970`,
-/// [`Simulation::set_unit_destination`]), as `MissionRepairAndProduce`
-/// releases a repaired unit (0x0044C473..C496: `Queue_Mission(Move)`,
-/// `Map[cell]`, then `vt+0x480`) and as the Foot tail of the depot order
-/// drives a contact onto the pad. Its Teleporter arm installs a Drive over a
-/// Chrono Miner's Teleport (`0x007425E6..0x0074277E`; a depot is no
-/// `DockUnload=` contact). The route to the pad or exit cell is the first
-/// Process's Find_Path, whose Unit search admits the depot footprint through
-/// `Can_Enter_Cell` (`0x0073F0A0`, UnitRepair arm 0x0073F761 and
-/// radio-contact arm 0x0073F57C..5A2).
-fn issue_pad_move(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, u16)) {
-    sim.set_unit_destination(
-        id,
-        crate::sim::components::NavTargetRef::cell(target.0, target.1),
-        rules,
-        true,
-    );
 }
 
 /// The cell of the depot's ArchiveTarget, its rally point (read at
@@ -1064,29 +883,7 @@ fn break_depot_contact(sim: &mut Simulation, unit_id: u64, depot_id: u64) {
 /// Unit741D9F and Foot70D84F/70D889 are its admission/clear writers.
 pub(crate) fn set_pending_entry(sim: &mut Simulation, id: u64, depot: Option<u64>) {
     if let Some(unit) = sim.substrate.entities.get_mut(id) {
-        if let Some(depot) = depot {
-            if let Some(dock) = unit.dock_state.as_mut() {
-                dock.pending_entry = Some(depot);
-                if dock.phase == DockPhase::WaitForDock {
-                    dock.dock_building_id = depot;
-                }
-            } else {
-                unit.dock_state = Some(DockState::new(depot, DockPhase::WaitForDock));
-            }
-        } else {
-            clear_pending_entry(unit);
-        }
-    }
-}
-
-/// The approach projection used by the existing depot service adapter.
-/// The Unit setter owns the native admission and Building destination.
-pub(crate) fn begin_approach(sim: &mut Simulation, id: u64, depot: u64) {
-    if let Some(unit) = sim.substrate.entities.get_mut(id) {
-        let pending = unit.dock_state.as_ref().and_then(DockState::pending_entry);
-        let mut dock = DockState::new(depot, DockPhase::EnterDock);
-        dock.pending_entry = pending;
-        unit.dock_state = Some(dock);
+        unit.set_pending_entry(depot);
     }
 }
 
@@ -1110,7 +907,7 @@ pub(crate) fn try_pending_entry(sim: &mut Simulation, rules: &RuleSet, id: u64) 
         .substrate
         .entities
         .get(id)
-        .and_then(|unit| unit.dock_state.as_ref().and_then(DockState::pending_entry))
+        .and_then(|unit| unit.pending_entry())
     else {
         return;
     };
@@ -1179,27 +976,37 @@ pub(crate) fn try_pending_entry(sim: &mut Simulation, rules: &RuleSet, id: u64) 
     }
 }
 
-/// Whether the unit's Enter dispatch is the depot's: it holds a depot dock
-/// state, and for a pending entry no other contact. `Mission_Enter` probes
+/// Whether the unit's Enter dispatch is the depot's: its first contact is a
+/// depot, or it holds a pending entry with no contact. `Mission_Enter` probes
 /// `Contacts[0]` first (0x004D9294), so a harvester that keeps a pending
 /// depot while it docks at its refinery enters the refinery.
-pub(crate) fn depot_owns_enter(unit: &crate::sim::game_entity::GameEntity) -> bool {
-    unit.dock_state.as_ref().is_some_and(|dock| {
-        dock.phase != DockPhase::WaitForDock
-            || (dock.pending_entry().is_some() && unit.radio_contacts.slot(0).is_none())
-    })
+pub(crate) fn depot_owns_enter(sim: &Simulation, rules: Option<&RuleSet>, id: u64) -> bool {
+    let Some(unit) = sim.substrate.entities.get(id) else {
+        return false;
+    };
+    if let Some(contact) = unit.radio_contacts.slot(0) {
+        return rules
+            .and_then(|rules| {
+                sim.substrate
+                    .entities
+                    .get(contact)
+                    .and_then(|building| sim.object_type(building.type_ref(), rules))
+            })
+            .is_some_and(|object| object.unit_repair);
+    }
+    unit.pending_entry().is_some()
 }
 
 /// `FootClass::TryEnterTransport` parking tail (`0x0070D8F0`), used by the
 /// shared Enter mission when it has neither a contact nor an archive. The
-/// existing DockState owns the pending depot; a valid nearby cell queues Move
-/// and keeps that pending entry. The caller always commences afterward.
+/// Foot's native pending-entry pointer owns the pending depot; a valid nearby
+/// cell queues Move and keeps that entry. The caller commences afterward.
 pub(crate) fn park_pending_entry(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
     let Some(depot) = sim
         .substrate
         .entities
         .get(id)
-        .and_then(|unit| unit.dock_state.as_ref().and_then(DockState::pending_entry))
+        .and_then(|unit| unit.pending_entry())
     else {
         return false;
     };
@@ -1236,381 +1043,408 @@ pub(crate) fn park_pending_entry(sim: &mut Simulation, rules: &RuleSet, id: u64)
     true
 }
 
-/// Building43C7DC's service request, represented by the existing depot
-/// state owner. Only the radio DOCK_NOW receiver admits service; proximity
-/// alone cannot start it. The repair-step cadence remains the existing adapter.
-pub(crate) fn begin_service(sim: &mut Simulation, rules: &RuleSet, unit: u64, depot: u64) {
-    if let Some(unit) = sim.substrate.entities.get_mut(unit) {
-        let pending = unit.dock_state.as_ref().and_then(DockState::pending_entry);
-        let mut dock = DockState::new(depot, DockPhase::Servicing);
-        dock.pending_entry = pending;
-        dock.service_timer = rules.general.unit_repair_rate_ticks;
-        unit.dock_state = Some(dock);
-    }
-}
-
-/// Clear the represented Unit+500 pending entry, preserving an admitted
-/// service visit. Building NowDead4425AA does this after RUN_AWAY returns.
+/// Building NowDead4425AA clears native+500 after RUN_AWAY returns.
 pub(crate) fn clear_pending_entry(unit: &mut crate::sim::game_entity::GameEntity) {
-    if let Some(dock) = unit.dock_state.as_mut() {
-        dock.pending_entry = None;
-        if dock.phase == DockPhase::WaitForDock {
-            unit.dock_state = None;
-        }
-    }
+    unit.set_pending_entry(None);
 }
 
-/// Forget the adapter visit without erasing a different native Unit+0x500
-/// pending entry. A pending-only projection retains the constructor interface.
-fn clear_depot_visit(unit: &mut crate::sim::game_entity::GameEntity) {
-    unit.dock_state = unit
-        .dock_state
-        .as_ref()
-        .and_then(DockState::pending_entry)
-        .map(|pending| DockState::new(pending, DockPhase::WaitForDock));
-}
-
-/// Pointer expiry clears each matching reference through its owner. Losing a
-/// pending object preserves another admitted visit, and losing the service
-/// object preserves another pending entry.
+/// Techno707AE7's destructive expiry clears only the matching entry pointer.
 pub(crate) fn expire_reference(unit: &mut crate::sim::game_entity::GameEntity, expired: u64) {
-    if unit.dock_state.as_ref().and_then(DockState::pending_entry) == Some(expired) {
-        clear_pending_entry(unit);
-    }
-    if unit
-        .dock_state
-        .as_ref()
-        .is_some_and(|dock| dock.dock_building_id == expired)
-    {
-        clear_depot_visit(unit);
+    if unit.pending_entry() == Some(expired) {
+        unit.set_pending_entry(None);
     }
 }
 
-/// Advance building dock state machines for all entities with `dock_state`.
-///
-/// Called once per tick from `advance_tick()`, after the factory step.
-/// Uses the two-phase snapshot pattern to avoid borrow conflicts. The
-/// waiter's `0x0E` probe and its epilogue draw are NOT here — they run in the
-/// unit's own dispatch slot ([`crate::sim::mission::enter::mission_enter`]); this pass only
-/// consumes the resulting link state and owns the pad-side service/release.
-pub fn tick_building_docks(sim: &mut Simulation, rules: &RuleSet) {
-    struct DockSnapshot {
-        id: u64,
-        owner: InternedId,
-        type_ref: InternedId,
-        hp: i32,
-        strength: i32,
-        dock_building_id: u64,
-        phase: DockPhase,
-        service_timer: u32,
-        no_funds_ticks: u32,
-    }
+/// Building vt+4D8, original447E00: distance from the contact GetCoords(+48)
+/// to GetDockCoord(+A8). The shared coordinate and native-distance owners
+/// retain retail pad offsets and rounding; Guard uses the separate raw center.
+fn distance_to_pad(sim: &Simulation, rules: &RuleSet, depot: u64, unit: u64) -> Option<i32> {
+    use crate::sim::movement::ground_pose;
+    sim.substrate.entities.get(depot)?;
+    let contact = sim.substrate.entities.get(unit)?;
+    let terrain = sim.resolved_terrain.as_ref();
+    let coord = ground_pose::object_get_coords(contact, terrain);
+    let pad = crate::sim::movement::building_dock_coordinate(
+        &sim.substrate.entities,
+        depot,
+        Some(unit),
+        terrain,
+        rules,
+        &sim.interner,
+    )?;
+    Some(crate::util::native_x87::distance_3d_leptons(
+        [pad.x, pad.z, pad.y],
+        [coord.x, coord.z, coord.y],
+    ))
+}
 
-    let snapshots: Vec<DockSnapshot> = sim
-        .substrate
-        .entities
-        .values()
-        .filter_map(|e| {
-            let ds = e.dock_state.as_ref()?;
-            if ds.phase == DockPhase::WaitForDock {
-                return None;
-            }
-            Some(DockSnapshot {
-                id: e.stable_id(),
-                owner: e.owner(),
-                type_ref: e.type_ref(),
-                hp: e.health.current,
-                strength: sim.object_type(e.type_ref(), rules)?.strength,
-                dock_building_id: ds.dock_building_id,
-                phase: ds.phase,
-                service_timer: ds.service_timer,
-                no_funds_ticks: ds.no_funds_ticks,
-            })
+///44BC01/44BDCA/44BFEF: restore SpecialAnimThree and ActiveAnim through the
+/// existing slot owner. These calls may construct animations and draw RNG.
+fn idle_service_art(sim: &mut Simulation, rules: &RuleSet, depot: u64, clear_first: bool) {
+    let damaged = sim.substrate.entities.get(depot).and_then(|e| {
+        sim.object_type(e.type_ref(), rules).map(|o| {
+            e.health
+                .compare_ratio(o.strength, rules.general.condition_yellow)
         })
-        .collect();
+    }) != Some(crate::util::native_x87::MaskedX87Ordering::Greater);
+    if clear_first {
+        sim.clear_building_anim_slot(depot, 8);
+        sim.clear_building_anim_slot(depot, 11);
+    }
+    sim.set_building_anim_slot(depot, 12, damaged, false, 0, rules);
+    sim.set_building_anim_slot(depot, 3, damaged, false, 0, rules);
+    if !clear_first {
+        sim.clear_building_anim_slot(depot, 8);
+        sim.clear_building_anim_slot(depot, 11);
+    }
+}
 
-    if snapshots.is_empty() {
+///44C397/44BE97: release through the Unit setter and Radio contact owners.
+/// State1 clears ArchiveTarget unconditionally after a successful release;
+/// state2 clears it only in the AI archive arm. An unavailable exit holds the
+/// contact for a later dispatch. Foundation waiting #937 remains separate.
+fn release_contact(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    depot: u64,
+    unit: u64,
+    state1: bool,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
+    let Some(contact) = sim.substrate.entities.get(unit) else {
         return;
+    };
+    let archive = contact.archive_target();
+    let ai_archive = archive.filter(|_| {
+        sim.houses
+            .get(&contact.owner())
+            .is_some_and(|h| !h.is_controlled_by_human(sim.session.game_mode_nonzero))
+    });
+    if state1
+        && let Some(contact) = sim.substrate.entities.get_mut(unit)
+        && let Some(locomotor) = contact.locomotor.as_mut()
+    {
+        locomotor.power_on();
     }
-
-    struct DockMutation {
-        id: u64,
-        new_phase: Option<DockPhase>,
-        new_timer: Option<u32>,
-        new_no_funds: Option<u32>,
-        heal_amount: i32,
-        strength: i32,
-        repair_complete: bool,
-        deduct_credits: i32,
-        /// A paid Techno `Receive_Radio 0x1C` step ran.
-        repaired: bool,
-        clear_dock: bool,
+    let destination = if let Some(archive) = ai_archive {
+        match archive {
+            TargetKind::Cell(x, y) => Some(crate::sim::components::NavTargetRef::cell(x, y)),
+            TargetKind::Entity(id) => Some(crate::sim::components::NavTargetRef::Entity { id }),
+        }
+    } else {
+        let Some(building) = sim.substrate.entities.get(depot) else {
+            return;
+        };
+        let Some(object) = sim.object_type(building.type_ref(), rules) else {
+            return;
+        };
+        // Original runs the exit search before a rally overrides its answer.
+        let exit = depot_exit_cell(
+            sim,
+            unit,
+            building.position.rx,
+            building.position.ry,
+            &object.foundation,
+            rules,
+            registry,
+        );
+        depot_rally_cell(sim, building)
+            .or(exit)
+            .map(|(x, y)| crate::sim::components::NavTargetRef::cell(x, y))
+    };
+    let Some(destination) = destination else {
+        return;
+    };
+    let _ = sim.mission_queue_exact(
+        unit,
+        MissionId::from_known(MissionType::Move),
+        0,
+        sim.session.binary_frame,
+        &LiveReadyInputProvider { rules },
+    );
+    sim.set_unit_destination(unit, destination, rules, true);
+    if state1 || ai_archive.is_some() {
+        if let Some(contact) = sim.substrate.entities.get_mut(unit) {
+            contact.set_archive_target(None);
+        }
     }
+    // State1's AI archive branch clears +500 before BREAK44C3D6;
+    // the other release branches clear it after the radio return.
+    if state1
+        && ai_archive.is_some()
+        && let Some(contact) = sim.substrate.entities.get_mut(unit)
+    {
+        clear_pending_entry(contact);
+    }
+    radio::transmit_to_contact(sim, depot, RadioMessage::Break, Some(rules));
+    if !(state1 && ai_archive.is_some())
+        && let Some(contact) = sim.substrate.entities.get_mut(unit)
+    {
+        clear_pending_entry(contact);
+    }
+}
 
-    let mut mutations: Vec<DockMutation> = Vec::new();
-
-    for snap in &snapshots {
-        let mut m = DockMutation {
-            id: snap.id,
-            new_phase: None,
-            new_timer: None,
-            new_no_funds: None,
-            heal_amount: 0,
-            strength: snap.strength,
-            repair_complete: false,
-            deduct_credits: 0,
-            repaired: false,
-            clear_dock: false,
-        };
-
-        // Verify depot still exists and is alive/friendly.
-        //
-        // `BuildingClass::Receive_Radio(0x0E)` @ 0x0043C2D0 answers 10 to a
-        // probe while the building is offline (`+0x660 == 0`, test at
-        // 0x0043C7FB): the toggle/warp latch, not house power. The probe runs
-        // in the shared Enter mission; this adapter only reads its result.
-        let depot_info = sim
-            .substrate
-            .entities
-            .get(snap.dock_building_id)
-            .and_then(|depot| {
-                if depot.health.current == 0 || depot.dying {
-                    return None;
-                }
-                if depot.owner() != snap.owner {
-                    return None;
-                }
-                let obj = sim.object_type(depot.type_ref(), rules)?;
-                if !obj.unit_repair {
-                    return None;
-                }
-                Some((
-                    depot.position.rx,
-                    depot.position.ry,
-                    obj.foundation.clone(),
-                    depot_rally_cell(sim, depot),
-                ))
-            });
-
-        let Some((depot_rx, depot_ry, foundation, rally)) = depot_info else {
-            // Depot gone or invalid — abort docking.
-            break_depot_contact(sim, snap.id, snap.dock_building_id);
-            m.clear_dock = true;
-            mutations.push(m);
-            continue;
-        };
-
-        // A warped object runs none of its AI (`GameEntity::ai_frozen`): the
-        // approach is the waiter's own mission, the service step and the
-        // release the depot's (`MissionRepairAndProduce`). Its timer holds.
-        let actor = match snap.phase {
-            DockPhase::Servicing | DockPhase::ExitDock => snap.dock_building_id,
-            DockPhase::WaitForDock | DockPhase::EnterDock => snap.id,
-        };
-        if sim
-            .substrate
-            .entities
-            .get(actor)
-            .is_some_and(crate::sim::game_entity::GameEntity::ai_frozen)
+/// BuildingClass::MissionRepairAndProduce44B780's UnitRepair arm. MissionCom
+/// owns status/dispatch; BuildingMissionLeaf owns the independent+620 progress;
+/// Techno RepairTick owns heal/payment. Original corpus: building_repair.depot_service.
+/// No unit service phase, wallet mutation, grace timeout or late sweep remains.
+/// Other families of this shared native handler keep their existing owners.
+pub(crate) fn mission_repair(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    depot: u64,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> Option<i32> {
+    use crate::util::native_x87::{
+        MaskedX87Chop53 as X87, MaskedX87Ordering as Ordering, NativeF64Bits,
+    };
+    let building = sim.substrate.entities.get(depot)?;
+    let object = sim.object_type(building.type_ref(), rules)?;
+    if !object.unit_repair {
+        return None;
+    }
+    let status = building.mission.handler_state();
+    let current = building
+        .mission
+        .current()
+        .known()
+        .unwrap_or(MissionType::Repair);
+    let rate = rules.mission_control.rate_frames(current);
+    let contact = building.radio_contacts.slot(0);
+    let now = sim.session.binary_frame;
+    let Some(unit) = contact else {
+        // State1's no-contact arm44C0BD retains the current idle animations
+        // when neither service slot exists. Recreating them would reset their
+        // stages and consume additional constructor RNG on every dispatch.
+        if status != 1
+            || building.building_anim_slots[8].is_some()
+            || building.building_anim_slots[11].is_some()
         {
-            continue;
+            idle_service_art(sim, rules, depot, status != 1);
         }
-
-        match snap.phase {
-            // A pending entry waits in its own FootClass::AI
-            // ([`try_pending_entry`]); nothing here.
-            DockPhase::WaitForDock => {}
-            DockPhase::EnterDock => {
-                // The 0x0E probe (and its draw) already ran in this unit's
-                // own dispatch slot; only the resulting link is read here. An
-                // unlinked unit (an offline depot's archive, or a link the
-                // depot broke) is left to that dispatch.
-                let linked = sim
-                    .substrate
-                    .entities
-                    .get(snap.id)
-                    .is_some_and(|unit| unit.radio_contacts.contains(snap.dock_building_id));
-
-                if !linked
-                    && sim.substrate.entities.get(snap.id).is_some_and(|unit| {
-                        unit.mission.current().known() != Some(MissionType::Enter)
-                            || unit.mission.queued() != MissionId::NONE
-                    })
-                {
-                    m.clear_dock = true;
-                }
-                // Unit PerCell owns DOCK_NOW, Sleep and Power_Off. Its
-                // receiver transitions to Servicing; an uncompleted object
-                // destination keeps the native movement owner's state.
-            }
-            DockPhase::Servicing => {
-                if (Health { current: snap.hp }).is_fully_repaired(snap.strength) {
-                    m.new_phase = Some(DockPhase::ExitDock);
-                } else {
-                    let timer = snap.service_timer.saturating_sub(1);
-                    if timer == 0 {
-                        // A repair step is due — resolve the REPAIR_TICK trichotomy.
-                        let unit_cost = sim
-                            .object_type(snap.type_ref, rules)
-                            .map(|obj| obj.cost)
-                            .unwrap_or(0);
-                        let credits = crate::sim::house_state::house_state_for_owner(
-                            &sim.houses,
-                            sim.interner.resolve(snap.owner),
-                            &sim.interner,
-                        )
-                        .map(|h| h.economy.credits)
-                        .unwrap_or(0);
-
-                        // The adapter's whole percent and positive step, as
-                        // it read them before the rules kept the native values.
-                        match repair_tick(
-                            snap.hp,
-                            snap.strength,
-                            unit_cost,
-                            (rules.general.repair_percent * 100.0).round() as u16,
-                            rules.general.repair_step.max(1) as u16,
-                            credits,
-                            snap.no_funds_ticks,
-                        ) {
-                            RepairResponse::Roger { heal, cost } => {
-                                m.heal_amount = heal;
-                                m.deduct_credits = cost;
-                                m.repaired = true;
-                                m.new_no_funds = Some(0);
-                                // Radio6F4DE5..6F4E21 completes on this same
-                                // repair response and resets both health values.
-                                if (Health {
-                                    current: snap.hp.wrapping_add(heal),
-                                })
-                                .is_fully_repaired(snap.strength)
-                                {
-                                    m.repair_complete = true;
-                                    m.new_phase = Some(DockPhase::ExitDock);
-                                }
-                            }
-                            RepairResponse::InsufficientFunds { grace } => {
-                                if grace >= NO_FUNDS_GRACE_TICKS {
-                                    m.new_phase = Some(DockPhase::ExitDock);
-                                } else {
-                                    m.new_no_funds = Some(grace);
-                                }
-                            }
-                            RepairResponse::RepairComplete => {
-                                m.new_phase = Some(DockPhase::ExitDock);
-                            }
-                        }
-                        m.new_timer = Some(rules.general.unit_repair_rate_ticks);
-                    } else {
-                        m.new_timer = Some(timer);
-                    }
-                }
-            }
-            DockPhase::ExitDock => {
-                // Building44C350..394: restore locomotor power BEFORE the
-                // exit query, even if that query cannot produce a cell.
-                if let Some(unit) = sim.substrate.entities.get_mut(snap.id)
-                    && let Some(locomotor) = unit.locomotor.as_mut()
-                {
-                    locomotor.power_on();
-                }
-                // MissionRepairAndProduce 0x0044C3EE..0x0044C4B7: the exit
-                // cell is GetDockCellForObject (vt+0x4D4), replaced by the
-                // cell of the depot's own ArchiveTarget, its rally point
-                // (0x0044C40D..C454). With a valid cell: Queue_Mission(Move),
-                // Set_Destination(cell, 1), the occupant's ArchiveTarget and
-                // pending entry cleared (0x0044C49F, 0x0044C4B1), BREAK. An
-                // invalid cell (0x0044C458..C46D) leaves the unit linked on
-                // the pad and the building retries.
-                //
-                // RESIDUAL: the arm before it (0x0044C397..C3E9), for an
-                // occupant with an ArchiveTarget whose house is not
-                // human-controlled (`HouseClass::IsControlledByHuman @
-                // 0x0050B730`), sends it to that archive instead. Trigger: an
-                // AI-owned unit released by a depot. Effect: none today —
-                // only the player's order docks a unit. Frequency: dormant.
-                // Risk: an AI depot visit would release to the exit cell.
-                let exit = rally.or_else(|| depot_exit_cell(sim, depot_rx, depot_ry, &foundation));
-                if let Some(exit) = exit {
-                    let _ = sim.mission_queue_exact(
-                        snap.id,
-                        MissionId::from_known(MissionType::Move),
-                        0,
-                        sim.session.binary_frame,
-                        &LiveReadyInputProvider { rules },
-                    );
-                    issue_pad_move(sim, rules, snap.id, exit);
-                    if let Some(unit) = sim.substrate.entities.get_mut(snap.id) {
-                        unit.set_archive_target(None);
-                        clear_pending_entry(unit);
-                    }
-                    break_depot_contact(sim, snap.id, snap.dock_building_id);
-                    m.clear_dock = true;
-                }
-            }
+        let building = sim.substrate.entities.get_mut(depot)?;
+        if status == 2 {
+            building.mission.set_handler_state(1);
         }
-
-        mutations.push(m);
-    }
-
-    // Apply mutations.
-    for m in &mutations {
-        let Some(entity) = sim.substrate.entities.get_mut(m.id) else {
-            continue;
-        };
-
-        if m.clear_dock {
-            clear_depot_visit(entity);
-            continue;
-        }
-
-        if let Some(ref mut ds) = entity.dock_state {
-            if let Some(phase) = m.new_phase {
-                ds.phase = phase;
+        if status == 0 || (status == 1 && building.building_anim_slots[18].is_none()) {
+            // State0 Queue44C6EA preserves +6DD; only state1's no-contact
+            // arm44C18E sets ready before asking Queue to commence Guard.
+            if status == 1 {
+                building.mission_leaf.set_building_ready_latch(1);
             }
-            if let Some(timer) = m.new_timer {
-                ds.service_timer = timer;
-            }
-            if let Some(nf) = m.new_no_funds {
-                ds.no_funds_ticks = nf;
-            }
-        }
-
-        if m.heal_amount > 0 {
-            entity.health.current = entity.health.current.wrapping_add(m.heal_amount);
-            entity.estimated_health.add_repair(m.heal_amount);
-        }
-
-        if m.repair_complete {
-            // Radio6F4E17..21: Strength is written to actual and estimated HP.
-            // Rules+16F8 is the fixed 1.0 completion threshold (66B323/66B32D).
-            entity.health.current = m.strength;
-            entity.estimated_health.reset(m.strength);
-        }
-
-        if m.deduct_credits > 0 {
-            if let Some(house) = crate::sim::house_state::house_state_for_owner_mut(
-                &mut sim.houses,
-                sim.interner.resolve(entity.owner()),
-                &sim.interner,
-            ) {
-                house.economy.credits = (house.economy.credits - m.deduct_credits).max(0);
-            }
-        }
-
-        // Radio 0x1C `0x006F4D61..0x006F4DA6`: after the paid step, a Foot
-        // with a parasite forces it off (suppression 50, then ExitUnit), so
-        // the depot deletes a Terror Drone on its first repair step.
-        if m.repaired
-            && let Some(eater) = entity.parasite_eating_me
-        {
-            sim.parasite_force_release(
-                eater,
-                crate::sim::combat::parasite::FORCED_RELEASE_SUPPRESSION_FRAMES,
-                rules,
+            let _ = sim.mission_queue_exact(
+                depot,
+                MissionId::from_known(MissionType::Guard),
+                1,
+                now,
+                &LiveReadyInputProvider { rules },
             );
         }
+        return Some(1);
+    };
+    if status == 0 {
+        sim.substrate
+            .entities
+            .get_mut(depot)?
+            .mission_leaf
+            .set_building_ready_latch(0);
+        let hover_or_teleport = sim
+            .substrate
+            .entities
+            .get(unit)
+            .and_then(|e| e.locomotor.as_ref())
+            .is_some_and(|l| {
+                matches!(
+                    l.kind,
+                    crate::rules::locomotor_type::LocomotorKind::Hover
+                        | crate::rules::locomotor_type::LocomotorKind::Teleport
+                )
+            });
+        if radio::transmit_to_contact(sim, depot, RadioMessage::NeedToMove, Some(rules))
+            == RadioResponse::Roger
+            && distance_to_pad(sim, rules, depot, unit)
+                .is_some_and(|d| d < if hover_or_teleport { 200 } else { 100 })
+        {
+            sim.substrate
+                .entities
+                .get_mut(depot)?
+                .mission
+                .set_handler_state(1);
+            return Some(3);
+        }
+        // Original44C7E5..44C808: active YR House53A130 returns false,
+        // then ILoco+58 restores power while admission is still pending.
+        if let Some(l) = sim
+            .substrate
+            .entities
+            .get_mut(unit)
+            .and_then(|e| e.locomotor.as_mut())
+        {
+            l.power_on();
+        }
+        return Some(rate);
     }
+    if status == 1 {
+        // The ProductionAnim must finish before the first paid step.
+        if sim.substrate.entities.get(depot)?.building_anim_slots[8].is_some() {
+            return Some(1);
+        }
+        if distance_to_pad(sim, rules, depot, unit).is_some_and(|d| d < 200) {
+            let contact = sim.substrate.entities.get(unit)?;
+            let powered = contact.locomotor.as_ref().is_some_and(|l| l.is_powered());
+            if powered {
+                if crate::sim::movement::motion_query::is_moving(contact) == Some(false)
+                    && let Some(l) = sim
+                        .substrate
+                        .entities
+                        .get_mut(unit)
+                        .and_then(|e| e.locomotor.as_mut())
+                {
+                    l.power_off();
+                }
+                return Some(1);
+            }
+            if let Some(contact) = sim.substrate.entities.get_mut(unit)
+                && contact.navigation.nav_com.is_some()
+            {
+                crate::sim::movement::foot_stop_moving(contact);
+            }
+        }
+        if radio::transmit_to_contact(sim, depot, RadioMessage::NeedToMove, Some(rules))
+            != RadioResponse::Roger
+        {
+            // Original44C5AB..44C61B takes the same constant-false House
+            // gate, queries ILoco+60 and powers on an unpowered contact.
+            if let Some(l) = sim
+                .substrate
+                .entities
+                .get_mut(unit)
+                .and_then(|e| e.locomotor.as_mut())
+                && !l.is_powered()
+            {
+                l.power_on();
+            }
+            return Some(rate);
+        }
+        let contact = sim.substrate.entities.get(unit)?;
+        let typ = sim.object_type(contact.type_ref(), rules)?;
+        let damaged = matches!(
+            contact.health.compare_ratio(typ.strength, 1.0),
+            Ordering::Less | Ordering::Unordered
+        );
+        let manual_reload = typ.manual_reload;
+        let reply = radio::transmit_to_contact(sim, depot, RadioMessage::RepairTick, Some(rules));
+        if (damaged || manual_reload)
+            && matches!(reply, RadioResponse::Roger | RadioResponse::RepairComplete)
+        {
+            // Local+41A is resolved by the app, as for ToggleRepair4470B7.
+            // Original44C507 announces before the service animation writes.
+            let owner = sim.substrate.entities.get(depot)?.owner();
+            sim.sound_events.push(SimSoundEvent::Repairing { owner });
+            sim.substrate
+                .entities
+                .get_mut(depot)?
+                .mission
+                .set_handler_state(2);
+            let damaged = sim.substrate.entities.get(depot).and_then(|e| {
+                sim.object_type(e.type_ref(), rules).map(|o| {
+                    e.health
+                        .compare_ratio(o.strength, rules.general.condition_yellow)
+                })
+            }) != Some(Ordering::Greater);
+            sim.set_building_anim_slot(depot, 10, damaged, false, 0, rules);
+            sim.clear_building_anim_slot(depot, 3);
+            sim.clear_building_anim_slot(depot, 18);
+            let building = sim.substrate.entities.get_mut(depot)?;
+            building.mission_leaf.set_building_ready_latch(0);
+            building
+                .mission_leaf
+                .start_building_repair_progress(now as i32);
+        } else {
+            let contact = sim.substrate.entities.get(unit)?;
+            let typ = sim.object_type(contact.type_ref(), rules)?;
+            if matches!(
+                contact.health.compare_ratio(typ.strength, 1.0),
+                Ordering::Equal | Ordering::Unordered
+            ) && contact.locomotor.as_ref().is_some_and(|l| !l.is_powered())
+            {
+                release_contact(sim, rules, depot, unit, true, registry);
+            }
+        }
+        return Some(rate);
+    }
+    if status == 2 {
+        let progress = sim
+            .substrate
+            .entities
+            .get_mut(depot)?
+            .mission_leaf
+            .advance_building_repair_progress(now as i32);
+        let threshold = X87::mul(
+            X87::load_f64(NativeF64Bits::from_bits(
+                rules.general.unit_repair_rate.to_bits(),
+            )),
+            X87::load_i32(900),
+        );
+        // FC0/C2/C3 test includes unordered, as the original FCOMPP.
+        if matches!(
+            X87::compare(threshold, X87::load_i32(progress)),
+            Ordering::Greater
+        ) {
+            return Some(1);
+        }
+        if radio::transmit_to_contact(sim, depot, RadioMessage::NeedToMove, Some(rules))
+            != RadioResponse::Roger
+        {
+            return Some(1);
+        }
+        let building = sim.substrate.entities.get_mut(depot)?;
+        building.mission_leaf.set_building_ready_latch(0);
+        building.mission_leaf.reset_building_repair_progress();
+        match radio::transmit_to_contact(sim, depot, RadioMessage::RepairTick, Some(rules)) {
+            RadioResponse::Roger => {}
+            RadioResponse::InsufficientFunds => {
+                // Original44BFD9 only announces an exactly empty wallet;
+                // a nonzero shortfall remains silent. Client filters +41A.
+                let owner = sim.substrate.entities.get(depot)?.owner();
+                if crate::sim::credit_income::available_money(sim, owner) == 0 {
+                    sim.sound_events.push(SimSoundEvent::HouseEva {
+                        owner,
+                        event: "EVA_InsufficientFunds",
+                    });
+                }
+                idle_service_art(sim, rules, depot, true);
+                sim.substrate
+                    .entities
+                    .get_mut(depot)?
+                    .mission
+                    .set_handler_state(1);
+            }
+            _ => {
+                // Original44BDB2 gates the completion voice on the existing
+                // client's type8 radar admission; simulation publishes the
+                // request and the app resolves local ownership and admission.
+                let building = sim.substrate.entities.get(depot)?;
+                sim.sound_events.push(SimSoundEvent::UnitRepaired {
+                    owner: building.owner(),
+                    radar: crate::sim::radar::RadarEventRequest::new(
+                        crate::sim::radar::RadarEventType::UnitRepaired,
+                        building.position.rx,
+                        building.position.ry,
+                    ),
+                });
+                idle_service_art(sim, rules, depot, true);
+                sim.substrate
+                    .entities
+                    .get_mut(depot)?
+                    .mission
+                    .set_handler_state(1);
+                release_contact(sim, rules, depot, unit, false, registry);
+            }
+        }
+        return Some(1);
+    }
+    Some(rate)
 }
 
 #[cfg(test)]
@@ -1621,6 +1455,7 @@ mod tests {
     use crate::sim::command::Command;
     use crate::sim::components::{Health, NavTargetRef};
     use crate::sim::game_entity::GameEntity;
+    use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::occupancy::CellListInsertion;
 
     /// Exit rows decoded from the 0x0045C300 initializer (rows 0x0089D368,
@@ -1666,88 +1501,64 @@ mod tests {
         );
     }
 
-    // --- 7c: repair-depot REPAIR_TICK trichotomy (`repair_tick`) ---
-    // cost=1000, percent=15 -> total=150; step=8, max_hp=300 -> cost_per_step=4.
-
+    /// Original Unit/Foot/Techno1C: full health replies10 without paying or
+    /// resetting independent estimated health (building_repair depot controls).
     #[test]
-    fn depot_repair_full_hp_returns_complete() {
-        assert_eq!(
-            repair_tick(300, 300, 1000, 15, 8, 0, 0),
-            RepairResponse::RepairComplete
-        );
+    fn full_health_repair_request_does_not_pay_or_reset_estimated_health() {
+        let (mut sim, rules) = setup(1);
+        let owner = sim.substrate.entities.get(1).unwrap().owner();
+        let unit = sim.substrate.entities.get_mut(1).unwrap();
+        unit.health.current = 300;
+        unit.estimated_health.reset(-20);
+        let rng = sim.scenario_rng.state();
+        assert_eq!(repair_request(&mut sim, &rules, 1), RadioResponse::Negatory);
+        let unit = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(unit.health.current, 300);
+        assert_eq!(unit.estimated_health.get(), -20);
+        assert_eq!(sim.houses[&owner].economy.credits, 10_000);
+        assert_eq!(sim.houses[&owner].economy.spent_credits, 0);
+        assert_eq!(sim.scenario_rng.state(), rng);
     }
 
+    /// Foot4D900E replies10 while NavCom is nonnull, before any wallet/heal.
     #[test]
-    fn depot_repair_funded_returns_roger_with_step_and_cost() {
-        assert_eq!(
-            repair_tick(100, 300, 1000, 15, 8, 10, 0),
-            RepairResponse::Roger { heal: 8, cost: 4 }
-        );
-        assert_eq!(
-            repair_tick(100, 300, 1000, 15, 8, 4, 0),
-            RepairResponse::Roger { heal: 8, cost: 4 }
-        );
+    fn moving_repair_request_stops_at_the_foot_navcom_interceptor() {
+        let (mut sim, rules) = setup(1);
+        let owner = sim.substrate.entities.get(1).unwrap().owner();
+        assert!(sim.set_unit_destination(1, NavTargetRef::cell(15, 11), &rules, true));
+        assert_eq!(repair_request(&mut sim, &rules, 1), RadioResponse::Negatory);
+        assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 100);
+        assert_eq!(sim.houses[&owner].economy.credits, 10_000);
+        assert_eq!(sim.houses[&owner].economy.spent_credits, 0);
     }
 
+    /// Techno6F4D35 replies32 without side effects; repeated requests do not
+    /// accumulate a grace timeout (native long-no-funds service history).
     #[test]
-    fn depot_repair_unfunded_returns_insufficient_with_incremented_grace() {
-        assert_eq!(
-            repair_tick(100, 300, 1000, 15, 8, 3, 0),
-            RepairResponse::InsufficientFunds { grace: 1 }
-        );
-        assert_eq!(
-            repair_tick(100, 300, 1000, 15, 8, 0, 5),
-            RepairResponse::InsufficientFunds { grace: 6 }
-        );
-    }
-
-    #[test]
-    fn depot_repair_cost_per_step_clamps_to_one() {
-        assert_eq!(
-            repair_tick(100, 300, 10, 15, 8, 1, 0),
-            RepairResponse::Roger { heal: 8, cost: 1 }
-        );
-        assert_eq!(
-            repair_tick(100, 300, 10, 15, 8, 0, 0),
-            RepairResponse::InsufficientFunds { grace: 1 }
-        );
-    }
-
-    #[test]
-    fn depot_repair_funded_step_ignores_prior_grace() {
-        assert_eq!(
-            repair_tick(100, 300, 1000, 15, 8, 10, NO_FUNDS_GRACE_TICKS - 1),
-            RepairResponse::Roger { heal: 8, cost: 4 }
-        );
-    }
-
-    #[test]
-    fn depot_repair_grace_reaches_cap() {
-        assert_eq!(
-            repair_tick(100, 300, 1000, 15, 8, 0, NO_FUNDS_GRACE_TICKS - 1),
-            RepairResponse::InsufficientFunds {
-                grace: NO_FUNDS_GRACE_TICKS
-            }
-        );
-    }
-
-    #[test]
-    fn depot_repair_response_maps_to_radio_codes() {
-        assert_eq!(
-            RepairResponse::Roger { heal: 8, cost: 4 }.radio_response(),
-            RadioResponse::Roger
-        );
-        assert_eq!(
-            RepairResponse::InsufficientFunds { grace: 1 }.radio_response(),
-            RadioResponse::InsufficientFunds
-        );
-        assert_eq!(
-            RepairResponse::RepairComplete.radio_response(),
-            RadioResponse::RepairComplete
-        );
-        assert_eq!(RadioResponse::Roger as u8, 0x01);
-        assert_eq!(RadioResponse::InsufficientFunds as u8, 0x20);
-        assert_eq!(RadioResponse::RepairComplete as u8, 0x21);
+    fn insufficient_money_never_accumulates_a_repair_grace_timeout() {
+        let (mut sim, rules) = setup(1);
+        let owner = sim.substrate.entities.get(1).unwrap().owner();
+        sim.houses.get_mut(&owner).unwrap().economy.credits = 1;
+        let rng = sim.scenario_rng.state();
+        let estimate = sim
+            .substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .estimated_health
+            .get();
+        for _ in 0..300 {
+            assert_eq!(
+                repair_request(&mut sim, &rules, 1),
+                RadioResponse::InsufficientFunds
+            );
+        }
+        let unit = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(unit.health.current, 100);
+        assert_eq!(unit.estimated_health.get(), estimate);
+        assert_eq!(sim.houses[&owner].economy.credits, 1);
+        assert_eq!(sim.houses[&owner].economy.spent_credits, 0);
+        assert_eq!(sim.scenario_rng.state(), rng);
     }
 
     // --- Admission / waiting / release through the production order path ---
@@ -1899,94 +1710,114 @@ mod tests {
         (sim, rules)
     }
 
+    /// Original Unit737430 -> Foot4D8FB0 -> Techno6F4CD7 repair request:
+    /// the paid mutation uses House4F9790, including its spending statistic.
+    /// Native inputs/results are retained in building_repair.depot_service.
+    #[test]
+    fn repair_request_uses_the_shared_house_spending_owner() {
+        let (mut sim, rules) = setup(1);
+        let owner = sim.substrate.entities.get(1).unwrap().owner();
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .estimated_health
+            .reset(100);
+        let rng = sim.scenario_rng.state();
+
+        let response = radio::transmit(
+            &mut sim,
+            DEPOT,
+            1,
+            RadioMessage::RepairTick,
+            RadioPayload::default(),
+            Some(&rules),
+        );
+
+        assert_eq!(response, RadioResponse::Roger);
+        let tank = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(tank.health.current, 108);
+        let house = sim.houses.get(&owner).unwrap();
+        assert_eq!(house.economy.credits, 9_998);
+        assert_eq!(house.economy.spent_credits, 2);
+        assert_eq!(sim.scenario_rng.state(), rng);
+    }
+
     /// Unit+0x500 survives an admitted visit and only its native clear writers
     /// remove it; service timers belong to the admitted depot, not the pointer.
     #[test]
     fn pending_entry_and_admitted_service_have_independent_lifecycles() {
         let (mut sim, rules) = setup(1);
         let pending = DEPOT + 1;
+        link_for_service(&mut sim, 1);
         set_pending_entry(&mut sim, 1, Some(pending));
-        begin_approach(&mut sim, 1, DEPOT);
-        let dock = sim
+        sim.mission_assign_exact(DEPOT, MissionId::from_known(MissionType::Repair), 0)
+            .unwrap();
+        let building = sim.substrate.entities.get_mut(DEPOT).unwrap();
+        building.mission.set_handler_state(2);
+        building.mission_leaf.start_building_repair_progress(0);
+        assert_eq!(mission_repair(&mut sim, &rules, DEPOT, None), Some(1));
+        let before = *sim
             .substrate
             .entities
-            .get(1)
+            .get(DEPOT)
             .unwrap()
-            .dock_state
-            .as_ref()
-            .unwrap();
-        assert_eq!(dock.phase, DockPhase::EnterDock);
-        assert_eq!(dock.dock_building_id, DEPOT);
-        assert_eq!(dock.pending_entry(), Some(pending));
-
-        begin_service(&mut sim, &rules, 1, DEPOT);
-        let dock = sim
-            .substrate
-            .entities
-            .get_mut(1)
+            .mission_leaf
+            .as_building()
             .unwrap()
-            .dock_state
-            .as_mut()
-            .unwrap();
-        assert_eq!(dock.pending_entry(), Some(pending));
-        assert_eq!(dock.service_timer, rules.general.unit_repair_rate_ticks);
-        dock.service_timer = 17;
-        dock.no_funds_ticks = 9;
+            .repair_progress();
 
         set_pending_entry(&mut sim, 1, Some(pending + 1));
-        let unit = sim.substrate.entities.get_mut(1).unwrap();
-        let dock = unit.dock_state.as_ref().unwrap();
-        assert_eq!(dock.phase, DockPhase::Servicing);
-        assert_eq!(dock.dock_building_id, DEPOT);
-        assert_eq!(dock.pending_entry(), Some(pending + 1));
-        assert_eq!((dock.service_timer, dock.no_funds_ticks), (17, 9));
-
-        clear_pending_entry(unit);
-        let dock = unit.dock_state.as_ref().unwrap();
-        assert_eq!(dock.phase, DockPhase::Servicing);
-        assert_eq!(dock.dock_building_id, DEPOT);
-        assert_eq!(dock.pending_entry(), None);
-        assert_eq!((dock.service_timer, dock.no_funds_ticks), (17, 9));
-
-        set_pending_entry(&mut sim, 1, Some(pending));
-        let unit = sim.substrate.entities.get_mut(1).unwrap();
-        clear_depot_visit(unit);
-        let dock = unit.dock_state.as_ref().unwrap();
-        assert_eq!(dock.phase, DockPhase::WaitForDock);
-        assert_eq!(dock.dock_building_id, pending);
-        assert_eq!(dock.pending_entry(), Some(pending));
-        assert_eq!((dock.service_timer, dock.no_funds_ticks), (0, 0));
-        clear_pending_entry(unit);
-        assert!(unit.dock_state.is_none());
+        assert_eq!(
+            sim.substrate.entities.get(1).unwrap().pending_entry(),
+            Some(pending + 1)
+        );
+        assert!(linked(&sim, 1));
+        clear_pending_entry(sim.substrate.entities.get_mut(1).unwrap());
+        assert_eq!(sim.substrate.entities.get(1).unwrap().pending_entry(), None);
+        assert!(linked(&sim, 1));
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(DEPOT)
+                .unwrap()
+                .mission
+                .handler_state(),
+            2
+        );
+        assert_eq!(
+            *sim.substrate
+                .entities
+                .get(DEPOT)
+                .unwrap()
+                .mission_leaf
+                .as_building()
+                .unwrap()
+                .repair_progress(),
+            before
+        );
     }
 
     #[test]
     fn pointer_expiry_clears_only_the_matching_pending_or_admitted_visit() {
         let (mut sim, rules) = setup(1);
         let pending = DEPOT + 1;
-        begin_service(&mut sim, &rules, 1, DEPOT);
+        link_for_service(&mut sim, 1);
         set_pending_entry(&mut sim, 1, Some(pending));
-        let unit = sim.substrate.entities.get_mut(1).unwrap();
-        unit.dock_state.as_mut().unwrap().service_timer = 17;
-        assert!(unit.dock_state.as_ref().unwrap().references(DEPOT));
-        assert!(unit.dock_state.as_ref().unwrap().references(pending));
-
-        expire_reference(unit, pending);
-        let dock = unit.dock_state.as_ref().unwrap();
-        assert_eq!(dock.phase, DockPhase::Servicing);
-        assert_eq!(dock.dock_building_id, DEPOT);
-        assert_eq!(dock.pending_entry(), None);
-        assert_eq!(dock.service_timer, 17);
+        expire_reference(sim.substrate.entities.get_mut(1).unwrap(), pending);
+        assert_eq!(sim.substrate.entities.get(1).unwrap().pending_entry(), None);
+        assert!(
+            linked(&sim, 1),
+            "pending expiry does not tear down the admitted contact"
+        );
 
         set_pending_entry(&mut sim, 1, Some(pending));
-        let unit = sim.substrate.entities.get_mut(1).unwrap();
-        expire_reference(unit, DEPOT);
-        let dock = unit.dock_state.as_ref().unwrap();
-        assert_eq!(dock.phase, DockPhase::WaitForDock);
-        assert_eq!(dock.pending_entry(), Some(pending));
-        assert_eq!(dock.dock_building_id, pending);
-        expire_reference(unit, pending);
-        assert!(unit.dock_state.is_none());
+        sim.uninit_with_rules(DEPOT, &rules);
+        let unit = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(unit.pending_entry(), Some(pending));
+        assert!(!unit.radio_contacts.contains(DEPOT));
+        expire_reference(sim.substrate.entities.get_mut(1).unwrap(), pending);
+        assert_eq!(sim.substrate.entities.get(1).unwrap().pending_entry(), None);
     }
 
     /// Foot70D83C's Queue(Enter,1) uses the linked Building's type in Unit
@@ -2010,9 +1841,7 @@ mod tests {
             unit.navigation.nav_com,
             Some(NavTargetRef::Building { id: DEPOT })
         );
-        let dock = unit.dock_state.as_ref().unwrap();
-        assert_eq!(dock.phase, DockPhase::EnterDock);
-        assert_eq!(dock.pending_entry(), None);
+        assert_eq!(unit.pending_entry(), None);
         assert!(linked(&sim, 1));
         assert_eq!(sim.scenario_rng.state(), rng);
     }
@@ -2028,17 +1857,21 @@ mod tests {
             (-1, 0, false),
             (0, 0, false),
         ] {
-            assert_eq!(
-                (Health { current: hp }).is_fully_repaired(strength),
-                complete,
-                "{hp}/{strength}"
+            let (mut sim, _) = setup(1);
+            let rules = depot_rules_with_strength(strength);
+            sim.substrate.entities.get_mut(1).unwrap().health.current = hp;
+            let response = radio::transmit(
+                &mut sim,
+                DEPOT,
+                1,
+                RadioMessage::IsRepairing,
+                RadioPayload::default(),
+                Some(&rules),
             );
             assert_eq!(
-                matches!(
-                    repair_tick(hp, strength, 100, 15, 8, 10_000, 0),
-                    RepairResponse::RepairComplete
-                ),
-                complete
+                response == RadioResponse::Negatory,
+                complete,
+                "{hp}/{strength}"
             );
         }
     }
@@ -2051,50 +1884,43 @@ mod tests {
         unit.health.current = i32::MAX - 1;
         unit.estimated_health =
             crate::sim::estimated_health::EstimatedHealth::from_raw(i32::MAX - 2);
-        let dock = DockState::new(DEPOT, DockPhase::Servicing);
-        unit.dock_state = Some(dock);
-        tick_building_docks(&mut sim, &rules);
+        assert_eq!(repair_request(&mut sim, &rules, 1), RadioResponse::Roger);
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.health.current, i32::MIN + 6);
         assert_eq!(unit.estimated_health.get(), i32::MIN + 5);
-        assert_eq!(
-            unit.dock_state.as_ref().unwrap().phase,
-            DockPhase::Servicing
-        );
     }
 
     #[test]
     fn depot_service_adds_reservations_and_resets_them_on_completion() {
         let (mut sim, rules) = setup(1);
-        let unit = sim.substrate.entities.get_mut(1).unwrap();
-        let dock = DockState::new(DEPOT, DockPhase::Servicing);
-        unit.dock_state = Some(dock);
-        unit.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-20);
-
-        tick_building_docks(&mut sim, &rules);
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .estimated_health
+            .reset(-20);
+        assert_eq!(repair_request(&mut sim, &rules, 1), RadioResponse::Roger);
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.health.current, 108);
         assert_eq!(unit.estimated_health.get(), -12);
-        assert_eq!(
-            unit.dock_state.as_ref().unwrap().phase,
-            DockPhase::Servicing
-        );
 
         let unit = sim.substrate.entities.get_mut(1).unwrap();
         unit.health.current = 299;
-        unit.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-20);
-        unit.dock_state.as_mut().unwrap().service_timer = 0;
-        tick_building_docks(&mut sim, &rules);
+        unit.estimated_health.reset(-20);
+        assert_eq!(
+            repair_request(&mut sim, &rules, 1),
+            RadioResponse::RepairComplete
+        );
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.health.current, 300);
         assert_eq!(unit.estimated_health.get(), 300);
-        assert_eq!(unit.dock_state.as_ref().unwrap().phase, DockPhase::ExitDock);
-
-        // Already-full admission bypasses the repair receiver entirely.
-        let unit = sim.substrate.entities.get_mut(1).unwrap();
-        unit.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-20);
-        unit.dock_state.as_mut().unwrap().phase = DockPhase::Servicing;
-        tick_building_docks(&mut sim, &rules);
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .estimated_health
+            .reset(-20);
+        assert_eq!(repair_request(&mut sim, &rules, 1), RadioResponse::Negatory);
         assert_eq!(
             sim.substrate
                 .entities
@@ -2103,6 +1929,48 @@ mod tests {
                 .estimated_health
                 .get(),
             -20
+        );
+    }
+
+    fn repair_request(sim: &mut Simulation, rules: &RuleSet, unit: u64) -> RadioResponse {
+        radio::transmit(
+            sim,
+            DEPOT,
+            unit,
+            RadioMessage::RepairTick,
+            RadioPayload::default(),
+            Some(rules),
+        )
+    }
+
+    fn link_for_service(sim: &mut Simulation, unit: u64) {
+        sim.substrate
+            .entities
+            .get_mut(unit)
+            .unwrap()
+            .mark_live_contact_with(DEPOT);
+        sim.substrate
+            .entities
+            .get_mut(DEPOT)
+            .unwrap()
+            .mark_live_contact_with(unit);
+    }
+
+    /// Component fixture for unit-only Enter/RNG observations. Depot visits
+    /// are explicit so its independent Guard cadence is outside those checks.
+    fn tick_units(sim: &mut Simulation, rules: &RuleSet) {
+        sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
+        visit_units(sim, rules);
+        process_units(sim, rules);
+        pending_entries(sim, rules);
+        sim.session.tick += 1;
+    }
+
+    fn visit_depot(sim: &mut Simulation, rules: &RuleSet) {
+        sim.object_ai_visit_one(
+            DEPOT,
+            Some(rules),
+            crate::sim::world::ObjectAiCtx::default(),
         );
     }
 
@@ -2117,16 +1985,12 @@ mod tests {
         )
     }
 
-    /// One frame in production order: every unit's own object-AI visit (the
-    /// Enter dispatch with its probe and draw), then the dock pass, then
-    /// movement.
+    /// Component fixture: each unit's AI and movement, its pending-entry
+    /// retry, then the Building's ordinary mission visit. Full-world ordering
+    /// is exercised separately by the track-path continuation tests.
     fn tick(sim: &mut Simulation, rules: &RuleSet) {
-        sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
-        visit_units(sim, rules);
-        tick_building_docks(sim, rules);
-        process_units(sim, rules);
-        pending_entries(sim, rules);
-        sim.session.tick += 1;
+        tick_units(sim, rules);
+        visit_depot(sim, rules);
     }
 
     /// Every pending unit's `FootClass::AI` entry retry (`0x004DAEDC`), in
@@ -2184,11 +2048,19 @@ mod tests {
                 .is_some_and(|d| d.radio_contacts.contains(tank))
     }
 
-    fn phase(sim: &Simulation, tank: u64) -> Option<DockPhase> {
-        sim.substrate
-            .entities
-            .get(tank)
-            .and_then(|e| e.dock_state.as_ref().map(|d| d.phase))
+    fn servicing(sim: &Simulation, tank: u64) -> bool {
+        linked(sim, tank)
+            && sim.substrate.entities.get(DEPOT).is_some_and(|building| {
+                building.mission.current().known() == Some(MissionType::Repair)
+                    && building.mission.handler_state() == 2
+            })
+            && sim.substrate.entities.get(tank).is_some_and(|unit| {
+                unit.navigation.nav_com.is_none()
+                    && unit
+                        .locomotor
+                        .as_ref()
+                        .is_some_and(|loco| !loco.is_powered())
+            })
     }
 
     fn pos(sim: &Simulation, tank: u64) -> (u16, u16) {
@@ -2213,10 +2085,9 @@ mod tests {
                 Some(MissionType::Enter),
                 "player depot order queues Enter (7) through the exact authority"
             );
-            assert_eq!(e.derived_mission().0, MissionType::Enter);
         }
         assert!(linked(&sim, 1));
-        assert_eq!(phase(&sim, 1), Some(DockPhase::EnterDock));
+        assert_eq!(sim.substrate.entities.get(1).unwrap().pending_entry(), None);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().navigation.nav_com,
             Some(NavTargetRef::Building { id: DEPOT })
@@ -2224,7 +2095,7 @@ mod tests {
         for tank in 2..=3 {
             let e = sim.substrate.entities.get(tank).unwrap();
             assert!(!linked(&sim, tank));
-            assert_eq!(phase(&sim, tank), Some(DockPhase::WaitForDock));
+            assert_eq!(e.pending_entry(), Some(DEPOT));
             assert_eq!(e.navigation.nav_com, None);
             assert_eq!(e.archive_target(), None);
         }
@@ -2235,17 +2106,10 @@ mod tests {
             "NumberOfDocks default 1"
         );
         assert_eq!(depot.radio_contacts.len(), 1);
-        tick(&mut sim, &rules);
+        tick_units(&mut sim, &rules);
         for tank in 2..=3 {
-            let ds = sim
-                .substrate
-                .entities
-                .get(tank)
-                .unwrap()
-                .dock_state
-                .clone()
-                .unwrap();
-            assert_eq!(ds.phase, DockPhase::WaitForDock, "the slot stays held");
+            let pending = sim.substrate.entities.get(tank).unwrap().pending_entry();
+            assert_eq!(pending, Some(DEPOT), "the slot stays held");
             let timer = sim
                 .substrate
                 .entities
@@ -2269,7 +2133,7 @@ mod tests {
         // Frame 1: the contact probes and the pending unit dispatches (two
         // draws).
         let mut shadow = sim.clone_scenario_rng();
-        tick(&mut sim, &rules);
+        tick_units(&mut sim, &rules);
         shadow.next_range_u32_inclusive(0, 2);
         shadow.next_range_u32_inclusive(0, 2);
         assert_eq!(
@@ -2284,7 +2148,7 @@ mod tests {
     fn contact_probe_draws_nothing_between_dispatches() {
         let (mut sim, rules) = setup(1);
         assert!(order_repair(&mut sim, &rules, 1));
-        tick(&mut sim, &rules);
+        tick_units(&mut sim, &rules);
         let mut shadow = sim.clone_scenario_rng();
         let due = {
             let timer = sim
@@ -2300,7 +2164,7 @@ mod tests {
             if sim.session.binary_frame + 1 >= due {
                 break;
             }
-            tick(&mut sim, &rules);
+            tick_units(&mut sim, &rules);
         }
         assert_eq!(
             sim.scenario_rng.next_range_u32_inclusive(0, 1000),
@@ -2314,7 +2178,7 @@ mod tests {
     /// draws: visiting the contact 1 draws exactly one `RandomRanged(0,2)`,
     /// visiting the Guard tank 2 between them draws its own Guard cadence
     /// jitter, visiting the pending unit 3 draws one more `(0,2)`, and the
-    /// post-production dock pass draws nothing at all.
+    /// the repair body draws nothing in its admitted service arm.
     #[test]
     fn waiter_probe_draw_sits_in_the_units_own_ai_slot_in_object_order() {
         let (mut sim, rules) = setup(3);
@@ -2354,11 +2218,25 @@ mod tests {
         );
 
         let after_ai = sim.scenario_rng.state();
-        tick_building_docks(&mut sim, &rules);
+        sim.mission_assign_exact(DEPOT, MissionId::from_known(MissionType::Repair), 1)
+            .unwrap();
+        sim.substrate
+            .entities
+            .get_mut(DEPOT)
+            .unwrap()
+            .mission
+            .set_handler_state(2);
+        sim.substrate
+            .entities
+            .get_mut(DEPOT)
+            .unwrap()
+            .mission_leaf
+            .start_building_repair_progress(1);
+        assert_eq!(mission_repair(&mut sim, &rules, DEPOT, None), Some(1));
         assert_eq!(
             sim.scenario_rng.state(),
             after_ai,
-            "the post-production dock pass draws nothing"
+            "the Building repair body draws nothing"
         );
         assert!(linked(&sim, 1), "the first order holds the slot");
         assert!(!linked(&sim, 3));
@@ -2379,7 +2257,7 @@ mod tests {
         let mut released = false;
         for _ in 0..2000 {
             tick(&mut sim, &rules);
-            if phase(&sim, 1).is_none() {
+            if !linked(&sim, 1) {
                 released = true;
                 break;
             }
@@ -2389,8 +2267,12 @@ mod tests {
         assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 300);
         assert!(linked(&sim, 2), "the first pending unit in object order");
         assert!(!linked(&sim, 3));
-        assert_eq!(phase(&sim, 2), Some(DockPhase::EnterDock));
-        assert_eq!(phase(&sim, 3), Some(DockPhase::WaitForDock));
+        assert_eq!(sim.substrate.entities.get(2).unwrap().pending_entry(), None);
+        assert!(linked(&sim, 2));
+        assert_eq!(
+            sim.substrate.entities.get(3).unwrap().pending_entry(),
+            Some(DEPOT)
+        );
         let e = sim.substrate.entities.get(2).unwrap();
         // Queue_Mission(Enter, commence) promotes at once: Enter is current.
         assert_eq!(e.derived_mission().0, MissionType::Enter);
@@ -2407,15 +2289,15 @@ mod tests {
     fn a_linked_drive_without_nav_com_is_not_given_a_second_destination() {
         let (mut sim, rules) = setup(1);
         assert!(order_repair(&mut sim, &rules, 1));
-        tick(&mut sim, &rules);
+        tick_units(&mut sim, &rules);
         assert!(linked(&sim, 1));
         sim.assign_null_destination(1, Some(&rules), None);
         sim.substrate.entities.get_mut(1).unwrap().movement_target = None;
         for _ in 0..100 {
-            tick(&mut sim, &rules);
+            tick_units(&mut sim, &rules);
             let unit = sim.substrate.entities.get(1).unwrap();
             assert_eq!(unit.navigation.nav_com, None);
-            assert_eq!(phase(&sim, 1), Some(DockPhase::EnterDock));
+            assert_eq!(sim.substrate.entities.get(1).unwrap().pending_entry(), None);
         }
     }
 
@@ -2439,16 +2321,8 @@ mod tests {
         let mut released = false;
         for _ in 0..2000 {
             tick(&mut sim, &rules);
-            if phase(&sim, 1) == Some(DockPhase::Servicing) {
+            if servicing(&sim, 1) {
                 assert_eq!(pos(&sim, 1), pad);
-                if !reached_pad {
-                    // The separate native per-cell controls pin queued Sleep
-                    // at Unit73A540. This whole Drive turn also runs FootStop
-                    // 4B2242 and the idle gate 4B228B -> 4DB9B0, which can
-                    // overwrite that queue before this observation.
-                    let mission = &sim.substrate.entities.get(1).unwrap().mission;
-                    assert_eq!(mission.current().known(), Some(MissionType::Enter));
-                }
                 reached_pad = true;
                 assert!(
                     !sim.substrate
@@ -2461,7 +2335,7 @@ mod tests {
                         .powered
                 );
             }
-            if reached_pad && phase(&sim, 1).is_none() {
+            if reached_pad && !linked(&sim, 1) {
                 released = true;
                 break;
             }
@@ -2530,7 +2404,7 @@ mod tests {
             tick(&mut sim, &rules);
         }
         assert!(!linked(&sim, 1));
-        assert!(phase(&sim, 1).is_none());
+        assert_eq!(sim.substrate.entities.get(1).unwrap().pending_entry(), None);
         assert_eq!(
             sim.substrate
                 .entities
@@ -2578,7 +2452,7 @@ mod tests {
             tick(&mut sim, &rules);
         }
         assert!(!linked(&sim, 1));
-        assert!(phase(&sim, 1).is_none());
+        assert_eq!(sim.substrate.entities.get(1).unwrap().pending_entry(), None);
         assert_eq!(
             sim.substrate
                 .entities
@@ -2619,7 +2493,7 @@ mod tests {
     // @ 0x004D9290` like any Foot object (`UnitClass` vtable `0x007F5C70 +
     // 0x240` = `0x007F5EB0` holds `0x004D9290`; the Harvest handler is only
     // reached on selector 10). The Unit Enter arm therefore runs for a miner
-    // with a depot `DockState`, and the Harvest handler declines it.
+    // linked to a depot, and the Harvest handler declines it.
 
     fn miner_cfg() -> crate::sim::miner::MinerConfig {
         crate::sim::miner::MinerConfig::default()
@@ -2685,8 +2559,6 @@ mod tests {
             "[Enter]\nRate=.1\n[Guard]\nRate=.03\n",
         ));
         sim.scenario_rng = crate::sim::rng::SimRng::new(1);
-        sim.substrate.entities.get_mut(1).unwrap().dock_state =
-            Some(DockState::new(DEPOT, DockPhase::EnterDock));
         sim.mission_assign_exact(1, MissionId::from_known(MissionType::Enter), 0)
             .unwrap();
 
@@ -2739,14 +2611,28 @@ mod tests {
                 .mission
                 .dispatch_timer()
                 .due(now);
-            let waiting = matches!(
-                phase(&sim, MINER),
-                Some(DockPhase::WaitForDock | DockPhase::EnterDock)
-            );
+            let waiting = sim
+                .substrate
+                .entities
+                .get(MINER)
+                .unwrap()
+                .mission
+                .current()
+                .known()
+                == Some(MissionType::Enter);
             let mut shadow = sim.clone_scenario_rng();
             visit_units_with_harvest(&mut sim, &rules);
             let timer = dispatch_timer(&sim, MINER);
-            if waiting {
+            let still_enter = sim
+                .substrate
+                .entities
+                .get(MINER)
+                .unwrap()
+                .mission
+                .current()
+                .known()
+                == Some(MissionType::Enter);
+            if waiting && still_enter {
                 if due_at_entry {
                     // Exactly one Enter dispatch: one (0,2) draw, one write.
                     shadow.next_range_u32_inclusive(0, 2);
@@ -2761,14 +2647,14 @@ mod tests {
                 assert_eq!(harvest_cursor(&sim, MINER), cursor_at_order);
             }
             prev_timer = timer;
-            tick_building_docks(&mut sim, &rules);
+            visit_depot(&mut sim, &rules);
             process_units(&mut sim, &rules);
             sim.session.tick += 1;
-            if phase(&sim, MINER) == Some(DockPhase::Servicing) {
+            if servicing(&sim, MINER) {
                 reached_pad = true;
                 assert!(linked(&sim, MINER));
             }
-            if reached_pad && phase(&sim, MINER).is_none() {
+            if reached_pad && !linked(&sim, MINER) {
                 released = true;
                 break;
             }
@@ -2787,7 +2673,7 @@ mod tests {
     /// The common selector routes a miner on Enter to the depot body, with
     /// one cadence draw and one timer write; no Harvest cursor step runs.
     #[test]
-    fn miner_on_enter_with_depot_dock_state_has_one_dispatch_writer() {
+    fn miner_on_enter_with_a_depot_contact_has_one_dispatch_writer() {
         let (mut sim, rules) = setup(0);
         const MINER: u64 = 7;
         spawn_damaged_miner(&mut sim, MINER, 14, 11);
@@ -2825,24 +2711,140 @@ mod tests {
     /// Exit-cell selection skips foundation/vehicle-blocked cells in list order.
     #[test]
     fn exit_cell_skips_blocked_cells_in_list_order() {
-        let (mut sim, _rules) = setup(0);
+        let (mut sim, rules) = setup(1);
         assert_eq!(
-            depot_exit_cell(&sim, DEPOT_RX, DEPOT_RY, "3x3"),
+            depot_exit_cell(&sim, 1, DEPOT_RX, DEPOT_RY, "3x3", &rules, None),
             Some((DEPOT_RX, DEPOT_RY + 3))
         );
         spawn_tank(&mut sim, 7, DEPOT_RX, DEPOT_RY + 3);
-        sim.substrate.occupancy.add(
-            DEPOT_RX,
-            DEPOT_RY + 3,
-            7,
-            MovementLayer::Ground,
-            None,
-            CellListInsertion::AppendBuilding,
-        );
         assert_eq!(
-            depot_exit_cell(&sim, DEPOT_RX, DEPOT_RY, "3x3"),
+            depot_exit_cell(&sim, 1, DEPOT_RX, DEPOT_RY, "3x3", &rules, None),
             Some((DEPOT_RX + 1, DEPOT_RY + 3))
         );
+    }
+
+    /// Original44C0BD skips reconstruction when state1 has neither service
+    /// animation. Exercise real Anim constructors with RandomRate so both
+    /// animation identity and the shared Scenario stream expose regressions.
+    #[test]
+    fn no_contact_repair_preserves_idle_animation_identity() {
+        use crate::rules::art_data::ArtRegistry;
+        let (mut sim, _) = setup(0);
+        let art_ini = IniFile::from_str(
+            "[GADEPT]\nFoundation=3x3\nActiveAnim=ACTIVE\nSpecialAnimThree=IDLE\n\
+             [ACTIVE]\nLoopCount=-1\nRandomRate=150,450\n\
+             [IDLE]\nLoopCount=-1\nRandomRate=150,450\n",
+        );
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(
+                "[BuildingTypes]\n0=GADEPT\n[GADEPT]\nStrength=1000\nUnitRepair=yes\n\
+                 [Animations]\n0=ACTIVE\n1=IDLE\n",
+            ),
+            &art_ini,
+        )
+        .unwrap();
+        let mut art = ArtRegistry::from_ini(&art_ini);
+        for name in ["ACTIVE", "IDLE"] {
+            art.bind_anim_frame_count_for_test(name, 40);
+        }
+        rules.install_art_data(art);
+        let active = sim
+            .set_building_anim_slot(DEPOT, 3, false, false, 0, &rules)
+            .unwrap();
+        let idle = sim
+            .set_building_anim_slot(DEPOT, 12, false, false, 0, &rules)
+            .unwrap();
+        sim.substrate
+            .entities
+            .get_mut(DEPOT)
+            .unwrap()
+            .mission
+            .set_handler_state(1);
+        let rng = sim.scenario_rng.state();
+        assert_eq!(mission_repair(&mut sim, &rules, DEPOT, None), Some(1));
+        let slots = &sim
+            .substrate
+            .entities
+            .get(DEPOT)
+            .unwrap()
+            .building_anim_slots;
+        assert_eq!((slots[3], slots[12]), (Some(active), Some(idle)));
+        assert_eq!(sim.scenario_rng.state(), rng);
+    }
+
+    /// Logic55AFB0 finishes Building visits before Factory55B66A. Both
+    /// requests can spend the supplied two credits individually; the depot
+    /// must heal first and the factory must then hold, within advance_tick.
+    #[test]
+    fn depot_payment_precedes_the_same_frame_factory_charge() {
+        use crate::sim::production::ProductionCategory;
+        use crate::sim::timer::CdTimer;
+        let (mut sim, _) = setup(1);
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(
+                "[General]\nRepairPercent=15%\nRepairStep=8\nURepairRate=.016\n\
+                 [VehicleTypes]\n0=MTNK\n1=PENDING\n\
+                 [MTNK]\nCost=700\nStrength=300\nTechLevel=1\n\
+                 [PENDING]\nCost=108\nStrength=100\nTechLevel=1\n\
+                 [BuildingTypes]\n0=GADEPT\n1=FACTORY\n\
+                 [GADEPT]\nStrength=1000\nUnitRepair=yes\nHasStupidGuardMode=no\n\
+                 [FACTORY]\nStrength=500\nFactory=UnitType\n",
+            ),
+            &IniFile::from_str("[GADEPT]\nFoundation=3x3\n"),
+        )
+        .unwrap();
+        let owner = sim.substrate.entities.get(1).unwrap().owner();
+        sim.houses.get_mut(&owner).unwrap().economy.credits = 2;
+        spawn_entity(
+            &mut sim,
+            501,
+            "FACTORY",
+            EntityCategory::Structure,
+            18,
+            11,
+            500,
+        );
+        link_for_service(&mut sim, 1);
+        sim.mission_assign_exact(DEPOT, MissionId::from_known(MissionType::Repair), 0)
+            .unwrap();
+        sim.substrate
+            .entities
+            .get_mut(DEPOT)
+            .unwrap()
+            .mission
+            .set_handler_state(1);
+        sim.mission_assign_exact(1, MissionId::from_known(MissionType::Sleep), 0)
+            .unwrap();
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .power_off();
+        let pending = sim.interner.intern("PENDING");
+        assert!(sim.production.factory_shadow.test_enqueue_kernel(
+            owner,
+            ProductionCategory::Vehicle,
+            pending,
+            1,
+            108,
+        ));
+        let factory = sim.production.factory_shadow.test_first_mut().unwrap();
+        factory.step_rate_frames = 1;
+        factory.step_timer = CdTimer::from_raw(0, 0);
+        for id in [DEPOT, 1, 501] {
+            assert!(sim.register_live_object(id));
+        }
+        sim.advance_tick(&[], Some(&rules), None, None, 66);
+        assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 108);
+        assert_eq!(sim.houses[&owner].economy.credits, 0);
+        assert_eq!(sim.houses[&owner].economy.spent_credits, 2);
+        let factory = sim.production.factory_shadow.test_first_mut().unwrap();
+        assert_eq!(factory.progress, 0);
+        assert_eq!(factory.balance, 108);
+        assert!(factory.on_hold);
     }
 
     /// A repaired (full-HP) linked waiter that is a Harvester=yes unit takes
@@ -2866,7 +2868,6 @@ mod tests {
             {
                 let unit = sim.substrate.entities.get_mut(1).unwrap();
                 unit.miner = Some(Miner::new(MinerKind::War, &MinerConfig::default(), 0));
-                unit.dock_state = Some(DockState::new(DEPOT, DockPhase::EnterDock));
                 unit.mark_live_contact_with(DEPOT);
             }
             sim.substrate
@@ -2883,8 +2884,8 @@ mod tests {
         let (mut sim, rules) = build(false);
         crate::sim::mission::enter::mission_enter(&mut sim, &rules, 1);
         assert!(!linked(&sim, 1));
-        tick_building_docks(&mut sim, &rules);
-        assert!(phase(&sim, 1).is_none());
+        visit_depot(&mut sim, &rules);
+        assert_eq!(sim.substrate.entities.get(1).unwrap().pending_entry(), None);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().mission.queued(),
             MissionId::from_known(MissionType::Harvest),

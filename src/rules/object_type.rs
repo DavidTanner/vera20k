@@ -835,6 +835,11 @@ pub struct ObjectType {
     /// TechnoType+680, ReadINI71474C (InitialAmmo); -1 selects Ammo at
     /// Aircraft InitFromType414033..41404B. Other signed values are retained.
     pub initial_ammo: i32,
+    /// `TechnoType+0xD24`, exact `ManualReload=`: constructor7114D6 clears
+    /// it; ReadBool713352 retains the current value (store713366). Depot
+    /// MissionRepairAndProduce reads it before the first RepairTick and may
+    /// enter its progress state even when the contact was already at Strength.
+    pub manual_reload: bool,
 
     // -- Spawn manager (Spawns= pool: V3, Dreadnought, Boomer, Carrier, Destroyer) --
     /// TechnoType this unit spawns as sub-units (`Spawns=`). Presence of a
@@ -2178,6 +2183,11 @@ impl ObjectType {
                 .map(str::to_owned),
             chrono_in_sound: section.read_name("ChronoInSound", 0x80).map(str::to_owned),
             chrono_out_sound: section.read_name("ChronoOutSound", 0x80).map(str::to_owned),
+            // Native relative order: ManualReload713352, then
+            // TiltCrashJumpjet713386, then Turret. The shared bool reader
+            // retains earlier-layer values when a later token is malformed.
+            manual_reload: section.read_bool("ManualReload", false),
+            tilt_crash_jumpjet: section.read_bool("TiltCrashJumpjet", false),
             has_turret: section.read_bool("Turret", false),
             // gamemd writes a separate UnitType +0x398=10 for Harvester/Weeder,
             // but ROT= remains the parsed TechnoType +0x71C facing-rate field.
@@ -2339,7 +2349,6 @@ impl ObjectType {
             zfudge_bridge: section.read_int("ZFudgeBridge", 0),
             too_big_to_fit_under_bridge: section.read_bool("TooBigToFitUnderBridge", false),
             crashable: section.read_bool("Crashable", false),
-            tilt_crash_jumpjet: section.read_bool("TiltCrashJumpjet", false),
             teleporter: section.read_bool("Teleporter", false),
             move_to_shroud: section.read_bool("MoveToShroud", category != ObjectCategory::Aircraft),
             hover_attack: section.read_bool("HoverAttack", false),
@@ -2566,9 +2575,12 @@ impl ObjectType {
             invisible_in_game: section.read_bool("InvisibleInGame", false),
             place_anywhere: section.read_bool("PlaceAnywhere", false),
             to_tile: section.read_name("ToTile", 0x3c).map(str::to_owned),
+            // BuildingType45FE50: ReadBool calls460915/46092F/460949,
+            // constructor45DD90 clears+16A9/+16AA/+16AB in that order.
+            // Native identity/control coverage: building_repair.depot_service.md.
             unit_repair: section.read_bool("UnitRepair", false),
-            bunker: section.read_bool("Bunker", false),
             unit_reload: section.read_bool("UnitReload", false),
+            bunker: section.read_bool("Bunker", false),
             helipad: section.read_bool("Helipad", false),
             number_of_docks: section.read_int("NumberOfDocks", 1),
             // TogglePower defaults to true for buildings, false for units.

@@ -1210,16 +1210,20 @@ pub struct GeneralRules {
     pub guard_mode_stray: i32,
 
     // -- Service depot / unit repair --
-    /// Ticks between applying RepairStep HP when a unit is on a repair depot.
-    /// Derived from URepairRate= in [General] (minutes). Default 0.016 min ≈ 14 ticks at 15 Hz.
-    pub unit_repair_rate_ticks: u32,
+    /// `Rules+0x16E8`, `[General] URepairRate=` in minutes. ReadDouble
+    /// at0x00670E4C over the current value, without a clamp. The constructor
+    /// stores literal double .016 (0x3F90624DD2F1A9FC); an authored .016 is
+    /// parsed as f32 and widened (0x3F90624DE0000000). Depot service compares
+    /// progress against this retained value times900, without truncating it
+    /// to a timer first (`0x0044BD32`, `0x0044BD44`).
+    pub unit_repair_rate: f64,
     /// `[General] RepairStep=` — `RulesClass+0x16CC`, ReadInt over the
     /// constructor's 5 with no clamp (retail 8). TechnoTypeClass vt+0xB4
     /// (`0x00712120`) returns it: the health a repair tick adds, and the
     /// divisor of Strength in the repair step cost (`0x007120EC`).
     pub repair_step: i32,
     /// `[General] RepairPercent=` — `RulesClass+0x16D0`, ReadDouble
-    /// (`0x00670DB7`) over the constructor's .25 (retail `15%`, stored as
+    /// (call `0x00670DBF`) over the constructor's .25 (retail `15%`, stored as
     /// 0x3FC3333333333333). The repair step cost multiplies the per-step
     /// share of the cost by it (`0x00712101`).
     pub repair_percent: f64,
@@ -1839,8 +1843,8 @@ impl Default for GeneralRules {
             stray: 0x200,
             relaxed_stray: 0x200,
             guard_mode_stray: 0,
-            // URepairRate=.016 min = 0.96 sec ≈ 14 ticks at 15 Hz.
-            unit_repair_rate_ticks: minutes_to_ticks(U_REPAIR_RATE_MINUTES),
+            // Rules constructor667530/53A retains the double, not frame ticks.
+            unit_repair_rate: U_REPAIR_RATE_MINUTES,
             repair_step: 5,
             repair_percent: 0.25,
             // ReloadRate=.3 min = 18 sec = 270 ticks at 15 Hz.
@@ -2773,12 +2777,10 @@ impl GeneralRules {
             stray: general.read_range("Stray", defaults.stray),
             relaxed_stray: general.read_range("RelaxedStray", defaults.relaxed_stray),
             guard_mode_stray: general.read_range("GuardModeStray", defaults.guard_mode_stray),
-            // URepairRate= is in minutes. Convert to ticks: minutes * 60 * 15 ticks/sec.
-            unit_repair_rate_ticks: minutes_to_ticks(
-                general.read_double("URepairRate", U_REPAIR_RATE_MINUTES),
-            ),
-            repair_step: general.read_int("RepairStep", defaults.repair_step),
+            // Selected native reader order670DA3,670DCA,670E30.
             repair_percent: general.read_double("RepairPercent", defaults.repair_percent),
+            repair_step: general.read_int("RepairStep", defaults.repair_step),
+            unit_repair_rate: general.read_double("URepairRate", defaults.unit_repair_rate),
             reload_rate_ticks: minutes_to_ticks(
                 general.read_double("ReloadRate", RELOAD_RATE_MINUTES),
             ),
@@ -4211,7 +4213,7 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v12".hash(&mut hasher);
+        b"rules-simulation-config-v13".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
         // Process-resident Gravity and Weapon postpass results can differ for
         // identical current source stacks because earlier passes retained them.

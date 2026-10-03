@@ -422,6 +422,8 @@ fn hash_mission_leaf(leaf: &crate::sim::mission::MissionLeafState, hasher: &mut 
     } else if let Some(building) = leaf.as_building() {
         3u8.hash(hasher);
         building.ready_latch().hash(hasher);
+        b"building-repair-progress-620".hash(hasher);
+        building.repair_progress().hash(hasher);
     }
     // Infantry already folds the same owned byte above. Native default0
     // retains the prior Unit/Aircraft hash stream; loaded nonzero Foot68D
@@ -1280,9 +1282,9 @@ impl Simulation {
             b"building-body-v277".hash(hasher);
             entity.hash_building_body(hasher);
             entity.hash_building_health_sample(hasher);
-            if let Some(dock) = entity.dock_state.as_ref() {
-                b"depot-docking-v282".hash(hasher);
-                dock.hash_state(hasher);
+            if let Some(pending) = entity.pending_entry() {
+                b"foot-pending-entry-500".hash(hasher);
+                pending.hash(hasher);
             }
             entity.native_unique_id.hash(hasher);
             if let Some(manager) = entity.slave_manager.as_ref() {

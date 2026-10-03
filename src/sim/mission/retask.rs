@@ -6,35 +6,32 @@
 //! (`EventClass` execute, Queue callsite `0x004C73B9=dynamic/0`); the
 //! per-object AI host promotes it via Ready→Commence on its next update. The
 //! legacy `Option<T>` machines stay the behavior drivers; the per-site field
-//! clears (`attack_target`/`order_intent`/`dock_state`/`c4_plant`/
+//! clears (`attack_target`/`order_intent`/`c4_plant`/
 //! aircraft dock phase) stay inline at the call site — the
 //! sites cancel different field subsets, so they cannot be folded into a fixed
 //! teardown without diverging.
 
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::radio::{self, RadioMessage};
 use crate::sim::world::Simulation;
 
 /// Which dock-reservation teardown a retasking command performs.
 ///
-/// This governs **only** the three reservation helpers — it is the one part of
+/// This governs **only** the aircraft reservation helpers — it is the one part of
 /// the per-command teardown that is a closed, enumerable set. The variant for
 /// each site is the exact subset that site cancels today:
 ///
 /// | site | variant | cancels |
 /// |---|---|---|
-/// | Move, Stop | `All` | depot + aircraft RTB/wait + docked-idle |
-/// | RepairAtDepot | `Depot` | depot reservation only |
-/// | Attack | `AircraftOnly` | aircraft RTB/wait + docked-idle (NOT depot) |
+/// | Move, Stop, Attack, Deploy | `AircraftOnly` | aircraft RTB/wait + docked-idle |
+/// | RepairAtDepot | `None` | destination/radio owners handle depot contacts |
 /// | ForceAttack, ForceAttackCell, AttackMove | `IdleOnly` | docked-idle only |
 /// | EnterTransport, PlantC4, CaptureBuilding | `None` | nothing |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DockTeardown {
-    /// Depot + aircraft RTB/wait + docked-idle (Move, Stop).
-    All,
-    /// Depot reservation only (RepairAtDepot).
-    Depot,
-    /// Aircraft RTB/wait + docked-idle, but NOT the depot reservation (Attack).
+    /// Aircraft RTB/wait and docked-idle. Depot contacts are released by
+    /// native destination/PerCell/Building mission owners.
     AircraftOnly,
     /// Docked-idle helipad release only (ForceAttack, ForceAttackCell, AttackMove).
     IdleOnly,
@@ -43,6 +40,57 @@ pub enum DockTeardown {
 }
 
 impl Simulation {
+    /// Accepted MEGAMISSION's shared prefix, EventClass4C72E8..4C7380.
+    /// Untethered actors break slot zero (vt27465ACB0 at4C72F8). Tethered
+    /// actors do so only for a natively alive DockUnload Building, then clear
+    /// tether+418 at4C7342. Health is not part of that contact test.
+    /// Pending entry+500 clears at4C7353, before Team removal and Queue.
+    /// Original executable controls: building_repair.depot_service.json,
+    /// pending_entry_lifecycle (declared Event slices, full Scenario RNG).
+    pub(crate) fn begin_megamission_retask(
+        &mut self,
+        id: u64,
+        mission: MissionType,
+        rules: Option<&crate::rules::ruleset::RuleSet>,
+    ) {
+        let Some(entity) = self.substrate.entities.get(id) else {
+            return;
+        };
+        let tethered = entity.dock_entered_with.is_some();
+        let foot = matches!(
+            entity.category,
+            crate::map::entities::EntityCategory::Unit
+                | crate::map::entities::EntityCategory::Infantry
+                | crate::map::entities::EntityCategory::Aircraft
+        );
+        let break_tether = tethered
+            && entity
+                .radio_contacts
+                .slot(0)
+                .and_then(|contact| self.substrate.entities.get(contact))
+                .filter(|contact| {
+                    contact.is_object_alive()
+                        && contact.category == crate::map::entities::EntityCategory::Structure
+                })
+                .zip(rules)
+                .and_then(|(contact, rules)| self.object_type(contact.type_ref(), rules))
+                .is_some_and(|object| object.dock_unload);
+        if !tethered || break_tether {
+            radio::transmit_to_contact(self, id, RadioMessage::Break, rules);
+        }
+        if let Some(entity) = self.substrate.entities.get_mut(id) {
+            if break_tether {
+                entity.dock_entered_with = None;
+            }
+            entity.set_pending_entry(None);
+        }
+        // Native4C735D..4C7380: Foot membership removal without an idle
+        // order, except Unload. The existing Team owner checks membership.
+        if foot && mission != MissionType::Unload {
+            self.leave_team(id, true, rules);
+        }
+    }
+
     /// `TechnoClass::ResetOrdersToGuard` (`vt+0x3D0` = `0x0070F850`, no
     /// class override): the class setter `vt+0x480(0, 1)` (`0x0070F859`),
     /// class `vt+0x3C8(0)` (`0x0070F865`), ArchiveTarget (`+0x218`)
@@ -67,14 +115,6 @@ impl Simulation {
 
     pub(crate) fn run_dock_teardown(&mut self, id: u64, teardown: DockTeardown) {
         match teardown {
-            DockTeardown::All => {
-                self.cancel_depot_dock(id);
-                self.cancel_aircraft_dock(id);
-                self.release_docked_idle(id);
-            }
-            DockTeardown::Depot => {
-                self.cancel_depot_dock(id);
-            }
             DockTeardown::AircraftOnly => {
                 self.cancel_aircraft_dock(id);
                 self.release_docked_idle(id);
@@ -90,9 +130,9 @@ impl Simulation {
     /// the mission through the exact authority with `commence_now = 0` — the
     /// native event-execute shape (Queue `0x004C73B9=dynamic/0`). Promotion to
     /// `current` happens at the per-object AI host's Ready→Commence. Used by
-    /// every player command site (Move, Stop, Attack, ForceAttack,
+    /// the shared MegaMission command funnel (Move, Attack, ForceAttack,
     /// ForceAttackCell, AttackMove, RepairAtDepot, EnterTransport, PlantC4,
-    /// CaptureBuilding).
+    /// CaptureBuilding). Stop has its own no-queue Event6 route above.
     pub fn queue_mission_with_teardown(
         &mut self,
         id: u64,
@@ -136,18 +176,12 @@ impl Simulation {
     /// store to `+0x2B8` or `+0x5A8`. Clearing there would leave a unit parked
     /// after a Stop where retail resumes its archived move on the next Restore.
     ///
-    /// Five commands `command_uses_megamission` also counts — Guard, MinerReturn,
-    /// EjectBunker, HarvestCell, ToggleInfantryDeploy — write
-    /// their missions outside this funnel entirely and so still get no clear,
-    /// and do not take a team member off its team (`0x004C7380`); only
-    /// computer units are team members, and only `sim::ai`'s AttackMove,
-    /// which passes here, orders them.
-    /// Pre-existing, not narrowed by the split. Trigger: one of those issued to
-    /// a unit already carrying an Override archive. Player effect: a later
-    /// Restore hands back a destination or target the order should have
-    /// cancelled. Frequency: Guard and MinerReturn are common orders, but the
-    /// archive has to be live for it to matter. Downstream risk: none — each is
-    /// one call away from the same helper.
+    /// Guard, MinerReturn and HarvestCell use the shared pre-queue prefix,
+    /// but their legacy mission paths still bypass the post-Queue archive
+    /// clears here. EjectBunker and dormant aircraft passenger Unload also
+    /// bypass the prefix. These pre-existing command routes can Restore a
+    /// cancelled archive; their complete DTO/mission migration is separate
+    /// from ordinary Unit depot servicing.
     ///
     /// Without the clear on the sites that DO need it, a unit Overridden by a
     /// blocked step or by the retaliation at 0x00702B41, then retasked, then
@@ -160,14 +194,7 @@ impl Simulation {
         teardown: DockTeardown,
         rules: Option<&crate::rules::ruleset::RuleSet>,
     ) {
-        // The radio break precedes the Queue (`0x004C72E8..0x004C7342` run
-        // before `0x004C73B9`).
-        crate::sim::miner::miner_dock::break_for_retask(self, id, rules);
-        // `0x004C735D..0x004C7380`: an order other than Unload takes a Foot
-        // off its team, without an idle order.
-        if mission != MissionType::Unload {
-            self.leave_team(id, true, rules);
-        }
+        self.begin_megamission_retask(id, mission, rules);
         self.queue_mission_with_teardown(id, mission, teardown);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.suspended_attack_target = None;

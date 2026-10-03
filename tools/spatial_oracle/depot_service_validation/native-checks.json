@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "head": "fad4b19fc1179f1a55dfbe80d1adb4737d1a9f70",
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "frozen": true,
+  "owned_changes": [
+    "tools/spatial_oracle/building_repair.py",
+    "tools/spatial_oracle/building_repair.depot_service.json",
+    "tools/spatial_oracle/building_repair.depot_service.meta.json",
+    "tools/spatial_oracle/building_repair.depot_service.md",
+    "tools/spatial_oracle/building_slot_replacement.expiry.meta.json (one direct source pin only)"
+  ],
+  "checks": [
+    {
+      "command": "python -m tools.spatial_oracle.building_repair --depot-service --write",
+      "exit_code": 0,
+      "log": ".local-audit/depot-service/arrival-terminal/write.log",
+      "log_sha256": "5ebb4efc7f02d4fbb652fbd725d8942b19af8588357b8a5beaa8b4b1f659741b"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.building_repair --depot-service --check",
+      "exit_code": 0,
+      "log": ".local-audit/depot-service/arrival-terminal/check.log",
+      "log_sha256": "572f5a534f537eb6c544a7ad393101cca8d4f28305eb5438fdc818cf1e869fa6"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.building_repair --check",
+      "exit_code": 0,
+      "log": ".local-audit/depot-service/arrival-terminal/legacy-check.log",
+      "log_sha256": "4a7a3b96031aba4eb97fb5513311b5bbaa1cdee3b93bf9deab4eb0221af43e69"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.building_slot_replacement --check",
+      "exit_code": 0,
+      "log": ".local-audit/depot-service/arrival-terminal/legacy-slot-check.log",
+      "log_sha256": "b522c8e62bd5df92055c6c9b8dc0999bdb1bdadecef212b8822a51784ad74afe"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.building_slot_replacement --expiry --check",
+      "exit_code": 0,
+      "log": ".local-audit/depot-service/arrival-terminal/expiry-check.log",
+      "log_sha256": "5a91fa9b327f0907eadbf5dfeeccad1bea724e74aecdcad3dfbdb0e664d0eada"
+    }
+  ],
+  "preservation": {
+    "preserved_old_sections_sha256": "773218f6a5333a6d7d0625650800c94c148b3043f273703b8381639c7d72d6e5",
+    "preserved_pre_lifecycle_sha256": "49089513b76272615ba9a16b12f905194f5d3f64f5f809cffef7188cc59d9310",
+    "current_payload_sha256": "fc9d418aaa0baef5bf89e3565d8b6cedc6a7cb5a850284494903b26ed24cabb3",
+    "arrival_control_count": 7,
+    "complete_terminal_count": 4,
+    "direct_gate_count": 1,
+    "direct_idle_count": 2,
+    "all_full_rng_and_image_identities_unchanged": true,
+    "byte_identical_files": [
+      "tools/spatial_oracle/building_slot_replacement.expiry.json",
+      "tools/spatial_oracle/building_repair.json",
+      "tools/spatial_oracle/building_repair.meta.json",
+      "tools/spatial_oracle/building_slot_replacement.json",
+      "tools/spatial_oracle/building_slot_replacement.meta.json"
+    ],
+    "expiry_meta_only_changed_field": "$.source_normalized_lf_sha256.tools/spatial_oracle/building_repair.py",
+    "expiry_previous": "b0cc308a348ea60c421ed4eeef4612dd489038e97dcc1c473894a5a892439467",
+    "expiry_current": "54013cec7119e39f3a85bcd236b3990281475788baa0cbac17af030d78f0533c"
+  },
+  "files": {
+    "tools/spatial_oracle/building_repair.py": {
+      "bytes": 135715,
+      "sha256": "54013cec7119e39f3a85bcd236b3990281475788baa0cbac17af030d78f0533c"
+    },
+    "tools/spatial_oracle/building_repair.depot_service.json": {
+      "bytes": 13513044,
+      "sha256": "fc9d418aaa0baef5bf89e3565d8b6cedc6a7cb5a850284494903b26ed24cabb3"
+    },
+    "tools/spatial_oracle/building_repair.depot_service.meta.json": {
+      "bytes": 21951,
+      "sha256": "19d9635d6b7850809863ebf40fd6276bf34d491ca8251a26f57fa1646b0a7731"
+    },
+    "tools/spatial_oracle/building_repair.depot_service.md": {
+      "bytes": 25787,
+      "sha256": "adc0b9ce83f981aa2e5738b67d396e8a8b10f8d402350a013c0dc7e3eebd5ffa"
+    },
+    "tools/spatial_oracle/building_slot_replacement.expiry.json": {
+      "bytes": 2274922,
+      "sha256": "21f851dbcb3f964921ba1c06cec3cbfe131609890c1429deed8a2d3a48cb00f7"
+    },
+    "tools/spatial_oracle/building_slot_replacement.expiry.meta.json": {
+      "bytes": 16729,
+      "sha256": "fec22829a505173f3e2bed959d5490e99893e95b69e6c2ce3120316091a6ab59"
+    }
+  },
+  "scope": "Four original terminal Drive/PerCell/Stop/vt504/idle compositions, one post-Stop no-contact gate, two idle-argument controls; supplied earlier travel/admission and later mission promotion are excluded; no Rust/Cargo or replay mutations"
+}

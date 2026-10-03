@@ -4,8 +4,8 @@
 //!
 //! Power is a plain byte on the locomotor instance. `Power_On` writes 1,
 //! `Power_Off` writes 0, `Is_Powered` reads it back. Both setters then
-//! re-dispatch to one more vtable slot; that re-dispatch has **no verified
-//! effect** and is deliberately not modelled. Neither setter stops movement or
+//! re-dispatch ILoco+60 to `IsPowered55A930`, returning the new flag.
+//! Neither setter stops movement or
 //! clears a destination — powering off is not a stop.
 //!
 //! The flag itself lives on [`LocomotorState`]; this module owns the
@@ -22,16 +22,24 @@
 //! | a destination is accepted (command-time adapter locomotors) | on | the move-command entry |
 //! | bunker sell/death release4593A0 | on | `docking::bunker_link::release_sell_destroy` |
 //! | bunker normal release4595C0 | on | `docking::bunker_link::release_normal` |
+//! | Unit destination tail742F48, on a repair/bunker building's ground cell | on | `track_path::unit_destination_power_on` |
+//! | depot MissionRepair44B780 pending admission / servicing / state1 release | on / off / on | `docking::building_dock::mission_repair` |
 //!
 //! Both bunker calls dispatch ILoco+58 (Power_On55A8F0), before Force_Track
 //! and the caller's separate speed write. The building+2E4 link gates them;
 //! its only non-null producer is bunker installation. The old harvester label
 //! on4595C0 does not make it a refinery release path.
 //!
-//! Walk, Drive and Ship orders keep the byte: the ordinary Unit741970 ->
-//! Drive4AFD40/Ship69F450 setter leaves a powered-off locomotor powered off
-//! (tools/spatial_oracle/track_order_path power rows), and Infantry51AA40 has
-//! no PowerOn. The remaining command-time adapter locomotors still power on
+//! Ordinary Unit741970 orders on cells without a repair/bunker building keep
+//! the byte (tools/spatial_oracle/track_order_path power rows). Its shared
+//! tail powers on before Foot4D94B0 when Object5F6960's raw current cell has
+//! a UnitRepair/Bunker building and lacks high-bridge flag0x100. Same-Nav,
+//! deployment refusal and the accepted depot handshake return before that
+//! tail. Executable controls: building_repair.depot_service.{json,md}.
+//! Repair state0 admission failure restores power at44C808; state1's
+//! NEED_MOVE failure restores an unpowered contact at44C61B. The same corpus
+//! compares both fallbacks and their distance/moving/powered controls.
+//! Infantry51AA40 has no PowerOn. The remaining command-time adapter locomotors still power on
 //! when they accept a destination. A deploy-powered-off unit is powered on by
 //! its undeploy, and a bunkered one by its release.
 //!
@@ -41,12 +49,12 @@
 //! ground; every other family ignores the flag entirely today. That asymmetry is
 //! native, not a shortcut.
 //!
-//! ## Frequency: UNCHECKED
+//! ## Frequency
 //!
 //! How often a stock skirmish actually reaches the powered-off state is **not
-//! established**. EMP-driven power is not modelled here at all, and with it out
-//! of scope the only producer wired is deploy-begin — which pairs with an
-//! undeploy that powers straight back on. No pass has traced a stock sequence
+//! established** for Hover. EMP-driven power is not modelled here. Deployment
+//! and ordinary depot servicing produce the flag changes; depot departure
+//! reaches the shared Unit setter's current-cell power-on gate. No pass has traced a stock sequence
 //! that leaves a *hover* unit unpowered long enough to be seen sinking, so the
 //! player-visible reach of this slice is unquantified. It is modelled because
 //! the flag is real deterministic state that deploy flips, not because a
@@ -56,7 +64,7 @@
 //!
 //! EMP-drives-power; the Fly family's power-off RNG draws; anything reading ion
 //! sensitivity, ion storms or the special-flags ion path; any lightning-storm to
-//! locomotor-power coupling; and the setters' re-dispatch artefact.
+//! locomotor-power coupling.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sibling movement state only.
