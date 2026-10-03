@@ -1186,7 +1186,7 @@ impl Simulation {
                 return;
             };
             let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
-            let point = crate::sim::movement::target_cell_coord(cell.0, cell.1, Some(terrain));
+            let point = crate::sim::movement::target_cell_coord(cell.0, cell.1, Some(&cells));
             let open = |cell| {
                 Ok(match cell {
                     crate::map::cell_index::NativeCellIdentity::Real(index) => {

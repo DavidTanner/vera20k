@@ -850,8 +850,8 @@ impl Simulation {
     ///   Stop preserves the represented adapter behavior; its landing and
     ///   airfield selection remain a residual in `locomotor_stop_moving`.
     ///
-    /// A Building's setter (0x455D50) is not ported; its NavCom takes the
-    /// represented write.
+    /// A Building takes Building455D50 ([`Self::set_building_destination`]):
+    /// it clears an eligible rally ArchiveTarget and never writes Foot NavCom.
     pub(crate) fn assign_null_destination(
         &mut self,
         id: u64,
@@ -873,13 +873,7 @@ impl Simulation {
                 }
             }
             EntityCategory::Aircraft => self.foot_null_destination(id, rules, registry),
-            _ => {
-                if let Some(actor) = self.substrate.entities.get_mut(id) {
-                    crate::sim::mission::concrete_effects::represented_assign_destination_mode_one(
-                        actor, None,
-                    );
-                }
-            }
+            EntityCategory::Structure => self.set_building_destination(id, None, rules),
         }
     }
 

@@ -194,7 +194,16 @@ pub(super) fn dress_cmin(s: &mut Scene, input: &Value) {
             ));
             assert!(drive.store_track_destination(
                 crate::sim::movement::track_process::TrackFamily::Drive,
-                nav.map(|(x, y)| crate::sim::movement::target_cell_coord(x, y, terrain.as_ref()))
+                nav.map(|(x, y)| {
+                    crate::sim::movement::target_cell_coord(
+                        x,
+                        y,
+                        terrain
+                            .as_ref()
+                            .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                            .as_ref(),
+                    )
+                })
             ));
         }
     }

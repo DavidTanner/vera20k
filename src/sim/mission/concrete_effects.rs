@@ -13,6 +13,10 @@ use crate::sim::world::Simulation;
 #[path = "infantry_target_tests.rs"]
 mod infantry_target_tests;
 
+#[cfg(test)]
+#[path = "building_destination_tests.rs"]
+mod building_destination_tests;
+
 mod private {
     pub trait Sealed {}
 }
@@ -182,6 +186,11 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
                 | NavTargetRef::Building { id },
             ) = destination
             && !sim.substrate.entities.contains(id)
+            // Building455D50 only archives the pointer; it never asks the
+            // destination for a coordinate or otherwise dereferences it.
+            && sim.substrate.entities.get(receiver).is_some_and(|actor| {
+                actor.category != crate::map::entities::EntityCategory::Structure
+            })
         {
             return Err(AuthorityUnavailable::DestinationSetter(receiver));
         }
@@ -294,6 +303,15 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
         prepared: &Self::Prepared,
         requested: Option<NavTargetRef>,
     ) -> bool {
+        if sim
+            .substrate
+            .entities
+            .get(prepared.receiver)
+            .is_some_and(|actor| actor.category == crate::map::entities::EntityCategory::Structure)
+        {
+            sim.set_building_destination(prepared.receiver, requested, self.rules);
+            return true;
+        }
         if requested.is_none() {
             sim.assign_null_destination(prepared.receiver, self.rules, self.overlay_registry);
             return true;
@@ -342,6 +360,48 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
         // always run the sole class owner above, including admission/refusal.
         represented_assign_destination_mode_one(entity, Some(requested));
         false
+    }
+}
+
+impl Simulation {
+    /// `BuildingClass::Assign_Destination @ 0x00455D50` (vt+0x480).
+    /// Selling returns untouched. HasRallyPoint (`0x00455DA0`) or
+    /// ConstructionYard archives the requested pointer through the existing
+    /// `Set_ArchiveTarget @ 0x0070C610` owner; the Techno709A30 tail is a
+    /// no-op. A Building therefore never writes Foot's NavCom or its timers.
+    ///
+    /// EMP belongs to Stop input admission44F5C0, not this setter. The mode
+    /// argument is unused. Native executable controls (null/non-null,
+    /// Selling/Construction, mode0/1, EMP) are in
+    /// `tools/procedural_drawing_oracle/factory_destination.{py,json}`.
+    pub(crate) fn set_building_destination(
+        &mut self,
+        receiver: u64,
+        requested: Option<NavTargetRef>,
+        rules: Option<&crate::rules::ruleset::RuleSet>,
+    ) {
+        let Some(actor) = self.substrate.entities.get(receiver) else {
+            return;
+        };
+        debug_assert_eq!(
+            actor.category,
+            crate::map::entities::EntityCategory::Structure
+        );
+        if actor.mission.current().known() == Some(super::MissionType::Selling) {
+            return;
+        }
+        // Production callers carry rules. A bare-storage fixture without the
+        // type cannot establish rally admission and leaves its archive alone.
+        let archives = rules
+            .and_then(|rules| self.object_type(actor.type_ref(), rules))
+            .is_some_and(|kind| kind.has_rally_line() || kind.construction_yard);
+        if archives {
+            self.substrate
+                .entities
+                .get_mut(receiver)
+                .expect("same Building destination receiver")
+                .set_archive_target(requested.map(TargetKind::from));
+        }
     }
 }
 

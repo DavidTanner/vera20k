@@ -67,12 +67,11 @@ fn is_ship_locomotor(entity: &GameEntity) -> bool {
 pub(crate) fn target_cell_coord(
     rx: u16,
     ry: u16,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
+    cells: Option<&crate::map::resolved_terrain::NativeCellQuery<'_>>,
 ) -> DriveCoord {
-    if let Some(terrain) = resolved_terrain {
-        let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+    if let Some(cells) = cells {
         let identity = cells.lookup((rx as i16, ry as i16));
-        let (x, y, z) = crate::sim::cell_kernel::native_cell_own_coords(identity, &cells)
+        let (x, y, z) = crate::sim::cell_kernel::native_cell_own_coords(identity, cells)
             .unwrap_or_else(|| {
                 // Preserve this caller's existing unsupported-slope zero-Z
                 // adapter. The receiver identity/XY still come from the same
@@ -243,7 +242,15 @@ pub(crate) fn nav_target_coordinate(
     )>,
 ) -> Result<DriveCoord, String> {
     let id = match target {
-        NavTargetRef::Cell { rx, ry } => return Ok(target_cell_coord(rx, ry, terrain)),
+        NavTargetRef::Cell { rx, ry } => {
+            return Ok(target_cell_coord(
+                rx,
+                ry,
+                terrain
+                    .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                    .as_ref(),
+            ));
+        }
         NavTargetRef::Entity { id }
         | NavTargetRef::Object { id }
         | NavTargetRef::Building { id } => id,
@@ -283,7 +290,13 @@ pub(crate) fn set_destination_internal_cell(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     binary_frame: u32,
 ) {
-    let coord = target_cell_coord(target.0, target.1, resolved_terrain);
+    let coord = target_cell_coord(
+        target.0,
+        target.1,
+        resolved_terrain
+            .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+            .as_ref(),
+    );
     set_destination_internal_coord(
         entity,
         NavTargetRef::cell(target.0, target.1),

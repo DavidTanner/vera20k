@@ -1224,7 +1224,16 @@ pub(crate) fn center_camera_on_lepton_point(
 /// `CenterView` (Numpad 5 in the stock archive): snap the tactical view onto the
 /// current selection. Nothing selected means nothing happens.
 pub(crate) fn center_view_on_selection(state: &mut AppState) {
-    let ordered = crate::app::input::dispatch::selected_stable_ids_in_order(state);
+    let ordered = crate::app::input::dispatch::selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
     let coords: Vec<(i32, i32, i32)> = {
         let Some(sim) = state
             .match_state
@@ -1255,9 +1264,18 @@ pub(crate) fn center_view_on_selection(state: &mut AppState) {
 /// anything nearer the cursor.
 pub(crate) fn toggle_follow_target(state: &mut AppState) {
     let already_following = state.match_state.input.follow_target.is_some();
-    let first_selected = crate::app::input::dispatch::selected_stable_ids_in_order(state)
-        .first()
-        .copied();
+    let first_selected = crate::app::input::dispatch::selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    )
+    .first()
+    .copied();
     state.match_state.input.follow_target = match first_selected {
         Some(id) if !already_following => Some(id),
         _ => None,
@@ -1330,6 +1348,16 @@ pub(crate) fn center_camera_on_cell(state: &mut AppState, rx: u16, ry: u16) {
 }
 
 pub(crate) fn clamp_camera_to_playable_area(state: &mut AppState, sw: f32, sh: f32) {
+    // VERA-only zoom: the complete logical view must fit the one A source.
+    // A truncated texture would make its missing edge appear fully revealed.
+    // Native1x is unaffected: the render target itself already fits this limit.
+    let minimum_zoom = minimum_view_zoom(
+        [sw, sh],
+        state.renderer.gpu.device.limits().max_texture_dimension_2d,
+    );
+    let input = &mut state.match_state.input;
+    input.zoom_level = input.zoom_level.clamp(minimum_zoom, MAX_ZOOM);
+    input.zoom_target = input.zoom_target.clamp(minimum_zoom, MAX_ZOOM);
     sync_playfield_presentation_bounds(state);
     let (camera_x, camera_y) = clamp_camera_point_for_state(
         state,
@@ -1342,6 +1370,10 @@ pub(crate) fn clamp_camera_to_playable_area(state: &mut AppState, sw: f32, sh: f
     );
     state.match_state.input.camera_y = camera_y;
     state.match_state.input.camera_x = camera_x;
+}
+
+fn minimum_view_zoom(extent: [f32; 2], texture_limit: u32) -> f32 {
+    MIN_ZOOM.max(extent[0].max(extent[1]) / texture_limit as f32)
 }
 
 /// Reconcile the camera's exact mode-zero scroll authority with the current
@@ -1566,6 +1598,26 @@ pub(crate) fn edge_scroll_cursor_state(state: &AppState) -> Option<(ScrollDir, b
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zoom_keeps_the_entire_view_inside_the_abuffer_texture() {
+        for (extent, limit, expected) in [
+            ([1280., 720.], 4096, 0.3125),
+            ([3840., 2160.], 8192, 0.46875),
+            ([3840., 2160.], 16384, 0.25),
+            ([8192., 8192.], 8192, 1.),
+            ([720., 1280.], 4096, 0.3125),
+        ] {
+            let zoom = minimum_view_zoom(extent, limit);
+            assert_eq!(zoom, expected);
+            assert!(
+                extent
+                    .into_iter()
+                    .all(|v| (v / zoom).ceil() <= limit as f32)
+            );
+            assert_eq!(1_f32.clamp(zoom, MAX_ZOOM), 1.);
+        }
+    }
 
     const WINDOW_W: f32 = 1024.0;
     const WINDOW_H: f32 = 768.0;

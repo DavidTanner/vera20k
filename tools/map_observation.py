@@ -45,11 +45,12 @@ PROFILE_V1 = 'vera20k.map-observation-profile.v1'
 PROFILE_V2 = 'vera20k.map-observation-profile.v2'
 MAX_OBSERVATION_SAMPLES = 100_000
 MAX_RECEIPT_BYTES = 128 * 1024 * 1024
-ORDER_VARIANTS = frozenset(('Move', 'Stop', 'Attack', 'ForceAttack', 'Guard',
+ORDER_VARIANTS = frozenset(('Select', 'Move', 'Stop', 'Attack', 'ForceAttack', 'Guard',
                             'DeployMcv', 'ForceAttackCell', 'CaptureBuilding', 'ToggleRepair',
                             'EnterTransport', 'UnloadPassengers', 'RepairAtDepot', 'SellBuilding', 'SetRally'))
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
-EXTENSION_FIELDS = frozenset(('commands', 'observe_owners', 'observe_types', 'camera_cell', 'terrain_cells'))
+EXTENSION_FIELDS = frozenset(('commands', 'observe_owners', 'observe_types', 'camera_cell',
+                              'cursor_position', 'terrain_cells'))
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
 
 
@@ -259,6 +260,13 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
             selected_types.add(name)
     if 'camera_cell' in profile:
         _coordinate(profile['camera_cell'], 'profile.camera_cell')
+    if 'cursor_position' in profile:
+        position = require_array(profile['cursor_position'], 'profile.cursor_position')
+        if len(position) != 2:
+            raise ValidationError('profile.cursor_position must contain exactly two coordinates')
+        for axis, extent in enumerate(('width', 'height')):
+            dimension = _bounded_int(profile.get(extent), f'profile.{extent}', 1, (1 << 32) - 1)
+            _bounded_int(position[axis], f'profile.cursor_position[{axis}]', 1, dimension - 2)
     cells = require_array(profile.get('terrain_cells', []), 'profile.terrain_cells')
     if len(cells) > 256:
         raise ValidationError('profile.terrain_cells exceeds 256 cells')
@@ -854,6 +862,15 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
                           ('focus_violations', 0), ('input_violations', 0)):
         require_value(lifecycle.get(key), expected, f'lifecycle.{key}')
     render = require_object(manifest.get('render'), 'render')
+    if 'cursor_position' in profile:
+        _require_equal(render.get('cursor_position'), [float(value) for value in profile['cursor_position']],
+                       'render.cursor_position')
+    elif 'cursor_position' in render:
+        raise ValidationError('render.cursor_position requires profile.cursor_position')
+    if 'frame_wall_mean_ms' in render:
+        mean = render['frame_wall_mean_ms']
+        if type(mean) not in (int, float) or not 0 <= mean <= 3.4028234663852886e38 or not math.isfinite(mean):
+            raise ValidationError('render.frame_wall_mean_ms must be finite and nonnegative')
     if legacy_clock or prior_observations:
         if 'observations' in manifest or 'camera' in render:
             raise ValidationError('historical child cannot declare v4 observations/camera')
@@ -907,6 +924,9 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
                 'frame': frame_snapshot.public_identity(), 'map_source': dict(source),
                 'initial': dict(initial), 'final': dict(final), 'exact_step_count': ticks,
                 'unit_atlas': unit_atlas}
+    for metadata in ('cursor_position', 'frame_wall_mean_ms'):
+        if metadata in render:
+            evidence[metadata] = render[metadata]
     if not legacy_clock:
         evidence['presentation_clock'] = clock
         evidence['neutral_input'] = dict(neutral)

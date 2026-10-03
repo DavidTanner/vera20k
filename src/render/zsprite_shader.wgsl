@@ -183,7 +183,7 @@ fn fs_main(input: VertexOutput) -> FragOutput {
 
     var output: FragOutput;
     output.color = apply_fx(
-        vec4f(resolve_palette(color.rgb, input.tint, input.effect_tint.rgb, opaque_palette(input.palette_light, color.a * input.alpha, input.fx_flags), textureLoad(source_indices, vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)), vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0)), 0).r), color.a * input.alpha),
+        vec4f(resolve_palette(color.rgb, input.tint, input.effect_tint.rgb, opaque_palette(input.palette_light, color.a * input.alpha, input.fx_flags), textureLoad(source_indices, vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)), vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0)), 0).r, tactical_a_at(input.position.xy)), color.a * input.alpha),
         input.fx_flags,
         input.fx_params,
         input.effect_tint,

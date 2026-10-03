@@ -79,7 +79,16 @@ pub(super) fn execute_health_navigation(state: &mut AppState) {
     else {
         return;
     };
-    let current = super::selected_stable_ids_in_order(state);
+    let current = super::selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
     let continuing = state
         .match_state
         .input
@@ -151,7 +160,16 @@ pub(super) fn execute_health_navigation(state: &mut AppState) {
         .finish_health_navigation(has_candidates);
     // The native direct Select calls do not start the mouse action-line timer.
     super::apply_selection_action_line_policy(state, super::SelectionActionLinePolicy::Preserve);
-    let selected = super::selected_stable_ids_in_order(state);
+    let selected = super::selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
     let sim = &state.match_state.sim_runtime.as_ref().unwrap().simulation;
     let mixed = selected.iter().any(|id| {
         sim.entities().get(*id).is_some_and(|entity| {

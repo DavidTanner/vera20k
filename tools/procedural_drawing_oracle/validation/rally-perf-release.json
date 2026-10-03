@@ -1,0 +1,686 @@
+{
+  "format": "Bgra8UnormSrgb",
+  "interval": "CPU includes actual production builder and pooled upload/encode separately. GPU is the backend-reported render-pass timestamp interval for both draws, excludes buffer upload; unavailable timestamps give null. completed_ms independently measures submit through GPU/query-copy/map completion. Two warmups, twenty measured frames. Artificial overlapping stress counts; not whole-game FPS or native timing parity.",
+  "target": [
+    800,
+    600
+  ],
+  "workloads": [
+    {
+      "samples": [
+        {
+          "build_ms": 0.008583,
+          "completed_ms": 1.2825829999999998,
+          "encode_upload_ms": 0.038458,
+          "gpu_ms": null,
+          "spans": 135,
+          "timestamp_first": 557175918986500,
+          "timestamp_last": 557175916826500,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 16740
+        },
+        {
+          "build_ms": 0.0055,
+          "completed_ms": 1.2802499999999999,
+          "encode_upload_ms": 0.031625,
+          "gpu_ms": null,
+          "spans": 135,
+          "timestamp_first": 557175919615375,
+          "timestamp_last": 557175919017708,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 16740
+        },
+        {
+          "build_ms": 0.0048330000000000005,
+          "completed_ms": 1.2723339999999999,
+          "encode_upload_ms": 0.031833,
+          "gpu_ms": 0.031709,
+          "spans": 138,
+          "timestamp_first": 557175920933916,
+          "timestamp_last": 557175920965625,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17112
+        },
+        {
+          "build_ms": 0.0038330000000000005,
+          "completed_ms": 1.2704579999999999,
+          "encode_upload_ms": 0.023459,
+          "gpu_ms": null,
+          "spans": 138,
+          "timestamp_first": 557175922277541,
+          "timestamp_last": 557175920965625,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17112
+        },
+        {
+          "build_ms": 0.004125,
+          "completed_ms": 1.2760420000000001,
+          "encode_upload_ms": 0.032916,
+          "gpu_ms": 0.031458,
+          "spans": 141,
+          "timestamp_first": 557175923601625,
+          "timestamp_last": 557175923633083,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17484
+        },
+        {
+          "build_ms": 0.0038330000000000005,
+          "completed_ms": 1.268041,
+          "encode_upload_ms": 0.021583,
+          "gpu_ms": null,
+          "spans": 141,
+          "timestamp_first": 557175924962708,
+          "timestamp_last": 557175923633083,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17484
+        },
+        {
+          "build_ms": 0.003375,
+          "completed_ms": 1.271334,
+          "encode_upload_ms": 0.021958,
+          "gpu_ms": null,
+          "spans": 138,
+          "timestamp_first": 557175926759083,
+          "timestamp_last": 557175924995916,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17112
+        },
+        {
+          "build_ms": 0.004417,
+          "completed_ms": 1.274167,
+          "encode_upload_ms": 0.024916,
+          "gpu_ms": null,
+          "spans": 135,
+          "timestamp_first": 557175927581583,
+          "timestamp_last": 557175926790083,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 16740
+        },
+        {
+          "build_ms": 0.005084,
+          "completed_ms": 1.2699580000000001,
+          "encode_upload_ms": 0.030875,
+          "gpu_ms": null,
+          "spans": 135,
+          "timestamp_first": 557175928922208,
+          "timestamp_last": 557175927611958,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 16740
+        },
+        {
+          "build_ms": 0.003333,
+          "completed_ms": 1.2659170000000002,
+          "encode_upload_ms": 0.021417,
+          "gpu_ms": null,
+          "spans": 138,
+          "timestamp_first": 557175930218875,
+          "timestamp_last": 557175928952791,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17112
+        },
+        {
+          "build_ms": 0.003875,
+          "completed_ms": 1.265625,
+          "encode_upload_ms": 0.019792,
+          "gpu_ms": 0.033125,
+          "spans": 138,
+          "timestamp_first": 557175931500625,
+          "timestamp_last": 557175931533750,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17112
+        },
+        {
+          "build_ms": 0.0037500000000000003,
+          "completed_ms": 1.2687499999999998,
+          "encode_upload_ms": 0.019583,
+          "gpu_ms": null,
+          "spans": 141,
+          "timestamp_first": 557175932834000,
+          "timestamp_last": 557175931533750,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17484
+        },
+        {
+          "build_ms": 0.005416000000000001,
+          "completed_ms": 1.27525,
+          "encode_upload_ms": 0.024457999999999997,
+          "gpu_ms": null,
+          "spans": 141,
+          "timestamp_first": 557175934170291,
+          "timestamp_last": 557175932864625,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17484
+        },
+        {
+          "build_ms": 0.005834000000000001,
+          "completed_ms": 1.269791,
+          "encode_upload_ms": 0.030834000000000004,
+          "gpu_ms": null,
+          "spans": 138,
+          "timestamp_first": 557175935501250,
+          "timestamp_last": 557175934201083,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17112
+        },
+        {
+          "build_ms": 0.005208999999999999,
+          "completed_ms": 1.2686250000000001,
+          "encode_upload_ms": 0.028833,
+          "gpu_ms": null,
+          "spans": 138,
+          "timestamp_first": 557175937406208,
+          "timestamp_last": 557175935532166,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17112
+        },
+        {
+          "build_ms": 0.003542,
+          "completed_ms": 1.300458,
+          "encode_upload_ms": 0.019958,
+          "gpu_ms": 0.0305,
+          "spans": 135,
+          "timestamp_first": 557175938122833,
+          "timestamp_last": 557175938153333,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 16740
+        },
+        {
+          "build_ms": 0.003417,
+          "completed_ms": 1.267208,
+          "encode_upload_ms": 0.023791999999999997,
+          "gpu_ms": null,
+          "spans": 135,
+          "timestamp_first": 557175939508041,
+          "timestamp_last": 557175938153333,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 16740
+        },
+        {
+          "build_ms": 0.003292,
+          "completed_ms": 1.266,
+          "encode_upload_ms": 0.020625,
+          "gpu_ms": null,
+          "spans": 138,
+          "timestamp_first": 557175940799583,
+          "timestamp_last": 557175939538250,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17112
+        },
+        {
+          "build_ms": 0.002667,
+          "completed_ms": 1.2725,
+          "encode_upload_ms": 0.019042000000000003,
+          "gpu_ms": null,
+          "spans": 138,
+          "timestamp_first": 557175942098833,
+          "timestamp_last": 557175940829916,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17112
+        },
+        {
+          "build_ms": 0.00425,
+          "completed_ms": 1.270125,
+          "encode_upload_ms": 0.024542,
+          "gpu_ms": null,
+          "spans": 141,
+          "timestamp_first": 557175943519833,
+          "timestamp_last": 557175942128833,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 17484
+        }
+      ],
+      "selected_factories": 1
+    },
+    {
+      "samples": [
+        {
+          "build_ms": 0.10725,
+          "completed_ms": 1.225625,
+          "encode_upload_ms": 0.091333,
+          "gpu_ms": null,
+          "spans": 6241,
+          "timestamp_first": 557175948192375,
+          "timestamp_last": 557175947253333,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 773884
+        },
+        {
+          "build_ms": 0.117958,
+          "completed_ms": 1.279708,
+          "encode_upload_ms": 0.108958,
+          "gpu_ms": null,
+          "spans": 6356,
+          "timestamp_first": 557175949732583,
+          "timestamp_last": 557175948461208,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 788144
+        },
+        {
+          "build_ms": 0.118292,
+          "completed_ms": 1.2695,
+          "encode_upload_ms": 0.10787500000000001,
+          "gpu_ms": null,
+          "spans": 6343,
+          "timestamp_first": 557175951202750,
+          "timestamp_last": 557175950005458,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 786532
+        },
+        {
+          "build_ms": 0.110875,
+          "completed_ms": 1.265667,
+          "encode_upload_ms": 0.08975,
+          "gpu_ms": null,
+          "spans": 6343,
+          "timestamp_first": 557175952689666,
+          "timestamp_last": 557175951472791,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 786532
+        },
+        {
+          "build_ms": 0.11275,
+          "completed_ms": 1.266541,
+          "encode_upload_ms": 0.101125,
+          "gpu_ms": null,
+          "spans": 6406,
+          "timestamp_first": 557175954193458,
+          "timestamp_last": 557175952960916,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 794344
+        },
+        {
+          "build_ms": 0.114833,
+          "completed_ms": 1.269125,
+          "encode_upload_ms": 0.109042,
+          "gpu_ms": null,
+          "spans": 6417,
+          "timestamp_first": 557175955704916,
+          "timestamp_last": 557175954467916,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 795708
+        },
+        {
+          "build_ms": 0.112083,
+          "completed_ms": 1.269125,
+          "encode_upload_ms": 0.104084,
+          "gpu_ms": null,
+          "spans": 6331,
+          "timestamp_first": 557175957809208,
+          "timestamp_last": 557175955979833,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 785044
+        },
+        {
+          "build_ms": 0.115125,
+          "completed_ms": 1.304708,
+          "encode_upload_ms": 0.109333,
+          "gpu_ms": null,
+          "spans": 6241,
+          "timestamp_first": 557175958751666,
+          "timestamp_last": 557175958079750,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 773884
+        },
+        {
+          "build_ms": 0.120375,
+          "completed_ms": 1.281083,
+          "encode_upload_ms": 0.141125,
+          "gpu_ms": null,
+          "spans": 6356,
+          "timestamp_first": 557175960401666,
+          "timestamp_last": 557175959020541,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 788144
+        },
+        {
+          "build_ms": 0.112958,
+          "completed_ms": 1.281292,
+          "encode_upload_ms": 0.107583,
+          "gpu_ms": null,
+          "spans": 6343,
+          "timestamp_first": 557175961913166,
+          "timestamp_last": 557175960672666,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 786532
+        },
+        {
+          "build_ms": 0.11412499999999999,
+          "completed_ms": 1.279833,
+          "encode_upload_ms": 0.155417,
+          "gpu_ms": null,
+          "spans": 6343,
+          "timestamp_first": 557175963556333,
+          "timestamp_last": 557175962184083,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 786532
+        },
+        {
+          "build_ms": 0.11558399999999999,
+          "completed_ms": 1.27625,
+          "encode_upload_ms": 0.117042,
+          "gpu_ms": null,
+          "spans": 6406,
+          "timestamp_first": 557175965047166,
+          "timestamp_last": 557175963828083,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 794344
+        },
+        {
+          "build_ms": 0.11412499999999999,
+          "completed_ms": 1.2784579999999999,
+          "encode_upload_ms": 0.121792,
+          "gpu_ms": null,
+          "spans": 6417,
+          "timestamp_first": 557175966828875,
+          "timestamp_last": 557175965319416,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 795708
+        },
+        {
+          "build_ms": 0.11283299999999999,
+          "completed_ms": 1.286375,
+          "encode_upload_ms": 0.11429199999999999,
+          "gpu_ms": null,
+          "spans": 6397,
+          "timestamp_first": 557175968118708,
+          "timestamp_last": 557175967104916,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 793228
+        },
+        {
+          "build_ms": 0.121708,
+          "completed_ms": 1.277333,
+          "encode_upload_ms": 0.11933300000000001,
+          "gpu_ms": null,
+          "spans": 6331,
+          "timestamp_first": 557175969721208,
+          "timestamp_last": 557175968392500,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 785044
+        },
+        {
+          "build_ms": 0.110542,
+          "completed_ms": 1.27325,
+          "encode_upload_ms": 0.10124999999999999,
+          "gpu_ms": null,
+          "spans": 6241,
+          "timestamp_first": 557175971232291,
+          "timestamp_last": 557175969992000,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 773884
+        },
+        {
+          "build_ms": 0.109958,
+          "completed_ms": 1.286292,
+          "encode_upload_ms": 0.117792,
+          "gpu_ms": null,
+          "spans": 6356,
+          "timestamp_first": 557175972777750,
+          "timestamp_last": 557175971501583,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 788144
+        },
+        {
+          "build_ms": 0.11479199999999999,
+          "completed_ms": 1.278,
+          "encode_upload_ms": 0.1255,
+          "gpu_ms": null,
+          "spans": 6343,
+          "timestamp_first": 557175974332125,
+          "timestamp_last": 557175973045125,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 786532
+        },
+        {
+          "build_ms": 0.11495899999999999,
+          "completed_ms": 2.553875,
+          "encode_upload_ms": 0.128666,
+          "gpu_ms": null,
+          "spans": 6343,
+          "timestamp_first": 557175976630375,
+          "timestamp_last": 557175974602791,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 786532
+        },
+        {
+          "build_ms": 0.12079200000000001,
+          "completed_ms": 1.286208,
+          "encode_upload_ms": 0.158625,
+          "gpu_ms": null,
+          "spans": 6406,
+          "timestamp_first": 557175979046125,
+          "timestamp_last": 557175976902166,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 794344
+        }
+      ],
+      "selected_factories": 64
+    },
+    {
+      "samples": [
+        {
+          "build_ms": 2.506291,
+          "completed_ms": 7.618958999999999,
+          "encode_upload_ms": 1.749917,
+          "gpu_ms": null,
+          "spans": 99745,
+          "timestamp_first": 557176008114625,
+          "timestamp_last": 557176001142625,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12368380
+        },
+        {
+          "build_ms": 2.557125,
+          "completed_ms": 7.6514169999999995,
+          "encode_upload_ms": 1.810542,
+          "gpu_ms": null,
+          "spans": 101348,
+          "timestamp_first": 557176020231333,
+          "timestamp_last": 557176012139875,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12567152
+        },
+        {
+          "build_ms": 2.4455,
+          "completed_ms": 6.310333,
+          "encode_upload_ms": 1.36975,
+          "gpu_ms": null,
+          "spans": 101119,
+          "timestamp_first": 557176030440666,
+          "timestamp_last": 557176024334375,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12538756
+        },
+        {
+          "build_ms": 2.237584,
+          "completed_ms": 6.291208,
+          "encode_upload_ms": 1.2635,
+          "gpu_ms": null,
+          "spans": 101287,
+          "timestamp_first": 557176040258041,
+          "timestamp_last": 557176034511333,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12559588
+        },
+        {
+          "build_ms": 2.21875,
+          "completed_ms": 6.357958,
+          "encode_upload_ms": 1.308375,
+          "gpu_ms": null,
+          "spans": 102238,
+          "timestamp_first": 557176050144500,
+          "timestamp_last": 557176044372875,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12677512
+        },
+        {
+          "build_ms": 2.308917,
+          "completed_ms": 5.060666,
+          "encode_upload_ms": 1.467416,
+          "gpu_ms": null,
+          "spans": 102561,
+          "timestamp_first": 557176060102625,
+          "timestamp_last": 557176054349875,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12717564
+        },
+        {
+          "build_ms": 2.2520830000000003,
+          "completed_ms": 5.072667,
+          "encode_upload_ms": 1.467708,
+          "gpu_ms": null,
+          "spans": 101155,
+          "timestamp_first": 557176069039500,
+          "timestamp_last": 557176064233750,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12543220
+        },
+        {
+          "build_ms": 2.323583,
+          "completed_ms": 5.0591669999999995,
+          "encode_upload_ms": 1.418584,
+          "gpu_ms": null,
+          "spans": 99745,
+          "timestamp_first": 557176077726958,
+          "timestamp_last": 557176073096041,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12368380
+        },
+        {
+          "build_ms": 2.303833,
+          "completed_ms": 6.316959,
+          "encode_upload_ms": 1.459042,
+          "gpu_ms": null,
+          "spans": 101348,
+          "timestamp_first": 557176087048458,
+          "timestamp_last": 557176081735208,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12567152
+        },
+        {
+          "build_ms": 2.340917,
+          "completed_ms": 6.327,
+          "encode_upload_ms": 1.373958,
+          "gpu_ms": null,
+          "spans": 101119,
+          "timestamp_first": 557176097525041,
+          "timestamp_last": 557176091414666,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12538756
+        },
+        {
+          "build_ms": 2.2955419999999997,
+          "completed_ms": 6.324541,
+          "encode_upload_ms": 1.363,
+          "gpu_ms": null,
+          "spans": 101287,
+          "timestamp_first": 557176107276750,
+          "timestamp_last": 557176101596458,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12559588
+        },
+        {
+          "build_ms": 2.291708,
+          "completed_ms": 6.317667,
+          "encode_upload_ms": 1.3447909999999998,
+          "gpu_ms": null,
+          "spans": 102238,
+          "timestamp_first": 557176117194166,
+          "timestamp_last": 557176111366041,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12677512
+        },
+        {
+          "build_ms": 2.3062500000000004,
+          "completed_ms": 6.325540999999999,
+          "encode_upload_ms": 1.3962919999999999,
+          "gpu_ms": null,
+          "spans": 102561,
+          "timestamp_first": 557176127273708,
+          "timestamp_last": 557176121735125,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12717564
+        },
+        {
+          "build_ms": 2.326125,
+          "completed_ms": 6.316791,
+          "encode_upload_ms": 1.340833,
+          "gpu_ms": null,
+          "spans": 102253,
+          "timestamp_first": 557176137122666,
+          "timestamp_last": 557176131398458,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12679372
+        },
+        {
+          "build_ms": 2.222584,
+          "completed_ms": 5.058542,
+          "encode_upload_ms": 1.552208,
+          "gpu_ms": 4.04375,
+          "spans": 101155,
+          "timestamp_first": 557176147152916,
+          "timestamp_last": 557176151196666,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12543220
+        },
+        {
+          "build_ms": 2.252834,
+          "completed_ms": 6.323292,
+          "encode_upload_ms": 1.5492080000000001,
+          "gpu_ms": null,
+          "spans": 99745,
+          "timestamp_first": 557176156402708,
+          "timestamp_last": 557176151302291,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12368380
+        },
+        {
+          "build_ms": 2.368541,
+          "completed_ms": 6.312041,
+          "encode_upload_ms": 1.528958,
+          "gpu_ms": null,
+          "spans": 101348,
+          "timestamp_first": 557176167329125,
+          "timestamp_last": 557176160712625,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12567152
+        },
+        {
+          "build_ms": 2.2647079999999997,
+          "completed_ms": 6.318,
+          "encode_upload_ms": 1.383375,
+          "gpu_ms": null,
+          "spans": 101119,
+          "timestamp_first": 557176177041583,
+          "timestamp_last": 557176171436541,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12538756
+        },
+        {
+          "build_ms": 2.2725839999999997,
+          "completed_ms": 6.321875,
+          "encode_upload_ms": 1.3283340000000001,
+          "gpu_ms": null,
+          "spans": 101287,
+          "timestamp_first": 557176187303708,
+          "timestamp_last": 557176181107625,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12559588
+        },
+        {
+          "build_ms": 2.2884580000000003,
+          "completed_ms": 6.326957999999999,
+          "encode_upload_ms": 1.477417,
+          "gpu_ms": null,
+          "spans": 102238,
+          "timestamp_first": 557176197313916,
+          "timestamp_last": 557176191381291,
+          "timestamp_period_ns": 1.0,
+          "upload_bytes": 12677512
+        }
+      ],
+      "selected_factories": 1024
+    }
+  ],
+  "zoom": 1
+}

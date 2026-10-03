@@ -676,7 +676,10 @@ impl Simulation {
             TeamTarget::Cell { x, y } => Some(crate::sim::movement::target_cell_coord(
                 x as u16,
                 y as u16,
-                self.resolved_terrain.as_ref(),
+                self.resolved_terrain
+                    .as_ref()
+                    .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                    .as_ref(),
             )),
             TeamTarget::Object(id) => {
                 let entity = self.substrate.entities.get(id)?;

@@ -1,0 +1,134 @@
+{
+  "status": "PASS",
+  "native_payload_sha256": "31820ffa392c4f23a0ef8fa6e97246ae1eb8f485145a9bae1e5c0a66310f67fb",
+  "clear": {
+    "status": "PASS",
+    "compared_frame_pixels": 480000,
+    "native_stores": 106,
+    "visible_native_stores": 76,
+    "unchanged_covered_stores": 30,
+    "crop_origin": [
+      415,
+      296
+    ],
+    "crop_extent": [
+      160,
+      120
+    ],
+    "floor_crop_rect": [
+      0,
+      52,
+      160,
+      68
+    ],
+    "floor_native_stores": 62,
+    "observed_bgra": [
+      [
+        0,
+        0,
+        0,
+        255
+      ],
+      [
+        66,
+        251,
+        247,
+        255
+      ]
+    ],
+    "observed_state_delta": "ArchiveTarget only, steps1491..1500",
+    "capture_frame_wall_mean_ms": [
+      8.749846458435059,
+      8.767633438110352
+    ]
+  },
+  "shrouded": {
+    "status": "PASS",
+    "compared_frame_pixels": 480000,
+    "native_stores": 106,
+    "visible_native_stores": 76,
+    "unchanged_covered_stores": 30,
+    "crop_origin": [
+      415,
+      296
+    ],
+    "crop_extent": [
+      160,
+      120
+    ],
+    "floor_crop_rect": [
+      0,
+      52,
+      160,
+      68
+    ],
+    "floor_native_stores": 62,
+    "observed_bgra": [
+      [
+        0,
+        0,
+        0,
+        255
+      ],
+      [
+        66,
+        251,
+        247,
+        255
+      ]
+    ],
+    "observed_state_delta": "ArchiveTarget only, steps1491..1500",
+    "capture_frame_wall_mean_ms": [
+      8.550360679626465,
+      8.42271900177002
+    ]
+  },
+  "limitations": [
+    "Native original producer pixels on prepared captured inputs; no whole native Scenario comparison.",
+    "Floor stores and all changed frame pixels match RGB565. Covered pixels retain the Stop image; native object occlusion itself is not certified.",
+    "Shrouded pair checks production rendering and cleanup, not native revelation history.",
+    "Cadence is the existing last60 frame wall mean including simulation, observation and pacing, not GPU duration or ordinary play FPS."
+  ],
+  "final_candidate": {
+    "status": "PASS",
+    "compared_frame_pixels": 480000,
+    "native_stores": 106,
+    "visible_native_stores": 76,
+    "unchanged_covered_stores": 30,
+    "crop_origin": [
+      415,
+      296
+    ],
+    "crop_extent": [
+      160,
+      120
+    ],
+    "floor_crop_rect": [
+      0,
+      52,
+      160,
+      68
+    ],
+    "floor_native_stores": 62,
+    "observed_bgra": [
+      [
+        0,
+        0,
+        0,
+        255
+      ],
+      [
+        66,
+        251,
+        247,
+        255
+      ]
+    ],
+    "observed_state_delta": "ArchiveTarget only, steps1491..1500",
+    "capture_frame_wall_mean_ms": [
+      8.50271987915039,
+      8.767633438110352
+    ],
+    "complete_frame_identical_to_clear": true
+  }
+}

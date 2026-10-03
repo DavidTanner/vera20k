@@ -1,0 +1,907 @@
+{
+  "comparison": {
+    "status": "PASS",
+    "native_payload_sha256": "31820ffa392c4f23a0ef8fa6e97246ae1eb8f485145a9bae1e5c0a66310f67fb",
+    "clear": {
+      "status": "PASS",
+      "compared_frame_pixels": 480000,
+      "native_stores": 106,
+      "visible_native_stores": 76,
+      "unchanged_covered_stores": 30,
+      "crop_origin": [
+        415,
+        296
+      ],
+      "crop_extent": [
+        160,
+        120
+      ],
+      "floor_crop_rect": [
+        0,
+        52,
+        160,
+        68
+      ],
+      "floor_native_stores": 62,
+      "observed_bgra": [
+        [
+          0,
+          0,
+          0,
+          255
+        ],
+        [
+          66,
+          251,
+          247,
+          255
+        ]
+      ],
+      "observed_state_delta": "ArchiveTarget only, steps1491..1500",
+      "capture_frame_wall_mean_ms": [
+        8.749846458435059,
+        8.767633438110352
+      ]
+    },
+    "shrouded": {
+      "status": "PASS",
+      "compared_frame_pixels": 480000,
+      "native_stores": 106,
+      "visible_native_stores": 76,
+      "unchanged_covered_stores": 30,
+      "crop_origin": [
+        415,
+        296
+      ],
+      "crop_extent": [
+        160,
+        120
+      ],
+      "floor_crop_rect": [
+        0,
+        52,
+        160,
+        68
+      ],
+      "floor_native_stores": 62,
+      "observed_bgra": [
+        [
+          0,
+          0,
+          0,
+          255
+        ],
+        [
+          66,
+          251,
+          247,
+          255
+        ]
+      ],
+      "observed_state_delta": "ArchiveTarget only, steps1491..1500",
+      "capture_frame_wall_mean_ms": [
+        8.550360679626465,
+        8.42271900177002
+      ]
+    },
+    "limitations": [
+      "Native original producer pixels on prepared captured inputs; no whole native Scenario comparison.",
+      "Floor stores and all changed frame pixels match RGB565. Covered pixels retain the Stop image; native object occlusion itself is not certified.",
+      "Shrouded pair checks production rendering and cleanup, not native revelation history.",
+      "Cadence is the existing last60 frame wall mean including simulation, observation and pacing, not GPU duration or ordinary play FPS."
+    ],
+    "final_candidate": {
+      "status": "PASS",
+      "compared_frame_pixels": 480000,
+      "native_stores": 106,
+      "visible_native_stores": 76,
+      "unchanged_covered_stores": 30,
+      "crop_origin": [
+        415,
+        296
+      ],
+      "crop_extent": [
+        160,
+        120
+      ],
+      "floor_crop_rect": [
+        0,
+        52,
+        160,
+        68
+      ],
+      "floor_native_stores": 62,
+      "observed_bgra": [
+        [
+          0,
+          0,
+          0,
+          255
+        ],
+        [
+          66,
+          251,
+          247,
+          255
+        ]
+      ],
+      "observed_state_delta": "ArchiveTarget only, steps1491..1500",
+      "capture_frame_wall_mean_ms": [
+        8.50271987915039,
+        8.767633438110352
+      ],
+      "complete_frame_identical_to_clear": true
+    }
+  },
+  "final_candidate": true,
+  "final_candidate_run": "rally-clear-v4",
+  "live_run_validations": {
+    "rally-clear-v2": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-03T22:13:00.112512Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v2/run.json",
+        "byte_length": 20096382,
+        "sha256": "125c833508911cd0b72aec5b0a6297f27f60647bb5b13b09dd206362d37f6adf"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 5621,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/map_observation.rally-drawing.example.json",
+          "sha256": "479a15285c4a2c4406c603cc1a5f267312329e09d2cca1876ccfea9e585a9318"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31708240,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-rally-production-v2/0/vera20k",
+          "sha256": "edb373c72f58c45a6b79cdd4d74d7923425efecb5c03e70cbb56f52f3ae45e31"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v2/child-output/capture.json",
+          "byte_length": 20099715,
+          "sha256": "77a2ff4dfee9a68457f7dffb3a32ed1ede67ec71595c98734570d3ca63502851"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v2/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "2c0d473797443e112299954f78f165313ff2b5085eee29741b4e0419cfa800df"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 1500,
+          "deterministic_state_hash": 8122975871949696747,
+          "simulation_tick": 1500,
+          "total_simulation_ms": 33000
+        },
+        "exact_step_count": 1500,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 8.749846458435059,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "rally-stop-v2": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-03T22:13:01.457532Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-stop-v2/run.json",
+        "byte_length": 20096417,
+        "sha256": "be48386482d94197cd094fb298addee1d15300292d440c20ef03e0d6b2a58cb6"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 5781,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-stop.profile.json",
+          "sha256": "e16d3b457dc087940f647a8d45d741dfe805692f46a8c18d3990b16d9491d862"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31708240,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-rally-production-v2/0/vera20k",
+          "sha256": "edb373c72f58c45a6b79cdd4d74d7923425efecb5c03e70cbb56f52f3ae45e31"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-stop-v2/child-output/capture.json",
+          "byte_length": 20099843,
+          "sha256": "5f3bf464dd02f8d3d848b55d844136f8ba569571512a8515b63a24feaee6e8a9"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-stop-v2/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "e78f4e0027aadad78f2322071f644465a88ed960b7c2f56b4857624d8cf45dd7"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 1500,
+          "deterministic_state_hash": 14123404002508844604,
+          "simulation_tick": 1500,
+          "total_simulation_ms": 33000
+        },
+        "exact_step_count": 1500,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 8.767633438110352,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "rally-shroud-v2": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-03T22:13:02.850776Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-shroud-v2/run.json",
+        "byte_length": 20096389,
+        "sha256": "59f326847bb853f913e55ca92401980ebffb683b28737857afd3f2b7b62300de"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 5620,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-shroud.profile.json",
+          "sha256": "eb586d21f41ed48be2ceb504052015efe3eb9de80fbe19fc828f7a883fd04bb4"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31708240,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-rally-production-v2/0/vera20k",
+          "sha256": "edb373c72f58c45a6b79cdd4d74d7923425efecb5c03e70cbb56f52f3ae45e31"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-shroud-v2/child-output/capture.json",
+          "byte_length": 20099715,
+          "sha256": "292b242a41972a7cb0b14c5ccf0ebc45819e56618fcad68f2d35969df475d07a"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-shroud-v2/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "39d9638aad424f097ac0828f8475522910243d2b37b5c54048b996123e110741"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 16168907156907128721,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 1500,
+          "deterministic_state_hash": 10906102017515128439,
+          "simulation_tick": 1500,
+          "total_simulation_ms": 33000
+        },
+        "exact_step_count": 1500,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 8.550360679626465,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "rally-shroud-stop-v2": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-03T22:13:04.305935Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-shroud-stop-v2/run.json",
+        "byte_length": 20096452,
+        "sha256": "19294b22073396a4366b0ce39aef8ce3342cec52f2c9b6a376d0c81c5cd8bd42"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 5780,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-shroud-stop.profile.json",
+          "sha256": "bc2140929a51efbba6c560a0fe5d6ae83d49c5765766b56684236086150744ab"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31708240,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-rally-production-v2/0/vera20k",
+          "sha256": "edb373c72f58c45a6b79cdd4d74d7923425efecb5c03e70cbb56f52f3ae45e31"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-shroud-stop-v2/child-output/capture.json",
+          "byte_length": 20099841,
+          "sha256": "34ef11e8f8c7db3e3d8e6c88e2a3ab114fe8d05797d2554c2175f79c62ffe392"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-shroud-stop-v2/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "62932903bc5c5e6f506c9e0f48eec60f48db3083dca6e00239358846eb7e3639"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 16168907156907128721,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 1500,
+          "deterministic_state_hash": 12388001609944902378,
+          "simulation_tick": 1500,
+          "total_simulation_ms": 33000
+        },
+        "exact_step_count": 1500,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 8.42271900177002,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "rally-clear-v4": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-03T22:13:05.581513Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/run.json",
+        "byte_length": 20096381,
+        "sha256": "3e928283550a7d000f98fb922437b2fdac418f97b6c1befb630f09544c3a1a62"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 5621,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/map_observation.rally-drawing.example.json",
+          "sha256": "479a15285c4a2c4406c603cc1a5f267312329e09d2cca1876ccfea9e585a9318"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31701616,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-rally-production-v4/0/vera20k",
+          "sha256": "c3aaa9ba6e930ca359cbddc1f2b7a7569e148f6b28365d6947fa95a830b72404"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/child-output/capture.json",
+          "byte_length": 20099714,
+          "sha256": "13f4293888357a45420fb34de3d6017da773529a5ecb6866e996db5813ed325a"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "2c0d473797443e112299954f78f165313ff2b5085eee29741b4e0419cfa800df"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 1500,
+          "deterministic_state_hash": 8122975871949696747,
+          "simulation_tick": 1500,
+          "total_simulation_ms": 33000
+        },
+        "exact_step_count": 1500,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 8.50271987915039,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    }
+  },
+  "files": {
+    "rally-clear-v2/run.json.gz": {
+      "bytes": 20096382,
+      "sha256": "125c833508911cd0b72aec5b0a6297f27f60647bb5b13b09dd206362d37f6adf",
+      "gzip_sha256": "1a810cba70e70e307cb2e00dec644f5e60bd44bf1309d6235b05935ed97c7cd8"
+    },
+    "rally-clear-v2/profile.json.gz": {
+      "bytes": 5621,
+      "sha256": "479a15285c4a2c4406c603cc1a5f267312329e09d2cca1876ccfea9e585a9318",
+      "gzip_sha256": "c6fe068f284b6744edc11efc0e3900d8b0c06313ded6999ba442d0da69c59797"
+    },
+    "rally-clear-v2/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "rally-clear-v2/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "rally-clear-v2/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "rally-clear-v2/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "rally-clear-v2/child-output/capture.json.gz": {
+      "bytes": 20099715,
+      "sha256": "77a2ff4dfee9a68457f7dffb3a32ed1ede67ec71595c98734570d3ca63502851",
+      "gzip_sha256": "c95ea54cbd6299707e18cd233aef6931a12fb6a2cd0e223e0cb5dc13a91563db"
+    },
+    "rally-clear-v2/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "2c0d473797443e112299954f78f165313ff2b5085eee29741b4e0419cfa800df",
+      "gzip_sha256": "193bd43d6e09930942d3df04860f68ce1f13eceb132d1e0b7bff48eaf158bcc6"
+    },
+    "rally-stop-v2/run.json.gz": {
+      "bytes": 20096417,
+      "sha256": "be48386482d94197cd094fb298addee1d15300292d440c20ef03e0d6b2a58cb6",
+      "gzip_sha256": "a0c96c167397ac12f177be3bfac79e6f05067327719d12400f57dead89bcaae4"
+    },
+    "rally-stop-v2/profile.json.gz": {
+      "bytes": 5781,
+      "sha256": "e16d3b457dc087940f647a8d45d741dfe805692f46a8c18d3990b16d9491d862",
+      "gzip_sha256": "2064bc4594442747bfc57f0cfaab6caa4add120fa4b1685d246aa5ce7ba0f2d0"
+    },
+    "rally-stop-v2/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "rally-stop-v2/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "rally-stop-v2/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "rally-stop-v2/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "rally-stop-v2/child-output/capture.json.gz": {
+      "bytes": 20099843,
+      "sha256": "5f3bf464dd02f8d3d848b55d844136f8ba569571512a8515b63a24feaee6e8a9",
+      "gzip_sha256": "042e3a10a1bf48a14eac121318eb6e3d8dbfeb865f206051459d24997cae6ff1"
+    },
+    "rally-stop-v2/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "e78f4e0027aadad78f2322071f644465a88ed960b7c2f56b4857624d8cf45dd7",
+      "gzip_sha256": "b90f876e9c05a28044949f7c53ae4939bb831cb9548020da7a60c5aa1922d0b5"
+    },
+    "rally-shroud-v2/run.json.gz": {
+      "bytes": 20096389,
+      "sha256": "59f326847bb853f913e55ca92401980ebffb683b28737857afd3f2b7b62300de",
+      "gzip_sha256": "d4205143e739f6cb41135b56ffe68f4521c0cdf0d6047fc9355e515f0be78f57"
+    },
+    "rally-shroud-v2/profile.json.gz": {
+      "bytes": 5620,
+      "sha256": "eb586d21f41ed48be2ceb504052015efe3eb9de80fbe19fc828f7a883fd04bb4",
+      "gzip_sha256": "de6982757076be29ae73f5961a0601e803bc991ca7b7fc21f1ee012ef81f825f"
+    },
+    "rally-shroud-v2/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "rally-shroud-v2/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "rally-shroud-v2/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "rally-shroud-v2/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "rally-shroud-v2/child-output/capture.json.gz": {
+      "bytes": 20099715,
+      "sha256": "292b242a41972a7cb0b14c5ccf0ebc45819e56618fcad68f2d35969df475d07a",
+      "gzip_sha256": "1c5aa9535a71dc4aefb8ad035f20c105a1ea7f75affae4c52a20e658c353fcb1"
+    },
+    "rally-shroud-v2/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "39d9638aad424f097ac0828f8475522910243d2b37b5c54048b996123e110741",
+      "gzip_sha256": "4531d2ea18684cb62b77beb09f5778bbb0e7d986a615e379a4e1aca90a0f5e70"
+    },
+    "rally-shroud-stop-v2/run.json.gz": {
+      "bytes": 20096452,
+      "sha256": "19294b22073396a4366b0ce39aef8ce3342cec52f2c9b6a376d0c81c5cd8bd42",
+      "gzip_sha256": "627c671a5a9c70963b850f3bd404e8abb44e64b8f5f4e7b0e870ca367e726568"
+    },
+    "rally-shroud-stop-v2/profile.json.gz": {
+      "bytes": 5780,
+      "sha256": "bc2140929a51efbba6c560a0fe5d6ae83d49c5765766b56684236086150744ab",
+      "gzip_sha256": "4c00d79211e28c06b7aab3cb91801383c643b3f3cae6cefc85a76c322230fc83"
+    },
+    "rally-shroud-stop-v2/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "rally-shroud-stop-v2/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "rally-shroud-stop-v2/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "rally-shroud-stop-v2/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "rally-shroud-stop-v2/child-output/capture.json.gz": {
+      "bytes": 20099841,
+      "sha256": "34ef11e8f8c7db3e3d8e6c88e2a3ab114fe8d05797d2554c2175f79c62ffe392",
+      "gzip_sha256": "3bd59d72bb354d24e93c1a007864f870ba8546c1ea54f578e75f0336c7ef22ca"
+    },
+    "rally-shroud-stop-v2/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "62932903bc5c5e6f506c9e0f48eec60f48db3083dca6e00239358846eb7e3639",
+      "gzip_sha256": "138880ca340d48710c3c11e1e3a906169ef635ecfc89aa8b19f653dfcc017e14"
+    },
+    "rally-clear-v4/run.json.gz": {
+      "bytes": 20096381,
+      "sha256": "3e928283550a7d000f98fb922437b2fdac418f97b6c1befb630f09544c3a1a62",
+      "gzip_sha256": "da1af52787612fa2375a1918272c2ec505e402b6630b4dc96bf4f356025405ac"
+    },
+    "rally-clear-v4/profile.json.gz": {
+      "bytes": 5621,
+      "sha256": "479a15285c4a2c4406c603cc1a5f267312329e09d2cca1876ccfea9e585a9318",
+      "gzip_sha256": "c6fe068f284b6744edc11efc0e3900d8b0c06313ded6999ba442d0da69c59797"
+    },
+    "rally-clear-v4/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "rally-clear-v4/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "rally-clear-v4/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "rally-clear-v4/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "rally-clear-v4/child-output/capture.json.gz": {
+      "bytes": 20099714,
+      "sha256": "13f4293888357a45420fb34de3d6017da773529a5ecb6866e996db5813ed325a",
+      "gzip_sha256": "03a8dfc59b7edb98dee6b7c55b5dbbca1930e5f4ef07ef94af90bb591f189dbd"
+    },
+    "rally-clear-v4/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "2c0d473797443e112299954f78f165313ff2b5085eee29741b4e0419cfa800df",
+      "gzip_sha256": "193bd43d6e09930942d3df04860f68ce1f13eceb132d1e0b7bff48eaf158bcc6"
+    }
+  }
+}

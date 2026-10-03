@@ -99,6 +99,17 @@ pub(crate) fn render_game(
     // sim frame. Install and clamp it before constructing any world instances,
     // so contraction/expansion is visible in this very presentation frame.
     crate::app::input::camera::clamp_camera_to_playable_area(state, sw, sh);
+    // Publish the final view once: world instances, CPU A admission and GPU
+    // palette sampling must use this frame's clamped camera and zoom.
+    state.renderer.batch_renderer.update_camera(
+        &state.renderer.gpu,
+        sw,
+        sh,
+        state.match_state.input.camera_x,
+        state.match_state.input.camera_y,
+        state.match_state.input.zoom_level,
+        crate::app::presentation::instances::depth_axis(state),
+    );
 
     let local_owner = preferred_local_owner_name(state);
     // Effective viewport in world pixels — zoom shrinks what's visible.
@@ -138,6 +149,17 @@ pub(crate) fn render_game(
             }
         }
     }
+
+    // One A source feeds both CPU surface admission and world palette blitters.
+    // Its view identity is stable until resize/map replacement; sandbox uses
+    // neutral A without rebuilding or copying the live shroud plane.
+    let shroud = (!state.match_state.sandbox_full_visibility)
+        .then_some(state.match_state.match_presentation.shroud_buffer.as_ref())
+        .flatten();
+    state
+        .renderer
+        .batch_renderer
+        .bind_shroud(&state.renderer.gpu.device, shroud);
 
     // Phase 4: Update minimap + build UI instances (selection, health, placement).
     build_instances::update_minimap(state, &local_owner);

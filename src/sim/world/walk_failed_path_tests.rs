@@ -34,8 +34,14 @@ fn engineer_at(sim: &mut Simulation, rules: &RuleSet, cell: (u16, u16)) -> u64 {
 /// Infantry 0x51AA40(cell, true) through the shared Walk setter owner.
 fn order_walk(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, u16)) {
     let speed = sim.resolve_move_info(id, Some(rules)).unwrap().speed;
-    let coord =
-        crate::sim::movement::target_cell_coord(target.0, target.1, sim.resolved_terrain.as_ref());
+    let coord = crate::sim::movement::target_cell_coord(
+        target.0,
+        target.1,
+        sim.resolved_terrain
+            .as_ref()
+            .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+            .as_ref(),
+    );
     crate::sim::movement::clear_destination_path_head(sim.substrate.entities.get_mut(id).unwrap());
     assert!(crate::sim::movement::prepare_walk_destination(
         &mut sim.substrate.entities,

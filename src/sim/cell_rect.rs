@@ -15,6 +15,7 @@ use crate::map::resolved_terrain::{
     ResolvedTerrainCell, ResolvedTerrainGrid, SharedCellDummy, zone_class,
 };
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
+use crate::rules::terrain_rules::SpeedCostProfile;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::{OccupancyGrid, RawCellOccupationGrid};
@@ -942,14 +943,25 @@ pub(crate) fn check_cell_passability(
         (projected_ground_bits, projected_deck_bits)
     };
     let is_wall_overlay = terrain_cell.is_some_and(|cell| cell.zone_type == zone_class::WALL);
-    let land_passable = terrain_cell.map_or_else(
+    //48357D retains Cell+EC even for the non-null fallback identity, then
+    //4835D5..DE indexes the same rule table as a real Cell. A Dummy has no
+    //resolved-cell profile; treating that absence as passable let FNPC select
+    //one even when every native speed-table entry was zero (rally_input.json,
+    //no_passable_speed). Read its live Land without another stamping lookup.
+    let speed_costs = match &cell {
+        CellRef::Real(cell) => Some(cell.speed_costs),
+        CellRef::Dummy { cell } => ctx
+            .resolved_terrain
+            .map(|terrain| terrain.land_speed_costs(cell.land_type())),
+    };
+    let land_passable = speed_costs.map_or_else(
         || {
             !path_only_projection
                 || projection_coord.is_some_and(|(rx, ry)| {
                     ctx.path_grid.is_some_and(|grid| grid.is_walkable(rx, ry))
                 })
         },
-        |cell| speed_type_allows_cell(cell, ctx.speed_type, ctx.movement_zone),
+        |costs| speed_type_allows_land(costs, is_wall_overlay, ctx.speed_type, ctx.movement_zone),
     );
     matches!(
         evaluate_is_clear_to_move(IsClearToMoveRequest {
@@ -974,12 +986,13 @@ pub(crate) fn check_cell_passability(
     )
 }
 
-fn speed_type_allows_cell(
-    cell: &ResolvedTerrainCell,
+fn speed_type_allows_land(
+    costs: SpeedCostProfile,
+    is_wall_overlay: bool,
     speed_type: SpeedType,
     movement_zone: MovementZone,
 ) -> bool {
-    if cell.zone_type == zone_class::WALL {
+    if is_wall_overlay {
         return matches!(
             movement_zone,
             MovementZone::Destroyer
@@ -988,7 +1001,7 @@ fn speed_type_allows_cell(
                 | MovementZone::CrusherAll
         );
     }
-    cell.speed_costs
+    costs
         .cost_for_speed_type(speed_type)
         .is_none_or(|cost| cost > 0)
 }
@@ -1900,6 +1913,106 @@ mod tests {
             zone_grid: Some(&zone_grid),
         };
         assert!(check_passability_rect(track_passes));
+    }
+
+    #[test]
+    fn cellrect_dummy_land_speed_matches_original_4834a0() {
+        use crate::map::resolved_terrain::NativeCellQuery;
+        use crate::rules::ini_parser::IniFile;
+        use crate::rules::terrain_rules::TerrainRules;
+        use crate::sim::occupancy::RawCellKey;
+
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/procedural_drawing_oracle/rally_input.json"
+        ))
+        .unwrap();
+        let rows = native["passability_cases"].as_array().unwrap();
+        assert_eq!(rows.len(), 28);
+        for row in rows {
+            let input = &row["input"];
+            let clear = input["table_clear_factor"].as_f64().unwrap();
+            let water = input["table_water_factor"].as_f64().unwrap();
+            let rules = TerrainRules::from_ini(&IniFile::from_str(&format!(
+                "[Clear]\nFoot={clear}\nAmphibious={clear}\n\
+                 [Water]\nFoot={water}\nAmphibious={water}\n"
+            )));
+            let mut terrain = flat_terrain(1, 1);
+            terrain.set_land_speed_rules_for_test(&rules);
+            let land = input["land_type"].as_i64().unwrap() as i32;
+            let flags = input["flags"].as_u64().unwrap() as u32;
+            let level = input["level"].as_i64().unwrap() as i8;
+            let dummy = input["identity"] == "dummy";
+            let coord = if dummy { (1, 0) } else { (0, 0) };
+            if dummy {
+                let cell = terrain.shared_cell_dummy();
+                cell.test_set_land_type(land);
+                cell.write_raw_flags(flags);
+                terrain.test_set_dummy_cell_level_slope(level, 0);
+            } else {
+                let costs = terrain.land_speed_costs(land);
+                let cell = &mut terrain.cells[0];
+                cell.yr_cell_land_type = land as u8;
+                cell.speed_costs = costs;
+                cell.zone_type = zone_class::GROUND;
+                cell.level = level as u8;
+                cell.bridge_facts.raw_flags = flags;
+            }
+            let key = if dummy {
+                RawCellKey::Dummy
+            } else {
+                RawCellKey::Real(0, 0)
+            };
+            let mut raw = RawCellOccupationGrid::default();
+            for (layer, field) in [
+                (MovementLayer::Ground, "ground_raw"),
+                (MovementLayer::Bridge, "deck_raw"),
+            ] {
+                raw.write_occupant(key, layer, input[field].as_u64().unwrap() as u8, None, true);
+            }
+            assert_eq!(input["ignore_infantry"], false);
+            assert_eq!(input["ignore_vehicles"], false);
+            for isolated in [false, true] {
+                terrain.stamp_dummy_cell_requested_coord(99, 98);
+                let query = if isolated {
+                    NativeCellQuery::isolated(&terrain)
+                } else {
+                    NativeCellQuery::canonical(&terrain)
+                };
+                let mut ctx =
+                    clear_passability_context(CellRect::single(coord.0, coord.1), Some(&terrain));
+                ctx.native_cells = Some(&query);
+                ctx.speed_type = match input["speed_type"].as_u64().unwrap() {
+                    0 => SpeedType::Foot,
+                    4 => SpeedType::Winged,
+                    6 => SpeedType::Amphibious,
+                    value => panic!("uncovered native speed {value}"),
+                };
+                ctx.movement_zone = match input["movement_zone"].as_u64().unwrap() {
+                    0 => MovementZone::Normal,
+                    4 => MovementZone::AmphibiousCrusher,
+                    9 => MovementZone::Fly,
+                    value => panic!("uncovered native movement zone {value}"),
+                };
+                let zone = input["required_zone"].as_i64().unwrap();
+                ctx.required_zone_id = (zone != -1).then_some(zone as u32);
+                let height = input["required_level"].as_i64().unwrap();
+                ctx.required_height_or_level = (height != -1).then_some(height as i16);
+                ctx.bridge_aware_zone = input["bridge_aware"].as_bool().unwrap();
+                assert_eq!(
+                    check_cell_passability(
+                        &ctx,
+                        Some(&raw),
+                        i32::from(coord.0),
+                        i32::from(coord.1)
+                    ),
+                    row["accepted"].as_bool().unwrap(),
+                    "{input}; isolated={isolated}"
+                );
+                if isolated {
+                    assert_eq!(terrain.dummy_cell_requested_coord(), (99, 98));
+                }
+            }
+        }
     }
 
     #[test]
