@@ -1,11 +1,12 @@
 <img src="docs/images/new-conscirpt-hero-image.png" alt="VERA20k 横幅" width="100%">
 
 <p align="center">
-  <a href="README.md" lang="en">English</a> · <a href="README.sv.md" lang="sv">Svenska</a> · <strong>简体中文</strong>
+  <a href="README.md" lang="en">English</a> · <a href="README.sv.md" lang="sv">Svenska</a> · <a href="README.de.md" lang="de">Deutsch</a> · <strong>简体中文</strong>
   &nbsp;&nbsp;
-  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml?query=branch%3Amain" title="最近一次手动运行的 macOS 库测试"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml/badge.svg?branch=main" alt="macOS 库测试"></a>
-  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="最近一次手动运行的 Linux 库测试"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux 库测试"></a>
-  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="最近一次手动运行的 Windows 库测试"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows 库测试"></a>
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml?query=branch%3Amain" title="最近一次手动运行的 macOS 库测试"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/macos.yml/badge.svg?branch=main" alt="macOS 库测试" height="20"></a>
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="最近一次手动运行的 Linux 库测试"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux 库测试" height="20"></a>
+  <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="最近一次手动运行的 Windows 库测试"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows 库测试" height="20"></a>
+  <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="加入 Discord" height="20"></a>
 </p>
 
 # VERA20k
@@ -23,7 +24,7 @@ VERA20k 是对原版引擎 `gamemd.exe` 的重写。它使用原版游戏文件�
 
 1. 保留原版《尤里的复仇》的玩法、画面和氛围。
 2. 支持更大规模的战斗：在更大的地图上，容纳最多 **30 名玩家**和 **20,000 个单位**。
-3. 为原版引擎无法支持的新 RTS 功能留出空间。
+3. 加入原版引擎无法支持的新 RTS 功能。
 
 ## 当前进度
 
