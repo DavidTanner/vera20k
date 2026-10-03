@@ -1331,41 +1331,38 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
     ) -> bool {
-        let Some(spot) = bump_crush::place_infantry_in_cell(
-            &self.substrate.raw_cell_occupation,
-            cell.0,
-            cell.1,
-            MovementLayer::Ground,
-            request.0,
-            request.1,
-            &mut self.scenario_rng,
+        let z = self.terrain_cell_level(cell.0, cell.1).unwrap_or(0);
+        // DeploySlaves6B04C0's Map4ACA10 caller placement remains in
+        // deploy_slaves. The subsequent Infantry51DFF0 call owns this second
+        // placement, using the same floor/priority owner as ordinary infantry.
+        let Some(position) = self.infantry_unlimbo_position(
+            RevealPosition {
+                exact_z_leptons: None,
+                rx: cell.0,
+                ry: cell.1,
+                z,
+                sub_x: request.0,
+                sub_y: request.1,
+            },
+            Some(rules),
         ) else {
             return false;
         };
-        let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(Some(spot));
-        let z = self.terrain_cell_level(cell.0, cell.1).unwrap_or(0);
-        let now = self.session.binary_frame;
         if let Some(entity) = self.substrate.entities.get_mut(slave) {
-            entity.sub_cell = Some(spot);
+            entity.sub_cell = Some(bump_crush::priority_sub_cell(
+                position.sub_x,
+                position.sub_y,
+            ));
             entity.on_bridge = false;
-            // Unlimbo's body snap to the facing-0 request (`0x006F6DAA`).
-            entity.body_facing.snap(0, now);
         }
         let outcome = self.try_reveal_entity_with_context(
             slave,
             RevealRequest {
-                position: RevealPosition {
-                    exact_z_leptons: None,
-                    rx: cell.0,
-                    ry: cell.1,
-                    z,
-                    sub_x,
-                    sub_y,
-                },
+                position,
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             },
-            UninitContext::new(Some(rules), registry),
+            UninitContext::new(Some(rules), registry).with_unlimbo_facing(Some(0)),
         );
         matches!(outcome, RevealOutcome::Revealed { .. })
     }
@@ -1740,7 +1737,61 @@ impl Simulation {
 
 #[cfg(test)]
 mod tests {
-    use super::cell_distance;
+    use super::*;
+
+    #[test]
+    fn slave_unlimbo_uses_shared_priority_and_preserves_facing_on_refusal() {
+        let (mut sim, rules, _) = crate::sim::world::entry_test_fixture::fixture();
+        let slave = sim
+            .construct_object_limbo_at_height("ENGINEER", "Americans", 15, 15, 0, 0, &rules)
+            .unwrap();
+        sim.substrate
+            .entities
+            .get_mut(slave)
+            .unwrap()
+            .body_facing
+            .snap(0x4000, 0);
+        sim.substrate.raw_cell_occupation.mark_ground(15, 15, 0x20);
+        let before = sim.scenario_rng.logical_state();
+        let centre = crate::util::lepton::CELL_CENTER_LEPTON;
+        assert!(!sim.unlimbo_slave(slave, (15, 15), (centre, centre), &rules, None));
+        assert!(
+            sim.substrate
+                .entities
+                .get(slave)
+                .unwrap()
+                .lifecycle
+                .in_limbo
+        );
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(slave)
+                .unwrap()
+                .body_facing
+                .current(0),
+            0x4000
+        );
+        assert_eq!(sim.scenario_rng.logical_state(), before);
+
+        assert!(sim.with_object_placement_scope(|sim| sim.unlimbo_slave(
+            slave,
+            (15, 15),
+            (centre, centre),
+            &rules,
+            None
+        )));
+        let entity = sim.substrate.entities.get(slave).unwrap();
+        assert!(!entity.lifecycle.in_limbo);
+        assert_eq!(entity.sub_cell, Some(0));
+        assert_eq!(
+            (entity.position.sub_x, entity.position.sub_y),
+            (centre, centre)
+        );
+        assert_eq!(entity.body_facing.current(0), 0);
+        assert_eq!(sim.scenario_rng.logical_state(), before);
+        assert!(!sim.object_placement_scope_active());
+    }
 
     #[test]
     fn cell_distance_truncates_the_approximate_root() {

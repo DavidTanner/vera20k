@@ -24,6 +24,163 @@ fn fixture(category: EntityCategory, kind: LocomotorKind) -> Simulation {
     sim
 }
 
+fn tethered_infantry() -> Simulation {
+    use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
+    let mut sim = fixture(EntityCategory::Infantry, LocomotorKind::Walk);
+    let mut building = GameEntity::test_default_of_category(
+        2,
+        "GAPILE",
+        "Americans",
+        4,
+        4,
+        EntityCategory::Structure,
+    );
+    building.type_ref = sim.intern("GAPILE");
+    building.lifecycle.in_limbo = false;
+    building.lifecycle.cell_marked = true;
+    sim.substrate.entities.insert(building);
+    sim.substrate.occupancy.add(
+        4,
+        4,
+        2,
+        MovementLayer::Ground,
+        None,
+        CellListInsertion::from_category(EntityCategory::Structure),
+    );
+    sim.substrate.raw_cell_occupation.mark_ground(4, 4, 0x80);
+    for message in [RadioMessage::Hello, RadioMessage::Tether] {
+        assert_eq!(
+            radio::transmit(&mut sim, 1, 2, message, RadioPayload::default(), None),
+            RadioResponse::Roger
+        );
+    }
+    radio::take_transmit_log();
+    radio::clear_test_trace();
+    sim
+}
+
+/// P2 original Foot Mark0/1→Techno6F4A91→Object5F5374: the sender's +74
+/// write precedes radio13, and the Pickup/PlaceDown list write follows it.
+/// The stock dirty GAPILE Mark2 refuses without another presence transaction.
+/// Executed witness: human-infantry-output-downstream-research,
+/// mark-radio.native.json SHA256270a1321e3a5509df0eb58500883737f69af2172726da216f7ca107962391127.
+#[test]
+fn a_tethered_foot_marks_before_radio13_and_changes_its_list_after_the_receiver() {
+    use crate::sim::radio::{self, RadioTestEvent};
+    let mut sim = tethered_infantry();
+    let rng_before = sim.rng_state();
+
+    assert!(sim.foot_mark_put(1, None, None));
+    assert_eq!(
+        radio::take_test_trace(),
+        vec![RadioTestEvent::ObjectMarkRefresh {
+            receiver_sid: 2,
+            sender_sid: Some(1),
+            sender_cell_marked: Some(true),
+            sender_cell_listed: Some(false),
+            accepted: false,
+        }]
+    );
+    assert!(sim.substrate.occupancy.contains_entity(4, 4, 1));
+    assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0x80);
+
+    assert!(sim.foot_mark_remove(1, None, None));
+    assert_eq!(
+        radio::take_test_trace(),
+        vec![RadioTestEvent::ObjectMarkRefresh {
+            receiver_sid: 2,
+            sender_sid: Some(1),
+            sender_cell_marked: Some(false),
+            sender_cell_listed: Some(true),
+            accepted: false,
+        }]
+    );
+    assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
+    assert!(sim.substrate.occupancy.contains_entity(4, 4, 2));
+    assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0x80);
+    let log = radio::take_transmit_log();
+    assert_eq!(log.len(), 2);
+    assert!(log.iter().all(|event| {
+        (event.sender_sid, event.msg, event.target_sid, event.reply) == (1, 13, 2, Some(1))
+    }));
+    for (id, contact) in [(1, 2), (2, 1)] {
+        let entity = sim.substrate.entities.get(id).unwrap();
+        assert_eq!(entity.radio_contacts.slot(0), Some(contact));
+        assert_eq!(entity.dock_entered_with, Some(contact));
+    }
+    assert_eq!(sim.rng_state(), rng_before);
+}
+
+/// Foot4D3789 returns1 for Mark2 before the Object/Techno gate. In particular,
+/// it does not recursively send13 or use Mark(PUT) on an unmarked/limbo Foot.
+#[test]
+fn foot_mark_refresh_is_immediate_and_does_not_reenter_techno_mark() {
+    use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
+    for (limbo, marked) in [(false, false), (false, true), (true, false), (true, true)] {
+        let mut sim = tethered_infantry();
+        let actor = sim.substrate.entities.get_mut(1).unwrap();
+        actor.lifecycle.in_limbo = limbo;
+        actor.lifecycle.cell_marked = marked;
+        let before = serde_json::to_value(sim.substrate.entities.get(1).unwrap()).unwrap();
+        let rng_before = sim.rng_state();
+        assert!(sim.mark_entity_refresh(1));
+        assert_eq!(
+            radio::transmit(
+                &mut sim,
+                2,
+                1,
+                RadioMessage::AnimStop,
+                RadioPayload::default(),
+                None,
+            ),
+            RadioResponse::Roger
+        );
+        assert_eq!(
+            serde_json::to_value(sim.substrate.entities.get(1).unwrap()).unwrap(),
+            before
+        );
+        assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
+        assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0x80);
+        assert_eq!(radio::take_transmit_log().len(), 1);
+        assert_eq!(sim.rng_state(), rng_before);
+    }
+}
+
+/// Techno6F4A7D's rejected Object Mark does not transmit; Radio65ACB0 reads
+/// only slot0, so a tethered Foot does not fall through a hole to slot1.
+#[test]
+fn a_refused_mark_and_a_null_first_contact_do_not_emit_radio13() {
+    use crate::sim::radio;
+    let mut sim = tethered_infantry();
+    assert!(!sim.foot_mark_remove(1, None, None));
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .lifecycle
+        .in_limbo = true;
+    assert!(!sim.foot_mark_put(1, None, None));
+    assert!(radio::take_transmit_log().is_empty());
+
+    let actor = sim.substrate.entities.get_mut(1).unwrap();
+    actor.lifecycle.in_limbo = false;
+    actor.radio_contacts.set_capacity(2);
+    assert_eq!(actor.radio_contacts.remove(2), Some(0));
+    actor.radio_contacts.set_slot(1, 2);
+    assert!(sim.foot_mark_put(1, None, None));
+    assert!(radio::take_transmit_log().is_empty());
+    assert!(radio::take_test_trace().is_empty());
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .radio_contacts
+            .slot(1),
+        Some(2)
+    );
+}
+
 /// A Jumpjet cruising at its `JumpjetHeight=`: `0x0054B8D0` answers Top
 /// while it is marked, Ground once +0x74 is clear.
 fn cruising_jumpjet() -> Simulation {

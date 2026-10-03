@@ -148,7 +148,9 @@ class MapObservationTests(unittest.TestCase):
             'foot': None if category == 'Structure' else {
                      'retarget_after_stop_688': False, 'firing_sequence_latch_68d': 0,
                      'infantry_doing': 0 if category == 'Infantry' else None,
-                     'navigation_leptons': [22400, 13696, 416], 'navigation_unavailable': None},
+                     'navigation_leptons': [22400, 13696, 416], 'navigation_unavailable': None,
+                     'walk_head_leptons': None, 'walk_destination_leptons': None,
+                     'walk_is_moving': None},
             'building': MapObservationTests.building(identity) if category == 'Structure' else None,
             'miner': None,
             'radio': {'contacts': [None], 'dock_entered_with': None},
@@ -268,7 +270,7 @@ class MapObservationTests(unittest.TestCase):
         self.actor_frames[3][0]['building']['animation_slots'][0]['animation']['stable_id'] = 101
         report = self.run_capture()
         self.assertEqual(report['status'], 'VALID', report['errors'])
-        self.assertEqual(report['schema_version'], 'vera20k.map-observation-run.v6')
+        self.assertEqual(report['schema_version'], 'vera20k.map-observation-run.v7')
         observed = report['capture']['observations']
         self.assertEqual(observed['rule_types'], self.rule_types)
         self.assertEqual([row['payload'] for row in observed['commands']],
@@ -311,6 +313,19 @@ class MapObservationTests(unittest.TestCase):
                 self.change = lambda m, i=index, v=variant, k=key: \
                     m['observations']['commands'][i]['payload'][v].update({k: 99})
                 self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_rally_order_keeps_existing_producer_ids_and_coordinate_payload(self):
+        self.production_profile()
+        self.profile['commands'] = [
+            {'issue_after_step': 0, 'owner': 'Computer1',
+             'payload': {'SetRally': {'producer_ids': [1], 'rx': 87, 'ry': 53}}}]
+        self.profile_path.write_text(json.dumps(self.profile))
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual([row['payload'] for row in report['capture']['observations']['commands']],
+                         [row['payload'] for row in self.profile['commands']])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
 
     def test_building_and_rule_handle_receipts_reject_wrong_types_or_unknown_fields(self):
         self.production_profile()
@@ -492,6 +507,60 @@ class MapObservationTests(unittest.TestCase):
         # Four actors and four explicitly unavailable Houses still cost eight samples.
         with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 7):
             self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_paid_walk_receipts_retain_head_destination_moving_and_cleanup(self):
+        self.scripted_profile()
+        self.actor_frames[1][0]['foot'].update(
+            walk_head_leptons=[22400, 13696, 416],
+            walk_destination_leptons=[22528, 13824, 416], walk_is_moving=True)
+        # A stopped Walk may retain its paid head until that step completes.
+        self.actor_frames[2][0]['foot'].update(
+            walk_head_leptons=[22400, 13696, 416], walk_is_moving=False)
+        self.actor_frames[3][0]['foot'].update(walk_is_moving=False)
+        before = self.valid_capture('walk-before')
+        checked = observation.validate_run(before)
+        self.assertEqual(checked['status'], 'VALID', checked['errors'])
+        frames = checked['capture']['observations']['frames']
+        for step in range(4):
+            self.assertEqual(frames[step]['actors'][0]['foot'], self.actor_frames[step][0]['foot'])
+        self.assertIsNone(frames[0]['actors'][0]['foot']['walk_is_moving'])
+        self.assertIs(frames[3]['actors'][0]['foot']['walk_is_moving'], False)
+
+        def change(manifest):
+            foot = manifest['observations']['frames'][1]['actors'][0]['foot']
+            foot['walk_head_leptons'][0] += 1
+            foot['walk_destination_leptons'][2] += 1
+            foot['walk_is_moving'] = False
+
+        self.change = change
+        after = self.valid_capture('walk-after')
+        compared = observation.compare_runs(before, after)
+        self.assertEqual(compared['status'], 'MISMATCH', compared['errors'])
+        self.assertCountEqual([row['field'] for row in compared['differences']], [
+            'observations.frames[1].actors[0].foot.walk_head_leptons[0]',
+            'observations.frames[1].actors[0].foot.walk_destination_leptons[2]',
+            'observations.frames[1].actors[0].foot.walk_is_moving'])
+
+    def test_walk_receipts_reject_missing_fields_bad_types_and_unavailable_coordinates(self):
+        self.scripted_profile()
+        self.actor_frames[1][0]['foot'].update(walk_is_moving=True)
+        changes = []
+        for key in ('walk_head_leptons', 'walk_destination_leptons', 'walk_is_moving'):
+            changes.append(lambda foot, k=key: foot.pop(k))
+        for key in ('walk_head_leptons', 'walk_destination_leptons'):
+            for value in ([], [1, 2], [1, 2, 3, 4], [True, 2, 3], [1, 2.0, 3],
+                          [1, 2, 1 << 31], [-(1 << 31) - 1, 2, 3], '1,2,3', {}):
+                changes.append(lambda foot, k=key, v=value: foot.update({k: v}))
+            changes.append(lambda foot, k=key: foot.update({k: [1, 2, 3], 'walk_is_moving': None}))
+        for value in (0, 1, 'true', [], {}):
+            changes.append(lambda foot, v=value: foot.update(walk_is_moving=v))
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'bad-walk-{index}'
+                self.change = lambda m, f=change: f(m['observations']['frames'][1]['actors'][0]['foot'])
+                report = self.run_capture()
+                self.assertEqual(report['status'], 'INVALID', report)
+                self.assertIn('.foot', report['errors'][0])
 
     def test_profile_version_order_field_types_and_budgets_are_checked_before_spawn(self):
         profile = deepcopy(self.profile)
@@ -1093,17 +1162,26 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(report['presentation_clock']['policy'], observation.CLOCK_POLICY)
         self.assertNotIn('observations', report['capture'])
         self.assertEqual((run / 'run.json').read_bytes(), original)
-        current = self.valid_capture('current-v6')
+        current = self.valid_capture('current-v7')
         report = observation.compare_runs(run, current)
         self.assertEqual(report['status'], 'INVALID')
         self.assertIn('observation policies differ', report['errors'][0])
         self.edit_json(manifest, lambda value: value.update(observations={'policy': observation.OBSERVATION_POLICY}))
         self.assertEqual(observation.validate_run(run)['status'], 'INVALID')
 
+    @staticmethod
+    def remove_walk_observations(document):
+        for frame in document['observations']['frames']:
+            for actor in frame['actors']:
+                if actor['foot'] is not None:
+                    for key in ('walk_head_leptons', 'walk_destination_leptons', 'walk_is_moving'):
+                        actor['foot'].pop(key)
+
     def make_historical_trajectory(self, run):
         manifest = run / 'child-output/capture.json'
 
         def observations(document):
+            self.remove_walk_observations(document)
             trajectory = document['observations']
             trajectory['policy'] = observation.TRAJECTORY_OBSERVATION_POLICY
             trajectory.pop('rule_types')
@@ -1190,6 +1268,7 @@ class MapObservationTests(unittest.TestCase):
         manifest = run / 'child-output/capture.json'
 
         def observations(document):
+            self.remove_walk_observations(document)
             transcript = document['observations']
             transcript['policy'] = observation.BUILDING_OBSERVATION_POLICY
             for frame in transcript['frames']:
@@ -1280,13 +1359,71 @@ class MapObservationTests(unittest.TestCase):
             self.edit_json(run / 'child-output/capture.json', change)
             self.assertEqual(observation.validate_run(run)['status'], 'INVALID')
 
-    def test_wrapper_v6_requires_child_v6_and_docking_observation_policy(self):
+    def make_historical_docking(self, run):
+        manifest = run / 'child-output/capture.json'
+
+        def observations(document):
+            self.remove_walk_observations(document)
+            document['observations']['policy'] = observation.DOCKING_OBSERVATION_POLICY
+
+        def convert_child(document):
+            document['schema_version'] = observation.DOCKING_CHILD_SCHEMA
+            observations(document)
+
+        self.edit_json(manifest, convert_child)
+
+        def convert_wrapper(document):
+            document['schema_version'] = observation.DOCKING_RUN_SCHEMA
+            observations(document['capture'])
+            document['capture']['manifest'].update(byte_length=manifest.stat().st_size,
+                                                   sha256=sha256_bytes(manifest.read_bytes()))
+
+        self.edit_json(run / 'run.json', convert_wrapper)
+
+    def test_historical_v6_validates_without_upgrade_and_compares_only_same_policy(self):
+        self.scripted_profile()
+        before = self.valid_capture('historical-v6-before')
+        after = self.valid_capture('historical-v6-after')
+        for run in (before, after):
+            self.make_historical_docking(run)
+        originals = {path: path.read_bytes() for run in (before, after)
+                     for path in (run / 'run.json', run / 'child-output/capture.json')}
+        checked = observation.validate_run(before)
+        self.assertEqual(checked['status'], 'VALID', checked['errors'])
+        foot = checked['capture']['observations']['frames'][0]['actors'][0]['foot']
+        self.assertNotIn('walk_is_moving', foot)
+        self.assertIn('radio', checked['capture']['observations']['frames'][0]['actors'][0])
+        compared = observation.compare_runs(before, after)
+        self.assertEqual(compared['status'], 'MATCH', compared['errors'])
+        current = self.valid_capture('current-walk-state')
+        compared = observation.compare_runs(before, current)
+        self.assertEqual(compared['status'], 'INVALID')
+        self.assertIn('observation policies differ', compared['errors'][0])
+        for path, raw in originals.items():
+            self.assertEqual(path.read_bytes(), raw)
+
+    def test_historical_v6_rejects_v7_walk_fields_child_and_policy(self):
+        self.scripted_profile()
+        changes = [lambda m: m.update(schema_version=observation.CHILD_SCHEMA),
+                   lambda m: m['observations'].update(policy=observation.OBSERVATION_POLICY)]
+        for key in ('walk_head_leptons', 'walk_destination_leptons', 'walk_is_moving'):
+            changes.append(lambda m, k=key:
+                           m['observations']['frames'][0]['actors'][0]['foot'].update({k: None}))
+        for index, change in enumerate(changes):
+            run = self.valid_capture(f'historical-v6-smuggle-{index}')
+            self.make_historical_docking(run)
+            self.edit_json(run / 'child-output/capture.json', change)
+            self.assertEqual(observation.validate_run(run)['status'], 'INVALID')
+
+    def test_wrapper_v7_requires_child_v7_and_walk_observation_policy(self):
         for index, change in enumerate((
                 lambda m: m.update(schema_version=observation.TRAJECTORY_CHILD_SCHEMA),
                 lambda m: m.update(schema_version=observation.BUILDING_CHILD_SCHEMA),
+                lambda m: m.update(schema_version=observation.DOCKING_CHILD_SCHEMA),
                 lambda m: m['observations'].update(policy=observation.TRAJECTORY_OBSERVATION_POLICY),
-                lambda m: m['observations'].update(policy=observation.BUILDING_OBSERVATION_POLICY))):
-            self.output = self.root / f'v6-generation-mismatch-{index}'
+                lambda m: m['observations'].update(policy=observation.BUILDING_OBSERVATION_POLICY),
+                lambda m: m['observations'].update(policy=observation.DOCKING_OBSERVATION_POLICY))):
+            self.output = self.root / f'v7-generation-mismatch-{index}'
             self.change = change
             self.assertEqual(self.run_capture()['status'], 'INVALID')
 

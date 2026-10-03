@@ -15,17 +15,38 @@ requirements. Ghidra names and old investigations remain leads.
 
 | Object | Current mechanism | Required behavior still open | Next audit or chain |
 |---|---|---|---|
-| E1 / GI | AI Guard-family deployment, existing Stop/action/completion, deployed reacquisition | Garrison admission/occupant order, AI Hunt/Capture occupation and fatal ReceiveDamage selectors/particles; full creation, vision, transport, weapon-rank and lifecycle coverage still needs a closure audit | Complete shared garrison/Hunt/Capture lifecycle after building completion dependencies |
+| E1 / GI | AI Guard-family deployment, existing Stop/action/completion, deployed reacquisition; bounded paid barracks output has native comparisons and repeated release validation | Garrison admission/occupant order, AI Hunt/Capture occupation and fatal ReceiveDamage selectors/particles; full creation, vision, transport, weapon-rank and lifecycle coverage still needs a closure audit | Complete shared garrison/Hunt/Capture lifecycle after building completion dependencies |
 | E2 / Conscript | Ordinary infantry control; correctly refuses GI auto-deploy | Shared garrison/Hunt/Capture and fatal receiver gaps; remaining whole-object requirements not yet exhaustively audited | Reuse each corrected infantry mechanism; audit its ordinary weapon and death route |
 | GGI / Guardian GI | Reuses the GI automatic-deploy mechanism and existing deployed weapon owner | Whole-object lifecycle is not certified; GGI-specific antiair/weapon ranks and crush behavior still require their own coverage | Audit after the initial basic objects |
 | MTNK / Grizzly | Selection audit pending | No whole-object certificate or exhaustive required-behavior audit yet | Trace primary/elite weapon, projectile/warhead, movement, production and fatal cleanup |
 | GACNST / Construction Yard | Construction → Grand_Opening merged in#992 | Engineer repair, capture, sale/crew/destruction and AMCV undeploy remain required; whole-object closure audit pending | Validate shared Engineer entry/repair, then ordinary destruction |
-| GAPOWR / Allied Power Plant | Reuses merged opening and Engineer repair/House consumer chain#995 | Whole-object closure remains open for sale, incoming drain/spy and further power/art requirements; legacy EMP/power-toggle leads require active stock producer evidence | Publish validated ordinary fatal chain, then complete sale |
-| GAPILE / Allied Barracks | Reuses merged opening | Engineer/capture/sale/destruction coverage; factory delivery radio, infantry output and spy effects need closure | Complete infantry factory output |
+| GAPOWR / Allied Power Plant | Reuses merged opening, Engineer repair/House consumers#995 and bounded ordinary fatal chain#1014 | Whole-object closure remains open for sale, incoming drain/spy and further power/art requirements; legacy EMP/power-toggle leads require active stock producer evidence | Complete ordinary sale after the current infantry output chain |
+| GAPILE / Allied Barracks | Reuses merged opening; paid infantry output, automatic clearance and rally handoff have bounded native comparisons and repeated release validation | Engineer/capture/sale/destruction coverage, specialized factory paths and spy effects still need closure | Finish the single output critic/PR, then reuse shared sale and infantry lifecycle work |
 | ENGINEER / Allied Engineer | Ordinary damaged-GAPOWR entry/repair and required arrival-time capture/House consumers merged in#995, with native, strict Rust and repeated production validation | Live Tag/Trigger, MultiEngineer damage, Hospital/grinder and other specialized entry routes; full-object closure audit pending | Reuse merged repair/capture owners, then trace remaining entry and Tag prerequisites |
 
 Rows name confirmed gaps and unaudited coverage separately. Nothing in this
 table claims that unlisted behavior is already equivalent.
+
+A sealed next-chain power audit (`gapowr-drain-spy-residual-research-20261003`,
+manifest`6a9e7d3b224230a9caa1e73f8af8a68ea0493d5471383a46f217bae9084ba57b`)
+executes stock Spy action9→Capture8→physical Walk/PerCell→Building4571E0→
+House50BC90→power508C30→normal UnInit/deferred disposal with warm native Cell
+startup. Spy action/arrival is absent in production. Drain already has shared
+reciprocal link/update/expiry/power owners; required DISKRAY attachment, loop sound
+and retirement are missing. SpyPowerBlackout's native default0/signed reader and
+CombatDamage drain defaults100/0/NULL differ from current readers. Full travel,
+blackout expiry, live Tag/radar/EVA and stock DISK install/stop still need native
+comparisons. These required routes keep GAPOWR closure open; no implementation
+is included in the current infantry-output chain.
+
+Shared Infantry constructor admission also exposes the existing GeneticConverter
+compatibility residual: mutation retains enemy corpse membership and immediately
+attempts BRUTE creation. Ordinary Infantry51BF90 refuses those enemy owners (7 for
+unarmed,5 for armed), so the immediate replacement fails; the victim kill still
+commits. Friendly retained corpses with free raw slots can admit the attempt.
+Native AnimToInfantry caller timing, placement and corpse cleanup remain required
+for this specialized mechanism and InfDeath9 lifecycle coverage. The infantry-output
+chain does not invent a Scenario scope to restore the old eager replacement.
 
 ## Merged chain: automatic GI deployment
 
@@ -208,3 +229,40 @@ activation/cleanup. No reached omitted consumer was established for the selected
 ordinary GAPOWR fatal route, whose compared poststates match. The completed single
 fatal critic records this as later prerequisite coverage, not a proven ordinary
 fatal defect or universal Anim destructor parity.
+
+
+## Validated chain: paid barracks infantry output
+
+Human GAPILE -> two E1 now retains the paid limbo identity through next-prefix
+PLACE, shared factory/exit/class admission, facing/idle, reciprocal contact/tether,
+occupied-building clearance, Archive/rally handoff and terminal movement cleanup.
+Refusal refunds/disposes through the scalar owner; absent producers retain the
+head. Crew/slave consumers use that same class-entry owner. The app records the
+complete admitted frame batch, including automatic PLACE after accepted SetRally.
+
+[Original replay and coverage](../../tools/spatial_oracle/_factory_infantry_output/README.md)
+retain warm Foot/Walk/Cell startup, both terminal products and full three RNG streams.
+Original before/after-Strip controls demonstrate the same-frame rally ordering;
+the focused Rust race failed before the prefix correction. Gate/frontend and
+UnitReady clock/radar/complete PCM comparisons cover required shared consumers.
+Whole native MainTick/House/unrelated actors, stock rendered pixels and hardware
+latency remain outside those native comparisons.
+
+The final main7e9 candidate passes9610 strict lib tests/232 ignored, clippy
+exit0/725 warnings with no edited-line diagnostic,126 Python checks and2513/2513
+field authority. [Same-binary Rust attribution](../../tools/spatial_oracle/factory_infantry_output_replay/main7e9/receipt.json)
+restores both incoming hashes while all618 actor/command/full-RNG observations agree
+except the hash; no native golden was changed.
+
+[Production receipt](../../tools/spatial_oracle/factory_infantry_output.production.json)
+records six retail AnyTown Metal captures: no rally, early rally, and rally accepted
+between first completion and next-prefix PLACE, each repeated. All six validate and
+all three repeat comparisons MATCH state/command trajectories, hashes and GPU bytes.
+Both paid GIs preserve their identities, physically move and settle with Nav/Archive/
+Walk/contact state clear; actual wallet8300/spent1700 includes both purchases.
+The runtime observer does not directly export Factory5D/final Factory holders;
+joined original/Rust comparisons cover those fields. Lossless PNG QA shows both GIs.
+These are production validations, not native world/render or whole-object certificates.
+The [single fresh read-only critic](../../tools/spatial_oracle/_factory_infantry_output/critic.md)
+found no confirmed defects and judged the scoped chain ready for a PR. Publication
+is next; ordinary GAPOWR sale follows its merge.

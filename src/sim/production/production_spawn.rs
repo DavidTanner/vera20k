@@ -17,10 +17,6 @@ use crate::sim::cell_rect::{
     check_passability_rect,
 };
 
-use super::production_tech::{
-    producer_candidates_for_owner_category, production_category_for_object,
-};
-use super::production_types::ProductionCategory;
 use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::OccupancyGrid;
@@ -38,128 +34,29 @@ pub(super) enum ProductionDeliveryKind {
     /// `BuildingClass::ExitObject_Main @ 0x00443C60`'s produced-Unit
     /// `!Refinery && !Weeder && WeaponsFactory && Naval` branch.
     NavalUnit,
-}
-
-pub fn find_spawn_cell_for_owner(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    produced_category: ObjectCategory,
-    require_water: bool,
-) -> Option<(u16, u16)> {
-    find_spawn_selection_for_owner(sim, rules, owner, produced_category, require_water)
-        .map(|selection| selection.cell)
-}
-
-pub fn find_spawn_selection_for_owner(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    produced_category: ObjectCategory,
-    require_water: bool,
-) -> Option<ProductionSpawnSelection> {
-    find_spawn_selection_for_owner_with_type(
-        sim,
-        rules,
-        owner,
-        None,
-        produced_category,
-        require_water,
-    )
-}
-
-pub(super) fn find_spawn_selection_for_owner_with_type(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    produced_type_id: Option<&str>,
-    produced_category: ObjectCategory,
-    require_water: bool,
-) -> Option<ProductionSpawnSelection> {
-    let Some(queue_category) = produced_type_id
-        .and_then(|type_id| rules.object(type_id))
-        .map(production_category_for_object)
-        .or_else(|| producer_queue_category_for_object(produced_category, require_water))
-    else {
-        return None;
-    };
-    let preferred_factories = producer_candidates_for_owner_category(
-        &sim.substrate.entities,
-        rules,
-        owner,
-        queue_category,
-        true,
-        &sim.interner,
-    );
-    let fallback_structures = producer_candidates_for_owner_category(
-        &sim.substrate.entities,
-        rules,
-        owner,
-        queue_category,
-        false,
-        &sim.interner,
-    );
-    let mut ordered_bases = preferred_factories.clone();
-    let owner_id = sim.interner.intern(owner);
-    if let Some(active_sid) = sim.production.primary_factory(owner_id, queue_category) {
-        if let Some(index) = ordered_bases
-            .iter()
-            .position(|candidate| candidate.0 == active_sid)
-        {
-            ordered_bases.rotate_left(index);
-        }
-    }
-
-    let bases: &[(u64, u16, u16, String)] = if !ordered_bases.is_empty() {
-        &ordered_bases
-    } else if queue_category == ProductionCategory::Ship {
-        // HouseClass's Ship slot cannot borrow a land factory or arbitrary
-        // structure when its selected producer is absent.
-        return None;
-    } else {
-        &fallback_structures
-    };
-    if produced_category == ObjectCategory::Vehicle {
-        // Native HouseClass::Place_Production chooses one producer, then calls
-        // ExitObject once. A failed cell choice or Unlimbo does not retry the
-        // next factory, so every Unit branch is bound to `bases.first()`.
-        let (producer_id, bx, by, structure_id) = bases.first()?;
-        return spawn_selection_at_producer(
-            sim,
-            rules,
-            (*producer_id, *bx, *by, structure_id),
-            produced_type_id,
-            produced_category,
-            require_water,
-        );
-    }
-    bases
-        .iter()
-        .find_map(|(producer_id, bx, by, structure_id)| {
-            spawn_selection_at_producer(
-                sim,
-                rules,
-                (*producer_id, *bx, *by, structure_id),
-                produced_type_id,
-                produced_category,
-                require_water,
-            )
-        })
+    /// Infantry444A53..444C95 has distinct physical XY/facing and exit NavCom.
+    Infantry {
+        coordinate: crate::sim::components::DriveCoord,
+        facing: u8,
+        exit_cell: (u16, u16),
+    },
 }
 
 /// The exit cell at one producer building, `(id, cell, type)`, for an object
 /// of `produced_category` (type `produced_type_id`): the naval, exact
 /// land and legacy Unit arms, the infantry arm and the adapter of the other
-/// classes. The player's queue picks the producer
-/// ([`find_spawn_selection_for_owner_with_type`]); a computer's factory
-/// building exits its own object (`production::factory_ai`).
+/// classes. Human House PLACE chooses its producer through the shared
+/// ObjectType5F7900 FindFactory owner, then calls the same ExitObject443C60
+/// owner as a computer's factory (`production::factory_ai`).
 pub(super) fn spawn_selection_at_producer(
     sim: &Simulation,
     rules: &RuleSet,
     producer: (u64, u16, u16, &str),
+    produced_entity_id: Option<u64>,
     produced_type_id: Option<&str>,
     produced_category: ObjectCategory,
     require_water: bool,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> Option<ProductionSpawnSelection> {
     let (producer_id, bx, by, structure_id) = producer;
     let path_grid = sim.path_grid();
@@ -253,20 +150,94 @@ pub(super) fn spawn_selection_at_producer(
             // adapter.
             near_structure().map(standard)
         }
-        // Infantry spawn in the producing barracks' foundation-centre cell,
-        // the engine's alt-path Unlimbo at its centre coordinate: `ExitCoord`
-        // is ignored, no passability check runs and there is no fallback.
-        // The infantry then walk out of the foundation once the rally MoveTo
-        // is issued; its cells are passable to infantry.
         ObjectCategory::Infantry => {
-            producer_get_coords_cell(&sim.substrate.entities, producer_id).map(standard)
+            let mover = produced_entity_id?;
+            let exit_cell = crate::sim::docking::building_dock::building_dock_cell(
+                sim,
+                producer_id,
+                mover,
+                (0, 0),
+                rules,
+                overlay_registry,
+            )?;
+            let producer = sim.substrate.entities.get(producer_id)?;
+            let producer_type = sim.object_type(producer.type_ref(), rules)?;
+            let (coordinate, facing) = infantry_exit_coordinate_and_facing(
+                producer,
+                producer_type,
+                (exit_cell.0 as i16, exit_cell.1 as i16),
+            );
+            let cell = (
+                u16::try_from(crate::util::lepton::lepton_to_cell_packed(coordinate.x)).ok()?,
+                u16::try_from(crate::util::lepton::lepton_to_cell_packed(coordinate.y)).ok()?,
+            );
+            Some(ProductionSpawnSelection {
+                producer_id,
+                cell,
+                delivery: ProductionDeliveryKind::Infantry {
+                    coordinate,
+                    facing,
+                    exit_cell,
+                },
+            })
         }
         _ => near_structure().map(standard),
     }
 }
 
+/// Original Infantry Exit443C60's arithmetic444A53..444C7C. The angle
+/// uses the unshrunk dock centre and Building447AC0's foundation centre;
+/// each outside component moves one cell inward before physical Unlimbo.
+/// Exact preferred cells alone add their type's rules-side ExitCoord.
+/// Native goldens: basic-factory-exit-geometry-research/geometry-primary.json,
+/// observation570630adeb29995ecc943d42d84f7659d19a02ae8c55ac5296b499e637ce87ba.
+fn infantry_exit_coordinate_and_facing(
+    producer: &crate::sim::game_entity::GameEntity,
+    producer_type: &crate::rules::object_type::ObjectType,
+    dock: (i16, i16),
+) -> (crate::sim::components::DriveCoord, u8) {
+    use crate::sim::{components::DriveCoord, movement::ground_pose};
+    let location = ground_pose::position_world_xy(&producer.position);
+    let nw = (
+        crate::util::lepton::lepton_to_cell_packed(location[0]),
+        crate::util::lepton::lepton_to_cell_packed(location[1]),
+    );
+    let centre = |cell: i16| (i32::from(cell) << 8).wrapping_add(128);
+    let word = crate::util::direction_tables::facing16_between(
+        ground_pose::object_center_xy(producer),
+        [centre(dock.0), centre(dock.1)],
+    );
+    let facing = crate::util::direction_tables::quantize::round_facing16_to_8(word);
+    let (width, height) = crate::rules::foundation::foundation_dimensions(&producer.foundation);
+    let inward = |cell: i16, base: i16, size: u16| {
+        if i32::from(cell) >= i32::from(base) + i32::from(size) {
+            cell.wrapping_sub(1)
+        } else if cell < base {
+            cell.wrapping_add(1)
+        } else {
+            cell
+        }
+    };
+    let mut coordinate = DriveCoord {
+        x: centre(inward(dock.0, nw.0, width)),
+        y: centre(inward(dock.1, nw.1, height)),
+        z: 0,
+    };
+    if (producer_type.gdi_barracks() && dock == (nw.0.wrapping_add(1), nw.1.wrapping_add(2)))
+        || (producer_type.nod_barracks() && dock == (nw.0.wrapping_add(2), nw.1.wrapping_add(2)))
+        || (producer_type.yuri_barracks() && dock == (nw.0.wrapping_add(2), nw.1.wrapping_add(1)))
+    {
+        let (x, y, z) = producer_type.exit_coord.unwrap_or((0, 0, 0));
+        coordinate.x = coordinate.x.wrapping_add(x);
+        coordinate.y = coordinate.y.wrapping_add(y);
+        coordinate.z = coordinate.z.wrapping_add(z);
+    }
+    (coordinate, facing)
+}
+
 /// ExitObject4445D6/4445E3 calls the shared radio owners for HELLO and
 /// TETHER. Their reciprocal contacts and flags also use radio-owned cleanup.
+
 pub fn mark_war_factory_spawn_contact(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -586,19 +557,6 @@ pub(super) fn unlimbo_held_naval_unit(
         rules,
         overlay_registry,
     )
-}
-
-fn producer_queue_category_for_object(
-    produced_category: ObjectCategory,
-    require_water: bool,
-) -> Option<ProductionCategory> {
-    match produced_category {
-        ObjectCategory::Infantry => Some(ProductionCategory::Infantry),
-        ObjectCategory::Vehicle if require_water => Some(ProductionCategory::Ship),
-        ObjectCategory::Vehicle => Some(ProductionCategory::Vehicle),
-        ObjectCategory::Aircraft => Some(ProductionCategory::Aircraft),
-        ObjectCategory::Building => None,
-    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1115,27 +1073,6 @@ fn add_cell_offset(base_rx: u16, base_ry: u16, ox: i16, oy: i16) -> Option<(u16,
     Some((rx as u16, ry as u16))
 }
 
-/// Find an airfield with a free dock slot for a newly produced aircraft.
-///
-/// Returns `(airfield_stable_id, spawn_rx, spawn_ry)` — the airfield's
-/// foundation center cell where the aircraft entity will be placed.
-/// Returns `None` if no airfield has a free dock slot.
-pub fn find_helipad_for_aircraft(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-) -> Option<(u64, u16, u16)> {
-    let owner_id = sim.interner.get(owner)?;
-    sim.substrate
-        .entities
-        .values()
-        .filter(|entity| entity.owner() == owner_id)
-        .find_map(|entity| {
-            let (cx, cy) = free_helipad_cell(sim, rules, entity.stable_id())?;
-            Some((entity.stable_id(), cx, cy))
-        })
-}
-
 /// The foundation centre of `airfield`, a live `Helipad=` or `UnitReload=`
 /// building out of limbo, while it has a free dock slot.
 pub(super) fn free_helipad_cell(
@@ -1180,6 +1117,99 @@ mod tests {
             height,
             crate::map::resolved_terrain::test_clear_cell,
         )
+    }
+
+    #[test]
+    fn infantry_exit_coordinate_and_facing_match_original_instructions() {
+        use crate::rules::ini_parser::IniFile;
+        use crate::sim::components::DriveCoord;
+        use crate::sim::game_entity::GameEntity;
+        use crate::sim::movement::ground_pose;
+        let data: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/infantry_exit_native.json")).unwrap();
+        assert_eq!(
+            data["native_sha256"],
+            "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
+        );
+        let mut compared = 0;
+        let mut storage_residuals = 0;
+        for row in data["rows"].as_array().unwrap() {
+            let number = |key: &str, index: usize| row[key][index].as_i64().unwrap() as i32;
+            let location = DriveCoord {
+                x: number("location", 0),
+                y: number("location", 1),
+                z: number("location", 2),
+            };
+            if location.x == i32::MIN || location.x == i32::MAX {
+                storage_residuals += 1;
+                continue;
+            }
+            let rules = RuleSet::from_ini_with_fixed_art_for_test(
+                &IniFile::from_str(&format!(
+                    "[BuildingTypes]\n0=GAPILE\n[GAPILE]\nGDIBarracks={}\nNODBarracks={}\nYuriBarracks={}\nExitCoord={},{},{}\n",
+                    if number("flags", 0) != 0 { "yes" } else { "no" },
+                    if number("flags", 1) != 0 { "yes" } else { "no" },
+                    if number("flags", 2) != 0 { "yes" } else { "no" },
+                    number("exit_coord", 0), number("exit_coord", 1), number("exit_coord", 2),
+                )),
+                &IniFile::from_str("[GAPILE]\nFoundation=3x2\n"),
+            ).unwrap();
+            let mut producer = GameEntity::test_default_of_category(
+                1,
+                "GAPILE",
+                "Americans",
+                14,
+                14,
+                crate::map::entities::EntityCategory::Structure,
+            );
+            producer.foundation = "3x2".into();
+            ground_pose::put_location(&mut producer.position, location);
+            let dock = (number("dock", 0) as i16, number("dock", 1) as i16);
+            let producer_type = rules.object("GAPILE").unwrap();
+            assert_eq!(
+                [
+                    producer_type.gdi_barracks(),
+                    producer_type.nod_barracks(),
+                    producer_type.yuri_barracks()
+                ],
+                [
+                    number("flags", 0) != 0,
+                    number("flags", 1) != 0,
+                    number("flags", 2) != 0
+                ],
+                "{}: fixture preserves each native nonzero-byte predicate",
+                row["name"]
+            );
+            let (coordinate, facing) =
+                infantry_exit_coordinate_and_facing(&producer, producer_type, dock);
+            assert_eq!(
+                [coordinate.x, coordinate.y, coordinate.z],
+                [
+                    number("coordinate", 0),
+                    number("coordinate", 1),
+                    number("coordinate", 2)
+                ],
+                "{}",
+                row["name"]
+            );
+            assert_eq!(
+                i32::from(facing),
+                row["facing"].as_i64().unwrap() as i32,
+                "{}",
+                row["name"]
+            );
+            assert_eq!(
+                crate::util::direction_tables::quantize::round_facing16_to_8(
+                    row["facing_word"][0].as_u64().unwrap() as u16,
+                ),
+                facing,
+                "{}",
+                row["name"]
+            );
+            compared += 1;
+        }
+        assert_eq!(compared, 26);
+        assert_eq!(storage_residuals, 2);
     }
 
     fn test_playfield_bounds() -> crate::sim::cell_rect::PlayfieldBounds {

@@ -970,9 +970,20 @@ fn hut_repair_scatters_a_jumpjet_occupant_through_its_air_destination_owner() {
     // A rocketeer whose Foot coordinate resolves to the hut cell is a hut
     // occupant for Building 0x4576F0 (Map 0x565730, first Building 0x47C520),
     // exactly like a Walk infantryman standing there.
+    // Supply the retained hut-occupant prestate through the existing lifecycle
+    // seam. This corridor does not establish an ordinary infantry Unlimbo
+    // inside a marked Building (Cell481180 correctly refuses that request).
     let rocketeer = sim
-        .spawn_object("JUMPJET", "Americans", 16, 15, 0, &rules)
+        .construct_object_limbo_at_height("JUMPJET", "Americans", 16, 15, 0, 0, &rules)
         .unwrap();
+    crate::sim::movement::ground_pose::put_location(
+        &mut sim.substrate.entities.get_mut(rocketeer).unwrap().position,
+        DriveCoord::cell(16, 15, 0),
+    );
+    assert!(matches!(
+        sim.reveal_entity_with_rules(rocketeer, &rules),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
     assert!(
         sim.substrate
             .entities
@@ -1368,7 +1379,7 @@ fn repair_receiver_failure_stops_runtime_before_consumption_or_frame_commit() {
     let (mut sim, rules, registry, hut) = ready_repair_fixture(Some(231));
     let engineer = ready_engineer(&mut sim, &rules, &registry, hut);
     let victim = sim
-        .spawn_object("ENGINEER", "Americans", 17, 15, 0, &rules)
+        .spawn_object_with_overlay_registry("ENGINEER", "Americans", 17, 15, 0, &rules, &registry)
         .unwrap();
     let later = sim
         .spawn_object("ENGINEER", "Americans", 14, 15, 0, &rules)

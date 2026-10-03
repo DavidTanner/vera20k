@@ -15,10 +15,18 @@
 //! skip Infantry's raw receiver; the others write theirs only while the Foot
 //! occupation enable (+0x6B6, vt+0xC0 = `0x0041C070`) holds.
 //!
-//! RESIDUALS, none of which a ported consumer reads:
-//! - `TechnoClass::Mark` sends radio 0xD to the first contact of a tethered
-//!   object (+0x418, `0x006F4A81..0x006F4A91`). Trigger: Mark while tethered
-//!   (a unit docking at a pad or refinery). Effect and frequency: unmapped.
+//! The accepted Object Mark is followed by Techno's tethered first-contact
+//! radio 0xD (`0x006F4A81..0x006F4A91`) before the Foot layer query. Its
+//! Object receiver invokes Mark(2), which a Foot accepts immediately without
+//! running Techno Mark or changing cell membership (`0x004D3789..0x004D3795`).
+//!
+//! RESIDUALS:
+//! - Building Mark(2)'s clean presentation refresh is not represented. The
+//!   executed human GAPILE output witness reaches a dirty building (+0x80=1),
+//!   so Object Mark refuses it with no presence, occupation or RNG effects.
+//!   The clean arm's palette, z-adjust and slot translucency refresh
+//!   (`0x0043F9A6..0x0043FB0B`) remains a presentation residual; it must not
+//!   be replaced by PUT/REMOVE or a second cell-list transaction.
 //! - AddContent's shared discovery (`0x0047E953..0x0047E9DC`, `DiscoveredBy(Player)`
 //!   `0x006F4960`) runs after linking and before the raw receiver. Its history,
 //!   House power/radar and House1F4 effects are retained. Attached Tag event4
@@ -85,6 +93,44 @@ pub(super) fn raw_occupation_plane(
 }
 
 impl Simulation {
+    /// The object's Mark(2) virtual dispatch reached by Object radio 0xD
+    /// (`0x005F5374`). Foot4D3789 returns true before any lifecycle gate or
+    /// Techno Mark, so it cannot recursively transmit 0xD.
+    ///
+    /// Bounded Building coverage: the original human GAPILE output witness's
+    /// twelve dirty Mark(2) calls refuse at Object5F586B..73 with no effects.
+    /// Clean Building Mark(2)'s presentation tail is the residual above;
+    /// VERA does not retain Object+0x80 or invent a dirty-byte predicate.
+    /// Evidence: human-infantry-output-downstream-research/mark-radio.native.json,
+    /// SHA256 270a1321e3a5509df0eb58500883737f69af2172726da216f7ca107962391127;
+    /// pinned active-retail gamemd SHA256
+    /// 1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c.
+    pub(crate) fn mark_entity_refresh(&mut self, id: u64) -> bool {
+        self.substrate
+            .entities
+            .get(id)
+            .is_some_and(|entity| entity.category != EntityCategory::Structure)
+    }
+
+    /// Techno Mark6F4A81..97 after an accepted Object Mark: read the live
+    /// tether and first contact, transmit literal13 synchronously, then return
+    /// to the class-specific Mark tail. No entity borrow crosses the receiver.
+    pub(crate) fn techno_mark_after_object(&mut self, id: u64, rules: Option<&RuleSet>) {
+        if self
+            .substrate
+            .entities
+            .get(id)
+            .is_some_and(|entity| entity.dock_entered_with.is_some())
+        {
+            crate::sim::radio::transmit_to_contact(
+                self,
+                id,
+                crate::sim::radio::RadioMessage::AnimStop,
+                rules,
+            );
+        }
+    }
+
     /// Mark(UP). +0x74 is cleared (`0x005F5913`) before the layer query, so
     /// a Jumpjet answers as an unmarked object. The list unlink and the raw
     /// clear use the Cell and OnBridge the object holds now.
@@ -101,6 +147,7 @@ impl Simulation {
             return false;
         }
         entity.lifecycle.cell_marked = false;
+        self.techno_mark_after_object(id, rules);
         self.foot_pick_up(id, rules, registry);
         true
     }
@@ -156,6 +203,7 @@ impl Simulation {
             return false;
         }
         entity.lifecycle.cell_marked = true;
+        self.techno_mark_after_object(id, rules);
         self.foot_place_down(id, rules, registry, receive);
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::CellMarked);

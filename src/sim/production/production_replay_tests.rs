@@ -676,7 +676,9 @@ fn runtime_backed_replay_hashes_match_each_tick() {
 /// the build, and its rate and steps match the originals' (`0x004C9EA0`, then
 /// `FactoryClass::AI` `0x004C9B20` each frame) for the inputs the factory
 /// resolved: the cadence oracle's funded row with those inputs, offset to the
-/// build's start frame.
+/// build's start frame. This comparison ends with the held stage54 object,
+/// matching the native cadence receiver; delivery is covered by the separate
+/// joined output/admission comparisons, which supply actual map terrain.
 #[test]
 fn retail_builds_step_at_the_native_frames() {
     let Some((rules_ini, art_ini)) = crate::rules::retail_ini_fixture::retail_rules_and_art()
@@ -745,14 +747,10 @@ fn retail_builds_step_at_the_native_frames() {
             let before = factory_state(&sim).map_or(0, |(progress, ..)| progress);
             sim.advance_tick(&commands, Some(&rules), None, None, TICK_MS);
             let Some((progress, rate, timer, object)) = factory_state(&sim) else {
-                // The last step completes the build and the unit leaves in the
-                // same frame, which retires the idle factory.
-                if let Some(held) = held {
-                    let unit_entity = sim.substrate.entities.get(held).expect("built unit");
-                    assert!(!unit_entity.lifecycle.in_limbo, "{unit}: delivered");
-                    step_frames.push(frame);
-                    break;
-                }
+                assert!(
+                    start.is_none(),
+                    "{unit}: funded head disappeared before stage54"
+                );
                 continue;
             };
             if start.is_none() {
@@ -766,6 +764,22 @@ fn retail_builds_step_at_the_native_frames() {
             }
             if progress != before {
                 step_frames.push(frame);
+            }
+            if progress == super::factory::PRODUCTION_STEPS {
+                // The original cadence oracle stops at Factory completion.
+                // Keep the same limbo head here; Strip's later PLACE requires
+                // terrain/admission priors this timer fixture does not supply.
+                assert_eq!(
+                    object, held,
+                    "{unit}: completion preserves the held identity"
+                );
+                let entity = sim
+                    .substrate
+                    .entities
+                    .get(held.unwrap())
+                    .expect("held head");
+                assert!(entity.lifecycle.in_limbo && !entity.in_logic_vector);
+                break;
             }
         }
         let (start_frame, rate) = start.expect("the build started");

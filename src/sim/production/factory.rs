@@ -143,9 +143,19 @@ pub struct Factory {
     /// idle one re-armed (gamemd deletes an idle factory and makes a new one);
     /// a promotion keeps it.
     pub insertion_seq: u64,
+    /// Factory+5D. StartProduction/Abandon/CompletedProduction and an actual
+    /// stage advance set this; StripAI consumes it through4C9C60, even when
+    /// the object is unfinished. Completion accounting and +71 are separate.
+    /// Native: basic-factory-output-event-admission-research (active gamemd).
+    #[serde(default)]
+    changed: bool,
 }
 
 impl Factory {
+    pub(crate) fn has_changed(&self) -> bool {
+        self.changed
+    }
+
     /// The step rate for a build of `time_to_build` frames: `clamp(total / 54,
     /// 1, 255)`, the division truncating. The build start `0x004C9EA0` (Ghidra
     /// label `FactoryClass__SetRate`; it also resumes a suspended build)
@@ -213,6 +223,8 @@ impl Factory {
 
         // Take one tentative step; the charge reads stepsLeft = 54 - the NEW value.
         self.progress += 1;
+        //4C9B9F precedes the credit gate: even a rewound shortfall changes it.
+        self.changed = true;
         let steps_left = PRODUCTION_STEPS - self.progress; // 54 - new progress
 
         // Per-step charge, signed-truncate toward zero (= floor for a non-negative
@@ -264,6 +276,7 @@ impl Factory {
     /// credit. `None` without an active object.
     fn abandon_production(&mut self) -> Option<AbandonedObject> {
         let object = self.object.take()?;
+        self.changed = true; //4CA07E; a null held object does not set it.
         let abandoned = AbandonedObject {
             type_id: object.type_id,
             balance: self.balance,
@@ -299,6 +312,7 @@ impl Factory {
             entity_id: None,
             completion_accounted: false,
         });
+        self.changed = true; // StartProduction4C9D6E, reached by StartNext.
         self.progress = 0;
         self.balance = seeded_balance(cost);
         self.step_rate_frames = 0;
@@ -765,6 +779,7 @@ impl FactoryRegistry {
                     completion_accounted: false,
                 }),
                 insertion_seq,
+                changed: true,
                 ..Factory::default()
             },
         );
@@ -812,7 +827,7 @@ impl FactoryRegistry {
 
     /// Test-only: force a (owner, category) factory to the completed-and-held state
     /// (progress == `PRODUCTION_STEPS`, balance drained, suspended) — the exact state
-    /// `step_all` leaves on completion, so `tick_production`'s registry-driven delivery
+    /// `step_all` leaves on completion, so changed-output publication
     /// fires. Returns `false` when no such (object-holding) factory exists. Reconcile
     /// the registry first so the factory exists.
     #[cfg(test)]
@@ -829,6 +844,7 @@ impl FactoryRegistry {
                 f.progress = PRODUCTION_STEPS;
                 f.balance = 0;
                 f.suspended = true;
+                f.changed = true;
                 true
             }
             _ => false,
@@ -880,6 +896,7 @@ impl FactoryRegistry {
             f.manual = false;
             f.special = SpecialItem::NoneNeg1;
             f.insertion_seq = enqueue_order;
+            f.changed = true;
             return EnqueueOutcome::Started;
         }
         // No factory yet -> create one with the active build armed.
@@ -903,6 +920,7 @@ impl FactoryRegistry {
                 special: SpecialItem::NoneNeg1,
                 queue: VecDeque::new(),
                 insertion_seq: enqueue_order,
+                changed: true,
             },
         );
         EnqueueOutcome::Started
@@ -970,18 +988,26 @@ impl FactoryRegistry {
 
     /// Clear a delivered/abandoned active object and promote the next queued entry into the
     /// active slot (C7 StartNextQueued), seeding it from `next_cost`.
-    /// Returns the popped type, or `None` if the queue was empty (the factory is left idle).
+    /// Returns the promoted type. An empty tail releases the House factory
+    /// synchronously: HouseAbandon4FAA10 clears the Infantry slot at4FAC21
+    /// and deletes the factory at4FAC2D after Completed4CA1A0.
+    /// Original final GI PLACE485 clears House and Strip before frame486;
+    /// source: basic-factory-output-prerequisites-research, no-rally control.
     pub(super) fn clear_active_and_advance(
         &mut self,
         owner: InternedId,
         category: ProductionCategory,
         next_cost: i32,
     ) -> Option<InternedId> {
-        let f = self
-            .factories
-            .get_mut(&FactoryHolder::House(owner, category))?;
+        let holder = FactoryHolder::House(owner, category);
+        let f = self.factories.get_mut(&holder)?;
         f.object = None;
-        f.start_next_queued(next_cost)
+        f.changed = true; // CompletedProduction4CA1C0 releases the held head.
+        let promoted = f.start_next_queued(next_cost);
+        if promoted.is_none() {
+            self.factories.remove(&holder);
+        }
+        promoted
     }
 
     /// Arm the active build's rate and step timer at `frame`
@@ -1171,13 +1197,27 @@ impl FactoryRegistry {
         lifecycle
     }
 
-    /// The `(owner, category)` keys whose active build has completed and is held for
-    /// delivery, in construction (`insertion_seq`) order — the delivery read pass.
-    pub(crate) fn completed_keys(&self) -> Vec<(InternedId, ProductionCategory)> {
-        self.house_factories_insertion_ordered()
-            .filter(|f| f.object.is_some() && f.progress >= PRODUCTION_STEPS)
-            .map(|f| (f.owner, f.category))
-            .collect()
+    /// Strip6A8DD3 calls HasChanged4C9C60 before IsComplete4CA130.
+    /// Consume every House factory's change flag, including unfinished heads;
+    /// only changed, completed, held heads can issue a ready edge. A suspended
+    /// complete head with no new writer cannot emit again on later frames.
+    pub(crate) fn take_changed_completed_keys(&mut self) -> Vec<(InternedId, ProductionCategory)> {
+        let order: Vec<FactoryHolder> = self
+            .holders_insertion_ordered()
+            .into_iter()
+            .filter_map(|(holder, _)| matches!(holder, FactoryHolder::House(..)).then_some(holder))
+            .collect();
+        let mut completed = Vec::new();
+        for holder in order {
+            let factory = self.factories.get_mut(&holder).expect("retained Factory");
+            if std::mem::take(&mut factory.changed)
+                && factory.progress >= PRODUCTION_STEPS
+                && factory.object.is_some()
+            {
+                completed.push((factory.owner, factory.category));
+            }
+        }
+        completed
     }
 
     /// `FactoryClass::Update_Build_Rate @ 0x004CA6E0`, called by the

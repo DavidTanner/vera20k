@@ -144,16 +144,31 @@ fn entity(sim: &Simulation, id: u64) -> &GameEntity {
     sim.substrate.entities.get(id).expect("entity")
 }
 
-/// Stand `id` at the ground Location `(x, y)` in leptons, inside the cell it
-/// was spawned in.
-fn place(sim: &mut Simulation, id: u64, (x, y): (i32, i32)) {
-    let position = &mut sim.substrate.entities.get_mut(id).unwrap().position;
-    assert_eq!(
-        (i32::from(position.rx), i32::from(position.ry)),
-        (x / 256, y / 256)
+/// Supply the retained overlapping blast prestate after ordinary construction
+/// on distinct cells. This is not a claim that Unlimbo admits infantry onto a
+/// tank; Location, lists and raw bytes still pass through their shared owners.
+fn place(sim: &mut Simulation, rules: &RuleSet, id: u64, (x, y): (i32, i32)) {
+    let entity = sim.substrate.entities.get(id).unwrap();
+    let old = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
+    let infantry = entity.category == crate::map::entities::EntityCategory::Infantry;
+    // Foot Mark's list hooks skip Infantry raw callbacks. Unit Mark owns
+    // its own raw writes, so only Infantry needs the explicit class receiver.
+    if infantry {
+        assert!(sim.object_raw_receiver_at(id, old, false));
+    }
+    assert!(sim.foot_mark_remove(id, Some(rules), None));
+    let coord = crate::sim::components::DriveCoord { x, y, z: 0 };
+    crate::sim::movement::ground_pose::foot_set_location(
+        &mut sim.substrate.entities,
+        id,
+        coord,
+        Some(rules),
+        &sim.interner,
     );
-    position.sub_x = SimFixed::from_num(x % 256);
-    position.sub_y = SimFixed::from_num(y % 256);
+    assert!(sim.foot_mark_put(id, Some(rules), None));
+    if infantry {
+        assert!(sim.object_raw_receiver_at(id, coord, true));
+    }
 }
 
 /// Kill `id` with one sourceless hit.
@@ -816,10 +831,10 @@ fn a_dying_crazy_ivan_explodes() {
     let rules = rules();
     let (mut sim, _grid) = arena(25, &rules);
     let tank = spawn(&mut sim, &rules, "HTNK", "Americans", 11, 12);
-    let ivan = spawn(&mut sim, &rules, "IVAN", "Russians", 11, 12);
-    let engineer = spawn(&mut sim, &rules, "ENGINEER", "Americans", 11, 12);
-    for id in [ivan, tank, engineer] {
-        place(&mut sim, id, (3000, 3100));
+    let ivan = spawn(&mut sim, &rules, "IVAN", "Russians", 12, 12);
+    let engineer = spawn(&mut sim, &rules, "ENGINEER", "Americans", 13, 12);
+    for id in [tank, ivan, engineer] {
+        place(&mut sim, &rules, id, (3000, 3100));
     }
     kill(&mut sim, &rules, ivan);
     assert!(
@@ -840,11 +855,11 @@ fn a_bombed_crazy_ivan_blows_up_once() {
     let rules = rules();
     let (mut sim, _grid) = arena(33, &rules);
     let tank = spawn(&mut sim, &rules, "HTNK", "Russians", 11, 12);
-    let carrier = spawn(&mut sim, &rules, "IVAN", "Russians", 11, 12);
-    let engineer = spawn(&mut sim, &rules, "ENGINEER", "Russians", 11, 12);
+    let carrier = spawn(&mut sim, &rules, "IVAN", "Russians", 12, 12);
+    let engineer = spawn(&mut sim, &rules, "ENGINEER", "Russians", 13, 12);
     let planter = spawn(&mut sim, &rules, "IVAN", "Americans", 25, 25);
-    for id in [carrier, tank, engineer] {
-        place(&mut sim, id, (3000, 3100));
+    for id in [tank, carrier, engineer] {
+        place(&mut sim, &rules, id, (3000, 3100));
     }
     sim.bomb_attach(planter, Some(carrier), &rules);
     kill(&mut sim, &rules, carrier);
@@ -865,10 +880,10 @@ fn the_blast_is_centred_on_the_carrier() {
     let rules = rules();
     let (mut sim, _grid) = arena(31, &rules);
     let tank = spawn(&mut sim, &rules, "HTNK", "Americans", 11, 12);
-    let engineer = spawn(&mut sim, &rules, "ENGINEER", "Americans", 11, 12);
+    let engineer = spawn(&mut sim, &rules, "ENGINEER", "Americans", 12, 12);
     let ivan = spawn(&mut sim, &rules, "IVAN", "Russians", 25, 25);
     for id in [tank, engineer] {
-        place(&mut sim, id, (3000, 3100));
+        place(&mut sim, &rules, id, (3000, 3100));
     }
     sim.session.binary_frame = 100;
     sim.bomb_attach(ivan, Some(tank), &rules);
@@ -888,10 +903,10 @@ fn a_blast_sets_off_the_bombs_it_kills() {
     let rules = rules();
     let (mut sim, _grid) = arena(32, &rules);
     let first = spawn(&mut sim, &rules, "HTNK", "Americans", 11, 12);
-    let second = spawn(&mut sim, &rules, "ENGINEER", "Americans", 11, 12);
+    let second = spawn(&mut sim, &rules, "ENGINEER", "Americans", 12, 12);
     let ivan = spawn(&mut sim, &rules, "IVAN", "Russians", 25, 25);
     for id in [first, second] {
-        place(&mut sim, id, (3000, 3100));
+        place(&mut sim, &rules, id, (3000, 3100));
     }
     sim.session.binary_frame = 100;
     sim.bomb_attach(ivan, Some(first), &rules);
@@ -944,8 +959,8 @@ fn no_engineer_defuses_unordered() {
     let (mut sim, grid) = arena(30, &rules);
     let russian_tank = spawn(&mut sim, &rules, "HTNK", "Russians", 12, 10);
     let american_tank = spawn(&mut sim, &rules, "HTNK", "Americans", 22, 10);
-    let american_ivan = spawn(&mut sim, &rules, "IVAN", "Americans", 40, 40);
-    let russian_ivan = spawn(&mut sim, &rules, "IVAN", "Russians", 5, 45);
+    let american_ivan = spawn(&mut sim, &rules, "IVAN", "Americans", 30, 30);
+    let russian_ivan = spawn(&mut sim, &rules, "IVAN", "Russians", 5, 30);
     sim.bomb_attach(american_ivan, Some(russian_tank), &rules);
     sim.bomb_attach(russian_ivan, Some(american_tank), &rules);
     spawn(&mut sim, &rules, "ENGINEER", "Americans", 12, 11);

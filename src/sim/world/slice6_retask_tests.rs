@@ -291,7 +291,12 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // Same-binary old-feed control recovers43BC438F280E7D17; all17 complete rows
 // match except state_hash, including all3 RNG states. Control removed.
 // Rust attribution: tools/spatial_oracle/drive_instance_replay/other/slice6/receipt.json.
-const SLICE6_BASELINE_HASH: u64 = 0xE28A_BFC8_CA12_3369;
+// Barracks output after main7e9: shared TechnoUnlimbo6F6DAA retains the
+// constructor facing Some(0); private Foot6B3/Factory5D feeds enter the hash.
+// The Drive/Ship payload migration remains. All618 same-binary Rust rows
+// match except tick_result.state_hash; the control recovers incoming pins.
+// tools/spatial_oracle/factory_infantry_output_replay/main7e9/receipt.json.
+const SLICE6_BASELINE_HASH: u64 = 0xF008_D6D1_349C_CD9C;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

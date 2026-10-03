@@ -820,11 +820,12 @@ use crate::sim::world::Simulation;
 // 286 -> 287: Teleport's request, armed/resolved XYZ and warp adapter live
 // in its complete locomotor payload, including suspended instances. The
 // entity mirror is removed; serialization and lockstep hash layout changed.
-
 // 287 -> 288: Drive and Ship retain slope, destination, progress, speed and
 // occupation together in installed or suspended locomotor payloads. Entity
 // copies are removed; the prior layout cannot resume these instances.
-const SNAPSHOT_VERSION: u32 = 288;
+// 288 -> 289: Factory changed5D and inherited Foot idle-entry6B3 retain
+// next-frame production publication and same-frame idle admission.
+const SNAPSHOT_VERSION: u32 = 289;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3825,8 +3826,9 @@ mod tests {
         // 285 -> 286: pending entry, independent repair Stage and Anim completion.
         // 286 -> 287: the complete Teleport locomotor owns resolved XYZ,
         // request byte and warp effect, including suspended instances.
-
-        assert_eq!(super::SNAPSHOT_VERSION, 288);
+        // 287 -> 288: Drive/Ship retained state lives in its class payload.
+        // 288 -> 289: Factory publication and shared Foot idle latch.
+        assert_eq!(super::SNAPSHOT_VERSION, 289);
     }
 
     #[test]

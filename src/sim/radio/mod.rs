@@ -44,6 +44,13 @@ pub(crate) enum RadioTestEvent {
         receiver_sid: u64,
         sender_sid: u64,
     },
+    ObjectMarkRefresh {
+        receiver_sid: u64,
+        sender_sid: Option<u64>,
+        sender_cell_marked: Option<bool>,
+        sender_cell_listed: Option<bool>,
+        accepted: bool,
+    },
 }
 
 #[cfg(test)]
@@ -127,7 +134,10 @@ pub(crate) fn broadcast(
         });
         #[cfg(test)]
         if message == RadioMessage::Break {
-            sim.trace_lifecycle_for_test(LifecycleTestEvent::BreakSlot { slot, target: target_sid });
+            sim.trace_lifecycle_for_test(LifecycleTestEvent::BreakSlot {
+                slot,
+                target: target_sid,
+            });
         }
 
         if let Some(target_sid) = target_sid {
@@ -313,9 +323,17 @@ pub enum RadioMessage {
     Hello = 0x02,
     Break = 0x03,
     DockingComplete = 0x07, // name inferred
+    /// Infantry arrival51A80C: the common Techno receiver untethers the
+    /// sender and then sends BREAK (`0x006F4C29..0x006F4C47`).
     RequestClearance = 0x08,
+    /// ExitObject444DD9 asks the GI to transmit TETHER back. Techno's
+    /// shared7/9/0x16 arm6F4C6F returns ROGER after that nested exchange.
+    TetherBack = 0x09,
     DockApproach = 0x0B, // name inferred
     DockArrived = 0x0C,  // name inferred
+    /// Historical name: Object5F5374 invokes the receiver's Mark(2), then
+    /// answers ROGER regardless of Mark's result. Techno Mark6F4A91 emits it
+    /// to the first contact while tethered; it does not stop an Anim.
     AnimStop = 0x0D,
     CanDock = 0x0E,
     CanEnter = 0x0F,
@@ -395,7 +413,10 @@ pub struct RadioPayload {
 
 impl RadioPayload {
     pub(crate) fn docking_query(wide: bool) -> Self {
-        Self { ignore_dock_capacity: wide, ..Self::default() }
+        Self {
+            ignore_dock_capacity: wide,
+            ..Self::default()
+        }
     }
 }
 
@@ -407,6 +428,7 @@ mod tests {
     fn message_codes_match_wire_opcodes() {
         assert_eq!(RadioMessage::Hello.code(), 0x02);
         assert_eq!(RadioMessage::Break.code(), 0x03);
+        assert_eq!(RadioMessage::TetherBack.code(), 0x09);
         assert_eq!(RadioMessage::CanDock.code(), 0x0E);
         assert_eq!(RadioMessage::DockNow.code(), 0x15);
         assert_eq!(RadioMessage::IsOccupied.code(), 0x23);

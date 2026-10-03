@@ -93,10 +93,12 @@ fn game_speed_transition_applies_at_ingress_before_triggers_and_hash() {
 
     let result = sim
         .advance_master_frame(&[command], None, None, 67, TickLane::Ordinary, None)
-        .expect("fixture frame must complete");
+        .expect("fixture frame must complete")
+        .into_tick();
     let control_result = control
         .advance_master_frame(&[], None, None, 67, TickLane::Ordinary, None)
-        .expect("fixture frame must complete");
+        .expect("fixture frame must complete")
+        .into_tick();
 
     assert!(result.frame_committed);
     assert_eq!(result.executed_commands, 1);
@@ -187,7 +189,8 @@ fn network_modal_does_not_execute_game_speed_ingress() {
 
     let result = sim
         .advance_master_frame(&[command], None, None, 67, TickLane::NetworkModal, None)
-        .expect("fixture frame must complete");
+        .expect("fixture frame must complete")
+        .into_tick();
 
     assert_eq!(result.executed_commands, 0);
     assert_eq!(sim.session.game_options.game_speed, 1);
@@ -291,7 +294,8 @@ fn master_frame_hash_observes_living_animation_completion_facing() {
 
     let result = sim
         .advance_master_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
-        .expect("fixture frame must complete");
+        .expect("fixture frame must complete")
+        .into_tick();
 
     let entity = sim.substrate.entities.get(1).expect("living infantry");
     assert_eq!(entity.body_facing.destination(), 0x8000);
@@ -707,7 +711,8 @@ fn terminal_master_frame_visits_class_sequence_before_exit_without_frame_commit(
 
     let result = sim
         .advance_master_frame(&[exit], Some(&rules), None, 67, TickLane::Ordinary, None)
-        .expect("fixture frame must complete");
+        .expect("fixture frame must complete")
+        .into_tick();
 
     // Main_Tick's live Logic walk precedes EventClass's EXIT tail. Original
     // Infantry520AE0 therefore completes this supplied Idle1 boundary before
@@ -4316,15 +4321,9 @@ fn spawn_object_reads_the_live_terrain_level() {
     ))
     .expect("GI fixture");
     let mut sim = Simulation::new();
-    let terrain = ResolvedTerrainGrid::from_cells(
-        6,
-        6,
-        (0..6u16)
-            .flat_map(|ry| {
-                (0..6u16).map(move |rx| crate::map::resolved_terrain::test_flat_cell(rx, ry))
-            })
-            .collect(),
-    );
+    // Ordinary Unlimbo still requires the real Clear/Foot speed row after
+    // the level changes; a flat cell with unresolved rows is not passable.
+    let terrain = crate::map::resolved_terrain::test_flat_ground_grid(6);
     install_rectangular_test_playfield(&mut sim, terrain.width(), terrain.height());
     sim.install_resolved_terrain_for_new_map(terrain);
     // The whole plateau is raised after load, as a level write would.

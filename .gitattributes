@@ -1,0 +1,17 @@
+# Native replay and proof identities hash exact bytes, including LF endings.
+tools/spatial_oracle/_factory_infantry_output/** -text
+tools/spatial_oracle/factory_infantry_output_replay/** -text
+tools/map_observation.barracks-*.example.json -text
+src/sim/docking/fixtures/building_exit_tables_native.json -text
+src/sim/production/fixtures/infantry_exit_native.json -text
+src/sim/world/fixtures/factory_infantry*.json -text
+src/sim/world/world_spawn/fixtures/infantry_unlimbo*.json -text
+# These imported caller snapshots preserve the recorded extra newline at EOF.
+tools/spatial_oracle/_factory_infantry_output/admitted.py whitespace=-blank-at-eof
+tools/spatial_oracle/_factory_infantry_output/construction.py whitespace=-blank-at-eof
+tools/spatial_oracle/_factory_infantry_output/exit.py whitespace=-blank-at-eof
+tools/spatial_oracle/_factory_infantry_output/factory.py whitespace=-blank-at-eof
+tools/spatial_oracle/_factory_infantry_output/gate.py whitespace=-blank-at-eof
+tools/spatial_oracle/_factory_infantry_output/idle.py whitespace=-blank-at-eof
+tools/spatial_oracle/_factory_infantry_output/phase.py whitespace=-blank-at-eof
+tools/spatial_oracle/_factory_infantry_output/producer.py whitespace=-blank-at-eof

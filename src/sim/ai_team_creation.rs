@@ -668,7 +668,9 @@ fn factories_admit(
                     entry.member_type.category,
                     sim.interner.resolve(entry.member_type.id),
                 )
-                .is_some_and(|obj| find_factory(sim, rules, owner, obj, true, false).is_some())
+                .is_some_and(|obj| {
+                    find_factory(sim, rules, owner, obj, true, true, false).is_some()
+                })
         })
 }
 

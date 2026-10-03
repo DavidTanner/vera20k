@@ -8,6 +8,148 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::parachute_descent::ParachuteDescentState;
 
+fn output_arrival_fixture() -> (Simulation, RuleSet) {
+    use crate::map::entities::EntityCategory;
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
+
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n0=E1\n[E1]\nStrength=125\nSpeed=4\n\
+         [BuildingTypes]\n0=GAPILE\n[GAPILE]\nStrength=500\nHospital=no\nWeaponsFactory=no\n",
+    ))
+    .unwrap();
+    let mut sim = Simulation::with_seed(31);
+    sim.fog.width = 32;
+    sim.fog.height = 32;
+    sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
+        base: 0,
+        off_fc: -100,
+        off_100: -100,
+        off_104: 200,
+        off_108: 200,
+    });
+    for (id, name, category, cell) in [
+        (1, "E1", EntityCategory::Infantry, (15, 16)),
+        (2, "GAPILE", EntityCategory::Structure, (15, 14)),
+    ] {
+        let mut entity =
+            GameEntity::test_default_of_category(id, name, "Americans", cell.0, cell.1, category);
+        entity.owner = sim.intern("Americans");
+        entity.type_ref = sim.intern(name);
+        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.cell_marked = true;
+        if category == EntityCategory::Infantry {
+            entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
+            entity.navigation.nav_com = Some(NavTargetRef::cell(15, 16));
+            entity.in_playfield = false;
+        }
+        sim.substrate.entities.insert(entity);
+    }
+    for message in [RadioMessage::Hello, RadioMessage::Tether] {
+        assert_eq!(
+            radio::transmit(
+                &mut sim,
+                1,
+                2,
+                message,
+                RadioPayload::default(),
+                Some(&rules)
+            ),
+            RadioResponse::Roger
+        );
+    }
+    radio::take_transmit_log();
+    (sim, rules)
+}
+
+/// Whole original Infantry arrival519630 calls51A80C before the Foot tail;
+/// P2's two-GI output observes8→25→25→25→3 and untouched three RNG streams.
+/// This focused supplied-arrival control covers that canonical producer and
+/// receiver composition, not Factory cadence or the full paid Walk path.
+#[test]
+fn infantry_arrival_runs_reciprocal_clearance_then_the_existing_foot_tail() {
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::movement::PerCellReason;
+    use crate::sim::radio;
+
+    let (mut sim, rules) = output_arrival_fixture();
+    let rng_before = sim.rng_state();
+    sim.per_cell_process(1, PerCellReason::TurnComplete, Some(&rules), None)
+        .unwrap();
+    assert!(radio::take_transmit_log().is_empty());
+    assert_eq!(
+        sim.substrate.entities.get(1).unwrap().dock_entered_with,
+        Some(2)
+    );
+    assert!(!sim.substrate.entities.get(1).unwrap().in_playfield);
+
+    sim.per_cell_process(1, PerCellReason::Arrival, Some(&rules), None)
+        .unwrap();
+
+    let actual = radio::take_transmit_log()
+        .into_iter()
+        .map(|event| (event.sender_sid, event.msg, event.target_sid, event.reply))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        vec![
+            (1, 8, 2, Some(1)),
+            (2, 25, 1, Some(1)),
+            (1, 25, 2, Some(1)),
+            (2, 25, 1, Some(0)),
+            (2, 3, 1, Some(1)),
+        ]
+    );
+    for id in [1, 2] {
+        let entity = sim.substrate.entities.get(id).unwrap();
+        assert_eq!(entity.dock_entered_with, None);
+        assert!(entity.radio_contacts.is_empty());
+    }
+    let infantry = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(
+        infantry.navigation.nav_com,
+        Some(NavTargetRef::cell(15, 16))
+    );
+    assert!(infantry.in_playfield, "the existing Foot tail still runs");
+    assert_eq!(sim.rng_state(), rng_before);
+
+    sim.per_cell_process(1, PerCellReason::Arrival, Some(&rules), None)
+        .unwrap();
+    assert!(
+        radio::take_transmit_log().is_empty(),
+        "live tether is re-read"
+    );
+}
+
+///51A7F8 gates on Techno+418, not the presence of a contact. A contact-only
+/// arrival is not a factory-specific forced teardown.
+#[test]
+fn an_untethered_infantry_arrival_preserves_its_contact_and_runs_the_foot_tail() {
+    use crate::sim::movement::PerCellReason;
+    use crate::sim::radio::{self, RadioMessage, RadioPayload};
+
+    let (mut sim, rules) = output_arrival_fixture();
+    radio::transmit(
+        &mut sim,
+        1,
+        2,
+        RadioMessage::Untether,
+        RadioPayload::default(),
+        Some(&rules),
+    );
+    radio::take_transmit_log();
+    sim.per_cell_process(1, PerCellReason::Arrival, Some(&rules), None)
+        .unwrap();
+
+    assert!(radio::take_transmit_log().is_empty());
+    for (id, partner) in [(1, 2), (2, 1)] {
+        let entity = sim.substrate.entities.get(id).unwrap();
+        assert_eq!(entity.dock_entered_with, None);
+        assert_eq!(entity.radio_contacts.slot(0), Some(partner));
+    }
+    assert!(sim.substrate.entities.get(1).unwrap().in_playfield);
+}
+
 /// Object AI `0x005F3F8D` calls `Per_Cell_Process(2)` when a fall grounds,
 /// in the cell it fell through too; the Foot body's Techno tail then
 /// promotes the object into the playfield (`0x006F511A`). The copy this

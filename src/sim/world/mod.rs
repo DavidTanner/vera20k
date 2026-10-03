@@ -218,6 +218,21 @@ pub struct TickResult {
     pub movement: movement::MovementTickStats,
 }
 
+/// The master spine retains its admitted command batch for the live recorder.
+/// Fixture callers can consume the tick without draining presentation queues.
+#[derive(Debug)]
+pub(crate) struct MasterFrameOutput {
+    tick: TickResult,
+    admitted_commands: Vec<CommandEnvelope>,
+}
+
+impl MasterFrameOutput {
+    #[cfg(test)]
+    pub(crate) fn into_tick(self) -> TickResult {
+        self.tick
+    }
+}
+
 /// One authoritative frame plus the transient facts emitted while producing it.
 ///
 /// Channel order is preserved within each vector. The app owns cross-channel
@@ -225,6 +240,7 @@ pub struct TickResult {
 /// not invent a single mixed event timeline.
 #[derive(Debug)]
 pub(crate) struct SimFrameOutput {
+    admitted_commands: Vec<CommandEnvelope>,
     pub tick: TickResult,
     pub trigger_effects: Vec<TriggerEffect>,
     pub lifecycle_outputs: Vec<LifecycleOutput>,
@@ -237,6 +253,12 @@ pub(crate) struct SimFrameOutput {
     pub fire_events: Vec<SimFireEvent>,
     pub combat_lights: Vec<crate::sim::combat::CombatLightRequest>,
     pub(crate) lighting_events: Vec<crate::sim::light_sources::LightingEvent>,
+}
+
+impl SimFrameOutput {
+    pub(crate) fn take_admitted_commands(&mut self) -> Vec<CommandEnvelope> {
+        std::mem::take(&mut self.admitted_commands)
+    }
 }
 
 /// Front-end admission lane for one Main_Tick call.
@@ -6098,6 +6120,7 @@ impl Simulation {
             None,
         )
         .expect("fixture frame must complete")
+        .into_tick()
     }
 
     /// App-facing authoritative frame transaction.
@@ -6116,7 +6139,7 @@ impl Simulation {
         lane: TickLane,
         trigger_inputs: Option<TriggerInputs<'_>>,
     ) -> Result<SimFrameOutput, FrameAdvanceError> {
-        let tick = self.advance_master_frame(
+        let frame = self.advance_master_frame(
             commands,
             rules,
             overlay_registry,
@@ -6124,10 +6147,14 @@ impl Simulation {
             lane,
             trigger_inputs,
         )?;
-        Ok(self.collect_frame_output(tick))
+        Ok(self.collect_frame_output(frame))
     }
 
-    fn collect_frame_output(&mut self, tick: TickResult) -> SimFrameOutput {
+    fn collect_frame_output(&mut self, frame: MasterFrameOutput) -> SimFrameOutput {
+        let MasterFrameOutput {
+            tick,
+            admitted_commands,
+        } = frame;
         self.flush_radiation_lighting();
         let lighting_events = std::mem::take(&mut self.lighting_sources.pending);
         let trigger_effects = std::mem::take(&mut self.trigger_effects);
@@ -6145,6 +6172,7 @@ impl Simulation {
         let fire_events = std::mem::take(&mut self.fire_events);
         let sound_events = std::mem::take(&mut self.sound_events);
         SimFrameOutput {
+            admitted_commands,
             tick,
             trigger_effects,
             lifecycle_outputs,
@@ -6172,7 +6200,7 @@ impl Simulation {
         tick_ms: u32,
         lane: TickLane,
         trigger_inputs: Option<TriggerInputs<'_>>,
-    ) -> Result<TickResult, FrameAdvanceError> {
+    ) -> Result<MasterFrameOutput, FrameAdvanceError> {
         self.combat_light_requests.clear();
         self.pending_projectile_detonations.clear();
         self.pending_wave_damage_requests.clear();
@@ -6201,6 +6229,12 @@ impl Simulation {
         }
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::SessionCommands);
+
+        let commands = if lane == TickLane::Ordinary {
+            self.admit_frame_commands(commands, rules)
+        } else {
+            commands.to_vec()
+        };
 
         // MainTick55DBC8 precedes Logic55DC9E (including trigger polling).
         self.sort_display_ground(rules);
@@ -6482,21 +6516,20 @@ impl Simulation {
             }
 
             // --- Phase 7: Production + Docks + Ore ---
-            // DEPENDS ON: combat (dead entities removed), movement (positions stable).
-            // PRODUCES: new entities (spawned units), credit changes, ore growth.
+            // DEPENDS ON: completed live-object visits, including depot spending.
+            // PRODUCES: factory charges/change flags, dock/ore updates.
             // Phase 7, FIRST production step — the authoritative factory sweep (C1:
             // factories step BEFORE the house tail `run_late_region`). The previous
             // tick's tail reconcile prepared the registry; `step_all` charges each armed
             // factory's per-step cost against the REAL wallet (house.economy.credits) in
-            // insertion_seq (temporal) order; the spawn/placement pass below then
-            // delivers completed builds and advances the queue-of-record.
+            // insertion_seq (temporal) order. Completed heads retain their
+            // change flag until the next Strip prefix; its PLACE event tail
+            // releases the object and advances the queue-of-record there.
             //
             // Native55AFB0 visits all objects before55B66A's Factory sweep.
             // Depot service now spends inside its Building mission visit, so
             // every factory observes the wallet after that object's repair.
             production::revalidate_and_step_factories(self, rules);
-            spawned_entities |=
-                production::tick_production_with_overlay_registry(self, rules, overlay_registry);
             #[cfg(test)]
             self.trace_house_ai_activation_order(
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
@@ -6515,7 +6548,7 @@ impl Simulation {
         // placement is project-deferred and kept in its current slot.
         let frame_committed = self.run_late_region(
             if lane == TickLane::Ordinary {
-                commands
+                &commands
             } else {
                 &[]
             },
@@ -6570,17 +6603,20 @@ impl Simulation {
         let terminal_score_finalized =
             self.natural_outcome_exit_ready() && self.finalize_terminal_score_snapshot();
         let state_hash = self.state_hash();
-        Ok(TickResult {
-            tick: self.session.tick,
-            frame_committed,
-            executed_commands,
-            state_hash,
-            terminal_score_finalized,
-            spawned_entities,
-            destroyed_structure,
-            ownership_changed: passenger_ownership_changed,
-            bridge_state_changed,
-            movement: movement_stats,
+        Ok(MasterFrameOutput {
+            admitted_commands: commands,
+            tick: TickResult {
+                tick: self.session.tick,
+                frame_committed,
+                executed_commands,
+                state_hash,
+                terminal_score_finalized,
+                spawned_entities,
+                destroyed_structure,
+                ownership_changed: passenger_ownership_changed,
+                bridge_state_changed,
+                movement: movement_stats,
+            },
         })
     }
 }
@@ -6672,6 +6708,9 @@ mod global_parity_harness_tests;
 #[cfg(test)]
 #[path = "production_shadow_tests.rs"]
 mod production_shadow_tests;
+
+#[cfg(test)]
+mod factory_infantry_output_tests;
 
 #[cfg(test)]
 #[path = "radar_dirty_ack_tests.rs"]

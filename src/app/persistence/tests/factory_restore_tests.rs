@@ -266,7 +266,11 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
         ),
         ("ready-building", "PARENT", ProductionCategory::Building),
         ("ready-defense", "DEFENSE", ProductionCategory::Defense),
-        ("mobile-retry", "MTNK", ProductionCategory::Vehicle),
+        (
+            "mobile-awaiting-producer",
+            "MTNK",
+            ProductionCategory::Vehicle,
+        ),
         ("absent-house", "E1", ProductionCategory::Infantry),
         ("retained-playfield", "E1", ProductionCategory::Infantry),
         ("unrelated-limbo", "PARENT", ProductionCategory::Building),
@@ -284,7 +288,10 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                 );
                 saved.production.next_enqueue_order = 3;
             }
-            "unpublished-complete" | "ready-building" | "ready-defense" | "mobile-retry" => {
+            "unpublished-complete"
+            | "ready-building"
+            | "ready-defense"
+            | "mobile-awaiting-producer" => {
                 assert!(
                     saved
                         .production
@@ -292,7 +299,11 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                         .test_arm_ready(owner, category)
                 );
                 if label != "unpublished-complete" {
-                    assert!(!crate::sim::production::tick_production(&mut saved, &rules));
+                    assert!(
+                        !crate::sim::production::dispatch_production_changes_for_tests(
+                            &mut saved, &rules, None
+                        )
+                    );
                     assert!(
                         saved
                             .production
@@ -472,7 +483,11 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     .factory_shadow
                     .test_arm_ready(owner, category)
             );
-            assert!(!crate::sim::production::tick_production(&mut saved, &rules));
+            assert!(
+                !crate::sim::production::dispatch_production_changes_for_tests(
+                    &mut saved, &rules, None
+                )
+            );
         }
         match label {
             "idle-owner-index" => {

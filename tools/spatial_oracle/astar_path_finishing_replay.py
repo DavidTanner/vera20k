@@ -6,7 +6,9 @@ only the explicitly recorded observation normalization lives here.
 from __future__ import annotations
 
 import argparse
+import ast
 from collections import Counter
+import difflib
 import gzip
 import hashlib
 import io
@@ -42,6 +44,7 @@ HASH_COMPOSITION_NORMALIZATION = ["tick_result.state_hash only"]
 HASH_COMPOSITION_GATE_FIELDS = {
     "VERA20K_DIAGNOSTIC_LEGACY_BUILDING_HASH": "legacy_building_hash",
     "VERA20K_DIAGNOSTIC_LEGACY_UNIT_DEPLOY_HASH": "legacy_unit_deploy_hash",
+    "VERA20K_BARRACKS_HASH_CONTROL": "barracks_hash_control",
 }
 MAX_RETAINED_INPUT_BYTES = 128 * 1024 * 1024
 
@@ -212,6 +215,9 @@ def check_hash_composition(receipt_path: Path) -> dict:
     inherited process environment is neither required nor exposed. The Unit
     deployment control switches only the expected final pins, so both runs must
     pass. Historical Building receipts retain their original exit contract.
+    The explicitly unlabelled barracks variant retains Cargo logs and exact
+    hash-control leaves while refusing to claim an unavailable whole-source
+    identity, per-run binary capture or labelled build manifest.
     """
     receipt_path = receipt_path.resolve()
     receipt_snapshot = require_regular_file(receipt_path, "hash-composition receipt")
@@ -229,10 +235,17 @@ def check_hash_composition(receipt_path: Path) -> dict:
     if "normalization" in receipt and first_difference(
             HASH_COMPOSITION_NORMALIZATION, receipt["normalization"]):
         raise ValueError("hash-composition normalization must remove only tick_result.state_hash")
-    binary = _composition_object(receipt["binary"], "binary",
-                                 ("manifest_file", "sha256", "source_sha256"), ("label",))
+    unlabelled = "identity_file" in require_object(receipt["binary"], "binary")
+    binary_fields = (("identity_file", "sha256", "source_sha256", "whole_source_identity_available")
+                     if unlabelled else ("manifest_file", "sha256", "source_sha256"))
+    binary = _composition_object(receipt["binary"], "binary", binary_fields, ("label",))
     require_sha256(binary["sha256"], "binary.sha256")
-    require_sha256(binary["source_sha256"], "binary.source_sha256")
+    if unlabelled:
+        require_value(binary["source_sha256"], None, "unlabelled binary.source_sha256")
+        require_value(binary["whole_source_identity_available"], False,
+                      "unlabelled binary.whole_source_identity_available")
+    else:
+        require_sha256(binary["source_sha256"], "binary.source_sha256")
     if "label" in binary:
         require_string(binary["label"], "binary.label")
     gate = _composition_object(receipt["gate"], "gate", ("file", "sha256", "environment"),
@@ -241,6 +254,8 @@ def check_hash_composition(receipt_path: Path) -> dict:
     gate_environment = require_string(gate["environment"], "gate.environment")
     if gate_environment not in HASH_COMPOSITION_GATE_FIELDS:
         raise ValueError("gate.environment is not a supported hash-composition control")
+    if unlabelled and gate_environment != "VERA20K_BARRACKS_HASH_CONTROL":
+        raise ValueError("unlabelled diagnostic identity supports only the recorded barracks hash control")
     gate_field = HASH_COMPOSITION_GATE_FIELDS[gate_environment]
     if "effect" in gate:
         require_string(gate["effect"], "gate.effect")
@@ -271,28 +286,64 @@ def check_hash_composition(receipt_path: Path) -> dict:
 
     if hashlib.sha256(retained(gate["file"], "gate.file")).hexdigest() != gate["sha256"]:
         raise ValueError("gate patch SHA mismatch")
-    manifest = parse_json_bytes(retained(binary["manifest_file"], "binary.manifest_file"), "cargo label manifest")
-    require_value(manifest.get("schema"), 1, "cargo label manifest.schema")
-    source = require_object(manifest.get("source"), "cargo label manifest.source")
-    if source.get("source_sha256") != binary["source_sha256"]:
-        raise ValueError("manifest source identity differs")
-    artifacts = require_array(manifest.get("artifacts"), "cargo label manifest.artifacts")
-    if not any(require_object(artifact, "artifact").get("sha256") == binary["sha256"] for artifact in artifacts):
-        raise ValueError("binary identity is absent from label manifest")
+    if unlabelled:
+        identity = _composition_object(parse_json_bytes(
+            retained(binary["identity_file"], "binary.identity_file"), "unlabelled binary identity"),
+            "unlabelled binary identity", ("schema_version", "kind", "recorded_path", "binary_sha256",
+                                           "cargo_manifest_available", "whole_source_identity_available",
+                                           "source_leaf", "limits"))
+        require_value(identity["schema_version"], 1, "unlabelled binary schema_version")
+        require_value(identity["kind"], "unlabelled-diagnostic-binary-identity", "unlabelled binary kind")
+        require_value(identity["binary_sha256"], binary["sha256"], "unlabelled binary SHA")
+        require_value(identity["cargo_manifest_available"], False, "unlabelled cargo_manifest_available")
+        require_value(identity["whole_source_identity_available"], False,
+                      "unlabelled whole_source_identity_available")
+        recorded_binary = require_string(identity["recorded_path"], "unlabelled recorded_path")
+        if not (PurePosixPath(recorded_binary).is_absolute() or PureWindowsPath(recorded_binary).is_absolute()):
+            raise ValueError("unlabelled recorded binary path must be absolute")
+        limits = require_array(identity["limits"], "unlabelled identity limits")
+        if not limits or any(not require_string(limit, "unlabelled identity limit") for limit in limits):
+            raise ValueError("unlabelled identity must retain its evidence limits")
+        leaf = _composition_object(identity["source_leaf"], "unlabelled source leaf",
+            ("path", "before_file", "before_sha256", "temporary_file", "temporary_sha256", "restored_sha256"))
+        require_value(leaf["path"], "src/sim/world/world_hash.rs", "unlabelled source leaf.path")
+        for phase in ("before", "temporary"):
+            data = retained(leaf[f"{phase}_file"], f"source leaf.{phase}_file")
+            if hashlib.sha256(data).hexdigest() != require_sha256(
+                    leaf[f"{phase}_sha256"], f"source leaf.{phase}_sha256"):
+                raise ValueError(f"unlabelled {phase} source leaf identity differs")
+        require_value(leaf["restored_sha256"], leaf["before_sha256"], "unlabelled restored source identity")
+        patch = "".join(difflib.unified_diff(
+            retained(leaf["before_file"], "before source").decode("utf-8").splitlines(keepends=True),
+            retained(leaf["temporary_file"], "temporary source").decode("utf-8").splitlines(keepends=True),
+            fromfile="a/" + leaf["path"], tofile="b/" + leaf["path"])).encode()
+        if patch != retained(gate["file"], "gate.file"):
+            raise ValueError("unlabelled gate patch differs from its exact source leaves")
+    else:
+        manifest = parse_json_bytes(retained(binary["manifest_file"], "binary.manifest_file"), "cargo label manifest")
+        require_value(manifest.get("schema"), 1, "cargo label manifest.schema")
+        source = require_object(manifest.get("source"), "cargo label manifest.source")
+        if source.get("source_sha256") != binary["source_sha256"]:
+            raise ValueError("manifest source identity differs")
+        artifacts = require_array(manifest.get("artifacts"), "cargo label manifest.artifacts")
+        if not any(require_object(artifact, "artifact").get("sha256") == binary["sha256"] for artifact in artifacts):
+            raise ValueError("binary identity is absent from label manifest")
     executions = {}
     for mode, enabled in (("control", "1"), ("current", None)):
         run = _composition_object(runs[mode], f"runs.{mode}", ("receipt_file",))
         execution = _composition_object(
             parse_json_bytes(retained(run["receipt_file"], f"runs.{mode}.receipt_file"), f"{mode} execution"),
             f"{mode} execution", ("schema_version", "mode", "command", "cwd", "exit_code", "seconds",
-                                  "binary_sha256", "binary_unchanged", "source_sha256", gate_field))
+                                  "binary_sha256", "binary_unchanged", "source_sha256", gate_field,
+                                  *(("log_file",) if unlabelled else ())))
         require_value(execution["schema_version"], 1, f"{mode} execution.schema_version")
         require_value(execution["mode"], mode, f"{mode} execution.mode")
         if (execution["binary_sha256"] != binary["sha256"]
                 or execution["source_sha256"] != binary["source_sha256"]
                 or execution["binary_unchanged"] is not True):
             raise ValueError(f"{mode}: execution binary/source identity differs")
-        if type(execution[gate_field]) is not type(enabled) or execution[gate_field] != enabled:
+        expected_gate = (mode == "control") if unlabelled else enabled
+        if type(execution[gate_field]) is not type(expected_gate) or execution[gate_field] != expected_gate:
             raise ValueError(f"{mode}: execution gate identity differs")
         command = require_array(execution["command"], f"{mode}.command")
         if not command or any(not require_string(argument, f"{mode}.command argument") for argument in command):
@@ -300,16 +351,34 @@ def check_hash_composition(receipt_path: Path) -> dict:
         cwd = require_string(execution["cwd"], f"{mode}.cwd")
         # These are recorded producer paths, not files opened on the checking
         # host. A saved macOS/Linux receipt must also validate on Windows.
-        for recorded_path in (command[0], cwd):
+        if unlabelled:
+            require_value(command[0], "cargo", f"{mode}: unlabelled recorded command")
+            log = retained(execution["log_file"], f"{mode}.log_file").decode("utf-8")
+            commands = [ast.literal_eval(line.removeprefix("Command: ")) for line in log.splitlines()
+                        if line.startswith("Command: ")]
+            if commands != [command] or f"Checkout: {cwd}\n" not in log:
+                raise ValueError(f"{mode}: unlabelled command/cwd differs from saved Cargo log")
+            path_type = PureWindowsPath if PureWindowsPath(recorded_binary).is_absolute() else PurePosixPath
+            relative_binary = path_type(recorded_binary).relative_to(path_type(cwd))
+            if not any(f"({value})" in log for value in (str(relative_binary), relative_binary.as_posix())):
+                raise ValueError(f"{mode}: unlabelled binary pathname differs from saved Cargo log")
+            summary = (f"test result: ok. {len(pins)} passed; 0 failed;" if execution["exit_code"] == 0
+                       else f"test result: FAILED. 0 passed; {len(pins)} failed;")
+            if summary not in log:
+                raise ValueError(f"{mode}: unlabelled test summary differs from saved Cargo log")
+        for recorded_path in ((cwd,) if unlabelled else (command[0], cwd)):
             if not (PurePosixPath(recorded_path).is_absolute()
                     or PureWindowsPath(recorded_path).is_absolute()):
                 raise ValueError(f"{mode}: execution command/cwd must be absolute")
         seconds = execution["seconds"]
-        if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
+        if unlabelled:
+            require_value(seconds, None, f"{mode}: unlabelled whole-command seconds unavailable")
+        elif type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
             raise ValueError(f"{mode}: execution seconds must be finite and nonnegative")
         exit_code = require_int(execution["exit_code"], f"{mode}.exit_code")
         allowed_exits = ((0, 101) if mode == "current"
-                         and gate_environment == "VERA20K_DIAGNOSTIC_LEGACY_BUILDING_HASH"
+                         and gate_environment in ("VERA20K_DIAGNOSTIC_LEGACY_BUILDING_HASH",
+                                                  "VERA20K_BARRACKS_HASH_CONTROL")
                          else (0,))
         if exit_code not in allowed_exits:
             raise ValueError(f"{mode}: execution exit is outside the recorded Rust test attribution")
@@ -358,11 +427,16 @@ def check_hash_composition(receipt_path: Path) -> dict:
         raise ValueError("comparison receipt changed")
     for snapshot in snapshots:
         assert_snapshot_unchanged(snapshot, str(snapshot.path))
-    return {"scope": "Rust-only same-binary hash-composition attribution",
+    result = {"scope": "Rust-only same-binary hash-composition attribution",
             "incoming_main": dict(incoming), "comparisons": results,
             "normalization": list(HASH_COMPOSITION_NORMALIZATION),
             "execution_exit_codes": {mode: execution["exit_code"] for mode, execution in executions.items()},
             "comparison_sha256": hashlib.sha256(_canonical(results)).hexdigest()}
+    if unlabelled:
+        result["binary_provenance"] = dict(sha256=binary["sha256"],
+            kind="unlabelled-diagnostic", whole_source_identity_available=False,
+            cargo_manifest_available=False, source_leaf=dict(leaf), limits=list(limits))
+    return result
 
 
 def check_main963(receipt_path: Path, current_observations: Path | None = None,
@@ -806,7 +880,7 @@ def main() -> None:
     parser.add_argument("--main963-receipt", type=Path,
                         help="check a separate strict main963 same-binary receipt")
     parser.add_argument("--hash-composition-receipt", type=Path,
-                        help="check a fixture-driven Rust-only same-binary Building hash attribution")
+                        help="check a fixture-driven Rust-only same-binary hash attribution")
     parser.add_argument("--gunner-migration-receipt", type=Path,
                         help="check guarded Rust IFV weapon/turret state migration observations")
     parser.add_argument("--normalize-final-caller-positions", action="store_true",

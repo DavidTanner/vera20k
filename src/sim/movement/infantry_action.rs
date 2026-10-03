@@ -451,7 +451,7 @@ impl Simulation {
         if self.infantry_sequencer(id, rules) {
             return Ok(bridge_changed);
         }
-        self.infantry_movement_actions(id, rules);
+        self.infantry_movement_actions(id, rules, registry);
         Ok(bridge_changed)
     }
 
@@ -652,12 +652,45 @@ impl Simulation {
     /// refusal, class target change or the rate-zero clock arm. Its readers
     /// observe the same byte; no pending-shot cache mirrors its lifetime.
     ///
-    /// Not run: the earlier movement recovery of `0x00520F40`
-    /// (`0x00520F40..0x00521144`), whose work VERA's movement adapter does.
+    /// The stopped Move prefix520F40..520FAF reuses the class destination
+    /// and idle owners. Its NavNULL arm consumes the archived factory rally
+    /// after Walk has released the barracks contact. The remaining recovery
+    /// branches520FB0..521144 are separate residuals, not approximated here.
     ///
     /// Original comparison: the 20 consumer rows of
     /// `tools/spatial_oracle/infantry_movement_action.json`.
-    pub(crate) fn infantry_movement_actions(&mut self, id: u64, rules: &RuleSet) {
+    pub(crate) fn infantry_movement_actions(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
+        let stopped_move = self.substrate.entities.get(id).is_some_and(|actor| {
+            actor.category == EntityCategory::Infantry
+                && actor.is_ai_alive()
+                && actor.mission.effective().known() == Some(crate::sim::mission::MissionType::Move)
+                && super::motion_query::is_moving(actor) == Some(false)
+        });
+        if stopped_move {
+            let destination = self
+                .substrate
+                .entities
+                .get(id)
+                .and_then(|actor| actor.navigation.nav_com);
+            if let Some(destination) = destination {
+                if let Err(cause) = self.set_infantry_destination(id, destination, rules, registry)
+                {
+                    log::debug!("Infantry {id} stopped Move destination: {cause}");
+                }
+                if let Some(actor) = self.substrate.entities.get_mut(id) {
+                    actor
+                        .foot_speed
+                        .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
+                }
+            } else {
+                self.infantry_enter_idle_mode(id, rules, registry);
+            }
+        }
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
         };

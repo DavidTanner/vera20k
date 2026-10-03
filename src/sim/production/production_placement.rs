@@ -164,31 +164,106 @@ pub fn cycle_active_producer_for_owner_category(
     true
 }
 
-/// Place a ready non-overlay building.
-///
-/// Wall callers must use `place_ready_building_with_overlays` so the
-/// authoritative overlay registry cannot be discarded implicitly.
-pub fn place_ready_building_without_overlays(
+/// One HouseClass::Place_Production4FB0E0 owner. A building PLACE uses
+/// its clicked type/cell; mobile type_index=-1 resolves the current category
+/// head when the queued event executes, not the object held when Strip issued it.
+pub fn place_production_with_overlays(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: &str,
-    type_id: &str,
-    rx: u16,
-    ry: u16,
-) -> bool {
-    place_ready_building_with_overlays(sim, rules, owner, type_id, rx, ry, None)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn place_ready_building_with_overlays(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    type_id: &str,
-    rx: u16,
-    ry: u16,
+    request: ProductionPlacement<'_>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> bool {
+    let (type_id, (rx, ry)) = match request {
+        ProductionPlacement::Building { type_id, cell } => (type_id, cell),
+        ProductionPlacement::Mobile { category } => {
+            use crate::sim::ai_base_building::BuildingExit;
+            let Some(owner_id) = sim.interner.get(owner) else {
+                return false;
+            };
+            let Some(factory) = sim
+                .production
+                .factory_shadow
+                .view(owner_id, category)
+                .filter(|factory| factory.ready)
+            else {
+                return false;
+            };
+            let Some(object) = factory.object else {
+                return false;
+            };
+            let Some(entity_id) = object.entity_id else {
+                return false;
+            };
+            let Some(obj) = sim.object_type(object.type_id, rules) else {
+                return false;
+            };
+            if obj.category == ObjectCategory::Building
+                || production_category_for_object(obj) != category
+            {
+                return false;
+            }
+            // Native wrapper5F5C20 -> TypeFindFactory5F7900. A null
+            // Infantry/Aircraft producer leaves the head and queue untouched.
+            // Unit alone retries with its radio-selection restriction skipped.
+            let producer = super::find_factory(sim, rules, owner_id, obj, false, true, false)
+                .or_else(|| {
+                    (obj.category == ObjectCategory::Vehicle)
+                        .then(|| super::find_factory(sim, rules, owner_id, obj, true, true, false))
+                        .flatten()
+                });
+            let Some(producer) = producer else {
+                return false;
+            };
+            let exit = super::production_queue::exit_produced_object(
+                sim,
+                rules,
+                producer,
+                entity_id,
+                overlay_registry,
+            );
+            let accepted = exit == BuildingExit::Placed
+                || exit == BuildingExit::TryLater
+                    && sim
+                        .production
+                        .factory_shadow
+                        .building_factory(producer)
+                        .is_some();
+            // House4FB57F's +524 is a producer Factory pointer, not a
+            // product pointer. The Exit1/+524 exception is instruction-established
+            // only; no human/AI held-pointer alias transfer is invented here.
+            if accepted {
+                // House4FB5FB queries the selected producer's GetCoords447AC0,
+                // then4FB600..FB622 truncates XY into packed CellStruct words.
+                // Source: factory_infantry_output native notification controls;
+                // a fallback GI can occupy14,15 while radar6 names15,15.
+                if sim.houses.get(&owner_id).is_some_and(|house| {
+                    house.is_controlled_by_human(sim.session.game_mode_nonzero)
+                }) && let Some(factory_entity) = sim.substrate.entities.get(producer)
+                {
+                    let coords = crate::sim::movement::ground_pose::object_get_coords(
+                        factory_entity,
+                        sim.resolved_terrain.as_ref(),
+                    );
+                    sim.sound_events
+                        .push(crate::sim::world::SimSoundEvent::UnitComplete {
+                            owner: owner_id,
+                            radar: crate::sim::radar::RadarEventRequest::new(
+                                crate::sim::radar::RadarEventType::UnitReady,
+                                crate::util::lepton::lepton_to_cell_packed(coords.x) as u16,
+                                crate::util::lepton::lepton_to_cell_packed(coords.y) as u16,
+                            ),
+                        });
+                }
+                super::factory_lifecycle::release_delivered_mobile(sim, rules, owner_id, category);
+            } else {
+                // Exit0 or Exit1 with producer+524zero: refund the actually
+                // charged complete object, destroy it and start the queued head.
+                super::factory_lifecycle::refund_failed_delivery(sim, rules, owner_id, category);
+            }
+            return accepted;
+        }
+    };
     let Some(obj) = rules.object(type_id) else {
         return false;
     };
@@ -249,7 +324,7 @@ pub fn place_ready_building_with_overlays(
     // Original PLACE4FB1DA keeps Object::FindFactory(0,0)'s yard through
     // HELLO, Unlimbo, the child's C message and the yard's FirstContact BREAK.
     // The completed object is owned by the house factory, not by this yard.
-    let Some(yard) = super::find_factory(sim, rules, owner_id, obj, false, false) else {
+    let Some(yard) = super::find_factory(sim, rules, owner_id, obj, false, false, false) else {
         return false;
     };
     crate::sim::radio::transmit(

@@ -170,11 +170,30 @@ impl Fixture {
         };
         let mut ids = Vec::new();
         for i in 0..count {
-            let pax = self.spawn("E1", trx + 2 + i as u16, try_ + 2, 0);
-            assert_eq!(
-                self.sim.techno_limbo_with_rules(pax, &self.rules, None),
-                ConcealOutcome::Concealed
-            );
+            let cell = (trx + 2 + i as u16, try_ + 2);
+            let water = self
+                .sim
+                .resolved_terrain
+                .as_ref()
+                .unwrap()
+                .cell(cell.0, cell.1)
+                .unwrap()
+                .is_water;
+            let pax = if water {
+                // Supply already-limbo cargo for the landing-craft prestate.
+                // Ordinary Foot Unlimbo correctly refuses this water row;
+                // the measured unload starts with passengers already inside.
+                self.sim
+                    .spawn_object_limbo_at_height("E1", OWNER, cell.0, cell.1, 0, 0, &self.rules)
+                    .unwrap()
+            } else {
+                let pax = self.spawn("E1", cell.0, cell.1, 0);
+                assert_eq!(
+                    self.sim.techno_limbo_with_rules(pax, &self.rules, None),
+                    ConcealOutcome::Concealed
+                );
+                pax
+            };
             let boarded = self
                 .sim
                 .substrate

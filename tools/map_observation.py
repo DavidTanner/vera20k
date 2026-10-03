@@ -23,19 +23,22 @@ from tools.tactical_certification.core import (
 from tools.tactical_certification.profile import load_contract, reject_denied_environment
 
 ROOT = Path(__file__).resolve().parents[1]
-RUN_SCHEMA = 'vera20k.map-observation-run.v6'
+RUN_SCHEMA = 'vera20k.map-observation-run.v7'
+DOCKING_RUN_SCHEMA = 'vera20k.map-observation-run.v6'
 BUILDING_RUN_SCHEMA = 'vera20k.map-observation-run.v5'
 TRAJECTORY_RUN_SCHEMA = 'vera20k.map-observation-run.v4'
 PRIOR_RUN_SCHEMA = 'vera20k.map-observation-run.v3'
 LEGACY_CLOCK_RUN_SCHEMA = 'vera20k.map-observation-run.v2'
 LEGACY_RUN_SCHEMA = 'vera20k.map-observation-run.v1'
-CHILD_SCHEMA = 'vera20k.map-observation.v6'
+CHILD_SCHEMA = 'vera20k.map-observation.v7'
+DOCKING_CHILD_SCHEMA = 'vera20k.map-observation.v6'
 BUILDING_CHILD_SCHEMA = 'vera20k.map-observation.v5'
 TRAJECTORY_CHILD_SCHEMA = 'vera20k.map-observation.v4'
 PRIOR_CHILD_SCHEMA = 'vera20k.map-observation.v3'
 LEGACY_CHILD_SCHEMA = 'vera20k.map-observation.v2'
 CLOCK_POLICY = 'map-exact-step-presentation-v1'
-OBSERVATION_POLICY = 'map-ordinary-command-observation-v3'
+OBSERVATION_POLICY = 'map-ordinary-command-observation-v4'
+DOCKING_OBSERVATION_POLICY = 'map-ordinary-command-observation-v3'
 BUILDING_OBSERVATION_POLICY = 'map-ordinary-command-observation-v2'
 TRAJECTORY_OBSERVATION_POLICY = 'map-ordinary-command-observation-v1'
 PROFILE_V1 = 'vera20k.map-observation-profile.v1'
@@ -44,7 +47,7 @@ MAX_OBSERVATION_SAMPLES = 100_000
 MAX_RECEIPT_BYTES = 128 * 1024 * 1024
 ORDER_VARIANTS = frozenset(('Move', 'Stop', 'Attack', 'ForceAttack', 'Guard',
                             'DeployMcv', 'ForceAttackCell', 'CaptureBuilding', 'ToggleRepair',
-                            'EnterTransport', 'UnloadPassengers', 'RepairAtDepot', 'SellBuilding'))
+                            'EnterTransport', 'UnloadPassengers', 'RepairAtDepot', 'SellBuilding', 'SetRally'))
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
 EXTENSION_FIELDS = frozenset(('commands', 'observe_owners', 'observe_types', 'camera_cell', 'terrain_cells'))
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
@@ -473,7 +476,7 @@ def _houses(value: Any, owners: list[str], label: str) -> int:
 
 
 def _actor(value: Any, label: str, *, building_state: bool = True,
-           docking_state: bool = True) -> tuple[int, str]:
+           docking_state: bool = True, walk_state: bool = True) -> tuple[int, str]:
     actor = require_object(value, label)
     require_exact_keys(actor, ('stable_id', 'owner', 'type_id', 'category', 'cell',
                               'physical_leptons', 'on_bridge', 'health', 'active',
@@ -525,7 +528,9 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
     else:
         foot = require_object(foot, f'{label}.foot')
         require_exact_keys(foot, ('retarget_after_stop_688', 'firing_sequence_latch_68d',
-                                  'infantry_doing', 'navigation_leptons', 'navigation_unavailable'),
+                                  'infantry_doing', 'navigation_leptons', 'navigation_unavailable',
+                                  *(('walk_head_leptons', 'walk_destination_leptons',
+                                     'walk_is_moving') if walk_state else ())),
                            f'{label}.foot')
         if type(foot['retarget_after_stop_688']) is not bool:
             raise ValidationError(f'{label}.foot.retarget_after_stop_688 must be a boolean')
@@ -540,6 +545,17 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
         else:
             _coordinate(foot['navigation_leptons'], f'{label}.foot.navigation_leptons', leptons=True)
             require_value(foot['navigation_unavailable'], None, f'{label}.foot.navigation_unavailable')
+        if walk_state:
+            for key in ('walk_head_leptons', 'walk_destination_leptons'):
+                if foot[key] is not None:
+                    _coordinate(foot[key], f'{label}.foot.{key}', leptons=True)
+            moving = foot['walk_is_moving']
+            if moving is None:
+                # No active Walk instance: its coordinates are unavailable too.
+                for key in ('walk_head_leptons', 'walk_destination_leptons'):
+                    require_value(foot[key], None, f'{label}.foot.{key}')
+            elif type(moving) is not bool:
+                raise ValidationError(f'{label}.foot.walk_is_moving must be boolean or null')
     return identity, owner
 
 
@@ -584,13 +600,14 @@ def _terrain(value: Any, expected_cell: Any, label: str) -> None:
 
 
 def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, Any], *,
-                  building_state: bool = True, docking_state: bool = True) -> dict[str, Any]:
+                  building_state: bool = True, docking_state: bool = True,
+                  walk_state: bool = True) -> dict[str, Any]:
     label = 'observations'
     observations = require_object(value, label)
     require_exact_keys(observations, ('policy', 'owners', 'commands', 'frames',
                                      *(('type_filter',) if 'observe_types' in profile else ()),
                                      *(('rule_types',) if building_state else ())), label)
-    policy = (OBSERVATION_POLICY if docking_state else
+    policy = (OBSERVATION_POLICY if walk_state else DOCKING_OBSERVATION_POLICY if docking_state else
               BUILDING_OBSERVATION_POLICY if building_state else TRAJECTORY_OBSERVATION_POLICY)
     require_value(observations['policy'], policy, f'{label}.policy')
     if building_state:
@@ -647,7 +664,7 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
         for index, value in enumerate(actors):
             actor_label = f'{row_label}.actors[{index}]'
             identity, owner = _actor(value, actor_label, building_state=building_state,
-                                     docking_state=docking_state)
+                                     docking_state=docking_state, walk_state=walk_state)
             if identity <= previous_id:
                 raise ValidationError(f'{actor_label}.stable_id is repeated or out of order')
             if identity not in seen and owner not in owners:
@@ -684,7 +701,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
 def validate_capture(directory: Path, profile: Mapping[str, Any],
                      identities: Mapping[str, Mapping[str, Any]], *,
                      legacy_clock: bool = False, prior_observations: bool = False,
-                     prior_trajectory: bool = False, building_only: bool = False) -> _Capture:
+                     prior_trajectory: bool = False, building_only: bool = False,
+                     docking_only: bool = False) -> _Capture:
     """Check child semantics/bytes against independently checked input identities.
 
     Identities describe original runtime paths. Retained copies have their own real
@@ -699,7 +717,8 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
     expected_schema = (LEGACY_CHILD_SCHEMA if legacy_clock else
                        PRIOR_CHILD_SCHEMA if prior_observations else
                        TRAJECTORY_CHILD_SCHEMA if prior_trajectory else
-                       BUILDING_CHILD_SCHEMA if building_only else CHILD_SCHEMA)
+                       BUILDING_CHILD_SCHEMA if building_only else
+                       DOCKING_CHILD_SCHEMA if docking_only else CHILD_SCHEMA)
     require_value(manifest.get('schema_version'),
                   expected_schema, 'schema_version')
     if manifest.get('status') != 'COMPLETE':
@@ -773,7 +792,8 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
     else:
         observations = _observations(manifest.get('observations'), profile, final,
                                      building_state=not prior_trajectory,
-                                     docking_state=not (prior_trajectory or building_only))
+                                     docking_state=not (prior_trajectory or building_only),
+                                     walk_state=not (prior_trajectory or building_only or docking_only))
         camera = require_object(render.get('camera'), 'render.camera')
         require_exact_keys(camera, ('requested_cell', 'top_left', 'zoom'), 'render.camera')
         _require_equal(camera['requested_cell'], profile.get('camera_cell'), 'render.camera.requested_cell')
@@ -914,7 +934,7 @@ def _load_run(directory: Path, allow_legacy_inputs: bool,
                                          maximum_length=MAX_RECEIPT_BYTES)
     schema = report.get('schema_version')
     legacy = schema == LEGACY_RUN_SCHEMA
-    if schema not in (RUN_SCHEMA, BUILDING_RUN_SCHEMA, TRAJECTORY_RUN_SCHEMA, PRIOR_RUN_SCHEMA,
+    if schema not in (RUN_SCHEMA, DOCKING_RUN_SCHEMA, BUILDING_RUN_SCHEMA, TRAJECTORY_RUN_SCHEMA, PRIOR_RUN_SCHEMA,
                       LEGACY_CLOCK_RUN_SCHEMA, LEGACY_RUN_SCHEMA):
         raise ValidationError(f'unsupported observation wrapper schema: {schema!r}')
     if legacy and not allow_legacy_inputs:
@@ -924,6 +944,7 @@ def _load_run(directory: Path, allow_legacy_inputs: bool,
     prior_observations = schema == PRIOR_RUN_SCHEMA
     prior_trajectory = schema == TRAJECTORY_RUN_SCHEMA
     building_only = schema == BUILDING_RUN_SCHEMA
+    docking_only = schema == DOCKING_RUN_SCHEMA
     if legacy_clock and not allow_legacy_clock:
         raise ValidationError('legacy wall-clock evidence requires --allow-legacy-clock; '
                               'it has no deterministic presentation schedule')
@@ -975,7 +996,8 @@ def _load_run(directory: Path, allow_legacy_inputs: bool,
     _require_equal(report.get('command'), expected_command, 'run.command')
     checked = validate_capture(directory / 'child-output', profile, identities,
                                legacy_clock=legacy_clock, prior_observations=prior_observations,
-                               prior_trajectory=prior_trajectory, building_only=building_only)
+                               prior_trajectory=prior_trajectory, building_only=building_only,
+                               docking_only=docking_only)
     _require_equal(report.get('capture'), checked.evidence, 'run.capture')
     logs = require_object(report.get('logs'), 'run.logs')
     snapshots = [run_snapshot, *inputs.values(), contract.snapshot, profile_snapshot,

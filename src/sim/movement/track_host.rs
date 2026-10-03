@@ -10,7 +10,6 @@
 use super::ground_pose::{position_world_coord, set_height};
 use super::locomotor::MovementLayer;
 use super::track_process::{TrackFamily, TrackInvocation, TrackPayment, TrackProcess};
-#[cfg(test)]
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
@@ -988,18 +987,25 @@ impl Simulation {
             < 2 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS)
     }
 
-    /// Unit EnterIdle738970(first_arg,1), shared by mission exits, initial
-    /// placement, and locomotor/radio callers. The first argument skips the
-    /// human harvester land check when nonzero. Native executable controls:
-    /// tools/spatial_oracle/harvest_attack_return.json, track_destination.json
-    /// and foot_enter_idle.json. Foot planning-path and saved AttackMove state
-    /// remain separate residuals; ordinary Attack clears those saved inputs.
-    pub(crate) fn unit_enter_idle_mode(
+    /// Shared Foot EnterIdle4D82B0 base, reused by class receivers.
+    /// Executed native latch/END/NavQueue controls: foot_enter_idle.json.
+    /// Actual-GI Archive consumer: basic-factory-output-prerequisites packet.
+    /// The class tail runs even when this base returns false for the latch.
+    /// Scatter+687, legacy planning+520 and non-cell NavQueue remain named
+    /// sibling residuals; fresh factory E1 has their constructor-empty state.
+    pub(crate) fn foot_enter_idle_base(
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        skip_human_land_check: bool,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> bool {
+        let Some(entity) = self.substrate.entities.get_mut(id) else {
+            return false;
+        };
+        if entity.mission_leaf.foot_idle_entry_latch() != 0 {
+            return false;
+        }
+        entity.mission_leaf.set_foot_idle_entry_latch(1);
         // Foot4D82D9 -> Techno709A54 lets a held Temporal target go first.
         self.temporal_release_if_warping(id);
         let Some(entity) = self.substrate.entities.get_mut(id) else {
@@ -1034,9 +1040,20 @@ impl Simulation {
                     | crate::rules::locomotor_type::LocomotorKind::Ship
             )
         });
-        let setter_now = queued_cell.is_some()
-            && !track
-            && rules.is_some_and(|rules| self.unit_setter_receiver(id, Some(rules)));
+        let category = entity.category;
+        let setter_now = queued_cell.is_some_and(|(rx, ry)| {
+            !track
+                && rules.is_some_and(|rules| match category {
+                    EntityCategory::Unit => self.unit_setter_receiver(id, Some(rules)),
+                    EntityCategory::Infantry => {
+                        let target = crate::sim::components::NavTargetRef::cell(rx, ry);
+                        self.infantry_setter_receiver(id, target, rules)
+                            && self
+                                .infantry_destination_inputs_available(id, target, rules, registry)
+                    }
+                    _ => false,
+                })
+        });
         let entity = self
             .substrate
             .entities
@@ -1053,12 +1070,15 @@ impl Simulation {
             entity.navigation.pending_arrival_clear = true;
         }
         if let (Some((rx, ry)), Some(rules)) = (queued_cell.filter(|_| setter_now), rules) {
-            self.set_unit_destination(
-                id,
-                crate::sim::components::NavTargetRef::cell(rx, ry),
-                rules,
-                false,
-            );
+            let target = crate::sim::components::NavTargetRef::cell(rx, ry);
+            if category == EntityCategory::Infantry {
+                // Infantry51AA40 does not read the queue-clear flag; its
+                // shared setter supplies the same receiver for mode0/1.
+                self.set_infantry_destination(id, target, rules, registry)
+                    .expect("checked Infantry NavQueue destination inputs");
+            } else {
+                self.set_unit_destination(id, target, rules, false);
+            }
             let entity = self
                 .substrate
                 .entities
@@ -1068,19 +1088,81 @@ impl Simulation {
                 entity.navigation.nav_queue.remove(0);
             }
         }
-        let entity = self
-            .substrate
-            .entities
-            .get_mut(id)
-            .expect("same idle-mode actor");
-        // Normal Foot4D8538 invokes +544(0.0); Unit dispatch4D3710
-        // writes Foot+578. The true-return NavQueue arm skips this setter.
-        if !ended_drive && entity.navigation.nav_queue.is_empty() && queued_cell.is_none() {
+        // A consumed NavQueue or ended piggyback returns true before
+        // the Infantry Archive arm and final zero-speed setter.
+        if ended_drive || queued_cell.is_some() {
+            return true;
+        }
+        // Foot4D8472..852A: Archive belongs to Techno, and +2DC is
+        // SlaveOwner, not Team (+5D4). The same-cell comparison calls
+        // virtual+48 on both owners and truncates signed leptons /256.
+        let archived = self.substrate.entities.get(id).and_then(|entity| {
+            if entity.category != EntityCategory::Infantry || entity.slave.owner().is_some() {
+                return None;
+            }
+            let target = entity.archive_target()?;
+            let here =
+                super::ground_pose::object_get_coords(entity, self.resolved_terrain.as_ref());
+            let there = super::ground_pose::target_get_coords(
+                target,
+                &self.substrate.entities,
+                self.resolved_terrain.as_ref(),
+            )?;
+            let cell = |coord: DriveCoord| ((coord.x / 256) as i16, (coord.y / 256) as i16);
+            (cell(here) != cell(there)).then_some((
+                target,
+                entity.mission.current().known() == Some(MissionType::AreaGuard),
+            ))
+        });
+        if let (Some((target, area_guard)), Some(rules)) = (archived, rules) {
+            if !area_guard {
+                let _ = self.mission_queue_exact(
+                    id,
+                    MissionId::from_known(MissionType::Move),
+                    0,
+                    self.session.binary_frame,
+                    &crate::sim::mission::authority::EntityReadyInputProvider,
+                );
+                if let Some(entity) = self.substrate.entities.get_mut(id) {
+                    entity.set_archive_target(None);
+                }
+            }
+            let destination = match target {
+                crate::sim::combat::TargetKind::Cell(rx, ry) => {
+                    crate::sim::components::NavTargetRef::cell(rx, ry)
+                }
+                crate::sim::combat::TargetKind::Entity(id) => {
+                    crate::sim::components::NavTargetRef::object(id)
+                }
+            };
+            if let Err(cause) = self.set_infantry_destination(id, destination, rules, registry) {
+                log::debug!("Infantry {id} idle Archive destination: {cause}");
+            }
+        }
+        if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity
                 .foot_speed
                 .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
         }
-        let saved_base_return = ended_drive || queued_cell.is_some();
+        false
+    }
+
+    /// Unit EnterIdle738970(first_arg,1), shared by mission exits, initial
+    /// placement, and locomotor/radio callers. The first argument skips the
+    /// human harvester land check when nonzero. Native executable controls:
+    /// tools/spatial_oracle/harvest_attack_return.json, track_destination.json
+    /// and foot_enter_idle.json. Foot planning-path and saved AttackMove state
+    /// remain separate residuals; ordinary Attack clears those saved inputs.
+    pub(crate) fn unit_enter_idle_mode(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        skip_human_land_check: bool,
+    ) -> bool {
+        let saved_base_return = self.foot_enter_idle_base(id, rules, None);
+        let Some(entity) = self.substrate.entities.get_mut(id) else {
+            return saved_base_return;
+        };
         let has_destination = entity.navigation.nav_com.is_some();
         let current = entity.mission.current().known();
         let effective = entity.mission.effective().known();
@@ -1121,8 +1203,9 @@ impl Simulation {
         } else if armed {
             rules.map_or(Some(MissionType::Guard), |rules| {
                 crate::sim::world::foot_enter_idle_mode_selection(
-                    rules, category, current, false, effective,
+                    rules, category, current, false, false, effective,
                 )
+                .queued_mission()
             })
         } else {
             // Unarmed738AEA..738B09 selects Guard and performs its setters

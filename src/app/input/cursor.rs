@@ -2003,9 +2003,9 @@ mod tests {
                 sim.resolve_type_handles(&rules);
                 sim.session.game_mode_nonzero = true;
                 sim.session.current_house = Some(sim.interner.intern("Americans"));
-                let mut terrain = crate::map::resolved_terrain::test_grid(20, 20, |rx, ry| {
-                    crate::map::resolved_terrain::test_flat_cell(rx, ry)
-                });
+                // The ordinary Infantry Unlimbo query reads the native
+                // Clear/Foot speed row before this cursor-only observation.
+                let mut terrain = crate::map::resolved_terrain::test_flat_ground_grid(20);
                 terrain.test_set_high_bridge_set_starts(Some(100), Some(200));
                 for y in 9..=11 {
                     terrain.cell_mut(12, y).unwrap().bridge_facts.overlay_id =

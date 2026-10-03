@@ -130,15 +130,21 @@ impl Simulation {
             ge.voxel_animation = Some(VoxelAnimation::new(1, 1));
         }
         if category == EntityCategory::Infantry {
-            ge.sub_cell = Some(match origin {
-                ComponentOrigin::Authored { sub_cell, .. } => sub_cell,
-                ComponentOrigin::Runtime => {
-                    self.allocate_infantry_sub_cell(ge.position.rx, ge.position.ry)
+            match origin {
+                ComponentOrigin::Authored { sub_cell, .. } => {
+                    ge.sub_cell = Some(sub_cell);
+                    let (lx, ly) = crate::util::lepton::subcell_lepton_offset(ge.sub_cell);
+                    ge.position.sub_x = lx;
+                    ge.position.sub_y = ly;
                 }
-            });
-            let (lx, ly) = crate::util::lepton::subcell_lepton_offset(ge.sub_cell);
-            ge.position.sub_x = lx;
-            ge.position.sub_y = ly;
+                ComponentOrigin::Runtime => {
+                    // Infantry51DFF0 chooses the spot only at Unlimbo, from
+                    // the caller's actual XY/Z and live occupation bytes.
+                    // Constructor-held objects reserve no spot and retain
+                    // their requested XY until the shared placement boundary.
+                    ge.sub_cell = None;
+                }
+            }
         }
         // SHP vehicles also need animation for walk/attack frame cycling.
         if !uses_voxel && (category == EntityCategory::Unit || category == EntityCategory::Aircraft)

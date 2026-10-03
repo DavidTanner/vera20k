@@ -878,6 +878,10 @@ fn advance_one_simulation_frame(
             };
             // F07: the runtime is the one production frame API — bound
             // resources, no caller-substitutable inputs.
+            let mut output = rt
+                .advance_frame(&due_commands, SIM_TICK_MS, tick_lane)
+                .expect("simulation frame failed; prior world mutations remain");
+            let admitted_commands = output.take_admitted_commands();
             let SimFrameOutput {
                 tick: tick_result,
                 trigger_effects: frame_trigger_effects,
@@ -888,9 +892,8 @@ fn advance_one_simulation_frame(
                 fire_events: frame_fire_events,
                 combat_lights,
                 lighting_events,
-            } = rt
-                .advance_frame(&due_commands, SIM_TICK_MS, tick_lane)
-                .expect("simulation frame failed; prior world mutations remain");
+                ..
+            } = output;
             let resources = &rt.resources;
             if let Some(terrain) = resources.terrain_template.as_ref() {
                 state
@@ -975,10 +978,10 @@ fn advance_one_simulation_frame(
             // Both terminal routes belong to the deterministic stream even
             // though Main_Tick skips its frame commit. EventClass EXIT carries
             // a command; natural win/loss carries the one-shot score/RNG latch.
-            if should_record_replay_tick(&tick_result, &due_commands) {
-                if let Some(log) = &mut state.match_state.match_diagnostics.replay_log {
-                    log.record_tick(tick_result.tick, due_commands, tick_result.state_hash);
-                }
+            if should_record_replay_tick(&tick_result, &admitted_commands)
+                && let Some(log) = &mut state.match_state.match_diagnostics.replay_log
+            {
+                log.record_tick(tick_result.tick, admitted_commands, tick_result.state_hash);
             }
         }
         if frame_committed {

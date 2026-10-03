@@ -550,7 +550,12 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // The same-binary old entity-feed control recovers incoming534C7788BB49A3D8;
 // all601 complete rows match except state_hash. Bounded Rust attribution:
 // tools/spatial_oracle/drive_instance_replay/receipt.json. Control removed.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB966_DA80_21F0_8904;
+// Barracks output after main7e9: shared TechnoUnlimbo6F6DAA retains the
+// constructor facing Some(0); private Foot6B3/Factory5D feeds enter the hash.
+// The Drive/Ship payload migration remains. All618 same-binary Rust rows
+// match except tick_result.state_hash; the control recovers incoming pins.
+// tools/spatial_oracle/factory_infantry_output_replay/main7e9/receipt.json.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x0F2C_FFB8_42D8_155E;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

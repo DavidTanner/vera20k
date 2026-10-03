@@ -22,12 +22,14 @@ fn structural_fallout_retires_effect_only_ground_victim() {
     let mut sim = Simulation::with_seed(31);
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
-    sim.resolved_terrain = Some(water_below_bridge_terrain(4));
-    seed_bridge_overlay(
-        sim.resolved_terrain.as_mut().unwrap(),
-        &[(4, 3), (4, 4), (4, 5)],
-        0xD4,
-    );
+    let mut terrain = water_below_bridge_terrain(4);
+    // Admit the initial victim on clear ground before supplying the later
+    // structural bridge state. Its ordinary Unlimbo needs Clear/Foot, and
+    // this effect-only corridor supplies no OverlayType reader context.
+    let clear = terrain.cell_mut(4, 4).unwrap();
+    clear.speed_costs.foot = Some(100);
+    clear.base_speed_costs.foot = Some(100);
+    sim.resolved_terrain = Some(terrain);
     sim.bridge_state = Some(BridgeRuntimeState::default());
     let owner = sim.interner.intern("Americans");
     sim.houses
@@ -36,6 +38,11 @@ fn structural_fallout_retires_effect_only_ground_victim() {
     let victim = sim
         .spawn_object_at_height("E1", "Americans", 4, 4, 0, 0, &rules)
         .unwrap();
+    seed_bridge_overlay(
+        sim.resolved_terrain.as_mut().unwrap(),
+        &[(4, 3), (4, 4), (4, 5)],
+        0xD4,
+    );
     assert!(!sim.substrate.entities.get(victim).unwrap().on_bridge);
     sim.substrate.entities.get_mut(victim).unwrap().selected = true;
     // Supplied structural47DD70 callback. Concrete ground overlays205..232

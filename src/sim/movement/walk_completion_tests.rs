@@ -17,7 +17,6 @@ use serde_json::Value;
 
 #[test]
 fn completed_corner_keeps_heading_until_next_head_is_accepted() {
-    use crate::map::resolved_terrain::ResolvedTerrainGrid;
     use crate::sim::components::MovementTarget;
     use crate::sim::movement::{FacingClass, ground_pose, walk_head};
 
@@ -27,15 +26,10 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
     ))
     .unwrap();
     let mut sim = Simulation::new();
-    sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(
+    // The completed-head corridor starts with an admitted walker. Its
+    // ordinary Unlimbo therefore needs the native Clear/Foot speed row.
+    sim.install_resolved_terrain_for_new_map(crate::map::resolved_terrain::test_flat_ground_grid(
         16,
-        16,
-        (0..16)
-            .flat_map(|y| {
-                (0..16)
-                    .map(move |x| crate::sim::world::common_raw_test_terrain_cell(x, y, 0, false))
-            })
-            .collect(),
     ));
     let id = sim
         .spawn_object("E1", "Americans", 6, 5, 0, &rules)

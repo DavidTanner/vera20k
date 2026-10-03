@@ -2068,3 +2068,181 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
         );
     }
 }
+
+fn idle_base_fixture(category: EntityCategory) -> Simulation {
+    let mut sim = Simulation::with_seed(0x6B3);
+    let type_id = match category {
+        EntityCategory::Unit => "MTNK",
+        EntityCategory::Infantry => "E1",
+        EntityCategory::Aircraft => "ORCA",
+        _ => panic!("the idle base fixture supplies only Foot categories"),
+    };
+    let mut actor = GameEntity::test_default_of_category(1, type_id, "Americans", 10, 10, category);
+    sim.interner = crate::sim::intern::test_interner();
+    // Original fixture end=none, +687=0 and no planning/Archive work. No
+    // active controller or class tail is supplied by this comparison.
+    actor.locomotor = None;
+    actor.lifecycle.object_alive = true;
+    actor.lifecycle.in_limbo = false;
+    actor.lifecycle.cell_marked = false;
+    sim.substrate.entities.insert(actor);
+    sim.substrate.next_stable_object_id = 2;
+    sim
+}
+
+fn idle_base_native_rows() -> Vec<serde_json::Value> {
+    serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/foot_enter_idle.json"
+    ))
+    .expect("unchanged original Foot EnterIdle corpus")
+}
+
+/// Foot4D82B0..4D8557 executes unchanged in the original oracle. Its
+/// Techno709A40 and speed setter are supplied callbacks; this comparison
+/// establishes base admission/AL and the inherited byte, not those callees,
+/// the class tail, actual END policy or Infantry Archive pursuit.
+#[test]
+fn foot_idle_empty_queue_admission_matches_original_latch_rows() {
+    let rows = idle_base_native_rows();
+    let selected = rows.iter().filter(|row| {
+        let input = &row["input"];
+        input["group"] == "core"
+            && input["end"] == "none"
+            && input["scatter_pending"] == 0
+            && input["queue"].as_array().is_some_and(Vec::is_empty)
+            // The supplied Techno callback sees these args. This Rust base
+            // API does not claim to reproduce their forwarding or effects.
+            && input["args"] == serde_json::json!([0, 0])
+    });
+    let mut compared = 0;
+    for row in selected {
+        let mut sim = idle_base_fixture(EntityCategory::Unit);
+        let actor = sim.substrate.entities.get_mut(1).unwrap();
+        assert_eq!(actor.mission_leaf.foot_idle_entry_latch(), 0);
+        actor
+            .mission_leaf
+            .set_foot_idle_entry_latch(row["before"]["latch"].as_u64().unwrap() as u8);
+        let rng = sim.rng_state();
+        let returned = sim.foot_enter_idle_base(1, None, None);
+        assert_eq!(
+            u8::from(returned),
+            row["returned_al"].as_u64().unwrap() as u8
+        );
+        let actor = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(
+            actor.mission_leaf.foot_idle_entry_latch(),
+            row["after"]["latch"].as_u64().unwrap() as u8
+        );
+        assert!(actor.navigation.nav_queue.is_empty());
+        assert_eq!(actor.navigation.nav_com, None);
+        assert_eq!(sim.rng_state(), rng);
+        compared += 1;
+    }
+    assert_eq!(compared, 2, "both zero and set native latch controls");
+}
+
+/// Original nonzero6B3 returns before Techno/Scatter/END/destination/speed.
+/// The native queued Cell target is opaque on this branch; its coordinates
+/// and the speed sentinel below are supplied refusal-control priors.
+#[test]
+fn foot_idle_set_latch_refuses_queue_and_speed_setters_without_effects() {
+    let rows = idle_base_native_rows();
+    let row = rows
+        .iter()
+        .find(|row| {
+            let input = &row["input"];
+            input["group"] == "core"
+                && input["end"] == "none"
+                && input["scatter_pending"] == 0
+                && input["latch"] == 1
+                && input["queue"] == serde_json::json!([0])
+                && input["args"] == serde_json::json!([0, 0])
+        })
+        .expect("original entered-latch/queued-Cell control");
+    assert!(row["events"].as_array().unwrap().is_empty());
+    assert!(row["writes"].as_array().unwrap().is_empty());
+    let mut sim = idle_base_fixture(EntityCategory::Unit);
+    let actor = sim.substrate.entities.get_mut(1).unwrap();
+    actor
+        .mission_leaf
+        .set_foot_idle_entry_latch(row["before"]["latch"].as_u64().unwrap() as u8);
+    actor
+        .navigation
+        .nav_queue
+        .push(crate::sim::components::NavTargetRef::cell(20, 20));
+    actor.foot_speed.set_speed_fraction(SimFixed::lit("0.625"));
+    let before = bincode::serialize(actor).unwrap();
+    let hash = sim.state_hash();
+    let rng = sim.rng_state();
+    assert_eq!(
+        u8::from(sim.foot_enter_idle_base(1, None, None)),
+        row["returned_al"].as_u64().unwrap() as u8
+    );
+    assert_eq!(
+        bincode::serialize(sim.substrate.entities.get(1).unwrap()).unwrap(),
+        before
+    );
+    assert_eq!(sim.state_hash(), hash);
+    assert_eq!(sim.rng_state(), rng);
+}
+
+/// The inherited byte is saved by VERA snapshot286 and contributes to the
+/// canonical world hash for Unit, Infantry and Aircraft. This is a Rust
+/// persistence/hash regression, not original gamemd save-file equivalence.
+#[test]
+fn inherited_foot_idle_latch_roundtrips_and_hashes_for_every_foot_category() {
+    use crate::sim::snapshot::GameSnapshot;
+    for category in [
+        EntityCategory::Unit,
+        EntityCategory::Infantry,
+        EntityCategory::Aircraft,
+    ] {
+        let mut sim = idle_base_fixture(category);
+        // The production deserializer resets Scenario RNG; isolate this byte
+        // by normalizing that independent load behavior before whole hashes.
+        sim.scenario_rng = crate::sim::rng::SimRng::new(0);
+        let clear_hash = sim.state_hash();
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .mission_leaf
+                .foot_idle_entry_latch(),
+            0
+        );
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .mission_leaf
+            .set_foot_idle_entry_latch(1);
+        let entered_hash = sim.state_hash();
+        assert_ne!(
+            entered_hash, clear_hash,
+            "inherited6B3 category {category:?}"
+        );
+        let bytes = GameSnapshot::save(&sim, 0, 0, "foot-idle-entry-latch", 0);
+        let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
+        let actor = restored.substrate.entities.get(1).unwrap();
+        assert_eq!(actor.category, category);
+        assert_eq!(actor.mission_leaf.foot_idle_entry_latch(), 1);
+        assert_eq!(restored.state_hash(), entered_hash);
+        let rng = restored.rng_state();
+        assert!(!restored.foot_enter_idle_base(1, None, None));
+        assert_eq!(restored.rng_state(), rng);
+        assert_eq!(restored.state_hash(), entered_hash);
+        restored
+            .substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .mission_leaf
+            .set_foot_idle_entry_latch(0);
+        assert_eq!(
+            restored.state_hash(),
+            clear_hash,
+            "only inherited6B3 changed"
+        );
+    }
+}

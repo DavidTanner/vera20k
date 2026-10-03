@@ -123,7 +123,7 @@ fn pending_deploy_survives_snapshot_and_paid_head_completion() {
 
 #[test]
 fn retail_gi_and_guardian_gi_complete_deploy_in_bound_runtime() {
-    use crate::map::resolved_terrain::{test_flat_cell, test_grid};
+    use crate::map::resolved_terrain::test_flat_ground_grid;
     use crate::rules::art_data::ArtRegistry;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
@@ -165,7 +165,9 @@ fn retail_gi_and_guardian_gi_complete_deploy_in_bound_runtime() {
     );
     let mut sim = Simulation::with_seed(31);
     sim.session.game_mode_nonzero = true;
-    let terrain = test_grid(64, 64, test_flat_cell);
+    // Supply the Clear/Foot row that ordinary Infantry Unlimbo reads before
+    // these retail automatic-deploy frames begin.
+    let terrain = test_flat_ground_grid(64);
     sim.resolved_terrain = Some(terrain.clone());
     for (name, human) in [("Americans", false), ("French", true)] {
         let owner = sim.interner.intern(name);
