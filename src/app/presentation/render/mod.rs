@@ -19,6 +19,8 @@
 //! ## Dependency rules
 //! - Part of the app layer — may depend on everything.
 
+#[cfg(test)]
+mod bridge_shadow_gpu_tests;
 mod build_instances;
 mod draw_passes;
 #[cfg(test)]
@@ -237,6 +239,7 @@ pub(crate) fn render_game(
         &composition_view,
         &draw_passes::DrawPassData {
             overlay_render_z: &world.overlay_render_z,
+            bridge_shadows: &world.bridge_body_shadow,
             object_layers: &world.object_layers,
             ghost_page: ui.ghost_page,
         },

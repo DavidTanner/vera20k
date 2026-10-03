@@ -1,4 +1,4 @@
-//! Dedicated bridge-body atlas for the zdepth bridge pass.
+//! Bridge body artwork and the original indexed shadow stencils.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -8,8 +8,7 @@ use crate::assets::shp_file::ShpFile;
 use crate::map::overlay::OverlayEntry;
 use crate::map::overlay_types::{OverlayTypeFlags, OverlayTypeRegistry, is_high_bridge_index};
 use crate::render::batch::{BatchRenderer, BatchTexture};
-use crate::render::gpu::GpuContext;
-use crate::render::overlay_atlas::OverlaySpriteEntry;
+use crate::render::overlay_atlas::{OverlaySpriteEntry, stored_frame_offset};
 use crate::rules::art_data::{self, ArtRegistry};
 use crate::rules::crate_rules::CrateRules;
 use crate::rules::ini_parser::IniFile;
@@ -75,6 +74,7 @@ impl BridgeAtlasLookup for BridgeAtlas {
 struct RenderedBridge {
     key: BridgeAtlasKey,
     rgba: Vec<u8>,
+    source_indices: Vec<u8>,
     width: u32,
     height: u32,
     offset_x: f32,
@@ -82,10 +82,9 @@ struct RenderedBridge {
 }
 
 pub fn is_high_bridge_body_name(name: &str) -> bool {
-    matches!(
-        name.to_ascii_uppercase().as_str(),
-        "BRIDGE1" | "BRIDGEB1" | "BRIDGE2" | "BRIDGEB2"
-    )
+    ["BRIDGE1", "BRIDGEB1", "BRIDGE2", "BRIDGEB2"]
+        .iter()
+        .any(|candidate| name.eq_ignore_ascii_case(candidate))
 }
 
 /// Route a live high-bridge body by the CellClass numeric identity first.
@@ -154,7 +153,8 @@ fn needed_bridge_sprite_keys(
 }
 
 pub fn build_bridge_atlas(
-    gpu: &GpuContext,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
     batch: &BatchRenderer,
     overlays: &[OverlayEntry],
     overlay_names: &BTreeMap<u8, String>,
@@ -201,37 +201,15 @@ pub fn build_bridge_atlas(
         return None;
     }
 
-    Some(pack_bridge_sprites(gpu, batch, &rendered))
+    Some(pack_bridge_sprites(device, queue, batch, &rendered))
 }
 
-/// Alpha approximating the native SHP shadow blitter's destination halve.
-///
-/// The blitter tests each source byte against zero and, where non-zero, halves
-/// the destination pixel in place, so a shadow darkens whatever is already in
-/// the framebuffer and overlapping shadows darken twice. Black texels at this
-/// alpha under source-alpha blending give the same *shape* and the same
-/// compositing behaviour.
-///
-/// VERA-internal; gamemd equivalence UNCHECKED and known to diverge. The
-/// blitter halves the **stored, gamma-encoded** word, but VERA composites into
-/// an sRGB target, so wgpu blends in **linear** space and the realized result is
-/// markedly lighter than an encoded-space halve — see
-/// `shadow_darken_is_lighter_than_the_native_encoded_halve`, which pins the
-/// residual. No single alpha can close this: an encoded-space halve is not a
-/// linear operation. Closing it needs this pass composited against a non-sRGB
-/// target, which is a render-target change well outside the atlas.
-const SHADOW_DARKEN_ALPHA: u8 = 128;
-
-/// Convert an SHP shadow frame's 1-bit stencil into black RGBA with the darken
-/// alpha baked in, so the instance builder needs no per-sprite alpha of its own.
-///
-/// Index 0 is the stencil's "no shadow here" value and stays fully transparent;
-/// every other index is a shadow pixel. The blitter never looks at the actual
-/// index value, so neither does this.
+/// RGBA preview of the stencil. The shared destination-edit renderer consumes
+/// the separately retained source indices and owns native darkening and Z.
 fn shadow_stencil_to_rgba(stencil: &[u8]) -> Vec<u8> {
     let mut rgba: Vec<u8> = Vec::with_capacity(stencil.len() * 4);
     for &index in stencil {
-        let alpha: u8 = if index == 0 { 0 } else { SHADOW_DARKEN_ALPHA };
+        let alpha: u8 = if index == 0 { 0 } else { 255 };
         rgba.extend_from_slice(&[0, 0, 0, alpha]);
     }
     rgba
@@ -272,6 +250,34 @@ fn render_bridge_sprite(
         has_drawable.then_some(shp)
     })?;
 
+    // CellClass::DrawOverlay_Shadow @ 0047F510 indexes raw state + count/2.
+    // Empty/out-of-range shadow frames draw nothing; no substitute artwork.
+    // Keep the original cropped rectangle for CC_Draw_Shape's row walker.
+    // Executable comparison: tools/spatial_oracle/bridge_shadow_render.py.
+    if key.kind == BridgeFrameKind::Shadow {
+        let frame_idx = shp.frames.len() / 2 + usize::from(key.frame);
+        let frame = shp.frames.get(frame_idx)?;
+        if frame.frame_width == 0 || frame.frame_height == 0 {
+            return None;
+        }
+        let (offset_x, offset_y) = stored_frame_offset(
+            shp.width,
+            shp.height,
+            frame.frame_x,
+            frame.frame_y,
+            flags.y_draw_offset(),
+        );
+        return Some(RenderedBridge {
+            key: key.clone(),
+            rgba: shadow_stencil_to_rgba(&frame.pixels),
+            source_indices: frame.pixels.clone(),
+            width: u32::from(frame.frame_width),
+            height: u32::from(frame.frame_height),
+            offset_x,
+            offset_y,
+        });
+    }
+
     // Bridge SHPs split frames into a body half (front) and shadow half (back).
     // RE doc §3.3.2: shadow_frame_idx = (shp.frames.len() / 2) + state_byte.
     let half: usize = if flags.bridge_deck {
@@ -279,10 +285,7 @@ fn render_bridge_sprite(
     } else {
         shp.frames.len()
     };
-    let (window_start, window_len): (usize, usize) = match key.kind {
-        BridgeFrameKind::Body => (0, half),
-        BridgeFrameKind::Shadow => (half, shp.frames.len().saturating_sub(half)),
-    };
+    let (window_start, window_len) = (0, half);
     let requested_idx: usize =
         window_start + (key.frame as usize).min(window_len.saturating_sub(1));
     let mut frame_idx = requested_idx;
@@ -302,16 +305,11 @@ fn render_bridge_sprite(
     }
 
     let frame = &shp.frames[frame_idx];
-    // Shadow frames are a 1-bit stencil, never colour data — sending them
-    // through a theater palette is what made the earlier bridge-shadow attempt
-    // paint solid cyan and forced the draw call to be disabled.
-    let frame_rgba: Vec<u8> = match key.kind {
-        BridgeFrameKind::Body => shp.frame_to_rgba(frame_idx, palette).ok()?,
-        BridgeFrameKind::Shadow => shadow_stencil_to_rgba(&frame.pixels),
-    };
+    let frame_rgba = shp.frame_to_rgba(frame_idx, palette).ok()?;
     let full_w: u32 = shp.width as u32;
     let full_h: u32 = shp.height as u32;
     let mut full_rgba: Vec<u8> = vec![0u8; (full_w * full_h * 4) as usize];
+    let mut full_indices = vec![0u8; (full_w * full_h) as usize];
 
     let fw: u32 = frame.frame_width as u32;
     let fh: u32 = frame.frame_height as u32;
@@ -329,12 +327,15 @@ fn render_bridge_sprite(
         if src_off + bytes <= frame_rgba.len() && dst_off + bytes <= full_rgba.len() {
             full_rgba[dst_off..dst_off + bytes]
                 .copy_from_slice(&frame_rgba[src_off..src_off + bytes]);
+            full_indices[dst_off / 4..dst_off / 4 + copy_w as usize]
+                .copy_from_slice(&frame.pixels[src_off / 4..src_off / 4 + copy_w as usize]);
         }
     }
 
     Some(RenderedBridge {
         key: key.clone(),
         rgba: full_rgba,
+        source_indices: full_indices,
         width: full_w,
         height: full_h,
         offset_x: -(full_w as f32) / 2.0,
@@ -343,7 +344,8 @@ fn render_bridge_sprite(
 }
 
 fn pack_bridge_sprites(
-    gpu: &GpuContext,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
     batch: &BatchRenderer,
     sprites: &[RenderedBridge],
 ) -> BridgeAtlas {
@@ -357,7 +359,7 @@ fn pack_bridge_sprites(
         })
         .sum();
     let estimated_side: u32 = (total_area as f64).sqrt().ceil() as u32;
-    let max_texture_dim: u32 = gpu.device.limits().max_texture_dimension_2d;
+    let max_texture_dim: u32 = device.limits().max_texture_dimension_2d;
     let mut atlas_width: u32 = estimated_side.clamp(64, max_texture_dim);
 
     let placements: Vec<(usize, u32, u32)>;
@@ -398,6 +400,7 @@ fn pack_bridge_sprites(
     }
 
     let mut rgba: Vec<u8> = vec![0u8; (atlas_width * atlas_height * 4) as usize];
+    let mut source_indices = vec![0u8; (atlas_width * atlas_height) as usize];
     let mut depth: Vec<u8> = vec![BRIDGE_DEPTH_NEUTRAL; (atlas_width * atlas_height) as usize];
     let mut entries: HashMap<BridgeAtlasKey, OverlaySpriteEntry> =
         HashMap::with_capacity(placements.len());
@@ -415,6 +418,8 @@ fn pack_bridge_sprites(
             let dst_end: usize = dst_start + (w * 4) as usize;
             if src_end <= spr.rgba.len() && dst_end <= rgba.len() {
                 rgba[dst_start..dst_end].copy_from_slice(&spr.rgba[src_start..src_end]);
+                source_indices[dst_start / 4..dst_end / 4]
+                    .copy_from_slice(&spr.source_indices[src_start / 4..src_end / 4]);
             }
         }
         write_bridge_depth_rows(&mut depth, atlas_width, atlas_height, spr, px, py);
@@ -430,9 +435,17 @@ fn pack_bridge_sprites(
         );
     }
 
-    let texture: BatchTexture = batch.create_texture(gpu, &rgba, atlas_width, atlas_height);
-    let depth_texture_view = create_r8_texture(gpu, &depth, atlas_width, atlas_height);
-    let zdepth_bind_group = batch.create_zdepth_bind_group(gpu, &texture.view, &depth_texture_view);
+    let texture = batch.create_texture_on_device(
+        device,
+        queue,
+        &rgba,
+        atlas_width,
+        atlas_height,
+        Some(&source_indices),
+    );
+    let depth_texture_view = create_r8_texture(device, queue, &depth, atlas_width, atlas_height);
+    let zdepth_bind_group =
+        batch.create_zdepth_bind_group_on_device(device, &texture.view, &depth_texture_view);
 
     BridgeAtlas {
         texture,
@@ -479,9 +492,15 @@ fn write_bridge_depth_rows(
     }
 }
 
-fn create_r8_texture(gpu: &GpuContext, data: &[u8], width: u32, height: u32) -> wgpu::TextureView {
-    let texture = gpu.device.create_texture_with_data(
-        &gpu.queue,
+fn create_r8_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    data: &[u8],
+    width: u32,
+    height: u32,
+) -> wgpu::TextureView {
+    let texture = device.create_texture_with_data(
+        queue,
         &wgpu::TextureDescriptor {
             label: Some("Bridge Depth Atlas R8"),
             size: wgpu::Extent3d {
@@ -569,6 +588,7 @@ mod tests {
                 // An all-transparent canvas still receives the full row plane;
                 // the shader's color discard decides which pixels participate.
                 rgba: vec![0; (width * height * 4) as usize],
+                source_indices: vec![0; (width * height) as usize],
                 width,
                 height,
                 offset_x: 0.0,
@@ -611,57 +631,10 @@ mod tests {
         for offset in [4usize, 12, 16] {
             assert_eq!(
                 &rgba[offset..offset + 4],
-                &[0, 0, 0, SHADOW_DARKEN_ALPHA],
+                &[0, 0, 0, 255],
                 "non-zero stencil byte at {offset} must darken, not tint"
             );
         }
-    }
-
-    #[test]
-    fn shadow_darken_is_lighter_than_the_native_encoded_halve() {
-        // Recorded DRIFT, not a parity assertion. The blitter halves the
-        // stored gamma-encoded word: an encoded 0.5 destination becomes an
-        // encoded 0.25. VERA composites into an sRGB target, so the blend runs
-        // in linear space and lands much lighter. This test pins the size of
-        // that gap so it stays visible instead of decaying into folklore.
-        fn srgb_to_linear(c: f32) -> f32 {
-            if c <= 0.04045 {
-                c / 12.92
-            } else {
-                ((c + 0.055) / 1.055).powf(2.4)
-            }
-        }
-        fn linear_to_srgb(c: f32) -> f32 {
-            if c <= 0.0031308 {
-                12.92 * c
-            } else {
-                1.055 * c.powf(1.0 / 2.4) - 0.055
-            }
-        }
-
-        let dst_encoded: f32 = 0.5;
-        let src_alpha: f32 = f32::from(SHADOW_DARKEN_ALPHA) / 255.0;
-        // out = a*src + (1-a)*dst, in linear space, with src black.
-        let realized: f32 = linear_to_srgb((1.0 - src_alpha) * srgb_to_linear(dst_encoded));
-        let native: f32 = dst_encoded / 2.0;
-
-        assert!(
-            realized > native,
-            "the linear-space blend must come out lighter than the encoded halve \
-             (realized {realized}, native {native})"
-        );
-        assert!(
-            (realized - 0.360).abs() < 0.01,
-            "realized darken drifted from the recorded value; \
-             expected ~0.360 encoded, got {realized}"
-        );
-        // Roughly 44% too light. Recorded so a future render-target change can
-        // be measured against it rather than eyeballed.
-        assert!(
-            ((realized - native) / native - 0.44).abs() < 0.05,
-            "recorded shadow lightness drift is ~44% of the native value, got {}",
-            (realized - native) / native
-        );
     }
 }
 

@@ -214,7 +214,7 @@ pub(super) fn build_world_instances(state: &mut AppState, sw: f32, sh: f32) -> W
     instances::bridges::build_bridge_shadow_instances(state, sw, sh, &mut bridge_body_shadow);
     instances::bridges::build_bridge_railing_instances(state, sw, sh, &mut bridge_railing);
     sort_by_depth_desc(&mut bridge_body);
-    sort_by_depth_desc(&mut bridge_body_shadow);
+    // Shadow emission retains the native cell sweep; its accepted pixels write Z.
     sort_by_depth_desc(&mut bridge_railing);
 
     // Smudges: static crater/scorch decals on top of terrain, under entities.
