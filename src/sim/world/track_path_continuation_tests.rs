@@ -807,6 +807,16 @@ fn visit(
     frame: u32,
 ) {
     sim.session.binary_frame = frame;
+    // These are direct Process controls, without the surrounding FootAI.
+    // Supply its live post-TechnoAI reset4DA54E before each Process visit:
+    // Unlimbo's Idle(1,1) and a preceding arrival can leave Foot+6B3 set.
+    // Original reset/latch controls: spatial_oracle/foot_enter_idle.json.
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .mission_leaf
+        .set_foot_idle_entry_latch(0);
     let grid = sim.path_grid.clone();
     sim.process_ground_locomotor_for_test(id, Some(rules), grid.as_deref(), Some(registry))
         .unwrap();
@@ -1604,6 +1614,10 @@ fn idle_mode_queue_head_runs_the_hover_unit_setter_in_the_same_call() {
         .unwrap();
     let e = sim.substrate.entities.get_mut(id).unwrap();
     e.navigation.nav_queue = vec![NavTargetRef::cell(14, 12), NavTargetRef::cell(16, 12)];
+    // This standalone Idle call starts after FootAI4DA54E's live reset;
+    // it is not reentrant with the spawn's TechnoUnlimbo Idle(1,1).
+    // A retained nonzero latch correctly skips the queue at4D82B8..C0.
+    e.mission_leaf.set_foot_idle_entry_latch(0);
     sim.unit_enter_idle_mode(id, Some(&rules), false);
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(14, 12)));

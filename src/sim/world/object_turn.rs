@@ -165,6 +165,90 @@ impl LocomotorProcess {
 }
 
 impl Simulation {
+    /// InfantryAI51BCB2..51BDCF, after the complete FootAI visit: an idle
+    /// Infantry standing in an ordinary Building scatters through the one
+    /// Infantry51D0D0 owner. This is also the first no-rally barracks exit.
+    ///
+    /// Original joined construction controls reach51BDC9 on frames269/486;
+    /// Scatter's51D385 draw precedes its synchronous Walk Process51D478.
+    /// Evidence: basic-factory-output-idle-prerequisite-research, original
+    /// construction/no-rally and planning-header controls (gamemd1cdd1180).
+    fn scatter_idle_infantry_from_building(
+        &mut self,
+        stable_id: u64,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> Result<bool, String> {
+        use crate::map::cell_index::NativeCellIdentity;
+        use crate::sim::mission::MissionType;
+        use crate::sim::movement::{ScatterFlags, locomotor::MovementLayer};
+
+        let Some(infantry) = self.substrate.entities.get(stable_id) else {
+            return Ok(false);
+        };
+        if infantry.category != EntityCategory::Infantry
+            || !infantry.lifecycle.object_alive
+            || infantry.lifecycle.in_limbo
+            || !matches!(
+                infantry.mission.effective().known(),
+                Some(MissionType::Guard | MissionType::AreaGuard)
+            )
+        {
+            return Ok(false);
+        }
+        let Some(terrain) = self.resolved_terrain.as_ref() else {
+            return Ok(false);
+        };
+        // The caller reads physical Object+9C, not virtual+4C navigation/bridge XY.
+        let coord = movement::ground_pose::position_world_coord(&infantry.position);
+        let cell = terrain.native_cell_identity(((coord.x / 256) as i16, (coord.y / 256) as i16));
+        let NativeCellIdentity::Real(index) = cell else {
+            return Ok(false);
+        };
+        let c = &terrain.cells()[index];
+        let Some(building_id) =
+            self.substrate
+                .occupancy
+                .first_building_on_layer(c.rx, c.ry, MovementLayer::Ground)
+        else {
+            return Ok(false);
+        };
+        let Some(building) = self.substrate.entities.get(building_id) else {
+            return Err("InfantryAI ground Building has a retired identity".into());
+        };
+        let Some(object) = self.object_type(building.type_ref(), rules) else {
+            return Err("InfantryAI ground Building has no type".into());
+        };
+        if object.invisible_in_game || (object.gate && building.is_open_gate()) {
+            return Ok(false);
+        }
+        // RESIDUAL: specialized fence state. This prefix compares LaserFence+618
+        // with8/12 and reads its owner's Firestorm+1FA. Their runtime
+        // owners are absent. Such types retain the prior no-Scatter behavior
+        // until those separate mechanisms establish the required state.
+        // Stock GAPILE and all ordinary barracks have both type flags false.
+        if object.laser_fence || object.firestorm_wall {
+            return Ok(false);
+        }
+        let slaves = crate::sim::slave_deposit::SlaveDepositQuery {
+            entities: &self.substrate.entities,
+            occupancy: &self.substrate.occupancy,
+            terrain,
+            rules,
+            interner: &self.interner,
+        };
+        // SlaveOwner+2DC, its manager+2D8 and this ground
+        // Building must match before the shared6B0880 deposit predicate.
+        if slaves.master(stable_id) == Some(building_id) {
+            let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+            let queried = movement::ground_pose::query_object_cell(&cells, coord);
+            if slaves.admits(stable_id, building_id, queried) {
+                return Ok(false);
+            }
+        }
+        self.scatter_null(stable_id, ScatterFlags::new(true, true), rules, registry)
+    }
+
     /// FootClass::AI's one call of the active locomotor's Process
     /// (`0x004DA877`, `ILocomotion` vtable `+0x40`).
     ///
@@ -779,6 +863,18 @@ impl Simulation {
             return Ok(outcome);
         }
 
+        // Foot4DA54E follows the post-TechnoAI Object+90 gate above.
+        // An entry-active Tube bypasses FootAI; it must retain the byte.
+        if !tube_active_at_entry
+            && let Some(entity) = sim.substrate.entities.get_mut(stable_id)
+            && matches!(
+                entity.category,
+                EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
+            )
+        {
+            entity.mission_leaf.set_foot_idle_entry_latch(0);
+        }
+
         // ObjectClass::AI's fall step (`0x005F3F11..0x005F3FA4`), which the
         // Foot's TechnoClass::AI call (`0x004DA539`) reaches before Process.
         //
@@ -987,6 +1083,17 @@ impl Simulation {
             .get(stable_id)
             .is_some_and(|entity| entity.category == EntityCategory::Infantry);
         if let (Some(rules), true) = (rules, infantry) {
+            //51BCA4..51BDCF follows the entire FootAI, including Process and
+            // its tails. A successful Scatter invokes Process a second time
+            // synchronously, before the Infantry Ready/Commence/fire suffix.
+            outcome.bridge_state_changed |= sim
+                .scatter_idle_infantry_from_building(stable_id, rules, overlay_registry)
+                .map_err(|cause| super::FrameAdvanceError {
+                    tick: sim.session.tick,
+                    binary_frame: sim.session.binary_frame,
+                    entity_id: stable_id,
+                    cause,
+                })?;
             outcome.bridge_state_changed |= sim
                 .infantry_action_turn(stable_id, rules, overlay_registry)
                 .map_err(|cause| super::FrameAdvanceError {

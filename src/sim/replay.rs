@@ -891,7 +891,8 @@ impl ReplayRunner {
                     TickLane::Ordinary,
                     trigger_inputs,
                 )
-                .expect("fixture frame must complete");
+                .expect("fixture frame must complete")
+                .into_tick();
             // Replay has no app layer to consume presentation-only trigger effects.
             let _ = sim.drain_trigger_effects();
             hashes.push(result.state_hash);
@@ -1516,8 +1517,8 @@ mod tests {
 
         // Model a command regenerated during the preceding replay frame. The
         // live app drained and recorded the same command for this frame, so the
-        // log is authoritative for execution while the regenerated queue entry
-        // must remain isolated exactly as it was at the former direct seam.
+        // recorded copy executes once and consumes the matching regenerated
+        // envelope; unrelated and future pending work still survives playback.
         let regenerated = CommandEnvelope::new(owner, 1, Command::SetGameSpeed { speed: 4 });
         sim.queue_command(regenerated.clone());
         let mut log = ReplayLog::new(ReplayHeader {
@@ -1536,8 +1537,38 @@ mod tests {
         assert_eq!(sim.session.game_options.game_speed, 4);
         assert_eq!(
             sim.pending_commands_for_tests(),
-            std::slice::from_ref(&regenerated),
-            "the recorded copy executes while regenerated pending work stays isolated"
+            &[],
+            "the recorded copy consumes its regenerated envelope exactly once"
+        );
+    }
+
+    #[test]
+    fn diagnostic_replay_consumes_only_recorded_due_regenerated_copies() {
+        let mut sim = Simulation::with_seed(7);
+        let owner = sim.interner.intern("Local");
+        let place = CommandEnvelope::new(
+            owner,
+            1,
+            Command::PlaceProducedMobile {
+                category: crate::sim::production::ProductionCategory::Infantry,
+            },
+        );
+        let future = CommandEnvelope::new(owner, 9, place.payload.clone());
+        let unrelated = CommandEnvelope::new(owner, 1, Command::Stop { entity_id: 41 });
+        sim.queue_commands([
+            place.clone(),
+            unrelated.clone(),
+            place.clone(),
+            future.clone(),
+        ]);
+
+        let due = sim.take_due_replay_commands([place.clone(), future.clone()]);
+
+        assert_eq!(due, [place.clone()]);
+        assert_eq!(
+            sim.pending_commands_for_tests(),
+            &[unrelated, place, future],
+            "one recorded due PLACE consumes one copy; future/unrelated work survives"
         );
     }
 }

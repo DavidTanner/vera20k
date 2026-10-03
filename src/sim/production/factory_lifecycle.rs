@@ -296,13 +296,9 @@ fn remove_ready_entry(sim: &mut Simulation, owner: InternedId, type_id: Interned
 /// the next queued entry into the active slot, cost-seeded from `rules` and started at
 /// this frame.
 ///
-/// Residual: gamemd delivers a human player's finished unit through a PLACE event
-/// that `StripClass::AI` queues (`0x006A8EB8..0x006A8F18`). Its execution
-/// (`0x004C710B` -> `HouseClass::Place_Production @ 0x004FB0E0`) unlimbos the unit
-/// and promotes the next build (Abandon_Production at `0x004FB663` ->
-/// StartNextQueued at `0x004FAC96`). VERA delivers and promotes in the completion
-/// frame, so for every unit a human builds, the unit appears and the next queued
-/// build starts earlier by the event's scheduling delay (untraced).
+/// Human mobile release occurs only in the queued PLACE tail
+/// (Event4C710B -> House4FB0E0 -> Abandon4FB663 -> StartNext4FAC96),
+/// after Strip has left the completed object's identity held for one frame.
 fn advance_after_delivery(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -407,7 +403,7 @@ pub(super) fn publish_completion(
 
 /// Delivery effects already committed; retain the revealed identity and start
 /// its successor. A refused vehicle delivery must never call this operation.
-pub(super) fn release_delivered_mobile(
+pub(in crate::sim) fn release_delivered_mobile(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,

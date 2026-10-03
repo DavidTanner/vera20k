@@ -1,0 +1,310 @@
+{
+  "schema": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "source_seal": {
+    "path": "basic-infantry-unlimbo-gate-context-research-20261003/manifest.json",
+    "sha256": "68c0abc23dc667a0de7f7ad7538365d00b8beba32c4d7b44674b0b982ad1f828",
+    "inherited_manifest_sha256": {
+      "basic-infantry-unlimbo-owner-consolidation-research": "cc36c8290753e2dd46103062e03967a5c33c537e345fc4d8e058c2377a97e879",
+      "basic-factory-output-event-admission-research": "7889079a6c0a64fd7d21e2f4b0d58d74f1fa880c49a55f0a8df82fd096c365b9",
+      "basic-factory-output-walk-startup-research": "2864c48044891746cf597cd0d4f4a5e8e6554b208ddccfa47313d1a22bbe68ea"
+    }
+  },
+  "source_receipt_sha256": "596a331e05c2e46f880c37115432e6df0c620236c208336c904f192ed7bfe97d",
+  "complete_normalized_original_sha256": "3aba7a424ac397c2d13df9bffb80183772285d498522e0f4badbfbc0022c2c0c",
+  "native_control_rows": 18,
+  "host_comparison_exclusions": [
+    "driver_sha256",
+    "imports"
+  ],
+  "retained_files": {
+    "accepted/infantry-unlimbo-gate.native.json.gz": {
+      "bytes": 31995,
+      "sha256": "8966e04c84ff853f7c3fc6d7c54f547a6a62d554bb7b3445dd70d77b71fb4cb8",
+      "uncompressed_bytes": 625741,
+      "uncompressed_sha256": "596a331e05c2e46f880c37115432e6df0c620236c208336c904f192ed7bfe97d"
+    },
+    "inputs/infantry-unlimbo-gate-retail.json": {
+      "bytes": 3587,
+      "sha256": "ec796146e329bd2e140fed65ab6b5abf8be4d39c8d0aaac16ad9d041f5b32c7c"
+    }
+  },
+  "public_caller": {
+    "path": "tools/spatial_oracle/factory_infantry_output.py",
+    "bytes": 15883,
+    "sha256": "00ffe06b0495f2593a29ccb4af8879a1f7f8768af205b3b4dc0914b93f82b437"
+  },
+  "caller_files": {
+    "gate.py": {
+      "bytes": 19551,
+      "sha256": "554a897da80583b255b1c40144efe51ef45ad633b72d5f855e37d811940bf5f9"
+    },
+    "gate_runtime.py": {
+      "bytes": 12334,
+      "sha256": "82b49c39e89a7081cb8bc531528fcce539ba82bc702c9bb5edac31fc5e95f7fc"
+    },
+    "fixture.py": {
+      "bytes": 41857,
+      "sha256": "7a059b4d04e6a0da64838525bae547604a3a9f61398fd4c471d839af567c1cf4"
+    },
+    "README.md": {
+      "bytes": 29569,
+      "sha256": "c56154d9fb4979cbf3afe3a9e93731e5d5b5251eb18b9be27f8315942a6993e5"
+    }
+  },
+  "helper_profiles": {
+    "historical-passenger-14": {
+      "status": "Immutable historical passenger fixture imported by sealed Gate controls; current helper compatibility is a separate comparison",
+      "files": {
+        "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+        "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+        "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+        "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
+        "tools/spatial_oracle/jumpjet_coordinates.py": "922eee4b7841312e85abdc52e65a65869a071de05f9644873fb3c38f9facd3b9",
+        "tools/spatial_oracle/jumpjet_entry_discovery.py": "ff8fd5cd549000345331072acf19797e494ab629fca986afacd4cf392c954d14",
+        "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
+        "tools/spatial_oracle/unit_scatter_state.py": "9cb5b9726c02c8ef7e08aeadf006fecd90191341250f744e9307d5a62a63a4c3",
+        "tools/spatial_oracle/unit_source_scatter.py": "d2ce3dce6e7baff886f3bc6a30c545ec29e442e9866a39a0acb03c92268bbcc8",
+        "tools/spatial_oracle/unit_entry.py": "c79e273f002fbb921942676c3747068fcb1312574e66eaaafe8bf4286740b96e",
+        "tools/spatial_oracle/track_destination.py": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
+        "tools/spatial_oracle/refinery_dock.py": "f9fe38dbf9f185594630d6bbec8bcf7184c3d5d66466a37ab91035f46639a15d",
+        "tools/spatial_oracle/passenger_escape.py": "4c2da90f55922d0210f3aa43a99190b1ef01553efecc0b5a782f7203b2df2e4a",
+        "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643"
+      }
+    },
+    "c60-gate-compatible": {
+      "status": "Two complete public original replays match all18 sealed controls and the single native selector; three changed historical owners are bounded by the selected paths",
+      "source_head": "c60d196d548800cec5494ab1d48f5e022719bb81",
+      "profile_sha256": "7a27d92ec5c767f61f3078d24093a6e59a2b104c7a2756b1c6ed292bd2e191d1",
+      "files": {
+        "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
+        "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+        "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+        "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
+        "tools/spatial_oracle/jumpjet_coordinates.py": "922eee4b7841312e85abdc52e65a65869a071de05f9644873fb3c38f9facd3b9",
+        "tools/spatial_oracle/jumpjet_entry_discovery.py": "ff8fd5cd549000345331072acf19797e494ab629fca986afacd4cf392c954d14",
+        "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
+        "tools/spatial_oracle/unit_scatter_state.py": "9cb5b9726c02c8ef7e08aeadf006fecd90191341250f744e9307d5a62a63a4c3",
+        "tools/spatial_oracle/unit_source_scatter.py": "d2ce3dce6e7baff886f3bc6a30c545ec29e442e9866a39a0acb03c92268bbcc8",
+        "tools/spatial_oracle/unit_entry.py": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
+        "tools/spatial_oracle/track_destination.py": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
+        "tools/spatial_oracle/refinery_dock.py": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408",
+        "tools/spatial_oracle/passenger_escape.py": "4c2da90f55922d0210f3aa43a99190b1ef01553efecc0b5a782f7203b2df2e4a",
+        "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643"
+      },
+      "replay_receipts": [
+        {
+          "path": "basic-infantry-unlimbo-gate-portable-replay/public-gate-candidate-attempt-1.json.gz",
+          "bytes": 40156,
+          "sha256": "e60e72ee96303b40aa95f61cb8f7a254875176f06e7fe5d017e992f20b10ae8e",
+          "uncompressed_bytes": 1052000,
+          "uncompressed_sha256": "65f4f784670734546b6e8d9b0247154200c21a728bc8560f04274ea58bde05d0",
+          "original_json_sha256": "0566273c8578c2189b35a0c177908e0748391a5dfdf086d2e987f4b3241ca139",
+          "complete_normalized_original_sha256": "3aba7a424ac397c2d13df9bffb80183772285d498522e0f4badbfbc0022c2c0c"
+        },
+        {
+          "path": "basic-infantry-unlimbo-gate-portable-replay/public-gate-candidate-attempt-2.json.gz",
+          "bytes": 40156,
+          "sha256": "e60e72ee96303b40aa95f61cb8f7a254875176f06e7fe5d017e992f20b10ae8e",
+          "uncompressed_bytes": 1052000,
+          "uncompressed_sha256": "65f4f784670734546b6e8d9b0247154200c21a728bc8560f04274ea58bde05d0",
+          "original_json_sha256": "0566273c8578c2189b35a0c177908e0748391a5dfdf086d2e987f4b3241ca139",
+          "complete_normalized_original_sha256": "3aba7a424ac397c2d13df9bffb80183772285d498522e0f4badbfbc0022c2c0c"
+        }
+      ]
+    }
+  },
+  "candidate_helper_files": {
+    "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
+    "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+    "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+    "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
+    "tools/spatial_oracle/jumpjet_coordinates.py": "922eee4b7841312e85abdc52e65a65869a071de05f9644873fb3c38f9facd3b9",
+    "tools/spatial_oracle/jumpjet_entry_discovery.py": "ff8fd5cd549000345331072acf19797e494ab629fca986afacd4cf392c954d14",
+    "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
+    "tools/spatial_oracle/unit_scatter_state.py": "9cb5b9726c02c8ef7e08aeadf006fecd90191341250f744e9307d5a62a63a4c3",
+    "tools/spatial_oracle/unit_source_scatter.py": "d2ce3dce6e7baff886f3bc6a30c545ec29e442e9866a39a0acb03c92268bbcc8",
+    "tools/spatial_oracle/unit_entry.py": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
+    "tools/spatial_oracle/track_destination.py": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
+    "tools/spatial_oracle/refinery_dock.py": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408",
+    "tools/spatial_oracle/passenger_escape.py": "4c2da90f55922d0210f3aa43a99190b1ef01553efecc0b5a782f7203b2df2e4a",
+    "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643"
+  },
+  "candidate_source_head": "c60d196d548800cec5494ab1d48f5e022719bb81",
+  "candidate_import_profile_sha256": "7a27d92ec5c767f61f3078d24093a6e59a2b104c7a2756b1c6ed292bd2e191d1",
+  "selector_origin": {
+    "path": "basic-infantry-unlimbo-gate-context-research-20261003/extract.py",
+    "sha256": "1f6887dbfae0a5832fbf35c284bb5391ffdd0548512e2222eb44fb464d1caf25",
+    "owner": "fixture.py::infantry_unlimbo_gate"
+  },
+  "rust_fixture": {
+    "path": "src/sim/world/world_spawn/fixtures/infantry_unlimbo_gate_native.json",
+    "bytes": 384904,
+    "sha256": "e4289aa1c1c613cf7b3d9540cd1a3b60f4b7ba25561fa01ea02501663ecaef8e"
+  },
+  "retail_input_profile": {
+    "accessor_result": true,
+    "authored_layers": [
+      {
+        "authored": {
+          "key_present": true,
+          "raw_value": "yes",
+          "section_present": true
+        },
+        "layer": "rulesmd",
+        "source": {
+          "entry_id": -2112292364,
+          "logical_name": "rulesmd.ini",
+          "payload_len": 743215,
+          "source_archive": "expandmd01.mix",
+          "source_sha256": "3d341ef8a13a4b5ab24af2eef48ac94931ac2bb87d950fe3330a07e2d25672ef"
+        },
+        "source_present": true
+      },
+      {
+        "authored": null,
+        "layer": "langrule",
+        "source": null,
+        "source_present": false
+      },
+      {
+        "authored": {
+          "key_present": false,
+          "raw_value": null,
+          "section_present": false
+        },
+        "layer": "game_mode",
+        "source": {
+          "entry_id": -1358413447,
+          "logical_name": "MPBattleMD.ini",
+          "payload_len": 295,
+          "source_archive": "ra2md.mix -> localmd.mix",
+          "source_sha256": "50406e81d7523f6be1954daab6b25bd85a8347c455f3d53dcf515d7f719b4963"
+        },
+        "source_present": true
+      },
+      {
+        "authored": {
+          "key_present": false,
+          "raw_value": null,
+          "section_present": false
+        },
+        "layer": "scenario",
+        "source": {
+          "kind": "loose",
+          "path": "/Users/halvor/Documents/vera20k-dev/game/Command and Conquer Red Alert II/Hills.mmx",
+          "payload_len": 144760,
+          "source_sha256": "96de259a741f1fc4d0d4bc4de1a1582755e90a77c2404978814149113fc42f22"
+        },
+        "source_present": true
+      }
+    ],
+    "domain": "rules",
+    "fixed_art_source": {
+      "entry_id": 1531435221,
+      "logical_name": "artmd.ini",
+      "payload_len": 336535,
+      "source_archive": "ra2md.mix -> localmd.mix",
+      "source_sha256": "e1f0378394313c04ebbd5073f47785ee3e46f1b3c62d65724e8f3c310ee7ba31"
+    },
+    "fixed_sound_source": {
+      "entry_id": 2054432025,
+      "logical_name": "soundmd.ini",
+      "payload_len": 99392,
+      "source_archive": "expandmd01.mix",
+      "source_sha256": "0a8e85381aef1a0f97074c953bfe99504da00c6220fae1a023a1afd857023232"
+    },
+    "key": "Gate",
+    "limits": [
+      "An accessor result is not a final gameplay field: constructors, type allocation timing, field-specific defaults/clamps, art indirection and post-read passes may change it.",
+      "Rules inspection executes the supported noncampaign skirmish path with the special TMCJ4F flag absent; campaign passes, LANGRULE Digest handling and that flagged extra pass are not modeled.",
+      "Authored values reflect the production byte parser: empty values are omitted and duplicate-key resolution retains its documented stock-inert residual.",
+      "Reader residuals remain: malformed ReadDouble/coord values use deterministic Rust recovery; ReadRange overflow differs from native. No new native equivalence is claimed."
+    ],
+    "lookup": "exact_case",
+    "mode": {
+      "class": "Battle",
+      "id": 1,
+      "override_file": "MPBattleMD.ini"
+    },
+    "mode_roster_source": {
+      "entry_id": -192382101,
+      "logical_name": "MPModesMD.ini",
+      "payload_len": 964,
+      "source_archive": "ra2md.mix -> localmd.mix",
+      "source_sha256": "62d3b5382891ff78b2104e869be8dd0fd8cd2497292d0979774d2397347327ad"
+    },
+    "processed": {
+      "key_present": true,
+      "raw_value": "yes",
+      "section_present": true
+    },
+    "reader": "bool",
+    "result_kind": "production_ini_accessor",
+    "schema_version": 1,
+    "section": "GAGATE_A",
+    "source_selection_route": "app_noncampaign_startup_then_shell_registration_then_map_then_theater_then_mode",
+    "string_capacity_bytes": null,
+    "supplied_default": "false"
+  },
+  "bounds": [
+    "Prepared immutable passenger map/House/type/Walk owner with supplied object state, active cell-list byte1, original Door ctor and supplied stable state/mission; no whole GAGATE_A constructor or live Gate mission.",
+    "Original51DFF0 and481180 execute with original47C4D0/Building4525F0/Door4A51B0, original membership/floor, class mark and class return. The inherited Foot4D7170 observer supplies success and writes location/mark/limbo; full Object/Techno/Idle remains outside these controls.",
+    "Full three 1012-byte RNG buffers are retained before/after and at original random entries/returns; only Scenario is originally seeded31 in the inherited fixture. Main/MapGen retain supplied mapped prior bytes and are observed unchanged.",
+    "Original executable sections are checked before/after every control. Native vtables are unchanged; no Gate, membership, height, RNG, placement or occupation decision is supplied.",
+    "Incoming positive/negative linear aliases select the existing real Cell through the original512-stride table. Negative-1/128 rows also preserve signed truncating lookup versus incoming AND-to-256 placement origin.",
+    "The oversized negative linear alias is native-only range evidence outside the current Rust position authority; the fixture includes17 representable rows.",
+    "The cached INI reader takes its literal layer values from the retained production-query receipt. Its historical pathname is provenance and is never a fallback input path. No retail assets are copied.",
+    "Full Gate constructor/mission scheduling and the Object/Techno/Foot/Idle Unlimbo lifecycle are excluded. The supplied-success Foot seam is retained exactly from passenger_escape.observe, not promoted to full entry proof."
+  ],
+  "compatibility_status": "Additive c60-gate-compatible14 registered after two complete public original comparisons; historical14 and all four earlier59 maps preserved",
+  "registration": {
+    "native_control_rows": 18,
+    "original_byte_spans": 16,
+    "complete_normalized_original_sha256": "3aba7a424ac397c2d13df9bffb80183772285d498522e0f4badbfbc0022c2c0c",
+    "normalized_top_level_source_keys": [
+      "driver_sha256",
+      "imports"
+    ],
+    "canonical_public_repeat_equal": true,
+    "changed_historical_helpers": {
+      "tools/native_oracle.py": {
+        "historical": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+        "current": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c"
+      },
+      "tools/spatial_oracle/unit_entry.py": {
+        "historical": "c79e273f002fbb921942676c3747068fcb1312574e66eaaafe8bf4286740b96e",
+        "current": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209"
+      },
+      "tools/spatial_oracle/refinery_dock.py": {
+        "historical": "f9fe38dbf9f185594630d6bbec8bcf7184c3d5d66466a37ab91035f46639a15d",
+        "current": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408"
+      }
+    },
+    "bounds": "Only the selected complete original paths are comparison-covered; helper branches not reached here remain outside this registration claim"
+  },
+  "prior_public_caller_versions": [
+    {
+      "path": "tools/spatial_oracle/factory_infantry_output.py",
+      "bytes": 12835,
+      "sha256": "db38f6dc1883d07c3749eca135f32671b8e6c92ee20c1a54fbb2ddbe97251a3b"
+    },
+    {
+      "path": "tools/spatial_oracle/factory_infantry_output.py",
+      "bytes": 15877,
+      "sha256": "65164f19608a1637f23746ec340ec0493de0cb85e0858c71be61f901e25844cc"
+    }
+  ],
+  "prior_fixture_caller_versions": [
+    {
+      "bytes": 39994,
+      "sha256": "26d7058f7ae09eda99085f8102f68ffdb16d65f4bf68bc5d5029328022dcc21e"
+    }
+  ],
+  "prior_readme_versions": [
+    {
+      "bytes": 24758,
+      "sha256": "3a309d2c4afec6c81da61ec1076eb5e2a7ad9d4e21917ec72716fbd7c2b46522"
+    }
+  ]
+}

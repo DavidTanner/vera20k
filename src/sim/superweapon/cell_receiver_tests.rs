@@ -609,11 +609,14 @@ fn genetic_converter_command_preserves_stable_id_batch_replacement_order() {
     let (mut sim, rules) = fixture();
     // Native cell order is center then east; existing Rust replacement order
     // is stable-ID order. Keep that compatibility decision explicit.
+    // Friendly retained corpses leave room for ordinary class admission.
+    // Enemy corpses instead refuse the immediate compatibility replacement;
+    // that separate regression below records the missing AnimToInfantry chain.
     let east = sim
-        .spawn_object_at_height("E1", "Soviet", 6, 5, 0, 0, &rules)
+        .spawn_object_at_height("E1", "Americans", 6, 5, 0, 0, &rules)
         .unwrap();
     let center = sim
-        .spawn_object_at_height("E1", "Soviet", 5, 5, 0, 0, &rules)
+        .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
         .unwrap();
     launch_command(&mut sim, &rules, "GM", 5, 5);
     let brutes = marked_brutes(&sim);
@@ -640,6 +643,30 @@ fn genetic_converter_command_preserves_stable_id_batch_replacement_order() {
 }
 
 #[test]
+fn genetic_converter_immediate_replacement_refuses_retained_enemy_corpses() {
+    let (mut sim, rules) = fixture();
+    let east = sim
+        .spawn_object_at_height("E1", "Soviet", 6, 5, 0, 0, &rules)
+        .unwrap();
+    let center = sim
+        .spawn_object_at_height("E1", "Soviet", 5, 5, 0, 0, &rules)
+        .unwrap();
+    launch_command(&mut sim, &rules, "GM", 5, 5);
+    for victim in [east, center] {
+        let corpse = sim.substrate.entities.get(victim).unwrap();
+        assert!(corpse.health.current == 0 && corpse.dying);
+        assert!(corpse.lifecycle.cell_marked && corpse.in_logic_vector);
+    }
+    assert!(marked_brutes(&sim).is_empty());
+    assert_eq!(sim.allocate_stable_id(), center + 3);
+    // Each attempted constructor consumes an identity, then its ordinary
+    // Unlimbo sees the retained enemy owner and refuses (Infantry51BF90=7).
+    // Immediate BRUTE replacement is existing Rust compatibility policy;
+    // native AnimToInfantry timing/placement remains a required specialized
+    // mechanism, not authority to bypass the shared class query here.
+}
+
+#[test]
 fn genetic_converter_command_uses_selected_bridge_membership_and_original_victims_only() {
     let (mut sim, rules) = fixture();
     let ground = sim
@@ -660,7 +687,7 @@ fn genetic_converter_command_uses_selected_bridge_membership_and_original_victim
     let mut deck = Vec::new();
     for _ in 0..2 {
         let id = sim
-            .construct_object_limbo_at_height("E1", "Soviet", 5, 5, 0, 4, &rules)
+            .construct_object_limbo_at_height("E1", "Americans", 5, 5, 0, 4, &rules)
             .unwrap();
         {
             let actor = sim.substrate.entities.get_mut(id).unwrap();
@@ -691,6 +718,8 @@ fn genetic_converter_command_uses_selected_bridge_membership_and_original_victim
     }
     // Replacement retains legacy Z=0 even for a deck victim. It is not a
     // native AnimToInfantry placement claim. Both original victims get one attempt.
+    // Shared CanEnter's height=-1 selects the structural bridge list even for
+    // that Z=0 replacement, so friendly deck corpses supply the admitted case.
     let brutes: Vec<_> = sim
         .substrate
         .entities
@@ -723,8 +752,8 @@ fn genetic_converter_command_missing_brute_keeps_kills_and_consumes_readiness() 
 }
 
 #[test]
-fn genetic_converter_explosion_command_admits_replacements_after_nested_damage() {
-    for (other_x, expected_replacements) in [(5, 2), (6, 1)] {
+fn genetic_converter_explosion_attempts_replacements_after_nested_damage_and_respects_slots() {
+    for (other_x, expected_replacements) in [(5, 1), (6, 1)] {
         let (mut sim, mut rules) = fixture_with_extra(
             "[Warheads]\n3=MutationAoE\n[SpecialWeapons]\nMutateExplosionWarhead=MutationAoE\n\
              [MutationAoE]\nCellSpread=1\nPercentAtMax=1\nInfDeath=1\n\
@@ -732,10 +761,10 @@ fn genetic_converter_explosion_command_admits_replacements_after_nested_damage()
         );
         rules.general.mutate_explosion = true;
         let boomer = sim
-            .spawn_object_at_height("BOOM", "Soviet", 5, 5, 0, 0, &rules)
+            .spawn_object_at_height("BOOM", "Americans", 5, 5, 0, 0, &rules)
             .unwrap();
         let other = sim
-            .spawn_object_at_height("E1", "Soviet", other_x, 5, 0, 0, &rules)
+            .spawn_object_at_height("E1", "Americans", other_x, 5, 0, 0, &rules)
             .unwrap();
         let tank = sim
             .spawn_object_at_height("MTNK", "Soviet", 5, 6, 0, 0, &rules)
@@ -768,7 +797,7 @@ fn genetic_converter_explosion_command_admits_replacements_after_nested_damage()
         assert_eq!(
             brutes.len(),
             expected_replacements,
-            "only original infantry receivers get replacements; tank damage and collateral deaths still commit"
+            "only original infantry receivers get attempts; ordinary class admission still requires a free raw slot"
         );
         assert!(brutes.iter().all(|id| *id > tank));
         for id in brutes {
@@ -779,6 +808,14 @@ fn genetic_converter_explosion_command_admits_replacements_after_nested_damage()
             );
             assert_eq!((object.position.rx, object.position.ry), (5, 5));
         }
+        // At other_x=5, two retained corpses plus the first BRUTE fill all
+        // three raw slots, so the second immediate attempt correctly refuses.
+        // At6, only BOOM is in the mutation radius; the other dies as
+        // collateral. Neither case interleaves replacements with nested damage.
+        assert_eq!(
+            sim.allocate_stable_id(),
+            tank + if other_x == 5 { 3 } else { 2 }
+        );
     }
 }
 
@@ -797,11 +834,24 @@ fn iron_curtain_command_forces_authored_strength_and_attributes_retained_deaths(
         .spawn_object_at_height("MTNK", "Americans", 5, 5, 0, 0, &rules)
         .unwrap();
     let over_strength = sim
-        .spawn_object_at_height("E1", "Soviet", 5, 5, 0, 0, &rules)
+        .construct_object_limbo_at_height("E1", "Soviet", 5, 5, 0, 0, &rules)
         .unwrap();
     let wounded = sim
-        .spawn_object_at_height("E1", "Soviet", 5, 5, 0, 0, &rules)
+        .construct_object_limbo_at_height("E1", "Soviet", 5, 5, 0, 0, &rules)
         .unwrap();
+    // Supplied already-present mixed membership isolates the IC damage
+    // receiver. Ordinary Infantry Unlimbo refuses a tank's raw vehicle bit;
+    // this test does not claim that ordinary spawning creates this prestate.
+    for id in [over_strength, wounded] {
+        ground_pose::put_location(
+            &mut sim.substrate.entities.get_mut(id).unwrap().position,
+            DriveCoord::cell(5, 5, 0),
+        );
+        assert!(matches!(
+            sim.reveal(id),
+            crate::sim::world::RevealOutcome::Revealed { .. }
+        ));
+    }
 
     let frame = sim.session.binary_frame;
     {

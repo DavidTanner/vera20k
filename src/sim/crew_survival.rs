@@ -51,12 +51,12 @@
 //!   marks and the Scenario stream after them. Needs a breakpoint at
 //!   `0x004400D4` (kill a NANRCT) to confirm Update reaches that arm.
 //! - A sale's crew Unlimboes at the Z its request carries, 0
-//!   (`0x0044A6C6`): on raised ground InfantryClass::Unlimbo's floor gate
-//!   (`0x0051E01B`) then keeps that exact coordinate instead of placing, so
-//!   the crewman starts below its cell's floor until it moves. VERA places it
-//!   on the floor. Trigger: selling a crewed building on raised ground.
-//!   Effect: the crewman's height before its first step. Not executed (the
-//!   oracle map is flat).
+//!   (`0x0044A6C6`); VERA's survivor request carries the cell's level.
+//!   Infantry51E01B compares that raw input before the shared type clamp
+//!   (`0x005247D0`) raises a below-floor coordinate. Trigger: selling a
+//!   crewed building on raised ground. Effect: the class placement arm and
+//!   its occupation result may differ; final below-floor Z is clamped in
+//!   both engines. Not executed (the sale oracle map is flat).
 //! - A dying unit's passengers ([`Simulation::release_dying_unit_passengers`]):
 //!   - IsABomb (`+0x8F`) kills every passenger (`0x007380AF`). Only
 //!     `ObjectClass::DropAsBomb @ 0x005F4160` sets it: the deck pass of
@@ -77,18 +77,13 @@
 //!     both arms are dormant.
 //!   - A vehicle passenger (in `SizeLimit=6` amphibious transports) is not
 //!     Scattered (`UnitClass::Scatter @ 0x00743A50`), and its Unlimbo
-//!     (`0x00737BA0`) sets neither the turret facing (`0x00737BD2`) nor
-//!     `+0x220`. Trigger: a transport carrying vehicles destroyed ashore.
+//!     (`0x00737BA0`) still leaves `+0x220` unchanged. Secondary facing now
+//!     follows its shared lifecycle writer at `0x00737BD2`. Trigger: a
+//!     transport carrying vehicles destroyed ashore.
 //!     Effect: the first vehicle stays on the cell with no NavCom, so the
 //!     next one's Can_Enter_Cell sees a stationary unit (code 6) and it
 //!     dies where native lets it out. Frequency: uncommon. Risk: unit
 //!     counts and the Scenario stream. The next path of this mechanism.
-//!   - Off-centre on a ramp, where the floor under the unit differs from
-//!     the cell centre's, an infantryman Unlimboes at the exact coordinate
-//!     with the centre's Z (`0x00738047..0x00738072`); VERA's reveal
-//!     grounds it under its XY. Effect: a few leptons of height until it
-//!     moves. Frequency: a transport dying off-centre on a slope.
-//!
 //!   - The selection hand-over reads `HouseClass::IsHumanPlayer
 //!     @ 0x0050B6F0` as "owned by the local player". That is its skirmish
 //!     arm. In a campaign it admits any house with IsHuman (`+0x1EC`) or
@@ -204,6 +199,7 @@ enum CrewUnlimbo {
     Place {
         cell: (u16, u16),
         z: u8,
+        raw_z: Option<i32>,
         request: (SimFixed, SimFixed),
         caller_places_first: bool,
     },
@@ -214,6 +210,7 @@ enum CrewUnlimbo {
         rx: u16,
         ry: u16,
         z: u8,
+        raw_z: Option<i32>,
         sub_x: SimFixed,
         sub_y: SimFixed,
         on_bridge: bool,
@@ -553,9 +550,16 @@ impl Simulation {
             // rounded DirType is the Unlimbo direction.
             let frame = sim.session.binary_frame;
             let facing = building.body_facing_dir(frame);
-            let position = building.position;
-            let sub_cell =
-                infantry.then(|| bump_crush::priority_sub_cell(position.sub_x, position.sub_y));
+            let requested = building.position;
+            let positioned = if infantry && !no_survivor {
+                sim.infantry_unlimbo_position(requested, Some(rules))
+            } else {
+                Some(requested)
+            };
+            let sub_cell = infantry.then(|| {
+                let position = positioned.unwrap_or(requested);
+                bump_crush::priority_sub_cell(position.sub_x, position.sub_y)
+            });
             // The dying building's expiry broadcast already cleared the
             // passenger's transporter link; the cargo list still held it.
             if let Some(entity) = sim.substrate.entities.get_mut(passenger) {
@@ -563,34 +567,25 @@ impl Simulation {
                 entity.on_bridge = on_bridge;
                 entity.sub_cell = sub_cell;
             }
-            let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(sub_cell);
             let revealed = !no_survivor
-                && matches!(
-                    sim.try_reveal_entity_with_context(
-                        passenger,
-                        RevealRequest {
-                            position: RevealPosition {
-                                exact_z_leptons: None,
-                                rx: position.rx,
-                                ry: position.ry,
-                                z: position.z,
-                                sub_x,
-                                sub_y,
+                && positioned.is_some_and(|position| {
+                    matches!(
+                        sim.try_reveal_entity_with_context(
+                            passenger,
+                            RevealRequest {
+                                position,
+                                placement: PlacementEvidence::MarkSucceeded,
+                                logic_eligible: true,
                             },
-                            placement: PlacementEvidence::MarkSucceeded,
-                            logic_eligible: true,
-                        },
-                        UninitContext::new(Some(rules), registry),
-                    ),
-                    RevealOutcome::Revealed { .. }
-                );
+                            UninitContext::new(Some(rules), registry)
+                                .with_unlimbo_facing(Some(facing)),
+                        ),
+                        RevealOutcome::Revealed { .. }
+                    )
+                });
             if !revealed {
                 sim.uninit_with_context(passenger, UninitContext::new(Some(rules), registry));
                 return;
-            }
-            // Unlimbo's body snap (`0x006F6DAA`) follows the successful Reveal.
-            if let Some(entity) = sim.substrate.entities.get_mut(passenger) {
-                entity.body_facing.snap(u16::from(facing) << 8, frame);
             }
             if infantry {
                 sim.scatter_crew(rules, registry, passenger);
@@ -657,6 +652,7 @@ impl Simulation {
                 rx: position.rx,
                 ry: position.ry,
                 z: position.z,
+                raw_z: position.exact_z_leptons,
                 sub_x: position.sub_x,
                 sub_y: position.sub_y,
                 on_bridge,
@@ -665,6 +661,7 @@ impl Simulation {
             CrewUnlimbo::Place {
                 cell: (position.rx, position.ry),
                 z: position.z,
+                raw_z: position.exact_z_leptons,
                 request: (position.sub_x, position.sub_y),
                 caller_places_first: false,
             }
@@ -849,6 +846,7 @@ impl Simulation {
                 CrewUnlimbo::Place {
                     cell: (rx, ry),
                     z: level,
+                    raw_z: Some(coord_z),
                     request: (sub_x, sub_y),
                     caller_places_first: false,
                 }
@@ -857,6 +855,7 @@ impl Simulation {
                     rx,
                     ry,
                     z: if on_bridge { unit_z } else { level },
+                    raw_z: Some(coord_z),
                     sub_x,
                     sub_y,
                     on_bridge,
@@ -960,6 +959,9 @@ impl Simulation {
             .get(id)
             .is_some_and(|entity| entity.category == EntityCategory::Infantry);
         let (rx, ry, z) = unlimbo.cell_level();
+        let requested_z = match unlimbo {
+            CrewUnlimbo::Place { raw_z, .. } | CrewUnlimbo::Exact { raw_z, .. } => raw_z,
+        };
         let (sub_cell, sub_x, sub_y, on_bridge) = match unlimbo {
             CrewUnlimbo::Place {
                 cell,
@@ -982,37 +984,31 @@ impl Simulation {
                     };
                     request = crate::util::lepton::subcell_lepton_offset(Some(spot));
                 }
-                //51E027 reads A8E7AC. Off the usable area51E06B raises the
-                //explicit placement byte too; neither priority arm draws.
-                let outside_usable_area = self
-                    .resolved_terrain
-                    .as_ref()
-                    .zip(self.playfield_bounds)
-                    .is_some_and(|(terrain, bounds)| {
-                        !crate::sim::cell_rect::retained_cell_is_in_playfield(
-                            terrain.native_cell_identity((cell.0 as i16, cell.1 as i16)),
-                            Some(bounds),
-                            terrain,
-                        )
-                    });
-                let spot = if self.object_placement_scope_active() || outside_usable_area {
-                    bump_crush::priority_sub_cell(request.0, request.1)
-                } else {
-                    let Some(spot) = bump_crush::place_infantry_in_cell(
-                        &self.substrate.raw_cell_occupation,
-                        cell.0,
-                        cell.1,
-                        MovementLayer::Ground,
-                        request.0,
-                        request.1,
-                        &mut self.scenario_rng,
-                    ) else {
-                        return false;
-                    };
-                    spot
+                // The distinct caller placement above remains here; the
+                // class51DFF0 floor/priority/placement owner is shared with
+                // ordinary constructors, factory output and slaves.
+                let Some(position) = self.infantry_unlimbo_position(
+                    RevealPosition {
+                        exact_z_leptons: requested_z,
+                        rx: cell.0,
+                        ry: cell.1,
+                        z,
+                        sub_x: request.0,
+                        sub_y: request.1,
+                    },
+                    Some(rules),
+                ) else {
+                    return false;
                 };
-                let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(Some(spot));
-                (Some(spot), sub_x, sub_y, false)
+                (
+                    Some(bump_crush::priority_sub_cell(
+                        position.sub_x,
+                        position.sub_y,
+                    )),
+                    position.sub_x,
+                    position.sub_y,
+                    false,
+                )
             }
             CrewUnlimbo::Exact {
                 sub_x,
@@ -1030,11 +1026,17 @@ impl Simulation {
             entity.sub_cell = sub_cell;
             entity.on_bridge = on_bridge;
         }
+        let facing = facing.or_else(|| {
+            self.substrate
+                .entities
+                .get(id)
+                .map(|entity| entity.body_facing_dir(self.session.binary_frame))
+        });
         let outcome = self.try_reveal_entity_with_context(
             id,
             RevealRequest {
                 position: RevealPosition {
-                    exact_z_leptons: None,
+                    exact_z_leptons: requested_z,
                     rx,
                     ry,
                     z,
@@ -1044,19 +1046,9 @@ impl Simulation {
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             },
-            UninitContext::new(Some(rules), registry),
+            UninitContext::new(Some(rules), registry).with_unlimbo_facing(facing),
         );
-        let revealed = matches!(outcome, RevealOutcome::Revealed { .. });
-        // Unlimbo's body snap (`+0x388` Set_Current, `0x006F6DAA`) follows a
-        // successful Reveal.
-        let frame = self.session.binary_frame;
-        if revealed
-            && let Some(facing) = facing
-            && let Some(entity) = self.substrate.entities.get_mut(id)
-        {
-            entity.body_facing.snap(u16::from(facing) << 8, frame);
-        }
-        revealed
+        matches!(outcome, RevealOutcome::Revealed { .. })
     }
 
     /// A survivor's placement in a foundation cell: its request
@@ -1066,6 +1058,7 @@ impl Simulation {
         CrewUnlimbo::Place {
             cell,
             z,
+            raw_z: None,
             request: (
                 SimFixed::from_num(SURVIVOR_REQUEST_X),
                 SimFixed::from_num(SURVIVOR_REQUEST_Y),

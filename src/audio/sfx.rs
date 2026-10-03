@@ -1561,7 +1561,6 @@ impl SfxPlayer {
         audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) {
         self.now_ms = now_ms;
-        self.advance_voice_queue(registry, assets, audio_index);
         self.top_up_loop_queues(now_ms, registry, assets, audio_index);
         self.report_finished_outputs();
         if !self.arbiter.pump_due(now_ms) {
@@ -1595,6 +1594,14 @@ impl SfxPlayer {
         }
         // The many-sounds scaler moved, so every live output's amplitude has.
         self.apply_live_output_scales();
+        // AudioPump406FBC/406FC1/406FC6 services Sound before Vox752760,
+        // all behind the same strict >33ms wall-clock gate. Original stock
+        // UnitReady controls retain a pending node at 1033 and start at 1034
+        // after a 1000ms pass. Reproduce via the factory_infantry_output
+        // oracle's UnitReady consumer controls; its single native selector
+        // supplies the stock device regression below.
+        // PlayEVA and explicit voice wait loops have their own immediate calls.
+        self.advance_voice_queue(registry, assets, audio_index);
     }
 
     /// Apply an `ArbiterAction::Start`: build the rodio player, bake the pan
@@ -2807,6 +2814,217 @@ mod tests {
             return;
         };
         assert!(!player.voices_active());
+    }
+
+    /// Whole stock UnitReady waveform from original40AA70 callback returns,
+    /// literal sample writes and409DE0 copy ranges. The portable factory oracle
+    /// selects those bytes once; this drives the actual EVAMD/MIX/index/decoder
+    /// path before presentation gain, with no second decoder or Rust golden.
+    #[test]
+    fn retail_unit_ready_pcm_matches_original_decode_and_buffer_writes() {
+        let Some((_root, assets)) = crate::rules::retail_ini_fixture::retail_assets() else {
+            return;
+        };
+        let fixture = crate::rules::retail_ini_fixture::factory_unit_ready_native();
+        let native = &fixture["controls"]["buffer"]["decoded_pcm"];
+        let selected = &fixture["controls"]["buffer"]["registered_prior"]["notification_suffix"][0]
+            ["after"]["selected"][0];
+        let definitions = crate::rules::audio_sources::AudioDefinitions::select(&assets);
+        let entry = definitions.eva().entry("EVA_UnitReady").unwrap();
+        let sample = entry.column(EvaSide::Allied).unwrap();
+        assert_eq!(sample, selected["allied"].as_str().unwrap());
+        let loaded_index = assets.load_audio_index().expect("selected audio index");
+        let decoded = load_sfx(
+            sample,
+            &assets,
+            loaded_index.as_ref().map(|loaded| &loaded.index),
+        )
+        .expect("production stock UnitReady decoder");
+        assert_eq!(
+            u64::from(decoded.sample_rate),
+            native["samples_per_second"].as_u64().unwrap()
+        );
+        assert_eq!(native["channels"], 1, "original mono source");
+        assert_eq!(native["sample_bytes"], 2, "original signed PCM16 output");
+        assert_eq!(decoded.channels, 2, "presentation upmix");
+        assert_eq!(decoded.samples.len() % 2, 0);
+        // The production owner represents each i16 exactly as f32/32768 and
+        // duplicates mono into stereo. Undo only that lossless representation;
+        // the expected length and every expected sample remain native outputs.
+        let actual: Vec<u8> = decoded
+            .samples
+            .chunks_exact(2)
+            .flat_map(|pair| {
+                assert_eq!(pair[0].to_bits(), pair[1].to_bits(), "mono upmix");
+                let scaled = pair[0] * 32768.0;
+                let sample = scaled as i16;
+                assert_eq!(scaled, f32::from(sample), "lossless PCM representation");
+                sample.to_le_bytes()
+            })
+            .collect();
+        let hex = native["bytes_hex"].as_str().unwrap();
+        assert_eq!(hex.len() % 2, 0);
+        let expected: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|offset| u8::from_str_radix(&hex[offset..offset + 2], 16).unwrap())
+            .collect();
+        assert_eq!(actual.len() as u64, native["bytes"].as_u64().unwrap());
+        assert_eq!(actual, expected, "all original callback/copy PCM bytes");
+        assert_eq!(
+            crate::util::sha256::sha256_hex(&actual),
+            native["sha256"].as_str().unwrap()
+        );
+    }
+
+    /// Original AudioSystem406F70 with physical EVAMD DialogList62 and
+    /// ceva062.WAV: paused queue at 1000, Unpause753620, no dequeue at 1033,
+    /// actual PlayNext752760/PlayFile407B60 at 1034, payload completion,
+    /// the strict inter-line gap and cleanup. All compared outcomes come from
+    /// the factory oracle's single original-byte consumer selector.
+    /// Device-backed production consumer check; ordinary lib CI has no device.
+    #[test]
+    #[ignore = "requires active-retail RA2_DIR and an audio output device"]
+    fn retail_unit_ready_waits_for_the_native_periodic_audio_service() {
+        let fixture = crate::rules::retail_ini_fixture::factory_unit_ready_native();
+        let step = |control: &str, label: &str| {
+            fixture["controls"][control]["steps"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["label"] == label)
+                .expect("selected original consumer boundary")
+        };
+        // Adapt this control's explicit OS clock input to milliseconds. The
+        // original clock initializer/division and its returned value are
+        // independently retained in registered_prior; this supplies inputs,
+        // never a playback, queue or completion answer.
+        let now_ms = |row: &serde_json::Value| {
+            let prior = &row["clock_prior"];
+            assert_eq!(prior["frequency"], 1_000_000);
+            prior["counter"].as_u64().unwrap() / 1_000
+        };
+        let compare = |player: &SfxPlayer, row: &serde_json::Value| {
+            let after = &row["after"];
+            let label = row["label"].as_str().unwrap();
+            assert_eq!(
+                player.vox.queued_count(),
+                usize::from(after["pending_standard_is_set"].as_bool().unwrap()),
+                "{label}: native pending slot"
+            );
+            assert_eq!(
+                player.vox.current().is_some(),
+                after["current_is_set"].as_bool().unwrap(),
+                "{label}: native current entry"
+            );
+            assert_eq!(
+                player.vox.dequeue_allowed(),
+                after["pause_depth"] == 0,
+                "{label}: native pause depth"
+            );
+            let stream_open = after["stream"]["flags"].as_u64().unwrap() != 0;
+            assert_eq!(
+                player.eva_stream_open, stream_open,
+                "{label}: native stream"
+            );
+            let selected = &after["selected"][0];
+            if let Some(current) = player.vox.current() {
+                assert_eq!(
+                    current.event,
+                    selected["name"].as_str().unwrap().to_ascii_uppercase()
+                );
+                assert_eq!(current.sample, selected["allied"].as_str().unwrap());
+            }
+            assert_eq!(
+                player.current_voice_id.as_deref(),
+                stream_open.then(|| selected["allied"].as_str().unwrap()),
+                "{label}: active sample"
+            );
+        };
+        let selected = &fixture["controls"]["cadence"]["registered_prior"]["clock_steps"][0]["after"]
+            ["selected"][0];
+        let (_root, assets) = crate::rules::retail_ini_fixture::retail_assets()
+            .expect("this explicit consumer check requires active-retail assets");
+        let definitions = crate::rules::audio_sources::AudioDefinitions::select(&assets);
+        let loaded_index = assets.load_audio_index().expect("selected audio index");
+        let audio_index = loaded_index.as_ref().map(|loaded| &loaded.index);
+        let entry = definitions.eva().entry("EVA_UnitReady").unwrap();
+        assert_eq!(entry.column(EvaSide::Allied), Some("ceva062"));
+        assert_eq!(entry.eva_type, EvaType::Standard);
+        assert_eq!(entry.priority, crate::rules::sound_ini::EvaPriority::Low);
+        assert_eq!(entry.name, selected["name"].as_str().unwrap());
+        assert_eq!(
+            entry.volume.to_bits(),
+            selected["volume_f32_bits"].as_u64().unwrap() as u32
+        );
+        let (wav, source) = assets.get_with_source("ceva062.wav").unwrap();
+        assert_eq!(wav.len(), 9354, "physical native consumer input");
+        assert_eq!(
+            crate::util::sha256::sha256_hex(&wav),
+            "6567dae06a071ab4985cad0b20b0c2596f923baf04a6bec097c8a9f0d937ee67"
+        );
+        eprintln!(
+            "UnitReady WAV source={source}, sha256={}",
+            crate::util::sha256::sha256_hex(&wav)
+        );
+
+        let mut player = SfxPlayer::new().expect("this explicit check requires an audio device");
+        // Keep the test's private output inaudible; it still creates the real
+        // decoder, mixer Player and stream queue without changing app settings.
+        player.set_voice_volume(0.0);
+        let paused = step("cadence", "paused_whole_periodic_service_1000ms");
+        player.set_paused(true, now_ms(paused));
+        assert!(player.play_eva(
+            "EVA_UnitReady",
+            None,
+            definitions.eva(),
+            EvaSide::Allied,
+            definitions.sounds(),
+            &assets,
+            audio_index,
+        ));
+        player.pump(now_ms(paused), definitions.sounds(), &assets, audio_index);
+        compare(&player, paused);
+        let unpaused = step("cadence", "original_unpause_keeps_native_pending");
+        player.set_paused(false, now_ms(unpaused));
+        compare(&player, unpaused);
+        for label in [
+            "whole_periodic_service_exact_33ms",
+            "whole_periodic_service_34ms_real_stock_wave",
+        ] {
+            let native = step("cadence", label);
+            player.pump(now_ms(native), definitions.sounds(), &assets, audio_index);
+            compare(&player, native);
+        }
+        // Let the actual stock decoder/mixer queue finish. The controlled
+        // wall-clock input2089 matches the native completed-stream witness;
+        // no simulated playback-completion answer is supplied to this owner.
+        player
+            .voice_player
+            .as_ref()
+            .unwrap()
+            .player
+            .sleep_until_end();
+        assert!(!player.voice_slot_busy());
+        for label in [
+            "original_payload_worker_2089ms",
+            "original_payload_end_exact_gap_queue_visit",
+        ] {
+            let native = step("buffer", label);
+            player.pump(now_ms(native), definitions.sounds(), &assets, audio_index);
+            compare(&player, native);
+        }
+        // The explicit voice wait-loop caller advances independently of the
+        // periodic pass. Native752760 at2590 retires current/state2 even though
+        // that is only1ms after the last periodic pass.
+        let retired = step("buffer", "original_payload_end_after_gap_queue_visit");
+        player.set_paused(false, now_ms(retired));
+        assert!(!player.pump_and_check_voices(definitions.sounds(), &assets, audio_index));
+        compare(&player, retired);
+        player.stop_all();
+        assert_eq!(player.vox.queued_count(), 0);
+        assert!(player.vox.current().is_none());
+        assert!(!player.voices_active());
+        assert!(player.current_voice_id.is_none());
     }
 
     fn build_test_wav(sample_rate: u32, bits: u16, channels: u16, samples: &[u8]) -> Vec<u8> {

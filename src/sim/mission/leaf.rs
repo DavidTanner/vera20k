@@ -19,6 +19,10 @@ pub(crate) enum MissionLeafState {
 /// Unit readiness bytes and its inherited Foot firing byte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct UnitMissionLeaf {
+    /// Inherited Foot+6B3, constructed clear at4D3438. Foot4D82B0
+    /// admits one base idle entry until the live FootAI4DA54E reset.
+    #[serde(default)]
+    idle_entry_latch: u8,
     /// Foot+68D: ctor4D33C6 clears it; Unit736DF0 only clears it, while raw
     /// Object5F5E80/Abstract410380 load retains the full Unit8E8 record.
     firing_sequence_latch: u8,
@@ -33,6 +37,8 @@ pub(crate) struct UnitMissionLeaf {
 /// Infantry readiness inputs owned by the firing and Doing authorities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct InfantryMissionLeaf {
+    #[serde(default)]
+    idle_entry_latch: u8,
     firing_sequence_latch: u8,
     doing: i32,
     /// Infantry+6E8: ctor517AC2 and Limbo51DF38 write2. DoAction51D8B8
@@ -55,6 +61,8 @@ const fn initial_infantry_water_state() -> i32 {
 /// Aircraft policy and readiness bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct AircraftMissionLeaf {
+    #[serde(default)]
+    idle_entry_latch: u8,
     /// The same inherited Foot+68D, retained by the raw Aircraft6D8 load.
     firing_sequence_latch: u8,
     /// Aircraft+6D2: shared by Mission_Attack, Fly and ReadyToCommence41B5E0.
@@ -78,6 +86,27 @@ pub(crate) struct BuildingMissionLeaf {
 pub(crate) struct InvalidInfantryDoing(pub(crate) i32);
 
 impl MissionLeafState {
+    /// One inherited byte per Foot; Building does not inherit Foot6B3.
+    pub(crate) const fn foot_idle_entry_latch(&self) -> u8 {
+        match self {
+            Self::Unit(leaf) => leaf.idle_entry_latch,
+            Self::Infantry(leaf) => leaf.idle_entry_latch,
+            Self::Aircraft(leaf) => leaf.idle_entry_latch,
+            Self::Building(_) => 0,
+        }
+    }
+
+    /// Original Foot4D82D2 / FootAI4DA54E. The class idle tail still
+    /// runs when the base receiver returns false for a nonzero latch.
+    pub(crate) fn set_foot_idle_entry_latch(&mut self, raw: u8) {
+        match self {
+            Self::Unit(leaf) => leaf.idle_entry_latch = raw,
+            Self::Infantry(leaf) => leaf.idle_entry_latch = raw,
+            Self::Aircraft(leaf) => leaf.idle_entry_latch = raw,
+            Self::Building(_) => panic!("Foot idle writer used for a Building"),
+        }
+    }
+
     /// Frame-zero constructor used by prepared test fixtures.
     #[cfg(test)]
     pub(crate) const fn for_entity_category(category: EntityCategory) -> Self {
@@ -313,6 +342,7 @@ impl MissionLeafState {
         tracker_byte_19: u8,
     ) -> Self {
         Self::Unit(UnitMissionLeaf {
+            idle_entry_latch: 0,
             firing_sequence_latch: 0,
             deployed: 0,
             deploy_begin_active,
@@ -325,6 +355,7 @@ impl MissionLeafState {
     #[cfg(test)]
     pub(crate) const fn infantry_raw_for_test(firing_sequence_latch: u8, doing: i32) -> Self {
         Self::Infantry(InfantryMissionLeaf {
+            idle_entry_latch: 0,
             firing_sequence_latch,
             doing,
             water_state: initial_infantry_water_state(),
@@ -339,6 +370,7 @@ impl MissionLeafState {
         airstrike_manager_present: bool,
     ) -> Self {
         Self::Aircraft(AircraftMissionLeaf {
+            idle_entry_latch: 0,
             firing_sequence_latch: 0,
             action_latch,
             transition_ready_latch,
@@ -357,6 +389,7 @@ impl MissionLeafState {
 impl UnitMissionLeaf {
     const fn initial() -> Self {
         Self {
+            idle_entry_latch: 0,
             firing_sequence_latch: 0,
             deployed: 0,
             deploy_begin_active: 0,
@@ -390,6 +423,7 @@ impl UnitMissionLeaf {
 impl InfantryMissionLeaf {
     const fn initial() -> Self {
         Self {
+            idle_entry_latch: 0,
             firing_sequence_latch: 0,
             doing: -1,
             water_state: initial_infantry_water_state(),
@@ -417,6 +451,7 @@ impl InfantryMissionLeaf {
 impl AircraftMissionLeaf {
     const fn initial() -> Self {
         Self {
+            idle_entry_latch: 0,
             firing_sequence_latch: 0,
             action_latch: 0,
             transition_ready_latch: 1,

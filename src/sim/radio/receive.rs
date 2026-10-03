@@ -16,6 +16,9 @@
 //! RESIDUALS (no represented reader or sender):
 //! - `RadioClass+0xD4..+0xDC`, the last three distinct received messages
 //!   (`0x0065A829`), is not kept.
+//! - Building radio8's Helipad/UnitRepair proximity arm (`0x0043CD2B..0x0043CDC8`)
+//!   remains with those specialized service mechanisms. Stock GAPILE has
+//!   neither flag and reaches the common reciprocal release below.
 //! - The bus carries no overlay registry, so RUN_AWAY's Scatter reaches an
 //!   Infantry receiver without one, and its overlay reads fail on any cell
 //!   holding an overlay (ore included); the error is logged. When
@@ -165,22 +168,43 @@ fn building_receive(
             }) else {
                 return RadioResponse::None;
             };
-            // Building43CD2B: Helipad/UnitRepair have a separate distance
-            // and service branch. Its senders are not migrated here.
+            //43CD2B reads Helipad+16A9/UnitRepair+16AB, not Hospital.
+            //Their separate numeric proximity/service arm remains outside
+            //the ordinary GAPILE and WeaponsFactory release routes.
             if object.helipad || object.unit_repair {
                 return RadioResponse::None;
             }
-            let weapons_factory = object.weapons_factory;
-            // 43CDDD delegates to Techno BEFORE the class reply43CE18.
+            //43CDDD delegates before re-reading the live type at43CDE2.
             let _ = techno_receive(sim, building, sender, msg, payload, rules);
-            if weapons_factory {
-                RadioResponse::Queued
+            if rules.is_some_and(|rules| {
+                sim.substrate
+                    .entities
+                    .get(building)
+                    .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+                    .is_some_and(|object| {
+                        object.weapons_factory || object.helipad || object.unit_repair
+                    })
+            }) {
+                RadioResponse::Queued //43CE18 returns literal0x17.
             } else {
                 RadioResponse::Roger
             }
         }
-        //0xD has no represented bus sender for its building arm.
-        RadioMessage::AnimStop => RadioResponse::None,
+        RadioMessage::AnimStop => {
+            //43CE24..CE44: a WeaponsFactory answers1 before Object Mark2.
+            //Other classes reach the existing shared refresh dispatcher.
+            if rules.is_some_and(|rules| {
+                sim.substrate
+                    .entities
+                    .get(building)
+                    .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+                    .is_some_and(|object| object.weapons_factory)
+            }) {
+                RadioResponse::Roger
+            } else {
+                techno_receive(sim, building, sender, msg, payload, rules)
+            }
+        }
         _ => techno_receive(sim, building, sender, msg, payload, rules),
     }
 }
@@ -892,7 +916,7 @@ fn techno_receive(
         RadioMessage::Break => techno_over_out(sim, techno, sender, payload, rules),
         // 0x006F4C6F (7, 9, 0x16): TETHER back to the sender, then the Radio
         // receiver; ROGER.
-        RadioMessage::DockingComplete | RadioMessage::PrepareToDock => {
+        RadioMessage::DockingComplete | RadioMessage::TetherBack | RadioMessage::PrepareToDock => {
             if let Some(from) = sender {
                 transmit(
                     sim,
@@ -1133,8 +1157,8 @@ fn techno_untether(
 }
 
 /// `RadioClass::Receive_Radio @ 0x0065A820` (HELLO and OVER_OUT); every other
-/// message reaches `ObjectClass::Receive_Radio @ 0x005F5320`, which answers 0
-/// for everything VERA sends over the bus.
+/// message reaches `ObjectClass::Receive_Radio @ 0x005F5320`. Literal13
+/// invokes the shared Mark(2) owner and always answers ROGER (`0x005F5370`).
 fn radio_receive(
     sim: &mut Simulation,
     receiver: u64,
@@ -1143,6 +1167,32 @@ fn radio_receive(
 ) -> RadioResponse {
     match msg {
         RadioMessage::Hello => radio_hello(sim, receiver, sender),
+        RadioMessage::AnimStop => {
+            #[cfg(test)]
+            let sender_state = sender
+                .and_then(|id| sim.substrate.entities.get(id))
+                .map(|entity| {
+                    (
+                        entity.lifecycle.cell_marked,
+                        sim.substrate.occupancy.contains_entity(
+                            entity.position.rx,
+                            entity.position.ry,
+                            entity.stable_id(),
+                        ),
+                    )
+                });
+            let accepted = sim.mark_entity_refresh(receiver);
+            #[cfg(test)]
+            super::record_test_event(super::RadioTestEvent::ObjectMarkRefresh {
+                receiver_sid: receiver,
+                sender_sid: sender,
+                sender_cell_marked: sender_state.map(|state| state.0),
+                sender_cell_listed: sender_state.map(|state| state.1),
+                accepted,
+            });
+            let _ = accepted;
+            RadioResponse::Roger
+        }
         // 0x0065A854..0x0065A8AA: null the first slot holding the sender.
         RadioMessage::Break => {
             let Some(from) = sender else {
@@ -1383,6 +1433,276 @@ mod tests {
             RadioPayload::default(),
             None,
         )
+    }
+
+    fn infantry_output_link(weapons_factory: bool) -> (Simulation, crate::rules::ruleset::RuleSet) {
+        use crate::rules::ini_parser::IniFile;
+        let rules = crate::rules::ruleset::RuleSet::from_ini(&IniFile::from_str(&format!(
+            "[InfantryTypes]\n0=E1\n[E1]\nStrength=125\n\
+             [BuildingTypes]\n0=GAPILE\n[GAPILE]\nStrength=500\n\
+             WeaponsFactory={weapons_factory}\nHospital=no\n"
+        )))
+        .unwrap();
+        let mut sim = Simulation::with_seed(31);
+        spawn_refinery(&mut sim, 2, "Americans", 3);
+        let type_ref = sim.intern("GAPILE");
+        let building = sim.substrate.entities.get_mut(2).unwrap();
+        building.type_ref = type_ref;
+        building.lifecycle.in_limbo = false;
+        building.lifecycle.cell_marked = true;
+        let owner = sim.intern("Americans");
+        let type_ref = sim.intern("E1");
+        let mut infantry = GameEntity::new_at_frame_zero_for_test(
+            1,
+            15,
+            16,
+            0,
+            128,
+            owner,
+            Health { current: 125 },
+            type_ref,
+            EntityCategory::Infantry,
+            0,
+            5,
+            false,
+        );
+        infantry.lifecycle.in_limbo = false;
+        infantry.lifecycle.cell_marked = true;
+        infantry.radio_contacts.set_capacity(3);
+        sim.substrate.entities.insert(infantry);
+        assert_eq!(hello(&mut sim, 1, 2), RadioResponse::Roger);
+        assert_eq!(
+            transmit(
+                &mut sim,
+                1,
+                2,
+                RadioMessage::Tether,
+                RadioPayload::default(),
+                Some(&rules),
+            ),
+            RadioResponse::Roger
+        );
+        crate::sim::radio::take_transmit_log();
+        clear_test_trace();
+        (sim, rules)
+    }
+
+    /// Original P2 output frames268/485: ExitObject444DC3/444DD9 sends
+    /// HELLO2 then9; Foot4D90D9 reaches Techno6F4C6F, then three nested24
+    /// sends end with the innermost Radio/Object default0. The jump table
+    /// at6F4E88 maps9 to the same arm as7/0x16. This compares the radio
+    /// sequence, contacts/tether and unchanged RNG, not the other Exit work.
+    /// Native packet: basic-factory-output-prerequisites-research,
+    /// rally-consumer-handoff-primary-2.json, SHA00632f4d2610f63a4afe53513bd7441d834d51d8c46ee67480c7fbb17ad893e6.
+    #[test]
+    fn barracks_output_hello_then_nine_replays_native_reciprocal_tether() {
+        let (mut sim, rules) = infantry_output_link(false);
+        // Use the same canonical bus to return the reusable linked fixture to
+        // the supplied pre-output state: no contacts and no tether.
+        assert_eq!(
+            transmit(
+                &mut sim,
+                2,
+                1,
+                RadioMessage::Break,
+                RadioPayload::default(),
+                Some(&rules)
+            ),
+            RadioResponse::Roger
+        );
+        for id in [1, 2] {
+            let entity = sim.substrate.entities.get(id).unwrap();
+            assert!(entity.radio_contacts.is_empty());
+            assert_eq!(entity.dock_entered_with, None);
+        }
+        crate::sim::radio::take_transmit_log();
+        clear_test_trace();
+        let rng = sim.rng_state();
+        assert_eq!(
+            transmit(
+                &mut sim,
+                2,
+                1,
+                RadioMessage::Hello,
+                RadioPayload::default(),
+                Some(&rules)
+            ),
+            RadioResponse::Roger
+        );
+        assert_eq!(
+            transmit(
+                &mut sim,
+                2,
+                1,
+                RadioMessage::TetherBack,
+                RadioPayload::default(),
+                Some(&rules)
+            ),
+            RadioResponse::Roger
+        );
+        let actual = crate::sim::radio::take_transmit_log()
+            .into_iter()
+            .map(|row| (row.sender_sid, row.msg, row.target_sid, row.reply))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual,
+            vec![
+                (2, 2, 1, Some(1)),
+                (2, 9, 1, Some(1)),
+                (1, 24, 2, Some(1)),
+                (2, 24, 1, Some(1)),
+                (1, 24, 2, Some(0)),
+            ]
+        );
+        for (id, peer) in [(1, 2), (2, 1)] {
+            let entity = sim.substrate.entities.get(id).unwrap();
+            assert_eq!(entity.radio_contacts.len(), 1);
+            assert!(entity.has_live_contact_with(peer));
+            assert_eq!(entity.dock_entered_with, Some(peer));
+        }
+        assert_eq!(sim.rng_state(), rng);
+    }
+
+    /// Original P2 human GAPILE output:51A80C→43CDDD→6F4C29; all three
+    /// native RNG objects remain unchanged by the five nested transactions.
+    /// Saved executable witness: basic-factory-output-prerequisites-research,
+    /// manifest3b42b8512826dc477250a2b894585724db4cb35264770618729c8fd47a083bf5.
+    /// Extra sparse contacts check the existing bus's bounded teardown, not a
+    /// forced factory clear. The class/type priors and radio replies are native.
+    #[test]
+    fn infantry_output_clearance_replays_native_nested_release_and_preserves_other_links() {
+        let (mut sim, rules) = infantry_output_link(false);
+        for id in [1, 2] {
+            sim.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .radio_contacts
+                .set_slot(2, 99);
+        }
+        let rng_before = sim.rng_state();
+
+        assert_eq!(
+            transmit(
+                &mut sim,
+                1,
+                2,
+                RadioMessage::RequestClearance,
+                RadioPayload::default(),
+                Some(&rules),
+            ),
+            RadioResponse::Roger
+        );
+
+        let actual = crate::sim::radio::take_transmit_log()
+            .into_iter()
+            .map(|event| (event.sender_sid, event.msg, event.target_sid, event.reply))
+            .collect::<Vec<_>>();
+        // Original entry order; nested replies are filled on return.
+        assert_eq!(
+            actual,
+            vec![
+                (1, 8, 2, Some(1)),
+                (2, 25, 1, Some(1)),
+                (1, 25, 2, Some(1)),
+                (2, 25, 1, Some(0)),
+                (2, 3, 1, Some(1)),
+            ]
+        );
+        for id in [1, 2] {
+            let entity = sim.substrate.entities.get(id).unwrap();
+            assert_eq!(entity.dock_entered_with, None);
+            assert_eq!(entity.radio_contacts.slot(0), None);
+            assert_eq!(entity.radio_contacts.slot(1), None);
+            assert_eq!(entity.radio_contacts.slot(2), Some(99));
+        }
+        assert_eq!(sim.rng_state(), rng_before);
+    }
+
+    /// Building43CDE2 re-reads its type after the common release. Native
+    /// WeaponsFactory43CE15 returns0x17; stock GAPILE returns1 instead.
+    #[test]
+    fn a_weapons_factory_clearance_releases_before_its_literal_0x17_reply() {
+        let (mut sim, rules) = infantry_output_link(true);
+        assert_eq!(
+            transmit(
+                &mut sim,
+                1,
+                2,
+                RadioMessage::RequestClearance,
+                RadioPayload::default(),
+                Some(&rules),
+            ),
+            RadioResponse::Queued
+        );
+        let log = crate::sim::radio::take_transmit_log();
+        assert_eq!(log[0].reply, Some(0x17));
+        assert_eq!(log.len(), 5);
+        for id in [1, 2] {
+            let entity = sim.substrate.entities.get(id).unwrap();
+            assert_eq!(entity.dock_entered_with, None);
+            assert!(entity.radio_contacts.is_empty());
+        }
+    }
+
+    /// Original dirty GAPILE Mark2 witness270a1321...391127 returnsAL0 but
+    /// Object5F537A returns radio1, with no lifecycle, raw/list or RNG effects.
+    /// Object+80 itself remains unrepresented; this is the bounded dirty arm.
+    #[test]
+    fn dirty_gapile_mark_refresh_acknowledges_without_a_second_presence_transaction() {
+        let (mut sim, rules) = infantry_output_link(false);
+        let before = serde_json::to_value(sim.substrate.entities.get(2).unwrap()).unwrap();
+        let rng_before = sim.rng_state();
+        let lifecycle_before = sim.lifecycle_test_events_for_test().to_vec();
+        assert!(!sim.mark_entity_refresh(2));
+        assert_eq!(
+            transmit(
+                &mut sim,
+                1,
+                2,
+                RadioMessage::AnimStop,
+                RadioPayload::default(),
+                Some(&rules),
+            ),
+            RadioResponse::Roger
+        );
+        assert_eq!(
+            serde_json::to_value(sim.substrate.entities.get(2).unwrap()).unwrap(),
+            before
+        );
+        assert_eq!(sim.rng_state(), rng_before);
+        assert_eq!(sim.lifecycle_test_events_for_test(), lifecycle_before);
+        assert_eq!(
+            take_test_trace(),
+            vec![RadioTestEvent::ObjectMarkRefresh {
+                receiver_sid: 2,
+                sender_sid: Some(1),
+                sender_cell_marked: Some(true),
+                sender_cell_listed: Some(false),
+                accepted: false,
+            }]
+        );
+        let log = crate::sim::radio::take_transmit_log();
+        assert_eq!(log.len(), 1);
+        assert_eq!((log[0].msg, log[0].reply), (13, Some(1)));
+    }
+
+    ///43CE24's WeaponsFactory gate acknowledges before Object5F5320.
+    #[test]
+    fn weapons_factory_mark_refresh_bypasses_the_object_receiver() {
+        let (mut sim, rules) = infantry_output_link(true);
+        assert_eq!(
+            transmit(
+                &mut sim,
+                1,
+                2,
+                RadioMessage::AnimStop,
+                RadioPayload::default(),
+                Some(&rules),
+            ),
+            RadioResponse::Roger
+        );
+        assert!(take_test_trace().is_empty());
     }
 
     #[test]

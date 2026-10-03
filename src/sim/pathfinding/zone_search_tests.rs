@@ -21,7 +21,9 @@ use crate::sim::intern::test_interner;
 use crate::sim::miner::miner_system::{issue_move_if_idle, issue_stock_miner_drive_move};
 use crate::sim::movement::issue_move_command_with_layered;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::production::{ProductionCategory, STARTING_CREDITS, tick_production};
+use crate::sim::production::{
+    ProductionCategory, STARTING_CREDITS, dispatch_production_changes_for_tests,
+};
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SimFixed;
 use std::collections::BTreeSet;
@@ -1002,12 +1004,12 @@ fn caller_count_bridge_detour(
 }
 
 #[test]
-fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
+fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts() {
     let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[VehicleTypes]\n0=MTNK\n\n\
+        "[Countries]\n0=Americans\n1=Russians\n[VehicleTypes]\n0=MTNK\n\n\
          [BuildingTypes]\n0=GAWEAP\n\n\
-         [MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\n\
-         [GAWEAP]\nStrength=1000\nFoundation=1x1\nFactory=UnitType\nExitCoord=256,0,0\n",
+         [MTNK]\nOwner=Americans\nStrength=300\nArmor=heavy\nSpeed=6\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\n\
+         [GAWEAP]\nOwner=Americans\nWeaponsFactory=yes\nStrength=1000\nFoundation=1x1\nFactory=UnitType\nExitCoord=256,0,0\n",
     ))
     .expect("ground-unit production rules should parse");
 
@@ -1026,18 +1028,25 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     sim.playfield_size_height = Some(4);
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
+    let owner = sim.interner.intern("Americans");
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, STARTING_CREDITS, 10),
+    );
+    sim.session.house_order.push(owner);
     let factory = sim
         .spawn_object("GAWEAP", "Americans", 0, 0, 0, &rules)
         .expect("war factory should spawn");
     sim.spawn_object("MTNK", "Russians", 0, 2, 0, &rules)
         .expect("dynamic blocker should spawn");
 
-    let owner = sim.interner.intern("Americans");
+    // Supplied completed construction admits the producer in the House's
+    // insertion-ordered building projection used by native FindFactory.
+    let building = sim.substrate.entities.get_mut(factory).unwrap();
+    building.finish_building_construction_for_test();
+    building.building_actually_placed = true;
+    sim.append_house_base_building_for_test(factory);
     let produced_type = sim.interner.intern("MTNK");
-    sim.houses.insert(
-        owner,
-        crate::sim::house_state::HouseState::new(owner, 0, None, true, STARTING_CREDITS, 10),
-    );
     sim.substrate
         .entities
         .get_mut(factory)
@@ -1067,7 +1076,7 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
 
     sim.install_fixture_path_grid(Some(&path_grid));
     assert!(
-        tick_production(&mut sim, &rules),
+        dispatch_production_changes_for_tests(&mut sim, &rules, None),
         "ready ground-unit production should deliver through the real completion entry"
     );
 
@@ -1086,6 +1095,35 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     assert_eq!(locomotor.movement_zone, MovementZone::Normal);
     assert!(!produced.on_bridge);
     let produced_id = produced.stable_id();
+    assert_eq!(produced.rally_cell(), Some((5, 0)));
+    assert!(produced.navigation.nav_com.is_none());
+    assert!(produced.has_live_contact_with(factory));
+    assert_eq!(produced.dock_entered_with, Some(factory));
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(factory)
+            .unwrap()
+            .mission
+            .queued(),
+        crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Unload)
+    );
+    // PLACE retains Archive/contact and queues Building Unload; it does not
+    // issue an eager rally order. Supply arrival at this already-clear exit
+    // Cell through the existing PerCell owner. Its radio8 clearance precedes
+    // the human Archive setter73AAA1..73AABB, which requests the route below.
+    // The tiny1x1 producer isolates that caller/Find_Path boundary; stock
+    // Building Door/ForceTrack timing is covered by factory_unload separately.
+    sim.per_cell_process(
+        produced_id,
+        crate::sim::movement::PerCellReason::Arrival,
+        Some(&rules),
+        None,
+    )
+    .expect("the supplied clear-exit arrival completes");
+    let produced = sim.substrate.entities.get(produced_id).unwrap();
+    assert!(!produced.has_live_contact_with(factory));
+    assert_eq!(produced.dock_entered_with, None);
     let route = first_track_process_route(&mut sim, produced_id, Some(&rules), &path_grid)
         .expect("completed MTNK should receive the hierarchy-backed rally route");
     assert_eq!(route.first().copied(), Some((1, 0)));

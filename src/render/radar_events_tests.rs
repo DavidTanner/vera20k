@@ -510,3 +510,144 @@ fn admit_without_radar_geometry_still_gates_by_cell_distance() {
         "no surface: no shrink distance"
     );
 }
+
+/// Original initialized kind6: whole65FDD0 -> 65FE00, then whole6603B0
+/// at every supplied frame0..200. This compares the retained zero-geometry
+/// prior and all its phase/scalar/lifetime results, not stock radar pixels.
+#[test]
+fn native_unit_ready_marker_matches_every_original_tick_and_cleanup() {
+    use crate::util::read_helpers::{read_i32_le, read_u16_le, read_u32_le};
+
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules_for_map("XMP03T4.MAP")
+    else {
+        return;
+    };
+    let fixture = crate::rules::retail_ini_fixture::factory_unit_ready_native();
+    let native = &fixture["controls"]["radar"];
+    let decode_hex = |value: &serde_json::Value| {
+        let hex = value.as_str().unwrap();
+        (0..hex.len())
+            .step_by(2)
+            .map(|offset| u8::from_str_radix(&hex[offset..offset + 2], 16).unwrap())
+            .collect::<Vec<_>>()
+    };
+    let config = &retail.rules.radar_event_config;
+    let scalars = decode_hex(&native["native_scalar_bytes"]);
+    assert_eq!(config.min_radius, read_i32_le(&scalars, 4));
+    assert_eq!(config.color_speed.to_bits(), read_u32_le(&scalars, 0));
+    assert_eq!(config.speed.to_bits(), read_u32_le(&scalars, 8));
+    assert_eq!(config.rotation_speed.to_bits(), read_u32_le(&scalars, 12));
+    let type6 = &native["native_type6_fields"];
+    let row = config_for(RadarEventType::UnitReady);
+    assert_eq!(
+        i64::from(row.dedup_distance_cells),
+        type6[0].as_i64().unwrap()
+    );
+    assert_eq!(u64::from(row.visible_frames), type6[1].as_u64().unwrap());
+    assert_eq!(u64::from(row.lifetime_frames), type6[2].as_u64().unwrap());
+    assert_eq!(row.unique, type6[3].as_u64().unwrap() != 0);
+
+    let compare_event = |event: &ClientRadarEvent, raw: &[u8], context: &str| {
+        assert_eq!(raw.len(), 64);
+        assert_eq!(
+            event.event_type as u32,
+            read_u32_le(raw, 0),
+            "{context}: kind"
+        );
+        assert_eq!(
+            event.source.radar_pixel,
+            (read_i32_le(raw, 4), read_i32_le(raw, 8))
+        );
+        assert_eq!(
+            event.radius.to_bits(),
+            read_u32_le(raw, 0x0c),
+            "{context}: radius"
+        );
+        assert_eq!(
+            event.rotation.to_bits(),
+            read_u32_le(raw, 0x10),
+            "{context}: rotation"
+        );
+        assert_eq!(
+            event.rotation_speed.to_bits(),
+            read_u32_le(raw, 0x14),
+            "{context}: rotation speed"
+        );
+        assert_eq!(
+            event.fade.to_bits(),
+            read_u32_le(raw, 0x18),
+            "{context}: fade"
+        );
+        assert_eq!(
+            event.fade_speed.to_bits(),
+            read_u32_le(raw, 0x1c),
+            "{context}: fade speed"
+        );
+        assert_eq!(
+            event.source.cell,
+            (read_u16_le(raw, 0x20), read_u16_le(raw, 0x22))
+        );
+        assert_eq!(event.expanding, raw[0x3c] != 0, "{context}: shrink phase");
+        assert_eq!(
+            event.needs_draw,
+            raw[0x3d] != 0,
+            "{context}: drawing active"
+        );
+        assert_eq!(
+            event.phase_started_frame,
+            (!event.expanding).then(|| u64::from(read_u32_le(raw, 0x24))),
+            "{context}: native lifetime start"
+        );
+    };
+    let birth = decode_hex(&native["entry_birth_bytes"]);
+    let cell = (read_u16_le(&birth, 0x20), read_u16_le(&birth, 0x22));
+    let mut queue = ClientRadarEvents::default();
+    assert!(queue.create(
+        RadarEventType::UnitReady,
+        source(cell, (read_i32_le(&birth, 4), read_i32_le(&birth, 8))),
+        0,
+        (0, 0), // Explicit inherited native surface prior.
+        config,
+    ));
+    compare_event(&queue.events[0], &birth, "original kind6 birth");
+    assert!(!queue.create(
+        RadarEventType::UnitReady,
+        source(cell, (0, 0)),
+        0,
+        (0, 0),
+        config
+    ));
+
+    let frames = native["frames"].as_array().unwrap();
+    assert_eq!(
+        frames.len() as u64,
+        native["expiry_frame"].as_u64().unwrap() + 1
+    );
+    for (index, frame) in frames.iter().enumerate() {
+        let now = frame["frame"].as_u64().unwrap();
+        assert_eq!(
+            now, index as u64,
+            "every original consecutive visit retained"
+        );
+        queue.advance_to_frame(now, config);
+        let expected = &frame["cleanup_after_radar"];
+        assert_eq!(
+            queue.len() as u64,
+            expected["count"].as_u64().unwrap(),
+            "frame{now}: native cleanup count"
+        );
+        if let Some(event) = queue.events.first() {
+            compare_event(
+                event,
+                &decode_hex(&expected["entries"][0]["raw_hex"]),
+                &format!("original frame{now}"),
+            );
+        }
+    }
+    assert!(queue.events.is_empty());
+    assert_eq!(
+        queue.cycle_cell(Instant::now()),
+        Some(cell),
+        "native review ring survives expiry"
+    );
+}

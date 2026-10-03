@@ -1075,8 +1075,9 @@ impl Simulation {
         )
     }
 
-    /// Object5F4F1B: one shared class query, exact zero only, unless A8E7AC
-    /// skips the query. Rejection precedes facing, subcell or pose writes.
+    /// Infantry51DFF0 places its requested floor coordinate before the common
+    /// Object5F4F1B class query. Rejection retains the constructor-held pose
+    /// and facing; a successful Techno snaps facing before its idle callback.
     fn reveal_constructed_object(
         &mut self,
         stable_id: u64,
@@ -1086,7 +1087,16 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Option<u64> {
-        let RevealPosition { rx, ry, .. } = requested_position;
+        let is_infantry = self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category == EntityCategory::Infantry);
+        let requested_position = if is_infantry {
+            self.infantry_unlimbo_position(requested_position, Some(rules))?
+        } else {
+            requested_position
+        };
         let placement = if placement == PlacementEvidence::EvaluateMark {
             self.constructor_unlimbo_placement(
                 stable_id,
@@ -1109,62 +1119,127 @@ impl Simulation {
             return None;
         }
 
-        let is_infantry = self
-            .substrate
-            .entities
-            .get(stable_id)
-            .is_some_and(|entity| entity.category == EntityCategory::Infantry);
-        let infantry_sub_cell = is_infantry.then(|| self.allocate_infantry_sub_cell(rx, ry));
-        let (sub_x, sub_y) = {
-            let entity = self.substrate.entities.get_mut(stable_id)?;
-            if let Some(sub_cell) = infantry_sub_cell {
-                entity.sub_cell = Some(sub_cell);
-                let offsets = crate::util::lepton::subcell_lepton_offset(Some(sub_cell));
-                entity.position.sub_x = offsets.0;
-                entity.position.sub_y = offsets.1;
-            }
-            if is_infantry {
-                (entity.position.sub_x, entity.position.sub_y)
-            } else {
-                (requested_position.sub_x, requested_position.sub_y)
-            }
-        };
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id)
+            && is_infantry
+        {
+            entity.sub_cell = Some(crate::sim::movement::bump_crush::priority_sub_cell(
+                requested_position.sub_x,
+                requested_position.sub_y,
+            ));
+            entity.on_bridge = false;
+        }
         let outcome = self.try_reveal_entity_with_context(
             stable_id,
             RevealRequest {
-                position: RevealPosition {
-                    sub_x,
-                    sub_y,
-                    ..requested_position
-                },
+                position: requested_position,
                 placement,
                 logic_eligible: true,
             },
-            super::lifecycle::UninitContext::new(Some(rules), overlay_registry),
+            super::lifecycle::UninitContext::new(Some(rules), overlay_registry)
+                .with_unlimbo_facing(Some(facing)),
         );
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
             return None;
         }
-        // `TechnoClass::Unlimbo` snaps the body to the requested direction
-        // once the Reveal succeeded (`+0x388` Set_Current, `0x006F6DAA`).
-        let frame = self.session.binary_frame;
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            let facing = u16::from(facing) << 8;
-            entity.body_facing.snap(facing, frame);
-            // Unit737BBE..737BD2 / Aircraft414403..414417 snap Secondary
-            // to the same Unlimbo direction through FacingClass4C9300.
-            if matches!(
-                entity.category,
-                EntityCategory::Unit | EntityCategory::Aircraft
-            ) && let Some(barrel) = entity.barrel_facing.as_mut()
-            {
-                barrel.snap(facing, frame);
-            }
+        if let Some(entity) = self.substrate.entities.get_mut(stable_id)
+            && is_infantry
+        {
+            // Infantry51E114 restores its class water sentinel after Foot.
+            entity.mission_leaf.reset_infantry_water_state();
         }
         self.allocate_building_light(stable_id, rules);
         self.initialize_cloak_after_unlimbo(stable_id, rules);
         self.add_unit_sensor_after_unlimbo(stable_id, rules);
         Some(stable_id)
+    }
+
+    /// InfantryClass51DFF0 -> CellPlaceInfantry481180, reused by factory,
+    /// survivor and slave entry. The class places only at the sampled floor;
+    /// airborne exact coordinates keep their XY. Scenario priority/outside
+    /// usable-area placement takes the requested quadrant without a draw.
+    /// Native frontend/FootXYZ/three-stream controls:
+    /// tools/spatial_oracle/_factory_infantry_output, Infantry51DFF0 and
+    /// Cell481180 on gamemd SHA1cdd1180; infantry_unlimbo_gate_native.json.
+    pub(crate) fn infantry_unlimbo_position(
+        &mut self,
+        mut position: RevealPosition,
+        rules: Option<&RuleSet>,
+    ) -> Option<RevealPosition> {
+        use crate::sim::movement::{bump_crush, ground_pose, locomotor::MovementLayer, walk_head};
+        use crate::sim::occupancy::RawCellKey;
+        let input = ground_pose::position_world_coord(&position);
+        let xy = [input.x, input.y];
+        let floor = ground_pose::ground_surface_z_at(
+            xy,
+            false,
+            self.resolved_terrain.as_ref(),
+            self.path_grid(),
+        );
+        //51E018..021 compares the supplied raw Z, including a coarse caller's
+        //signed level representation, before the later Object type clamp.
+        let requested_z = input.z;
+        if floor.is_some_and(|floor| requested_z != floor) {
+            return Some(position);
+        }
+        let packed_cell = (
+            crate::util::lepton::lepton_to_cell_packed(xy[0]),
+            crate::util::lepton::lepton_to_cell_packed(xy[1]),
+        );
+        //51E027..51E02E skips incoming Map578460 when A8E7AC is raised.
+        //Membership uses the incoming packed words even when their linear
+        //lookup aliases another real Cell; retained Map578540 is different.
+        let priority = self.object_placement_scope_active()
+            || self
+                .resolved_terrain
+                .as_ref()
+                .zip(self.playfield_bounds)
+                .is_some_and(|(terrain, bounds)| {
+                    !crate::sim::cell_rect::cell_is_in_playfield_height_aware(
+                        (i32::from(packed_cell.0), i32::from(packed_cell.1)),
+                        Some(bounds),
+                        Some(terrain),
+                    )
+                });
+        let key = self
+            .resolved_terrain
+            .as_ref()
+            .map_or(RawCellKey::Real(position.rx, position.ry), |terrain| {
+                RawCellKey::from_native(terrain, terrain.native_cell_identity(packed_cell))
+            });
+        //481298..481313 reaches the live ground Gate only after ordinary
+        //vehicle/object gates. Reuse its Building4525F0/Door4A51B0 owner.
+        let gate_open = !priority && {
+            let ground = self
+                .substrate
+                .raw_cell_occupation
+                .bits_at(key, MovementLayer::Ground);
+            ground & crate::sim::cell_kernel::INFANTRY_OCCUPATION_VEHICLE_BIT == 0
+                && ground & crate::sim::cell_kernel::INFANTRY_OCCUPATION_OBJECT_BIT != 0
+                && match key {
+                    RawCellKey::Real(x, y) => bump_crush::ground_gate_is_open(
+                        &self.substrate.occupancy,
+                        &self.substrate.entities,
+                        rules,
+                        &self.interner,
+                        (x, y),
+                    ),
+                    RawCellKey::Dummy => false,
+                }
+        };
+        let spot = bump_crush::place_infantry_in_native_cell(
+            &self.substrate.raw_cell_occupation,
+            key,
+            MovementLayer::Ground,
+            input,
+            priority,
+            gate_open,
+            &mut self.scenario_rng,
+        )?;
+        //Cell481180 removes each incoming XY low byte before adding the
+        //selected slot, including negative positions and real-cell aliases.
+        let selected = walk_head::selected_head(input, spot, requested_z, false);
+        ground_pose::set_position_world_xy(&mut position, [selected.x, selected.y]);
+        Some(position)
     }
 
     /// Store a freshly constructed object in native-style limbo and account for
@@ -1314,6 +1389,48 @@ impl Simulation {
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         scenario_initialization: bool,
     ) -> (u64, RevealOutcome) {
+        // ScenarioFullInit686B4F raises A8E7AC before InfantryRead51FB00
+        // at687ACB, retaining it until687C2B..687C44 after all map objects.
+        // This initial-object entry preserves that caller state through the
+        // class placement, common admission and downstream idle callbacks.
+        if scenario_initialization && !self.object_placement_scope_active() {
+            return self.with_object_placement_scope(|sim| {
+                sim.unlimbo_constructed_parent(
+                    stable_id,
+                    position,
+                    rules,
+                    overlay_registry,
+                    scenario_initialization,
+                )
+            });
+        }
+        let infantry = self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category == EntityCategory::Infantry);
+        let position = if infantry {
+            let Some(position) = self.infantry_unlimbo_position(position, rules) else {
+                return (
+                    stable_id,
+                    RevealOutcome::Failed(super::lifecycle::RevealFailure::RejectedEarly),
+                );
+            };
+            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                entity.sub_cell = Some(crate::sim::movement::bump_crush::priority_sub_cell(
+                    position.sub_x,
+                    position.sub_y,
+                ));
+            }
+            position
+        } else {
+            position
+        };
+        let facing = self
+            .substrate
+            .entities
+            .get(stable_id)
+            .map(|entity| entity.body_facing_dir(self.session.binary_frame));
         let placement = rules.map_or(PlacementEvidence::EvaluateMark, |rules| {
             self.constructor_unlimbo_placement(stable_id, position, rules, overlay_registry)
         });
@@ -1324,7 +1441,8 @@ impl Simulation {
                 placement,
                 logic_eligible: true,
             },
-            super::lifecycle::UninitContext::new(rules, overlay_registry),
+            super::lifecycle::UninitContext::new(rules, overlay_registry)
+                .with_unlimbo_facing(facing),
         );
         if matches!(outcome, RevealOutcome::Revealed { .. }) {
             if let Some(rules) = rules {
@@ -1369,7 +1487,11 @@ impl Simulation {
         };
         // Other classes' +1AC constructor receivers are separate migrations.
         // Terrain-less diagnostics retain their existing generic Mark seam.
-        if entity.category != EntityCategory::Unit || self.resolved_terrain.is_none() {
+        if !matches!(
+            entity.category,
+            EntityCategory::Unit | EntityCategory::Infantry
+        ) || self.resolved_terrain.is_none()
+        {
             return PlacementEvidence::EvaluateMark;
         }
         if self.object_placement_scope_active() {
@@ -1389,7 +1511,7 @@ impl Simulation {
             Ok(0) => PlacementEvidence::UnitEntryAdmitted,
             Ok(_) => PlacementEvidence::RejectedEarly,
             Err(cause) => {
-                log::debug!("Unit {stable_id} Unlimbo admission: {cause}");
+                log::debug!("Foot {stable_id} Unlimbo admission: {cause}");
                 PlacementEvidence::RejectedEarly
             }
         }
@@ -2136,34 +2258,6 @@ impl Simulation {
             .factory_shadow
             .view(owner, ProductionCategory::Building)
             .is_some_and(|v| v.object.is_some() || !v.queue.is_empty())
-    }
-
-    /// Find the next available infantry sub-cell at a given cell position.
-    /// Scans existing infantry entities at (rx, ry) and returns the first unused
-    /// spot from FUNCTIONAL_SUB_CELLS. Falls back to the first entry if all taken
-    /// (caller should have avoided full cells via spawn cell selection).
-    fn allocate_infantry_sub_cell(&self, rx: u16, ry: u16) -> u8 {
-        let mut occupied: [bool; 5] = [false; 5];
-        for entity in self.substrate.entities.values() {
-            if !entity.dying
-                && !entity.lifecycle.in_limbo
-                && entity.position.rx == rx
-                && entity.position.ry == ry
-                && entity.category == EntityCategory::Infantry
-            {
-                if let Some(sub) = entity.sub_cell {
-                    if (sub as usize) < occupied.len() {
-                        occupied[sub as usize] = true;
-                    }
-                }
-            }
-        }
-        for &spot in &crate::sim::movement::bump_crush::FUNCTIONAL_SUB_CELLS {
-            if !occupied[spot as usize] {
-                return spot;
-            }
-        }
-        crate::sim::movement::bump_crush::FUNCTIONAL_SUB_CELLS[0]
     }
 }
 

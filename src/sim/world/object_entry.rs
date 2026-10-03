@@ -1113,11 +1113,14 @@ impl Simulation {
     /// no argument but the cell, otherwise [`Self::foot_can_enter`] with
     /// `args` on the cell's canonical lookup.
     ///
-    /// Every caller passes 1 as the fifth argument, which `args` has no slot
-    /// for. Unit forwards it as `0x004D9C10`'s enable flag (`0x0073F3B3`),
-    /// where every retail locomotor's `+0x1C` is the constant-zero
-    /// `0x0055ABF0` (`tools/spatial_oracle/foot_locomotor_entry`); the Unit
-    /// corpus runs with 1 (`tools/spatial_oracle/unit_entry.py`).
+    /// `mode` retains the fifth argument: GetDock44EFB0 uses1 for its
+    /// preferred/scan cells and0 for offered/table cells; Object5F4F3C's
+    /// ordinary Unlimbo gate uses0. Foot4D9C10 forwards1 to the installed
+    /// locomotor's +1C, whose eight active retail receivers are all the
+    /// side-effect-free constant-zero55ABF0 leaf. The class owner already
+    /// seeds its result0, so both modes have identical numeric behavior.
+    /// Native48-call proof: tools/spatial_oracle/foot_locomotor_entry.*;
+    /// bounded factory/depot modes: basic-factory-exit-geometry-research.
     ///
     /// Callers: the group spread (`0x0064D52F`), the team centre
     /// (`0x006EAEE0`) and Jumpjet State 4 (`0x0054C66D`). Each decides what
@@ -1128,6 +1131,7 @@ impl Simulation {
         id: u64,
         cell: (i16, i16),
         args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
+        _mode: crate::sim::movement::infantry_entry::EntryQueryMode,
         rules: &RuleSet,
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<u8, String> {

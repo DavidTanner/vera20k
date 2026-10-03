@@ -1,0 +1,1405 @@
+{
+  "schema_version": 2,
+  "kind": "original_native_factory_infantry_output_portable_replay",
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "origin_seals": {
+    "P1": "3ae9a5220673979933261a154bace85a2958404bfb8541bdb6a7b478b90fad15",
+    "P2": "3b42b8512826dc477250a2b894585724db4cb35264770618729c8fd47a083bf5",
+    "P3": "7889079a6c0a64fd7d21e2f4b0d58d74f1fa880c49a55f0a8df82fd096c365b9",
+    "P4": "211f278519d1fef59383f0861382b2b474b8952bd9e534e7ab0c98651519f637",
+    "P5": "16bd087078c0a6a3d085df07ee0fa5238eccdaf38e1710c81b81d1f8fcffb603",
+    "P6": "302b3edbd5f5fd49c1b067e51dfa337c8aa0b92a6561ce2b009d33eb49a7dbdb",
+    "P7": "f55db2df69ee45be9340f8a5d565fa6d06801df12401359ea3f3b64643cadedc",
+    "P8": "e2f8da7f85eab268600e85f5833bca9741a39ccc06e62e8f7b79fc1c4fee495b",
+    "P9": "1b2c6fc9a787ca50fc6ffbe079e81ee69d74a9367c706d79f66518da4747cffc",
+    "P10": "2864c48044891746cf597cd0d4f4a5e8e6554b208ddccfa47313d1a22bbe68ea"
+  },
+  "historical_physical_root": "/Users/halvor/Documents/vera20k-dev/evidence/object-completion/engineer-repair-20261002/fatal-smudge-admission-audit/assets/extract",
+  "physical_inputs": {
+    "BURNT08.TEM": {
+      "sha256": "144db047a18057adf043309ddba68f46d48ace0db047e487d9ec205d7a715117",
+      "bytes": 528
+    },
+    "TWLT036.SHP": {
+      "sha256": "9e210bc3ccd550439fc96e46b9db2f494a18b6ac2b6ff6f953ec42597a3eadee",
+      "bytes": 12024
+    },
+    "DBRIS1SM.SHP": {
+      "sha256": "9f39db7add44a9d3ac33c5025705c0511b63ba3313d531074432ee88c4c4e422",
+      "bytes": 1536
+    },
+    "BURNT09.TEM": {
+      "sha256": "bf057f86a66c6ba849906c78359db3cc10a00db757fc41c0c6cdc8b7bd045747",
+      "bytes": 728
+    },
+    "GGPOWR_A.SHP": {
+      "sha256": "4761e4c39be2683362baa8987fbbcff9ab0deacda75344848b9427e84c621724",
+      "bytes": 49480
+    },
+    "MPBattleMD.ini": {
+      "sha256": "50406e81d7523f6be1954daab6b25bd85a8347c455f3d53dcf515d7f719b4963",
+      "bytes": 295
+    },
+    "Hills.mmx": {
+      "sha256": "96de259a741f1fc4d0d4bc4de1a1582755e90a77c2404978814149113fc42f22",
+      "bytes": 144760
+    },
+    "audio.bag": {
+      "sha256": "8917fb579eb9f312b09f626e8b6b085958a36d0aa86b4e7db3f4cfb87016f69f",
+      "bytes": 37625632
+    },
+    "GGCNST_B.SHP": {
+      "sha256": "aa037ee1329c2ea6db5275485c0d864554452f2f4b871a4f2c5d38e2f3f8fe25",
+      "bytes": 320968
+    },
+    "RULESMD.INI": {
+      "sha256": "3d341ef8a13a4b5ab24af2eef48ac94931ac2bb87d950fe3330a07e2d25672ef",
+      "bytes": 743215
+    },
+    "S_TUMU60.SHP": {
+      "sha256": "9a22506695d0a7cb6b94058100b40bb11e52ca3c24987c9bc962af590d90c2fb",
+      "bytes": 66672
+    },
+    "DBRIS5SM.SHP": {
+      "sha256": "df75d0676499c700358f36377f1b042577ffef82ea38ee871249cdfebf15b432",
+      "bytes": 1536
+    },
+    "S_CLSN58.SHP": {
+      "sha256": "8a976413360cd20392bab3b98ec2dafa82c123a4aee4dfee13a3d9e05d019e37",
+      "bytes": 77960
+    },
+    "CLEAR01.TEM": {
+      "sha256": "d90df76d78fd9a3e23834c5a728cef666dbdf65b212dd3a66c29b456cbd51ed2",
+      "bytes": 1872
+    },
+    "TWLT026.SHP": {
+      "sha256": "ceef1aadc2ad3dcd11755b065631836e154041060b3fd3ec09ceb73173d089a7",
+      "bytes": 7120
+    },
+    "GGCNST_A.SHP": {
+      "sha256": "f7ddb3c50e2a44894db6d0e6b455ba57a6c252eec3b4daba79363daa04135559",
+      "bytes": 6344
+    },
+    "CRATER06.TEM": {
+      "sha256": "3f4226e9dee3a46518061b6dfcad98eb569105237e5980cec63c161335961e57",
+      "bytes": 528
+    },
+    "CRATER12.TEM": {
+      "sha256": "1cd2c9ca94f788182968212ddd37b3765b6ba22ca7ccb26914713da671062918",
+      "bytes": 3384
+    },
+    "GTCNSTMK.SHP": {
+      "sha256": "cfefb3b412c48ffd57852ec4e22b1109affdaac62b3061e2a58a7c071daeed46",
+      "bytes": 428080
+    },
+    "S_CLSN16.SHP": {
+      "sha256": "771b2c8f180dc29d6296cd96084425bdb4323c708aa133fe1e339eb0b2d2d3da",
+      "bytes": 6088
+    },
+    "CRATER07.TEM": {
+      "sha256": "52d10fd85d8a933c4200174969bac9eaf71ba84577a66f9aff0c5845f23cff38",
+      "bytes": 688
+    },
+    "CRATER11.TEM": {
+      "sha256": "a5a2a761c5ca83d557417a4a51913235b9ba84774204814b7337c655e4baeeea",
+      "bytes": 1768
+    },
+    "CRATER05.TEM": {
+      "sha256": "89ae918146e639ddd39300748ddf4f477d158a5b3163f29ece8c85900b22795b",
+      "bytes": 496
+    },
+    "SOUNDMD.INI": {
+      "sha256": "0a8e85381aef1a0f97074c953bfe99504da00c6220fae1a023a1afd857023232",
+      "bytes": 99392
+    },
+    "ARTMD.INI": {
+      "sha256": "e1f0378394313c04ebbd5073f47785ee3e46f1b3c62d65724e8f3c310ee7ba31",
+      "bytes": 336535
+    },
+    "GUNFIRE.SHP": {
+      "sha256": "863ad6a6a184f8ca1863ea1546af75972f0af973c36efa7e270575ae28a161e9",
+      "bytes": 792
+    },
+    "CRATER04.TEM": {
+      "sha256": "1816743b545bc01b68f732e0a6514a8ada3a63eb0381193d474c8a231821cbc9",
+      "bytes": 512
+    },
+    "CRATER10.TEM": {
+      "sha256": "4fc023213e47e1f0bbc2b621b9360ef20534cf30c19fd02729eff474972e42be",
+      "bytes": 712
+    },
+    "DBRIS4SM.SHP": {
+      "sha256": "81cf49b9f7849b69c71e92844ece9c4494e329abf718edc8fd80c7dc66f299ca",
+      "bytes": 2824
+    },
+    "SMOKEY2.SHP": {
+      "sha256": "52f6faf0f78607bb4215c8c22a502c516dbbe0a5734440229f1c9ea4290f30ea",
+      "bytes": 2488
+    },
+    "CRATER01.TEM": {
+      "sha256": "e1c5c55ae31c66851b408905270a43df9051de140f2b1c6fd9f472b69281d924",
+      "bytes": 288
+    },
+    "CRATER03.TEM": {
+      "sha256": "14521629f12f0ea507b22da3091500034408e16cde9cf4f86ed45842118fe3a9",
+      "bytes": 200
+    },
+    "GTPOWRMK.SHP": {
+      "sha256": "0ae9b81804b725ff662a56c81d23b3af031d66ac273554651bb0ccf189fdc873",
+      "bytes": 101960
+    },
+    "receipts.json": {
+      "sha256": "6b03e29622fdb6e55a3d41f4902fa00ac83e659cbe3169ab449fb9a41efd6df1",
+      "bytes": 15408
+    },
+    "120MM.SHP": {
+      "sha256": "4c98740538c483eb9ff631d852b2a963eb08928763f1d8383e8098e3a5d6ab3b",
+      "bytes": 48
+    },
+    "CRATER02.TEM": {
+      "sha256": "93d898af492bde5d723369730d4317dd5631d66a692744ad3652ab1f0aed3f37",
+      "bytes": 392
+    },
+    "GTPILEMK.SHP": {
+      "sha256": "bacb42b4048a5077101c6f35fb403a1835def1348567aafb67356f52b6c92297",
+      "bytes": 181888
+    },
+    "S_CLSN22.SHP": {
+      "sha256": "4217fa39c3c970fa718c8e16d500a6bf39ecdb72c1dd7df21a1a6271abb0a294",
+      "bytes": 9536
+    },
+    "ENGINEER.SHP": {
+      "sha256": "f8eb0dc0156a877028ac2ed57bf2e71a9445ffcb6ef6a4caf3b0dbb7b111834c",
+      "bytes": 114032
+    },
+    "DBRIS1LG.SHP": {
+      "sha256": "e45eee6368cc397d13b56dff989d5695cd605212a0055e64cadbb988a57d8f9f",
+      "bytes": 1728
+    },
+    "Hills.map": {
+      "sha256": "780d5d6e6d3c81ac0d510a5df326848dd426b3d840ac290114f44faf8eab9e9e",
+      "bytes": 144458
+    },
+    "CRATER09.TEM": {
+      "sha256": "3db950d13e3a01e44c25abd3eb48f865a0a2b695d3f934afa409a726b78a1b5a",
+      "bytes": 720
+    },
+    "S_BRNL58.SHP": {
+      "sha256": "ed2a252d2479facadd219496c9a4d47165b9e52857e239633a62b1a6cfa5d986",
+      "bytes": 21544
+    },
+    "FIRE01.SHP": {
+      "sha256": "b58a8a40a7dc26253e3ec491c8402501e0b888330c8304c54fc8765828248665",
+      "bytes": 8936
+    },
+    "DBRIS5LG.SHP": {
+      "sha256": "db855e5306685a81310789fc3f3ade6e25bc8be36efb05cca38db5323654737d",
+      "bytes": 2104
+    },
+    "CRATER08.TEM": {
+      "sha256": "5cde1393c1af8b9ef9b0e048e02ece196b8340f619367fcbf01d060f50feafd2",
+      "bytes": 592
+    },
+    "FIRE03.SHP": {
+      "sha256": "41f196c3284426dbc94ccf939f4447ff8207ec8a87b20d4c556f259b29a477fa",
+      "bytes": 10896
+    },
+    "TEMPERATMD.INI": {
+      "sha256": "bf656852ad19636068f2dde6f9ddd1440ecf0e13e6e4de6cd7fb179a3592549d",
+      "bytes": 25269
+    },
+    "TWLT070.SHP": {
+      "sha256": "2b48d44f23c91591f8b905fbbc9bfcb584e0069784d7472212d6a5e3df5fcd2f",
+      "bytes": 95472
+    },
+    "FIRE02.SHP": {
+      "sha256": "237b885c650a574d9c0d4397c599d7d93439e222b3145c48ff4079a5d6a4014b",
+      "bytes": 26688
+    },
+    "S_BANG48.SHP": {
+      "sha256": "653bd2cfd875bf71ddb8b0ce48f5855a65869eede7d510bacd4f11cf0a3535c1",
+      "bytes": 65744
+    },
+    "BURNT01.TEM": {
+      "sha256": "869b77ac2988d94f37d2ced0dff1a201f14b8a8048661ae5bd6402a7b7a54b37",
+      "bytes": 520
+    },
+    "BURNT02.TEM": {
+      "sha256": "d449f8810aa5e00a8844e48a38caa76cf46ec2a7185763cd5b3536656c28cde4",
+      "bytes": 392
+    },
+    "BURNT03.TEM": {
+      "sha256": "8a75a0181ab0f2bc7efb9ef1cba19c27376fa57ff96d70f19d1938c5a45f5a9b",
+      "bytes": 360
+    },
+    "audio.idx": {
+      "sha256": "b3be1ac75032d062dce3d7415cb7dbe7ceec0b479bc6450241dee3148b7c12c1",
+      "bytes": 82272
+    },
+    "BURNT07.TEM": {
+      "sha256": "91e64038b6581198d9eb18e834e6ce08a356143a59a1b16e04dcadf4fd19e9c4",
+      "bytes": 816
+    },
+    "BURNT12.TEM": {
+      "sha256": "4eaeb40623d712e31f4fecae0d73ee7a67a664b0a9a73d1847c0442f79407ceb",
+      "bytes": 1304
+    },
+    "BURNT06.TEM": {
+      "sha256": "4a19408b5373865737e27b74c25314441a9a937065940f621a61b79296d5a7c9",
+      "bytes": 648
+    },
+    "BURNT10.TEM": {
+      "sha256": "732d5edb15194345274865bc40839a4b9b5d0259e6cd5decc56f7824aa27b248",
+      "bytes": 744
+    },
+    "BURNT04.TEM": {
+      "sha256": "c23fc112ebdb8308120ec5e321a120f37c49a68517df3d96c829e93bb34ab2a3",
+      "bytes": 416
+    },
+    "BURNT05.TEM": {
+      "sha256": "0ff753591841a8a1d98b70d2a31a3cff505e487809c37d5a8aa7728ce4ef8e69",
+      "bytes": 376
+    },
+    "DBRIS4LG.SHP": {
+      "sha256": "4262df2a6f4aaf5600c6a726f2b977fbbfc8f8824ba79b4857af0b06a4743bcc",
+      "bytes": 2600
+    },
+    "BURNT11.TEM": {
+      "sha256": "d58aa1d09b815ef43e0bc948e302acd2c158a41b9b03a973d61f9764980480c2",
+      "bytes": 1720
+    },
+    "GGPILE_A.SHP": {
+      "sha256": "37bd29c741fbe235411c8416e78abd41a59c57f935f60a4fbf091e501462c23e",
+      "bytes": 23584
+    },
+    "GI.SHP": {
+      "sha256": "bceaee9c270d6382d80d509f2c4b2893c10565f779096b3add37a4d5321e8be1",
+      "bytes": 186032
+    },
+    "LANGRULE.INI": {
+      "absent": true
+    }
+  },
+  "controls": {
+    "no_rally": {
+      "primary_original_file": "construction-primary.json",
+      "primary_uncompressed_sha256": "9ff9c219b81c93fe5671b6a153073c09aa4d14c04472baeff0a5680977c1963d",
+      "private_original_file": "no-rally-primary-2.json",
+      "private_original_file_sha256": "7e73e87df794d8a3b39a8ba5a465afd4db9ea4cebcb30470880d81b2f916c39e",
+      "final_frame": 522,
+      "native_primary_sha256": "d967bbfd4e56e149df9b63f570340cb3531b550791e321a3aed1ae6cf07a0046",
+      "native_private_full_sha256": "5546a27a0eba4734cd8f98533ea7e09bfbda98960b6a3e0738c552eb9eb9a384",
+      "native_private_projection_sha256": "0f61bdb5075ec506cca352a5b288240f093a3fe3639c66c04246419f65351452"
+    },
+    "rally": {
+      "primary_original_file": "rally-consumer-handoff-primary-2.json",
+      "primary_uncompressed_sha256": "00632f4d2610f63a4afe53513bd7441d834d51d8c46ee67480c7fbb17ad893e6",
+      "private_original_file": "idle-latch-primary-5.json",
+      "private_original_file_sha256": "d3a57a24b798b49337af3fb0c8b65e710bee12944a8b794d69a2b2c7cdb6b73f",
+      "final_frame": 515,
+      "native_primary_sha256": "87e7c63d2786b8a5907ad57a3f46798aac412e627e69fc2a7b7487d7b4c5a4e5",
+      "native_private_full_sha256": "783db1df1ee0aca2022d78d563f22989bbf7fe804b833b5243a2a6bb79ef4fe4",
+      "native_private_projection_sha256": "be7e9660fdae8e5311f21d76c1d2e523d377b237825742cc8a91e048a7bcb59a"
+    }
+  },
+  "retained_files": {
+    "accepted/rally.private.json.gz": {
+      "bytes": 17604,
+      "sha256": "5aefaf69c3b7a4508d9c5f07a65d1074f0d075b183de4d0e1075de80098c1358",
+      "uncompressed_bytes": 391823,
+      "uncompressed_sha256": "57d4e1e5049417675b0b6e43118f034c1cd8674d9e7bd6bae79e403b07040f99"
+    },
+    "accepted/no_rally.receipt.json.gz": {
+      "bytes": 455059,
+      "sha256": "c34f12fb3db8e787a045b4a4c078e5e22a61ddc5d02e27cecd005bf313739005",
+      "uncompressed_bytes": 23127932,
+      "uncompressed_sha256": "9ff9c219b81c93fe5671b6a153073c09aa4d14c04472baeff0a5680977c1963d"
+    },
+    "accepted/rally.receipt.json.gz": {
+      "bytes": 1176771,
+      "sha256": "f413a1c571adbc53a9cce640f3608e64408af537455122096d241b5b2cce16ca",
+      "uncompressed_bytes": 102332011,
+      "uncompressed_sha256": "00632f4d2610f63a4afe53513bd7441d834d51d8c46ee67480c7fbb17ad893e6"
+    },
+    "accepted/no_rally.private.json.gz": {
+      "bytes": 14303,
+      "sha256": "4e40fa6147e72f1cb45f00a215305f47a4457f0e5ba28296f95db9686caff54d",
+      "uncompressed_bytes": 275537,
+      "uncompressed_sha256": "339f99fbd24c9f49cfe06e8d5f21a581392efd42c3b22a5532e3444614cc8441"
+    },
+    "fixtures/ordinary-input-closure.json.gz": {
+      "bytes": 36243,
+      "sha256": "fb2784f86fe6e0b1b83030a300f1d0089b46aa4223ba4d27610e41c309acc332",
+      "uncompressed_bytes": 778512,
+      "uncompressed_sha256": "4fbefd4554f69d7b05f739aeb8039abe6c8e94a4762d246b8b09a258e5558c61"
+    },
+    "native-infantry-vtable.json": {
+      "bytes": 3166,
+      "sha256": "7e1ac7e22240396f1c4867b258eb4b9746155d9d55a5e07c816d0cb496d7deef"
+    },
+    "fixtures/initialized-no_rally.json.gz": {
+      "bytes": 132669,
+      "sha256": "993e9be3ebe28aba7821200261b2ad44d7aa507a894df7b2b795631a358808ff",
+      "uncompressed_bytes": 2722138,
+      "uncompressed_sha256": "a88edb320ee37d7cc5220d906455b023433defcf83ac0bf1c70a31752475a495"
+    },
+    "fixtures/initialized-rally.json.gz": {
+      "bytes": 141323,
+      "sha256": "a007f83e4df084db87d9f0cfe554b485e64a9b59c1e6618209826dbd32df57dc",
+      "uncompressed_bytes": 3040801,
+      "uncompressed_sha256": "5df44784bcebf4b105bb370aa8d451a7da8a5088064011196e7177dcca2745d1"
+    },
+    "accepted/publication-phase-native-before-strip-attempt-1.json.gz": {
+      "bytes": 232271,
+      "sha256": "6de53a3e7c28d6a5e7ef734d81babaf183e7410642c0f6cd56b2524c6d9663d0",
+      "uncompressed_bytes": 8635854,
+      "uncompressed_sha256": "3d8bfe7f1b4563ea918f82689050406eaedbb32316efdf7c8773921feb5b5232"
+    },
+    "accepted/publication-phase-native-after-strip-attempt-1.json.gz": {
+      "bytes": 230712,
+      "sha256": "1dd1b1f0ea72378ba09f37fa02cec0d233200c69ee42a5f4950fe59e6a2feca5",
+      "uncompressed_bytes": 8544556,
+      "uncompressed_sha256": "cc516145d75514f34ee8baaf09bb6d8398452d3b670789e9dfe11ac312752c83"
+    },
+    "inputs/publication-phase-instructions.json.gz": {
+      "bytes": 37691,
+      "sha256": "48454e8da72b4c9995ff44333bb21b5371e7bf9d1f1f9c71743fbe85fff901b1",
+      "uncompressed_bytes": 505562,
+      "uncompressed_sha256": "fcb0e73a29860aa334a4ba8b342ab332b3916ea7f9ce99cb5209c7641fd94394"
+    },
+    "inputs/publication-phase-input-closure.json.gz": {
+      "bytes": 8017,
+      "sha256": "f220d5f6c0bb62d7900cc7e6c9b6ebe198d13b577113a9ff22ecb534550259ac",
+      "uncompressed_bytes": 18965,
+      "uncompressed_sha256": "1158184d99b4c706fc8d9d8621a3eecaa4a255217ca4928457463d756fadd549"
+    },
+    "inputs/publication-phase-source-manifest.json": {
+      "bytes": 1421,
+      "sha256": "a0416992e1d4536b0961c742619c9aa183604126bc5294e0e78c99c3cb4e7856"
+    }
+  },
+  "helper_profiles": {
+    "sealed-original": {
+      "files": {
+        "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+        "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+        "tools/spatial_oracle/anim_bouncer_launch.py": "6fa5df589e686573addd7843c16fae49a883c437f6dba3091d4f9c8d7b601055",
+        "tools/spatial_oracle/smudge_can_place.py": "0771bef02dae6cb70028054efb6bc87cb532ec3d1f4038ab5def386c2e6461ec",
+        "tools/spatial_oracle/building_death_anims.py": "2c411ebe503db16d01c3a799cb3f227d901ee2c3bc488ecb442fd90cfedcd303",
+        "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+        "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+        "tools/spatial_oracle/unit_scatter_state.py": "9cb5b9726c02c8ef7e08aeadf006fecd90191341250f744e9307d5a62a63a4c3",
+        "tools/spatial_oracle/unit_source_scatter.py": "d2ce3dce6e7baff886f3bc6a30c545ec29e442e9866a39a0acb03c92268bbcc8",
+        "tools/spatial_oracle/unit_entry.py": "c79e273f002fbb921942676c3747068fcb1312574e66eaaafe8bf4286740b96e",
+        "tools/spatial_oracle/track_destination.py": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
+        "tools/spatial_oracle/refinery_dock.py": "f9fe38dbf9f185594630d6bbec8bcf7184c3d5d66466a37ab91035f46639a15d",
+        "tools/spatial_oracle/harvest_field.py": "047fd5d2333dcee593d93edfa92a69debd6ad2f7b5a53029711f3dde17b5e087",
+        "tools/spatial_oracle/slave_manager.py": "257ef2d170d2f5bf01e001f1e46561374677168a2d32a21181ef684c3bdb662d",
+        "tools/spatial_oracle/building_construction.py": "9cf2225abea2029ba3b66ca8dae9433001e033c03e4e7056e0a9fd2af73fccf2",
+        "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+        "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+        "tools/rules_oracle/bridge_anim_inputs.py": "f7f2941e11bbede50ffab19554a789e4e3e42f4969b04ad4e9697973e659d316",
+        "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
+        "tools/spatial_oracle/engineer_repair_admission.py": "44abd32d884efb782cb782bf01821a452cef1217e75bda5ac5f9d4b352a6e2e2",
+        "tools/spatial_oracle/time_to_build.py": "5d298a5744961484485c25f587abb2f848b6261580ee4180ebd0fbd870d7f249",
+        "tools/spatial_oracle/factory_cadence.py": "324fa00bb554187f9e0127cc48b5bd898e676e3ccb54e01323d66ada55ec47ff",
+        "tools/spatial_oracle/anytown_damage/__init__.py": "5cca8aa87d9e3c1c8ff349b7a2c105a2bdfbce58bb13acae9fbda5645ef8c66a",
+        "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+        "tools/projectile_oracle/guided_step.py": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
+        "tools/native_slope.py": "737b8294db419d298d362029825a255ae70df9945bef4c8b588369a53eaf13de",
+        "tools/spatial_oracle/shrapnel_repair/__init__.py": "181c307c7f2f1767bee7fc8812eb72698df94241d26c669526254bf13084e003",
+        "tools/rules_oracle/theater_general_reader.py": "a466f2d5d94e5f4d8908bed0a97c69cf2aeb2d9356694d0af107491349e7afbd",
+        "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": "5386be531deb221b2abf0a06cf46371937a3134fd4fdde142a7d20fc97691400",
+        "tools/spatial_oracle/bridge_rim.py": "5fdcf28d51a05e8e4fddbfd41cea0a5ac19b3ab80f01a87ee36cea5ced676b80",
+        "tools/spatial_oracle/shrapnel_repair/map_facts.py": "8fec739ee85c0110096180ae7c7712ad96e5191752ec9362dc3d9eb21e5d6768",
+        "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+        "tools/spatial_oracle/mapgen_range.py": "df39b5ab3a2450c98dfa749a67826d5cb87f9d73086dc2511ff3261906724eef",
+        "tools/spatial_oracle/shrapnel_repair/production_inputs.py": "0e29a8c5bac7eb2f6f8819e6d54b2959045f3205e4930c162e96e479bef76289",
+        "tools/spatial_oracle/shrapnel_repair/packet_io.py": "80d7a5dd328c47c9fe453d0048c5ae116feef741220537f1d1dc4e587387b865",
+        "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "766d30e22188ef36c66a940eb4546ad52e025fa80e80c864a9644a1a4662b27c",
+        "tools/spatial_oracle/anytown_damage/inputs.py": "c3e1732837e85deb628f04862aaab8cf72dc3e8ba2804ce55db5dc46f2a68f25",
+        "tools/spatial_oracle/anytown_damage/publication.py": "9331a5cc2c46ff487774b898918f267df740347dcb1745b23364703f9e24d650",
+        "tools/spatial_oracle/anytown_damage/next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881",
+        "tools/spatial_oracle/anytown_damage/anytown_geometry.py": "012d148f0299bfa6aee589070fb87bfb8ad14ebd09cdc30c3b22bf11df562e69",
+        "tools/spatial_oracle/anytown_damage/anytown_resident.py": "a3fd84ea7a7d038014fac37ebda4e72609f06662619506722fd11318b9d7f285",
+        "tools/spatial_oracle/anytown_damage/mtnk_attack.py": "629ce5742d89065c25f897b7ab2336a71f9c88c6176fa2e032e585c59f7113b3",
+        "tools/spatial_oracle/anytown_damage/mission_publication.py": "658212dba467967a1d2673b96279f45303c5ebc1c2d00033a6a01f49d3938f3e",
+        "tools/spatial_oracle/anytown_damage/mission.py": "8d791318542167825e371ca8e720fb6c7a254b112baeb25c61ff104b3af60148",
+        "tools/sidebar_oracle/stock.py": "62b855dba1836bf484bb6c112b9249003ff4427c3004a1ef3d95c3aac985ba9b",
+        "tools/rules_oracle/bridge_landing_inputs.py": "489e7999c957edfc1141d6ca8b5d72e36e570cb4065b2f208564875ed81174e5",
+        "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
+        "tools/spatial_oracle/anytown_damage/navigation_publication.py": "4d6d09e465e67bf3ed3415495f1efee7f51f069f8c762f53dbc7cb437be91211",
+        "tools/spatial_oracle/shrapnel_repair/zone_composition.py": "0eb3b38561c804dd4bfbbfdb3e858babd2e9a1c2214f296eedfe6447901db73e",
+        "tools/spatial_oracle/shrapnel_repair/hierarchy_composition.py": "a545496a5203c56d02dfed6d37da792c0f261b26db6b128db4ea57b9acc19ac0",
+        "tools/spatial_oracle/anytown_damage/navigation.py": "84b123f168898386752dae17ad9dec685b3f98ebe1e873c18d14f68c53abf8e4",
+        "tools/spatial_oracle/fire_error.py": "ea1137e160745ff92b8d7f87930fca15c307b3d8b7bca92a99d35e2526b9c402",
+        "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
+        "tools/spatial_oracle/jumpjet_coordinates.py": "922eee4b7841312e85abdc52e65a65869a071de05f9644873fb3c38f9facd3b9",
+        "tools/spatial_oracle/jumpjet_entry_discovery.py": "ff8fd5cd549000345331072acf19797e494ab629fca986afacd4cf392c954d14",
+        "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
+        "tools/spatial_oracle/object_health.py": "3e3fd3c18c9dcbfd169432641233dafcaf8f9ba21fa735f362972fdacb2e07c2",
+        "tools/spatial_oracle/building_art_transition.py": "a747638632208a723b51acc11e3ca4a91560d63a08c85709eb514b153c867fbf",
+        "tools/spatial_oracle/building_slot_replacement.py": "df61f9290ee457ce422414847879cb7c1ab2f0805d2fc20aa467b589ffd2c984"
+      },
+      "status": "Original six caller controls accepted in immutable P1/P2/P5 packets"
+    },
+    "current-compatible": {
+      "files": {
+        "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
+        "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+        "tools/spatial_oracle/anim_bouncer_launch.py": "6fa5df589e686573addd7843c16fae49a883c437f6dba3091d4f9c8d7b601055",
+        "tools/spatial_oracle/smudge_can_place.py": "0771bef02dae6cb70028054efb6bc87cb532ec3d1f4038ab5def386c2e6461ec",
+        "tools/spatial_oracle/building_death_anims.py": "2c411ebe503db16d01c3a799cb3f227d901ee2c3bc488ecb442fd90cfedcd303",
+        "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+        "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+        "tools/spatial_oracle/unit_scatter_state.py": "9cb5b9726c02c8ef7e08aeadf006fecd90191341250f744e9307d5a62a63a4c3",
+        "tools/spatial_oracle/unit_source_scatter.py": "d2ce3dce6e7baff886f3bc6a30c545ec29e442e9866a39a0acb03c92268bbcc8",
+        "tools/spatial_oracle/unit_entry.py": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
+        "tools/spatial_oracle/track_destination.py": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
+        "tools/spatial_oracle/refinery_dock.py": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408",
+        "tools/spatial_oracle/harvest_field.py": "047fd5d2333dcee593d93edfa92a69debd6ad2f7b5a53029711f3dde17b5e087",
+        "tools/spatial_oracle/slave_manager.py": "257ef2d170d2f5bf01e001f1e46561374677168a2d32a21181ef684c3bdb662d",
+        "tools/spatial_oracle/building_construction.py": "9cf2225abea2029ba3b66ca8dae9433001e033c03e4e7056e0a9fd2af73fccf2",
+        "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+        "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+        "tools/rules_oracle/bridge_anim_inputs.py": "d9b25e536250aab83bd42b9ff8a5a7f2417e603023389db4c70d72db2d443a4e",
+        "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
+        "tools/spatial_oracle/engineer_repair_admission.py": "44abd32d884efb782cb782bf01821a452cef1217e75bda5ac5f9d4b352a6e2e2",
+        "tools/spatial_oracle/time_to_build.py": "5d298a5744961484485c25f587abb2f848b6261580ee4180ebd0fbd870d7f249",
+        "tools/spatial_oracle/factory_cadence.py": "324fa00bb554187f9e0127cc48b5bd898e676e3ccb54e01323d66ada55ec47ff",
+        "tools/spatial_oracle/anytown_damage/__init__.py": "5cca8aa87d9e3c1c8ff349b7a2c105a2bdfbce58bb13acae9fbda5645ef8c66a",
+        "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+        "tools/projectile_oracle/guided_step.py": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
+        "tools/native_slope.py": "737b8294db419d298d362029825a255ae70df9945bef4c8b588369a53eaf13de",
+        "tools/spatial_oracle/shrapnel_repair/__init__.py": "181c307c7f2f1767bee7fc8812eb72698df94241d26c669526254bf13084e003",
+        "tools/rules_oracle/theater_general_reader.py": "a466f2d5d94e5f4d8908bed0a97c69cf2aeb2d9356694d0af107491349e7afbd",
+        "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": "bc6921d2b04a05e4778fe0c57d9badb3c9c7cf1b429ba807b7baf2b8e060e8d0",
+        "tools/spatial_oracle/bridge_rim.py": "5fdcf28d51a05e8e4fddbfd41cea0a5ac19b3ab80f01a87ee36cea5ced676b80",
+        "tools/spatial_oracle/shrapnel_repair/map_facts.py": "8fec739ee85c0110096180ae7c7712ad96e5191752ec9362dc3d9eb21e5d6768",
+        "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+        "tools/spatial_oracle/mapgen_range.py": "df39b5ab3a2450c98dfa749a67826d5cb87f9d73086dc2511ff3261906724eef",
+        "tools/spatial_oracle/shrapnel_repair/production_inputs.py": "0e29a8c5bac7eb2f6f8819e6d54b2959045f3205e4930c162e96e479bef76289",
+        "tools/spatial_oracle/shrapnel_repair/packet_io.py": "80d7a5dd328c47c9fe453d0048c5ae116feef741220537f1d1dc4e587387b865",
+        "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "766d30e22188ef36c66a940eb4546ad52e025fa80e80c864a9644a1a4662b27c",
+        "tools/spatial_oracle/anytown_damage/inputs.py": "c3e1732837e85deb628f04862aaab8cf72dc3e8ba2804ce55db5dc46f2a68f25",
+        "tools/spatial_oracle/anytown_damage/publication.py": "9331a5cc2c46ff487774b898918f267df740347dcb1745b23364703f9e24d650",
+        "tools/spatial_oracle/anytown_damage/next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881",
+        "tools/spatial_oracle/anytown_damage/anytown_geometry.py": "012d148f0299bfa6aee589070fb87bfb8ad14ebd09cdc30c3b22bf11df562e69",
+        "tools/spatial_oracle/anytown_damage/anytown_resident.py": "a3fd84ea7a7d038014fac37ebda4e72609f06662619506722fd11318b9d7f285",
+        "tools/spatial_oracle/anytown_damage/mtnk_attack.py": "629ce5742d89065c25f897b7ab2336a71f9c88c6176fa2e032e585c59f7113b3",
+        "tools/spatial_oracle/anytown_damage/mission_publication.py": "658212dba467967a1d2673b96279f45303c5ebc1c2d00033a6a01f49d3938f3e",
+        "tools/spatial_oracle/anytown_damage/mission.py": "a59d99851fdf4d7f4f2ba6a547604e4b9cad7eb6fd57764c8dc7d12a0834e25a",
+        "tools/sidebar_oracle/stock.py": "62b855dba1836bf484bb6c112b9249003ff4427c3004a1ef3d95c3aac985ba9b",
+        "tools/rules_oracle/bridge_landing_inputs.py": "489e7999c957edfc1141d6ca8b5d72e36e570cb4065b2f208564875ed81174e5",
+        "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
+        "tools/spatial_oracle/anytown_damage/navigation_publication.py": "4d6d09e465e67bf3ed3415495f1efee7f51f069f8c762f53dbc7cb437be91211",
+        "tools/spatial_oracle/shrapnel_repair/zone_composition.py": "0eb3b38561c804dd4bfbbfdb3e858babd2e9a1c2214f296eedfe6447901db73e",
+        "tools/spatial_oracle/shrapnel_repair/hierarchy_composition.py": "a545496a5203c56d02dfed6d37da792c0f261b26db6b128db4ea57b9acc19ac0",
+        "tools/spatial_oracle/anytown_damage/navigation.py": "84b123f168898386752dae17ad9dec685b3f98ebe1e873c18d14f68c53abf8e4",
+        "tools/spatial_oracle/fire_error.py": "ea1137e160745ff92b8d7f87930fca15c307b3d8b7bca92a99d35e2526b9c402",
+        "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
+        "tools/spatial_oracle/jumpjet_coordinates.py": "922eee4b7841312e85abdc52e65a65869a071de05f9644873fb3c38f9facd3b9",
+        "tools/spatial_oracle/jumpjet_entry_discovery.py": "ff8fd5cd549000345331072acf19797e494ab629fca986afacd4cf392c954d14",
+        "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
+        "tools/spatial_oracle/object_health.py": "3e3fd3c18c9dcbfd169432641233dafcaf8f9ba21fa735f362972fdacb2e07c2",
+        "tools/spatial_oracle/building_art_transition.py": "a747638632208a723b51acc11e3ca4a91560d63a08c85709eb514b153c867fbf",
+        "tools/spatial_oracle/building_slot_replacement.py": "df61f9290ee457ce422414847879cb7c1ab2f0805d2fc20aa467b589ffd2c984"
+      },
+      "status": "Historical portable controls and external registered-startup P10 controls pass; preferred portable initialized comparison pending",
+      "source_revision": "f1783f83d6e9d9b9df5046d7b3d83478115a278b",
+      "unchanged_since_revision": "96204fef1a9b8aef3143a50eed4d5fb6bb7a29f7",
+      "evidence_seal": "P10"
+    },
+    "unit-ready-compatible": {
+      "files": {
+        "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
+        "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+        "tools/spatial_oracle/anim_bouncer_launch.py": "6fa5df589e686573addd7843c16fae49a883c437f6dba3091d4f9c8d7b601055",
+        "tools/spatial_oracle/smudge_can_place.py": "0771bef02dae6cb70028054efb6bc87cb532ec3d1f4038ab5def386c2e6461ec",
+        "tools/spatial_oracle/building_death_anims.py": "2c411ebe503db16d01c3a799cb3f227d901ee2c3bc488ecb442fd90cfedcd303",
+        "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+        "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+        "tools/spatial_oracle/unit_scatter_state.py": "9cb5b9726c02c8ef7e08aeadf006fecd90191341250f744e9307d5a62a63a4c3",
+        "tools/spatial_oracle/unit_source_scatter.py": "d2ce3dce6e7baff886f3bc6a30c545ec29e442e9866a39a0acb03c92268bbcc8",
+        "tools/spatial_oracle/unit_entry.py": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
+        "tools/spatial_oracle/track_destination.py": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
+        "tools/spatial_oracle/refinery_dock.py": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408",
+        "tools/spatial_oracle/harvest_field.py": "047fd5d2333dcee593d93edfa92a69debd6ad2f7b5a53029711f3dde17b5e087",
+        "tools/spatial_oracle/slave_manager.py": "257ef2d170d2f5bf01e001f1e46561374677168a2d32a21181ef684c3bdb662d",
+        "tools/spatial_oracle/building_construction.py": "9cf2225abea2029ba3b66ca8dae9433001e033c03e4e7056e0a9fd2af73fccf2",
+        "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+        "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+        "tools/rules_oracle/bridge_anim_inputs.py": "d9b25e536250aab83bd42b9ff8a5a7f2417e603023389db4c70d72db2d443a4e",
+        "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
+        "tools/spatial_oracle/engineer_repair_admission.py": "bbbbe57e3953fc79d2e4508dccf258bed346807dce30cca989ae1a1874bb30b4",
+        "tools/spatial_oracle/time_to_build.py": "5d298a5744961484485c25f587abb2f848b6261580ee4180ebd0fbd870d7f249",
+        "tools/spatial_oracle/factory_cadence.py": "324fa00bb554187f9e0127cc48b5bd898e676e3ccb54e01323d66ada55ec47ff",
+        "tools/spatial_oracle/anytown_damage/__init__.py": "5cca8aa87d9e3c1c8ff349b7a2c105a2bdfbce58bb13acae9fbda5645ef8c66a",
+        "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+        "tools/projectile_oracle/guided_step.py": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
+        "tools/native_slope.py": "737b8294db419d298d362029825a255ae70df9945bef4c8b588369a53eaf13de",
+        "tools/spatial_oracle/shrapnel_repair/__init__.py": "181c307c7f2f1767bee7fc8812eb72698df94241d26c669526254bf13084e003",
+        "tools/rules_oracle/theater_general_reader.py": "a466f2d5d94e5f4d8908bed0a97c69cf2aeb2d9356694d0af107491349e7afbd",
+        "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": "bc6921d2b04a05e4778fe0c57d9badb3c9c7cf1b429ba807b7baf2b8e060e8d0",
+        "tools/spatial_oracle/bridge_rim.py": "5fdcf28d51a05e8e4fddbfd41cea0a5ac19b3ab80f01a87ee36cea5ced676b80",
+        "tools/spatial_oracle/shrapnel_repair/map_facts.py": "8fec739ee85c0110096180ae7c7712ad96e5191752ec9362dc3d9eb21e5d6768",
+        "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+        "tools/spatial_oracle/mapgen_range.py": "df39b5ab3a2450c98dfa749a67826d5cb87f9d73086dc2511ff3261906724eef",
+        "tools/spatial_oracle/shrapnel_repair/production_inputs.py": "0e29a8c5bac7eb2f6f8819e6d54b2959045f3205e4930c162e96e479bef76289",
+        "tools/spatial_oracle/shrapnel_repair/packet_io.py": "80d7a5dd328c47c9fe453d0048c5ae116feef741220537f1d1dc4e587387b865",
+        "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "766d30e22188ef36c66a940eb4546ad52e025fa80e80c864a9644a1a4662b27c",
+        "tools/spatial_oracle/anytown_damage/inputs.py": "c3e1732837e85deb628f04862aaab8cf72dc3e8ba2804ce55db5dc46f2a68f25",
+        "tools/spatial_oracle/anytown_damage/publication.py": "9331a5cc2c46ff487774b898918f267df740347dcb1745b23364703f9e24d650",
+        "tools/spatial_oracle/anytown_damage/next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881",
+        "tools/spatial_oracle/anytown_damage/anytown_geometry.py": "012d148f0299bfa6aee589070fb87bfb8ad14ebd09cdc30c3b22bf11df562e69",
+        "tools/spatial_oracle/anytown_damage/anytown_resident.py": "a3fd84ea7a7d038014fac37ebda4e72609f06662619506722fd11318b9d7f285",
+        "tools/spatial_oracle/anytown_damage/mtnk_attack.py": "629ce5742d89065c25f897b7ab2336a71f9c88c6176fa2e032e585c59f7113b3",
+        "tools/spatial_oracle/anytown_damage/mission_publication.py": "658212dba467967a1d2673b96279f45303c5ebc1c2d00033a6a01f49d3938f3e",
+        "tools/spatial_oracle/anytown_damage/mission.py": "a59d99851fdf4d7f4f2ba6a547604e4b9cad7eb6fd57764c8dc7d12a0834e25a",
+        "tools/sidebar_oracle/stock.py": "62b855dba1836bf484bb6c112b9249003ff4427c3004a1ef3d95c3aac985ba9b",
+        "tools/rules_oracle/bridge_landing_inputs.py": "489e7999c957edfc1141d6ca8b5d72e36e570cb4065b2f208564875ed81174e5",
+        "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
+        "tools/spatial_oracle/anytown_damage/navigation_publication.py": "4d6d09e465e67bf3ed3415495f1efee7f51f069f8c762f53dbc7cb437be91211",
+        "tools/spatial_oracle/shrapnel_repair/zone_composition.py": "0eb3b38561c804dd4bfbbfdb3e858babd2e9a1c2214f296eedfe6447901db73e",
+        "tools/spatial_oracle/shrapnel_repair/hierarchy_composition.py": "a545496a5203c56d02dfed6d37da792c0f261b26db6b128db4ea57b9acc19ac0",
+        "tools/spatial_oracle/anytown_damage/navigation.py": "84b123f168898386752dae17ad9dec685b3f98ebe1e873c18d14f68c53abf8e4",
+        "tools/spatial_oracle/fire_error.py": "ea1137e160745ff92b8d7f87930fca15c307b3d8b7bca92a99d35e2526b9c402",
+        "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
+        "tools/spatial_oracle/jumpjet_coordinates.py": "922eee4b7841312e85abdc52e65a65869a071de05f9644873fb3c38f9facd3b9",
+        "tools/spatial_oracle/jumpjet_entry_discovery.py": "ff8fd5cd549000345331072acf19797e494ab629fca986afacd4cf392c954d14",
+        "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
+        "tools/spatial_oracle/object_health.py": "3e3fd3c18c9dcbfd169432641233dafcaf8f9ba21fa735f362972fdacb2e07c2",
+        "tools/spatial_oracle/building_art_transition.py": "a747638632208a723b51acc11e3ca4a91560d63a08c85709eb514b153c867fbf",
+        "tools/spatial_oracle/building_slot_replacement.py": "df61f9290ee457ce422414847879cb7c1ab2f0805d2fc20aa467b589ffd2c984"
+      },
+      "status": "f178 current native owners matched all four complete original consumer observations and both initialized movement controls; original helper maps retained",
+      "source_head": "f1783f83d6e9d9b9df5046d7b3d83478115a278b",
+      "comparison_receipts": [
+        {
+          "path": "basic-factory-output-consumer-portable-replay/consumer-final-candidate-all-attempt-1.json.gz",
+          "bytes": 2615016,
+          "sha256": "5263f2af1e9cea802a933f5520b43c8f9ab5b53593f5995a2703c2d5b6feccdc",
+          "canonical_receipt_sha256": "ebb1ddda259bc1b8487633a29362f4b1fafe957f461e415e24c49aa4f19c2804"
+        },
+        {
+          "path": "basic-factory-output-consumer-portable-replay/movement-no-rally-candidate-attempt-1.json.gz",
+          "bytes": 790213,
+          "sha256": "5f4751445c20ca1785d31fb6a4bc6714ee8949a01cb2f6be553b9b928abd1541",
+          "canonical_receipt_sha256": "0a2f10c8410cfa79678df5ceefe42c6c4c8e4fc2d9caff8def19941e5d50c17d"
+        },
+        {
+          "path": "basic-factory-output-consumer-portable-replay/movement-rally-candidate-attempt-1.json.gz",
+          "bytes": 1032575,
+          "sha256": "6bc3ffa19a0721cb701b8d2e6845030d08a512346c52ec0547963550ad20dcf5",
+          "canonical_receipt_sha256": "104e07e04f360920982047c23610a2921f0112bc3b4a49f1cbba3890d544ed08"
+        }
+      ]
+    },
+    "c60-compatible": {
+      "status": "Six selected complete original controls and full PCM observations match sealed native data; failed combined device timeout is retained and only its unchanged-budget retry is accepted",
+      "source_head": "c60d196d548800cec5494ab1d48f5e022719bb81",
+      "profile_sha256": "d968facdfffc7248fae4d5c91469f30fe8e28e08d2888a92f2e0d2384345c977",
+      "profile_origin_source_head": "9bee532acb1c86b7edffb774743ba69d1704579f",
+      "files": {
+        "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
+        "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+        "tools/spatial_oracle/anim_bouncer_launch.py": "f038ac51504a1927efac0d5c65092fe5ddb7bcc4f9525e01bd71c3ca008d2ac3",
+        "tools/spatial_oracle/smudge_can_place.py": "0771bef02dae6cb70028054efb6bc87cb532ec3d1f4038ab5def386c2e6461ec",
+        "tools/spatial_oracle/building_death_anims.py": "2c411ebe503db16d01c3a799cb3f227d901ee2c3bc488ecb442fd90cfedcd303",
+        "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+        "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+        "tools/spatial_oracle/unit_scatter_state.py": "9cb5b9726c02c8ef7e08aeadf006fecd90191341250f744e9307d5a62a63a4c3",
+        "tools/spatial_oracle/unit_source_scatter.py": "d2ce3dce6e7baff886f3bc6a30c545ec29e442e9866a39a0acb03c92268bbcc8",
+        "tools/spatial_oracle/unit_entry.py": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
+        "tools/spatial_oracle/track_destination.py": "1c7be1b2a2a6da24369fd987fc3c3dc196b9c8b6ebf8e63b288ce3187c8c049d",
+        "tools/spatial_oracle/refinery_dock.py": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408",
+        "tools/spatial_oracle/harvest_field.py": "047fd5d2333dcee593d93edfa92a69debd6ad2f7b5a53029711f3dde17b5e087",
+        "tools/spatial_oracle/slave_manager.py": "257ef2d170d2f5bf01e001f1e46561374677168a2d32a21181ef684c3bdb662d",
+        "tools/spatial_oracle/building_construction.py": "65ddb0c37fc111758368780881ecbdca828c0153e9eb945f4e1ea72a20b9a438",
+        "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+        "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+        "tools/rules_oracle/bridge_anim_inputs.py": "d9b25e536250aab83bd42b9ff8a5a7f2417e603023389db4c70d72db2d443a4e",
+        "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
+        "tools/spatial_oracle/engineer_repair_admission.py": "bbbbe57e3953fc79d2e4508dccf258bed346807dce30cca989ae1a1874bb30b4",
+        "tools/spatial_oracle/time_to_build.py": "5d298a5744961484485c25f587abb2f848b6261580ee4180ebd0fbd870d7f249",
+        "tools/spatial_oracle/factory_cadence.py": "324fa00bb554187f9e0127cc48b5bd898e676e3ccb54e01323d66ada55ec47ff",
+        "tools/spatial_oracle/anytown_damage/__init__.py": "5cca8aa87d9e3c1c8ff349b7a2c105a2bdfbce58bb13acae9fbda5645ef8c66a",
+        "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+        "tools/projectile_oracle/guided_step.py": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
+        "tools/native_slope.py": "737b8294db419d298d362029825a255ae70df9945bef4c8b588369a53eaf13de",
+        "tools/spatial_oracle/shrapnel_repair/__init__.py": "181c307c7f2f1767bee7fc8812eb72698df94241d26c669526254bf13084e003",
+        "tools/rules_oracle/theater_general_reader.py": "a466f2d5d94e5f4d8908bed0a97c69cf2aeb2d9356694d0af107491349e7afbd",
+        "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": "bc6921d2b04a05e4778fe0c57d9badb3c9c7cf1b429ba807b7baf2b8e060e8d0",
+        "tools/spatial_oracle/bridge_rim.py": "5fdcf28d51a05e8e4fddbfd41cea0a5ac19b3ab80f01a87ee36cea5ced676b80",
+        "tools/spatial_oracle/shrapnel_repair/map_facts.py": "8fec739ee85c0110096180ae7c7712ad96e5191752ec9362dc3d9eb21e5d6768",
+        "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+        "tools/spatial_oracle/mapgen_range.py": "df39b5ab3a2450c98dfa749a67826d5cb87f9d73086dc2511ff3261906724eef",
+        "tools/spatial_oracle/shrapnel_repair/production_inputs.py": "0e29a8c5bac7eb2f6f8819e6d54b2959045f3205e4930c162e96e479bef76289",
+        "tools/spatial_oracle/shrapnel_repair/packet_io.py": "80d7a5dd328c47c9fe453d0048c5ae116feef741220537f1d1dc4e587387b865",
+        "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "766d30e22188ef36c66a940eb4546ad52e025fa80e80c864a9644a1a4662b27c",
+        "tools/spatial_oracle/anytown_damage/inputs.py": "c3e1732837e85deb628f04862aaab8cf72dc3e8ba2804ce55db5dc46f2a68f25",
+        "tools/spatial_oracle/anytown_damage/publication.py": "9331a5cc2c46ff487774b898918f267df740347dcb1745b23364703f9e24d650",
+        "tools/spatial_oracle/anytown_damage/next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881",
+        "tools/spatial_oracle/anytown_damage/anytown_geometry.py": "012d148f0299bfa6aee589070fb87bfb8ad14ebd09cdc30c3b22bf11df562e69",
+        "tools/spatial_oracle/anytown_damage/anytown_resident.py": "a3fd84ea7a7d038014fac37ebda4e72609f06662619506722fd11318b9d7f285",
+        "tools/spatial_oracle/anytown_damage/mtnk_attack.py": "629ce5742d89065c25f897b7ab2336a71f9c88c6176fa2e032e585c59f7113b3",
+        "tools/spatial_oracle/anytown_damage/mission_publication.py": "658212dba467967a1d2673b96279f45303c5ebc1c2d00033a6a01f49d3938f3e",
+        "tools/spatial_oracle/anytown_damage/mission.py": "a59d99851fdf4d7f4f2ba6a547604e4b9cad7eb6fd57764c8dc7d12a0834e25a",
+        "tools/sidebar_oracle/stock.py": "62b855dba1836bf484bb6c112b9249003ff4427c3004a1ef3d95c3aac985ba9b",
+        "tools/rules_oracle/bridge_landing_inputs.py": "489e7999c957edfc1141d6ca8b5d72e36e570cb4065b2f208564875ed81174e5",
+        "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
+        "tools/spatial_oracle/anytown_damage/navigation_publication.py": "4d6d09e465e67bf3ed3415495f1efee7f51f069f8c762f53dbc7cb437be91211",
+        "tools/spatial_oracle/shrapnel_repair/zone_composition.py": "0eb3b38561c804dd4bfbbfdb3e858babd2e9a1c2214f296eedfe6447901db73e",
+        "tools/spatial_oracle/shrapnel_repair/hierarchy_composition.py": "a545496a5203c56d02dfed6d37da792c0f261b26db6b128db4ea57b9acc19ac0",
+        "tools/spatial_oracle/anytown_damage/navigation.py": "84b123f168898386752dae17ad9dec685b3f98ebe1e873c18d14f68c53abf8e4",
+        "tools/spatial_oracle/fire_error.py": "ea1137e160745ff92b8d7f87930fca15c307b3d8b7bca92a99d35e2526b9c402",
+        "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
+        "tools/spatial_oracle/jumpjet_coordinates.py": "922eee4b7841312e85abdc52e65a65869a071de05f9644873fb3c38f9facd3b9",
+        "tools/spatial_oracle/jumpjet_entry_discovery.py": "ff8fd5cd549000345331072acf19797e494ab629fca986afacd4cf392c954d14",
+        "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
+        "tools/spatial_oracle/object_health.py": "3e3fd3c18c9dcbfd169432641233dafcaf8f9ba21fa735f362972fdacb2e07c2",
+        "tools/spatial_oracle/building_art_transition.py": "a747638632208a723b51acc11e3ca4a91560d63a08c85709eb514b153c867fbf",
+        "tools/spatial_oracle/building_slot_replacement.py": "bd4ee5c9be5e0342ec571c193a7a5721ce147b8fd6edcf6146e59a561f589cde"
+      },
+      "comparison_report": {
+        "path": "basic-factory-output-consumer-portable-replay/c60-complete-native-comparison-report.json",
+        "bytes": 10773,
+        "sha256": "f0c0a07270496dff9153e0e03821cec462e26dd7765445db75e847eea1c17412"
+      },
+      "comparison_receipts": [
+        {
+          "path": "basic-factory-output-consumer-portable-replay/c60-consumer-all-pcm-attempt-1.json.gz",
+          "bytes": 1883724,
+          "sha256": "84163a4f6c2103c267da052945d0c0ce1e5f17636a48a4ddbcea6685a2eb5e4e",
+          "json_bytes": 32859081,
+          "json_sha256": "7f7fc700e43d2e5853aaa505a12c56232228428bf85e93c1b74c8fe1ea9f5f5f",
+          "canonical_receipt_sha256": "1270e1ef051a77ee7e246360eb8b03d19d92d3f4f5d8c2d5300d67d5a16d1842",
+          "receipt_status": "FAIL",
+          "selected_controls": [
+            "cadence",
+            "buffer",
+            "radar"
+          ],
+          "selected_controls_status": "PASS",
+          "unaccepted_failed_control": "device"
+        },
+        {
+          "path": "basic-factory-output-consumer-portable-replay/c60-consumer-device-attempt-2.json.gz",
+          "bytes": 1206013,
+          "sha256": "4090e9393d4ecab72e1add68fcd65543c99bf068e206c7e534896bfc8eb8c2dd",
+          "json_bytes": 3546835,
+          "json_sha256": "115870c3a5efc049493e6df76c336eae44df4a9396ff619e9abe72edc35c13ca",
+          "canonical_receipt_sha256": "b262d1e1d1a6fa9b63aa5a75d2a0e10e54a4665638db0df5cb831ba5b45fc2d3",
+          "receipt_status": "PASS",
+          "selected_controls": [
+            "device"
+          ],
+          "selected_controls_status": "PASS",
+          "unchanged_input_and_budget_retry": true
+        },
+        {
+          "path": "basic-factory-output-consumer-portable-replay/c60-movement-no-rally-attempt-1.json.gz",
+          "bytes": 790403,
+          "sha256": "dad372dd870d2ffd91a9957c44ac5cafa60576f843920e392e3ea66fee0a809d",
+          "json_bytes": 41745961,
+          "json_sha256": "3521dda6283e4602b8e01357f7c7b8aa1c77824ebca0405aec15a155061c03d4",
+          "canonical_receipt_sha256": "50762ea2038727db2a6d8d4c05c26c32402662a7f63ca0e2aeda92f07103f7cf",
+          "receipt_status": "PASS",
+          "selected_control": "no_rally"
+        },
+        {
+          "path": "basic-factory-output-consumer-portable-replay/c60-movement-rally-attempt-1.json.gz",
+          "bytes": 1032669,
+          "sha256": "0bf68e6f85292376cc3289f1bf20c2455bc779c441499b20687b29b01cd36805",
+          "json_bytes": 61649448,
+          "json_sha256": "a51b33b3b7a3da2b3dfbf37836d21bf60744aa05bb307d122136965b807285f0",
+          "canonical_receipt_sha256": "41acd20f24d4615ff3c83e74033f26ea5eea817eb1cf696908b69a8ee4df6cc1",
+          "receipt_status": "PASS",
+          "selected_control": "rally"
+        }
+      ],
+      "complete_pcm_comparison": {
+        "complete_original_observation_equal": true,
+        "complete_original_observation_sha256": "3ec282c4e6ae4713bc8ef4192c149504a2008477129a1f1ca97ddf5800a41ecd",
+        "bytes": 36612,
+        "pcm_sha256": "e6c8dad9417324cff801a92a74ccf24a73e4acb5db55373669e46baae49d98a5",
+        "historical_witness_sha256": "1623d8fb6fd69bf6876ed7ab9b23ce74bb6580aad177bde5db80b2b7e1384700"
+      },
+      "coverage": "Selected initialized two-GI no-rally/rally loops and separate registered UnitReady consumer controls only; shared helper branches outside those controls are not certified"
+    }
+  },
+  "helper_changes": {
+    "tools/native_oracle.py": {
+      "original_sha256": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+      "current_sha256": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c"
+    },
+    "tools/spatial_oracle/unit_entry.py": {
+      "original_sha256": "c79e273f002fbb921942676c3747068fcb1312574e66eaaafe8bf4286740b96e",
+      "current_sha256": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209"
+    },
+    "tools/spatial_oracle/refinery_dock.py": {
+      "original_sha256": "f9fe38dbf9f185594630d6bbec8bcf7184c3d5d66466a37ab91035f46639a15d",
+      "current_sha256": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408"
+    },
+    "tools/rules_oracle/bridge_anim_inputs.py": {
+      "original_sha256": "f7f2941e11bbede50ffab19554a789e4e3e42f4969b04ad4e9697973e659d316",
+      "current_sha256": "d9b25e536250aab83bd42b9ff8a5a7f2417e603023389db4c70d72db2d443a4e"
+    },
+    "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": {
+      "original_sha256": "5386be531deb221b2abf0a06cf46371937a3134fd4fdde142a7d20fc97691400",
+      "current_sha256": "bc6921d2b04a05e4778fe0c57d9badb3c9c7cf1b429ba807b7baf2b8e060e8d0"
+    },
+    "tools/spatial_oracle/anytown_damage/mission.py": {
+      "original_sha256": "8d791318542167825e371ca8e720fb6c7a254b112baeb25c61ff104b3af60148",
+      "current_sha256": "a59d99851fdf4d7f4f2ba6a547604e4b9cad7eb6fd57764c8dc7d12a0834e25a"
+    }
+  },
+  "caller_origin_files": {
+    "factory.py": {
+      "packet": "P1",
+      "original_file": "observe-factory-output.py",
+      "original_sha256": "8b8cbe0550e2fd78d7383fd3dc78fd7e9e2e49d8936419bfb39ecd482d2e5d4f"
+    },
+    "producer.py": {
+      "packet": "P1",
+      "original_file": "observe-producer-admission.py",
+      "original_sha256": "6b0f15fed6ce146266c29133332f8de5e98d9b214f06d1e397bf54d6388a0741"
+    },
+    "admitted.py": {
+      "packet": "P1",
+      "original_file": "observe-admitted-producer-queue.py",
+      "original_sha256": "97ce3a4e8cc4cf11d579c1f242122aff18e087e7a4ff0e717893d9291f43b872"
+    },
+    "construction.py": {
+      "packet": "P2",
+      "original_file": "observe-prerequisites.py",
+      "original_sha256": "80e93821413cba22f681283ac8a1caa57f25ba4f125380a0f8379fb44e42c4c9"
+    },
+    "exit.py": {
+      "packet": "P2",
+      "original_file": "observe-exit-controls.py",
+      "original_sha256": "c77842a9f67e9623e0679010c5a3cd062a3c92b43dfaa5ae66fe6c6fd9308899"
+    },
+    "idle.py": {
+      "packet": "P5",
+      "original_file": "observe-idle-latch.py",
+      "original_sha256": "b0f180922528c18b033d5ccbcaa5a3ad5ede396de670e60be801493dd790a863"
+    },
+    "initialized.py": {
+      "packet": "P10",
+      "original_file": "observe.py",
+      "original_sha256": "5cca0d3e34a36c3522147f955cbad6821ae0e64a346576220504c3b4328c416b",
+      "adaptation": "Original registered startup and observation over unchanged six portable caller drivers; external driver paths/output staging removed"
+    },
+    "fixture.py": {
+      "packet": "P10",
+      "original_file": "extract.py",
+      "original_sha256": "f28d1bc2f539857a7eb06ec9d65780901a72f749a22a4a167643f2760f908b21",
+      "adaptation": "Historical selector retained; initialized projection and structural local selector promoted mechanically"
+    },
+    "phase.py": {
+      "packet": "Publication phase",
+      "original_file": "run.py",
+      "original_sha256": "079cca4a095b34f163aca322043ffc1f9e3d5a727501cbc534c7d4f6e6009a2a",
+      "source_seal_sha256": "a0416992e1d4536b0961c742619c9aa183604126bc5294e0e78c99c3cb4e7856",
+      "adaptation": "External staging/parent pathname removed; same initialized AST stop/control and original observation/caller route; no native implementation copied"
+    }
+  },
+  "original_static_bytes": [
+    {
+      "source": "native-building-1701-flag-provenance.json",
+      "address": 4579846,
+      "bytes": 6,
+      "sha256": "b362212ed7c9c50914a008ca551fec627b78f6c71e14d31216999ac7908f1174"
+    },
+    {
+      "source": "native-building-1701-flag-provenance.json",
+      "address": 4591083,
+      "bytes": 6,
+      "sha256": "0aca9aea4fe53bf353c72039d295274e3144f165e05596dca932681f9c92cbbe"
+    },
+    {
+      "source": "native-building-1701-flag-provenance.json",
+      "address": 4591105,
+      "bytes": 6,
+      "sha256": "e14810be061f3d9c8a5f1ec08d569196b0130dc309352f266fa3c02376fe618e"
+    },
+    {
+      "source": "native-building-auto-rally-gate-446980.json",
+      "address": 4483456,
+      "bytes": 238,
+      "sha256": "09800ccb5cf99b6eee81807fbfd3d0adcf777fdf9106b4b11e42eb75577f7431"
+    },
+    {
+      "source": "native-building-exit-tail-444c7c.json",
+      "address": 4476028,
+      "bytes": 360,
+      "sha256": "0ceafe3f0fdb0495cc259126878d54e6a3ae45a6c83ee4be4e9ebaf9cc99f5bd"
+    },
+    {
+      "source": "native-building-gate-passable-4525f0.json",
+      "address": 4531696,
+      "bytes": 61,
+      "sha256": "b2a3064615fd90e2d8c91aecfab2f72f33d353963c45254a85ee6332e8ae2d59"
+    },
+    {
+      "source": "native-building-invisible-default-45e206.json",
+      "address": 4579836,
+      "bytes": 22,
+      "sha256": "0fb6473f608d800e918ca0a10f9878c4c4a4b0380aa8975b989980de180c985d"
+    },
+    {
+      "source": "native-building-invisible-default-45e206.json",
+      "address": 4579859,
+      "bytes": 3,
+      "sha256": "262f1a63e5721ab751d3e1cd82295e1620077a6203918f1c4526ae3a9df1a898"
+    },
+    {
+      "source": "native-building-invisible-reader-460deb.json",
+      "address": 4591083,
+      "bytes": 96,
+      "sha256": "2e1e82ea53ff0df2ab9970c322716a305b8eefae8ae07eefd9992cc1238042dd"
+    },
+    {
+      "source": "native-foot-ai-latch-reset-4da530.json",
+      "address": 5088560,
+      "bytes": 36,
+      "sha256": "6c6f61a73cb6400efde4c755bc3f4f9ffb40f7412eed3d74a1231da334cd6315"
+    },
+    {
+      "source": "native-foot-checksum-4dbad0.json",
+      "address": 5094096,
+      "bytes": 706,
+      "sha256": "4b8eae525968dfee5965626fb4e5f0ae55b2728f41e86bd24cec1a3ceaedbffa"
+    },
+    {
+      "source": "native-foot-constructor-4d31e0.json",
+      "address": 5059040,
+      "bytes": 860,
+      "sha256": "9558bd2a5dccaee973af042e3b0ac69254df3a12167b5337500e381f39cbdf2e"
+    },
+    {
+      "source": "native-foot-idle-4d82b0.json",
+      "address": 5079728,
+      "bytes": 679,
+      "sha256": "e48bdf15f53560f221628aff1b6b55641804aa6d344686ca3cbe45b352f193a6"
+    },
+    {
+      "source": "native-foot-idle-predicate-4df4b0.json",
+      "address": 5108912,
+      "bytes": 87,
+      "sha256": "d873a0d23984ed882cc5b5d37a0743d5c31c65539657e44549d5460652e1adb4"
+    },
+    {
+      "source": "native-foot-latch-field-candidates.json",
+      "address": 5059640,
+      "bytes": 6,
+      "sha256": "6b164916e6e82f3ef9c28ee5c2e2cb90b9bba24bb01affefed31d4ea4e7d1db7"
+    },
+    {
+      "source": "native-foot-latch-field-candidates.json",
+      "address": 5079736,
+      "bytes": 6,
+      "sha256": "559bdf7a78271e4bd3d4daf548d29477924897f86d99bac2a307d3a2b1d2fc92"
+    },
+    {
+      "source": "native-foot-latch-field-candidates.json",
+      "address": 5079762,
+      "bytes": 7,
+      "sha256": "88e0160a0aa76949325ebef9172bec53991681c5075af0cedd32074723ac3dec"
+    },
+    {
+      "source": "native-foot-latch-field-candidates.json",
+      "address": 5088590,
+      "bytes": 6,
+      "sha256": "6b164916e6e82f3ef9c28ee5c2e2cb90b9bba24bb01affefed31d4ea4e7d1db7"
+    },
+    {
+      "source": "native-foot-latch-field-candidates.json",
+      "address": 5094766,
+      "bytes": 6,
+      "sha256": "559bdf7a78271e4bd3d4daf548d29477924897f86d99bac2a307d3a2b1d2fc92"
+    },
+    {
+      "source": "native-foot-recycle-destination-4da030.json",
+      "address": 5087280,
+      "bytes": 175,
+      "sha256": "3ceb45cb99f73e99be97422497d03f07920b0630e265dbb9092ac95cb51845f4"
+    },
+    {
+      "source": "native-infantry-ai-building-scatter-prefix-51bca4.json",
+      "address": 5356708,
+      "bytes": 299,
+      "sha256": "51c314ede268ba91b828a573c0688cff1747a4ac3cf5bccabfe14cfafb15d6bc"
+    },
+    {
+      "source": "native-infantry-ctor-517a50.json",
+      "address": 5339728,
+      "bytes": 617,
+      "sha256": "a0858fa5725f645ef478698c54b8a09d4b20faf9b176aeb5d8a56bb34d0f1b5d"
+    },
+    {
+      "source": "native-infantry-idle-51cba0.json",
+      "address": 5360544,
+      "bytes": 524,
+      "sha256": "0de1d984ada01dc7c1fe37f20d73030af502d8777a1920bda30a99ef938f6094"
+    },
+    {
+      "source": "native-infantry-idle-type-flag-ec3-candidates.json",
+      "address": 5388205,
+      "bytes": 6,
+      "sha256": "0e79e5c7c07fda4db59a9bc4c045b27af52535013945b43fd3c8b2be635e079c"
+    },
+    {
+      "source": "native-infantry-idle-type-flag-ec3-candidates.json",
+      "address": 5391722,
+      "bytes": 6,
+      "sha256": "03d8e52bd80c6308f06093ccb0afbd340f03c5b150f174dc1a0746575c0b82b9"
+    },
+    {
+      "source": "native-infantry-idle-type-flag-ec3-candidates.json",
+      "address": 5391748,
+      "bytes": 6,
+      "sha256": "a65129ad8a0b1949650d044067b78e4a35550ed9907781414941d6bf23c817ae"
+    },
+    {
+      "source": "native-infantry-idle-type-flag-ec3-candidates.json",
+      "address": 5391999,
+      "bytes": 6,
+      "sha256": "03d8e52bd80c6308f06093ccb0afbd340f03c5b150f174dc1a0746575c0b82b9"
+    },
+    {
+      "source": "native-infantry-idle-type-flag-ec6-candidates.json",
+      "address": 5388227,
+      "bytes": 6,
+      "sha256": "8818cdb40f67c910d3f327a87fc6682d3a087b9e8aff0972648337cb9bb89ba6"
+    },
+    {
+      "source": "native-infantry-idle-type-flag-ec6-candidates.json",
+      "address": 5391820,
+      "bytes": 6,
+      "sha256": "cec9c9d8471df6c0dc929f3fa5078e3ec87e294b90337d3459a59f79f8373fb1"
+    },
+    {
+      "source": "native-infantry-idle-type-flag-ec6-candidates.json",
+      "address": 5391861,
+      "bytes": 6,
+      "sha256": "8ef2d2d7eb4e751274b97f3c4e382732df603f2c5bf8684e3adc068de150c6f1"
+    },
+    {
+      "source": "native-infantry-idle-type-key-readers-524550.json",
+      "address": 5391696,
+      "bytes": 176,
+      "sha256": "4639a4a9db4ddb7b5dde7fba941de793e513d40053905f7c8da92510f1cf2fd5"
+    },
+    {
+      "source": "native-infantry-init-517cc0.json",
+      "address": 5340352,
+      "bytes": 207,
+      "sha256": "81dc3070fb0e825ecf7c3a9dc3fe5a77a72a8cf4afacb371f6d6cf1c7744266a"
+    },
+    {
+      "source": "native-infantry-movement-prefix-520f40.json",
+      "address": 5377856,
+      "bytes": 111,
+      "sha256": "4e59d1965644befad45ea321c0cfe29dffa625dd514fbf8100b57d3af35e4bbb"
+    },
+    {
+      "source": "native-infantry-scatter-51d0d0.json",
+      "address": 5361872,
+      "bytes": 1568,
+      "sha256": "810ac374b2af75231dd9df088cfc904ce2cc88952b81d44616cdd8ef4a88d136"
+    },
+    {
+      "source": "native-planning-create-638a80.json",
+      "address": 6523520,
+      "bytes": 195,
+      "sha256": "3c13045a9232b1f45f7cb2d10c25bcc6a059f526d96faa797638f67b84daf6bf"
+    },
+    {
+      "source": "native-planning-setter-705d10.json",
+      "address": 7363856,
+      "bytes": 13,
+      "sha256": "45e47f23c3780090a7390545c090458164813a36b3eee9df72876eb60e90947e"
+    },
+    {
+      "source": "native-slave-manager-2dc-assignment-6af1a0.json",
+      "address": 7008672,
+      "bytes": 440,
+      "sha256": "f750ef5330f8a6206fe742dd35b0be1818aaee5297f70bbae469db8d73d14176"
+    },
+    {
+      "source": "native-team-member-5d4-assignment-6ea500.json",
+      "address": 7251200,
+      "bytes": 257,
+      "sha256": "ab948a42d096b23655aef7af391f0a89d6dcde31556cfc8b3d1f0468cd9f00bb"
+    },
+    {
+      "source": "native-techno-271-getter-70c5c0.json",
+      "address": 7390656,
+      "bytes": 7,
+      "sha256": "b60bd174714a9043b6c8196bb29dd1365956025324736cd7948bd158e4f0a10f"
+    },
+    {
+      "source": "native-techno-514-getter-705d20.json",
+      "address": 7363872,
+      "bytes": 7,
+      "sha256": "41a377a590f2de75434f4665f85ba259f2c4f965dc7fba2fda43a7c18f95a507"
+    },
+    {
+      "source": "native-techno-constructor-6f2b40.json",
+      "address": 7285568,
+      "bytes": 1833,
+      "sha256": "d70c3622d5f8af5f7a4e1a091b3f27d07c436634eb17876f3e18415976f05f54"
+    },
+    {
+      "source": "native-techno-idle-709a40.json",
+      "address": 7379520,
+      "bytes": 66,
+      "sha256": "2754d0d80d9dc96876602ee6763c7bb665a2e72e718044e35b9a0a0e6fac7d75"
+    },
+    {
+      "source": "native-techno-idle-effect-6385c0.json",
+      "address": 6522304,
+      "bytes": 276,
+      "sha256": "56afe0180880f53b9722948ffea7286f4b43146804ac2934af5ee95c00f81377"
+    },
+    {
+      "source": "native-techno-idle-predicate-705d50.json",
+      "address": 7363920,
+      "bytes": 14,
+      "sha256": "cad2a84a279f9fa70375da12a56b6456b69f73dd80a7c888eb309e68faf316d5"
+    },
+    {
+      "source": "native-techno-init-6f3f40.json",
+      "address": 7290688,
+      "bytes": 953,
+      "sha256": "f6aeecc71038180fdc8c428bd0a83010c58f4d0538e7cd34a18706eec9e07adb"
+    },
+    {
+      "source": "P10/native-foot-empty-whole-initializer.json",
+      "address": 5058816,
+      "bytes": 18,
+      "sha256": "f79776aa266ff73cc395544a597e31b5e686bdfa0ce4375f866708aaafa9a761",
+      "sealed_inspection_sha256": "a96464e6b00c545b7b66fa225fc6ca1fb11a0234b60796cf627434a91373709b"
+    },
+    {
+      "source": "P10/native-foot-crt-table.json",
+      "address": 8466688,
+      "bytes": 48,
+      "sha256": "dcae93153621fbbd8778c6ef87f0758e26ae757a4be92d824890f32fffe2557a",
+      "sealed_inspection_sha256": "67cfa75176543367fdb1bb83dd40e04bb66d72c1df784e610780f49cb4a301a9"
+    },
+    {
+      "source": "P10/native-original-crt-cinit.json",
+      "address": 8175023,
+      "bytes": 128,
+      "sha256": "91a41a3b59996c27ca2accda54703ae36bed72d29f5b17e92e2dc0c2339305ba",
+      "sealed_inspection_sha256": "e1a817b11ef64040cca0c45a6f81e070f4fe4f801b20faaca5f72b85e7b0016a"
+    },
+    {
+      "source": "P10/native-original-crt-startup-prefix.json",
+      "address": 8181920,
+      "bytes": 48,
+      "sha256": "78c1f691238fcac41a7f523b59f0ecbbbba73ccb0178e0b0d72f6e235cb4398d",
+      "sealed_inspection_sha256": "17f92feeb5ea277dd73bcebaf14d4362c057ed6306dbb7f8ad6996a9234da9de"
+    },
+    {
+      "source": "P10/native-original-crt-dispatcher.json",
+      "address": 8175315,
+      "bytes": 48,
+      "sha256": "848cfadce7f58532e108e1d916a7e87222fd93330dfdec1b725de7ac4b289303",
+      "sealed_inspection_sha256": "59f48a78bf7cb06556c24718efc388a1b99fca1cdc9b1a65ea298f0b199a40d2"
+    },
+    {
+      "source": "P10/native-walk-crt-registered-table.json",
+      "address": 8476460,
+      "bytes": 56,
+      "sha256": "93d6d43643312a2646e9940638a437e5d51c1c3ca044ebaf0014c5301b038635",
+      "sealed_inspection_sha256": "741afc401ec696d3250cffc9fcec4d8803aa096c48d48f55cc9138e52da0374a"
+    },
+    {
+      "source": "P10/native-walk-crt-whole-group.json",
+      "address": 7710848,
+      "bytes": 522,
+      "sha256": "d2e4902fd031f56407c51aa58dcd62a3fd84bb641786a3fa9f0c8bcbf83ef0b9",
+      "sealed_inspection_sha256": "075b54f6a4624457bfcb53979fced7a1aedb62153d214523b75b107724a3b55e"
+    },
+    {
+      "source": "P10/native-walk-required-constants.json",
+      "address": 8263448,
+      "bytes": 48,
+      "sha256": "a17cc698eb4ba1275f6962570e36ec459af463a7fced066b3a50b5bc1235b873",
+      "sealed_inspection_sha256": "44701d9419d27e3907ff08e81a4be6260518dfcf6cee3cfc2939effcc0a325a6"
+    },
+    {
+      "source": "P10/native-walk-required-constants-pi.json",
+      "address": 8350144,
+      "bytes": 16,
+      "sha256": "3bdfb14aa0872bd4c2b27f932a674f21d9e08eb3a2310f51597003119fb1d0c1",
+      "sealed_inspection_sha256": "fad5d03ba238694e3a359a8503ec6de28ad614151de9437d5221338a9da9379f"
+    },
+    {
+      "source": "P10/native-foot-coordinates-body.json",
+      "address": 5094896,
+      "bytes": 144,
+      "sha256": "1a59ade8b8e60f8985e4a8e83316b53e907c92ca9fd58e1f712bfd022a10862a",
+      "sealed_inspection_sha256": "ab26932fa8af546192b277d4ece4e8c84c5256904cdace8f8b160382aa845e74"
+    },
+    {
+      "source": "P10/native-house-notification-aligned.json",
+      "address": 5223909,
+      "bytes": 108,
+      "sha256": "f05f090fbe39aa6b9d726ec0f43bdc3448853f2964d68ffcae567f482f564871",
+      "sealed_inspection_sha256": "97f9e17e6472ffbb0e28da80c1409cb2baf281107886900c4a31065808d71afe"
+    }
+  ],
+  "native_runtime": {
+    "unicorn": "2.1.4",
+    "original_python": "3.13.2",
+    "optimized_whole_emulation": false
+  },
+  "caller_files": {
+    "idle.py": {
+      "bytes": 21659,
+      "sha256": "1b91280d24ad5179740c349626f6cb6709ba8545359cca779ffe304e862a5942"
+    },
+    "fixture.py": {
+      "bytes": 41857,
+      "sha256": "7a059b4d04e6a0da64838525bae547604a3a9f61398fd4c471d839af567c1cf4"
+    },
+    "construction.py": {
+      "bytes": 12510,
+      "sha256": "1dbee3bdd54832e8a32d2cdb8845da62607b0f79f8f6c469e1d6f6f5f2b3424b"
+    },
+    "__init__.py": {
+      "bytes": 82,
+      "sha256": "2670c7e3d08f9e4439637e59f074430b744bb1d929cf6820421bda8926fc3b4f"
+    },
+    "factory.py": {
+      "bytes": 19213,
+      "sha256": "001bc9ded95c782f6391558d19a40ec629e7c14b2ee696c0f1b29c5dd4b82537"
+    },
+    "runtime.py": {
+      "bytes": 8674,
+      "sha256": "f1f19fd70b303a005c4556a0a435c47034f29ea1584ea0bb30dbd367c9bfb845"
+    },
+    "producer.py": {
+      "bytes": 10478,
+      "sha256": "b9be94fd314cf49ab4d186c7135864ba24dd43f42418e28bcb75d0de7a2a9b11"
+    },
+    "admitted.py": {
+      "bytes": 9765,
+      "sha256": "0cafa086f26836a8a2caa8ae6287f8d705e4bd38095faa454b8d298888f6d81f"
+    },
+    "saved.py": {
+      "bytes": 20472,
+      "sha256": "1c417a293a7e9b52be068a1ac51db7e9054435a7afc2521a11cc21dc9b915486"
+    },
+    "exit.py": {
+      "bytes": 12351,
+      "sha256": "663ea2db521d5ad0d17e53b83d5ee48276a22438106f5556202f2285df6cda8a"
+    },
+    "projection.py": {
+      "bytes": 2548,
+      "sha256": "f2c3773047a69a0f432a901fbc98fb7ed7234742b8db8484ebbb8ceafbdc2ec6"
+    },
+    "../factory_infantry_output.py": {
+      "bytes": 15883,
+      "sha256": "00ffe06b0495f2593a29ccb4af8879a1f7f8768af205b3b4dc0914b93f82b437"
+    },
+    "initialized.py": {
+      "bytes": 17590,
+      "sha256": "26987989b3e4c859109d304faab7c1e1538cec3eda5fc00350013202728ef9d4"
+    },
+    "phase.py": {
+      "bytes": 14488,
+      "sha256": "e5b34ee118065ad0df0ca9c56b8e1a3db1adc17b11cdae627c012717a29d8b5f"
+    }
+  },
+  "initialized_controls": {
+    "no_rally": {
+      "projection": "fixtures/initialized-no_rally.json.gz",
+      "original_packet": "P10",
+      "original_full_receipt": "native-no-rally-attempt-1.json.gz",
+      "original_full_receipt_sha256": "de3d929780c57989aea2195f9f4ada86ccbdade7cdf22e71e0bedcd4d08a217f",
+      "complete_primary_sha256": "d2466041166db052c2ff73da0edcb513ffa5ea9c06e74bb9fa6635671c78b2bc",
+      "complete_private_sha256": "36b4dd1b8a0cbc5f22480e27d8eea8d448fe6572bd1e64f71011d8e817327073",
+      "final_frame": 522
+    },
+    "rally": {
+      "projection": "fixtures/initialized-rally.json.gz",
+      "original_packet": "P10",
+      "original_full_receipt": "native-rally-attempt-1.json.gz",
+      "original_full_receipt_sha256": "374bf2378b7676057f510385fe849deef275b430e25093322f377c30f9733d97",
+      "complete_primary_sha256": "a9d2a2546350cd395e3cd53925451297abe5bd1dc7b500ba6ec1be1edf1ff512",
+      "complete_private_sha256": "b3b97a0652def2403b8d1aa585f5246e0feac547d692699ec7f743bcf1005b2d",
+      "final_frame": 705
+    }
+  },
+  "initialized_local_sources": {
+    "no_rally": {
+      "projection": "tools/spatial_oracle/_factory_infantry_output/fixtures/initialized-no_rally.json.gz",
+      "gzip_bytes": 132669,
+      "gzip_sha256": "993e9be3ebe28aba7821200261b2ad44d7aa507a894df7b2b795631a358808ff",
+      "complete_primary_sha256": "d2466041166db052c2ff73da0edcb513ffa5ea9c06e74bb9fa6635671c78b2bc",
+      "complete_private_sha256": "36b4dd1b8a0cbc5f22480e27d8eea8d448fe6572bd1e64f71011d8e817327073"
+    },
+    "rally": {
+      "projection": "tools/spatial_oracle/_factory_infantry_output/fixtures/initialized-rally.json.gz",
+      "gzip_bytes": 141323,
+      "gzip_sha256": "a007f83e4df084db87d9f0cfe554b485e64a9b59c1e6618209826dbd32df57dc",
+      "complete_primary_sha256": "a9d2a2546350cd395e3cd53925451297abe5bd1dc7b500ba6ec1be1edf1ff512",
+      "complete_private_sha256": "b3b97a0652def2403b8d1aa585f5246e0feac547d692699ec7f743bcf1005b2d"
+    }
+  },
+  "initialized_limits": [
+    "Original registered Foot EMPTY slot813100..813104 and whole14-entry Walk group81572C..815764 execute through7CBED3 before selected GAPILE/E1 construction; whole CRT/WinMain/FPU startup remains omitted, inherited FPCW0E7F is explicit.",
+    "The caller uses existing whole selected type/terrain/Factory/runtime owners, original producer construction/admission/opening and exact cash/queue inputs; inherited unrelated GAPOWR/MTNK/Anim/House/map/options priors remain supplied and recorded.",
+    "Restricted frame order is Strip6A8B30, already-delivered Infantry51BAB0 in delivery order, held Factory4C9B20, local6474C7..6474BF event dispatch. Later producer/House/unrelated AI and whole MainTick/checksum/render/network/full ring capacity are excluded.",
+    "Complete normalized original primary/private comparisons retain all native gameplay fields, call PCs, timer words and all3 complete RNG buffers/request/advance order. Compact projections are mechanical selections, not replacement native implementations.",
+    "Canonical advance_tick visits more actors/phases than this native caller; the linked structural Rust fixture excludes absolute frame/worldstream parity and no-rally Scatter destination equality. HouseTechLevel10 and ready producer are explicit structural test priors.",
+    "Actual selected-producer GetCoords and radar6 request execute, but inherited EVA registry is empty and RadarEvent CRT65F9B0 is omitted. Native marker insertion/Tick/cleanup and loaded UnitReady voice/clock/queue/cleanup are not established.",
+    "Original P2/P5/P9 zero-B45C28 controls remain immutable historical missing-Walk-startup supplied-prior evidence, not stock Walk completion timing. Preferred corrected no-rally/rally controls reach both terminal products.",
+    "No whole match/object completeness; specialized products, legacy planning, Agent/VehicleThief/default-GuardArea/slave/team paths, full startup and networking retain separate bounds."
+  ],
+  "comparison_host_exclusions": {
+    "recursive_keys": [
+      "driver_sha256",
+      "derive_ast_sha256",
+      "queue_ast_sha256",
+      "derived_queue_ast_sha256",
+      "setup_ast_sha256",
+      "derived_caller_ast_sha256",
+      "derived_observer_ast_sha256",
+      "immutable_drivers",
+      "construction_driver_sha256",
+      "parent_driver_sha256",
+      "frozen_owner_files",
+      "source_frozen",
+      "assets_reference",
+      "native_path"
+    ],
+    "paths": [
+      "queue.runtime",
+      "environment.runtime",
+      "native_environment.runtime",
+      "$.primary_comparison",
+      "original_infantry_vtable.source",
+      "physical-root pathname prefix"
+    ],
+    "scope": "Only host/source identities and runtime metadata; no native gameplay field is excluded"
+  },
+  "inspection_owner_files": {
+    "tools/native_inspect.py": {
+      "bytes": 11563,
+      "sha256": "12038060971ec7a41da24e13a9851e23858fba4542c6e9a9f9ca17f3a8252087",
+      "scope": "Original byte/disassembly observation; no replacement simulation owner",
+      "comparison_basis": "Existing owner output compared with sealed P10 initialized controls; initial portable native comparisons matched before rejecting the omitted census registration"
+    }
+  },
+  "prior_public_caller_versions": [
+    {
+      "bytes": 11623,
+      "sha256": "f9c518b0263dcda0ebc8090820ccd068089002e57d2b3428e4979ad3d0e68bfb"
+    },
+    {
+      "bytes": 12835,
+      "sha256": "db38f6dc1883d07c3749eca135f32671b8e6c92ee20c1a54fbb2ddbe97251a3b"
+    },
+    {
+      "bytes": 15877,
+      "sha256": "65164f19608a1637f23746ec340ec0493de0cb85e0858c71be61f901e25844cc"
+    }
+  ],
+  "prior_fixture_caller_versions": [
+    {
+      "bytes": 37395,
+      "sha256": "3dca917146ad7094645f3e2ab35adf654bcd60c5344e3542f08beb4495b8a8c8"
+    },
+    {
+      "bytes": 39994,
+      "sha256": "26d7058f7ae09eda99085f8102f68ffdb16d65f4bf68bc5d5029328022dcc21e"
+    }
+  ],
+  "gate_component": {
+    "metadata": "gate-meta.json",
+    "source_seal_sha256": "68c0abc23dc667a0de7f7ad7538365d00b8beba32c4d7b44674b0b982ad1f828",
+    "preserves_existing_controls": true
+  },
+  "publication_phase": {
+    "schema": 1,
+    "source_packet": "basic-factory-output-publication-phase-research-20261003",
+    "source_seal_sha256": "a0416992e1d4536b0961c742619c9aa183604126bc5294e0e78c99c3cb4e7856",
+    "source_manifest": "inputs/publication-phase-source-manifest.json",
+    "source_driver_sha256": "079cca4a095b34f163aca322043ffc1f9e3d5a727501cbc534c7d4f6e6009a2a",
+    "source_selector_sha256": "d7292d4ec556239f9bdea2756f19c68248193d135d4aa1aba5fdf65860fd83af",
+    "parent_manifest_sha256": "2864c48044891746cf597cd0d4f4a5e8e6554b208ddccfa47313d1a22bbe68ea",
+    "parent_full_receipt_sha256": "de3d929780c57989aea2195f9f4ada86ccbdade7cdf22e71e0bedcd4d08a217f",
+    "input_closure": "inputs/publication-phase-input-closure.json.gz",
+    "original_instructions": "inputs/publication-phase-instructions.json.gz",
+    "complete_parent_prefix_sha256": "2ccf6ece621583b89d018739609b90e6606912a71cd7eff2e212cd54481f5cf5",
+    "controls": {
+      "before_strip": {
+        "receipt": "accepted/publication-phase-native-before-strip-attempt-1.json.gz",
+        "source_receipt_sha256": "6de53a3e7c28d6a5e7ef734d81babaf183e7410642c0f6cd56b2524c6d9663d0",
+        "complete_normalized_original_sha256": "3b8c62a98ff19088a28fcab2b3ceb7908b83c76b151221a42ed6c43f17d43c19",
+        "derived_caller_ast_sha256": "5080e5439334d18084910936cf783eb0054d826c3bb73779b9d3785fe0afe0fa",
+        "executed_event_types": [
+          30,
+          11
+        ]
+      },
+      "after_strip": {
+        "receipt": "accepted/publication-phase-native-after-strip-attempt-1.json.gz",
+        "source_receipt_sha256": "1dd1b1f0ea72378ba09f37fa02cec0d233200c69ee42a5f4950fe59e6a2feca5",
+        "complete_normalized_original_sha256": "e590c048b003d0f4bf35a46780238db7eec3d40b0c09c5d33c48e9cdad9a6f11",
+        "derived_caller_ast_sha256": "5080e5439334d18084910936cf783eb0054d826c3bb73779b9d3785fe0afe0fa",
+        "executed_event_types": [
+          11,
+          30
+        ]
+      }
+    },
+    "local_sources": {
+      "before_strip": {
+        "file": "native-before-strip-attempt-1.json.gz",
+        "sha256": "6de53a3e7c28d6a5e7ef734d81babaf183e7410642c0f6cd56b2524c6d9663d0"
+      },
+      "after_strip": {
+        "file": "native-after-strip-attempt-1.json.gz",
+        "sha256": "1dd1b1f0ea72378ba09f37fa02cec0d233200c69ee42a5f4950fe59e6a2feca5"
+      }
+    },
+    "rust_fixture": {
+      "path": "src/sim/world/fixtures/factory_infantry_publication_native.json",
+      "bytes": 6322,
+      "sha256": "451aea001a9e16115948f1491bd7d8cc66d3636d9da60cfeb98de981fe012b86"
+    },
+    "cell_subcell_startup": {
+      "caller": "factory.py:45 -> building_death_anims.joined_fixture",
+      "owner": "tools/spatial_oracle/building_death_anims.py",
+      "owner_sha256": "2c411ebe503db16d01c3a799cb3f227d901ee2c3bc488ecb442fd90cfedcd303",
+      "original_entry": 4777088,
+      "crt_pointer": 8465192,
+      "retained_table": 9038320,
+      "retained_bytes": 60,
+      "owner_observation": "f.subcell_startup records all60bytes and unchanged full three RNG streams",
+      "phase_observation_limit": "Existing original caller executes startup; phase primary does not separately export f.subcell_startup; no coordinate-inferred or fresh60byte phase proof"
+    },
+    "bounds": [
+      "Restricted warmed P10 original schedule and physical/House/type priors are reused. No whole MainTick, window pump, pixel discovery, network, other actors, or terminal movement is executed.",
+      "Whole original stock human Building WhatAction447540 establishes admitted action1; its actual vt1404436F0 caller4437A8 reaches443860 and appends native event1E. Selected input cell20,20 and the before/afterStrip interleaving are authored caller inputs.",
+      "BeforeStrip is reachable from original MainTick55D3A2/55D3B6 message pump, GameWndProc777640\u2192TacticalMouse6930A0 WM_LBUTTONUP\u2192BandBox4AB9B0\u2192Selection4AE750\u2192vt1404AE8C4. This upstream route is instruction-established, not executed window/pixel parity.",
+      "AfterStrip is an explicit sibling control demonstrating the event-order consequence; it does not assert equivalence to every fresh-click input route.",
+      "No Factory stage, changed byte, held object, rally outcome, coordinate, mission, event eligibility, or RNG answer is supplied. Original code sections are guarded. WINMM imported timestamps use the existing supplied0 transport.",
+      "Stop after actual firstPLACE268, before its next InfantryAI visit. No retirement/rally arrival/whole-object completion claim. Original no-rally/rally seals and current helper files are untouched."
+    ]
+  },
+  "prior_saved_caller_versions": [
+    {
+      "bytes": 10465,
+      "sha256": "7f0a141f06609a9d49fd5ae23c9f61c50b416a53a2fba41b071cf9979ad9ffdb"
+    }
+  ]
+}

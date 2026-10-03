@@ -6,23 +6,33 @@ use crate::sim::world::{InfantryDeathSequence, InfantryTerminal};
 fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
     use crate::sim::house_state::HouseState;
     use crate::sim::production::{
-        ProductionCategory, enqueue_by_type, tick_production_with_overlay_registry,
+        ProductionCategory, dispatch_production_changes_for_tests, enqueue_by_type,
     };
     let rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n0=E1\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n0=BARR\n\
-         [E1]\nStrength=100\nSpeed=4\nCost=200\nTechLevel=1\nOwner=Americans\n\
-         [BARR]\nStrength=1000\nFoundation=1x1\nFactory=InfantryType\nExitCoord=256,0,0\n",
+        "[Countries]\n0=Americans\n[InfantryTypes]\n0=E1\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n0=BARR\n\
+         [E1]\nStrength=100\nSpeed=4\nCost=200\nTechLevel=1\nOwner=Americans\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n\
+         [BARR]\nOwner=Americans\nStrength=1000\nFoundation=1x1\nFactory=InfantryType\nExitCoord=256,0,0\n",
     ))
     .unwrap();
     let (mut saved, terrain) = terminal_load_world(&rules);
+    // The generic retained-policy load fixture supplies LocalSize, but the
+    // real barracks GetDock consumer also needs Map::Size for InBounds.
+    saved.playfield_bounds.as_mut().unwrap().base = 2;
+    saved.playfield_size_height = Some(4);
     let owner = saved.interner.intern("Americans");
     saved
         .houses
         .insert(owner, HouseState::new(owner, 0, None, true, 50_000, 10));
     saved.session.house_order.push(owner);
-    saved
+    let barracks = saved
         .spawn_object_at_height("BARR", "Americans", 1, 1, 0, 0, &rules)
         .unwrap();
+    // Supply a completed, online producer; this test isolates terminal policy
+    // persistence from the separate building-construction lifecycle.
+    let building = saved.substrate.entities.get_mut(barracks).unwrap();
+    building.finish_building_construction_for_test();
+    building.building_actually_placed = true;
+    saved.append_house_base_building_for_test(barracks);
     assert!(enqueue_by_type(&mut saved, &rules, "Americans", "E1"));
     let held = saved
         .production
@@ -85,7 +95,7 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
             .factory_shadow
             .test_arm_ready(owner, ProductionCategory::Infantry)
     );
-    tick_production_with_overlay_registry(&mut restored, &rules, Some(&registry));
+    dispatch_production_changes_for_tests(&mut restored, &rules, Some(&registry));
     let object = restored
         .substrate
         .entities

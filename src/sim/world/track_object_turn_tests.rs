@@ -63,6 +63,51 @@ fn fixture() -> (Simulation, RuleSet) {
     (sim, rules)
 }
 
+/// Foot4DA53E reloads Object+90 after a supplied Techno callback; only its
+/// live continuation clears6B3 at4DA54E. Compare the unchanged-liveness
+/// controls at the existing per-object boundary, with no rules/controller
+/// work. The dead native row supplies no Conceal/UnInit producer and is not
+/// a valid full-world destruction fixture. Whole TechnoAI, the dispatcher and
+/// its death lifecycle remain outside this original corpus's coverage.
+#[test]
+fn object_turn_resets_foot_idle_latch_only_on_native_live_continuation() {
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/foot_enter_idle.json"
+    ))
+    .expect("unchanged original Foot EnterIdle corpus");
+    for alive in [false, true] {
+        let row = rows
+            .iter()
+            .find(|row| {
+                let input = &row["input"];
+                input["group"] == "foot_ai_reset"
+                    && input["entry_alive"] == u8::from(alive)
+                    && input["callback_alive"] == u8::from(alive)
+                    && input["entry_latch"] == 1
+                    && input["callback_latch"] == 1
+            })
+            .expect("original unchanged-liveness reset control");
+        let (mut sim, _) = fixture();
+        let actor = sim.substrate.entities.get_mut(1).unwrap();
+        actor.locomotor = None;
+        actor.lifecycle.object_alive = alive;
+        actor.mission_leaf.set_foot_idle_entry_latch(1);
+        let rng = sim.rng_state();
+        sim.advance_live_object_turn(1, None, techno_ai::ObjectAiCtx::default())
+            .expect("bounded object-turn continuation");
+        let actor = sim
+            .substrate
+            .entities
+            .get(1)
+            .expect("no terminal cleanup supplied");
+        assert_eq!(
+            actor.mission_leaf.foot_idle_entry_latch(),
+            row["after"]["latch"].as_u64().unwrap() as u8
+        );
+        assert_eq!(sim.rng_state(), rng);
+    }
+}
+
 #[test]
 fn post_ai_object_alive_gate_precedes_drive_ship_process_slope_sampling() {
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};

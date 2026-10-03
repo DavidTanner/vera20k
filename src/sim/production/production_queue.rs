@@ -1,7 +1,7 @@
-//! Production views, economy queries and completed mobile delivery.
+//! Production views, economy queries and changed-output publication.
 //!
-//! `tick_production()` dispatches completed factory output after the frame's
-//! charge sweep. Factory-held identity and accounting settle in factory_lifecycle.
+//! Strip readiness queues mobile PLACE for its frame's event tail; it retains the
+//! factory-held identity. Factory accounting settles in factory_lifecycle.
 
 use std::collections::BTreeMap;
 
@@ -12,8 +12,7 @@ use crate::sim::world::Simulation;
 use super::PRODUCTION_STEPS;
 use super::factory_lifecycle;
 use super::production_spawn::{
-    ProductionDeliveryKind, ProductionSpawnSelection, find_helipad_for_aircraft,
-    find_spawn_selection_for_owner_with_type, mark_war_factory_spawn_contact,
+    ProductionDeliveryKind, ProductionSpawnSelection, mark_war_factory_spawn_contact,
     unlimbo_held_naval_unit,
 };
 use super::production_tech::{owner_matches_build_identity, production_category_for_object};
@@ -225,147 +224,172 @@ pub fn has_build_option_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str
         .any(|o| o.enabled)
 }
 
-/// Advance production timers and spawn completed items.
-pub fn tick_production(sim: &mut Simulation, rules: &RuleSet) -> bool {
-    tick_production_with_overlay_registry(sim, rules, None)
+/// StripClass::AI6A8DD3 consumes Factory::HasChanged4C9C60, publishes
+/// building readiness, and issues mobile PLACE6A8EB8 without releasing its head.
+/// The next frame's input prefix visits Strip before Logic/Factory and appends
+/// PLACE after already accepted OutList events, for that frame's
+/// Event4C710B -> House4FB0E0 tail. Native controls observe completion267/484
+/// and PLACE268/485; admitted SetRally then PLACE inherits the new Archive.
+///
+/// Sidebar6A77B6 visits tabs0..3: Infantry(tab2) precedes Unit/Aircraft(tab3).
+/// Within tab3, native entry-array order and saturated OutList transport remain
+/// recorded residuals; one infantry factory has no cross-category ambiguity.
+pub fn publish_production_changes(sim: &mut Simulation, rules: &RuleSet) {
+    let mut completed = sim.production.factory_shadow.take_changed_completed_keys();
+    completed.sort_by_key(|(_, category)| match category {
+        ProductionCategory::Building => 0,
+        ProductionCategory::Defense => 1,
+        ProductionCategory::Infantry => 2,
+        ProductionCategory::Vehicle | ProductionCategory::Aircraft | ProductionCategory::Ship => 3,
+    });
+    for (owner, category) in completed {
+        let Some(type_id) = sim
+            .production
+            .factory_shadow
+            .view(owner, category)
+            .and_then(|factory| factory.object.map(|object| object.type_id))
+        else {
+            continue;
+        };
+        factory_lifecycle::publish_completion(sim, rules, owner, category);
+        if sim.object_type(type_id, rules).is_some_and(|object| {
+            object.category != crate::rules::object_type::ObjectCategory::Building
+        }) {
+            sim.queue_command(crate::sim::command::CommandEnvelope::new(
+                owner,
+                sim.session.tick.saturating_add(1),
+                crate::sim::command::Command::PlaceProducedMobile { category },
+            ));
+        }
+    }
+    sim.production.factory_shadow.prune_all_idle();
 }
 
-/// Advance production timers and spawn completed items with optional native
-/// tiberium context for harvester-side reduction/reseed.
-pub fn tick_production_with_overlay_registry(
+/// Exercise the next frame's prefix publication and its event tail in focused owner tests,
+/// without running unrelated world AI. The ordinary production runtime uses
+/// publish_production_changes plus the world's existing scheduled tail.
+#[cfg(test)]
+pub(crate) fn dispatch_production_changes_for_tests(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
-    // P5d: the registry is the queue-of-record + completion authority. Collect the
-    // (owner, category) keys whose active build has completed (progress == 54, object held),
-    // in construction (insertion_seq) order — the SAME order step_all charged in and the
-    // hash folds. The registry advances (StartNextQueued) on a
-    // successful delivery (C7), not on completion alone.
-    let completed_keys = sim.production.factory_shadow.completed_keys();
-    if completed_keys.is_empty() {
-        return false;
-    }
-
-    let mut spawned_any = false;
-    for (owner_id, queue_category) in completed_keys {
-        let owner_str = sim.interner.resolve(owner_id).to_string();
-        // The completed-held active object's type.
-        let Some(done_type) = sim
-            .production
-            .factory_shadow
-            .view(owner_id, queue_category)
-            .and_then(|v| v.object.map(|o| o.type_id))
-        else {
-            continue;
-        };
-        let done_type_str = sim.interner.resolve(done_type).to_string();
-        let produced_category = rules.object(&done_type_str).map(|o| o.category);
-        factory_lifecycle::publish_completion(sim, rules, owner_id, queue_category);
-        if produced_category == Some(crate::rules::object_type::ObjectCategory::Building) {
-            continue;
-        }
-        let is_vehicle =
-            produced_category == Some(crate::rules::object_type::ObjectCategory::Vehicle);
-        // Aircraft use helipad spawn path; other units use exit cell path.
-        let is_aircraft =
-            produced_category == Some(crate::rules::object_type::ObjectCategory::Aircraft);
-        let (selection, airfield) = if is_aircraft {
-            let Some((airfield, rx, ry)) = find_helipad_for_aircraft(sim, rules, &owner_str) else {
-                // No free helipad — refund.
-                factory_lifecycle::refund_failed_delivery(sim, rules, owner_id, queue_category);
-                continue;
-            };
-            let selection = ProductionSpawnSelection {
-                producer_id: airfield,
-                cell: (rx, ry),
-                delivery: ProductionDeliveryKind::Standard,
-            };
-            (selection, Some(airfield))
-        } else {
-            let is_naval: bool = rules.object(&done_type_str).map_or(false, |o| o.naval);
-            let spawn_selection = produced_category.and_then(|cat| {
-                find_spawn_selection_for_owner_with_type(
-                    sim,
-                    rules,
-                    &owner_str,
-                    Some(&done_type_str),
-                    cat,
-                    is_naval,
-                )
-            });
-            let Some(selection) = spawn_selection else {
-                if is_vehicle {
-                    continue;
-                }
-                factory_lifecycle::refund_failed_delivery(sim, rules, owner_id, queue_category);
-                continue;
-            };
-            (selection, None)
-        };
-
-        let Some(stable_id) = factory_lifecycle::active_entity_id(sim, owner_id, queue_category)
-        else {
-            debug_assert!(
-                false,
-                "active Factory object must own its StartProduction entity before delivery"
-            );
-            continue;
-        };
-
-        let delivered = deliver_produced_object(
-            sim,
-            rules,
-            owner_id,
-            &done_type_str,
-            stable_id,
-            selection,
-            airfield,
-            overlay_registry,
-        );
-        if delivered.is_some() {
-            spawned_any = true;
-            factory_lifecycle::release_delivered_mobile(sim, rules, owner_id, queue_category);
-        } else {
-            if is_vehicle {
-                continue;
-            }
-            factory_lifecycle::refund_failed_delivery(sim, rules, owner_id, queue_category);
-        }
-    }
-
-    // P5d: drop any factory left idle (delivered + empty queue) — replaces the
-    // `queues_by_owner.retain` prune.
-    sim.production.factory_shadow.prune_all_idle();
-    spawned_any
+    sim.session.tick = sim.session.tick.saturating_add(1);
+    sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
+    publish_production_changes(sim, rules);
+    let due = sim.take_due_commands();
+    let (_, spawned) = sim.apply_due_commands(
+        &due,
+        Some(rules),
+        sim.session.tick.saturating_add(1),
+        overlay_registry,
+    );
+    spawned
 }
 
-/// Unlimbo house `owner_id`'s held produced object `stable_id` (of type
-/// `type_name`) at `selection`, docked at `airfield` for an aircraft, then
-/// its arrival: the war factory contact, the airfield pad, the player's
-/// "unit ready", the Slave Miner's hunt and the rally move. `Some` with the
-/// object when it was placed; otherwise it stays held in limbo.
-///
-/// The player's queue (above) and a computer's factory building
-/// (`production::factory_ai`) both deliver through it.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn deliver_produced_object(
+/// BuildingClass::ExitObject_Main443C60 for one retained mobile object.
+/// Human House PLACE and AI Building::Factory_AI use this same exit owner;
+/// their refund/retry/release policies remain with their respective callers.
+/// GetDock/admission, Unlimbo and connected radio/mission effects run once.
+pub(in crate::sim) fn exit_produced_object(
     sim: &mut Simulation,
     rules: &RuleSet,
-    owner_id: InternedId,
-    type_name: &str,
+    producer_id: u64,
     stable_id: u64,
-    selection: ProductionSpawnSelection,
-    airfield: Option<u64>,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-) -> Option<u64> {
+) -> crate::sim::ai_base_building::BuildingExit {
+    use crate::sim::ai_base_building::{self, BuildingExit};
+    use crate::sim::ai_unit_choice::UnitChoiceKind;
+    let Some(entity) = sim.substrate.entities.get_mut(stable_id) else {
+        return BuildingExit::Failed;
+    };
+    // Exit443C81 sets Techno+3D5 before RTTI, admission or Unlimbo.
+    entity.in_playfield = true;
+    let owner_id = entity.owner();
+    let product_type_id = entity.type_ref();
+    let Some(product_type) = sim.object_type(product_type_id, rules) else {
+        return BuildingExit::Failed;
+    };
+    let type_name = product_type.id.as_str();
+    let Some(kind) = UnitChoiceKind::of(product_type.category) else {
+        return BuildingExit::Failed;
+    };
+    let Some(producer_type) = sim
+        .substrate
+        .entities
+        .get(producer_id)
+        .and_then(|producer| sim.object_type(producer.type_ref(), rules))
+    else {
+        return BuildingExit::Failed;
+    };
+    //444096..4440D7 skips FreeRadio65ADC0 for Hospital, Armory and WeaponsFactory.
+    //The direct4440BC call accepts any NULL contact slot; stock GAPILE has1.
+    // Ordinary barracks return1 while occupied; land war factories reach
+    // their own native busy/alternate-receiver arm instead.
+    if product_type.category != crate::rules::object_type::ObjectCategory::Aircraft
+        && !producer_type.hospital
+        && !producer_type.armory()
+        && !producer_type.weapons_factory
+        && sim
+            .substrate
+            .entities
+            .get(producer_id)
+            .is_some_and(|producer| producer.radio_contacts.first_free().is_none())
+    {
+        return BuildingExit::TryLater;
+    }
+    ai_base_building::economy_state_machine(sim, rules, owner_id, false);
+    if let Some(house) = sim.houses.get_mut(&owner_id) {
+        house.ai_unit_choices.clear(kind);
+    }
+    if product_type.category == crate::rules::object_type::ObjectCategory::Infantry {
+        // 44498E..999 precedes GetDock, including its refusal path.
+        let archive = sim
+            .substrate
+            .entities
+            .get(producer_id)
+            .and_then(|producer| producer.archive_target());
+        if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
+            entity.set_archive_target(archive);
+        }
+    }
+    let (selection, airfield) = if kind == UnitChoiceKind::Aircraft {
+        let Some(cell) = super::production_spawn::free_helipad_cell(sim, rules, producer_id) else {
+            return BuildingExit::Failed;
+        };
+        (
+            ProductionSpawnSelection {
+                producer_id,
+                cell,
+                delivery: ProductionDeliveryKind::Standard,
+            },
+            Some(producer_id),
+        )
+    } else {
+        let Some(producer) = sim.substrate.entities.get(producer_id) else {
+            return BuildingExit::Failed;
+        };
+        let Some(selection) = super::production_spawn::spawn_selection_at_producer(
+            sim,
+            rules,
+            (
+                producer_id,
+                producer.position.rx,
+                producer.position.ry,
+                sim.interner.resolve(producer.type_ref()),
+            ),
+            Some(stable_id),
+            Some(type_name),
+            product_type.category,
+            product_type.naval,
+            overlay_registry,
+        ) else {
+            return BuildingExit::Failed;
+        };
+        (selection, None)
+    };
     let (rx, ry) = selection.cell;
-    // ExitObject443C81 writes this byte before class dispatch, even if a later
-    // Unlimbo fails. It is the existing Techno+3D5 owner, not a new flag.
-    let is_unit = sim.substrate.entities.get_mut(stable_id).map(|product| {
-        product.in_playfield = true;
-        product.category == crate::map::entities::EntityCategory::Unit
-    })?;
+    let is_unit = product_type.category == crate::rules::object_type::ObjectCategory::Vehicle;
     let land_factory = is_unit
         && sim
             .substrate
@@ -378,7 +402,11 @@ pub(super) fn deliver_produced_object(
                 )
             });
     if land_factory {
-        let producer = sim.substrate.entities.get(selection.producer_id)?;
+        let producer = sim
+            .substrate
+            .entities
+            .get(selection.producer_id)
+            .expect("selected producer remains live");
         let producer_type = producer.type_ref();
         let producer_owner = producer.owner();
         let archive = producer.archive_target();
@@ -387,12 +415,14 @@ pub(super) fn deliver_produced_object(
         //entry. Unit PerCell consumes the retained value after clearance.
         sim.substrate
             .entities
-            .get_mut(stable_id)?
+            .get_mut(stable_id)
+            .expect("held product remains live")
             .set_archive_target(archive);
         let busy = sim
             .substrate
             .entities
-            .get(selection.producer_id)?
+            .get(selection.producer_id)
+            .expect("selected producer remains live")
             .mission
             .effective()
             .known()
@@ -402,36 +432,27 @@ pub(super) fn deliver_produced_object(
             //identical BuildingType, another receiver, effective Guard5 and
             //Building+524 NULL. It calls the first eligible receiver once;
             //its return does not trigger a search for another receiver.
-            let alternate_id = sim
-                .houses
-                .get(&producer_owner)?
-                .base_projection
-                .buildings()
-                .iter()
-                .copied()
-                .find(|&id| {
-                    sim.substrate.entities.get(id).is_some_and(|candidate| {
-                        candidate.type_ref() == producer_type
-                            && id != selection.producer_id
-                            && candidate.mission.effective().known()
-                                == Some(crate::sim::mission::MissionType::Guard)
-                            && sim.production.factory_shadow.building_factory(id).is_none()
+            let Some(house) = sim.houses.get(&producer_owner) else {
+                return BuildingExit::Failed;
+            };
+            let Some(alternate_id) =
+                house
+                    .base_projection
+                    .buildings()
+                    .iter()
+                    .copied()
+                    .find(|&id| {
+                        sim.substrate.entities.get(id).is_some_and(|candidate| {
+                            candidate.type_ref() == producer_type
+                                && id != selection.producer_id
+                                && candidate.mission.effective().known()
+                                    == Some(crate::sim::mission::MissionType::Guard)
+                                && sim.production.factory_shadow.building_factory(id).is_none()
+                        })
                     })
-                })?;
-            let alternate = sim.substrate.entities.get(alternate_id)?;
-            let alternate_selection = super::production_spawn::spawn_selection_at_producer(
-                sim,
-                rules,
-                (
-                    alternate_id,
-                    alternate.position.rx,
-                    alternate.position.ry,
-                    sim.interner.resolve(alternate.type_ref()),
-                ),
-                Some(type_name),
-                crate::rules::object_type::ObjectCategory::Vehicle,
-                false,
-            )?;
+            else {
+                return BuildingExit::TryLater;
+            };
             //44451F..444552 lends and restores the existing +524 attachment.
             //A player's held object lives in the House slot, so its producer's
             //+524 can be NULL. Do not move that House factory to a building.
@@ -446,18 +467,10 @@ pub(super) fn deliver_produced_object(
                     .factory_shadow
                     .transfer_building_factory_attachment(selection.producer_id, alternate_id)
             {
-                return None;
+                return BuildingExit::Failed;
             }
-            let result = deliver_produced_object(
-                sim,
-                rules,
-                owner_id,
-                type_name,
-                stable_id,
-                alternate_selection,
-                airfield,
-                overlay_registry,
-            );
+            let result =
+                exit_produced_object(sim, rules, alternate_id, stable_id, overlay_registry);
             if attached {
                 assert!(
                     sim.production
@@ -470,10 +483,16 @@ pub(super) fn deliver_produced_object(
         }
     }
     let spawned = if land_factory {
-        let producer = sim.substrate.entities.get(selection.producer_id)?;
+        let producer = sim
+            .substrate
+            .entities
+            .get(selection.producer_id)
+            .expect("selected producer remains live");
         let coord = crate::sim::movement::building_exit_coordinate(
             crate::sim::movement::ground_pose::position_world_coord(&producer.position),
-            rules.object(sim.interner.resolve(producer.type_ref()))?,
+            rules
+                .object(sim.interner.resolve(producer.type_ref()))
+                .expect("selected producer has a type"),
             || {
                 crate::sim::movement::ground_pose::object_get_coords(
                     producer,
@@ -521,6 +540,77 @@ pub(super) fn deliver_produced_object(
             ProductionDeliveryKind::NavalUnit => {
                 unlimbo_held_naval_unit(sim, rules, stable_id, (rx, ry), overlay_registry)
             }
+            ProductionDeliveryKind::Infantry {
+                coordinate,
+                facing,
+                exit_cell,
+            } => {
+                // A8E7AC stays incremented through the destination/radio tail,
+                // until the common successful return444971 (also on refusal).
+                sim.with_object_placement_scope(|sim| {
+                    let spawned = sim.reveal_constructed_object_at_coord_with_overlay_context(
+                        stable_id,
+                        coordinate,
+                        facing,
+                        crate::sim::world::PlacementEvidence::EvaluateMark,
+                        rules,
+                        overlay_registry,
+                    )?;
+                    let nav = sim
+                        .substrate
+                        .entities
+                        .get(spawned)
+                        .and_then(|entity| entity.navigation.nav_com);
+                    // Only a non-JumpJet/non-Teleporter with Unlimbo NavCom
+                    // takes444CA3..D0B. No-rally NavNULL skips this whole arm.
+                    if !product_type.jumpjet
+                        && !product_type.teleporter
+                        && let Some(nav) = nav
+                    {
+                        if let Some(entity) = sim.substrate.entities.get_mut(spawned) {
+                            entity.set_archive_target(Some(nav.into()));
+                        }
+                        let _ = sim.mission_queue_exact(
+                            spawned,
+                            crate::sim::mission::MissionId::from_known(
+                                crate::sim::mission::MissionType::Move,
+                            ),
+                            0,
+                            sim.session.binary_frame,
+                            &crate::sim::mission::authority::EntityReadyInputProvider,
+                        );
+                        if let Err(cause) = sim.set_infantry_destination(
+                            spawned,
+                            crate::sim::components::NavTargetRef::cell(exit_cell.0, exit_cell.1),
+                            rules,
+                            overlay_registry,
+                        ) {
+                            log::debug!("Infantry {spawned} factory exit destination: {cause}");
+                        }
+                    }
+                    // Shared radio owner supplies HELLO bookkeeping and the
+                    // literal9 receiver; neither is an invented contact write.
+                    if crate::sim::radio::transmit(
+                        sim,
+                        selection.producer_id,
+                        spawned,
+                        crate::sim::radio::RadioMessage::Hello,
+                        crate::sim::radio::RadioPayload::default(),
+                        Some(rules),
+                    ) == crate::sim::radio::RadioResponse::Roger
+                    {
+                        crate::sim::radio::transmit(
+                            sim,
+                            selection.producer_id,
+                            spawned,
+                            crate::sim::radio::RadioMessage::TetherBack,
+                            crate::sim::radio::RadioPayload::default(),
+                            Some(rules),
+                        );
+                    }
+                    Some(spawned)
+                })
+            }
             ProductionDeliveryKind::Standard => {
                 let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
                 sim.reveal_constructed_object_at_height_with_overlay_context(
@@ -534,10 +624,17 @@ pub(super) fn deliver_produced_object(
                     overlay_registry,
                 )
             }
-        }?;
-        mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
-        Some(spawned)
-    }?;
+        };
+        if let Some(spawned) = spawned
+            && !matches!(selection.delivery, ProductionDeliveryKind::Infantry { .. })
+        {
+            mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
+        }
+        spawned
+    };
+    let Some(spawned) = spawned else {
+        return BuildingExit::Failed;
+    };
     // Aircraft spawned on helipad: reserve dock slot then set
     // DockedIdle carrying the assigned pad index.
     if let Some(af_id) = airfield {
@@ -561,28 +658,6 @@ pub(super) fn deliver_produced_object(
             });
         }
     }
-    // `HouseClass::Place_Production 0x004FB5C6..0x004FB644`: for a
-    // human-controlled house (`this == PlayerPtr` in MP, `+0x1EC ||
-    // +0x1ED` in campaign) `CreateRadarEvent(6, object cell)` gates
-    // `EVA_UnitReady` — type 6 dedupes within 2 cells, so two units
-    // leaving one factory in quick succession give one line. The app
-    // filters the owner to the local player and admits the event on
-    // that client's radar.
-    if sim
-        .houses
-        .get(&owner_id)
-        .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero))
-    {
-        sim.sound_events
-            .push(crate::sim::world::SimSoundEvent::UnitComplete {
-                owner: owner_id,
-                radar: crate::sim::radar::RadarEventRequest::new(
-                    crate::sim::radar::RadarEventType::UnitReady,
-                    rx,
-                    ry,
-                ),
-            });
-    }
     let stable_id = spawned;
     // A Slave Miner leaving its war factory starts its hunt instead of
     // taking the rally point (`sim::slave_manager`).
@@ -590,7 +665,11 @@ pub(super) fn deliver_produced_object(
         && sim.slave_master_leaves_factory(stable_id, rules);
     // Auto-move newly produced unit to rally point (if set).
     // Skip for aircraft docked on helipad — they wait for orders.
-    if airfield.is_none() && !hunting && !land_factory {
+    if airfield.is_none()
+        && !hunting
+        && !land_factory
+        && !matches!(selection.delivery, ProductionDeliveryKind::Infantry { .. })
+    {
         // `ExitObject_Main @ 0x00443C60` reads the factory's own
         // ArchiveTarget (`+0x218`, the rally point) for the object
         // leaving it; the naval arm reads it after Unlimbo
@@ -686,7 +765,7 @@ pub(super) fn deliver_produced_object(
             entity.position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
         }
     }
-    Some(stable_id)
+    BuildingExit::Placed
 }
 
 /// Build a queue snapshot for one owner, including progress metadata for UI.

@@ -180,6 +180,63 @@ fn new_ids(sim: &Simulation, before: &[u64]) -> Vec<u64> {
         .collect()
 }
 
+/// The saved original control executes the building caller's481180 before
+/// priority Infantry51DFF0. Migration must retain the first row draw and avoid
+/// a second one, while using the shared class placement owner.
+#[test]
+fn building_crew_keeps_distinct_native_caller_placement_and_rng() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "world/world_spawn/fixtures/infantry_unlimbo_placement_native.json"
+    ))
+    .unwrap();
+    let row = corpus["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| {
+            row["input"]["name"].as_str() == Some("building_caller_place_then_priority_class")
+        })
+        .unwrap();
+    let rules = rules();
+    let mut sim = sim_with_houses(31);
+    let owner = sim.interner.intern("Americans");
+    let id = sim
+        .construct_crew_limbo(&rules, "E1", owner, (15, 15), 0)
+        .unwrap();
+    sim.scenario_rng = SimRng::from_native_state_hex_for_test(row["rng_before"].as_str().unwrap());
+    let unlimbo = CrewUnlimbo::Place {
+        cell: (15, 15),
+        z: 0,
+        raw_z: Some(0),
+        request: (SimFixed::from_num(128), SimFixed::from_num(164)),
+        caller_places_first: true,
+    };
+    assert!(
+        sim.with_object_placement_scope(|sim| sim.unlimbo_crew(&rules, id, unlimbo, None, None))
+    );
+    let entity = sim.substrate.entities.get(id).unwrap();
+    let foot = row["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| event[0].as_str() == Some("foot_unlimbo"))
+        .unwrap();
+    assert_eq!(
+        serde_json::json!([
+            i32::from(entity.position.rx) * 256 + entity.position.sub_x.to_num::<i32>(),
+            i32::from(entity.position.ry) * 256 + entity.position.sub_y.to_num::<i32>(),
+            0,
+        ]),
+        foot[2]
+    );
+    assert_eq!(
+        sim.scenario_rng.native_state_hex(),
+        row["rng_after"].as_str().unwrap()
+    );
+    assert!(!sim.object_placement_scope_active());
+    assert_eq!(entity.sub_cell, Some(4));
+}
+
 fn type_name(sim: &Simulation, id: u64) -> String {
     let entity = sim.substrate.entities.get(id).expect("entity");
     sim.interner.resolve(entity.type_ref()).to_string()

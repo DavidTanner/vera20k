@@ -39,13 +39,15 @@ pub use self::factory_lifecycle::{cancel_by_type_for_owner, enqueue_by_type, sus
 pub use self::production_economy::is_harvester_type;
 pub use self::production_placement::{
     active_producer_for_owner_category, cycle_active_producer_for_owner_category,
-    place_ready_building_with_overlays, place_ready_building_without_overlays,
-    placement_preview_for_owner_with_overlays, placement_preview_for_owner_without_overlays,
+    place_production_with_overlays, placement_preview_for_owner_with_overlays,
+    placement_preview_for_owner_without_overlays,
 };
+#[cfg(test)]
+pub(crate) use self::production_queue::dispatch_production_changes_for_tests;
 pub use self::production_queue::{
     build_options_for_owner, credits_for_owner, has_build_option_for_owner,
-    power_balance_for_owner, queue_view_for_owner, ready_buildings_for_owner,
-    theoretical_power_for_owner, tick_production, tick_production_with_overlay_registry,
+    power_balance_for_owner, publish_production_changes, queue_view_for_owner,
+    ready_buildings_for_owner, theoretical_power_for_owner,
 };
 pub(crate) use self::production_refinery::spawn_building_free_unit;
 pub use self::production_repair::{RepairControl, toggle_repair};
@@ -60,7 +62,6 @@ pub(crate) use self::production_sell::{
 };
 #[cfg(test)]
 pub(crate) use self::production_sell::{eject_destruction_garrison, sell_building_now_for_test};
-pub use self::production_spawn::find_spawn_cell_for_owner;
 pub use self::production_tech::{
     building_base_foundation_cells, building_footprint_cells, building_movement_blocking_cells,
     foundation_dimensions, is_matching_factory, producer_candidates_for_owner_category,
@@ -74,10 +75,14 @@ pub(crate) use self::can_build::{CanBuild, can_build, find_factory, initialize_f
 pub(crate) use self::factory_ai::{detach_all as detach_building_factory, factory_ai};
 #[cfg(test)]
 pub(in crate::sim) use self::factory_lifecycle::construct_active_factory_fixture;
+#[cfg(test)]
+pub(in crate::sim) use self::factory_lifecycle::release_delivered_mobile;
 pub(in crate::sim) use self::factory_lifecycle::{
     refresh_factory_rates_for_house, revalidate_and_step_factories,
 };
 pub(in crate::sim) use self::production_queue::credits_entry_for_owner;
+#[cfg(test)]
+pub(in crate::sim) use self::production_queue::exit_produced_object;
 pub(crate) use self::wall_placement::stamp_wall_with_autofill;
 
 #[cfg(test)]

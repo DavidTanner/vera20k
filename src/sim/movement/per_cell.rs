@@ -471,8 +471,9 @@ impl Simulation {
     }
 
     /// `InfantryClass::Per_Cell_Process @ 0x00519630`: for reason 2 its
-    /// Engineer building receiver (`0x00519948..0x0051A02E`), then the Foot body for
-    /// a live owner (`0x0051A9EB` tests only IsAlive, `+0x90`).
+    /// Engineer building receiver (`0x00519948..0x0051A02E`), tethered radio8
+    /// release (`0x0051A7F8..0x0051A812`), then the Foot body for a live owner
+    /// (`0x0051A9EB` tests only IsAlive, `+0x90`).
     ///
     /// RESIDUAL: the override's other reason-2 arms (other Capture branches, Eaten, Enter,
     /// the transport and C4 receivers, `0x00519675..0x0051A9E8`) are not
@@ -494,8 +495,24 @@ impl Simulation {
             }
             _ => Default::default(),
         };
-        if !entry.return_before_foot && self.per_cell_owner_alive(id) {
-            self.foot_per_cell_process(id, reason, rules, registry);
+        if !entry.return_before_foot {
+            //51A7F8 reads the live Techno+418 after earlier arrival receivers;
+            //51A80C sends literal8 through Contacts[0], not DOCK_NOW0x15.
+            //No new alive gate precedes it;51A9EB gates only the Foot tail.
+            //P2 human GAPILE output observes the original nested25/3 release,
+            //with all three RNG streams unchanged by this transaction.
+            if reason == PerCellReason::Arrival
+                && self
+                    .substrate
+                    .entities
+                    .get(id)
+                    .is_some_and(|entity| entity.dock_entered_with.is_some())
+            {
+                radio::transmit_to_contact(self, id, RadioMessage::RequestClearance, rules);
+            }
+            if self.per_cell_owner_alive(id) {
+                self.foot_per_cell_process(id, reason, rules, registry);
+            }
         }
         Ok(entry.bridge_state_changed)
     }

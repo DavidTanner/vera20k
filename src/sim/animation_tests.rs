@@ -935,11 +935,11 @@ fn assert_infantry_pose(
 fn infantry_walk_action_uses_retained_locomotor_motion() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
     sim.substrate.entities.get_mut(id).unwrap().movement_target = Some(make_movement_target());
-    sim.infantry_movement_actions(id, &rules);
+    sim.infantry_movement_actions(id, &rules, None);
     assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
 
     set_infantry_walk_motion(&mut sim, id, true);
-    sim.infantry_movement_actions(id, &rules);
+    sim.infantry_movement_actions(id, &rules, None);
     assert_infantry_pose(&sim, id, 3, SequenceKind::Walk, 0);
 }
 
@@ -951,7 +951,7 @@ fn infantry_walk_action_uses_retained_locomotor_motion() {
 fn infantry_limbo_stops_walk_animation_and_resets_water_state() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
     set_infantry_walk_motion(&mut sim, id, true);
-    sim.infantry_movement_actions(id, &rules);
+    sim.infantry_movement_actions(id, &rules, None);
     assert_infantry_pose(&sim, id, 3, SequenceKind::Walk, 0);
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     actor.mission_leaf.install_infantry_water_state_fixture(1);
@@ -972,14 +972,14 @@ fn infantry_limbo_stops_walk_animation_and_resets_water_state() {
 fn infantry_stopped_walk_returns_to_ready_through_class_action() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
     set_infantry_walk_motion(&mut sim, id, true);
-    sim.infantry_movement_actions(id, &rules);
+    sim.infantry_movement_actions(id, &rules, None);
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .set_native_stage_value(3);
     set_infantry_walk_motion(&mut sim, id, false);
-    sim.infantry_movement_actions(id, &rules);
+    sim.infantry_movement_actions(id, &rules, None);
     assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
 }
 
@@ -987,7 +987,7 @@ fn infantry_stopped_walk_returns_to_ready_through_class_action() {
 fn infantry_walk_stage_uses_absolute_frames_and_presentation_leaves_it_alone() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
     set_infantry_walk_motion(&mut sim, id, true);
-    sim.infantry_movement_actions(id, &rules);
+    sim.infantry_movement_actions(id, &rules, None);
     assert_eq!(
         sim.substrate
             .entities
@@ -1113,10 +1113,10 @@ fn infantry_prone_state_drives_prone_crawl_and_fireprone_actions() {
     assert!(sim.infantry_do_action(id, 2, false, &rules).unwrap());
     assert_infantry_pose(&sim, id, 2, SequenceKind::Prone, 0);
     set_infantry_walk_motion(&mut sim, id, true);
-    sim.infantry_movement_actions(id, &rules);
+    sim.infantry_movement_actions(id, &rules, None);
     assert_infantry_pose(&sim, id, 6, SequenceKind::Crawl, 0);
     set_infantry_walk_motion(&mut sim, id, false);
-    sim.infantry_movement_actions(id, &rules);
+    sim.infantry_movement_actions(id, &rules, None);
     assert_infantry_pose(&sim, id, 2, SequenceKind::Prone, 0);
     assert!(sim.infantry_do_action(id, 8, false, &rules).unwrap());
     assert_infantry_pose(&sim, id, 8, SequenceKind::FireProne, 0);

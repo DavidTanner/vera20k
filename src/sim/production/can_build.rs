@@ -211,6 +211,7 @@ pub(crate) fn find_factory(
     rules: &RuleSet,
     owner: InternedId,
     obj: &ObjectType,
+    skip_busy_unit_radio: bool,
     require_online: bool,
     require_can_build: bool,
 ) -> Option<u64> {
@@ -244,6 +245,12 @@ pub(crate) fn find_factory(
                 || can_build(sim, rules, building.owner(), obj, true, true) == CanBuild::Yes)
             && ownable & get_ownable(building_type, rules, game_mode_nonzero) != 0
             && building_type.naval == naval_unit
+            // ObjectType5F79F4: arg1 only skips the UnitType radio gate.
+            // Wrapper5F5C20 supplies (arg1,arg2,false,actualHouse); House
+            // PLACE first tries (0,1), then Unit alone retries (1,1).
+            && (skip_busy_unit_radio || obj.category != ObjectCategory::Vehicle
+                || building.radio_contacts.is_empty()
+                || building.radio_contacts.first_free().is_some())
         {
             candidate = Some(id);
             if primary == Some(id) {

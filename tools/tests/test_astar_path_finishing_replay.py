@@ -134,6 +134,85 @@ class HashCompositionReplayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check()
 
+    def use_unlabelled_barracks_gate(self):
+        self.receipt['gate']['environment'] = 'VERA20K_BARRACKS_HASH_CONTROL'
+        before, temporary = b'fn hash() {}\n', b'fn hash() { /* hash-only control */ }\n'
+        path = 'src/sim/world/world_hash.rs'
+        gate = ''.join(replay.difflib.unified_diff(
+            before.decode().splitlines(keepends=True), temporary.decode().splitlines(keepends=True),
+            fromfile='a/' + path, tofile='b/' + path)).encode()
+        self.retain('before.rs.gz', before)
+        self.retain('temporary.rs.gz', temporary)
+        self.retain('gate.patch.gz', gate)
+        self.receipt['gate']['sha256'] = self.digest(gate)
+        self.receipt['binary'] = dict(identity_file='identity.json', sha256=self.binary_sha,
+                                     source_sha256=None, whole_source_identity_available=False)
+        identity = dict(schema_version=1, kind='unlabelled-diagnostic-binary-identity',
+            recorded_path='/original/checkout/target/testbinary', binary_sha256=self.binary_sha,
+            cargo_manifest_available=False, whole_source_identity_available=False,
+            source_leaf=dict(path=path, before_file='before.rs.gz', before_sha256=self.digest(before),
+                temporary_file='temporary.rs.gz', temporary_sha256=self.digest(temporary),
+                restored_sha256=self.digest(before)), limits=['Whole compile source and per-run SHA unavailable.'])
+        self.retain('identity.json', self.encode(identity))
+        for mode in ('control', 'current'):
+            command = ['cargo', 'test', '--lib', 'custom_replay']
+            summary = 'ok. 1 passed; 0 failed;' if mode == 'control' else 'FAILED. 0 passed; 1 failed;'
+            log = f'Checkout: /original/checkout\nCommand: {command!r}\nRunning (target/testbinary)\ntest result: {summary}\n'
+            self.retain(f'{mode}.log.gz', log.encode())
+
+            def change(document):
+                document.pop('legacy_building_hash')
+                document.update(command=command, source_sha256=None, seconds=None,
+                                barracks_hash_control=mode == 'control', log_file=f'{mode}.log.gz')
+            self.rewrite_json(f'{mode}.execution.json', change)
+        self.save_receipt()
+
+    def test_unlabelled_barracks_control_preserves_strict_rows_and_unavailable_source(self):
+        self.use_unlabelled_barracks_gate()
+        result = self.check()
+        self.assertFalse(result['binary_provenance']['whole_source_identity_available'])
+        self.assertFalse(result['binary_provenance']['cargo_manifest_available'])
+        self.assertEqual(result['comparisons'], self.receipt['comparisons'])
+        observations = deepcopy(self.observations['current'])
+        observations[1]['draws'][0]['callers'] = 'owner.rs:11:2'
+        self.retain('current.jsonl.gz', self.lines(observations))
+        self.save_receipt()
+        with self.assertRaisesRegex(ValueError, 'control/current gameplay delta'):
+            self.check()
+
+    def test_unlabelled_identity_does_not_allow_invented_source_or_labelled_escape(self):
+        self.use_unlabelled_barracks_gate()
+        original = deepcopy(self.receipt['binary'])
+        for update in ({'source_sha256': self.source_sha}, {'whole_source_identity_available': True},
+                       {'manifest_file': 'manifest.json'}):
+            self.receipt['binary'] = dict(original, **update)
+            self.save_receipt()
+            with self.assertRaises(ValueError):
+                self.check()
+        self.receipt['binary'] = original
+        self.receipt['gate']['environment'] = 'VERA20K_DIAGNOSTIC_LEGACY_BUILDING_HASH'
+        self.save_receipt()
+        with self.assertRaisesRegex(ValueError, 'supports only the recorded barracks'):
+            self.check()
+
+    def test_unlabelled_gate_leaves_and_cargo_log_are_independently_checked(self):
+        self.use_unlabelled_barracks_gate()
+        original = (self.root / 'identity.json').read_bytes()
+        changes = (lambda doc: doc.update(binary_sha256='a' * 64),
+                   lambda doc: doc['source_leaf'].update(restored_sha256='a' * 64),
+                   lambda doc: doc['source_leaf'].update(temporary_sha256='a' * 64),
+                   lambda doc: doc.update(cargo_manifest_available=True))
+        for change in changes:
+            self.retain('identity.json', original)
+            self.rewrite_json('identity.json', change)
+            with self.assertRaises(ValueError):
+                self.check()
+        self.retain('identity.json', original)
+        self.retain('control.log.gz', b'Checkout: /elsewhere\n')
+        self.save_receipt()
+        with self.assertRaisesRegex(ValueError, 'command/cwd differs from saved Cargo log'):
+            self.check()
+
     def test_unknown_gate_is_rejected_without_weakening_historical_contract(self):
         self.receipt['gate']['environment'] = 'VERA20K_DIAGNOSTIC_UNRECORDED_HASH'
         self.save_receipt()

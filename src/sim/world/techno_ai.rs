@@ -4030,10 +4030,9 @@ mod tests {
         }
     }
 
-    /// The `Zombie=`/`Paralyzed=` early return, read off the object's own
-    /// control entry. Neither key is present in stock `[Attack]`, so this cannot
-    /// fire from the Attack handler; the gate is modelled because the same
-    /// virtual is entered from other missions.
+    /// Infantry51CC97/51CCA9 calls GetMissionControl5B3A00, which indexes
+    /// committed Mission+AC; effective mission only admits that lookup.
+    /// Neither frozen key is present in stock `[Attack]`.
     #[test]
     fn enter_idle_mode_selector_honours_frozen_control_entries() {
         let rules = RuleSet::from_ini(&IniFile::from_str(
@@ -4060,12 +4059,24 @@ mod tests {
                 foot_enter_idle_mode_queue(
                     &rules,
                     MissionHandlerInput {
+                        mission: Some(frozen),
                         effective_mission: Some(frozen),
                         ..base
                     }
                 ),
                 None,
-                "{frozen:?} carries a frozen control entry"
+                "committed {frozen:?} carries a frozen control entry"
+            );
+            assert_eq!(
+                foot_enter_idle_mode_queue(
+                    &rules,
+                    MissionHandlerInput {
+                        effective_mission: Some(frozen),
+                        ..base
+                    }
+                ),
+                Some(MissionType::Guard),
+                "effective {frozen:?} does not replace committed Attack's control entry"
             );
         }
         assert_eq!(

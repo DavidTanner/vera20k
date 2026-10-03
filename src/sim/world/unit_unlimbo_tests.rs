@@ -946,10 +946,14 @@ fn retail_reused_unit_unlimbo_matches_original_stage_and_rng_tail() {
 
 /// The native packet runs whole443C60; this comparison covers the five stock
 /// GAWEAP controls and three original zero/missing/Z-only controls at Rust's
-/// public completed-delivery boundary, including the final queued Unload. Queue setup
-/// and whole producer activation are not compared. Two inactive-Scenario failures
-/// have no Rust Scenario-active owner; GAYARD+MTNK is not legal retail naval
-/// production. Their saved native rows are retained and explicitly excluded.
+/// shared ExitObject boundary, including the final queued Unload. The original
+/// fixture has no House+68 producer membership: it supplies the constructed
+/// producer's pose and Guard without a successful producer Unlimbo. Factory
+/// release follows the native comparison through the existing lifecycle owner;
+/// queue setup and whole producer activation are not compared. Two
+/// inactive-Scenario failures have no Rust Scenario-active owner; GAYARD+MTNK
+/// is not legal retail naval production. Their saved native rows are retained
+/// and explicitly excluded.
 #[test]
 fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
     let Some((ini, art)) = retail_rules_and_art() else {
@@ -1037,13 +1041,13 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
             let producer = sim.substrate.entities.get_mut(producer_id).unwrap();
             ground_pose::put_location(&mut producer.position, producer_coord);
             producer.position.z = 4;
-            producer.lifecycle.in_limbo = false;
-            producer.in_playfield = true;
-            producer.finish_building_construction_for_test();
-            producer.building_actually_placed = true;
         }
         sim.mission_assign_exact(producer_id, MissionId::from_known(MissionType::Guard), 0)
             .unwrap();
+        assert!(
+            sim.houses[&owner].base_projection.buildings().is_empty(),
+            "{name}: direct native ExitObject has no House producer membership"
+        );
         let producer_type = rules.object("GAWEAP").unwrap();
         let exit = producer_type.exit_coord;
         if let Some(control) = control {
@@ -1123,10 +1127,17 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
                 .test_arm_ready(owner, ProductionCategory::Vehicle)
         );
         let prior_rng = sim.rng_state();
+        let prior_tick = sim.session.tick;
+        let prior_frame = sim.session.binary_frame;
+        assert_eq!(
+            json!(prior_frame),
+            row["before"]["frame"],
+            "{name}: original supplied ExitObject frame"
+        );
         let scope_start = input["scope_start"].as_u64().unwrap() as u32;
-        let placed = in_scopes(&mut sim, scope_start, &mut |sim| {
+        let exit = in_scopes(&mut sim, scope_start, &mut |sim| {
             let result =
-                production::tick_production_with_overlay_registry(sim, &rules, Some(&registry));
+                production::exit_produced_object(sim, &rules, producer_id, id, Some(&registry));
             assert_eq!(
                 sim.object_placement_scope_active(),
                 scope_start != 0,
@@ -1134,11 +1145,17 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
             );
             result
         });
-        assert!(
-            placed,
-            "{name}: the native successful delivery must release its held object"
+        assert_eq!(
+            exit,
+            crate::sim::ai_base_building::BuildingExit::Placed,
+            "{name}: original successful ExitObject return"
         );
         assert_eq!(row["eax"], 2, "{name}: native ExitObject success");
+        assert_eq!(
+            json!(sim.session.binary_frame),
+            row["after"]["frame"],
+            "{name}: direct ExitObject preserves its native frame"
+        );
         assert_eq!(
             row["counter_after"], input["scope_start"],
             "{name}: native caller scope restored"
@@ -1150,6 +1167,22 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
         assert_actor(&sim, id, &row["after"], name);
         assert_stage(&sim, id, &row["stage_after"], name);
         let actor = sim.substrate.entities.get(id).unwrap();
+        assert_eq!(
+            json!([
+                actor.mission.dispatch_timer().start_frame(),
+                actor.mission.dispatch_timer().delay()
+            ]),
+            row["after"]["dispatch"],
+            "{name}: original ExitObject mission timer"
+        );
+        assert_eq!(
+            json!([
+                actor.rearm_timer.start_frame(),
+                actor.rearm_timer.duration()
+            ]),
+            row["after"]["rearm"],
+            "{name}: original ExitObject rearm timer"
+        );
         assert_eq!(
             json!(u8::from(actor.on_bridge)),
             row["after"]["on_bridge"],
@@ -1205,6 +1238,24 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
             "{name}: all represented RNG owners unchanged"
         );
         assert_rng(&sim, &row["rng"], "after_hex", name);
+        production::release_delivered_mobile(&mut sim, &rules, owner, ProductionCategory::Vehicle);
+        assert!(
+            sim.production
+                .factory_shadow
+                .view(owner, ProductionCategory::Vehicle)
+                .is_none_or(|factory| factory.object.is_none()),
+            "{name}: successful caller releases its held identity"
+        );
+        assert_eq!(
+            (sim.session.tick, sim.session.binary_frame),
+            (prior_tick, prior_frame),
+            "{name}: ExitObject and caller release do not advance a frame"
+        );
+        assert_eq!(
+            sim.rng_state(),
+            prior_rng,
+            "{name}: caller release does not add RNG draws"
+        );
     }
     assert_eq!(compared, 8);
 }

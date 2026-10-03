@@ -426,6 +426,7 @@ impl Simulation {
             member,
             (x, y),
             crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+            crate::sim::movement::infantry_entry::EntryQueryMode::CheckLocomotor,
             rules,
             registry,
         )

@@ -159,7 +159,11 @@ fn building_target_redirects_to_a_nearby_cell_and_the_walk_completes_there() {
         "ended at {:?}",
         (e.position.rx, e.position.ry)
     );
-    assert_eq!(e.mission.queued(), MissionId::NONE);
+    // Successful stopped-Move arrival also enters Infantry idle:
+    //520F8C ->51CBA0(0,1) ->51CD6E/51CD96 queues human Guard.
+    // This is separate from the Find_Path failure tail.
+    let guard = MissionId::from_known(MissionType::Guard);
+    assert!(e.mission.queued() == guard || e.mission.current() == guard);
     assert!(!e.infantry.as_ref().unwrap().cell_entry_blocked);
 }
 
