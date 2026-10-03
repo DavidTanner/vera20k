@@ -32,8 +32,13 @@ fn waiter_scene(golden: &Value, case: &Value, control: &Value) -> Scene {
 fn compare_foot(scene: &Scene, expected: &Value) {
     let actor = scene.sim.substrate.entities.get(scene.tank).unwrap();
     let path = &actor.navigation.path_runtime;
-    let drive = actor.drive_locomotion.as_ref().unwrap();
-    let head = drive.head_to.unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
+    let drive = actor
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|runtime| runtime.retained())
+        .unwrap();
+    let head = drive.head_to().unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
     assert_eq!(actor.navigation.path_replay.cursor, 0);
     let words: Vec<i32> = actor
         .navigation
@@ -50,8 +55,8 @@ fn compare_foot(scene: &Scene, expected: &Value) {
             "blocked_timer": [path.blocked_timer.start_frame(), path.blocked_timer.duration()],
             "retries_left": path.retries_left, "path_blocked": path.path_blocked,
             "nav_queue_count": actor.navigation.nav_queue.len(), "path": words,
-            "head": [head.x, head.y, head.z], "selector": drive.track.turn_index,
-            "valid": u8::from(drive.track_valid), "in_playfield": actor.in_playfield,
+            "head": [head.x, head.y, head.z], "selector": drive.track().turn_index,
+            "valid": u8::from(drive.track_valid()), "in_playfield": actor.in_playfield,
             "mission_only": actor.is_mission_only()
         }),
         *expected,
