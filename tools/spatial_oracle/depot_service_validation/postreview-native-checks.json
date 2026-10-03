@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "head": "f1783f83d6e9d9b9df5046d7b3d83478115a278b",
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "frozen": true,
+  "checks": [
+    {
+      "command": "python -m tools.spatial_oracle.building_repair --depot-service --write",
+      "exit_code": 0,
+      "log": ".local-audit/depot-service/critic-fallbacks/write.log",
+      "log_sha256": "5ebb4efc7f02d4fbb652fbd725d8942b19af8588357b8a5beaa8b4b1f659741b"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.building_repair --depot-service --check",
+      "exit_code": 0,
+      "log": ".local-audit/depot-service/critic-fallbacks/check.log",
+      "log_sha256": "572f5a534f537eb6c544a7ad393101cca8d4f28305eb5438fdc818cf1e869fa6"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.building_repair --check",
+      "exit_code": 0,
+      "log": ".local-audit/depot-service/critic-fallbacks/legacy-check.log",
+      "log_sha256": "4a7a3b96031aba4eb97fb5513311b5bbaa1cdee3b93bf9deab4eb0221af43e69"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.building_slot_replacement --check",
+      "exit_code": 0,
+      "log": ".local-audit/depot-service/critic-fallbacks/legacy-slot-check.log",
+      "log_sha256": "b522c8e62bd5df92055c6c9b8dc0999bdb1bdadecef212b8822a51784ad74afe"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.building_slot_replacement --expiry --check",
+      "exit_code": 0,
+      "log": ".local-audit/depot-service/critic-fallbacks/expiry-check.log",
+      "log_sha256": "5a91fa9b327f0907eadbf5dfeeccad1bea724e74aecdcad3dfbdb0e664d0eada"
+    }
+  ],
+  "preservation": {
+    "previous_payload_reconstructed_byte_identical": true,
+    "previous_payload_sha256": "fc9d418aaa0baef5bf89e3565d8b6cedc6a7cb5a850284494903b26ed24cabb3",
+    "current_payload_sha256": "76614921afb7ac9e87c94c7644588a69aa03b4f1069de911982ed08bbfd19172",
+    "rows": 22,
+    "linked": 18,
+    "no_contact": 4,
+    "all_full_rng_and_original_code_identities_unchanged": true,
+    "expiry_only_changed_metadata_field": "$.source_normalized_lf_sha256.tools/spatial_oracle/building_repair.py",
+    "expiry_previous_pin": "54013cec7119e39f3a85bcd236b3990281475788baa0cbac17af030d78f0533c",
+    "expiry_current_pin": "1be5969c273ad182aa7f260e8a79e1a07a1a07e78e63a66327008ca5ace4e691",
+    "legacy_payloads_and_sidecars_byte_identical": true,
+    "expiry_payload_byte_identical": true
+  },
+  "files": {
+    "tools/spatial_oracle/building_repair.py": {
+      "bytes": 147309,
+      "sha256": "1be5969c273ad182aa7f260e8a79e1a07a1a07e78e63a66327008ca5ace4e691"
+    },
+    "tools/spatial_oracle/building_repair.depot_service.json": {
+      "bytes": 14688721,
+      "sha256": "76614921afb7ac9e87c94c7644588a69aa03b4f1069de911982ed08bbfd19172"
+    },
+    "tools/spatial_oracle/building_repair.depot_service.meta.json": {
+      "bytes": 27235,
+      "sha256": "5c2a3a21946f76e5cfb8da6ac8f8b780a735e61666ff035d9af36dd9c7f83fd7"
+    },
+    "tools/spatial_oracle/building_repair.depot_service.md": {
+      "bytes": 30037,
+      "sha256": "b8fdcc875828520f0b58de4d61d9686ecb1c51fa177b12f44db07781e48b066b"
+    },
+    "tools/spatial_oracle/building_slot_replacement.expiry.json": {
+      "bytes": 2274922,
+      "sha256": "21f851dbcb3f964921ba1c06cec3cbfe131609890c1429deed8a2d3a48cb00f7"
+    },
+    "tools/spatial_oracle/building_slot_replacement.expiry.meta.json": {
+      "bytes": 16729,
+      "sha256": "cd8799219eaffbea1005f5a0b3a65229d321e2f3e0fb3e4fc73d557a0f7605c9"
+    }
+  },
+  "scope": "22 original MissionAI fallback controls, 18 linked and4no-contact; extra observations scoped to new rows; only optionaldeclaredready input extends existing VM initialization; no Rust/Cargo/refs/issue/review/replay or validation-report/bundle mutations"
+}

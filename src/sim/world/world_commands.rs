@@ -595,13 +595,12 @@ impl Simulation {
                 if !self.order_actor_admits(*entity_id) {
                     return false;
                 }
-                // Drop any dock reservation (depot + aircraft + docked-idle) and
-                // retask onto a fresh Move via the verb API. The legacy field
-                // clears below stay authoritative in Slice 6.
+                // Tear down aircraft reservations and queue Move. The Unit
+                // destination/radio owners handle any existing depot contact.
                 self.queue_megamission_with_teardown(
                     *entity_id,
                     MissionType::Move,
-                    DockTeardown::All,
+                    DockTeardown::AircraftOnly,
                     rules,
                 );
                 // Clear attack and order intent.
@@ -611,7 +610,6 @@ impl Simulation {
                     // destination setter. Its changed-null path6FCF5B also
                     // resets retained burst state; dropping Target alone cannot.
                     e.order_intent = None;
-                    e.dock_state = None;
                     e.c4_plant = None;
                     Self::clear_aircraft_dock_phase(e);
                 }
@@ -671,28 +669,31 @@ impl Simulation {
                 // object's tether byte (`+0x418`) is set: a miner that has
                 // entered its dock ignores Stop and finishes unloading, and so
                 // does a vehicle still leaving its war factory (the other
-                // writer of `dock_entered_with`). Native also returns for
-                // current missions 0x12 and 0x13, which is not modelled.
+                // writer of `dock_entered_with`). Current missions 0x12/0x13
+                // also return before radio, destination and target writes.
                 if self
                     .substrate
                     .entities
                     .get(*entity_id)
-                    .is_some_and(|entity| entity.dock_entered_with.is_some())
+                    .is_some_and(|entity| {
+                        entity.dock_entered_with.is_some()
+                            || matches!(entity.mission.current().raw(), 0x12 | 0x13)
+                    })
                 {
                     return true;
                 }
-                // Retail breaks EVERY radio contact on Stop (it broadcasts the
-                // break message to the whole contact list), so the refinery,
-                // airfield and service-depot links all go at once. Cancelling
-                // only the depot reservation left an aircraft that was told to
-                // stop while inbound to a helipad holding that pad for the rest
-                // of the match — a permanent leak that compounds.
+                // Aircraft teardown releases RTB/wait and docked-idle pads;
+                // Foot contacts follow the native class destination setter.
                 // Event6 IDLE4C74CB..4C76BB retains the committed/queued
                 // mission and its dispatch timer. Only the ore-miner exception
                 // below writes Guard. Ordinary Move/Attack handlers see the
                 // cleared NavCom/TarCom on their next dispatch and own the idle
                 // transition, including Temporal LetGo at that later boundary.
-                self.run_dock_teardown(*entity_id, DockTeardown::All);
+                self.run_dock_teardown(*entity_id, DockTeardown::AircraftOnly);
+                // Event6 sends BREAK to every sparse contact (vt28065ACE0
+                // at4C75E0), before NULL destination4C75ED/target4C75F8.
+                // Unlike MEGAMISSION it never clears Foot pending-entry+500.
+                crate::sim::radio::broadcast_break(self, *entity_id, rules);
                 // `0x004C75ED`: the class setter's null destination, which
                 // reaches the active locomotor's Stop_Moving (a Teleport's
                 // drops only an armed warp, a moving Jumpjet's re-targets the
@@ -705,7 +706,6 @@ impl Simulation {
                 self.assign_null_destination(*entity_id, rules, overlay_registry);
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     e.order_intent = None;
-                    e.dock_state = None;
                     e.c4_plant = None;
                 }
                 // Event Stop4C75F8 invokes virtual+3C8 AFTER its null
@@ -741,16 +741,11 @@ impl Simulation {
                 // and then drives straight back to the ore field, ignoring the
                 // order outright.
                 //
-                // The radio break itself: the IDLE arm pushes BREAK to every
-                // link (`PUSH 3; CALL [vt+0x280]` at `0x004C75DC`). Only the
-                // miner's refinery handshake is modelled on that bus here.
-                // A tethered miner never gets here (see the top of this arm).
                 // `0x004C7639..0x004C7650`: an open-topped transport's riders
                 // let go of their targets too.
                 if let Some(rules) = rules {
                     self.open_topped_passengers_take_target(*entity_id, None, rules);
                 }
-                crate::sim::miner::miner_dock::break_for_retask(self, *entity_id, rules);
                 self.commit_stop_miner_guard(*entity_id);
                 // `0x004C769C..0x004C76AC`: Stop takes a Slave Miner off its
                 // hunt (`sim::slave_manager`).
@@ -1185,8 +1180,17 @@ impl Simulation {
                 // refinery link, and because the Harvest assign below replaces
                 // Unload without its contact gate (`0x0073DEE0`), the unload
                 // latch drops here too — as for `Command::HarvestCell`.
+                if !self.order_actor_admits(*entity_id)
+                    || self
+                        .substrate
+                        .entities
+                        .get(*entity_id)
+                        .is_none_or(|e| e.miner.is_none())
+                {
+                    return false;
+                }
+                self.begin_megamission_retask(*entity_id, MissionType::Enter, rules);
                 if crate::sim::miner::native_dock_miner(self, *entity_id) {
-                    crate::sim::miner::miner_dock::break_for_retask(self, *entity_id, rules);
                     crate::sim::miner::clear_unload_latch(self, *entity_id);
                 }
                 let previous_refinery = self
@@ -1291,11 +1295,12 @@ impl Simulation {
                 if self.duplicate_enter_is_noop(*entity_id, *depot_id) {
                     return true;
                 }
-                // Cancel any existing depot reservation, then retask onto Enter.
+                // Queue Enter; the Unit setter below owns depot admission and
+                // contact changes, without a parallel reservation teardown.
                 self.queue_megamission_with_teardown(
                     *entity_id,
                     MissionType::Enter,
-                    DockTeardown::Depot,
+                    DockTeardown::None,
                     Some(rules),
                 );
                 // Event4C7467 dispatches the class target setter before Dest.
@@ -1384,7 +1389,6 @@ impl Simulation {
                 let _ = self.assign_target_represented(*passenger_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*passenger_id) {
                     e.order_intent = None;
-                    e.dock_state = None;
                     e.passenger_role = passenger::PassengerRole::Boarding {
                         target_transport_id: *transport_id,
                     };
@@ -1442,7 +1446,7 @@ impl Simulation {
                         self.queue_megamission_with_teardown(
                             *transport_id,
                             MissionType::Unload,
-                            DockTeardown::All,
+                            DockTeardown::AircraftOnly,
                             rules,
                         );
                         true
@@ -1514,11 +1518,12 @@ impl Simulation {
                 {
                     return false;
                 }
-                // A harvest order is a MEGAMISSION like any other: it ends a
-                // refinery handshake in progress (`miner_dock::break_for_retask`).
-                // An unload in progress is abandoned here rather than by the
-                // Unload mission's contact gate (`0x0073DEE0`).
-                crate::sim::miner::miner_dock::break_for_retask(self, *entity_id, rules);
+                if !self.order_actor_admits(*entity_id) {
+                    return false;
+                }
+                // Shared Event prefix ends the refinery handshake. This
+                // legacy Harvest mission path still owns the unload latch.
+                self.begin_megamission_retask(*entity_id, MissionType::Harvest, rules);
                 crate::sim::miner::clear_unload_latch(self, *entity_id);
                 // Native (EventClass::Execute MEGAMISSION, disassembled
                 // 2026-09-05/-25): the client's mission byte passes through
@@ -1668,7 +1673,6 @@ impl Simulation {
                 let _ = self.assign_target_represented(*attacker_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
-                    e.dock_state = None;
                     e.c4_plant = Some(crate::sim::components::C4PlantState {
                         target_building_id: *target_building_id,
                     });
@@ -1766,7 +1770,6 @@ impl Simulation {
                 let _ = self.assign_target_represented(*engineer_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*engineer_id) {
                     e.order_intent = None;
-                    e.dock_state = None;
                     // Event4C747C -> Infantry51AA40 -> Foot4D9510 writes
                     // the actual object destination before locomotor approach.
                     e.navigation.nav_com = Some(crate::sim::components::NavTargetRef::Building {
@@ -2012,7 +2015,6 @@ impl Simulation {
                 let _ = self.assign_target_represented(*unit_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*unit_id) {
                     e.order_intent = None;
-                    e.dock_state = None;
                     e.c4_plant = None;
                     e.bunker_link = crate::sim::game_entity::BunkerLink::Approaching(*bunker_id);
                 }
@@ -2136,36 +2138,6 @@ impl Simulation {
                         .object_type(entity.type_ref(), rules)
                         .is_some_and(|obj| obj.has_rally_line())
             })
-    }
-
-    /// Drop the entity's depot contact slot before a new order retasks it.
-    /// The depot keeps no queue (admission is `radio_contacts` capacity), so
-    /// this is a BREAK of the unit↔depot link when one exists. VERA-internal
-    /// timing: native tears the link down later (PerCellProcess `0x08` /
-    /// the depot's repair mission), gamemd equivalent UNCHECKED.
-    pub(crate) fn cancel_depot_dock(&mut self, entity_id: u64) {
-        let depot_id = self
-            .substrate
-            .entities
-            .get(entity_id)
-            .and_then(|e| e.dock_state.as_ref().map(|ds| ds.dock_building_id()));
-        if let Some(depot_id) = depot_id {
-            let linked = self
-                .substrate
-                .entities
-                .get(entity_id)
-                .is_some_and(|e| e.radio_contacts.contains(depot_id));
-            if linked {
-                let _ = crate::sim::radio::transmit(
-                    self,
-                    entity_id,
-                    depot_id,
-                    crate::sim::radio::RadioMessage::Break,
-                    crate::sim::radio::RadioPayload::default(),
-                    None,
-                );
-            }
-        }
     }
 
     /// Cancel aircraft dock reservation if in ReturnToBase or WaitForDock phase.
@@ -2326,33 +2298,26 @@ impl Simulation {
     ///
     /// Residuals on this gate, recorded not fixed:
     ///
-    /// * **Five arms still ungated.** `Simulation::command_uses_megamission`
+    /// * **Two arms still ungated.** `Simulation::command_uses_megamission`
     ///   already enumerates which VERA commands are MEGAMISSION-shaped — it is
     ///   what splits due commands into the non-MEGAMISSION pass and the staged
     ///   batch, mirroring opcode 0x04 in `net::lockstep`. Checked against it,
-    ///   `MinerReturn`, `HarvestCell`, `UnloadPassengers`, `EjectBunker` and
-    ///   `ToggleInfantryDeploy` carry only the ownership test. Trigger: issuing
+    ///   `EjectBunker` and `ToggleInfantryDeploy` carry only the ownership test.
+    ///   Trigger: issuing
     ///   one of those to a dying or limboed actor. Player effect: the order runs
-    ///   where retail abandons it. Frequency: low per order, but miner orders
-    ///   are among the most frequent in a match. Downstream risk: none — the
-    ///   gate is a pure precondition, two lines per site.
+    ///   where retail abandons it. Frequency: low per order. These gates
+    ///   remain outside ordinary Unit depot servicing.
     /// * **Duplicate-Enter is not applied to `MinerReturn`**, which is the
     ///   fourth Enter-shaped order (right-clicking your own refinery). Same
     ///   stall-and-re-approach the predicate exists to stop, on the one Enter
     ///   the player repeats most.
-    /// * **Replacement is per-site here and uniform in retail.** After the gate
-    ///   retail runs one sequence for EVERY MEGAMISSION: `[EDI+0x500] = 0`
-    ///   (write at 0x004C7353, skipped by the `JZ` at 0x004C7351 when the field
-    ///   is already zero), `TeamClass__Remove_Member` when Foot and `[+0x5D4]`
-    ///   and mission != 0x10 (0x004C736B-0x004C7380), `Queue_Mission(mission, 0)`
-    ///   (0x004C73B9), then `[+0x2B8] = 0` (0x004C73D7) and the manager abandon
-    ///   (0x004C73E1-0x004C73EA). Only `[+0x5A8] = 0` (0x004C73C7) is Foot-gated:
-    ///   the `TEST byte [EDI+0x14],0x4` at 0x004C73BF jumps to 0x004C7440, which
-    ///   zeroes EBP and rejoins at 0x004C73D1 — BEFORE the other write and
-    ///   before the abandon. VERA substitutes five hand-picked
-    ///   `DockTeardown` subsets whose own doc calls them "the exact subset that
-    ///   site cancels today" — preserved legacy, not derived. The subsets happen
-    ///   to be close for Move and Attack; the divergence is structural.
+    /// * **Mission replacement remains partly per-site.** The shared
+    ///   `begin_megamission_retask` owns radio, +500 and Team removal before
+    ///   Queue4C73B9. The common funnel also clears suspended target2B8 and
+    ///   Foot destination5A8; Guard, MinerReturn and HarvestCell bypass those
+    ///   post-Queue archive clears. A later Restore can resume a cancelled
+    ///   target or route. Their complete mission/DTO migration is separate.
+    ///   Aircraft reservation teardown remains a legacy command policy.
     /// * **The manager abandon** at 0x004C73E1-0x004C73EA calls 0x006B0C80 on
     ///   `[actor+0x2D8]`, the SlaveManagerClass (not a spawn manager), whenever
     ///   the queued mission is not Attack; it is not Foot-gated. The funnel
@@ -2360,8 +2325,8 @@ impl Simulation {
     ///   (0x004C769C-0x004C76AC) run it (`Simulation::reset_slave_manager`);
     ///   the other orders outside the funnel do not yet.
     /// * **`TeamClass__Remove_Member`** runs in the MEGAMISSION funnel
-    ///   (`queue_megamission_with_teardown`), so the arms outside it keep a
-    ///   team member in its team.
+    ///   and in its shared prefix; EjectBunker and the dormant aircraft Unload
+    ///   arm bypass that prefix and keep a team member in its team.
     pub(crate) fn order_actor_admits(&self, stable_id: u64) -> bool {
         self.substrate.entities.get(stable_id).is_some_and(|e| {
             e.lifecycle.object_alive && e.health.current > 0 && !e.lifecycle.in_limbo
@@ -2510,6 +2475,7 @@ impl Simulation {
         {
             return false;
         }
+        self.begin_megamission_retask(entity_id, MissionType::AreaGuard, rules);
         if let Some(e) = self.substrate.entities.get_mut(entity_id) {
             e.movement_target = None;
         }
@@ -2614,7 +2580,7 @@ impl Simulation {
         self.queue_megamission_with_teardown(
             id,
             MissionType::Unload,
-            DockTeardown::All,
+            DockTeardown::AircraftOnly,
             Some(rules),
         );
         // Foot4DA1C0 (`0x004C7453`) clears the +5AC vector, distinct from
@@ -2711,6 +2677,87 @@ mod tests {
         assert_eq!(entity.navigation.nav_queue.len(), 1);
         let timer = entity.navigation.path_runtime.movement_timer;
         assert_eq!((timer.start_frame(), timer.duration()), (40, 30));
+    }
+
+    /// Original Event6 retains Foot+500; accepted MegaMission4C7353 clears
+    /// it. Both break an untethered unit's old contact through the radio owner.
+    /// Native controls: building_repair.depot_service.json,
+    /// pending_entry_lifecycle, original admitted Event slices.
+    #[test]
+    fn depot_order_cancellation_follows_native_event_cleanup() {
+        for (command, pending_survives) in [
+            (Command::Stop { entity_id: 1 }, true),
+            (
+                Command::Guard {
+                    entity_id: 1,
+                    target_id: None,
+                },
+                false,
+            ),
+            (
+                Command::Move {
+                    entity_id: 1,
+                    target_rx: 25,
+                    target_ry: 20,
+                    queue: false,
+                },
+                false,
+            ),
+            (
+                Command::AttackMove {
+                    entity_id: 1,
+                    target_rx: 25,
+                    target_ry: 20,
+                    queue: false,
+                },
+                false,
+            ),
+        ] {
+            let rules = amcv_move_rules();
+            let mut sim = Simulation::new();
+            let grid = PathGrid::new(40, 40);
+            sim.install_fixture_path_grid(Some(&grid));
+            spawn_rule_backed_unit(&mut sim, 1, "AMCV", &rules);
+            spawn_structure_for_owner(&mut sim, 2, "AMCV", "Americans", 24, 20);
+            sim.substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .set_pending_entry(Some(2));
+            sim.substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .mark_live_contact_with(2);
+            sim.substrate
+                .entities
+                .get_mut(2)
+                .unwrap()
+                .mark_live_contact_with(1);
+            assert!(
+                sim.apply_command("Americans", &command, Some(&rules)),
+                "{command:?}"
+            );
+            let actor = sim.substrate.entities.get(1).unwrap();
+            assert_eq!(
+                actor.pending_entry(),
+                pending_survives.then_some(2),
+                "{command:?}"
+            );
+            assert!(
+                actor.radio_contacts.is_empty(),
+                "{command:?}: actor contact"
+            );
+            assert!(
+                sim.substrate
+                    .entities
+                    .get(2)
+                    .unwrap()
+                    .radio_contacts
+                    .is_empty(),
+                "{command:?}: former depot contact"
+            );
+        }
     }
 
     fn gsi_16_01_insert_identity_entity(
@@ -3179,6 +3226,9 @@ mod tests {
             5,
             true,
         );
+        // Direct insertion skips Unlimbo; player orders require a live,
+        // revealed actor before the shared Event retask prefix runs.
+        entity.lifecycle.in_limbo = false;
         entity.miner = Some(Miner::new(MinerKind::War, &MinerConfig::default(), 0));
         sim.substrate.entities.insert(entity);
     }
@@ -3186,7 +3236,7 @@ mod tests {
     fn spawn_refinery(sim: &mut Simulation, sid: u64, type_id: &str, rx: u16, ry: u16) {
         let owner = sim.interner.intern("Americans");
         let type_ref = sim.interner.intern(type_id);
-        let entity = GameEntity::new_at_frame_zero_for_test(
+        let mut entity = GameEntity::new_at_frame_zero_for_test(
             sid,
             rx,
             ry,
@@ -3200,6 +3250,7 @@ mod tests {
             5,
             false,
         );
+        entity.lifecycle.in_limbo = false;
         sim.substrate.entities.insert(entity);
     }
 

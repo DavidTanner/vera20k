@@ -1,0 +1,670 @@
+{
+  "status": "ALL_SELECTED_STOCK_PATH_RUNTIME_CHECKS_PASSED",
+  "evidence_level": "Rust retail production integration; bounded original native scalar/timer/terminal comparisons separately retained. No native whole-engine or pixel certification.",
+  "finished_at_utc": "2026-10-03T05:02:03.471257Z",
+  "release": {
+    "label": "depot-repair-service-final-20261003",
+    "manifest": {
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-final-20261003/manifest.json",
+      "byte_length": 6066,
+      "sha256": "045299776500d362933a56ec42a99a3e4c9f01fdec8578c1e7c9f0b605179d24"
+    },
+    "build_HEAD": "fad4b19fc1179f1a55dfbe80d1adb4737d1a9f70",
+    "build_source_SHA256": "83dabbf02e95de8b11138eca179153952ad1a4ae6d151a2b5c9515f57e2a9963",
+    "current_HEAD": "f1783f83d6e9d9b9df5046d7b3d83478115a278b",
+    "HEAD_delta": "Only18 Ghidra-workflow documentation lines; verified only docs/research/ghidra-workflow.md changed from build HEAD.",
+    "executable": {
+      "byte_length": 31640768,
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-final-20261003/0/vera20k",
+      "sha256": "022100adaf3c565f8e4c27ccb145665c97634d6829138fd79658f7b24457c9e7"
+    }
+  },
+  "schema": {
+    "wrapper": "vera20k.map-observation-run.v6",
+    "child": "vera20k.map-observation.v6",
+    "ordinary_command_policy": "map-ordinary-command-observation-v3"
+  },
+  "inputs": {
+    "config": {
+      "byte_length": 612,
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/config.toml",
+      "sha256": "5b997bce2545d3c592e8e8fb37d73303789fdae0ae564d374a801d957ad86636"
+    },
+    "contract": {
+      "byte_length": 590,
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+    },
+    "executable": {
+      "byte_length": 31640768,
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-final-20261003/0/vera20k",
+      "sha256": "022100adaf3c565f8e4c27ccb145665c97634d6829138fd79658f7b24457c9e7"
+    },
+    "profile": {
+      "byte_length": 6208,
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040.profile.json",
+      "sha256": "0af96808291885ef3ca792e45e4d9025f431a6d46d25ae18e6d03f025535240c"
+    }
+  },
+  "sealed_inputs": {
+    "config": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040-depot-release-run/config.toml",
+      "byte_length": 612,
+      "sha256": "5b997bce2545d3c592e8e8fb37d73303789fdae0ae564d374a801d957ad86636"
+    },
+    "profile": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040-depot-release-run/profile.json",
+      "byte_length": 6208,
+      "sha256": "0af96808291885ef3ca792e45e4d9025f431a6d46d25ae18e6d03f025535240c"
+    },
+    "contract": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040-depot-release-run/contract.json",
+      "byte_length": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+    }
+  },
+  "map_source": {
+    "entry_id": -854728974,
+    "kind": "mix",
+    "logical_name": "XMP03T4.MAP",
+    "payload_len": 156269,
+    "source_archive": "multimd.mix",
+    "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+  },
+  "startup": {
+    "classification": "AcceptedExplicitFixedBattle",
+    "correlation": 1,
+    "seed": 305419896,
+    "seed_authority_certifying": true,
+    "seed_source": "Controlled"
+  },
+  "loaded_session": {
+    "map_name": "XMP03T4.MAP",
+    "map_waypoints": {
+      "0": [
+        28,
+        88
+      ],
+      "1": [
+        88,
+        31
+      ],
+      "2": [
+        141,
+        81
+      ],
+      "3": [
+        77,
+        134
+      ]
+    },
+    "options": {
+      "ai_difficulty": 0,
+      "ai_players": 2,
+      "ally_change_allowed": true,
+      "bases": true,
+      "bridges_destroyable": true,
+      "build_off_ally": true,
+      "crates": false,
+      "fog_of_war": false,
+      "game_speed": 1,
+      "harvester_truce": false,
+      "mcv_redeploy": true,
+      "multi_engineer": false,
+      "short_game": false,
+      "shroud": false,
+      "starting_credits": 5900,
+      "super_weapons": true,
+      "tech_level": 10,
+      "tiberium_grows": false,
+      "unit_count": 4
+    },
+    "start_slots": [
+      {
+        "country": "Russians",
+        "difficulty": "Normal",
+        "house": "VERA-OBSERVER",
+        "human": true,
+        "slot": 0,
+        "waypoint": [
+          28,
+          88
+        ]
+      },
+      {
+        "country": "French",
+        "difficulty": "Easy",
+        "house": "Computer1",
+        "human": false,
+        "slot": 1,
+        "waypoint": [
+          88,
+          31
+        ]
+      },
+      {
+        "country": "Americans",
+        "difficulty": "Easy",
+        "house": "Computer2",
+        "human": false,
+        "slot": 2,
+        "waypoint": [
+          141,
+          81
+        ]
+      }
+    ],
+    "theater": "TEMPERATE"
+  },
+  "GPU": {
+    "backend": "Metal",
+    "device": 0,
+    "device_type": "IntegratedGpu",
+    "driver": "",
+    "driver_info": "",
+    "name": "Apple M4",
+    "vendor": 0
+  },
+  "frame": {
+    "raw_BGRA": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040-depot-release-run/child-output/frame.bgra",
+      "byte_length": 1920000,
+      "sha256": "5ce5119de36e9be35cb2faf58713f07d9f5293c394d9b8516d3f1db75d13d965"
+    },
+    "layout": {
+      "byte_length": 1920000,
+      "file_name": "frame.bgra",
+      "height": 600,
+      "pixel_layout": "BGRA8",
+      "row_stride": 3200,
+      "sha256": "5ce5119de36e9be35cb2faf58713f07d9f5293c394d9b8516d3f1db75d13d965",
+      "surface_format": "Bgra8UnormSrgb",
+      "width": 800
+    },
+    "display_PNG": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040-frame.png",
+      "byte_length": 445518,
+      "sha256": "100d6d971301493fbd5a859f9775b0f80c3b1b084647c0378b66a00a09e19576"
+    }
+  },
+  "child_capture": {
+    "byte_length": 63020343,
+    "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040-depot-release-run/child-output/capture.json",
+    "sha256": "5690b8aeff7cf6cb80be9e94494080f7794a6130939028e50af2da66f4bfe8df"
+  },
+  "phases": [
+    {
+      "phase": "L0",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-l0-depot-release-run/run.json",
+        "byte_length": 41774,
+        "sha256": "b4af180fada63e426bbf3b7533ad3ef05f7778db8e7c7974759dad6c59a68ea9"
+      },
+      "offline_validation": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-l0-depot-release.validation.json",
+        "byte_length": 41308,
+        "sha256": "bea22a40d26dc3bf69467b4e2b99d5844e14c2f4c94d9f5af7421921e985a10a"
+      },
+      "sealed_profile": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-l0-depot-release-run/profile.json",
+        "byte_length": 2794,
+        "sha256": "6ec0f04bddb2f38b96961f317dc09dc7ba3afa212760c8ee043de2f7c19681da"
+      },
+      "status": "VALID"
+    },
+    {
+      "phase": "prefix2910",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-prefix2910-depot-release-run/run.json",
+        "byte_length": 19850956,
+        "sha256": "3627b75397c8893bafb80a7b62a4a01079369a9a308fdc4283cd6caf44a83d23"
+      },
+      "offline_validation": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-prefix2910-depot-release.validation.json",
+        "byte_length": 20080605,
+        "sha256": "fce03af467c7134141905b6ebbd2b3db5cf618079c311b0cd4361552049103a3"
+      },
+      "sealed_profile": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-prefix2910-depot-release-run/profile.json",
+        "byte_length": 4925,
+        "sha256": "40f224435de0ca184e74020ef55c120ee3edb5dfb2d90de5403a94b49a0da52c"
+      },
+      "status": "VALID"
+    },
+    {
+      "phase": "setup5350",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-setup5350-depot-release-run/run.json",
+        "byte_length": 45077051,
+        "sha256": "0ada6f7c57e7f9fb934ec8c58b111ae44647c5e7da7cfee3ca063ccec313f54d"
+      },
+      "offline_validation": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-setup5350-depot-release.validation.json",
+        "byte_length": 45504316,
+        "sha256": "90bd63b8a6ff75c88dbf4ed2c7957443a1ff843aa9bcc0413b5e649fd0744afb"
+      },
+      "sealed_profile": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-setup5350-depot-release-run/profile.json",
+        "byte_length": 5843,
+        "sha256": "cf88cd10aa54fb96b0ab7fa78d87df3232f37ad3adbaf34fe6f6b61d08ba3db8"
+      },
+      "status": "VALID"
+    },
+    {
+      "phase": "service6900",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040-depot-release-run/run.json",
+        "byte_length": 63016494,
+        "sha256": "7b7c44bc04f474044f2ab26353ae2a2929afb035bef0dbc77d119387713df174"
+      },
+      "offline_validation": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040-depot-release.validation.json",
+        "byte_length": 63572398,
+        "sha256": "5a6b56acfccc7eca0e9ea42b4d4cd0ced75534113ed510743d7fa89de5083686"
+      },
+      "sealed_profile": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040-depot-release-run/profile.json",
+        "byte_length": 6208,
+        "sha256": "0af96808291885ef3ca792e45e4d9025f431a6d46d25ae18e6d03f025535240c"
+      },
+      "status": "VALID"
+    }
+  ],
+  "caps": {
+    "samples": 100000,
+    "receipt_bytes": 134217728
+  },
+  "actual_sample_count": 99286,
+  "actual_run_bytes": 63016494,
+  "observed_ids": {
+    "SMCV": 1371,
+    "shooter_HTNK": 1374,
+    "repair_target_HTNK": 1375,
+    "initial_E2": 1376,
+    "NACNST": 1414,
+    "NAPOWR": 1423,
+    "NAHAND": 1536,
+    "NAREFN": 1707,
+    "HARV": 1754,
+    "NAWEAP": 1758,
+    "NADEPT": 1811,
+    "sale_survivor_E2": 1838
+  },
+  "events": {
+    "ordinary_damage_health40": 422,
+    "depot_ready": 5202,
+    "RepairAtDepot_issue": 5230,
+    "first_reciprocal_contact": 5231,
+    "Enter_current": 5232,
+    "actual_pad_arrival": 5484,
+    "arrival_unit_mission": "Guard5 (native-correct terminal outcome)",
+    "arrival_depot_mission": "Repair20/state1/ready0/dispatchdelay3",
+    "zero_funds_frames_inclusive": [
+      5484,
+      6090
+    ],
+    "zero_funds_held_frames": 607,
+    "SellBuilding_issue": 6040,
+    "actual250credit_refund": 6091,
+    "first_paid_step": 6126,
+    "second_paid_step": 6211,
+    "full400_and_reciprocal_contacts_cleared": 6856,
+    "Move_current": 6857,
+    "first_physical_departure": 6869,
+    "first_cell_exit": 6876,
+    "destination_reached_Guard": [
+      6899,
+      [
+        35,
+        94
+      ]
+    ],
+    "final_step": 6900
+  },
+  "validated_checks": {
+    "ordinary_commands_only": true,
+    "single_repair_vehicle": true,
+    "HP40_cash0_position_and_contacts_held_for607frames": true,
+    "all45_heals_match8HP_and2credit_debits_and2spent_increases": true,
+    "total_repair_debit": 90,
+    "first_paid_interval": 85,
+    "later_paid_intervals": 15,
+    "full400": true,
+    "reciprocal_contacts_cleared": true,
+    "physical_departure_and_destination_arrival": true,
+    "final_credits": 160,
+    "final_spent_credits": 5990,
+    "harvested_credits_every_frame": 0,
+    "HARV_cargo_every_frame": 0,
+    "depot_operational_through_hold": true,
+    "entire_observation_sequence_equals_prior_successful_release": true
+  },
+  "paid_step_rows": [
+    {
+      "step": 6126,
+      "health": 48,
+      "credits": 248,
+      "spent": 5902
+    },
+    {
+      "step": 6211,
+      "health": 56,
+      "credits": 246,
+      "spent": 5904
+    },
+    {
+      "step": 6226,
+      "health": 64,
+      "credits": 244,
+      "spent": 5906
+    },
+    {
+      "step": 6241,
+      "health": 72,
+      "credits": 242,
+      "spent": 5908
+    },
+    {
+      "step": 6256,
+      "health": 80,
+      "credits": 240,
+      "spent": 5910
+    },
+    {
+      "step": 6271,
+      "health": 88,
+      "credits": 238,
+      "spent": 5912
+    },
+    {
+      "step": 6286,
+      "health": 96,
+      "credits": 236,
+      "spent": 5914
+    },
+    {
+      "step": 6301,
+      "health": 104,
+      "credits": 234,
+      "spent": 5916
+    },
+    {
+      "step": 6316,
+      "health": 112,
+      "credits": 232,
+      "spent": 5918
+    },
+    {
+      "step": 6331,
+      "health": 120,
+      "credits": 230,
+      "spent": 5920
+    },
+    {
+      "step": 6346,
+      "health": 128,
+      "credits": 228,
+      "spent": 5922
+    },
+    {
+      "step": 6361,
+      "health": 136,
+      "credits": 226,
+      "spent": 5924
+    },
+    {
+      "step": 6376,
+      "health": 144,
+      "credits": 224,
+      "spent": 5926
+    },
+    {
+      "step": 6391,
+      "health": 152,
+      "credits": 222,
+      "spent": 5928
+    },
+    {
+      "step": 6406,
+      "health": 160,
+      "credits": 220,
+      "spent": 5930
+    },
+    {
+      "step": 6421,
+      "health": 168,
+      "credits": 218,
+      "spent": 5932
+    },
+    {
+      "step": 6436,
+      "health": 176,
+      "credits": 216,
+      "spent": 5934
+    },
+    {
+      "step": 6451,
+      "health": 184,
+      "credits": 214,
+      "spent": 5936
+    },
+    {
+      "step": 6466,
+      "health": 192,
+      "credits": 212,
+      "spent": 5938
+    },
+    {
+      "step": 6481,
+      "health": 200,
+      "credits": 210,
+      "spent": 5940
+    },
+    {
+      "step": 6496,
+      "health": 208,
+      "credits": 208,
+      "spent": 5942
+    },
+    {
+      "step": 6511,
+      "health": 216,
+      "credits": 206,
+      "spent": 5944
+    },
+    {
+      "step": 6526,
+      "health": 224,
+      "credits": 204,
+      "spent": 5946
+    },
+    {
+      "step": 6541,
+      "health": 232,
+      "credits": 202,
+      "spent": 5948
+    },
+    {
+      "step": 6556,
+      "health": 240,
+      "credits": 200,
+      "spent": 5950
+    },
+    {
+      "step": 6571,
+      "health": 248,
+      "credits": 198,
+      "spent": 5952
+    },
+    {
+      "step": 6586,
+      "health": 256,
+      "credits": 196,
+      "spent": 5954
+    },
+    {
+      "step": 6601,
+      "health": 264,
+      "credits": 194,
+      "spent": 5956
+    },
+    {
+      "step": 6616,
+      "health": 272,
+      "credits": 192,
+      "spent": 5958
+    },
+    {
+      "step": 6631,
+      "health": 280,
+      "credits": 190,
+      "spent": 5960
+    },
+    {
+      "step": 6646,
+      "health": 288,
+      "credits": 188,
+      "spent": 5962
+    },
+    {
+      "step": 6661,
+      "health": 296,
+      "credits": 186,
+      "spent": 5964
+    },
+    {
+      "step": 6676,
+      "health": 304,
+      "credits": 184,
+      "spent": 5966
+    },
+    {
+      "step": 6691,
+      "health": 312,
+      "credits": 182,
+      "spent": 5968
+    },
+    {
+      "step": 6706,
+      "health": 320,
+      "credits": 180,
+      "spent": 5970
+    },
+    {
+      "step": 6721,
+      "health": 328,
+      "credits": 178,
+      "spent": 5972
+    },
+    {
+      "step": 6736,
+      "health": 336,
+      "credits": 176,
+      "spent": 5974
+    },
+    {
+      "step": 6751,
+      "health": 344,
+      "credits": 174,
+      "spent": 5976
+    },
+    {
+      "step": 6766,
+      "health": 352,
+      "credits": 172,
+      "spent": 5978
+    },
+    {
+      "step": 6781,
+      "health": 360,
+      "credits": 170,
+      "spent": 5980
+    },
+    {
+      "step": 6796,
+      "health": 368,
+      "credits": 168,
+      "spent": 5982
+    },
+    {
+      "step": 6811,
+      "health": 376,
+      "credits": 166,
+      "spent": 5984
+    },
+    {
+      "step": 6826,
+      "health": 384,
+      "credits": 164,
+      "spent": 5986
+    },
+    {
+      "step": 6841,
+      "health": 392,
+      "credits": 162,
+      "spent": 5988
+    },
+    {
+      "step": 6856,
+      "health": 400,
+      "credits": 160,
+      "spent": 5990
+    }
+  ],
+  "native_arrival_hypothesis_resolution": {
+    "status": "REJECTED_FALSE_POSITIVE_NO_GAMEPLAY_PATCH",
+    "resolution_receipt": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/arrival-hypothesis-resolution-fad4b19fc.json",
+      "byte_length": 6501,
+      "sha256": "0cfbd808909994268bdf9b1e5a6727499686e4c9b8d72ebe2eeb60dd73f4bd6f"
+    },
+    "historical_trace_preserved": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/fresh-service6900.arrival-trace.json",
+      "byte_length": 176343,
+      "sha256": "c26a3dc23119d65f55dbc4ca6e5b7d278ca8a0865c331435ec521e53a7803c15"
+    },
+    "native_payload": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/tools/spatial_oracle/building_repair.depot_service.json",
+      "byte_length": 13513044,
+      "sha256": "fc9d418aaa0baef5bf89e3565d8b6cedc6a7cb5a850284494903b26ed24cabb3"
+    },
+    "native_control": "arrival_terminal.stock_enter_terminal_untethered",
+    "original_text_SHA256": "4cd5557a7490debc493ff965afc4483d8d2f1065f434f6b665cbb8fc4835b0cc",
+    "all7_control_RNG_indices_and250words_unchanged": true,
+    "original_terminal_result": {
+      "current": 7,
+      "queued": 5,
+      "Nav": null,
+      "power": 0,
+      "tether": 0
+    },
+    "conclusion": "Original untethered stock terminal executes DOCK_NOW\u2192PowerOff\u2192StopMoving\u2192UnitIdle(0,0), whose armed HTNK tail overwrites queued Sleep with Guard. Later current Guard in production matches this bounded native handoff; the old Sleep-preservation hypothesis is closed."
+  },
+  "example_profile_update": {
+    "only_authorized_source_path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/tools/map_observation.depot-repair.example.json",
+    "before": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/tools/map_observation.depot-repair.example.json",
+      "byte_length": 6208,
+      "sha256": "8e393895081eb5ecf936a810c483183ba884dd037323fcd820a11292587ab2a1"
+    },
+    "after": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/tools/map_observation.depot-repair.example.json",
+      "byte_length": 6208,
+      "sha256": "0af96808291885ef3ca792e45e4d9025f431a6d46d25ae18e6d03f025535240c"
+    },
+    "changes": [
+      "HARV1749\u2192actual1754",
+      "NADEPT1805\u2192actual1811",
+      "sale6100\u21926040 from measured arrival/refund timing",
+      "end7000\u21926900 to preserve hard sample cap with full departure"
+    ]
+  },
+  "inspection_limits": [
+    "The hidden observer uses ordinary commands and production retail map loading/exact stepping/GPU readback; health and wallets were never set administratively.",
+    "Runtime radio packet sends, direct locomotor power, NavComAux and pending-entry are not projected; native terminal power/queue/radio behavior is separately executed evidence.",
+    "Independent repair-progress Stage is not projected; visible HP cadence and frozen native timer corpus have separate coverage.",
+    "Original native terminal controls use a prepared scene and do not certify earlier track occupation or whole-frame native scheduling.",
+    "#937 multi-unit foundation parking/queue admission and other UnitRepair unit/depot paths are excluded.",
+    "No native GPU/pixel, audio/menu/exit, or whole-engine equivalence claim."
+  ]
+}

@@ -3150,10 +3150,7 @@ impl Simulation {
                 .c4_plant
                 .as_ref()
                 .is_some_and(|plant| plant.target_building_id == expired_id)
-            || listener
-                .dock_state
-                .as_ref()
-                .is_some_and(|dock| dock.references(expired_id))
+            || listener.pending_entry() == Some(expired_id)
             || listener
                 .aircraft_ammo
                 .as_ref()
@@ -3599,13 +3596,10 @@ impl Simulation {
             .as_ref()
             .is_some_and(|plant| plant.target_building_id == expired_id);
         // Techno707AE7..707AF5 clears private pending+500 only on control1.
-        // Non-destructive DetachAll(false) retains the independent service
-        // adapter too; its BREAK/service owners still terminate that visit.
-        let clear_dock = control == PointerExpiryControl::Uninit
-            && listener
-                .dock_state
-                .as_ref()
-                .is_some_and(|dock| dock.references(expired_id));
+        // Non-destructive DetachAll(false) retains this independent entry;
+        // radio contact expiry owns the admitted visit.
+        let clear_dock =
+            control == PointerExpiryControl::Uninit && listener.pending_entry() == Some(expired_id);
         let clear_airfield = listener
             .aircraft_ammo
             .as_ref()

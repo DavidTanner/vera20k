@@ -39,6 +39,10 @@
 //! - `BuildingClass::Mission_Selling 0x00449CE5` (state 2) / `0x0044AB36` (upgrade) →
 //!   `EVA_StructureSold`; `BuildingClass::ToggleRepair 0x004470B7` →
 //!   `EVA_Repairing` (sim events).
+//! - Depot `BuildingClass::MissionRepairAndProduce 0x0044BDC5`
+//!   (`CreateRadarEvent(8)` → `EVA_UnitRepaired`), `0x0044BFEA` (available
+//!   money `== 0` → `EVA_InsufficientFunds`), `0x0044C507` (`+0x41A` →
+//!   `EVA_Repairing`) (sim events, app listener/radar admission).
 //! - `BuildingClass::ChangeOwner 0x00448428/0x0044848A` (+ `0x00448459`
 //!   `QueueVoice(CaptureEvaEvent)`) → TechBuildingLost / BuildingCaptured /
 //!   per-type capture line (sim event).
@@ -56,13 +60,11 @@
 //!
 //! Reachable in a stock skirmish, prerequisite mechanism missing in VERA
 //! (documented, not produced):
+//! - Hospital `BuildingClass::MissionRepairAndProduce 0x0044B973` →
+//!   `EVA_UnitHealed` (separate hospital servicing mechanism).
 //! - `FootClass::OnSold 0x004D9F94` → `EVA_UnitSold` (no unit selling).
 //! - `0x00448226` (primary-factory setter, `[this+0x3D3]=1` then
 //!   `0x0050B6F0`) → `EVA_PrimaryBuildingSelected` (no primary factory).
-//! - `BuildingClass::MissionRepairAndProduce 0x0044B973/0x0044BDC5`
-//!   (`CreateRadarEvent(8)` → `EVA_UnitRepaired`), `0x0044BFEA` (available
-//!   money `== 0` → `EVA_InsufficientFunds`), `0x0044C507` (`+0x41A` →
-//!   `EVA_Repairing`) (no service-depot unit repair).
 //! - `BuildingClass::OnSpyInfiltrate 0x00457288..0x0045758B` (infiltration
 //!   family, `0x0050B6F0` on the spy owner / building owner) (no spy entry).
 //! - `RadarClass::PlaceBeacon 0x00430D78` (`EVA_BeaconPlaced`), `0x00430F1B`

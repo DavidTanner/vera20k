@@ -14,8 +14,9 @@
 //!
 //! The refinery handshake has one record, the radio state on the two objects:
 //! the refinery's `GameEntity::radio_contacts` and the miner's
-//! `dock_entered_with`. The miner FSM uses [`radio::transmit`]. Retasking and
-//! release use the functions here on that same bus. (Other mechanisms write
+//! `dock_entered_with`. The miner FSM uses [`radio::transmit`]. Retasking uses
+//! the shared mission event owner; refinery release uses
+//! the functions here on that same bus. (Other mechanisms write
 //! `radio_contacts` for their own links, e.g. a factory exit; none of them
 //! touches a refinery.)
 //!
@@ -33,51 +34,6 @@ pub(crate) fn has_contact(sim: &Simulation, refinery_sid: u64, miner_sid: u64) -
         .entities
         .get(refinery_sid)
         .is_some_and(|refinery| refinery.radio_contacts.contains(miner_sid))
-}
-
-/// `EventClass::Execute`'s MEGAMISSION arm, `0x004C72E8..0x004C7342`: a unit
-/// that is not tethered (`+0x418` clear) sends OVER_OUT to `Contacts[0]`
-/// (`PUSH 3; CALL [vt+0x274]`, `0x004C72F8`); a tethered one does so only when
-/// that contact is a live `DockUnload=` building (`Type+0x16B3`,
-/// `0x004C730F..0x004C7334`), and then also clears its `+0x418`
-/// (`0x004C7342`). So a retasked harvester leaves its refinery handshake — or
-/// its unload, whose contact gate then drops the latch and commences the new
-/// order — while a unit still tethered to its war factory keeps that link.
-///
-/// Scope: only miners reach this in VERA (the funnel predates the other
-/// units' native radio links).
-pub(crate) fn break_for_retask(
-    sim: &mut Simulation,
-    miner_sid: u64,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-) {
-    let Some(entity) = sim.substrate.entities.get(miner_sid) else {
-        return;
-    };
-    if entity.miner.is_none() {
-        return;
-    }
-    if entity.dock_entered_with.is_none() {
-        radio::transmit_to_contact(sim, miner_sid, RadioMessage::Break, rules);
-    } else {
-        let dock_unload = entity
-            .radio_contacts
-            .slot(0)
-            .and_then(|contact| sim.substrate.entities.get(contact))
-            .filter(|contact| {
-                contact.is_alive()
-                    && contact.category == crate::map::entities::EntityCategory::Structure
-            })
-            .zip(rules)
-            .and_then(|(contact, rules)| sim.object_type(contact.type_ref(), rules))
-            .is_some_and(|object| object.dock_unload);
-        if dock_unload {
-            radio::transmit_to_contact(sim, miner_sid, RadioMessage::Break, rules);
-            if let Some(entity) = sim.substrate.entities.get_mut(miner_sid) {
-                entity.dock_entered_with = None;
-            }
-        }
-    }
 }
 
 /// BREAK over the bus — drops the contact on both ends and clears the miner's

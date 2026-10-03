@@ -48,11 +48,9 @@ pub use self::production_queue::{
     theoretical_power_for_owner, tick_production, tick_production_with_overlay_registry,
 };
 pub(crate) use self::production_refinery::spawn_building_free_unit;
-#[cfg(test)]
-pub(crate) use self::production_repair::repair_step_cost;
 pub use self::production_repair::{RepairControl, toggle_repair};
 pub(crate) use self::production_repair::{
-    can_repair_building, engineer_repair, update_repair_and_power,
+    can_repair_building, engineer_repair, repair_step_cost, update_repair_and_power,
 };
 pub use self::production_sell::{SellOrder, can_sell_building, sell_back};
 pub(crate) use self::production_sell::{

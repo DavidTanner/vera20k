@@ -219,15 +219,19 @@ def stepping_cases():
     ]
 
 
-def run_block(u, building, block, ebp=0):
+def run_block(u, building, block, ebp=0, *, instruction_count=10_000):
     """Run one straight-line block of BuildingClass::Update with ESI = the
-    building (and EBP = -1 where the block compares against it)."""
+    building (and EBP = -1 where the block compares against it).
+
+    Other explicitly admitted slices may declare a larger instruction_count;
+    construction callers retain their original 10,000-instruction limit.
+    """
     from unicorn.x86_const import UC_X86_REG_EBP, UC_X86_REG_ESI
     u.mem_write(SP, bytes(0x80))
     u.reg_write(UC_X86_REG_ESP, SP)
     u.reg_write(UC_X86_REG_ESI, building)
     u.reg_write(UC_X86_REG_EBP, ebp & 0xFFFFFFFF)
-    run_checked(u, block[0], block[1], count=10_000)
+    run_checked(u, block[0], block[1], count=instruction_count)
 
 
 def building_update(u, building):

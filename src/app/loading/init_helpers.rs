@@ -1142,7 +1142,7 @@ mod tests {
     /// against RULESCLASS_CONSTRUCTOR_DEFAULTS.csv): FlightLevel=500,
     /// GrowthRate=2.0 min, RepairStep=5, RepairPercent=25%, BuildSpeed=1.0,
     /// ParachuteMaxFallRate=-3, ParadropRadius=1024, URepairRate=.016 min
-    /// (→14 ticks), C4Delay=.03 min (→27 ticks).
+    /// (retained double), C4Delay=.03 min (→27 ticks).
     ///
     /// Retail rulesmd.ini always supplies its own value for each, so these
     /// fallbacks fire only for a non-retail INI missing the key — matching the
@@ -1171,8 +1171,9 @@ mod tests {
         assert_eq!(rules.general.repair_step, 5, "RepairStep");
         assert_eq!(rules.general.repair_percent, 0.25, "RepairPercent (.25)");
         assert_eq!(
-            rules.general.unit_repair_rate_ticks, 14,
-            "URepairRate .016 min -> 14 ticks"
+            rules.general.unit_repair_rate.to_bits(),
+            0x3f90_624d_d2f1_a9fc,
+            "URepairRate constructor double .016"
         );
         assert_eq!(rules.general.growth_rate_minutes, 2.0, "GrowthRate");
 

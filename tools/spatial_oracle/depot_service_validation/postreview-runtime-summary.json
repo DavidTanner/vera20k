@@ -1,0 +1,1640 @@
+{
+  "status": "VALID_POSTREVIEW_RUST_RETAIL_SERVICE_CAPTURE",
+  "evidence_level": "Rust production retail integration and complete projected-observation comparison; native boundary comparisons are separately owned evidence",
+  "created_at_utc": "2026-10-03T06:27:39.710476+00:00",
+  "finished_at_utc": "2026-10-03T06:19:14.621314Z",
+  "release": {
+    "label": "depot-repair-service-reviewed-20261003",
+    "manifest": {
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/manifest.json",
+      "byte_length": 7137,
+      "sha256": "9e08ddf374e3ad932111ab181a0bdff05f12fe705c0d1f6c0395b5f032f80939"
+    },
+    "executable": {
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/0/vera20k",
+      "byte_length": 31638976,
+      "sha256": "0d08bda55cc1a6226b8b2ea89fb46c2952a6feb52049f8c9d52b5adb0f02ad73"
+    },
+    "source_sha256": "7dea934557ef804d7fe4204b70d8cbf9cef15780db543c892fe6f4b5a9ac623b",
+    "built_head": "f1783f83d6e9d9b9df5046d7b3d83478115a278b",
+    "branch": "feature/native-depot-repair-service"
+  },
+  "schema": {
+    "wrapper": "vera20k.map-observation-run.v6",
+    "child": "vera20k.map-observation.v6",
+    "observation_policy": "map-ordinary-command-observation-v3"
+  },
+  "inputs": {
+    "config": {
+      "byte_length": 612,
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/config.toml",
+      "sha256": "5b997bce2545d3c592e8e8fb37d73303789fdae0ae564d374a801d957ad86636"
+    },
+    "contract": {
+      "byte_length": 590,
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+    },
+    "executable": {
+      "byte_length": 31638976,
+      "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/0/vera20k",
+      "sha256": "0d08bda55cc1a6226b8b2ea89fb46c2952a6feb52049f8c9d52b5adb0f02ad73"
+    },
+    "profile": {
+      "byte_length": 6208,
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040.profile.json",
+      "sha256": "0af96808291885ef3ca792e45e4d9025f431a6d46d25ae18e6d03f025535240c"
+    }
+  },
+  "sealed_inputs": {
+    "profile.json": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release-run/profile.json",
+      "byte_length": 6208,
+      "sha256": "0af96808291885ef3ca792e45e4d9025f431a6d46d25ae18e6d03f025535240c"
+    },
+    "contract.json": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release-run/contract.json",
+      "byte_length": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+    },
+    "config.toml": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release-run/config.toml",
+      "byte_length": 612,
+      "sha256": "5b997bce2545d3c592e8e8fb37d73303789fdae0ae564d374a801d957ad86636"
+    }
+  },
+  "map_source": {
+    "entry_id": -854728974,
+    "kind": "mix",
+    "logical_name": "XMP03T4.MAP",
+    "payload_len": 156269,
+    "source_archive": "multimd.mix",
+    "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+  },
+  "startup": {
+    "classification": "AcceptedExplicitFixedBattle",
+    "correlation": 1,
+    "seed": 305419896,
+    "seed_authority_certifying": true,
+    "seed_source": "Controlled"
+  },
+  "loaded_session": {
+    "map_name": "XMP03T4.MAP",
+    "map_waypoints": {
+      "0": [
+        28,
+        88
+      ],
+      "1": [
+        88,
+        31
+      ],
+      "2": [
+        141,
+        81
+      ],
+      "3": [
+        77,
+        134
+      ]
+    },
+    "options": {
+      "ai_difficulty": 0,
+      "ai_players": 2,
+      "ally_change_allowed": true,
+      "bases": true,
+      "bridges_destroyable": true,
+      "build_off_ally": true,
+      "crates": false,
+      "fog_of_war": false,
+      "game_speed": 1,
+      "harvester_truce": false,
+      "mcv_redeploy": true,
+      "multi_engineer": false,
+      "short_game": false,
+      "shroud": false,
+      "starting_credits": 5900,
+      "super_weapons": true,
+      "tech_level": 10,
+      "tiberium_grows": false,
+      "unit_count": 4
+    },
+    "start_slots": [
+      {
+        "country": "Russians",
+        "difficulty": "Normal",
+        "house": "VERA-OBSERVER",
+        "human": true,
+        "slot": 0,
+        "waypoint": [
+          28,
+          88
+        ]
+      },
+      {
+        "country": "French",
+        "difficulty": "Easy",
+        "house": "Computer1",
+        "human": false,
+        "slot": 1,
+        "waypoint": [
+          88,
+          31
+        ]
+      },
+      {
+        "country": "Americans",
+        "difficulty": "Easy",
+        "house": "Computer2",
+        "human": false,
+        "slot": 2,
+        "waypoint": [
+          141,
+          81
+        ]
+      }
+    ],
+    "theater": "TEMPERATE"
+  },
+  "GPU": {
+    "backend": "Metal",
+    "device": 0,
+    "device_type": "IntegratedGpu",
+    "driver": "",
+    "driver_info": "",
+    "name": "Apple M4",
+    "vendor": 0
+  },
+  "frame": {
+    "capture_layout": {
+      "byte_length": 1920000,
+      "file_name": "frame.bgra",
+      "height": 600,
+      "pixel_layout": "BGRA8",
+      "row_stride": 3200,
+      "sha256": "5ce5119de36e9be35cb2faf58713f07d9f5293c394d9b8516d3f1db75d13d965",
+      "surface_format": "Bgra8UnormSrgb",
+      "width": 800
+    },
+    "BGRA": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release-run/child-output/frame.bgra",
+      "byte_length": 1920000,
+      "sha256": "5ce5119de36e9be35cb2faf58713f07d9f5293c394d9b8516d3f1db75d13d965"
+    },
+    "PNG": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-frame.png",
+      "byte_length": 445518,
+      "sha256": "100d6d971301493fbd5a859f9775b0f80c3b1b084647c0378b66a00a09e19576"
+    },
+    "conversion_owner": "tools.shell_capture_diff.write_png_rgb",
+    "PNG_visually_inspected": true,
+    "visual_observation": "HUD shows160 credits; repaired tank is southwest/off the service pad. Bounded exit animation remains visible. No native pixel-equivalence claim.",
+    "reference_BGRA_equal": true,
+    "reference_PNG_equal": true
+  },
+  "phases": [
+    {
+      "name": "L0",
+      "run_directory": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-L0-depot-release-run",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-L0-depot-release-run/run.json",
+        "byte_length": 41795,
+        "sha256": "e1967fb21cbe4267a06e7e7c42089dab2b7487a52e9d8184bc130573d3947693"
+      },
+      "child_capture": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-L0-depot-release-run/child-output/capture.json",
+        "byte_length": 43656,
+        "sha256": "3e3732f324b879cbfb8e92f8a458058440fb905af58c4a12d92deb899b26d2e3"
+      },
+      "offline_validation": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-L0-depot-release.validation.json",
+        "byte_length": 41326,
+        "sha256": "46f128c87236e0db1985b385e05e88d73e88c2bfe1ef1534c39cc93fa87f6f09"
+      },
+      "profile": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/l0-count4.profile.json",
+        "byte_length": 2794,
+        "sha256": "6ec0f04bddb2f38b96961f317dc09dc7ba3afa212760c8ee043de2f7c19681da"
+      },
+      "reference_capture": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-l0-depot-release-run/child-output/capture.json",
+        "byte_length": 43653,
+        "sha256": "7756031b839eae110b6bb36c4ed977dfbd8a787ba804df4a40dfeb6912035356"
+      },
+      "schema": "vera20k.map-observation-run.v6",
+      "capture_schema": "vera20k.map-observation.v6",
+      "status": "VALID",
+      "child_status": "COMPLETE",
+      "offline_status": "VALID",
+      "exact_step_count": 0,
+      "frame_count": 1,
+      "sample_count": 5,
+      "run_directory_bytes": 2009852,
+      "ordinary_wrapper_command": [
+        "python",
+        "-m",
+        "tools.map_observation",
+        "--build-label",
+        "depot-repair-service-reviewed-20261003",
+        "--profile",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/l0-count4.profile.json",
+        "--contract",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+        "--cwd",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-L0-depot-release-run"
+      ],
+      "offline_command": [
+        "python",
+        "-m",
+        "tools.map_observation",
+        "validate",
+        "--run",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-L0-depot-release-run",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-L0-depot-release.validation.json"
+      ],
+      "child_command": [
+        "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/0/vera20k",
+        "--tactical-capture",
+        "map-observe-v1",
+        "--profile",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/l0-count4.profile.json",
+        "--contract",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-L0-depot-release-run/child-output"
+      ],
+      "child_execution": {
+        "cleanup_scope": "exact-child-pid-only",
+        "exit_status": 0,
+        "pid": 84413,
+        "timed_out": false,
+        "timeout_seconds": 300
+      },
+      "comparison": {
+        "all_complete_observations_equal": true,
+        "sections_equal": {
+          "commands": true,
+          "frames": true,
+          "owners": true,
+          "policy": true,
+          "rule_types": true
+        },
+        "changed_observation_frames": 0,
+        "initial_and_final_deterministic_state_equal": true,
+        "canonical_JSON_policy": "sort_keys=true,separators=(comma,colon),ensure_ascii=false,UTF8",
+        "observations_sha256": "c4d934d30777c0cc50991ef9cb0d69b0d8e0fcfa463ffc44da6aeb8dee1c537d",
+        "reference_observations_sha256": "c4d934d30777c0cc50991ef9cb0d69b0d8e0fcfa463ffc44da6aeb8dee1c537d",
+        "capture_sections_unequal": [
+          "inputs"
+        ],
+        "capture_inputs_difference_paths": [
+          "$.executable.byte_length",
+          "$.executable.path",
+          "$.executable.sha256"
+        ],
+        "prior_executable_input": {
+          "byte_length": 31640768,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-final-20261003/0/vera20k",
+          "sha256": "022100adaf3c565f8e4c27ccb145665c97634d6829138fd79658f7b24457c9e7"
+        },
+        "new_executable_input": {
+          "byte_length": 31638976,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/0/vera20k",
+          "sha256": "0d08bda55cc1a6226b8b2ea89fb46c2952a6feb52049f8c9d52b5adb0f02ad73"
+        },
+        "all_other_child_capture_sections_equal": true
+      }
+    },
+    {
+      "name": "prefix2910",
+      "run_directory": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-prefix2910-depot-release-run",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-prefix2910-depot-release-run/run.json",
+        "byte_length": 19850977,
+        "sha256": "29d73d460afcb9336e2e3e48fed623146af39de2886f8cc99858987e266f2797"
+      },
+      "child_capture": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-prefix2910-depot-release-run/child-output/capture.json",
+        "byte_length": 19854139,
+        "sha256": "bfe702e0c9925bd7256fcb46ae296ed13be41ea81e0207e8790c572e0762addf"
+      },
+      "offline_validation": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-prefix2910-depot-release.validation.json",
+        "byte_length": 20080623,
+        "sha256": "82a1eb33a96d98c8b7fc2daf2c996365baf1db515071f5912be5d9d5a62403c5"
+      },
+      "profile": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-prefix2910.profile.json",
+        "byte_length": 4925,
+        "sha256": "40f224435de0ca184e74020ef55c120ee3edb5dfb2d90de5403a94b49a0da52c"
+      },
+      "reference_capture": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-prefix2910-depot-release-run/child-output/capture.json",
+        "byte_length": 19854136,
+        "sha256": "f915d299a3ebfa3970019d7633d593060c596240a7639cd99a7bbdd05b4aea8f"
+      },
+      "schema": "vera20k.map-observation-run.v6",
+      "capture_schema": "vera20k.map-observation.v6",
+      "status": "VALID",
+      "child_status": "COMPLETE",
+      "offline_status": "VALID",
+      "exact_step_count": 2910,
+      "frame_count": 2911,
+      "sample_count": 32028,
+      "run_directory_bytes": 41631648,
+      "ordinary_wrapper_command": [
+        "python",
+        "-m",
+        "tools.map_observation",
+        "--build-label",
+        "depot-repair-service-reviewed-20261003",
+        "--profile",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-prefix2910.profile.json",
+        "--contract",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+        "--cwd",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-prefix2910-depot-release-run"
+      ],
+      "offline_command": [
+        "python",
+        "-m",
+        "tools.map_observation",
+        "validate",
+        "--run",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-prefix2910-depot-release-run",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-prefix2910-depot-release.validation.json"
+      ],
+      "child_command": [
+        "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/0/vera20k",
+        "--tactical-capture",
+        "map-observe-v1",
+        "--profile",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-prefix2910.profile.json",
+        "--contract",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-prefix2910-depot-release-run/child-output"
+      ],
+      "child_execution": {
+        "cleanup_scope": "exact-child-pid-only",
+        "exit_status": 0,
+        "pid": 84739,
+        "timed_out": false,
+        "timeout_seconds": 300
+      },
+      "comparison": {
+        "all_complete_observations_equal": true,
+        "sections_equal": {
+          "commands": true,
+          "frames": true,
+          "owners": true,
+          "policy": true,
+          "rule_types": true
+        },
+        "changed_observation_frames": 0,
+        "initial_and_final_deterministic_state_equal": true,
+        "canonical_JSON_policy": "sort_keys=true,separators=(comma,colon),ensure_ascii=false,UTF8",
+        "observations_sha256": "5f875b9710430eb3d30c8319e113d9876e3a340eaa718704860276b5a4a92199",
+        "reference_observations_sha256": "5f875b9710430eb3d30c8319e113d9876e3a340eaa718704860276b5a4a92199",
+        "capture_sections_unequal": [
+          "inputs"
+        ],
+        "capture_inputs_difference_paths": [
+          "$.executable.byte_length",
+          "$.executable.path",
+          "$.executable.sha256"
+        ],
+        "prior_executable_input": {
+          "byte_length": 31640768,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-final-20261003/0/vera20k",
+          "sha256": "022100adaf3c565f8e4c27ccb145665c97634d6829138fd79658f7b24457c9e7"
+        },
+        "new_executable_input": {
+          "byte_length": 31638976,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/0/vera20k",
+          "sha256": "0d08bda55cc1a6226b8b2ea89fb46c2952a6feb52049f8c9d52b5adb0f02ad73"
+        },
+        "all_other_child_capture_sections_equal": true
+      }
+    },
+    {
+      "name": "setup5350",
+      "run_directory": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-setup5350-depot-release-run",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-setup5350-depot-release-run/run.json",
+        "byte_length": 45077072,
+        "sha256": "854257390eda1f3d10ec58ca01667db3579585029c6460b5cb5267792fe78640"
+      },
+      "child_capture": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-setup5350-depot-release-run/child-output/capture.json",
+        "byte_length": 45080749,
+        "sha256": "9d12775c3d44273a61a6c861ec026e5c5686fdbefe3b4da7205a7bae6cb61e48"
+      },
+      "offline_validation": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-setup5350-depot-release.validation.json",
+        "byte_length": 45504334,
+        "sha256": "1d95483ea293c893b1bc17830917af7b381462521b20f980071b50fdcee16049"
+      },
+      "profile": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-setup5350.profile.json",
+        "byte_length": 5843,
+        "sha256": "cf88cd10aa54fb96b0ab7fa78d87df3232f37ad3adbaf34fe6f6b61d08ba3db8"
+      },
+      "reference_capture": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-setup5350-depot-release-run/child-output/capture.json",
+        "byte_length": 45080746,
+        "sha256": "43796fa02fbb010732dc1cbf3b861acfe028a5bf42b71859d1e0d4bf84996691"
+      },
+      "schema": "vera20k.map-observation-run.v6",
+      "capture_schema": "vera20k.map-observation.v6",
+      "status": "VALID",
+      "child_status": "COMPLETE",
+      "offline_status": "VALID",
+      "exact_step_count": 5350,
+      "frame_count": 5351,
+      "sample_count": 70528,
+      "run_directory_bytes": 92085271,
+      "ordinary_wrapper_command": [
+        "python",
+        "-m",
+        "tools.map_observation",
+        "--build-label",
+        "depot-repair-service-reviewed-20261003",
+        "--profile",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-setup5350.profile.json",
+        "--contract",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+        "--cwd",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-setup5350-depot-release-run"
+      ],
+      "offline_command": [
+        "python",
+        "-m",
+        "tools.map_observation",
+        "validate",
+        "--run",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-setup5350-depot-release-run",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-setup5350-depot-release.validation.json"
+      ],
+      "child_command": [
+        "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/0/vera20k",
+        "--tactical-capture",
+        "map-observe-v1",
+        "--profile",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-setup5350.profile.json",
+        "--contract",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-setup5350-depot-release-run/child-output"
+      ],
+      "child_execution": {
+        "cleanup_scope": "exact-child-pid-only",
+        "exit_status": 0,
+        "pid": 85579,
+        "timed_out": false,
+        "timeout_seconds": 300
+      },
+      "comparison": {
+        "all_complete_observations_equal": true,
+        "sections_equal": {
+          "commands": true,
+          "frames": true,
+          "owners": true,
+          "policy": true,
+          "rule_types": true
+        },
+        "changed_observation_frames": 0,
+        "initial_and_final_deterministic_state_equal": true,
+        "canonical_JSON_policy": "sort_keys=true,separators=(comma,colon),ensure_ascii=false,UTF8",
+        "observations_sha256": "50d837ae5c52e653a957f3688c0d6a4f8ad7b65043f7bdce901c712f61ad55f5",
+        "reference_observations_sha256": "50d837ae5c52e653a957f3688c0d6a4f8ad7b65043f7bdce901c712f61ad55f5",
+        "capture_sections_unequal": [
+          "inputs"
+        ],
+        "capture_inputs_difference_paths": [
+          "$.executable.byte_length",
+          "$.executable.path",
+          "$.executable.sha256"
+        ],
+        "prior_executable_input": {
+          "byte_length": 31640768,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-final-20261003/0/vera20k",
+          "sha256": "022100adaf3c565f8e4c27ccb145665c97634d6829138fd79658f7b24457c9e7"
+        },
+        "new_executable_input": {
+          "byte_length": 31638976,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/0/vera20k",
+          "sha256": "0d08bda55cc1a6226b8b2ea89fb46c2952a6feb52049f8c9d52b5adb0f02ad73"
+        },
+        "all_other_child_capture_sections_equal": true
+      }
+    },
+    {
+      "name": "service6900-sale6040",
+      "run_directory": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release-run",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release-run/run.json",
+        "byte_length": 63016515,
+        "sha256": "c46ee13c786ef23160ed933627e88ab919cd90831dfb654cc28aafe79976086f"
+      },
+      "child_capture": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release-run/child-output/capture.json",
+        "byte_length": 63020346,
+        "sha256": "2bc668bb99584c357c121e2d8075c3d6bcb2c507da585adf1f08358582324638"
+      },
+      "offline_validation": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release.validation.json",
+        "byte_length": 63572416,
+        "sha256": "f30dbd0022f1a5715b87a8364b596a77f5142c6f99df007b6b68a28930683ab8"
+      },
+      "profile": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040.profile.json",
+        "byte_length": 6208,
+        "sha256": "0af96808291885ef3ca792e45e4d9025f431a6d46d25ae18e6d03f025535240c"
+      },
+      "reference_capture": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040-depot-release-run/child-output/capture.json",
+        "byte_length": 63020343,
+        "sha256": "5690b8aeff7cf6cb80be9e94494080f7794a6130939028e50af2da66f4bfe8df"
+      },
+      "schema": "vera20k.map-observation-run.v6",
+      "capture_schema": "vera20k.map-observation.v6",
+      "status": "VALID",
+      "child_status": "COMPLETE",
+      "offline_status": "VALID",
+      "exact_step_count": 6900,
+      "frame_count": 6901,
+      "sample_count": 99286,
+      "run_directory_bytes": 127964676,
+      "ordinary_wrapper_command": [
+        "python",
+        "-m",
+        "tools.map_observation",
+        "--build-label",
+        "depot-repair-service-reviewed-20261003",
+        "--profile",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040.profile.json",
+        "--contract",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+        "--cwd",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release-run"
+      ],
+      "offline_command": [
+        "python",
+        "-m",
+        "tools.map_observation",
+        "validate",
+        "--run",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release-run",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release.validation.json"
+      ],
+      "child_command": [
+        "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/0/vera20k",
+        "--tactical-capture",
+        "map-observe-v1",
+        "--profile",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040.profile.json",
+        "--contract",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+        "--output",
+        "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/postreview-service6900-sale6040-depot-release-run/child-output"
+      ],
+      "child_execution": {
+        "cleanup_scope": "exact-child-pid-only",
+        "exit_status": 0,
+        "pid": 86573,
+        "timed_out": false,
+        "timeout_seconds": 300
+      },
+      "comparison": {
+        "all_complete_observations_equal": true,
+        "sections_equal": {
+          "commands": true,
+          "frames": true,
+          "owners": true,
+          "policy": true,
+          "rule_types": true
+        },
+        "changed_observation_frames": 0,
+        "initial_and_final_deterministic_state_equal": true,
+        "canonical_JSON_policy": "sort_keys=true,separators=(comma,colon),ensure_ascii=false,UTF8",
+        "observations_sha256": "560d32902a8143e3ff298732e240b9c97d9ca84a456b5d27ba8196810c960f3a",
+        "reference_observations_sha256": "560d32902a8143e3ff298732e240b9c97d9ca84a456b5d27ba8196810c960f3a",
+        "capture_sections_unequal": [
+          "inputs"
+        ],
+        "capture_inputs_difference_paths": [
+          "$.executable.byte_length",
+          "$.executable.path",
+          "$.executable.sha256"
+        ],
+        "prior_executable_input": {
+          "byte_length": 31640768,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-final-20261003/0/vera20k",
+          "sha256": "022100adaf3c565f8e4c27ccb145665c97634d6829138fd79658f7b24457c9e7"
+        },
+        "new_executable_input": {
+          "byte_length": 31638976,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/depot-repair-service-reviewed-20261003/0/vera20k",
+          "sha256": "0d08bda55cc1a6226b8b2ea89fb46c2952a6feb52049f8c9d52b5adb0f02ad73"
+        },
+        "all_other_child_capture_sections_equal": true
+      }
+    }
+  ],
+  "caps": {
+    "samples": 100000,
+    "receipt_bytes": 134217728,
+    "per_file_and_total_run_directory_bytes_checked": true
+  },
+  "actual_sample_count": 99286,
+  "actual_run_bytes": 63016515,
+  "actual_child_capture_bytes": 63020346,
+  "actual_run_directory_bytes": 127964676,
+  "observed_ids": {
+    "SMCV": 1371,
+    "shooter_HTNK": 1374,
+    "repair_target_HTNK": 1375,
+    "initial_E2": 1376,
+    "NACNST": 1414,
+    "NAPOWR": 1423,
+    "NAHAND": 1536,
+    "NAREFN": 1707,
+    "HARV": 1754,
+    "NAWEAP": 1758,
+    "NADEPT": 1811,
+    "sale_survivor_E2": 1838
+  },
+  "rule_type_ids": {
+    "E2": 129,
+    "HARV": 193,
+    "HTNK": 195,
+    "SMCV": 214,
+    "NAPOWR": 282,
+    "NAHAND": 284,
+    "NAWEAP": 287,
+    "NAREFN": 288,
+    "NADEPT": 299
+  },
+  "first_active_frames": {
+    "SMCV": 0,
+    "shooter_HTNK": 0,
+    "repair_target_HTNK": 0,
+    "initial_E2": 0,
+    "NACNST": 14,
+    "NAPOWR": 651,
+    "NAHAND": 1251,
+    "NAREFN": 2851,
+    "HARV": 2903,
+    "NAWEAP": 4401,
+    "NADEPT": 5151,
+    "sale_survivor_E2": 6043
+  },
+  "first_operational_frames": {
+    "NACNST": 46,
+    "NAPOWR": 704,
+    "NAHAND": 1303,
+    "NAREFN": 2904,
+    "NAWEAP": 4452,
+    "NADEPT": 5202
+  },
+  "commands": [
+    {
+      "envelope_execute_tick": 0,
+      "issue_after_step": 0,
+      "issued_simulation_tick": 0,
+      "ordinal": 0,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "DeployMcv": {
+          "entity_id": 1371
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 0,
+      "issue_after_step": 0,
+      "issued_simulation_tick": 0,
+      "ordinal": 1,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "Move": {
+          "entity_id": 1376,
+          "queue": false,
+          "target_rx": 34,
+          "target_ry": 82
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 20,
+      "issue_after_step": 20,
+      "issued_simulation_tick": 20,
+      "ordinal": 2,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "Move": {
+          "entity_id": 1374,
+          "queue": false,
+          "target_rx": 32,
+          "target_ry": 84
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 70,
+      "issue_after_step": 70,
+      "issued_simulation_tick": 70,
+      "ordinal": 3,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "QueueProduction": {
+          "type_id": 282
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 200,
+      "issue_after_step": 200,
+      "issued_simulation_tick": 200,
+      "ordinal": 4,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "ForceAttack": {
+          "attacker_id": 1374,
+          "target_id": 1375
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 450,
+      "issue_after_step": 450,
+      "issued_simulation_tick": 450,
+      "ordinal": 5,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "Stop": {
+          "entity_id": 1374
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 650,
+      "issue_after_step": 650,
+      "issued_simulation_tick": 650,
+      "ordinal": 6,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "PlaceReadyBuilding": {
+          "rx": 31,
+          "ry": 89,
+          "type_id": 282
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 720,
+      "issue_after_step": 720,
+      "issued_simulation_tick": 720,
+      "ordinal": 7,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "QueueProduction": {
+          "type_id": 284
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 1250,
+      "issue_after_step": 1250,
+      "issued_simulation_tick": 1250,
+      "ordinal": 8,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "PlaceReadyBuilding": {
+          "rx": 31,
+          "ry": 93,
+          "type_id": 284
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 1320,
+      "issue_after_step": 1320,
+      "issued_simulation_tick": 1320,
+      "ordinal": 9,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "QueueProduction": {
+          "type_id": 288
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 2850,
+      "issue_after_step": 2850,
+      "issued_simulation_tick": 2850,
+      "ordinal": 10,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "PlaceReadyBuilding": {
+          "rx": 31,
+          "ry": 85,
+          "type_id": 288
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 2910,
+      "issue_after_step": 2910,
+      "issued_simulation_tick": 2910,
+      "ordinal": 11,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "Stop": {
+          "entity_id": 1754
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 2930,
+      "issue_after_step": 2930,
+      "issued_simulation_tick": 2930,
+      "ordinal": 12,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "QueueProduction": {
+          "type_id": 287
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 4400,
+      "issue_after_step": 4400,
+      "issued_simulation_tick": 4400,
+      "ordinal": 13,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "PlaceReadyBuilding": {
+          "rx": 35,
+          "ry": 85,
+          "type_id": 287
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 4480,
+      "issue_after_step": 4480,
+      "issued_simulation_tick": 4480,
+      "ordinal": 14,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "QueueProduction": {
+          "type_id": 299
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 5150,
+      "issue_after_step": 5150,
+      "issued_simulation_tick": 5150,
+      "ordinal": 15,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "PlaceReadyBuilding": {
+          "rx": 35,
+          "ry": 91,
+          "type_id": 299
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 5230,
+      "issue_after_step": 5230,
+      "issued_simulation_tick": 5230,
+      "ordinal": 16,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "RepairAtDepot": {
+          "depot_id": 1811,
+          "entity_id": 1375
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 6040,
+      "issue_after_step": 6040,
+      "issued_simulation_tick": 6040,
+      "ordinal": 17,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "SellBuilding": {
+          "entity_id": 1536
+        }
+      }
+    }
+  ],
+  "command_environment": {
+    "source_environment_script": "/Users/halvor/Documents/vera20k-dev/env.sh",
+    "capture_RA2_DIR": "explicitly unset with env -u RA2_DIR; sealed config resolves assets",
+    "no_Cargo_or_build_or_source_or_profile_edits": true,
+    "no_admin_state_setters": true
+  },
+  "ordinary_damage_rows": [
+    {
+      "frame": 224,
+      "health": 310
+    },
+    {
+      "frame": 290,
+      "health": 220
+    },
+    {
+      "frame": 356,
+      "health": 130
+    },
+    {
+      "frame": 422,
+      "health": 40
+    }
+  ],
+  "events": {
+    "RepairAtDepot_issue": 5230,
+    "first_reciprocal_contact": 5231,
+    "Enter_current": 5232,
+    "actual_pad_arrival": 5484,
+    "arrival_unit_mission": "Guard5; native-correct untethered terminal outcome",
+    "arrival_depot_mission": {
+      "ai_counter": 1,
+      "current": 20,
+      "dispatch_timer": {
+        "delay": 3,
+        "start_frame": 5483
+      },
+      "effective": 20,
+      "handler_state": 1,
+      "queued": -1,
+      "start_frame": 5483,
+      "suspended": -1
+    },
+    "arrival_depot_ready": 0,
+    "zero_funds_frames_inclusive": [
+      5484,
+      6090
+    ],
+    "zero_funds_held_frames": 607,
+    "SellBuilding_issue": 6040,
+    "actual250credit_refund": 6091,
+    "first_paid_step": 6126,
+    "second_paid_step": 6211,
+    "full400_and_reciprocal_contacts_cleared": 6856,
+    "Move_current": 6857,
+    "first_physical_departure": 6869,
+    "first_cell_exit": 6876,
+    "destination_reached_Guard": 6899,
+    "destination_cell": [
+      35,
+      94
+    ],
+    "destination_leptons": [
+      9088,
+      24192,
+      416
+    ],
+    "final_step": 6900
+  },
+  "validated_checks": {
+    "all4_wrapper_and_offline_VALID": true,
+    "all4_complete_observation_objects_equal_prior_final_release": true,
+    "all_other_child_capture_sections_equal_except_executable_input_identity": true,
+    "HP40_cash0_spent5900_position_and_reciprocal_contacts_held_for607frames": true,
+    "depot_operational_during_hold": true,
+    "all45_heals_match8HP_2creditdebit_2spent_increase": true,
+    "total_repair_debit": 90,
+    "first_paid_interval": 85,
+    "later_paid_intervals": 15,
+    "full400": true,
+    "reciprocal_contacts_cleared_from_full_through_final": true,
+    "physical_departure_and_destination_arrival": true,
+    "HARV_stopped_Guard_cell31_84_from2911": true,
+    "HARV_cargo_every_observed_frame": 0,
+    "harvested_credits_every_observed_frame": 0,
+    "only_positive_wallet_change_after_setup": [
+      {
+        "frame": 6091,
+        "delta": 250
+      }
+    ],
+    "final_credits": 160,
+    "final_spent_credits": 5990,
+    "ordinary_commands_only": true,
+    "single_repair_vehicle": true
+  },
+  "paid_step_rows": [
+    {
+      "frame": 6126,
+      "before_hp": 40,
+      "after_hp": 48,
+      "hp_delta": 8,
+      "before_credits": 250,
+      "after_credits": 248,
+      "credits_delta": -2,
+      "before_spent": 5900,
+      "after_spent": 5902,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6211,
+      "before_hp": 48,
+      "after_hp": 56,
+      "hp_delta": 8,
+      "before_credits": 248,
+      "after_credits": 246,
+      "credits_delta": -2,
+      "before_spent": 5902,
+      "after_spent": 5904,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6226,
+      "before_hp": 56,
+      "after_hp": 64,
+      "hp_delta": 8,
+      "before_credits": 246,
+      "after_credits": 244,
+      "credits_delta": -2,
+      "before_spent": 5904,
+      "after_spent": 5906,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6241,
+      "before_hp": 64,
+      "after_hp": 72,
+      "hp_delta": 8,
+      "before_credits": 244,
+      "after_credits": 242,
+      "credits_delta": -2,
+      "before_spent": 5906,
+      "after_spent": 5908,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6256,
+      "before_hp": 72,
+      "after_hp": 80,
+      "hp_delta": 8,
+      "before_credits": 242,
+      "after_credits": 240,
+      "credits_delta": -2,
+      "before_spent": 5908,
+      "after_spent": 5910,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6271,
+      "before_hp": 80,
+      "after_hp": 88,
+      "hp_delta": 8,
+      "before_credits": 240,
+      "after_credits": 238,
+      "credits_delta": -2,
+      "before_spent": 5910,
+      "after_spent": 5912,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6286,
+      "before_hp": 88,
+      "after_hp": 96,
+      "hp_delta": 8,
+      "before_credits": 238,
+      "after_credits": 236,
+      "credits_delta": -2,
+      "before_spent": 5912,
+      "after_spent": 5914,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6301,
+      "before_hp": 96,
+      "after_hp": 104,
+      "hp_delta": 8,
+      "before_credits": 236,
+      "after_credits": 234,
+      "credits_delta": -2,
+      "before_spent": 5914,
+      "after_spent": 5916,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6316,
+      "before_hp": 104,
+      "after_hp": 112,
+      "hp_delta": 8,
+      "before_credits": 234,
+      "after_credits": 232,
+      "credits_delta": -2,
+      "before_spent": 5916,
+      "after_spent": 5918,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6331,
+      "before_hp": 112,
+      "after_hp": 120,
+      "hp_delta": 8,
+      "before_credits": 232,
+      "after_credits": 230,
+      "credits_delta": -2,
+      "before_spent": 5918,
+      "after_spent": 5920,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6346,
+      "before_hp": 120,
+      "after_hp": 128,
+      "hp_delta": 8,
+      "before_credits": 230,
+      "after_credits": 228,
+      "credits_delta": -2,
+      "before_spent": 5920,
+      "after_spent": 5922,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6361,
+      "before_hp": 128,
+      "after_hp": 136,
+      "hp_delta": 8,
+      "before_credits": 228,
+      "after_credits": 226,
+      "credits_delta": -2,
+      "before_spent": 5922,
+      "after_spent": 5924,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6376,
+      "before_hp": 136,
+      "after_hp": 144,
+      "hp_delta": 8,
+      "before_credits": 226,
+      "after_credits": 224,
+      "credits_delta": -2,
+      "before_spent": 5924,
+      "after_spent": 5926,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6391,
+      "before_hp": 144,
+      "after_hp": 152,
+      "hp_delta": 8,
+      "before_credits": 224,
+      "after_credits": 222,
+      "credits_delta": -2,
+      "before_spent": 5926,
+      "after_spent": 5928,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6406,
+      "before_hp": 152,
+      "after_hp": 160,
+      "hp_delta": 8,
+      "before_credits": 222,
+      "after_credits": 220,
+      "credits_delta": -2,
+      "before_spent": 5928,
+      "after_spent": 5930,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6421,
+      "before_hp": 160,
+      "after_hp": 168,
+      "hp_delta": 8,
+      "before_credits": 220,
+      "after_credits": 218,
+      "credits_delta": -2,
+      "before_spent": 5930,
+      "after_spent": 5932,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6436,
+      "before_hp": 168,
+      "after_hp": 176,
+      "hp_delta": 8,
+      "before_credits": 218,
+      "after_credits": 216,
+      "credits_delta": -2,
+      "before_spent": 5932,
+      "after_spent": 5934,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6451,
+      "before_hp": 176,
+      "after_hp": 184,
+      "hp_delta": 8,
+      "before_credits": 216,
+      "after_credits": 214,
+      "credits_delta": -2,
+      "before_spent": 5934,
+      "after_spent": 5936,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6466,
+      "before_hp": 184,
+      "after_hp": 192,
+      "hp_delta": 8,
+      "before_credits": 214,
+      "after_credits": 212,
+      "credits_delta": -2,
+      "before_spent": 5936,
+      "after_spent": 5938,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6481,
+      "before_hp": 192,
+      "after_hp": 200,
+      "hp_delta": 8,
+      "before_credits": 212,
+      "after_credits": 210,
+      "credits_delta": -2,
+      "before_spent": 5938,
+      "after_spent": 5940,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6496,
+      "before_hp": 200,
+      "after_hp": 208,
+      "hp_delta": 8,
+      "before_credits": 210,
+      "after_credits": 208,
+      "credits_delta": -2,
+      "before_spent": 5940,
+      "after_spent": 5942,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6511,
+      "before_hp": 208,
+      "after_hp": 216,
+      "hp_delta": 8,
+      "before_credits": 208,
+      "after_credits": 206,
+      "credits_delta": -2,
+      "before_spent": 5942,
+      "after_spent": 5944,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6526,
+      "before_hp": 216,
+      "after_hp": 224,
+      "hp_delta": 8,
+      "before_credits": 206,
+      "after_credits": 204,
+      "credits_delta": -2,
+      "before_spent": 5944,
+      "after_spent": 5946,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6541,
+      "before_hp": 224,
+      "after_hp": 232,
+      "hp_delta": 8,
+      "before_credits": 204,
+      "after_credits": 202,
+      "credits_delta": -2,
+      "before_spent": 5946,
+      "after_spent": 5948,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6556,
+      "before_hp": 232,
+      "after_hp": 240,
+      "hp_delta": 8,
+      "before_credits": 202,
+      "after_credits": 200,
+      "credits_delta": -2,
+      "before_spent": 5948,
+      "after_spent": 5950,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6571,
+      "before_hp": 240,
+      "after_hp": 248,
+      "hp_delta": 8,
+      "before_credits": 200,
+      "after_credits": 198,
+      "credits_delta": -2,
+      "before_spent": 5950,
+      "after_spent": 5952,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6586,
+      "before_hp": 248,
+      "after_hp": 256,
+      "hp_delta": 8,
+      "before_credits": 198,
+      "after_credits": 196,
+      "credits_delta": -2,
+      "before_spent": 5952,
+      "after_spent": 5954,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6601,
+      "before_hp": 256,
+      "after_hp": 264,
+      "hp_delta": 8,
+      "before_credits": 196,
+      "after_credits": 194,
+      "credits_delta": -2,
+      "before_spent": 5954,
+      "after_spent": 5956,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6616,
+      "before_hp": 264,
+      "after_hp": 272,
+      "hp_delta": 8,
+      "before_credits": 194,
+      "after_credits": 192,
+      "credits_delta": -2,
+      "before_spent": 5956,
+      "after_spent": 5958,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6631,
+      "before_hp": 272,
+      "after_hp": 280,
+      "hp_delta": 8,
+      "before_credits": 192,
+      "after_credits": 190,
+      "credits_delta": -2,
+      "before_spent": 5958,
+      "after_spent": 5960,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6646,
+      "before_hp": 280,
+      "after_hp": 288,
+      "hp_delta": 8,
+      "before_credits": 190,
+      "after_credits": 188,
+      "credits_delta": -2,
+      "before_spent": 5960,
+      "after_spent": 5962,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6661,
+      "before_hp": 288,
+      "after_hp": 296,
+      "hp_delta": 8,
+      "before_credits": 188,
+      "after_credits": 186,
+      "credits_delta": -2,
+      "before_spent": 5962,
+      "after_spent": 5964,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6676,
+      "before_hp": 296,
+      "after_hp": 304,
+      "hp_delta": 8,
+      "before_credits": 186,
+      "after_credits": 184,
+      "credits_delta": -2,
+      "before_spent": 5964,
+      "after_spent": 5966,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6691,
+      "before_hp": 304,
+      "after_hp": 312,
+      "hp_delta": 8,
+      "before_credits": 184,
+      "after_credits": 182,
+      "credits_delta": -2,
+      "before_spent": 5966,
+      "after_spent": 5968,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6706,
+      "before_hp": 312,
+      "after_hp": 320,
+      "hp_delta": 8,
+      "before_credits": 182,
+      "after_credits": 180,
+      "credits_delta": -2,
+      "before_spent": 5968,
+      "after_spent": 5970,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6721,
+      "before_hp": 320,
+      "after_hp": 328,
+      "hp_delta": 8,
+      "before_credits": 180,
+      "after_credits": 178,
+      "credits_delta": -2,
+      "before_spent": 5970,
+      "after_spent": 5972,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6736,
+      "before_hp": 328,
+      "after_hp": 336,
+      "hp_delta": 8,
+      "before_credits": 178,
+      "after_credits": 176,
+      "credits_delta": -2,
+      "before_spent": 5972,
+      "after_spent": 5974,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6751,
+      "before_hp": 336,
+      "after_hp": 344,
+      "hp_delta": 8,
+      "before_credits": 176,
+      "after_credits": 174,
+      "credits_delta": -2,
+      "before_spent": 5974,
+      "after_spent": 5976,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6766,
+      "before_hp": 344,
+      "after_hp": 352,
+      "hp_delta": 8,
+      "before_credits": 174,
+      "after_credits": 172,
+      "credits_delta": -2,
+      "before_spent": 5976,
+      "after_spent": 5978,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6781,
+      "before_hp": 352,
+      "after_hp": 360,
+      "hp_delta": 8,
+      "before_credits": 172,
+      "after_credits": 170,
+      "credits_delta": -2,
+      "before_spent": 5978,
+      "after_spent": 5980,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6796,
+      "before_hp": 360,
+      "after_hp": 368,
+      "hp_delta": 8,
+      "before_credits": 170,
+      "after_credits": 168,
+      "credits_delta": -2,
+      "before_spent": 5980,
+      "after_spent": 5982,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6811,
+      "before_hp": 368,
+      "after_hp": 376,
+      "hp_delta": 8,
+      "before_credits": 168,
+      "after_credits": 166,
+      "credits_delta": -2,
+      "before_spent": 5982,
+      "after_spent": 5984,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6826,
+      "before_hp": 376,
+      "after_hp": 384,
+      "hp_delta": 8,
+      "before_credits": 166,
+      "after_credits": 164,
+      "credits_delta": -2,
+      "before_spent": 5984,
+      "after_spent": 5986,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6841,
+      "before_hp": 384,
+      "after_hp": 392,
+      "hp_delta": 8,
+      "before_credits": 164,
+      "after_credits": 162,
+      "credits_delta": -2,
+      "before_spent": 5986,
+      "after_spent": 5988,
+      "spent_delta": 2
+    },
+    {
+      "frame": 6856,
+      "before_hp": 392,
+      "after_hp": 400,
+      "hp_delta": 8,
+      "before_credits": 162,
+      "after_credits": 160,
+      "credits_delta": -2,
+      "before_spent": 5988,
+      "after_spent": 5990,
+      "spent_delta": 2
+    }
+  ],
+  "native_context": {
+    "current_frozen_payload": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/tools/spatial_oracle/building_repair.depot_service.json",
+      "byte_length": 14688721,
+      "sha256": "76614921afb7ac9e87c94c7644588a69aa03b4f1069de911982ed08bbfd19172"
+    },
+    "corrected_power_readiness_controls": "repair_fallback:22 original native controls; separately tested and owned by root",
+    "runtime_boundary_limit": "Projected equality does not establish equality of direct locomotor power or alternate fallback/no-contact paths; those have separate native and Rust controls.",
+    "arrival_hypothesis_resolution": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/arrival-hypothesis-resolution-fad4b19fc.json",
+      "byte_length": 6501,
+      "sha256": "0cfbd808909994268bdf9b1e5a6727499686e4c9b8d72ebe2eeb60dd73f4bd6f"
+    },
+    "historical_false_hypothesis_trace": {
+      "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/fresh-service6900.arrival-trace.json",
+      "byte_length": 176343,
+      "sha256": "c26a3dc23119d65f55dbc4ca6e5b7d278ca8a0865c331435ec521e53a7803c15"
+    },
+    "arrival_status": "Sleep-preservation hypothesis remains rejected by original native execution; no gameplay patch",
+    "arrival_native_control": "arrival_terminal.stock_enter_terminal_untethered",
+    "native_original_text_sha256": "4cd5557a7490debc493ff965afc4483d8d2f1065f434f6b665cbb8fc4835b0cc"
+  },
+  "retained_previous_summary": {
+    "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/depot-service-observer/final-service6900-sale6040.summary.json",
+    "byte_length": 20348,
+    "sha256": "7809f8a08bf169f58dc06404ae4d8276e9280c8b4f102681a71cfee5a833a291"
+  },
+  "inspection_limits": [
+    "Hidden observer uses ordinary commands and retail production loader, exact stepping and Metal readback; health, credits, contacts and power were never administratively set.",
+    "Runtime radio packets, direct locomotor power, NavComAux, pending-entry and unit guard-ready latch are unprojected. Contact/tether, mission, nav, HP, wallet and building ready/last-operational are projected.",
+    "The projected building Stage is the shared native Stage; it does not provide an independently named repair-progress field.",
+    "All complete projected observations match the previous final release. The corrected fallback power and no-contact readiness alternate paths have separately bounded native/Rust controls, not direct coverage from this success scenario.",
+    "Original native terminal controls use a prepared scene and do not certify earlier track occupation or whole-frame native scheduling.",
+    "#937 multi-unit foundation parking/queue admission and other unit/depot paths are excluded.",
+    "No native GPU/pixel, audio/menu/exit or whole-engine equivalence claim."
+  ],
+  "historical_runs_and_receipts_preserved": true,
+  "tracked_artifact_edits": "None; root owns publication profiles/reports/receipts/bundle",
+  "first_observed_frames": {
+    "SMCV": 0,
+    "shooter_HTNK": 0,
+    "repair_target_HTNK": 0,
+    "initial_E2": 0,
+    "NACNST": 14,
+    "NAPOWR": 71,
+    "NAHAND": 721,
+    "NAREFN": 1321,
+    "HARV": 2903,
+    "NAWEAP": 2931,
+    "NADEPT": 4481,
+    "sale_survivor_E2": 6043
+  },
+  "first_active_definition": "active=true and in_limbo=false; first_observed also includes factory/limbo objects"
+}

@@ -165,9 +165,25 @@ pub(crate) fn building_dock_cell(
     rules: &crate::rules::ruleset::RuleSet,
     interner: &crate::sim::intern::StringInterner,
 ) -> Option<(u16, u16)> {
+    let coord =
+        building_dock_coordinate(entities, building_id, requester, terrain, rules, interner)?;
+    let cell = |value: i32| u16::try_from(value / 256).ok();
+    Some((cell(coord.x)?, cell(coord.y)?))
+}
+
+/// Live GetDockCoord447B20 output shared by cell projection and Building
+/// service distance447E00. This remains the one retail-offset coordinate owner.
+pub(crate) fn building_dock_coordinate(
+    entities: &EntityStore,
+    building_id: u64,
+    requester: Option<u64>,
+    terrain: Option<&ResolvedTerrainGrid>,
+    rules: &crate::rules::ruleset::RuleSet,
+    interner: &crate::sim::intern::StringInterner,
+) -> Option<DriveCoord> {
     let building = entities.get(building_id)?;
     let object = rules.object(interner.resolve(building.type_ref()))?;
-    let coord = super::building_coordinate::dock_coordinate(
+    super::building_coordinate::dock_coordinate(
         super::ground_pose::object_location(building, terrain),
         super::ground_pose::object_get_coords(building, terrain),
         object,
@@ -181,9 +197,7 @@ pub(crate) fn building_dock_cell(
             Ok(super::ground_pose::object_get_coords(entity, terrain))
         },
     )
-    .ok()?;
-    let cell = |value: i32| u16::try_from(value / 256).ok();
-    Some((cell(coord.x)?, cell(coord.y)?))
+    .ok()
 }
 
 /// Native pointer-comparison gates use the receiver identity. The stored tag

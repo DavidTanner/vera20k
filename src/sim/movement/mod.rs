@@ -91,7 +91,9 @@ mod movement_path;
 mod movement_step;
 pub(crate) mod movement_tick;
 mod navcom;
-pub(crate) use navcom::{building_dock_cell, nav_target_coordinate, set_walk_destination_coord};
+pub(crate) use navcom::{
+    building_dock_cell, building_dock_coordinate, nav_target_coordinate, set_walk_destination_coord,
+};
 #[cfg(test)]
 pub(crate) mod fresh_oracle_seam;
 mod path_markers;
@@ -142,20 +144,20 @@ pub mod turret;
 
 pub use facing_class::FacingClass;
 
+pub(crate) use drive_locomotion::drive_do_turn;
 #[cfg(test)]
 pub(crate) use foot_speed::owner_current_speed_from_fraction;
-pub(crate) use foot_speed::{SpeedRules, order_speed, owner_current_speed};
 #[cfg(test)]
 pub(crate) use foot_speed::owner_speed_bonus;
-pub(crate) use drive_locomotion::drive_do_turn;
+pub(crate) use foot_speed::{SpeedRules, order_speed, owner_current_speed};
 
 pub use movement_commands::DestinationTiming;
-#[cfg(test)]
-pub(crate) use movement_commands::{issue_move_command, issue_move_command_with_layered};
 pub(crate) use movement_commands::{
     can_accept_destination, issue_move_command_with_destination, prepare_walk_destination,
     retain_committed_movement,
 };
+#[cfg(test)]
+pub(crate) use movement_commands::{issue_move_command, issue_move_command_with_layered};
 #[cfg(test)]
 pub(crate) use movement_path::{
     path_search_used_zone_grid_marker, reset_path_search_used_zone_grid_marker,
