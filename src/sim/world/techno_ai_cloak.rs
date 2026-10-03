@@ -8,6 +8,7 @@ use crate::sim::mission::concrete_effects::{
     assign_target_commits, represented_assign_target_admitted,
 };
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::util::direction_tables::CELL_DELTAS;
 
 use super::Simulation;
 
@@ -379,20 +380,6 @@ fn detach_targeters_on_cloak(sim: &mut Simulation, cloaker_id: u64, rules: &Rule
     sim.detach_all_pointer_expired(cloaker_id, rules);
 }
 
-/// Clockwise-from-north neighbour offsets, native `g_DirectionOffsets`
-/// (0x0089F688), indices 0..7 — the exact order `FootClass::PerCellProcess`
-/// walks its eight neighbours.
-const NEIGHBOUR_OFFSETS: [(i32, i32); 8] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
-
 /// `FootClass::PerCellProcess @ 0x004D85D0`, the cell-enter (`param_2 == 2`)
 /// arm at `0x004D8802..0x004D8829` — the ONLY consumer of `Sensors=`
 /// (`TechnoTypeClass+0xC9D`) that is live in stock YR:
@@ -440,7 +427,7 @@ pub(crate) fn uncloak_on_sensor_neighbour_after_cell_entry(
     let (rx, ry) = (i32::from(mover.position.rx), i32::from(mover.position.ry));
 
     let mut triggered = false;
-    for (dx, dy) in NEIGHBOUR_OFFSETS {
+    for (dx, dy) in CELL_DELTAS {
         let (nx, ny) = (rx + dx, ry + dy);
         if nx < 0 || ny < 0 {
             continue;

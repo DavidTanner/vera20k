@@ -1,7 +1,8 @@
 //! Facing / direction lookup-table substrate — pure, read-only, deterministic
 //! services for the gamemd "which-way / where-next" table family (cell-delta,
 //! lepton-delta, facing↔direction quantization, DRAGON 32-way frame). Tables are
-//! gamemd-exact, proven by exact-equality tests; no shadow→invert.
+//! The compass values are checked against original initializer execution;
+//! other table families document their own evidence and coverage.
 //!
 //! Ownership (F14): the 8-way vocabulary and 8-bit quantization are OWNED by
 //! `util::direction` and re-exported/delegated here (`CELL_DELTAS`,
@@ -9,9 +10,6 @@
 //! forms, lepton deltas, DRAGON frames, and muzzle rotation. Facing→movement
 //! vectors (sin/cos) live in `util::facing_table`. One authority per
 //! conversion — new helpers must delegate, not re-derive.
-//!
-//! Foundation slice (S1–S4): canonical sim-facing tables. Drive-track tables (S5)
-//! and consumer cutovers (S6+) are later slices.
 //!
 //! ## Dependency rules
 //! - Part of util/ (map-, rules-, and sim-independent). No render/ui/audio/net.

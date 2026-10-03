@@ -34,24 +34,9 @@ use crate::sim::passenger::{
 };
 use crate::sim::pathfinding::passability::LandType;
 use crate::sim::world::{GroundMove, SimSoundEvent, Simulation};
+use crate::util::direction_tables::CELL_DELTAS;
 use crate::util::fixed_math::SIM_ZERO;
 use crate::util::lepton::CELL_CENTER_LEPTON;
-
-/// `g_DirectionOffsets @ 0x0089F688`: eight `(dx, dy)` cell deltas indexed by
-/// octant (facing >> 13). Index 6 is `g_dwDirectionOffset_W @ 0x0089F6A0` =
-/// `(-1, 0)`, the same table the refinery-unload branch of the same handler
-/// uses to find the refinery west of the dock pad; facing East (`0x4000`,
-/// octant 2) is `+x`.
-const OCTANT_OFFSETS: [(i32, i32); 8] = [
-    (0, -1),  // 0 N
-    (1, -1),  // 1 NE
-    (1, 0),   // 2 E
-    (1, 1),   // 3 SE
-    (0, 1),   // 4 S
-    (-1, 1),  // 5 SW
-    (-1, 0),  // 6 W
-    (-1, -1), // 7 NW
-];
 
 /// `DAT_008458D0`: `[4, 5, 6, 7, 0, 1, 2, 3]` — the octant the transport
 /// turns to so that its REAR faces the chosen exit cell.
@@ -222,7 +207,7 @@ fn pick_exit_octant(sim: &Simulation, entity: &GameEntity) -> Option<((u16, u16)
     let mut best_score: i32 = -1;
     let mut best_octant: usize = 0;
     for octant in 0..8usize {
-        let open = cell_from(base, OCTANT_OFFSETS[octant])
+        let open = cell_from(base, CELL_DELTAS[octant])
             .is_some_and(|cell| octant_cell_open(sim, cell, owner));
         let mut score: i32 = if open { 0x80 } else { -0x80 };
         let dir8 = i32::from(((octant as u32) << 5) as u8 as i8);
@@ -238,7 +223,7 @@ fn pick_exit_octant(sim: &Simulation, entity: &GameEntity) -> Option<((u16, u16)
     if best_score <= 0 {
         return None;
     }
-    let cell = cell_from(base, OCTANT_OFFSETS[best_octant])?;
+    let cell = cell_from(base, CELL_DELTAS[best_octant])?;
     Some((cell, opposite_octant(best_octant)))
 }
 
@@ -476,9 +461,8 @@ fn eject_head_passenger(sim: &mut Simulation, rules: &RuleSet, transport_id: u64
             let mut placement: Option<((u16, u16), Option<(u16, u16)>, usize)> = None;
             while i < 8 {
                 let octant = (start + i) & 7;
-                let exit_cell = cell_from(base, OCTANT_OFFSETS[octant]);
-                let beyond_cell =
-                    exit_cell.and_then(|cell| cell_from(cell, OCTANT_OFFSETS[octant]));
+                let exit_cell = cell_from(base, CELL_DELTAS[octant]);
+                let beyond_cell = exit_cell.and_then(|cell| cell_from(cell, CELL_DELTAS[octant]));
                 let (adjacent_ok, beyond_ok) = match (exit_cell, beyond_cell) {
                     (Some(exit), Some(beyond)) => {
                         let passenger = sim
@@ -943,7 +927,7 @@ fn eject_from_aircraft(
             let mut index = 8usize;
             let mut scan_cell: Option<(u16, u16)> = None;
             for (i, &octant) in AIRCRAFT_EXIT_SCAN[..8].iter().enumerate() {
-                let candidate = cell_from(cell, OCTANT_OFFSETS[octant & 7]);
+                let candidate = cell_from(cell, CELL_DELTAS[octant & 7]);
                 scan_cell = candidate;
                 let passenger = sim
                     .substrate

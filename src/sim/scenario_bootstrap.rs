@@ -30,6 +30,7 @@ use crate::sim::world::{PlacementEvidence, Simulation};
 use crate::skirmish_launch::{
     LaunchCountry, LaunchStartPosition, LaunchTeam, PreFillHouseRoster, SkirmishLaunchSession,
 };
+use crate::util::direction_tables::CELL_DELTAS;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53, sqrt_approx_f32};
 
 #[derive(Debug, Clone, Copy)]
@@ -1709,16 +1710,6 @@ pub(crate) fn launch_alliance_map(
 pub(crate) const STARTING_MCV_FACING: u8 = 64;
 pub(crate) const STARTING_MCV_FALLBACK_MAX_RADIUS: i32 = 31;
 pub(crate) const STARTING_EXTRA_UNIT_FALLBACK_START_RADIUS: i32 = 4;
-pub(crate) const STARTING_MCV_FALLBACK_DIRECTIONS: &[(i32, i32)] = &[
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
 
 fn place_starting_mcv(
     sim: &mut Simulation,
@@ -1792,7 +1783,7 @@ fn place_starting_object_near_base(
         for jitter_pass in 0..2 {
             for offset in 0..8 {
                 let direction = (start_direction + offset) & 7;
-                let (dx, dy) = STARTING_MCV_FALLBACK_DIRECTIONS[direction];
+                let (dx, dy) = CELL_DELTAS[direction];
                 let (mut rx, mut ry) = bounds.clamp(
                     i32::from(base_rx) + dx * radius,
                     i32::from(base_ry) + dy * radius,

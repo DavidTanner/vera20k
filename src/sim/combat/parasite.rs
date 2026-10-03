@@ -65,6 +65,7 @@ use crate::sim::components::DriveCoord;
 use crate::sim::movement::ground_pose;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
+use crate::util::direction_tables::CELL_DELTAS;
 
 /// Foot+698 launch lock: `TechnoClass::Fire @ 0x006FF81F` stores
 /// `Frame + 0x14`; GetFireError `0x006FCAE1` refuses parasite shots before it.
@@ -165,18 +166,6 @@ fn dir8(raw: u16) -> usize {
 fn dir_type(raw: u16) -> u8 {
     ((((u32::from(raw) >> 7) + 1) >> 1) & 0xFF) as u8
 }
-
-/// `MapCoord_StepByDir` offsets, `g_DirectionOffsets @ 0x0089F688`.
-const ADJACENT: [(i16, i16); 8] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
 
 fn cell_centre(cell: (i16, i16)) -> DriveCoord {
     DriveCoord {
@@ -508,10 +497,10 @@ impl Simulation {
             return;
         }
         let requested = if naval {
-            let (dx, dy) = ADJACENT[dir8(released)];
+            let (dx, dy) = CELL_DELTAS[dir8(released)];
             (
-                victim_cell.0.wrapping_add(dx),
-                victim_cell.1.wrapping_add(dy),
+                victim_cell.0.wrapping_add(dx as i16),
+                victim_cell.1.wrapping_add(dy as i16),
             )
         } else {
             victim_cell
@@ -685,10 +674,10 @@ impl Simulation {
             victim_entity.position.rx as i16,
             victim_entity.position.ry as i16,
         );
-        let (dx, dy) = ADJACENT[dir8(raw)];
+        let (dx, dy) = CELL_DELTAS[dir8(raw)];
         let adjacent = (
-            victim_cell.0.wrapping_add(dx),
-            victim_cell.1.wrapping_add(dy),
+            victim_cell.0.wrapping_add(dx as i16),
+            victim_cell.1.wrapping_add(dy as i16),
         );
         let naval_owner = self
             .substrate

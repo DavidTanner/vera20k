@@ -8,6 +8,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
+use crate::util::direction_tables::CELL_DELTAS;
 use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 
 #[cfg(test)]
@@ -1776,7 +1777,7 @@ fn harvester_guard_override_requeues_harvest(sim: &Simulation, id: u64, rules: &
         return false;
     }
     let (rx, ry) = (i32::from(entity.position.rx), i32::from(entity.position.ry));
-    for (dx, dy) in NEIGHBOUR_8 {
+    for (dx, dy) in CELL_DELTAS {
         let (Ok(cx), Ok(cy)) = (u16::try_from(rx + dx), u16::try_from(ry + dy)) else {
             continue;
         };
@@ -1802,19 +1803,6 @@ fn harvester_guard_override_requeues_harvest(sim: &Simulation, id: u64, rules: &
     // The active locomotor's `Is_Moving`; on Teleport the Relocate tick only.
     miner.is_full() && crate::sim::movement::motion_query::is_moving(entity) == Some(true)
 }
-
-/// `MapCoord_StepByDir_GetCell(dir)` for dir 0..8 — the eight neighbours in
-/// facing order starting north, clockwise. Only membership matters here.
-const NEIGHBOUR_8: [(i32, i32); 8] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
 
 /// The un-overridden `MissionClass` handler's return value, in frames.
 ///

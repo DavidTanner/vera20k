@@ -4,7 +4,7 @@
 //! groups run in fixed order — **Rough → Sand → Green → Pave** — on every cell.
 //! A cell whose tile is a group's base *or* an existing LAT variant gets a 4-bit
 //! mask over its four **cardinal** neighbours (bit 0 = N, 1 = E, 2 = S, 3 = W,
-//! from `DIRECTION_OFFSETS[0, 2, 4, 6]`); a neighbour sets its bit unless it is
+//! from `CELL_DELTAS[0, 2, 4, 6]`); a neighbour sets its bit unless it is
 //! in the same group (base or LAT range) or in one of the group's hardcoded
 //! exemption ranges. Mask 0 → the base tile; otherwise `lat_base + mask` (a
 //! variant in `1..=15`). Off-band neighbours read as the map-edge sentinel
@@ -24,7 +24,7 @@ use crate::map::rmg::tiles::TileIds;
 
 /// LAT variant range length past the base: `[lat_base, lat_base + 0xF]`.
 const LAT_LEN: i32 = 0xF;
-/// The four cardinal directions as `DIRECTION_OFFSETS` indices (N, E, S, W).
+/// The four cardinal directions as `CELL_DELTAS` indices (N, E, S, W).
 /// Bit `i` of the mask comes from `CARDINAL_DIRS[i]`.
 const CARDINAL_DIRS: [usize; 4] = [0, 2, 4, 6];
 /// Off-band / off-map neighbour tile (`Get_CellClass(off_map)` → tile 0).

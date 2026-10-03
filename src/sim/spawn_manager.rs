@@ -58,6 +58,7 @@ use crate::sim::combat::TargetKind;
 use crate::sim::intern::InternedId;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::{Simulation, UninitContext};
+use crate::util::direction_tables::CELL_DELTAS;
 
 /// Frames the manager waits before its very first AI pass
 /// (`UpdateTimer.Duration = 0x14` at construction).
@@ -1183,17 +1184,7 @@ fn hold_child_over_owner(
 
 /// The eight-direction cell step native uses for the owner-relative hold cell.
 fn adjacent_cell(rx: u16, ry: u16, direction: u8) -> (u16, u16) {
-    const OFFSETS: [(i32, i32); 8] = [
-        (0, -1),
-        (1, -1),
-        (1, 0),
-        (1, 1),
-        (0, 1),
-        (-1, 1),
-        (-1, 0),
-        (-1, -1),
-    ];
-    let (dx, dy) = OFFSETS[(direction & 7) as usize];
+    let (dx, dy) = CELL_DELTAS[(direction & 7) as usize];
     (
         (rx as i32 + dx).max(0) as u16,
         (ry as i32 + dy).max(0) as u16,

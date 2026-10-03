@@ -7,7 +7,7 @@
     1,
     33621247
   ],
-  "scope": "Original Drive/Ship fresh, second-node and chain coordinate-producing expressions",
+  "scope": "Original Cell/Lepton compass initializer controls and Drive/Ship fresh, second-node and chain coordinate-producing expressions",
   "assumptions": [
     "All six interior blocks use supplied live register/stack frames; movement admission and final head/selector stores are excluded",
     "Original 49F3A0 initializer writes the direction table before each case; no direction deltas are supplied",
@@ -15,11 +15,20 @@
     "Second-node source is supplied at the post-PUSH1/PUSH0 frame offsets; no intervening first-node admission is executed",
     "Chain source is the prior retained head, with distinct supplied current Foot XYZ; callbacks and complete chaining are excluded",
     "Signed/overflow/NullCoord inputs bound scalar behavior, not active stock-map reachability",
-    "288 cases cover two active-retail families, three expressions, six supplied poses and all eight initialized directions"
+    "288 cases cover two active-retail families, three expressions, six supplied poses and all eight initialized directions",
+    "Four controls compose fresh OriginalCoordinates fixtures; original Lepton startup precedes each selected Cell49F2F0 or Lepton49F3A0 initializer",
+    "Only the selected eight-pair table is A5-poisoned; all decoded original instructions including true RET49F39B or RET49F413 are required",
+    "Inherited0000 and supplied0E7F FPCW are retained; ESP advances exactly4 within the existing 100-instruction/10-second bound",
+    "Initializer controls preserve original .text, the mapped image outside the selected table, and 16-byte table guards",
+    "Index8 is observed as an unwritten memory boundary, not a ninth direction or an executed native accessor",
+    "Initializer controls establish table bytes and boundaries; full CRT startup, consumer arithmetic and complete movement are outside their coverage"
   ],
   "substitutions": [],
   "entry_points": {
     "direction_initializer": "0x0049F3A0",
+    "cell_initializer": "0x0049F2F0",
+    "cell_true_ret": "0x0049F39B",
+    "lepton_true_ret": "0x0049F413",
     "coordinate_copy_constructor": "0x0041C230",
     "drive_fresh": "0x004B32AF",
     "ship_fresh": "0x006A28FF",
@@ -28,5 +37,40 @@
     "drive_chain": "0x004B1BC4",
     "ship_chain": "0x006A120A"
   },
-  "payload_sha256": "9ddfec39c92e33a6ef76814da6731278ae03e16d7f0a68574b9a34062510583a"
+  "capstone_version": "5.0.7",
+  "source_normalized_lf_sha256": {
+    "tools/spatial_oracle/locomotor_head_coordinates.py": "3ff84a6dc50edc412b114685e922fe50dfc5192f26d647a8f689446e2d3d9b22",
+    "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
+    "tools/native_inspect.py": "12038060971ec7a41da24e13a9851e23858fba4542c6e9a9f9ca17f3a8252087",
+    "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+    "src/util/direction.rs": "2c813919808080681b1ba3034043aec3d2167d4d8482f4b568d96db3760ea39f",
+    "src/util/direction_tables/mod.rs": "92ace38df3b09455729321ea5495574db7af340dee01556303f5e2ef7cc49091",
+    "src/util/direction_tables/cell.rs": "17e0dae814a6a59bc904957853ca531ecec2e251ca31050ffe58a1c02a34a188",
+    "src/util/direction_tables/lepton.rs": "7a397063e66296bcdfa54f0a1f816eda705a5f6b79e7c526e4d28c264bf40a02",
+    "src/util/lepton.rs": "205f72caab50942fe3c355e9e07dedfa6c09c5106f84daaa3db708f0d2f1dc50",
+    "src/util/mod.rs": "44e4cfe212f81af112c01d96aaf0845ca6c5c33e3c29073e4970e1f3ac1174bb",
+    "src/map/authored_overlay.rs": "c7ae234082cd439f4e951fb21657addb94311f3ce09c8130cd715578d2fc8f35",
+    "src/map/rmg/grid.rs": "16299867533b94411a2cd3067b8694c05503e8dfa4b5bc23f4d5e3271b76927d",
+    "src/map/rmg/mod.rs": "9c89b7204cf2a308cf329aef87976ac1ddac0be13abd39c76a2aaf97d6c904ff",
+    "src/map/rmg/phases/lake.rs": "ab260437442d615cbc35cbefb7430c4f83a727904e58d6394c2e4bc627d82e24",
+    "src/map/rmg/phases/lat_fixup.rs": "de9ea45372bf94a5f4cc42b8efd57b82a5764a642de16dd22c5cdd1f37643187",
+    "src/sim/movement/jumpjet_flight.rs": "c658d3c16549b9a6794ff386ccc531e0e89c5e28bee6c6f5d0a181347995d2e9",
+    "src/sim/transport_unload.rs": "f3fb796d47e692bfef354e4cfd35137b9e1d49255354e8f99523881e5c5aaefc",
+    "src/sim/combat/parasite.rs": "ed5913e1f223c558a126cff46c6942fe471ec16e473491f04f357a3a34084560",
+    "src/sim/world/techno_ai_cloak.rs": "5f0c11ef713cdfe2a2d84f17afabb0d5ef5a256a5679a892733bf4ca38beabac",
+    "src/sim/spawn_manager.rs": "95b1f8e6d93eed8afc29aa0ea1931d4e70724de986ab7369eae741d12116721f",
+    "src/sim/world/world_orders.rs": "adb5bde12c3c686af3fd590266f0a00bed7be08f1185f49d16f0919080bf5c13",
+    "src/sim/cell_rect.rs": "711e9dbfdbb2e70fc2891a60b2034129d0368654f28eb61fff7a03faeb905fec",
+    "src/sim/world/techno_ai/mission_handlers.rs": "2e0a2ab2fd23e1bdc9cfe0426887371d80a9bae4c7feaa8783f102c437a2ea75",
+    "src/sim/miner/miner_system.rs": "02de13e0536e52f6252b607867973a3e450dec20c6786713f4a5b851ad445424",
+    "src/sim/overlay_grid.rs": "a201b15558e8613f10d4d64ab7be93980b405fb8a84f8992787001a96c0654db",
+    "src/sim/scenario_bootstrap.rs": "56aafe8c6f554a4bbd43ff37836fb219ed6e54353b8a5479366ae40b63900ad7",
+    "src/sim/pathfinding/core.rs": "66ef97899a72a277c7894fe4dbeb6b82c2a8bab2b8550012947598a5046ce819",
+    "src/sim/pathfinding/zone_build.rs": "05d3483fcccf2f9e2596de78cb9aefee68a1c45e072e7de3544eb71369ec384c",
+    "src/sim/pathfinding/zone_incremental.rs": "f3675f5d1b82589e1d53037dda666b39fabbf27e59c9d397f7883764c908a7b0",
+    "src/sim/transport_unload/tests.rs": "dbc7be65ec6d6c9a04c37d5ecaf2d138fb269d8bd79fdef7bef891b7d717361e",
+    "src/sim/pathfinding/base_zone_repair_native_tests.rs": "aa8a2ed0ef028f85a1c9fca3920d8268f9d646d924e068457cd5b945d75b0a19",
+    "src/app/frontend/skirmish.rs": "11d2a9586c22cf0f20817130cfe405d16fd1342e75aa7049ed7743add1e5d7e3"
+  },
+  "payload_sha256": "1eefc8ff72d7c353895cb8647043f622d96137df43d52066f29e4582e621365e"
 }

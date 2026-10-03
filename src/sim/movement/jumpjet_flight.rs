@@ -64,6 +64,7 @@
 use crate::map::retail_trig::{AtanTable, TrigTable};
 use crate::rules::jumpjet_params::JumpjetParams;
 use crate::sim::movement::facing_class::FacingClass;
+use crate::util::direction_tables::{CELL_DELTAS, LEPTON_DELTAS};
 use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS};
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, X87Ordering, X87Value};
 
@@ -88,18 +89,6 @@ const ONE_AND_A_HALF: u64 = 0x3FF8_0000_0000_0000;
 const THREE_QUARTERS: u64 = 0x3FE8_0000_0000_0000;
 /// `0x007E1718`: 1.0.
 const ONE: u64 = 0x3FF0_0000_0000_0000;
-/// `g_DirectionDelta` at `0x0089F6D8`, filled by `0x0049F3A0`: north first,
-/// clockwise, one cell in leptons.
-const DIRECTION_DELTA: [(i32, i32); 8] = [
-    (0, -256),
-    (256, -256),
-    (256, 0),
-    (256, 256),
-    (0, 256),
-    (-256, 256),
-    (-256, 0),
-    (-256, -256),
-];
 
 /// Native state byte `+0x50`.
 pub(crate) const STATE_GROUND: i32 = 0;
@@ -423,7 +412,7 @@ fn reference_height(
     if ordering(double(flight.current_speed_bits), zero()) != X87Ordering::Greater {
         return here;
     }
-    let (dx, dy) = DIRECTION_DELTA[facing_direction(flight.facing.current(host.binary_frame()))];
+    let (dx, dy) = LEPTON_DELTAS[facing_direction(flight.facing.current(host.binary_frame()))];
     let ahead_xy = [location[0].wrapping_add(dx), location[1].wrapping_add(dy)];
     let ahead = host.cell_top_height(ahead_xy);
     if host.cell_high_bridge(ahead_xy) {
@@ -805,28 +794,14 @@ fn desired_facing(destination: [i32; 3], location: [i32; 3], host: &impl Jumpjet
     )) as u16
 }
 
-/// The packed adjacent-cell offsets at `0x0089F688` that
-/// `MapCoord_StepByDir_GetCell @ 0x00481810` adds to a cell
-/// (`[EDX*4 + 0x89F688]` at `0x0048182D`).
-///
-/// This is a *different* table from [`DIRECTION_DELTA`]: the CRT initializer
-/// `0x0049F2F0` fills these eight 4-byte entries, while `0x0049F3A0` fills the
-/// 8-byte lepton deltas. Their values agree — north first, clockwise — which
-/// `0x0049F2F0` builds from `DX = 0`, `CX = -1` and `AX = 1`.
-const ADJACENT_CELL_DELTA: [(i16, i16); 8] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
-
+/// `MapCoord_StepByDir_GetCell @ 0x00481810` adds the signed-word entries
+/// at `0x0089F688`; keep its word wrapping when reading the shared cell table.
 fn step_cell(cell: (i16, i16), direction: u32) -> (i16, i16) {
-    let (dx, dy) = ADJACENT_CELL_DELTA[(direction & 7) as usize];
-    (cell.0.wrapping_add(dx), cell.1.wrapping_add(dy))
+    let (dx, dy) = CELL_DELTAS[(direction & 7) as usize];
+    (
+        cell.0.wrapping_add(dx as i16),
+        cell.1.wrapping_add(dy as i16),
+    )
 }
 
 /// The air-slot bookkeeping States 1, 3 and 4 share: claim the cell's slot, or

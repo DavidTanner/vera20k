@@ -977,7 +977,7 @@
     "src/sim/production/production_queue_tests.rs": "3252ded105dc497d4fdbc587f7a344b2c29ef7edaba0c258321051014bad4bc0",
     "src/sim/world/techno_ai.rs": "ac1002e7c8577744ad378377bcdaf4c2337d96eee698e47ba1975036d7041fee",
     "src/sim/world/techno_ai/building_missions.rs": "1c50342f1b9585daa773e61fcc5410fa93f9b0b9975cd0bda65a8360ba2a26ea",
-    "src/sim/world/techno_ai/mission_handlers.rs": "e771b48285452fbaa3aace1915a00f66fb8089b96997e0ded3977ea6d6c92f0b",
+    "src/sim/world/techno_ai/mission_handlers.rs": "2e0a2ab2fd23e1bdc9cfe0426887371d80a9bae4c7feaa8783f102c437a2ea75",
     "src/sim/world/techno_ai/factory_unload_tests.rs": "80dff0629d3900f808ffb59c84ab304f5e2c38fd3c2790df66bcae75a22aa22a",
     "src/sim/world/projectile_collision.rs": "97c63568fa6ae2ef3a78042fdb0b764ccde15a291de250da391b8a6aabf185fc",
     "src/sim/movement/building_coordinate.rs": "e46958068638643c34e19ff67fec065b1b7e1fa1671b4a7544d78c16ea8aa687",

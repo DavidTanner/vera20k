@@ -29,6 +29,7 @@ use crate::map::theater::TilesetLookup;
 use crate::map::tube_facts::{TubeId, TubeSource};
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::util::direction_tables::CELL_DELTAS;
 use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
@@ -458,7 +459,7 @@ impl HierarchyGate<'_> {
 /// `0.001` through `0.008`. With [`STEP_COST`] at 1000 the integers below are
 /// the same fractions of a step, so no separate scaling is applied. Cardinals
 /// get lower values than diagonals, which is what stops path oscillation when
-/// several routes tie. Index order matches [`NEIGHBORS`]: N, NE, E, SE, S, SW,
+/// several routes tie. Index order matches [`CELL_DELTAS`]: N, NE, E, SE, S, SW,
 /// W, NW.
 const DIR_TIEBREAK: [i32; 8] = [
     1, // N   (original ≈0.001)
@@ -483,19 +484,6 @@ const DIR_TIEBREAK: [i32; 8] = [
 /// Frequency: tunnel maps only, and there on every cross-map order.
 /// Downstream risk: low — it is one arm of the neighbour loop.
 const TUBE_DIR_TIEBREAK: i32 = 9;
-
-/// 8-directional neighbor offsets: (dx, dy, is_diagonal).
-/// Order: N, NE, E, SE, S, SW, W, NW.
-const NEIGHBORS: [(i32, i32, bool); 8] = [
-    (0, -1, false), // N
-    (1, -1, true),  // NE
-    (1, 0, false),  // E
-    (1, 1, true),   // SE
-    (0, 1, false),  // S
-    (-1, 1, true),  // SW
-    (-1, 0, false), // W
-    (-1, -1, true), // NW
-];
 
 /// Threshold for ground vs bridge closed-list selection.
 /// Binary: `abs(path_height - cell.height_level) < 2`, the `CMP EAX,0x1` at
@@ -617,7 +605,7 @@ pub(crate) fn resolve_parent_for_bridge_traversal<'a>(
         return None;
     }
     let rotated = ((direction - 4) & 7) as usize;
-    let (dx, dy, _) = NEIGHBORS[rotated];
+    let (dx, dy) = CELL_DELTAS[rotated];
     let px = candidate_coord.0 as i32 + dx;
     let py = candidate_coord.1 as i32 + dy;
     if px < 0 || py < 0 || px >= grid.width() as i32 || py >= grid.height() as i32 {
@@ -1121,7 +1109,7 @@ pub fn astar_search(
             }
 
             // --- Neighbor expansion ---
-            for (dir_index, &(dx, dy, _is_diagonal)) in NEIGHBORS.iter().enumerate() {
+            for (dir_index, &(dx, dy)) in CELL_DELTAS.iter().enumerate() {
                 let nx_i = cx as i32 + dx;
                 let ny_i = cy as i32 + dy;
                 if nx_i < 0

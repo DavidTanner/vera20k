@@ -23,6 +23,7 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::zone_map::{ZONE_INVALID, ZoneGrid};
 use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
 use crate::sim::world::{GroundMove, Simulation};
+use crate::util::direction_tables::CELL_DELTAS;
 use crate::util::fixed_math::SimFixed;
 
 use crate::sim::debug_event_log::DebugEventKind;
@@ -1444,19 +1445,6 @@ pub(crate) fn refinery_dock_cell(rx: u16, ry: u16) -> (u16, u16) {
     crate::sim::radio::receive::dock_pad_cell(rx, ry)
 }
 
-/// 8-neighbor offsets in clockwise order starting from north. Used by the
-/// refinery-dock zone gate's anchor and neighbour probes.
-const ADJACENT_8: [(i32, i32); 8] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
-
 /// Return a cell whose zone serves as the harvester's anchor for the
 /// refinery-dock zone gate.
 ///
@@ -1474,7 +1462,7 @@ fn effective_zone_cell(
     if zone_map.zone_at(rx, ry, MovementLayer::Ground) != ZONE_INVALID {
         return Some((rx, ry));
     }
-    for &(dx, dy) in &ADJACENT_8 {
+    for &(dx, dy) in &CELL_DELTAS {
         let nx = (rx as i32) + dx;
         let ny = (ry as i32) + dy;
         if nx < 0 || ny < 0 || nx > u16::MAX as i32 || ny > u16::MAX as i32 {
@@ -1498,7 +1486,7 @@ fn neighbour_reachable(
     harvester_zone_cell: (u16, u16),
     cell: (u16, u16),
 ) -> bool {
-    for &(dx, dy) in &ADJACENT_8 {
+    for &(dx, dy) in &CELL_DELTAS {
         let nx = (cell.0 as i32) + dx;
         let ny = (cell.1 as i32) + dy;
         if nx < 0 || ny < 0 || nx > u16::MAX as i32 || ny > u16::MAX as i32 {

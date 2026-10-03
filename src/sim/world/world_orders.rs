@@ -16,6 +16,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::mission::MissionType;
 use crate::sim::movement;
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::util::direction_tables::CELL_DELTAS;
 use crate::util::fixed_math::ra2_speed_to_leptons_per_second;
 
 /// Result of one `apply_c4_damage_to_building` call.
@@ -996,23 +997,12 @@ impl Simulation {
     ///
     /// Also clears each attacker's `c4_plant`.
     fn queue_c4_post_detonation_scatter(&mut self, dead_building_id: u64) {
-        // 8 cardinal+ordinal directions in standard RA2 order:
-        // N, NE, E, SE, S, SW, W, NW.
-        const DIR_DELTAS: [(i16, i16); 8] = [
-            (0, -1),  // N
-            (1, -1),  // NE
-            (1, 0),   // E
-            (1, 1),   // SE
-            (0, 1),   // S
-            (-1, 1),  // SW
-            (-1, 0),  // W
-            (-1, -1), // NW
-        ];
         // Mirror the native-frame bit-twiddle: `(frame >> 12 + 1) >> 1 & 7`.
         // C operator precedence: `>>` is left-to-right at same level, so
         // this evaluates as `(((frame >> 12) + 1) >> 1) & 7`.
         let dir: usize = ((((self.session.binary_frame >> 12) + 1) >> 1) & 7) as usize;
-        let (dx, dy) = DIR_DELTAS[dir];
+        let (dx, dy) = CELL_DELTAS[dir];
+        let (dx, dy) = (dx as i16, dy as i16);
 
         let bld_cell = self
             .substrate

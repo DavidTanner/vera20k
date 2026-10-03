@@ -7,17 +7,7 @@
 
 use super::tiles::TILE_UNASSIGNED;
 
-/// Clockwise-from-north neighbor offsets, index = direction code 0..7.
-pub const DIRECTION_OFFSETS: [(i16, i16); 8] = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
+use crate::util::direction_tables::CELL_DELTAS;
 
 /// One generated cell — the fields the generation phases touch.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -164,8 +154,8 @@ impl RmgGrid {
     /// Neighbor coordinate one step in direction `dir` (0..7, masked like the
     /// original's `& 7`).
     pub fn step(x: i32, y: i32, dir: usize) -> (i32, i32) {
-        let (dx, dy) = DIRECTION_OFFSETS[dir & 7];
-        (x + i32::from(dx), y + i32::from(dy))
+        let (dx, dy) = CELL_DELTAS[dir & 7];
+        (x + dx, y + dy)
     }
 
     /// All existing cells in native scan order. The scan's rows always stay
@@ -251,12 +241,12 @@ mod tests {
 
     #[test]
     fn direction_offsets_are_clockwise_from_north() {
-        assert_eq!(DIRECTION_OFFSETS[0], (0, -1), "N");
-        assert_eq!(DIRECTION_OFFSETS[2], (1, 0), "E");
-        assert_eq!(DIRECTION_OFFSETS[4], (0, 1), "S");
-        assert_eq!(DIRECTION_OFFSETS[6], (-1, 0), "W");
-        assert_eq!(DIRECTION_OFFSETS[3], (1, 1), "SE");
-        assert_eq!(DIRECTION_OFFSETS[7], (-1, -1), "NW");
+        assert_eq!(CELL_DELTAS[0], (0, -1), "N");
+        assert_eq!(CELL_DELTAS[2], (1, 0), "E");
+        assert_eq!(CELL_DELTAS[4], (0, 1), "S");
+        assert_eq!(CELL_DELTAS[6], (-1, 0), "W");
+        assert_eq!(CELL_DELTAS[3], (1, 1), "SE");
+        assert_eq!(CELL_DELTAS[7], (-1, -1), "NW");
     }
 
     #[test]

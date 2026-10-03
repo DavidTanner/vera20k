@@ -1944,7 +1944,7 @@ mod tests {
         // stores one raw Scenario word at 0x006F3254 before placement.
         let _ = expected_rng.next_u32();
         let direction = expected_rng.next_range_u32_inclusive(0, 7) as usize;
-        let (dx, dy) = STARTING_MCV_FALLBACK_DIRECTIONS[direction];
+        let (dx, dy) = crate::util::direction_tables::CELL_DELTAS[direction];
         let expected_position = ((45i32 + dx) as u16, (45i32 + dy) as u16);
         let _ = expected_rng.next_u32();
         let _ = expected_rng.next_range_u32_inclusive(0, 0xffff);
