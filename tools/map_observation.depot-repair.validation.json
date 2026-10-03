@@ -1,6 +1,6 @@
 {
   "schema_version": "vera20k.depot-service-validation.v1",
-  "scope": "Ordinary stock HTNK/NADEPT repair service on Russia/Battle/AnyTown; MTNK/GADEPT and declared prepared native controls.",
+  "scope": "Ordinary stock HTNK/NADEPT repair service on Russia/Battle/AnyTown; MTNK/GADEPT and declared prepared native controls. Allied MTNK/GADEPT multi-waiter continuation is recorded in allied_waiters.",
   "native": {
     "executable_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
     "depot_report": "spatial_oracle/building_repair.depot_service.md",
@@ -1917,7 +1917,6 @@
   "profile": "map_observation.depot-repair.example.json",
   "profile_sha256": "0af96808291885ef3ca792e45e4d9025f431a6d46d25ae18e6d03f025535240c",
   "separate_residuals": [
-    "https://github.com/YuriPlanet/vera20k/issues/937",
     "https://github.com/YuriPlanet/vera20k/issues/1023"
   ],
   "review": {
@@ -1931,5 +1930,1730 @@
   "pre_review_runtime_summary": {
     "file": "spatial_oracle/depot_service_validation/runtime-summary.json",
     "sha256": "7809f8a08bf169f58dc06404ae4d8276e9280c8b4f102681a71cfee5a833a291"
+  },
+  "allied_waiters": {
+    "scope": "Stock Allied GADEPT/MTNK Battle/AnyTown construction/Mark, live complete-frame pending admission, service and physical departure; A/B/C/D animation observation; prepared active-retail native Mark/entry/parking/near-stop/refusal controls.",
+    "gameplay_behavior_changed": false,
+    "evidence_levels": {
+      "native_behavior_established": "Original selected physical reads, Mark3/0, Unit entry, busy parking/dispatch, pending retry admission/refusal, actual ally code6 and post-FindPath near-stop/NULL effects at declared flat levels0/4.",
+      "rust_regression_tested": "Both native corpus comparisons and constructed/live-Logic complete-frame three-tank regression passed in the final strict-retail full lib suite.",
+      "parity_demonstrated": "Bounded original executable-to-Rust comparisons at the declared component boundaries. No entire native path search, scheduler, crowded retail trajectory or native pixel equivalence."
+    },
+    "issue_937": "The ignored unmarked/batched fixture is replaced by production constructor/Reveal/Mark, ordinary advance_tick turns and next Foot admission, with separate ordinary Queue/Place retail runs. No queue/reservation/zone5 fix is inferred.",
+    "native": {
+      "executable_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+      "report": "spatial_oracle/building_repair.depot_waiters.md",
+      "payload": {
+        "file": "tools/spatial_oracle/building_repair.depot_waiters.json",
+        "bytes": 906019,
+        "sha256": "127b980184c22e31c3ea4223d9a576311591d9c2552eaaa29593bd15378a717d"
+      },
+      "sidecar": {
+        "file": "tools/spatial_oracle/building_repair.depot_waiters.meta.json",
+        "bytes": 5634,
+        "sha256": "fe17ef5ce8da183786945f6d545bb99399998ab919c0b25bf703ce823daadbea"
+      },
+      "check_receipt": "spatial_oracle/depot_service_validation/allied-waiters-native-checks.json",
+      "case_count": 2,
+      "marked_cells_and_unit_entries_per_case": 9,
+      "original_text_and_four_vtables_unchanged": true,
+      "three_native_rng_streams_retained": true,
+      "declared_inputs": "Admitted membership, LocalSize[-16,-16,64,64], flat Cell/class-height storage and uniform zones; placeholder incumbent; prepared stationary MTNK peer, empty NavQueue/head/selector/valid and exact Foot timers. Complete construction/admission/paid-travel history is excluded; FindPath supplies only AL1 and route4,4,4.",
+      "recorded_control_count": 19
+    },
+    "rust": {
+      "checks": [
+        {
+          "command": [
+            "python",
+            "-m",
+            "tools.cargo_run",
+            "--",
+            "test",
+            "-p",
+            "vera20k",
+            "--lib",
+            "sim::world::techno_ai::building_missions::repair_service_oracle_tests::"
+          ],
+          "exit_code": 0,
+          "log": {
+            "file": "spatial_oracle/depot_service_validation/allied-waiters-focused.log.gz",
+            "encoding": "gzip",
+            "bytes": 1349,
+            "sha256": "6c97b1ece54edca1082b0cf1929677990f8d8aef14341a1c70bdfc959e8f2ac6",
+            "raw_bytes": 3977,
+            "raw_sha256": "da3694ac7acaa855b46bd121f52257c384f267381e5ae2ba922ca9da26396a2e"
+          },
+          "result": {
+            "passed": 15,
+            "failed": 0,
+            "ignored": 0
+          },
+          "environment": {
+            "VERA20K_REQUIRE_RETAIL_INI": "1"
+          }
+        },
+        {
+          "command": [
+            "python",
+            "-m",
+            "tools.cargo_run",
+            "--",
+            "test",
+            "-p",
+            "vera20k",
+            "--lib"
+          ],
+          "exit_code": 0,
+          "log": {
+            "file": "spatial_oracle/depot_service_validation/allied-waiters-full-lib.log.gz",
+            "encoding": "gzip",
+            "bytes": 200589,
+            "sha256": "1789d970451fc71698db428fcf19e3f930e43f3d97f148a6259f0725d5e733e1",
+            "raw_bytes": 971704,
+            "raw_sha256": "dcd1f5750e2dd9108f0d1caaeb727090bf8063cde2dbbf5ad1ef8277288b2d57"
+          },
+          "result": {
+            "passed": 9567,
+            "failed": 0,
+            "ignored": 230
+          },
+          "environment": {
+            "VERA20K_REQUIRE_RETAIL_INI": "1"
+          }
+        },
+        {
+          "command": [
+            "python",
+            "-m",
+            "tools.cargo_run",
+            "--",
+            "clippy",
+            "-p",
+            "vera20k",
+            "--lib"
+          ],
+          "exit_code": 0,
+          "log": {
+            "file": "spatial_oracle/depot_service_validation/allied-waiters-clippy.log.gz",
+            "encoding": "gzip",
+            "bytes": 67668,
+            "sha256": "2f97af710a24ced6f172ea2734b4f0d531383d344741abb8f2abcbc2c8908dd3",
+            "raw_bytes": 424166,
+            "raw_sha256": "57211ac5338b1ea652aec3246a3ec8ee14138ec27c4a720bffe663259cf03fcc"
+          },
+          "environment": {
+            "VERA20K_REQUIRE_RETAIL_INI": "1"
+          }
+        },
+        {
+          "command": [
+            "python",
+            "-m",
+            "tools.cargo_run",
+            "--label",
+            "allied-depot-waiters-final-20261003",
+            "--",
+            "build",
+            "-p",
+            "vera20k",
+            "--release",
+            "--bin",
+            "vera20k"
+          ],
+          "exit_code": 0,
+          "log": {
+            "file": "spatial_oracle/depot_service_validation/allied-waiters-release.log.gz",
+            "encoding": "gzip",
+            "bytes": 1754,
+            "sha256": "ff43e83b20b076e26ee16002b310dfa8343dc9654e1bb94cde40278254bd9e9f",
+            "raw_bytes": 5320,
+            "raw_sha256": "da25ee6d4392101b6369f5df28f8ec132383404295ed374182a665a6317a61d7"
+          },
+          "label": "allied-depot-waiters-final-20261003",
+          "environment": {
+            "VERA20K_REQUIRE_RETAIL_INI": "1"
+          }
+        }
+      ],
+      "observer_python_tests": {
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "tools.tests.test_map_observation"
+        ],
+        "passed": 85,
+        "failed": 0,
+        "log": {
+          "file": "spatial_oracle/depot_service_validation/allied-waiters-observer-python.log.gz",
+          "encoding": "gzip",
+          "bytes": 56,
+          "sha256": "84e7ef5b7ac7cbe7c3c731bfc5228a56d02da0c7b9e7b944bcbf241c6243478d",
+          "raw_bytes": 184,
+          "raw_sha256": "d6e62ca864adcd315f0925be2f20ec8467219fe494bd70d601663b15f1385287"
+        }
+      },
+      "field_ratchet": {
+        "command": [
+          "python",
+          "tools/sim_field_ratchet.py",
+          "--base",
+          "origin/main"
+        ],
+        "base_commit": "d2a64dd8c00171b551fbd966c0e3a01f2e35e065",
+        "current": 2532,
+        "base": 2532,
+        "exit_code": 0,
+        "log": "spatial_oracle/depot_service_validation/allied-waiters-field-ratchet.log.gz"
+      }
+    },
+    "release": {
+      "manifest": {
+        "file": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/allied-depot-waiters-final-20261003/manifest.json",
+        "bytes": 2038,
+        "sha256": "55026cd0dd3e6e8c78259d0f21c3a40b6748e73122d6d274772b7449ed573898"
+      },
+      "source": {
+        "head": "d2a64dd8c00171b551fbd966c0e3a01f2e35e065",
+        "branch": "feature/native-allied-depot-waiters",
+        "status": "M src/app/diagnostics/tactical_capture/map_observation.rs\n M src/sim/docking/building_dock.rs\n M src/sim/docking/building_repair_service_oracle_tests.rs\n M src/sim/movement/fresh_oracle_seam.rs\n M tools/map_observation.md\n M tools/map_observation.py\n M tools/spatial_oracle/building_repair.depot_service.meta.json\n M tools/spatial_oracle/building_repair.py\n M tools/spatial_oracle/building_slot_replacement.expiry.meta.json\n M tools/tests/test_map_observation.py\n?? src/sim/docking/building_dock_frame_tests.rs\n?? src/sim/docking/building_repair_waiter_oracle_tests.rs\n?? tools/map_observation.depot-waiters-crowded.example.json\n?? tools/map_observation.depot-waiters.example.json\n?? tools/spatial_oracle/building_repair.depot_waiters.json\n?? tools/spatial_oracle/building_repair.depot_waiters.md\n?? tools/spatial_oracle/building_repair.depot_waiters.meta.json",
+        "source_sha256": "f090634d6b92b59e83391c0e58fe44b2cb92231a5889c5099fc0885a2058a756"
+      },
+      "executable": {
+        "file": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/allied-depot-waiters-final-20261003/0/vera20k",
+        "bytes": 31661136,
+        "sha256": "1797d3ef99a0d9586446778627ed0e09caa7a523335c08a8343dc00928691ac1"
+      },
+      "validated_code_and_fixture_files": [
+        {
+          "file": "src/app/diagnostics/tactical_capture/map_observation.rs",
+          "bytes": 64151,
+          "sha256": "bf98d4226022393a1f93ba223c82cdd35547ee39f14d38f6c7a1c3e02919a085"
+        },
+        {
+          "file": "src/sim/docking/building_dock.rs",
+          "bytes": 93790,
+          "sha256": "c10ff53a0925c7871534aac82c38e67698a2f2022a2be7feed555074197552b6"
+        },
+        {
+          "file": "src/sim/docking/building_repair_service_oracle_tests.rs",
+          "bytes": 46091,
+          "sha256": "3c755bc304544acad00caf175e1daddb15ab358f620a99fc25b1fbe7344b0dfe"
+        },
+        {
+          "file": "src/sim/docking/building_dock_frame_tests.rs",
+          "bytes": 7706,
+          "sha256": "e2897075c17b09f7ee7af1058554c541d08c31cb3d74796dd036bf64107bc426"
+        },
+        {
+          "file": "src/sim/docking/building_repair_waiter_oracle_tests.rs",
+          "bytes": 12211,
+          "sha256": "9a61c62d231f561ee01cd76d4f7fdaf32dbc0c108f76f899a6a21271e7fac18f"
+        },
+        {
+          "file": "src/sim/movement/fresh_oracle_seam.rs",
+          "bytes": 5528,
+          "sha256": "11c848db46006bd975feb6ae18145e759433f7e824cfacb65cbc15950c72f552"
+        },
+        {
+          "file": "tools/map_observation.py",
+          "bytes": 66380,
+          "sha256": "0b1ab0243e915295cd5d21a90fed9dcc2aafd84dfd84c1970fc8ec48d5cd3f9f"
+        },
+        {
+          "file": "tools/tests/test_map_observation.py",
+          "bytes": 102187,
+          "sha256": "68e942d4fb2cd25ff10530f9522d0806f8ecb8fadc35ef189180e5d056d263ce"
+        },
+        {
+          "file": "tools/spatial_oracle/building_repair.py",
+          "bytes": 171412,
+          "sha256": "67ac3e0e14c3cd84f3dbe483b089ff358ece9029724903db94210bf10542406a"
+        },
+        {
+          "file": "tools/spatial_oracle/building_repair.depot_waiters.json",
+          "bytes": 906019,
+          "sha256": "127b980184c22e31c3ea4223d9a576311591d9c2552eaaa29593bd15378a717d"
+        }
+      ],
+      "post_build_changes": "Only validation receipts, log packaging, retained render and documentation; the validated Rust code and native corpus are unchanged."
+    },
+    "final_retail_runs": [
+      {
+        "case": "crowded8500",
+        "wrapper_status": "VALID",
+        "offline_status": "VALID",
+        "comparison_status": "MATCH",
+        "comparison_owner": "tools.map_observation.compare_runs; no normalization or relaxed legacy flags",
+        "difference_count": 0,
+        "frame_boundary_count": 8501,
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 1182334268578756554,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 8500,
+          "deterministic_state_hash": 10834746109398384257,
+          "simulation_tick": 8500,
+          "total_simulation_ms": 187000
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "gpu": {
+          "backend": "Metal",
+          "device": 0,
+          "device_type": "IntegratedGpu",
+          "driver": "",
+          "driver_info": "",
+          "name": "Apple M4",
+          "vendor": 0
+        },
+        "frame": {
+          "byte_length": 1920000,
+          "file_name": "frame.bgra",
+          "height": 600,
+          "pixel_layout": "BGRA8",
+          "row_stride": 3200,
+          "sha256": "d5d65a0f2288f67133166f705d873d5588dcb455d3909e39d99eb458438abdab",
+          "surface_format": "Bgra8UnormSrgb",
+          "width": 800
+        },
+        "PNG": {
+          "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-crowded8500.png",
+          "bytes": 454014,
+          "sha256": "8b6e5bce7e28f9041bbafc9e8cf31b2c9f05d831e5ddd7848c040e6b4277cb7a"
+        },
+        "terminal_actors": [
+          {
+            "stable_id": 1375,
+            "type_id": "MTNK",
+            "cell": [
+              35,
+              94
+            ],
+            "physical_leptons": [
+              9088,
+              24192,
+              416
+            ],
+            "health": 300,
+            "nav": null,
+            "radio": {
+              "contacts": [
+                null
+              ],
+              "dock_entered_with": null
+            },
+            "mission": {
+              "current": 5,
+              "queued": -1,
+              "handler_state": 0
+            },
+            "pending_entry_500": null
+          },
+          {
+            "stable_id": 1376,
+            "type_id": "MTNK",
+            "cell": [
+              36,
+              94
+            ],
+            "physical_leptons": [
+              9344,
+              24192,
+              416
+            ],
+            "health": 300,
+            "nav": null,
+            "radio": {
+              "contacts": [
+                null
+              ],
+              "dock_entered_with": null
+            },
+            "mission": {
+              "current": 5,
+              "queued": -1,
+              "handler_state": 0
+            },
+            "pending_entry_500": null
+          },
+          {
+            "stable_id": 1377,
+            "type_id": "MTNK",
+            "cell": [
+              37,
+              93
+            ],
+            "physical_leptons": [
+              9600,
+              23936,
+              416
+            ],
+            "health": 40,
+            "nav": null,
+            "radio": {
+              "contacts": [
+                null
+              ],
+              "dock_entered_with": null
+            },
+            "mission": {
+              "current": 5,
+              "queued": -1,
+              "handler_state": 0
+            },
+            "pending_entry_500": null
+          },
+          {
+            "stable_id": 1985,
+            "type_id": "GADEPT",
+            "cell": [
+              35,
+              91
+            ],
+            "physical_leptons": [
+              9088,
+              23424,
+              416
+            ],
+            "health": 1200,
+            "nav": null,
+            "radio": {
+              "contacts": [
+                null
+              ],
+              "dock_entered_with": null
+            },
+            "mission": {
+              "current": 5,
+              "queued": -1,
+              "handler_state": 1
+            },
+            "pending_entry_500": null,
+            "actually_placed": true,
+            "operational": true
+          }
+        ],
+        "terminal_economy": [
+          {
+            "economy": {
+              "credits": 16268,
+              "harvested_credits": 500,
+              "spent_credits": 6232
+            },
+            "owner": "VERA-OBSERVER"
+          }
+        ],
+        "pending_transitions": {
+          "1375": [
+            [
+              0,
+              null
+            ]
+          ],
+          "1376": [
+            [
+              0,
+              null
+            ],
+            [
+              6041,
+              1985
+            ],
+            [
+              6621,
+              null
+            ]
+          ],
+          "1377": [
+            [
+              0,
+              null
+            ],
+            [
+              6041,
+              1985
+            ],
+            [
+              7243,
+              null
+            ]
+          ]
+        },
+        "contact_transitions": {
+          "1375": [
+            [
+              0,
+              [
+                null
+              ]
+            ],
+            [
+              6021,
+              [
+                1985
+              ]
+            ],
+            [
+              6620,
+              [
+                null
+              ]
+            ]
+          ],
+          "1376": [
+            [
+              0,
+              [
+                null
+              ]
+            ],
+            [
+              6621,
+              [
+                1985
+              ]
+            ],
+            [
+              7242,
+              [
+                null
+              ]
+            ]
+          ],
+          "1377": [
+            [
+              0,
+              [
+                null
+              ]
+            ]
+          ],
+          "1985": [
+            [
+              5231,
+              [
+                null
+              ]
+            ],
+            [
+              6021,
+              [
+                1375
+              ]
+            ],
+            [
+              6620,
+              [
+                null
+              ]
+            ],
+            [
+              6621,
+              [
+                1376
+              ]
+            ],
+            [
+              7242,
+              [
+                null
+              ]
+            ]
+          ]
+        },
+        "repair_summary": [
+          {
+            "target_id": 1375,
+            "paid_steps": 33,
+            "observed_spent_deltas_sum": 66,
+            "first_paid_step": [
+              6070,
+              48,
+              2
+            ],
+            "second_paid_step": [
+              6155,
+              56,
+              2
+            ],
+            "last_paid_step": [
+              6620,
+              300,
+              2
+            ]
+          },
+          {
+            "target_id": 1376,
+            "paid_steps": 33,
+            "observed_spent_deltas_sum": 66,
+            "first_paid_step": [
+              6692,
+              48,
+              2
+            ],
+            "second_paid_step": [
+              6777,
+              56,
+              2
+            ],
+            "last_paid_step": [
+              7242,
+              300,
+              2
+            ]
+          },
+          {
+            "target_id": 1377,
+            "paid_steps": 0,
+            "observed_spent_deltas_sum": 0,
+            "first_paid_step": null,
+            "second_paid_step": null,
+            "last_paid_step": null
+          }
+        ],
+        "animation_instances": [
+          {
+            "type": "GADEPT_D",
+            "slot": 18,
+            "first_step": 5952,
+            "last_step": 6069,
+            "frames": [
+              0
+            ]
+          },
+          {
+            "type": "GADEPT_A",
+            "slot": 10,
+            "first_step": 6070,
+            "last_step": 6129,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "type": "GADEPT_B",
+            "slot": 11,
+            "first_step": 6130,
+            "last_step": 6619,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18
+            ]
+          },
+          {
+            "type": "GADEPT_C",
+            "slot": 12,
+            "first_step": 6620,
+            "last_step": 6679,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "type": "GADEPT_D",
+            "slot": 18,
+            "first_step": 6680,
+            "last_step": 6691,
+            "frames": [
+              0
+            ]
+          },
+          {
+            "type": "GADEPT_A",
+            "slot": 10,
+            "first_step": 6692,
+            "last_step": 6751,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "type": "GADEPT_B",
+            "slot": 11,
+            "first_step": 6752,
+            "last_step": 7241,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18
+            ]
+          },
+          {
+            "type": "GADEPT_C",
+            "slot": 12,
+            "first_step": 7242,
+            "last_step": 7301,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "type": "GADEPT_D",
+            "slot": 18,
+            "first_step": 7302,
+            "last_step": 8500,
+            "frames": [
+              0
+            ]
+          }
+        ],
+        "owner_sample_count": 70276,
+        "capture_manifest_bytes": 46586906,
+        "artifacts": [
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-crowded8500-run/run.json",
+            "bytes": 46581078,
+            "sha256": "590e1281253b41cdc9da996797d408c3dc723e7dc1ef2726c39dd0515fcf4db9"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-crowded8500-run/child-output/capture.json",
+            "bytes": 46586906,
+            "sha256": "99a69f7f716a9e9a6ecf8b7e71b221ae1831657ec1e34a2d8bd77ce6d982d2fd"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-crowded8500.validation.json",
+            "bytes": 47269768,
+            "sha256": "a81ca048c681b19265a9027d59ef0d990fc7d2cbb219dab69a636612cade314e"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-crowded8500.comparison.json",
+            "bytes": 2764665,
+            "sha256": "ae82cd1ccb4c2c438de7a2cbbf7cf644093a49b81dde94038d9fbb4afd2345ca"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-crowded8500-command.json",
+            "bytes": 805,
+            "sha256": "13d00e9cf33b894d8318a784326ac86a3ea83806a9bb59e346a8bc4b4b05ec1c"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-crowded8500-validate-command.json",
+            "bytes": 540,
+            "sha256": "3b02c0a96fd49d5fdacaf380a2656e814af6ab4f6990a61ed99ca85459c9a1bb"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-crowded8500-compare-command.json",
+            "bytes": 676,
+            "sha256": "cec23747c0bb8bd431100dc91501ac651b2bc78d28dd67f64060543aed387687"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-crowded8500-run/child-output/frame.bgra",
+            "bytes": 1920000,
+            "sha256": "d5d65a0f2288f67133166f705d873d5588dcb455d3909e39d99eb458438abdab"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-crowded8500.png",
+            "bytes": 454014,
+            "sha256": "8b6e5bce7e28f9041bbafc9e8cf31b2c9f05d831e5ddd7848c040e6b4277cb7a"
+          }
+        ],
+        "profile": {
+          "file": "tools/map_observation.depot-waiters-crowded.example.json",
+          "bytes": 9666,
+          "sha256": "8ed2c3cadefabec3acd84ce372969bdce7ef3b596bfcf1310aff44cec711923b"
+        },
+        "projection": {
+          "file": ".local-audit/allied-depot/runtime/final-crowded8500.projection.json",
+          "bytes": 10945,
+          "sha256": "a770331c638e744b6b85df6a74020f4f38f197cb9e11fc3edaad634171684312"
+        },
+        "comparison_limit": "Exact Rust release-to-release observable/state/animation/BGRA comparison; no native whole-match or pixel comparison."
+      },
+      {
+        "case": "southern8500",
+        "wrapper_status": "VALID",
+        "offline_status": "VALID",
+        "comparison_status": "MATCH",
+        "comparison_owner": "tools.map_observation.compare_runs; no normalization or relaxed legacy flags",
+        "difference_count": 0,
+        "frame_boundary_count": 8501,
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 1182334268578756554,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 8500,
+          "deterministic_state_hash": 13596375900923192322,
+          "simulation_tick": 8500,
+          "total_simulation_ms": 187000
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "gpu": {
+          "backend": "Metal",
+          "device": 0,
+          "device_type": "IntegratedGpu",
+          "driver": "",
+          "driver_info": "",
+          "name": "Apple M4",
+          "vendor": 0
+        },
+        "frame": {
+          "byte_length": 1920000,
+          "file_name": "frame.bgra",
+          "height": 600,
+          "pixel_layout": "BGRA8",
+          "row_stride": 3200,
+          "sha256": "b599b44cf105d23199081dd0394cbb3ae2a36f4086a583d5a5e5e2eadc55519f",
+          "surface_format": "Bgra8UnormSrgb",
+          "width": 800
+        },
+        "PNG": {
+          "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-southern8500.png",
+          "bytes": 454742,
+          "sha256": "3beb7c38eeaa9650a11048b995c53a155b879968684deb6400293a33794f6ccf"
+        },
+        "terminal_actors": [
+          {
+            "stable_id": 1375,
+            "type_id": "MTNK",
+            "cell": [
+              35,
+              94
+            ],
+            "physical_leptons": [
+              9088,
+              24192,
+              416
+            ],
+            "health": 300,
+            "nav": null,
+            "radio": {
+              "contacts": [
+                null
+              ],
+              "dock_entered_with": null
+            },
+            "mission": {
+              "current": 5,
+              "queued": -1,
+              "handler_state": 0
+            },
+            "pending_entry_500": null
+          },
+          {
+            "stable_id": 1376,
+            "type_id": "MTNK",
+            "cell": [
+              36,
+              94
+            ],
+            "physical_leptons": [
+              9344,
+              24192,
+              416
+            ],
+            "health": 300,
+            "nav": null,
+            "radio": {
+              "contacts": [
+                null
+              ],
+              "dock_entered_with": null
+            },
+            "mission": {
+              "current": 5,
+              "queued": -1,
+              "handler_state": 0
+            },
+            "pending_entry_500": null
+          },
+          {
+            "stable_id": 1377,
+            "type_id": "MTNK",
+            "cell": [
+              37,
+              94
+            ],
+            "physical_leptons": [
+              9600,
+              24192,
+              416
+            ],
+            "health": 300,
+            "nav": null,
+            "radio": {
+              "contacts": [
+                null
+              ],
+              "dock_entered_with": null
+            },
+            "mission": {
+              "current": 5,
+              "queued": -1,
+              "handler_state": 0
+            },
+            "pending_entry_500": null
+          },
+          {
+            "stable_id": 1985,
+            "type_id": "GADEPT",
+            "cell": [
+              35,
+              91
+            ],
+            "physical_leptons": [
+              9088,
+              23424,
+              416
+            ],
+            "health": 1200,
+            "nav": null,
+            "radio": {
+              "contacts": [
+                null
+              ],
+              "dock_entered_with": null
+            },
+            "mission": {
+              "current": 5,
+              "queued": -1,
+              "handler_state": 1
+            },
+            "pending_entry_500": null,
+            "actually_placed": true,
+            "operational": true
+          }
+        ],
+        "terminal_economy": [
+          {
+            "economy": {
+              "credits": 16202,
+              "harvested_credits": 500,
+              "spent_credits": 6298
+            },
+            "owner": "VERA-OBSERVER"
+          }
+        ],
+        "pending_transitions": {
+          "1375": [
+            [
+              0,
+              null
+            ]
+          ],
+          "1376": [
+            [
+              0,
+              null
+            ],
+            [
+              6041,
+              1985
+            ],
+            [
+              6621,
+              null
+            ]
+          ],
+          "1377": [
+            [
+              0,
+              null
+            ],
+            [
+              6041,
+              1985
+            ],
+            [
+              7251,
+              null
+            ]
+          ]
+        },
+        "contact_transitions": {
+          "1375": [
+            [
+              0,
+              [
+                null
+              ]
+            ],
+            [
+              6021,
+              [
+                1985
+              ]
+            ],
+            [
+              6620,
+              [
+                null
+              ]
+            ]
+          ],
+          "1376": [
+            [
+              0,
+              [
+                null
+              ]
+            ],
+            [
+              6621,
+              [
+                1985
+              ]
+            ],
+            [
+              7250,
+              [
+                null
+              ]
+            ]
+          ],
+          "1377": [
+            [
+              0,
+              [
+                null
+              ]
+            ],
+            [
+              7251,
+              [
+                1985
+              ]
+            ],
+            [
+              7878,
+              [
+                null
+              ]
+            ]
+          ],
+          "1985": [
+            [
+              5231,
+              [
+                null
+              ]
+            ],
+            [
+              6021,
+              [
+                1375
+              ]
+            ],
+            [
+              6620,
+              [
+                null
+              ]
+            ],
+            [
+              6621,
+              [
+                1376
+              ]
+            ],
+            [
+              7250,
+              [
+                null
+              ]
+            ],
+            [
+              7251,
+              [
+                1377
+              ]
+            ],
+            [
+              7878,
+              [
+                null
+              ]
+            ]
+          ]
+        },
+        "repair_summary": [
+          {
+            "target_id": 1375,
+            "paid_steps": 33,
+            "observed_spent_deltas_sum": 66,
+            "first_paid_step": [
+              6070,
+              48,
+              2
+            ],
+            "second_paid_step": [
+              6155,
+              56,
+              2
+            ],
+            "last_paid_step": [
+              6620,
+              300,
+              2
+            ]
+          },
+          {
+            "target_id": 1376,
+            "paid_steps": 33,
+            "observed_spent_deltas_sum": 66,
+            "first_paid_step": [
+              6700,
+              48,
+              2
+            ],
+            "second_paid_step": [
+              6785,
+              56,
+              2
+            ],
+            "last_paid_step": [
+              7250,
+              300,
+              2
+            ]
+          },
+          {
+            "target_id": 1377,
+            "paid_steps": 33,
+            "observed_spent_deltas_sum": 66,
+            "first_paid_step": [
+              7328,
+              48,
+              2
+            ],
+            "second_paid_step": [
+              7413,
+              56,
+              2
+            ],
+            "last_paid_step": [
+              7878,
+              300,
+              2
+            ]
+          }
+        ],
+        "animation_instances": [
+          {
+            "type": "GADEPT_D",
+            "slot": 18,
+            "first_step": 5952,
+            "last_step": 6069,
+            "frames": [
+              0
+            ]
+          },
+          {
+            "type": "GADEPT_A",
+            "slot": 10,
+            "first_step": 6070,
+            "last_step": 6129,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "type": "GADEPT_B",
+            "slot": 11,
+            "first_step": 6130,
+            "last_step": 6619,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18
+            ]
+          },
+          {
+            "type": "GADEPT_C",
+            "slot": 12,
+            "first_step": 6620,
+            "last_step": 6679,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "type": "GADEPT_D",
+            "slot": 18,
+            "first_step": 6680,
+            "last_step": 6699,
+            "frames": [
+              0
+            ]
+          },
+          {
+            "type": "GADEPT_A",
+            "slot": 10,
+            "first_step": 6700,
+            "last_step": 6759,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "type": "GADEPT_B",
+            "slot": 11,
+            "first_step": 6760,
+            "last_step": 7249,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18
+            ]
+          },
+          {
+            "type": "GADEPT_C",
+            "slot": 12,
+            "first_step": 7250,
+            "last_step": 7309,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "type": "GADEPT_D",
+            "slot": 18,
+            "first_step": 7310,
+            "last_step": 7327,
+            "frames": [
+              0
+            ]
+          },
+          {
+            "type": "GADEPT_A",
+            "slot": 10,
+            "first_step": 7328,
+            "last_step": 7387,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "type": "GADEPT_B",
+            "slot": 11,
+            "first_step": 7388,
+            "last_step": 7877,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18
+            ]
+          },
+          {
+            "type": "GADEPT_C",
+            "slot": 12,
+            "first_step": 7878,
+            "last_step": 7937,
+            "frames": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "type": "GADEPT_D",
+            "slot": 18,
+            "first_step": 7938,
+            "last_step": 8500,
+            "frames": [
+              0
+            ]
+          }
+        ],
+        "owner_sample_count": 70276,
+        "capture_manifest_bytes": 46595080,
+        "artifacts": [
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-southern8500-run/run.json",
+            "bytes": 46589107,
+            "sha256": "d00dd5bd753bf8d15d7138464f84ec49f15307580df8d626cc6641fdc7375bc1"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-southern8500-run/child-output/capture.json",
+            "bytes": 46595080,
+            "sha256": "057ce658ae0313384bf3f3cd432ea6be970d1bf2db9f91cb65cd09b35b7133ef"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-southern8500.validation.json",
+            "bytes": 47277805,
+            "sha256": "b202dabb9e3ce8a0d3f06cbb1886d0f1374722cf38cc71e53b0cd2ab7bfa56b6"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-southern8500.comparison.json",
+            "bytes": 2764698,
+            "sha256": "c8c1112e4478b9169c8568fa3fd5694c5b5a7210cd18769f3e37a245b8dfa055"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-southern8500-command.json",
+            "bytes": 796,
+            "sha256": "b0acee9d9720f1c7f3886f1298affd2a2cff6bf523ab004b0fcf1d58d972bb6c"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-southern8500-validate-command.json",
+            "bytes": 543,
+            "sha256": "ff0eb2c616b026096260041223f957d2f79b66c49c18ebf4578f6b9c878dd26e"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-southern8500-compare-command.json",
+            "bytes": 685,
+            "sha256": "b3c52161da75ab4320fa1e521269572851864f678b43ce5a5a3f8fb1ee1f3a29"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-southern8500-run/child-output/frame.bgra",
+            "bytes": 1920000,
+            "sha256": "b599b44cf105d23199081dd0394cbb3ae2a36f4086a583d5a5e5e2eadc55519f"
+          },
+          {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/final-southern8500.png",
+            "bytes": 454742,
+            "sha256": "3beb7c38eeaa9650a11048b995c53a155b879968684deb6400293a33794f6ccf"
+          }
+        ],
+        "profile": {
+          "file": "tools/map_observation.depot-waiters.example.json",
+          "bytes": 9906,
+          "sha256": "ac1af32562243443d96758053fc55151de6b97ee6499283f420b82ea4429104b"
+        },
+        "projection": {
+          "file": ".local-audit/allied-depot/runtime/final-southern8500.projection.json",
+          "bytes": 12328,
+          "sha256": "b332fe969a3f3b98753d01cca91e0eb6625d8486a4d5bf191355d82bbcd6a127"
+        },
+        "comparison_limit": "Exact Rust release-to-release observable/state/animation/BGRA comparison; no native whole-match or pixel comparison."
+      }
+    ],
+    "allied_phase_observation": {
+      "single_cycle": [
+        {
+          "type": "GADEPT_D",
+          "slot": 18,
+          "first_step": 5952,
+          "last_step": 6069,
+          "frames": [
+            0
+          ]
+        },
+        {
+          "type": "GADEPT_A",
+          "slot": 10,
+          "first_step": 6070,
+          "last_step": 6129,
+          "frames": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ]
+        },
+        {
+          "type": "GADEPT_B",
+          "slot": 11,
+          "first_step": 6130,
+          "last_step": 6619,
+          "frames": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18
+          ]
+        },
+        {
+          "type": "GADEPT_C",
+          "slot": 12,
+          "first_step": 6620,
+          "last_step": 6679,
+          "frames": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ]
+        },
+        {
+          "type": "GADEPT_D",
+          "slot": 18,
+          "first_step": 6680,
+          "last_step": 7000,
+          "frames": [
+            0
+          ]
+        }
+      ],
+      "phase_gpu_snapshots": [
+        {
+          "phase": "opening6094",
+          "complete_prefix_frame_count": 6095,
+          "complete_prefix_equal": true,
+          "slots": [
+            [
+              10,
+              "GADEPT_A",
+              4
+            ]
+          ],
+          "summary": {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/opening6094-v3-baseline.summary.json",
+            "bytes": 907426,
+            "sha256": "97bdfb47beab294fe8eb07d12d16c40e3ff9eedc0395719ac3aac61b289623b2"
+          },
+          "PNG": {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/opening6094-v3-baseline.png",
+            "bytes": 455525,
+            "sha256": "3cce572e17b0d427f1e25e3ce3be11bcddfa8efa7bfc005913c2c52a3045eefc"
+          }
+        },
+        {
+          "phase": "loop6330",
+          "complete_prefix_frame_count": 6331,
+          "complete_prefix_equal": true,
+          "slots": [
+            [
+              11,
+              "GADEPT_B",
+              14
+            ]
+          ],
+          "summary": {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/loop6330-v3-baseline.summary.json",
+            "bytes": 942964,
+            "sha256": "440f660674f6c68dc490522b122abe9ebe243e6d0bc869ac7deaa12dc6727f27"
+          },
+          "PNG": {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/loop6330-v3-baseline.png",
+            "bytes": 454860,
+            "sha256": "c0c17669d3a85b2df6774881b79dbf075e9b44e149d6df69405257a4c6bd89be"
+          }
+        },
+        {
+          "phase": "closing6644",
+          "complete_prefix_frame_count": 6645,
+          "complete_prefix_equal": true,
+          "slots": [
+            [
+              12,
+              "GADEPT_C",
+              4
+            ]
+          ],
+          "summary": {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/closing6644-v3-baseline.summary.json",
+            "bytes": 989851,
+            "sha256": "27b427de7ced1ece0a00cc01943ff04cb9a529b4a2aa2831d1ec97acde087de7"
+          },
+          "PNG": {
+            "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/closing6644-v3-baseline.png",
+            "bytes": 454659,
+            "sha256": "aba91f78e03569f4ebdcb89839564fa85cee6291eea94cc25864736c5a186a5d"
+          }
+        }
+      ],
+      "baseline_index": {
+        "file": ".local-audit/allied-depot/runtime/baseline-runtime-evidence-summary.json",
+        "bytes": 73176,
+        "sha256": "b9fb50be4ca3841b26ddf717225e162a5e23c857aac81dbc621fa9e0ae4aec44"
+      },
+      "pending_diagnostic_index": {
+        "file": ".local-audit/allied-depot/runtime/pending-runtime-evidence-summary.json",
+        "bytes": 52516,
+        "sha256": "5aa008c190d17248aa801830dad1e1e27d38bd71112c08298451674c10c3fdbc"
+      },
+      "final_release_all_four_types_observed_in_both_runs": true,
+      "owner_visually_inspected_opening_loop_closing_idle_and_final_southern_pngs": true,
+      "retained_idle_frame": {
+        "file": "tools/spatial_oracle/depot_service_validation/allied-waiters-idle-frame.png",
+        "bytes": 454742,
+        "sha256": "3beb7c38eeaa9650a11048b995c53a155b879968684deb6400293a33794f6ccf"
+      },
+      "native_pixel_comparison": false
+    },
+    "read_only_observer_validation": {
+      "comparison": {
+        "path": "/Users/halvor/.codex/worktrees/tibtre-native/vera20k/.local-audit/allied-depot/runtime/multi8500-v3-pending-baseline-comparison.json",
+        "bytes": 1173,
+        "sha256": "d457ecbd5a04dba313cb8f512f45232a291e329fb269c923fb5c2f6e7d48a3fa"
+      },
+      "complete_frame_boundaries": 8501,
+      "normalization": "Remove only foot.pending_entry_500 and the added terrain rows for [37,93]/[37,94]. Retain every other actor/house/frame field.",
+      "all_actor_house_frame_fields_equal_after_only_declared_normalization": true,
+      "command_owner_policy_rule_type_filter_metadata_equal": {
+        "commands": true,
+        "owners": true,
+        "policy": true,
+        "rule_types": true,
+        "type_filter": true
+      },
+      "initial_and_final_state_equal": true,
+      "full_BGRA_equal": true,
+      "render_metadata_equal": true,
+      "final_BGRA_sha256": "d5d65a0f2288f67133166f705d873d5588dcb455d3909e39d99eb458438abdab"
+    },
+    "clean_three_tank_service": {
+      "only_added_normal_command": {
+        "issue_after_step": 5700,
+        "owner": "VERA-OBSERVER",
+        "payload": {
+          "Move": {
+            "entity_id": 1377,
+            "target_rx": 38,
+            "target_ry": 96,
+            "queue": false
+          }
+        }
+      },
+      "services": [
+        {
+          "target_id": 1375,
+          "first_paid_step": 6070,
+          "second_paid_step": 6155,
+          "paid_steps": 33,
+          "paid_credits": 66,
+          "full_health_release_step": 6620,
+          "first_cell_outside_3x3_depot_foundation_after_release": 6705,
+          "first_outside_Guard_no_queued_mission_Nav_NULL_step": 6726
+        },
+        {
+          "target_id": 1376,
+          "first_paid_step": 6700,
+          "second_paid_step": 6785,
+          "paid_steps": 33,
+          "paid_credits": 66,
+          "full_health_release_step": 7250,
+          "first_cell_outside_3x3_depot_foundation_after_release": 7290,
+          "first_outside_Guard_no_queued_mission_Nav_NULL_step": 7295
+        },
+        {
+          "target_id": 1377,
+          "first_paid_step": 7328,
+          "second_paid_step": 7413,
+          "paid_steps": 33,
+          "paid_credits": 66,
+          "full_health_release_step": 7878,
+          "first_cell_outside_3x3_depot_foundation_after_release": 7903,
+          "first_outside_Guard_no_queued_mission_Nav_NULL_step": 7908
+        }
+      ],
+      "repair_spending": 198,
+      "all_three_targets_final": "300HP/Guard5/queued-1/NavNULL/contactNULL/pending500NULL at(35,94),(36,94),(37,94), outside pad"
+    },
+    "crowded_residual": {
+      "trigger": "The captured crowded approach leaves tank1377 inside foundation37,93, one cell north of its goal occupied by a stationary friendly tank.",
+      "effect": "It stays40HP, keeps pending1985 through7242 and clears it7243 after service release. Controlled original Unit/Drive and retry execute near-stop then foundation refusal.",
+      "frequency": "One captured crowded approach; the alternative southern-staging approach services all three despite initially shared parking goals. No general route frequency is established.",
+      "downstream_risk": "The tank misses that repair and may need movement/reissue. Full native path-search/Logic trajectory for this retail crowd is still unproved.",
+      "intra_frame_radio_not_exposed_by_capture": true
+    },
+    "separate_residuals": [
+      "https://github.com/YuriPlanet/vera20k/issues/1023"
+    ]
   }
 }

@@ -5,6 +5,11 @@
 and retains a hidden-window GPU readback. This is a production observation, not a
 native comparator or a gameplay/pixel parity certification.
 
+Foot observations include `pending_entry_500`, the pending-entry owner's stable
+target handle or `null`. This read-only field is independent of NavCom, mission
+and admitted radio contacts. Older sealed v6 receipts remain accepted without
+the field; its absence supplies no evidence about pending entry.
+
 The explicit profile schema belongs to
 `src/app/diagnostics/tactical_capture/map_observation.rs`. Start from
 [`map_observation.example.json`](map_observation.example.json), whose launch is the
@@ -572,6 +577,36 @@ separately establish the service arithmetic, timers, radio/arrival and animation
 dependencies. These measured runtime IDs/timings are Rust integration evidence;
 they are not native whole-match or pixel goldens. Reconfirm IDs before adapting
 the profile to different inputs.
+
+## Allied depot waiters
+
+[The Allied waiter profile](map_observation.depot-waiters.example.json) constructs
+a stock GADEPT through ordinary Queue/Place and damages three starting MTNKs
+through ForceAttack/Stop before repair orders. It starts with 20,000 credits;
+construction spends 6,100. One ordinary Move stages the third tank south of
+the pad before repair. All three repair from40 to300 HP in33 paid steps/66 credits
+each, release at6620/7250/7878 and leave the foundation by7903. The last tank is
+outside on Guard with no NavCom, contact or pending entry by7908. Allied A/B/C/D
+animations are observed and the final render is inspected. The incidental CMIN
+income is retained; repair cost uses the spent-credit delta, not cash alone.
+
+[The crowded profile](map_observation.depot-waiters-crowded.example.json) omits
+that staging Move. Its second and third tanks initially select the same outside
+parking Cell `(37,94)`. The third stops at `(37,93)` inside the marked foundation,
+retains pending1985 through7242 and clears it7243 after the second tank releases.
+It stays40 HP without a persistent contact. The capture does not expose the
+intra-frame HELLO/CAN_LOAD/BREAK sequence. Both clean waiters also initially
+share one goal `(34,92)`, then rest outside the footprint and both receive service;
+shared goals alone therefore do not establish a queue bug.
+
+Both profiles advance8,500 ordinary frames through the production retail loader.
+Their exact inputs, source/binary identities, validation and bounded observations
+are in the `allied_waiters` section of
+[the depot validation receipt](map_observation.depot-repair.validation.json).
+Numeric handles belong to this saved roster/seed; rediscover them for changed
+inputs. [Original executable comparisons](spatial_oracle/building_repair.depot_waiters.md)
+separately reproduce marked-cell admission, parking, nearby ally stop and
+foundation refusal. They do not certify the full native crowded travel path.
 
 ## Natural ore-spread observation
 
