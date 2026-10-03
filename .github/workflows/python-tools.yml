@@ -1,8 +1,9 @@
 name: Python tools
+
+# Manual only: run it from the Actions tab or with
+# `gh workflow run python-tools.yml --ref <branch>`.
+# Cross-platform checks are maintainer-run and do not block pull-request merges.
 on:
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 jobs:
   tests:
