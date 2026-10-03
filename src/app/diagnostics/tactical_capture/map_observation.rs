@@ -780,6 +780,7 @@ impl TacticalCaptureSession {
                         .map(|coord| [coord.x, coord.y, coord.z]);
                     let walk_is_moving: Option<bool> = walk.and_then(|walk| walk.walk_is_moving());
                     Some(json!({
+                        "pending_entry_500": entity.pending_entry(),
                         "retarget_after_stop_688": entity.foot_retarget_after_stop(),
                         "firing_sequence_latch_68d": entity.mission_leaf.foot_firing_sequence_latch(),
                         "infantry_doing": entity.mission_leaf.as_infantry().map(|leaf| leaf.doing()),

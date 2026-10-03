@@ -51,6 +51,7 @@ and HouseClass::Update's release of the owner's auto-repair latch.
 
 Usage: python -m tools.spatial_oracle.building_repair [--check|--write]
        python -m tools.spatial_oracle.building_repair --depot-service [--check|--write]
+       python -m tools.spatial_oracle.building_repair --depot-waiters [--check|--write]
 """
 import hashlib
 import os
@@ -634,8 +635,18 @@ class DepotInputReader:
     Original full Rules, UnitType and BuildingType constructors execute. Only
     selected original read/store slices run; physical INI loading is supplied.
     """
-    def __init__(self):
+    def __init__(self, *, waiters=False):
         from tools.rules_oracle.bridge_landing_inputs import Landing
+        self.waiters = waiters
+        self.selected = {name: set(keys) for name, keys in DEPOT_SELECTED.items()}
+        if waiters:
+            self.selected['General'].add('CloseEnough')
+            self.selected['AI'] = {'PathDelay', 'BlockagePathDelay'}
+            self.selected['Enter'] = set(self.selected['Move'])
+            for name in ('MTNK', 'HTNK'):
+                self.selected[name].update(('SpeedType', 'Crusher'))
+            for name in ('GADEPT', 'NADEPT'):
+                self.selected[name].add('NumberImpassableRows')
         self.m = Landing()
         m, u = self.m, self.m.u
         self.u = u
@@ -667,6 +678,15 @@ class DepotInputReader:
         for name, ptr in (self.units | self.btypes).items():
             for field, off in (('strength', 0xA0), ('cost', 0x610), ('manual_reload', 0xD24)):
                 self.watched[ptr + off] = name + '.' + field
+        if waiters:
+            self.watched[self.rules + 0x1718] = 'close_enough'
+            self.watched[self.rules + 0x1760] = 'path_delay'
+            self.watched[self.rules + 0x1768] = 'blockage_path_delay'
+            for name, ptr in self.units.items():
+                self.watched[ptr + 0x67C] = name + '.speed_type'
+                self.watched[ptr + 0xD28] = name + '.crusher'
+            for name, ptr in self.btypes.items():
+                self.watched[ptr + 0x1620] = name + '.number_impassable_rows'
         for name, ptr in self.units.items():
             for field, off in (('movement_zone', 0x5B4), ('harvester', 0xE0E), ('weeder', 0xE0F)):
                 self.watched[ptr + off] = name + '.' + field
@@ -704,6 +724,19 @@ class DepotInputReader:
                       mission_controls={name: bytes(u.mem_read(DEPOT_CONTROLS + number * 32, 32)).hex()
                                         for name, number in
                                         (('repair', 20), ('sleep', 0), ('move', 2), ('guard', 5))})
+        if self.waiters:
+            result['close_enough'] = signed(u, rules + 0x1718)
+            result['path_delay_bits'] = bytes(u.mem_read(rules + 0x1760, 8)).hex()
+            result['blockage_path_delay'] = signed(u, rules + 0x1768)
+            result['mission_controls']['enter'] = bytes(
+                u.mem_read(DEPOT_CONTROLS + 7 * 32, 32)).hex()
+            for name, ptr in self.units.items():
+                result['units'][name].update(speed_type=signed(u, ptr + 0x67C),
+                                            crusher=u.mem_read(ptr + 0xD28, 1)[0])
+            for name, ptr in self.btypes.items():
+                result['buildings'][name].update(
+                    number_impassable_rows=signed(u, ptr + 0x1620),
+                    constructor_byte_235=u.mem_read(ptr + 0x235, 1)[0])
         return result
 
     def observe(self, u, pc, size, data):
@@ -738,23 +771,41 @@ class DepotInputReader:
             self.block(0x5F94D3, 0x5F94F3,
                        ((UC_X86_REG_EBX, ptr), (UC_X86_REG_ESI, INI), (UC_X86_REG_EBP, ptr + 0x24)),
                        (0x5276D0,))
-            self.block(0x71469F, 0x7146B9,
-                       ((UC_X86_REG_EBP, ptr), (UC_X86_REG_ESI, INI), (UC_X86_REG_EBX, ptr + 0x24)),
-                       (0x5276D0,))
-            self.block(0x713343, 0x71336C,
-                       ((UC_X86_REG_EBP, ptr), (UC_X86_REG_ESI, INI), (UC_X86_REG_EBX, ptr + 0x24)),
-                       (0x5295F0, 0x713366))
+            techno_registers = ((UC_X86_REG_EBP, ptr), (UC_X86_REG_ESI, INI),
+                                (UC_X86_REG_EDI, INI), (UC_X86_REG_EBX, ptr + 0x24))
+            # Unit74763F calls Techno712170 before its own flags/postpass.
+            # Preserve the original selected order in the additive mode;
+            # legacy corpora retain their historical independent slices.
+            if self.waiters and name in self.units:
+                self.block(0x7121D1, 0x7121EB, techno_registers)
+            cost = (0x71469F, 0x7146B9, (0x5276D0,))
+            manual_reload = (0x713343, 0x71336C, (0x5295F0, 0x713366))
+            for begin, end, required in ((manual_reload, cost) if self.waiters
+                                         else (cost, manual_reload)):
+                self.block(begin, end, techno_registers, required)
             if name in self.units:
-                self.block(0x74769F, 0x7476D3,
-                           ((UC_X86_REG_EDI, ptr), (UC_X86_REG_EBX, INI), (UC_X86_REG_EBP, ptr + 0x24)),
-                           (0x7476AE, 0x7476C8))
+                if self.waiters:
+                    self.block(0x714CC8, 0x714CE9, techno_registers)
                 # The enclosing TechnoType reader holds INI at this local;
                 # this is the existing harvest reader's MovementZone slice.
                 u.mem_write(READER_SP + 0x380, dwords(INI))
-                self.block(0x71605E, 0x716090,
-                           ((UC_X86_REG_EBP, ptr), (UC_X86_REG_EBX, ptr + 0x24)),
-                           (0x474E40, 0x716081))
+                movement_zone = (0x71605E, 0x716090,
+                                 ((UC_X86_REG_EBP, ptr), (UC_X86_REG_EBX, ptr + 0x24)),
+                                 (0x474E40, 0x716081))
+                unit_flags = (0x74769F, 0x7476D3,
+                              ((UC_X86_REG_EDI, ptr), (UC_X86_REG_EBX, INI),
+                               (UC_X86_REG_EBP, ptr + 0x24)), (0x7476AE, 0x7476C8))
+                speed_postpass = (0x7476D3, 0x747711,
+                                  ((UC_X86_REG_EDI, ptr), (UC_X86_REG_EBX, INI),
+                                   (UC_X86_REG_EBP, ptr + 0x24)), ())
+                for args in ((movement_zone, unit_flags, speed_postpass) if self.waiters
+                             else (unit_flags, movement_zone)):
+                    self.block(*args)
             if name in self.btypes:
+                if self.waiters:
+                    self.block(0x460133, 0x46014D,
+                               ((UC_X86_REG_EBP, ptr), (UC_X86_REG_ESI, m.cstring(name)),
+                                (UC_X86_REG_EDI, INI)), (0x5276D0, 0x460147))
                 self.block(0x460906, 0x46092F,
                            ((UC_X86_REG_EBP, ptr), (UC_X86_REG_ESI, INI), (UC_X86_REG_EBX, ptr + 0x24)),
                            (0x5295F0,))
@@ -767,6 +818,15 @@ class DepotInputReader:
         if m.invoke(0x526810, INI, [m.cstring('General')]):
             for begin, end in DEPOT_GENERAL_READS:
                 self.block(begin, end, ((UC_X86_REG_ESI, rules), (UC_X86_REG_EDI, INI)))
+        if self.waiters:
+            self.block(0x670EDD, 0x670EFD,
+                       ((UC_X86_REG_ESI, rules), (UC_X86_REG_EDI, INI)),
+                       (0x474620, 0x670EF7))
+            # Existing path_delay_rules owner identifies these original
+            # [AI] read/store slices; execute them on each physical layer.
+            self.block(0x6739E5, 0x673A37,
+                       ((UC_X86_REG_ESI, rules), (UC_X86_REG_EDI, INI)),
+                       (0x5283D0, 0x5276D0))
         # ReadAudioVisual's unconditional 1.0 assignment is included before
         # the selected ConditionYellow read; it is never an INI default.
         if m.invoke(0x526810, INI, [m.cstring('AudioVisual')]):
@@ -774,9 +834,9 @@ class DepotInputReader:
             self.block(0x66B35E, 0x66B385, ((UC_X86_REG_ESI, rules), (UC_X86_REG_EDI, INI)))
         self.block(0x679C92, 0x679CAF, ((UC_X86_REG_ESI, INI),), (0x5B3760,))
         self.layers.append(dict(file=filename, sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw),
-                                selected={s: {k: v for k, v in keys.items() if k in DEPOT_SELECTED[s]}
+                                selected={s: {k: v for k, v in keys.items() if k in self.selected[s]}
                                           for s, keys in sections.items()},
-                                lines=[line for line in lines if line['key'] in DEPOT_SELECTED[line['section']]],
+                                lines=[line for line in lines if line['key'] in self.selected[line['section']]],
                                 before=before, after=self.snap(), calls=self.calls[first_call:],
                                 writes=self.writes[first_write:]))
 
@@ -816,9 +876,9 @@ class DepotInputReader:
             self.u.hook_del(hook)
 
 
-def depot_input_receipts():
+def depot_input_receipts(*, waiters=False):
     from tools.projectile_oracle.bridge_render_inputs import lexical
-    root, reader = depot_inputs_root(), DepotInputReader()
+    root, reader = depot_inputs_root(), DepotInputReader(waiters=waiters)
     try:
         for filename in ('RULESMD.INI', 'LANGRULE.INI', 'MPBattleMD.ini', 'XMP03T4.MAP'):
             path = root / filename
@@ -827,7 +887,7 @@ def depot_input_receipts():
                 reader.layers.append(dict(file=filename, absent=True))
                 continue
             raw = path.read_bytes()
-            sections, lines = lexical(raw, set(DEPOT_SELECTED))
+            sections, lines = lexical(raw, set(reader.selected))
             reader.read_layer(filename, raw, sections, lines)
         art = reader.read_art(root / 'ARTMD.INI' if (root / 'ARTMD.INI').is_file()
                               else Path('ini/ARTMD.INI'))
@@ -893,12 +953,22 @@ class DepotService:
             u.mem_write(pointer, bytes([value]))
         if 'ready' in case:
             u.mem_write(rd.BLD + 0x6DD, bytes([case['ready']]))
+        if 'speed_type' in unit:
+            u.mem_write(rd.TYPE + 0x67C, dwords(unit['speed_type']))
+            u.mem_write(rd.TYPE + 0xD28, bytes([unit['crusher']]))
+            u.mem_write(rd.BTYPE + 0x1620, dwords(building['number_impassable_rows']))
+            u.mem_write(rd.BTYPE + 0x235, bytes([building['constructor_byte_235']]))
+            u.mem_write(RULES + 0x1718, dwords(stock['close_enough']))
+            u.mem_write(RULES + 0x1760, bytes.fromhex(stock['path_delay_bits']))
+            u.mem_write(RULES + 0x1768, dwords(stock['blockage_path_delay']))
         u.mem_write(RULES + 0x16D0, bytes.fromhex(case.get('percent_bits', stock['repair_percent_bits'])))
         u.mem_write(RULES + 0x16E8, bytes.fromhex(case.get('unit_repair_rate_bits', stock['unit_repair_rate_bits'])))
         u.mem_write(RULES + 0x16F8, bytes.fromhex(stock['full_health_threshold_bits']))
         u.mem_write(RULES + 0x1700, bytes.fromhex(stock['condition_yellow_bits']))
         for name, number in (('repair', 20), ('sleep', 0), ('move', 2), ('guard', 5)):
             u.mem_write(DEPOT_CONTROLS + number * 32, bytes.fromhex(stock['mission_controls'][name]))
+        if 'enter' in stock['mission_controls']:
+            u.mem_write(DEPOT_CONTROLS + 7 * 32, bytes.fromhex(stock['mission_controls']['enter']))
         if 'mission_rate_bits' in case:
             u.mem_write(DEPOT_CONTROLS + DEPOT_REPAIR_MISSION * 32 + 0x10,
                         bytes.fromhex(case['mission_rate_bits']))
@@ -925,6 +995,7 @@ class DepotService:
         if 'rally' in case:
             u.mem_write(rd.BLD + 0x218, dwords(rd.cell(*case['rally'])))
         u.mem_write(0xA8E7AC, dwords(0))
+        self.spatial_startup = depot_spatial_startup(self) if case.get('spatial_startup') else None
         # GetDockCoords is native. The independent physical arrival at this
         # coordinate is supplied; no Drive::Process/path history is claimed.
         output = rd.EXTRA + 0x2D100
@@ -948,6 +1019,8 @@ class DepotService:
                                  for address in (0x7F5C70, 0x7F6218, 0x7E3EBC, 0x7E4570)]
         self.hooks = [u.hook_add(UC_HOOK_CODE, self.observe),
                       u.hook_add(UC_HOOK_MEM_WRITE, self.written)]
+        if self.spatial_startup is not None:
+            self.hooks.append(self.spatial_startup_hook)
         self.before = self.state()
 
     def state(self):
@@ -1071,6 +1144,338 @@ class DepotService:
             self.u.hook_del(hook)
         self.hooks = []
         return result
+
+
+def depot_spatial_startup(vm):
+    """Original spatial CRT before the first retained Cell height getter.
+
+    The exit-registration seam is shared with the Engineer joined fixture;
+    it only excludes process-exit callback registration, never a map result.
+    Keep it through Mark, whose lazy globals can register exit callbacks.
+    """
+    from types import SimpleNamespace
+    from tools.spatial_oracle.mapgen_range import Machine
+    u, r = vm.u, vm.read32
+    receipt = dict(exit_registration_calls=[])
+
+    def registration(_u, pc, size, data):
+        if pc == 0x7C978A:
+            receipt['exit_registration_calls'].append(dict(
+                pc=hex(pc), callback=hex(r(u.reg_read(UC_X86_REG_ESP) + 4))))
+            ret(u, r, 0)
+
+    vm.spatial_startup_hook = u.hook_add(UC_HOOK_CODE, registration)
+    receipt['x87'] = Machine.startup(SimpleNamespace(u=u))
+    receipt['initializer_tables'] = []
+    for table, count in ((0x8141D8, 14), (0x8129FC, 13)):
+        entries = struct.unpack(f'<{count}I', u.mem_read(table, count * 4))
+        for entry in entries:
+            bc.invoke(u, entry, 0)
+        receipt['initializer_tables'].append(dict(table=hex(table), entries=list(map(hex, entries))))
+    for entry in (0x561710, 0x5617A0, 0x5617C0, 0x5617E0):
+        bc.invoke(u, entry, 0)
+    receipt['map_initializers'] = ['0x561710', '0x5617A0', '0x5617C0', '0x5617E0']
+    # Shared track_fresh_response startup; leave candidate direction deltas
+    # to the original initializer instead of a supplied lookup table.
+    receipt['direction_initializer'] = dict(entry='0x49f3a0',
+                                           returned_eax=bc.invoke(u, 0x49F3A0, 0))
+    receipt['object_height_globals'] = {hex(a): r(a) for a in (0xAC13C8, 0xAC13BC)}
+    receipt['map_ground_height'] = r(0xABDE88)
+    receipt['before_first_height_getter'] = dict(cache_gate_89e770=r(0x89E770))
+    return receipt
+
+
+def depot_waiter_case(inputs, level):
+    """Produced Mark -> parking/entry/retry boundaries, excluding travel.
+
+    Object/House admission and flat Cell/zone priors are declared. Mark,
+    Nearby, class entry and radio/destination bodies run unchanged.
+    """
+    from types import SimpleNamespace
+    from tools.spatial_oracle.anytown_damage.navigation import Navigation, MAP
+    from tools.spatial_oracle.unit_scatter_state import SP
+    case = dict(name=f'marked_gadept_level{level}', unit='MTNK', building='GADEPT',
+                linked=False, off_pad=True, miner_cell=[16, 16], health=40,
+                spatial_startup=True, frame=200, terrain_level=level,
+                map_local_size=[-16, -16, 64, 64], unit_in_playfield=True)
+    vm = DepotService(case, inputs)
+    u, r = vm.u, vm.read32
+    for stream in (0x886B88, 0xABE890):
+        bc.invoke(u, 0x65C6D0, stream, 1)
+    u.mem_write(MAP + 0xEC, dwords(0, 0, 16, 16))
+    u.mem_write(MAP + 0xFC, dwords(*case['map_local_size']))
+    # This corpus starts after object admission, like the Rust comparison's
+    # production Unlimbo. Bind consequential membership explicitly.
+    u.mem_write(rd.ACTOR + 0x3D5, bytes([case['unit_in_playfield']]))
+    plane = bytearray(b'\x07\x00\x00\x00' * (33 * 33))
+    for y in range(1, 32):
+        for x in range(1, 32):
+            struct.pack_into('<BBH', plane, (y * 33 + x) * 4, 0, level, 0)
+    Navigation.on_existing_map(SimpleNamespace(u=u, allocate=None),
+                               size=(16, 16), class_height_plane=bytes(plane))
+    for y in range(32):
+        for x in range(32):
+            bc.invoke(u, 0x47BBF0, rd.cell(x, y))
+            u.mem_write(rd.cell(x, y) + 0x24, struct.pack('<2h', x, y))
+            u.mem_write(rd.cell(x, y) + 0x11B, bytes([level]))
+    bc.invoke(u, 0x45B1C0, 0)
+    u.reg_write(UC_X86_REG_ESP, SP)
+    u.reg_write(UC_X86_REG_EBP, rd.BTYPE)
+    u.reg_write(UC_X86_REG_EDI, rd.BTYPE + 0x1F8)
+    run_checked(u, 0x46152C, 0x461570, required_addresses=(0x461541, 0x46156A))
+    u.reg_write(UC_X86_REG_ESI, rd.BLD)
+    u.reg_write(UC_X86_REG_EBX, 0)
+    run_checked(u, 0x43B762, 0x43B783, required_addresses=(0x43B768, 0x43B777, 0x43B77D))
+    u.mem_write(SP, dwords(RET_MAGIC, 1))
+    u.reg_write(UC_X86_REG_ECX, rd.BLD)
+    u.reg_write(UC_X86_REG_ESP, SP)
+    run_checked(u, 0x447780, 0x4477C7, required_addresses=(0x4477C1,))
+    u.mem_write(rd.ACTOR + 0xA4, dwords(level * r(0xAC13C8)))
+    u.mem_write(rd.BLD + 0xA4, dwords(level * r(0xAC13C8)))
+    u.mem_write(0x887324, dwords(rd.EXTRA + 0x5000))
+    u.mem_write(0xA8E9A0, b'\x01')
+    u.mem_write(rd.ACTOR + 0x418, b'\0')
+    u.mem_write(rd.BLD + 0x418, b'\0')
+
+    def rngs():
+        return {name: bytes(u.mem_read(pointer, 0x3F4)).hex()
+                for name, pointer in (('main', 0x886B88), ('scenario', SCENARIO + 0x218),
+                                      ('mapgen', 0xABE890))}
+
+    def foundation():
+        return [dict(cell=[x, y], head=rd.name_of(r(rd.cell(x, y) + 0xE4)),
+                     ground=r(rd.cell(x, y) + 0x124), deck=r(rd.cell(x, y) + 0x128),
+                     level=u.mem_read(rd.cell(x, y) + 0x11B, 1)[0])
+                for y in range(rd.NW[1], rd.NW[1] + 3)
+                for x in range(rd.NW[0], rd.NW[0] + 3)]
+
+    def foot_state():
+        return dict(movement_timer=[signed(u, rd.ACTOR + off) for off in (0x640, 0x648)],
+                    blocked_timer=[signed(u, rd.ACTOR + off) for off in (0x668, 0x670)],
+                    retries_left=r(rd.ACTOR + 0x64C),
+                    path_blocked=bool(u.mem_read(rd.ACTOR + 0x6B7, 1)[0]),
+                    nav_queue_count=r(rd.ACTOR + 0x598),
+                    path=[signed(u, rd.ACTOR + 0x5E0 + i * 4) for i in range(24)],
+                    head=coord(u, rd.LOCO + 0x40), selector=signed(u, rd.LOCO + 0x58),
+                    valid=u.mem_read(rd.LOCO + 0x63, 1)[0],
+                    in_playfield=bool(u.mem_read(rd.ACTOR + 0x3D5, 1)[0]),
+                    mission_only=bool(u.mem_read(rd.ACTOR + 0x3D4, 1)[0]))
+
+    vm.steps, vm.events, vm.writes, vm.pending = [], [], [], {}
+    mark_before, mark_rng = foundation(), rngs()
+    marked = vm.invoke(0x43F180, rd.BLD, 3)
+    assert marked['returned_eax'] & 255 == 1
+    mark_after = foundation()
+    assert all(cell['head'] == 'refinery' and cell['ground'] == 0x80
+               and cell['deck'] == 0 for cell in mark_after)
+    assert mark_rng == rngs()
+    # Same explicit uniform sector/zone prior as DockContinuation; Mark/Recalc
+    # produced the class/height plane. Full connectivity is not executed.
+    zone = rd.EXTRA + 0x2D800
+    u.mem_write(zone, bytes(2))
+    for offset in range(0x18, 0x2C, 4):
+        u.mem_write(MAP + offset, dwords(zone))
+    u.mem_write(rd.BLD_ITEMS, dwords(rd.OTHER))
+    u.mem_write(rd.OTHER_ITEMS, dwords(rd.BLD))
+    u.mem_write(rd.MINER_ITEMS, dwords(0))
+    controls = []
+
+    def invoke(name, entry, this, *args):
+        before_rng = rngs()
+        before_timer = [signed(u, rd.ACTOR + off) for off in (0xC8, 0xD0)]
+        row = vm.invoke(entry, this, *args)
+        controls.append(dict(name=name, **row, rng_before=before_rng, rng_after=rngs(),
+                             unit_dispatch_before=before_timer,
+                             unit_dispatch_after=[signed(u, rd.ACTOR + off) for off in (0xC8, 0xD0)]))
+        return row
+
+    invoke('queue_enter', rd.QUEUE, rd.ACTOR, 7, 1)
+    invoke('busy_destination', rd.ASSIGN, rd.ACTOR, rd.BLD, 1)
+    invoke('park_dispatch', bc.MISSION_AI, rd.ACTOR)
+    saved_actor = bytes(u.mem_read(rd.ACTOR, 0x800))
+    saved_loco = bytes(u.mem_read(rd.LOCO, 0x100))
+    entry_rng = rngs()
+    entry_cells = []
+    for x, y in (tuple(cell['cell']) for cell in mark_after):
+        direction, height = (4, level) if level else (-1, -1)
+        result = bc.invoke(u, 0x73F0A0, rd.ACTOR, rd.cell(x, y), direction, height, 0, 1)
+        entry_cells.append(dict(cell=[x, y], args=[direction, height], result=result))
+    assert entry_rng == rngs()
+
+    def retry(name):
+        before, before_rng = vm.state(), rngs()
+        # Adapt the existing VM's row-return interface to the shared typed
+        # observer's EAX interface; both invocation and radio receipts retain
+        # their existing owners.
+        measured = rd.DockContinuation.try_pending_entry(SimpleNamespace(
+            u=u, read32=r, invoke=lambda entry: vm.invoke(entry, rd.ACTOR)['returned_eax']))
+        controls.append(dict(name=name, entry='0x70d7e0', before=before, after=vm.state(),
+                             measurement=measured, rng_before=before_rng, rng_after=rngs()))
+
+    retry('busy_retry')
+    invoke('release_by_break', rd.TRANSMIT, rd.OTHER, 3, 0, rd.BLD)
+    retry('free_outside_retry')
+    u.mem_write(rd.ACTOR, saved_actor)
+    u.mem_write(rd.LOCO, saved_loco)
+    u.mem_write(rd.MINER_ITEMS, dwords(0))
+    u.mem_write(rd.BLD_ITEMS, dwords(0))
+    u.mem_write(rd.ACTOR + 0x9C, dwords(8 * 256 + 128, 11 * 256 + 128, level * r(0xAC13C8)))
+    invoke('null_destination_on_foundation', rd.ASSIGN, rd.ACTOR, 0, 1)
+    retry('free_foundation_retry')
+    blocked_goal = None
+    if level == 4:
+        # An admitted stationary second MTNK at the common goal. Reuse the
+        # existing Unit fields, type and House, with its own originally
+        # constructed Drive and radio buffer. Full Unit ctor/Unlimbo omitted.
+        peer, peer_loco, peer_contacts = rd.EXTRA + 0x20000, rd.EXTRA + 0x22000, rd.EXTRA + 0x23000
+        goal = rd.cell(8, 12)
+        u.mem_write(peer, saved_actor)
+        u.mem_write(peer + 0x9C, dwords(2176, 3200, level * r(0xAC13C8)))
+        for off, value in ((0x500, 0), (0x5A4, 0), (0x5A0, 0), (0xAC, 5), (0xB4, -1),
+                           (0xE4, peer_contacts)):
+            u.mem_write(peer + off, dwords(value))
+        u.mem_write(peer + 0x74, b'\0')
+        u.mem_write(peer_contacts, dwords(0))
+        bc.invoke(u, 0x4AF540, peer_loco)
+        u.mem_write(peer_loco + 0xC, dwords(peer))
+        u.mem_write(peer_loco + 0x14, dwords(1))
+        u.mem_write(peer + 0x674, dwords(peer_loco + 4))
+        u.mem_write(peer + 0x6B6, b'\x01')
+        peer_put = bc.invoke(u, 0x47E8A0, goal, peer, 0)
+        assert r(goal + 0xE4) == peer and r(goal + 0x124) == 0x20
+        u.mem_write(rd.ACTOR, saved_actor)
+        u.mem_write(rd.LOCO, saved_loco)
+        u.mem_write(rd.ACTOR + 0x9C, dwords(2176, 2944, level * r(0xAC13C8)))
+        u.mem_write(rd.MINER_ITEMS, dwords(0))
+        u.mem_write(rd.BLD_ITEMS, dwords(rd.OTHER))
+        u.mem_write(rd.OTHER_ITEMS, dwords(rd.BLD))
+        entry = bc.invoke(u, 0x73F0A0, rd.ACTOR, goal, 4, level, 0, 1)
+        assert entry == 6
+        invoke('shared_goal_destination', rd.ASSIGN, rd.ACTOR, goal, 1)
+        bc.invoke(u, r(r(rd.LOCO + 4) + 0x38), 0, rd.LOCO + 4)
+        u.mem_write(rd.ACTOR + 0x5E0, dwords(4, 4, 4, *([-1] * 21)))
+        u.mem_write(rd.ACTOR + 0x388, dwords(0x8000, 0x8000, -1, 0, 0))
+        u.mem_write(rd.LOCO + 0x40, dwords(0, 0, 0))
+        u.mem_write(rd.LOCO + 0x58, dwords(-1))
+        u.mem_write(rd.LOCO + 0x63, b'\0')
+        u.mem_write(FRAME, dwords(201))
+        before, before_rng, foot_before = vm.state(), rngs(), foot_state()
+        trace, requests, returns = [], [], {}
+
+        def observe_drive(_u, pc, size, data):
+            if u.reg_read(UC_X86_REG_EIP) != pc:
+                return
+            sp = u.reg_read(UC_X86_REG_ESP)
+            for event in returns.pop(pc, []):
+                event['returned_eax'] = u.reg_read(UC_X86_REG_EAX)
+            if pc == 0x73F0A0:
+                event = dict(entry=hex(pc), caller=hex(r(sp)),
+                             cell=list(rd.cell_xy(r(sp + 4))),
+                             args=[r(sp + n * 4) for n in range(2, 6)])
+                trace.append(event)
+                returns.setdefault(r(sp), []).append(event)
+            elif pc == 0x4D3920:
+                assert not requests, 'unexpected second bounded path request'
+                event = dict(entry=hex(pc), caller=hex(r(sp)),
+                             args=[r(sp + n * 4) for n in range(1, 4)],
+                             supplied_route=[4, 4, 4], body_executed=False)
+                requests.append(event)
+                trace.append(event)
+                u.mem_write(rd.ACTOR + 0x5E0, dwords(4, 4, 4, *([-1] * 21)))
+                ret(u, r, 12, 1)
+            elif pc in (0x741970, 0x4D94B0, 0x4AFE00, 0x7C5F00):
+                event = dict(entry=hex(pc), caller=hex(r(sp)))
+                if pc == 0x741970:
+                    event['destination'] = r(sp + 4)
+                if pc == 0x7C5F00:
+                    returns.setdefault(r(sp), []).append(event)
+                trace.append(event)
+
+        hook = u.hook_add(UC_HOOK_CODE, observe_drive)
+        try:
+            u.mem_write(SP, dwords(RET_MAGIC, rd.LOCO + 4))
+            u.reg_write(UC_X86_REG_ESP, SP)
+            u.reg_write(UC_X86_REG_ECX, 0)
+            process = r(r(rd.LOCO + 4) + 0x40)
+            assert process == 0x4B0500
+            stop = run_checked(u, process, (0x4B0A7E, RET_MAGIC), count=4_000_000,
+                               required_addresses=(process, 0x4B2630))
+        finally:
+            u.hook_del(hook)
+        assert stop == 0x4B0A7E and len(requests) == 1 and not returns
+        assert [e['returned_eax'] for e in trace if e['entry'] == '0x73f0a0'] == [6, 6]
+        assert r(rd.ACTOR + 0x5A4) == 0 and r(rd.ACTOR + 0x500) == rd.BLD
+        assert before_rng == rngs()
+        blocked_goal = dict(before=before, after=vm.state(), entry=hex(process), stop=hex(stop),
+                            stationary_ally_entry=entry, trace=trace, requests=requests,
+                            peer_put_return=peer_put, goal=[8, 12],
+                            foot_before=foot_before, foot_after=foot_state(),
+                            rng_before=before_rng, rng_after=rngs())
+        invoke('blocked_goal_release_by_break', rd.TRANSMIT, rd.OTHER, 3, 0, rd.BLD)
+        retry('blocked_goal_foundation_retry')
+    before_remove, remove_rng = foundation(), rngs()
+    removed = vm.invoke(0x43F180, rd.BLD, 0)
+    after_remove = foundation()
+    assert removed['returned_eax'] & 255 == 1
+    assert all(cell['head'] is None and cell['ground'] == 0 for cell in after_remove)
+    assert remove_rng == rngs()
+    vm.before = marked['after']
+    result = vm.finish()
+    return dict(input=case, startup=vm.spatial_startup, mark_before=mark_before,
+                mark_after=mark_after, mark_rng=mark_rng, marked=marked,
+                entry_cells=entry_cells, entry_rng=entry_rng, controls=controls,
+                blocked_goal=blocked_goal,
+                removal=dict(before=before_remove, after=after_remove, row=removed, rng=remove_rng),
+                original_code_and_vtables_unchanged=result['original_code_and_vtables_unchanged'],
+                native_text_sha256=result['native_text_sha256'])
+
+
+def generate_depot_waiters():
+    inputs = depot_input_receipts(waiters=True)
+    return dict(inputs=inputs, cases=[depot_waiter_case(inputs, level) for level in (0, 4)])
+
+
+def depot_waiters_provenance():
+    return provenance(
+        scope='Original GADEPT Mark3/0, MTNK busy parking, Unit cell entry and pending-entry '
+              'admission/refusal on marked flat levels0/4; bounded original Drive blocked-goal '
+              'response with real Unit entry and a supplied FindPath route.',
+        entry_points=dict(mark=0x43F180, place_down=0x5683C0, cell_put=0x47E8A0,
+                          occupation=0x453D60, recalc=0x47D2B0, nearby=0x703590,
+                          mission_ai=bc.MISSION_AI, parking=0x70D8F0, retry=0x70D7E0,
+                          unit_entry=0x73F0A0, foot_entry=0x4D9C10, building_rows=0x458A00,
+                          unit_destination=rd.ASSIGN, number_impassable_rows_read=0x460133,
+                          close_enough_read=0x670EDD, path_delay_read=0x6739E5,
+                          direction_initializer=0x49F3A0, drive_process=0x4B0500,
+                          drive_process_movement=0x4B2630, find_path=0x4D3920),
+        assumptions=[
+            'Existing DepotService supplies admitted Unit/Building/House/Drive, no complete constructors '
+            'or admission history. Flat32x32 Cell coordinate/level priors and33x33 class/height storage; '
+            'whole original Cell constructors, Building Mark and Recalc produce footprint bits/lists.',
+            'Original process x87/Object14/Cell13/Map CRT initialize before the first Cell height getter; '
+            'no retrospective cache reset. Building constructor BState slice and BeginMode Idle prefix '
+            'exclude animation creation. BuildingType+235 is an opaque original constructor byte.',
+            'Uniform sector/zone0 arrays and zero-extents Tactical storage are supplied as existing '
+            'DockContinuation/Engineer joined fixtures. Full connectivity/Logic/path search/travel excluded.',
+            'Original whole Mark, Nearby/FNPC/raw clearance, Unit entry, Queue/Commence/radio and '
+            'pending-entry bodies execute. Actor coordinates remain prepared16,16 until the explicit '
+            '8,11 foundation control; incumbent is the retained OTHER Techno, not a moving second tank.',
+            'Physical RULESMD, optional LANGRULE, MPBattleMD, XMP03T4, fixed ARTMD selected original '
+            'read slices establish inputs; read transport is supplied. All three full RNG streams retained.',
+            'Unit entry result cells are measured, not supplied. Mark returns/raw bits, parking choice, '
+            'cadence draw, pending/contact cleanup are not replaced. This is not a whole native match '
+            'or proof of the captured three-tank travel path.',
+            'Level4 blocked-goal control prepares a stationary second MTNK by copying admitted Unit '
+            'fields with separate original Drive and radio storage; original CellPUT places it at8,12. '
+            'Actor8,11, facing8000, path4,4,4, empty NavQueue and powered Drive are declared priors. '
+            'Original Drive executes until4B0A7E, before ProcessTrack; actual UnitCanEnter and '
+            'near-stop distance/NULL/timer effects execute. The single FindPath call alone supplies '
+            'AL1 and path4,4,4. Then original BREAK and retry execute foundation refusal.'
+        ],
+        substitutions=['Existing DepotService presentation sinks; original CRT exit-registration '
+                       '7C978A seam returns0, excluding process-exit callback registration only.',
+                       'One level4 Foot FindPath4D3920 call supplies AL1/path4,4,4; all Unit entry '
+                       'classifications remain original.'])
 
 
 def depot_initialize_foot_inputs(vm, names, supplied_state, trace):
@@ -2314,6 +2719,18 @@ def generate():
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if '--depot-waiters' in argv:
+        argv.remove('--depot-waiters')
+        finish_vectors(generate_depot_waiters,
+                       Path(__file__).with_suffix('.depot_waiters.json'),
+                       provenance=depot_waiters_provenance,
+                       source_paths={**depot_source_paths(),
+                                     'spatial_startup': Path('tools/spatial_oracle/mapgen_range.py'),
+                                     'direction_startup_reference': Path('tools/spatial_oracle/track_fresh_response.py'),
+                                     'path_delay_reader_reference': Path('tools/spatial_oracle/path_delay_rules.py'),
+                                     'navigation_storage': Path('tools/spatial_oracle/anytown_damage/navigation.py')},
+                       argv=argv)
+        return
     if '--depot-service' in argv:
         argv.remove('--depot-service')
         finish_vectors(generate_depot_service,

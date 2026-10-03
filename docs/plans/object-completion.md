@@ -21,7 +21,7 @@ requirements. Ghidra names and old investigations remain leads.
 | MTNK / Grizzly | Selection audit pending | No whole-object certificate or exhaustive required-behavior audit yet | Trace primary/elite weapon, projectile/warhead, movement, production and fatal cleanup |
 | GACNST / Construction Yard | Construction → Grand_Opening merged in#992 | Engineer repair, capture, sale/crew/destruction and AMCV undeploy remain required; whole-object closure audit pending | Validate shared Engineer entry/repair, then ordinary destruction |
 | GAPOWR / Allied Power Plant | Reuses merged opening, Engineer repair/House consumers#995 and bounded ordinary fatal chain#1014 | Whole-object closure remains open for sale, incoming drain/spy and further power/art requirements; legacy EMP/power-toggle leads require active stock producer evidence | Complete ordinary sale after the current infantry output chain |
-| GAPILE / Allied Barracks | Reuses merged opening; paid infantry output, automatic clearance and rally handoff have bounded native comparisons and repeated release validation | Engineer/capture/sale/destruction coverage, specialized factory paths and spy effects still need closure | Finish the single output critic/PR, then reuse shared sale and infantry lifecycle work |
+| GAPILE / Allied Barracks | Reuses merged opening; paid infantry output, automatic clearance and rally handoff have bounded native comparisons and repeated release validation | Engineer/capture/sale/destruction coverage, specialized factory paths and spy effects still need closure | Confirm output PR#1034 merges, then reuse shared sale and infantry lifecycle work |
 | ENGINEER / Allied Engineer | Ordinary damaged-GAPOWR entry/repair and required arrival-time capture/House consumers merged in#995, with native, strict Rust and repeated production validation | Live Tag/Trigger, MultiEngineer damage, Hospital/grinder and other specialized entry routes; full-object closure audit pending | Reuse merged repair/capture owners, then trace remaining entry and Tag prerequisites |
 
 Rows name confirmed gaps and unaudited coverage separately. Nothing in this
@@ -248,7 +248,7 @@ UnitReady clock/radar/complete PCM comparisons cover required shared consumers.
 Whole native MainTick/House/unrelated actors, stock rendered pixels and hardware
 latency remain outside those native comparisons.
 
-The final main7e9 candidate passes9610 strict lib tests/232 ignored, clippy
+The preserved main7e9 candidate passes9610 strict lib tests/232 ignored, clippy
 exit0/725 warnings with no edited-line diagnostic,126 Python checks and2513/2513
 field authority. [Same-binary Rust attribution](../../tools/spatial_oracle/factory_infantry_output_replay/main7e9/receipt.json)
 restores both incoming hashes while all618 actor/command/full-RNG observations agree
@@ -264,5 +264,15 @@ The runtime observer does not directly export Factory5D/final Factory holders;
 joined original/Rust comparisons cover those fields. Lossless PNG QA shows both GIs.
 These are production validations, not native world/render or whole-object certificates.
 The [single fresh read-only critic](../../tools/spatial_oracle/_factory_infantry_output/critic.md)
-found no confirmed defects and judged the scoped chain ready for a PR. Publication
-is next; ordinary GAPOWR sale follows its merge.
+found no confirmed defects and judged the scoped chain ready for a PR. PR#1034
+is published with auto-merge enabled; ordinary GAPOWR sale follows its merge.
+
+Integration with newer main cf4317 preserves the incoming depot owners and combines
+the capture validator's Walk and pending-entry projections. The frozen integrated
+candidate passes9613 strict lib tests/231 ignored, clippy exit0/725 warnings and98
+Python checks. Its six refreshed retail captures all validate, and three repeat
+comparisons MATCH. Complete prior saved observations, hashes, commands, clocks and
+GPU bytes remain identical after removing only the added read-only pending-entry
+field. The production receipt's `current_candidate` retains source/build/run
+identities and the exact comparison. Native helper identities and goldens are
+unchanged; no second critic pass was run. Whole-object certificates remain0/3.

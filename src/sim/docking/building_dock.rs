@@ -60,6 +60,7 @@
 //! Repair payment/heal is the canonical Techno radio receiver6F4AB0.
 //! The Building mission44B780 owns status and its independent+620 progress.
 //! Evidence and coverage: tools/spatial_oracle/building_repair.depot_service.md.
+//! Marked waiter/near-stop controls: building_repair.depot_waiters.{json,md}.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/radio, sim/movement, sim/mission.
@@ -1506,6 +1507,10 @@ pub(crate) fn mission_repair(
 }
 
 #[cfg(test)]
+#[path = "building_dock_frame_tests.rs"]
+mod frame_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::map::entities::EntityCategory;
@@ -2284,15 +2289,15 @@ mod tests {
         visit_depot(sim, rules);
     }
 
-    /// Every pending unit's `FootClass::AI` entry retry (`0x004DAEDC`), in
-    /// live-object order, after its Process.
+    /// Component-only sorted-id retry sweep. Complete object turns and the
+    /// live Logic order are exercised by `frame_tests`.
     fn pending_entries(sim: &mut Simulation, rules: &RuleSet) {
         for id in sim.substrate.entities.keys_sorted() {
             try_pending_entry(sim, rules, id);
         }
     }
 
-    /// Every unit's ground locomotor Process, in live-object order.
+    /// Component-only sorted-id Process sweep.
     fn process_units(sim: &mut Simulation, rules: &RuleSet) {
         for id in sim.substrate.entities.keys_sorted() {
             if sim
@@ -2307,8 +2312,8 @@ mod tests {
         }
     }
 
-    /// The object-AI pass restricted to units, in live-object (stable id)
-    /// order — the slot native `Mission_Enter` dispatches from.
+    /// Component-only sorted-id Unit AI sweep. Storage order is not the
+    /// production live-object order.
     fn visit_units(sim: &mut Simulation, rules: &RuleSet) {
         let units: Vec<u64> = sim
             .substrate
@@ -2531,46 +2536,6 @@ mod tests {
         );
         assert!(linked(&sim, 1), "the first order holds the slot");
         assert!(!linked(&sim, 3));
-    }
-
-    /// The freed slot goes to the first pending unit whose `FootClass::AI`
-    /// runs after the release (`0x0070D7E0`, live-object order), not to the
-    /// first orderer: unit 3 is ordered before unit 2, and unit 2 docks next.
-    /// Its HELLO links it, CAN_LOAD answers ROGER (it does not stand on the
-    /// depot, IsOccupied 0x23), and it commences Enter with the pad as NavCom.
-    #[test]
-    #[ignore = "waiters park on the unmarked depot foundation (issue #937)"]
-    fn freed_slot_goes_to_the_first_pending_unit_in_object_order() {
-        let (mut sim, rules) = setup(3);
-        for tank in [1, 3, 2] {
-            assert!(order_repair(&mut sim, &rules, tank));
-        }
-        let mut released = false;
-        for _ in 0..2000 {
-            tick(&mut sim, &rules);
-            if !linked(&sim, 1) {
-                released = true;
-                break;
-            }
-        }
-        assert!(released, "unit 1 releases");
-        assert!(!linked(&sim, 1));
-        assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 300);
-        assert!(linked(&sim, 2), "the first pending unit in object order");
-        assert!(!linked(&sim, 3));
-        assert_eq!(sim.substrate.entities.get(2).unwrap().pending_entry(), None);
-        assert!(linked(&sim, 2));
-        assert_eq!(
-            sim.substrate.entities.get(3).unwrap().pending_entry(),
-            Some(DEPOT)
-        );
-        let e = sim.substrate.entities.get(2).unwrap();
-        // Queue_Mission(Enter, commence) promotes at once: Enter is current.
-        assert_eq!(e.derived_mission().0, MissionType::Enter);
-        assert_eq!(
-            e.navigation.nav_com,
-            Some(NavTargetRef::Building { id: DEPOT })
-        );
     }
 
     /// Original Enter/DOCKING never installs a depot MOVE_HERE; a Drive

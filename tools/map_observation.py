@@ -530,8 +530,14 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
         require_exact_keys(foot, ('retarget_after_stop_688', 'firing_sequence_latch_68d',
                                   'infantry_doing', 'navigation_leptons', 'navigation_unavailable',
                                   *(('walk_head_leptons', 'walk_destination_leptons',
-                                     'walk_is_moving') if walk_state else ())),
+                                     'walk_is_moving') if walk_state else ()),
+                                  *(('pending_entry_500',) if 'pending_entry_500' in foot else ())),
                            f'{label}.foot')
+        # Additive read-only projection: previously sealed v6 receipts omit it.
+        # A missing field carries no information about the pending-entry owner.
+        if 'pending_entry_500' in foot and foot['pending_entry_500'] is not None:
+            _bounded_int(foot['pending_entry_500'], f'{label}.foot.pending_entry_500',
+                         1, (1 << 64) - 1)
         if type(foot['retarget_after_stop_688']) is not bool:
             raise ValidationError(f'{label}.foot.retarget_after_stop_688 must be a boolean')
         _bounded_int(foot['firing_sequence_latch_68d'], f'{label}.foot.firing_sequence_latch_68d', 0, 255)

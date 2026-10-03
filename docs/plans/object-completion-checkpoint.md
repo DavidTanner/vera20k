@@ -7,14 +7,20 @@ DONE requires three whole objects with native comparisons and production validat
 ## Owned state and next action
 
 Checkout `/Users/halvor/.codex/worktrees/object-completion/vera20k`; branch
-`feature/native-barracks-infantry-output`; implementation base/fetched main
-`7e932b968e9b901142d80944095af68fe178ebdc`. The complete infantry-output chain
-is validated for publication. Its single fresh read-only critic found no confirmed
+`feature/native-barracks-infantry-output`; implementation base
+`7e932b968e9b901142d80944095af68fe178ebdc`, fetched main
+`cf4317b3344a571e3111c935afea392bbf3e7eaf`. PR
+[1034](https://github.com/YuriPlanet/vera20k/pull/1034) is published and attached,
+with auto-merge enabled. Integration of newer main is validated: the sole
+conflict in the capture validator now accepts both Walk and pending-entry
+projections, while incoming depot owners/tests remain intact.
+Its single fresh read-only critic found no confirmed
 defects; the [report](../../tools/spatial_oracle/_factory_infantry_output/critic.md)
 retains scope and evidence.
-All Cargo and capture sessions are closed. Runtime source is validated; only
-production receipts/profiles and documentation have changed since the frozen build.
-Next: commit, PR/attach and auto-merge; no additional critic is authorized. Confirm merge before implementing the next chain.
+All Cargo and capture sessions are closed. Strict full lib, clippy and refreshed
+retail production captures pass on the integrated candidate. Next: commit/push
+the integration and wait for CI/merge confirmation. No additional critic is
+authorized. Confirm merge before implementing the next chain.
 
 Preserve recovery stashes `30f4d3fe96469d24bc11b9a209950d64adfa99b7`,
 `ed23121a96f3a142686e13b48383fedb45ba1875`,
@@ -96,7 +102,7 @@ All59 Factory/P10/publication/consumer helper identities and14 Gate identities
 match frozen c60 after integrating main7e9; no new native profile/golden is needed.
 Historical cold/P2/P5 controls remain deficient-prior bounds, not stock timing.
 
-## Final validation and source identity
+## Preserved main7e9 validation and source identity
 
 Frozen final source SHA
 `d1bb3ee490d04d70e6329f5f6e11f475dd5bdf811ba2ebfd13b63546db44f813`.
@@ -121,6 +127,28 @@ world_hash SHA `fd39b2dcb26078e1b3634e219fa4a5660ca999ca9ba204f4d171e4746618712b
 Two literal pins are0x0F2C_FFB8_42D8_155E and0xF008_D6D1_349C_CD9C.
 Normal/-O checks are byte-identical. Older c60 attribution explicitly lacks historical
 whole-source/per-run identities; do not invent them or promote it to native evidence.
+
+## Newer main integration
+
+Main cf4317 retains the incoming Allied depot owners/tests and additive pending-entry
+projection. The capture-validator conflict composes that field with the Walk fields.
+Frozen source SHA `5e8ecf7d2b1d1a37b61e8378d21499f05c552316290027677704e7133b5516ee`
+passes strict full lib **9613 / 0 failed / 231 ignored**, clippy exit0/725 warnings,
+98 Python checks and unchanged2513/2513 authority fields. Saved native normal/-O
+checks are byte-identical SHA `7133b6bd6d5d68ac1526b5575d6f506d76b5a682781cd2fb742d7960370883ea`;
+all59 Factory and14 Gate helper identities remain unchanged.
+
+`barracks-output-maincf431-integration-v1` retains the exact logs, source receipts,
+default16GiB-admitted release build and six refreshed2200-step production runs.
+Label `object-barracks-output-release-maincf431-v2-20261003`, binary SHA
+`f0994a544d480eb067f99e14aa9d8c9e11855b7779548aa1df0e1c501b334bbc`.
+All six captures/offline checks are VALID; all three repeats MATCH. Every prior
+saved observation field, command, state hash, clock and GPU byte also matches
+after removing only the new read-only `foot.pending_entry_500` projection.
+The existing visual QA therefore covers identical GPU bytes. The production
+receipt's `current_candidate` retains the integration and source identities;
+`post-build-metadata` reconstructs the frozen source before receipt/doc edits.
+No new native goldens or second critic pass was needed.
 
 ## Retail production validation
 
@@ -156,10 +184,18 @@ abandonment is already correct. Sale admission/dirty/stage/RecordKill, human
 CanBuild/sidebar and precharge policy remain gaps. Needed native controls include
 joined current-owner sale, raised-terrain crew placement and unpaused ceva058
 natural cleanup, then retail release idle/last-POWER sale. No implementation exists.
+The newer sealed `ordinary-building-sale-current-house-joined-research-20261003`
+executes50 whole current-House4F8440 visits through the joined sale/Factory/House/
+queued-cancellation transaction. Exact current pointer is0x28158340, with original
+interface/vtable initialization and1FC/current-House stores. Seal
+`4f271f83f2ba95b9f18c284853c85254227939d835a86468a93b8a0da662128c`.
+Foreign full-vector NULL-vtable failure remains preserved; successful foreign
+roster construction and whole startup remain excluded. Current canonical-helper,
+human CanBuild and raised-floor research continue externally without source writes.
 Spy/drain and GeneticConverter/AnimToInf prerequisites remain in the inventory.
 
-Keep final opening/Engineer/fatal-v6 labels, active hash-control label and this
-output release label. Old fatal PID33904 is not owned by the current capture;
+Keep final opening/Engineer/fatal-v6 labels, active hash-control label and both
+output release labels through integration/merge. Old fatal PID33904 is not owned by the current capture;
 never kill it. After merge, dry-run retirement only of exact superseded owned
 labels, preserving required control/debug/production evidence. No age/glob deletion.
 Cargo is `python -m tools.cargo_run -- <arguments>`; every test uses `--lib`.
