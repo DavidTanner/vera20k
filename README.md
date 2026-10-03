@@ -2,69 +2,63 @@
 
 # VERA20k
 
-VERA20k is a rewrite of the Red Alert 2: Yuri's Revenge engine (`gamemd.exe`) in Rust. It ports
-the original game's behavior one mechanic at a time, and aims to scale up to 30 players and
-20,000 units. Unlike [OpenRA](https://www.openra.net), which remakes the classic games on its
-own engine, it tries to reproduce Yuri's Revenge itself.
+Red Alert 2: Yuri's Revenge — rebuilt in Rust for large multiplayer battles.
 
-You'll need your own copy of the game. EA sells it in *Command & Conquer The Ultimate
-Collection*, on [Steam](https://store.steampowered.com/bundle/39394/) and on
-[EA's site](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc).
+VERA20k is a rewrite of the original engine, `gamemd.exe`. It uses the original game files,
+so you'll need your own copy of Yuri's Revenge. It's available in *Command & Conquer The
+Ultimate Collection* on [Steam](https://store.steampowered.com/bundle/39394/) and
+[EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc).
 
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k skirmish setup screen and in-game view" width="100%">
 
-## Status
+## Project goals
 
-Pre-alpha. Local skirmish is playable on Windows against a placeholder AI.
+1. Keep the gameplay, visuals and atmosphere of the original Yuri's Revenge.
+2. Support bigger battles: up to **30 players** and **20,000 units** on larger maps.
+3. Make room for new RTS features the original engine couldn't support.
 
-- **Working:** retail and random maps, menus and sidebar, base building,
-  [harvesting and refinery deposits](tools/spatial_oracle/refinery_dock.md), core combat,
-  and save/load.
-- **Partial:** [Jumpjet movement](tools/spatial_oracle/jumpjet_instance_validation/README.md),
-  aircraft attack runs, mind control, crates, death effects, and
-  [bridges](tools/spatial_oracle/bridge_shadow_render.md).
-- **Missing:** multiplayer, the original AI, campaign, most map triggers, movies,
-  and several special weapons and superweapons.
-- **Scale:** 30 players and 20,000 units are the target; this hasn't been demonstrated yet.
+## Current status
 
-Ordinary Allied Power Plant destruction has bounded native comparisons through
-[tank impact, effects and crew](tools/spatial_oracle/building_death_anims_joined.md),
-[stock smudges](tools/spatial_oracle/building_death_anims_joined_stock_smudges.md)
-and [cancelled held products](tools/spatial_oracle/building_death_anims_limbo_cancel.md).
-Whole-object parity remains open.
+**Early development.** Local skirmish is playable on Windows against a basic AI. Retail and
+random maps, menus, base building, harvesting, combat and save/load are in place, but there's
+still a lot to fix and finish.
 
-## Running it
+Multiplayer, campaigns and the original AI are still missing. Aircraft, mind control, bridges
+and several weapons and effects need more work. We haven't demonstrated 30-player,
+20,000-unit battles yet.
+
+## Build and run
 
 You need Rust 1.88 or newer, a GPU with Vulkan, DirectX 12 or Metal, and the game installed.
-It's been played on Windows, Linux and macOS, and CI builds and tests all three.
+VERA20k has been played on Windows, Linux and macOS.
 
 ```sh
 git clone https://github.com/YuriPlanet/vera20k.git
 cd vera20k
-cp config.toml.example config.toml   # then set ra2_dir to your game folder
-cargo run --release --bin vera20k    # always --release: debug builds are too slow to play
+cp config.toml.example config.toml
+# Edit config.toml and set ra2_dir to your game folder before running:
+cargo run --release --bin vera20k
 ```
 
-The tests don't need the game: `cargo test -p vera20k --lib`. See
-[CONTRIBUTING.md](CONTRIBUTING.md#set-up) for more setup details, including where VERA20k looks
-for `config.toml`.
+Use `--release` to play; debug builds are too slow. See
+[CONTRIBUTING.md](CONTRIBUTING.md#set-up) for platform setup and running the tests.
 
-## How it's built
+## How we work
 
-The original `gamemd.exe` is the reference. Newer gameplay code names the original function it
-was ported from, and [native harnesses](tools/native_oracle.md) run the original code to check
-the Rust results. Most of the code is written by AI coding agents that I direct, following the
-rules in [AGENTS.md](AGENTS.md).
+Most of the code is written by AI coding agents that I direct. We use Ghidra to study the
+original engine, then port its behavior to Rust and check it with
+[comparison tools](tools/native_oracle.md) and playtesting. The working rules are in
+[AGENTS.md](AGENTS.md), with the details in our [research notes](docs/research/README.md).
 
 ## Contributing
 
-Help is welcome, and you don't need reverse-engineering experience. Playing VERA20k next to the
-original and reporting differences helps a lot, and so does trying it on Linux or macOS. Start
-with [CONTRIBUTING.md](CONTRIBUTING.md) or the
+Help is welcome. You can write code, test the game, improve the docs, or play it next to the
+original and tell us what feels wrong. You don't need reverse-engineering experience to help.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md), browse the
 [good first issues](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue), or say
-hi on [Discord](https://discord.gg/kmjRUn5m5F). For more depth there's the
-[architecture overview](https://yuriplanet.github.io/vera20k/), the
-[native oracle](tools/native_oracle.md) and the [research notes](docs/research/README.md).
+hi on [Discord](https://discord.gg/kmjRUn5m5F). The
+[architecture overview](https://yuriplanet.github.io/vera20k/) explains how the engine fits together.
 
 ## Credits and legal
 
