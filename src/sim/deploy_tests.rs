@@ -1415,7 +1415,9 @@ fn passive_scan_shortening_matches_original_signed_timer_and_rng_controls() {
         .filter(|row| row["input"]["kind"] == "reload")
     {
         let (mut sim, _rules, id) = native_deploy_fixture(row);
-        // This historical oracle label controls A8E7AC, not GameMode.
+        // Historical packet label "map_editor" supplies A8E7AC, the shared
+        // nesting counter. Exercise its real owner rather than a second
+        // Boolean decision passed to the timer leaf.
         if row["input"]["map_editor"].as_u64().unwrap() != 0 {
             sim.with_object_placement_scope(|sim| sim.shorten_passive_scan_timer(id));
         } else {

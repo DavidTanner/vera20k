@@ -1836,7 +1836,7 @@ fn place_starting_object_near_base(
         }
     }
 
-    sim.discard_constructed_limbo(stable_id);
+    sim.discard_constructed_limbo(stable_id, Some(rules));
     None
 }
 

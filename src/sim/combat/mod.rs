@@ -148,7 +148,7 @@ use crate::sim::terrain_object::TerrainAreaReceiveResult;
 use crate::sim::terrain_object::TerrainAreaState;
 use crate::sim::vision::FogState;
 use crate::sim::wave::WaveDamageEvent;
-use crate::sim::world::{FireOriginSnapshot, SimFireEvent, SimSoundEvent};
+use crate::sim::world::{FireOriginSnapshot, SimFireEvent, SimSoundEvent, Simulation};
 use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::LEPTONS_PER_LEVEL;
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53};
@@ -1809,45 +1809,40 @@ impl DeathEffects {
 /// every stock debris AnimType is `Bouncer=yes` — all 26 named by `[General]
 /// MetallicDebris=` or by any `DebrisAnims=` line, authored in `artmd.ini`
 /// (`AnimTypeClass+0x35A`, read at `0x004286A7`). Each piece's constructor
-/// draws (`RandomRate=`, none for the stock chunks, then three velocity draws
-/// and `BounceClass::Init`'s three) are taken right after its pick, as native
-/// constructs it before picking the next; the row carries them to the
-/// deferred construction. Native execution:
+/// draws run right after its pick and the piece enters Logic before the next
+/// pick. Stock DBRIS actively reads RandomRate=220,600; native428784/42879F
+/// divides by900 and4287D6 clamps to[1,1], so that coincident ranged request
+/// advances no raw word. Bouncer's velocity/BounceInit draws are independent.
+/// Original execution:
 /// `tools/spatial_oracle/anim_bouncer_launch.py` (`debris_loop` rows).
 /// Counts on gamemd's case-exact key read, which `ObjectType::from_ini_section`
 /// matches (`CCINIClass::ReadInt @ 0x005276D0` CRCs the raw key bytes): 324 of
 /// the 356 stock sections that throw reach an SHP arm (of 439 authoring
 /// `MaxDebris=`, 83 author 0); the 17 `[VehicleTypes]` spelling `Maxdebris=`
 /// (the Rhino among them) take the constructor default 0 and throw nothing.
-#[allow(clippy::too_many_arguments)]
 fn throw_debris_for_death(
+    world: &mut Simulation,
     object_type: &ObjectType,
     rules: &RuleSet,
-    interner: &mut StringInterner,
     owner: InternedId,
-    (world_x, world_y): (i32, i32),
-    world_z_leptons: i32,
-    scenario_rng: &mut SimRng,
-    native_ids: &mut Option<crate::sim::native_identity::NativeUniqueIdCursor>,
+    origin: glam::IVec3,
     voxel_debris: &mut Vec<crate::sim::voxel_anim::VoxelDebrisSpawn>,
     explosion_effects: &mut Vec<ExplosionEffect>,
 ) {
-    use crate::sim::voxel_anim::{DebrisTypeData, ShpDebrisSource, throw_death_debris};
+    use crate::sim::voxel_anim::{DebrisTypeData, throw_death_debris};
 
     if object_type.max_debris <= 0 {
         return;
     }
-
-    let debris_types: Vec<Option<(crate::rules::voxel_anim_type::VoxelAnimTypeId, _)>> =
-        object_type
-            .debris_types
-            .iter()
-            .map(|name| {
-                rules
-                    .voxel_anim_type_id_by_name(name)
-                    .map(|id| (id, rules.voxel_anim_type(id)))
-            })
-            .collect();
+    let debris_types: Vec<_> = object_type
+        .debris_types
+        .iter()
+        .map(|name| {
+            rules
+                .voxel_anim_type_id_by_name(name)
+                .map(|id| (id, rules.voxel_anim_type(id)))
+        })
+        .collect();
     let data = DebrisTypeData {
         max_debris: object_type.max_debris,
         min_debris: object_type.min_debris,
@@ -1856,72 +1851,122 @@ fn throw_debris_for_death(
         debris_anim_count: object_type.debris_anims.len(),
         metallic_debris_count: rules.general.metallic_debris.len(),
     };
-    // Native lifts the anim coordinate by 20 leptons (`ADD EAX, 0x14` at
-    // `0x00702443`/`0x0070254B`) and constructs `AnimClass(type, coord, 0, 1,
-    // 0x600, 0, 0)` there, exactly.
+    // Native702443/70254B lifts SHP debris by20 leptons. Voxel74950C
+    // applies its own10-lepton lift through the existing numeric owner.
     let anim_coord = crate::sim::anim_class::AnimWorldCoord {
-        x: world_x,
-        y: world_y,
-        z: world_z_leptons.wrapping_add(0x14),
+        x: origin.x,
+        y: origin.y,
+        z: origin.z.wrapping_add(0x14),
     };
-    let debris_name = |source: ShpDebrisSource, index: usize| match source {
-        ShpDebrisSource::TypeDebrisAnims => object_type.debris_anims.get(index),
-        ShpDebrisSource::RulesMetallicDebris => rules.general.metallic_debris.get(index),
+    let mut host = DeathDebrisWorldHost {
+        world,
+        object_type,
+        rules,
+        anim_coord,
+        voxel_debris,
+        explosion_effects,
     };
-    let Ok(thrown) = throw_death_debris(
-        &data,
-        Some(owner),
-        glam::IVec3::new(world_x, world_y, world_z_leptons),
-        scenario_rng,
-        &mut |source, index, rng| {
-            // The selected piece is allocated before Anim42203D assigns its
-            // identity, then RandomRate/Bouncer draws run before the next pick.
-            // Carry this constructor result through delayed world publication.
-            let native_unique_id =
-                crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(native_ids);
-            let Some(config) = debris_name(source, index)
-                .and_then(|name| rules.art().anim_runtime_config(&name.to_ascii_uppercase()))
-            else {
-                // A missing bound SHP still corresponds to a native Anim
-                // constructor. Admission reports the asset failure later.
-                return Ok(Some(crate::sim::anim_class::AnimConstructorDraws {
-                    native_unique_id: Some(native_unique_id),
-                    random_rate: None,
-                    bounce: None,
-                }));
-            };
-            crate::sim::anim_class::anim_constructor_draws(config, anim_coord, rng).map(
-                |mut draws| {
-                    draws.native_unique_id = Some(native_unique_id);
-                    Some(draws)
-                },
-            )
-        },
-    ) else {
-        // A launch velocity outside the verified x87 domain needs a modded
-        // `[VoxelAnims]` value far past any stock one; the draws are already
-        // consumed, so the death simply throws nothing.
-        return;
-    };
-    voxel_debris.extend(thrown.voxels);
-    for row in thrown.anims {
-        if let Some(name) = debris_name(row.source, row.index) {
-            let shp_name = interner.intern(name);
-            let (rx, ry, sub_x, sub_y, z) = anim_coord.to_cell_sub_z();
-            explosion_effects.push(ExplosionEffect {
+    if let Err(error) = throw_death_debris(&data, Some(owner), origin, &mut host) {
+        // Out-of-domain modded velocities retain the pieces already emitted;
+        // the original ordered block has no rollback of earlier constructors.
+        log::debug!("death debris stopped outside verified numeric domain: {error}");
+    }
+}
+
+/// Live constructor adapter for the single debris-loop port. Numeric fixtures
+/// collect the same port's results; production admits each piece at its call.
+struct DeathDebrisWorldHost<'w, 'r> {
+    world: &'w mut Simulation,
+    object_type: &'r ObjectType,
+    rules: &'r RuleSet,
+    anim_coord: crate::sim::anim_class::AnimWorldCoord,
+    voxel_debris: &'w mut Vec<crate::sim::voxel_anim::VoxelDebrisSpawn>,
+    explosion_effects: &'w mut Vec<ExplosionEffect>,
+}
+
+impl<'r> DeathDebrisWorldHost<'_, 'r> {
+    fn debris_name(
+        &self,
+        source: crate::sim::voxel_anim::ShpDebrisSource,
+        index: usize,
+    ) -> Option<&'r str> {
+        use crate::sim::voxel_anim::ShpDebrisSource;
+        match source {
+            ShpDebrisSource::TypeDebrisAnims => self.object_type.debris_anims.get(index),
+            ShpDebrisSource::RulesMetallicDebris => self.rules.general.metallic_debris.get(index),
+        }
+        .map(String::as_str)
+    }
+}
+
+impl crate::sim::voxel_anim::DeathDebrisHost for DeathDebrisWorldHost<'_, '_> {
+    fn rng(&mut self) -> &mut SimRng {
+        &mut self.world.scenario_rng
+    }
+
+    fn construct_anim(
+        &mut self,
+        source: crate::sim::voxel_anim::ShpDebrisSource,
+        index: usize,
+    ) -> Result<(), crate::util::native_x87::NativeX87Error> {
+        let native_unique_id = crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(
+            &mut self.world.native_unique_ids,
+        );
+        let name = self.debris_name(source, index);
+        let config = name.and_then(|name| {
+            self.rules
+                .art()
+                .anim_runtime_config(&name.to_ascii_uppercase())
+        });
+        let mut draws = if let Some(config) = config {
+            crate::sim::anim_class::anim_constructor_draws(
+                config,
+                self.anim_coord,
+                &mut self.world.scenario_rng,
+            )?
+        } else {
+            crate::sim::anim_class::AnimConstructorDraws {
+                native_unique_id: None,
+                random_rate: None,
+                bounce: None,
+            }
+        };
+        draws.native_unique_id = Some(native_unique_id);
+        if let Some(name) = name {
+            let shp_name = self.world.interner.intern(name);
+            let (rx, ry, sub_x, sub_y, z) = self.anim_coord.to_cell_sub_z();
+            let effect = ExplosionEffect {
                 shp_name,
                 rx,
                 ry,
                 sub_x,
                 sub_y,
                 z,
-                world_z: anim_coord.z,
+                world_z: self.anim_coord.z,
                 death: Some(destruction_effects::DeathAnimSpawn {
-                    coord: anim_coord,
+                    coord: self.anim_coord,
                     delay: 0,
-                    draws: row.draws,
+                    draws: Some(draws),
                 }),
-            });
+            };
+            if world_receiver::callbacks_enabled(self.world) {
+                crate::sim::world::damage_consequences::admit_explosion_effect(
+                    self.world, self.rules, effect,
+                );
+            } else {
+                // Explicit callback-disabled tests retain their packet seam.
+                self.explosion_effects.push(effect);
+            }
+        }
+        Ok(())
+    }
+
+    fn admit_voxel(&mut self, spawn: &crate::sim::voxel_anim::VoxelDebrisSpawn) {
+        if world_receiver::callbacks_enabled(self.world) {
+            self.world
+                .admit_death_debris(std::iter::once(spawn.clone()));
+        } else {
+            self.voxel_debris.push(spawn.clone());
         }
     }
 }
@@ -3188,11 +3233,22 @@ mod impact_height_tests {
         };
         let mut rules =
             crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
         let golden: serde_json::Value = serde_json::from_str(include_str!(
             "../../../tools/spatial_oracle/bridge_debris_producer.json"
         ))
         .unwrap();
+        // Use the exact retained image-header inputs supplied to the original
+        // constructor corpus; the old draw-only test omitted asset binding.
+        let mut registry = crate::rules::art_data::ArtRegistry::from_ini(&art);
+        for native in golden["retail_anim_types"].as_array().unwrap() {
+            if native["source"]["art_body_read"] == true {
+                registry.bind_anim_frame_count_for_test(
+                    native["name"].as_str().unwrap(),
+                    native["frames"].as_i64().unwrap() as i32,
+                );
+            }
+        }
+        rules.install_art_data(registry);
         let rows = golden["death_loop"].as_array().unwrap();
         assert_eq!(rows.len(), 12);
         for row in rows {
@@ -3205,28 +3261,26 @@ mod impact_height_tests {
             object_type.debris_anims.clear();
             let coord = input["coord"].as_array().unwrap();
             let at = |i: usize| coord[i].as_i64().unwrap() as i32;
-            let mut interner = test_interner();
-            let owner = interner.intern("Americans");
-            let mut rng = SimRng::new(input["seed"].as_u64().unwrap());
-            assert_eq!(rng.native_state_hex(), row["rng_before"].as_str().unwrap());
+            let mut sim = Simulation::new();
+            let owner = sim.interner.intern("Americans");
+            sim.scenario_rng = SimRng::new(input["seed"].as_u64().unwrap());
+            assert_eq!(
+                sim.scenario_rng.native_state_hex(),
+                row["rng_before"].as_str().unwrap()
+            );
             let mut voxels = Vec::new();
             let mut effects = Vec::new();
-            let mut native_ids =
-                Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
             throw_debris_for_death(
+                &mut sim,
                 &object_type,
                 &rules,
-                &mut interner,
                 owner,
-                (at(0), at(1)),
-                at(2),
-                &mut rng,
-                &mut native_ids,
+                glam::IVec3::new(at(0), at(1), at(2)),
                 &mut voxels,
                 &mut effects,
             );
             assert_eq!(
-                rng.native_state_hex(),
+                sim.scenario_rng.native_state_hex(),
                 row["rng_after"].as_str().unwrap(),
                 "{input}"
             );
@@ -3238,35 +3292,40 @@ mod impact_height_tests {
                 .map(|event| event["type"].as_str().unwrap().to_string())
                 .collect();
             assert_eq!(
-                effects
+                sim.substrate
+                    .anims
                     .iter()
-                    .map(|effect| interner.resolve(effect.shp_name).to_string())
+                    .map(|(_, anim)| sim.interner.resolve(anim.type_id).to_string())
                     .collect::<Vec<_>>(),
                 names,
                 "{input}"
             );
-            for (effect, native) in effects.iter().zip(row["anims"].as_array().unwrap()) {
-                let spawn = effect
-                    .death
-                    .expect("a debris piece is an exact construction");
+            assert!(
+                effects.is_empty() && voxels.is_empty(),
+                "live constructors leave no deferred packets"
+            );
+            assert_eq!(sim.logic_order().len(), names.len());
+            for ((_, anim), native) in sim
+                .substrate
+                .anims
+                .iter()
+                .zip(row["anims"].as_array().unwrap())
+            {
                 let location = native["location"].as_array().unwrap();
                 assert_eq!(
-                    [spawn.coord.x, spawn.coord.y, spawn.coord.z],
+                    [anim.world_coord.x, anim.world_coord.y, anim.world_coord.z],
                     std::array::from_fn(|i| location[i].as_i64().unwrap() as i32),
                     "{input}"
                 );
-                let draws = spawn
-                    .draws
-                    .expect("the resolved type supplies constructor draws");
                 if native["is_bouncing"].as_u64().unwrap() == 0 {
                     assert!(
-                        draws.bounce.is_none(),
+                        anim.bounce.is_none(),
                         "unread retail D is not a Bouncer: {input}"
                     );
                     assert_eq!(native["type"], "D");
                     continue;
                 }
-                let body = draws.bounce.expect("an ART-read bouncing chunk");
+                let body = anim.bounce.expect("an ART-read bouncing chunk");
                 let bits = |key: &str, i: usize| native["bounce"][key][i].as_u64().unwrap() as u32;
                 for axis in 0..3 {
                     assert_eq!(body.position[axis].bits(), bits("position_bits", axis));

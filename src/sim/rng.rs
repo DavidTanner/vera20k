@@ -180,6 +180,27 @@ impl SimRng {
         bytes.iter().map(|byte| format!("{byte:02x}")).collect()
     }
 
+    /// Import a pinned original Random2Class comparison boundary. This reads
+    /// logical fields only; it does not seed or execute a second RNG port.
+    #[cfg(test)]
+    pub(crate) fn from_native_state_hex_for_test(hex: &str) -> Self {
+        assert_eq!(hex.len(), 0x3f4 * 2, "native Random object byte count");
+        let bytes: Vec<u8> = hex
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect();
+        assert_eq!(&bytes[1..4], &[0, 0, 0], "unmodeled native padding");
+        let word =
+            |offset: usize| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+        Self {
+            disabled: bytes[0],
+            index_a: word(4) as i32,
+            index_b: word(8) as i32,
+            state: (12..0x3f4).step_by(4).map(word).collect(),
+        }
+    }
+
     /// Copy every logical field into immutable boundary evidence.
     pub fn logical_state(&self) -> SimRngLogicalState {
         let mut words = [0; RNG_TABLE_LEN];

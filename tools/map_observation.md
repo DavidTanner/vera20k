@@ -936,3 +936,18 @@ The [atlas observation validation](atlas_observation.validation.json) records
 before/after production captures and the explicit retail GPU atlas refresh test.
 The older `map_observation.validation.json` remains historical v1 evidence; it
 has not been retroactively given statistics or new source identities.
+
+Final PR1018 integration includes main2e05101f and snapshot285. Stock R10 and
+scenario-zero R11 ordinary v6 wrappers both finish5,600 ticks/exit0 using the
+same release binary `9a3cbe2f2e1df8ea8763088bbfffbf694a30efc45193b1b0a4c33ce599e6104c`
+(31,667,312 bytes). All11,202 complete factory/tank actor and presence comparisons
+match across5,601 boundaries, with3,700 present samples and both objects ending
+in Guard at the retained cleared-footprint poses. Final800x600 BGRA bytes remain
+`adceea6c241b3e4eb16eb7039d6c1159dfdb376f4d9191bfcc4b3634127c80cb`;
+the lossless preview was visually inspected outside the sealed bundles.
+`unit-unlimbo-pr1018-final-runtime-summary-20261003.json` retains current wrapper
+validation and complete comparisons, SHA-256
+`92a0266bebb2298fd35d3821c06e23718c49cdd13b083608162c9c0e3222e8d0`.
+The earlier R8 actor data also matches; its overwritten executable basename is
+historical evidence and is not newly strict-validated. Stock/zero rule inputs
+differ, so this actor/pixel comparison is not whole-run equality or native parity.

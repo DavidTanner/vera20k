@@ -602,6 +602,63 @@ External `unit-unlimbo-main1013-final-runtime-summary-20261003.json` has SHA-256
 `e503a82b7e63b1cb4c654f644a6359e41d606ed0c4708870efecea5039b1b43d`.
 These remain Rust production observations within the declared profile.
 
+### Integration of main 2e05101f
+
+The combined candidate retains main's building-fatal lifecycle, deferred Smudge
+identities and constructor destructor. Snapshot285 composes that state with the
+shared Door/Gate state. Crew escape, sale, cancellation and Smudge callbacks now
+reuse the existing lifecycle placement scope; the incoming second A8E7AC counter
+and API are removed. Original Unit73F34C and Infantry51C144 both read A8E7AC.
+Unit73F405 separately reads GameMode for its later crate arm. Independent original
+counter/mode controls reject the incoming Unit boundary GameMode predicate.
+
+Unit binding now includes the existing `world/object_entry.rs` production owner:
+84 paths, 49 Python and 35 Rust. The central publisher refreshed four resolved
+Rust hashes and that inventory addition; all generator bodies, native spans,
+inputs and complete CPP payloads remain unchanged. This is binding factorization
+of the previously executed61-fixture replay, not a new Unit VM replay.
+External `unit-unlimbo-main1019-factorized-aq3uxi4h/terminal-receipt.json` has
+SHA-256 `aaf7ebda698717e0b92f22f4a58191f7051a905fcb8f6f700297a0f71fd49cdf`.
+Fresh counter8 and boundary100 checks pass. Gate37/350 and its default59 also
+pass with native payloads unchanged and eight source pins refreshed.
+
+The incoming three fatal companions and five construction/engineer/power/refinery
+companions were replayed through their existing original producers, then had only
+stale shared-helper source pins refreshed. Complete CPP payloads and every other
+provenance field are exact; ordinary strict checks pass. Their external receipts
+are `unit-fatal-main1019-metadata-ers69pbc/replay-receipt.json` (SHA-256
+`8b50cdf4562844efd93a5ef3bc3648d3aa1599659e0e183602966d8a94ea9ee2`) and
+`regular-five-main1019-yo2j14l4/terminal-receipt.json` (SHA-256
+`faba1583add032e3a134705ef5953287924d91b55a0c88fe0bab126734d65b40`).
+These metadata repairs preserve original goldens; they do not expand this Unit
+chain's declared gameplay coverage.
+
+The retained-navigation companion also executes all three original damage,
+collapse and repair save/load/rebuild boundaries in staging and ordinary strict
+check. Complete native CPP, numeric facts, traces, Main/Scenario/MapGen states
+and non-binding provenance remain exact; only two shared invoke source pins
+change. Its external terminal receipt has SHA-256
+`85f2094b166202ceda3f2d9f1f71261beea9212754fb746466a5808b4cca028d`.
+The broader world/Mouse/Cell pointer-swizzle and structural BridgeTube/path-load
+lifecycles remain outside that companion's bounds.
+
+The final combined candidate passes **9,537 required-retail lib tests, zero
+failures, 227 ignored**, lib Clippy (725 warnings), release game/asset builds,
+and the writable-field ratchet (2,538 versus2,554 before the merge commit).
+All tracked files stayed frozen during Cargo. Commands and logs are retained in
+`unit-unlimbo-pr1018-merged-final-validation-20261003.json`.
+
+Stock R10 and zero-override R11 both pass ordinary v6 validation and exit normally
+after5,600 ticks using release SHA-256 `9a3cbe2f2e1df8ea8763088bbfffbf694a30efc45193b1b0a4c33ce599e6104c`
+(31,667,312 bytes). All11,202 complete factory/tank actor/presence
+comparisons, including3,700 present samples, match across5,601 boundaries.
+Both endpoints are active, out of limbo and in Guard at the retained coordinates;
+final GPU bytes match, and the lossless preview was visually inspected. R8's
+retained actor fields also match; its superseded executable is not revalidated.
+External `unit-unlimbo-pr1018-final-runtime-summary-20261003.json` has SHA-256
+`92a0266bebb2298fd35d3821c06e23718c49cdd13b083608162c9c0e3222e8d0`.
+These are bounded Rust production observations, not whole native parity.
+
 Adding the authoritative shared Door fields to the deterministic hash changes
 three Rust replay fingerprints. A diagnostic removed only
 `GameEntity::hash_door_state` from the hash feed: all three old fingerprints

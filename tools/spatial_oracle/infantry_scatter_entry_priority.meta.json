@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Complete original Infantry51BF90 priority-counter admission: 192 Infantry/Unit cases and30 additional Building/Aircraft/closedGate controls. No whole crew lifecycle or retail producer claim.",
+  "assumptions": [
+    "Fresh synthetic32x32 originalCell map from existing unit_source_scatter owner; width16 and declared usable/rim rectangles. Ground level0, no overlay/tube/team/slave. Original Infantry/Type vtables and supplied Guard/Doing-1, SpeedType1, actor3D5=1, owner indexes0/1 and self-alliance masks1/2.",
+    "Priority is the supplied DWORD A8E7AC0/1/2; mode is separately supplied actualDWORD A8B2380/1. Complete native51BF90 does not read game mode. Neither whole native counter producer nor whole Infantry constructor/retail reader is asserted.",
+    "Armed supplies ordinary slot0WeaponDamage1/AmbientDamage0 and slot1NULL; unarmed suppliesNULL. Original GetWeapon and6F3970 execute, with no damage answer supplied.",
+    "EnemyInfantry and Unit have original Walk/Drive construction plus declared stationary/moving state. List-only rows have rawowner-1/mask0; coherent rawenemyowner1/bit4or20 controls retain independent late admission. Priority must not globally change alliance.",
+    "Additional original Building/Aircraft vtables pin the late switch. ClosedGate supplies type16B7true before native4525F0/reverseHouse4F9A50/IsArmed; no openGate, target admission, Selling, capture/garrison or complete object lifecycle claim.",
+    "All3 complete0x3F4 RNG buffers are initialized by original65C6D0 and retained byte-identical. RNG/allocator calls fail the measured query. Entire original PE executable sections and actualInfantryvt1AC are checked unchanged."
+  ],
+  "substitutions": [
+    "Reuses unit_source_scatter/unit_scatter_state/map_queries/native_oracle fixture and OS Interlocked owner. No measured gameplay return, vtable dispatch or executable instruction is substituted."
+  ],
+  "entry_points": {
+    "infantry_entry": "0x0051BF90",
+    "height_list": "0x004D9C60",
+    "usable_area_gate": "0x0051C144",
+    "late_occupant_gate": "0x0051C58D",
+    "building_gate": "0x0051C4F5",
+    "gate_alliance": "0x004F9A50",
+    "current_alliance": "0x004F9A90",
+    "raw_owner_alliance": "0x004F9A10",
+    "damage_value": "0x006F3970",
+    "walk_ctor": "0x0075AA90",
+    "drive_ctor": "0x004AF540",
+    "rng_ctor": "0x0065C6D0"
+  },
+  "source_normalized_lf_sha256": {
+    "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+    "tools/spatial_oracle/infantry_scatter_entry.py": "ee0ab58a0c1186bc3a5318e76680216b4111ec13e9f8b62ff927803d28356d82",
+    "tools/spatial_oracle/unit_source_scatter.py": "d2ce3dce6e7baff886f3bc6a30c545ec29e442e9866a39a0acb03c92268bbcc8",
+    "tools/spatial_oracle/unit_scatter_state.py": "9cb5b9726c02c8ef7e08aeadf006fecd90191341250f744e9307d5a62a63a4c3",
+    "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305"
+  },
+  "payload_sha256": "9ba96c780bb49ae7be03ff2fdb32906f7592736ef06826dcbcc79aebcd35f1c0"
+}

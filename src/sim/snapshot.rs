@@ -808,9 +808,11 @@ use crate::sim::world::Simulation;
 // MissionCom owns the saved Enter cadence for every Foot consumer. The
 // private native pending entry can coexist with an admitted service visit.
 // 282 -> 283: optional entity-owned turret/barrel recoil survives save/load.
-// 283 -> 284: every Techno also saves one shared DoorClass; Gate Open/handler
+// 283 -> 284: SmudgeGrid retains runtime Smudge identities through the shared
+// deferred destructor, separately from its persistent cell marks.
+// 284 -> 285: every Techno saves one shared DoorClass; Gate Open/handler
 // status come from MissionCom rather than a second gate mission/transition.
-const SNAPSHOT_VERSION: u32 = 284;
+const SNAPSHOT_VERSION: u32 = 285;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -970,6 +972,8 @@ pub enum SnapshotRestoreError {
         registry: &'static str,
         object_id: u64,
     },
+    #[error("runtime Smudge {object_id} has not completed constructor UnInit")]
+    InvalidSmudgeLifetime { object_id: u64 },
     #[error("terminal {registry} object id {object_id} is absent from PendingDeleteList")]
     MissingDeferredDeleteIdentity {
         registry: &'static str,
@@ -1316,6 +1320,17 @@ impl RestoredObjectIndex {
         for (&registry_id, wave) in sim.waves.iter() {
             Self::register(&mut identities, "WaveStore", registry_id, wave.id)?;
             highest_id = highest_id.max(registry_id);
+        }
+        if let Some(grid) = &sim.smudge_grid {
+            for (registry_id, object) in grid.objects() {
+                Self::register(
+                    &mut identities,
+                    "SmudgeGrid",
+                    registry_id,
+                    object.stable_id(),
+                )?;
+                highest_id = highest_id.max(registry_id);
+            }
         }
 
         Ok((Self { highest_id }, identities))
@@ -2071,6 +2086,25 @@ impl Simulation {
             .iter()
             .copied()
             .collect::<BTreeSet<_>>();
+        if let Some(grid) = &self.smudge_grid {
+            for (object_id, object) in grid.objects() {
+                if object.object_alive() || !object.in_limbo() {
+                    return Err(SnapshotRestoreError::InvalidSmudgeLifetime { object_id });
+                }
+                if seen_logic.contains(&object_id) {
+                    return Err(SnapshotRestoreError::InactiveLogicIdentity {
+                        registry: "SmudgeGrid",
+                        object_id,
+                    });
+                }
+                if !pending_delete_ids.contains(&object_id) {
+                    return Err(SnapshotRestoreError::MissingDeferredDeleteIdentity {
+                        registry: "SmudgeGrid",
+                        object_id,
+                    });
+                }
+            }
+        }
         for terrain in self.production.terrain_objects.values() {
             let in_logic = seen_logic.contains(&terrain.stable_id);
             let pending_delete = pending_delete_ids.contains(&terrain.stable_id);
@@ -3779,12 +3813,13 @@ mod tests {
         // 278 -> 279: native Building health sample; dirty House assessment,
         // retained House discovery/capture notifications and Engineer identity;
         // and its anchored power-blackout clock/radar projection.
-        // 279 -> 280: Unit deployment/animation ownership replaces its countdown.
+        // 279 -> 280: Unit deploy flags, Techno animation/landing ownership and
+        // the animation's retained palette source replace the legacy countdown.
         // 280 -> 281: authoritative weapon/turret pair and saved charge duration.
         // 281 -> 282: independent depot pending entry and sole MissionCom cadence.
         // 282 -> 283: private optional turret/barrel recoil components.
-        // 283 -> 284: one shared Techno Door and MissionCom-owned Gate phases.
-        assert_eq!(super::SNAPSHOT_VERSION, 284);
+        // 284 -> 285: shared Techno Door/Gate plus retained Smudge identities.
+        assert_eq!(super::SNAPSHOT_VERSION, 285);
     }
 
     #[test]

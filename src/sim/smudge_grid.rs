@@ -13,6 +13,105 @@ use crate::rules::smudge_type::SmudgeTypeRegistry;
 use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::rng::SimRng;
+use std::collections::BTreeMap;
+use std::hash::Hash;
+
+/// Runtime SmudgeClass identity, independently retained until the shared
+/// deferred destructor. Smudge marks are CellClass state, not this lifetime.
+/// Full native6B4A50/6B4BE0/6B4FA0 comparison:
+/// tools/spatial_oracle/building_death_anims_joined_stock_smudges.json.
+#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
+pub(crate) struct SmudgeObject {
+    stable_id: u64,
+    native_unique_id: i32,
+    type_id: u16,
+    location: SimCoord,
+    object_alive: bool,
+    in_limbo: bool,
+}
+
+impl SmudgeObject {
+    pub(crate) fn stable_id(&self) -> u64 {
+        self.stable_id
+    }
+    #[cfg(test)]
+    pub(crate) fn native_unique_id(&self) -> i32 {
+        self.native_unique_id
+    }
+    #[cfg(test)]
+    pub(crate) fn type_id(&self) -> u16 {
+        self.type_id
+    }
+    pub(crate) fn location(&self) -> SimCoord {
+        self.location
+    }
+    pub(crate) fn object_alive(&self) -> bool {
+        self.object_alive
+    }
+    pub(crate) fn in_limbo(&self) -> bool {
+        self.in_limbo
+    }
+    // ObjectCtor5F3900's Health255 is unchanged by Smudge Mark/UnInit/dtor.
+    pub(crate) fn health(&self) -> i32 {
+        255
+    }
+}
+
+/// Split borrows of the existing ID owners at one runtime constructor. The
+/// dispatch commits exactly one producer request, which can construct at most
+/// one Smudge, then Simulation immediately runs the common UnInit callbacks.
+pub(crate) struct SmudgeConstruction<'a> {
+    stable_ids: &'a mut u64,
+    entities: &'a crate::sim::entity_store::EntityStore,
+    native_ids: &'a mut Option<crate::sim::native_identity::NativeUniqueIdCursor>,
+    scenario_init_priority: bool,
+    constructed_id: Option<u64>,
+}
+
+impl<'a> SmudgeConstruction<'a> {
+    pub(crate) fn new(
+        stable_ids: &'a mut u64,
+        entities: &'a crate::sim::entity_store::EntityStore,
+        native_ids: &'a mut Option<crate::sim::native_identity::NativeUniqueIdCursor>,
+        scenario_init_priority: bool,
+    ) -> Self {
+        Self {
+            stable_ids,
+            entities,
+            native_ids,
+            scenario_init_priority,
+            constructed_id: None,
+        }
+    }
+
+    pub(crate) fn constructed_id(&self) -> Option<u64> {
+        self.constructed_id
+    }
+
+    fn construct(&mut self, grid: &mut SmudgeGrid, type_id: u16, location: SimCoord) {
+        assert!(
+            self.constructed_id.is_none(),
+            "one smudge per producer request"
+        );
+        let stable_id =
+            crate::sim::world::ObjectSubstrate::allocate_stable_id(self.stable_ids, self.entities);
+        let native_unique_id =
+            crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(self.native_ids);
+        let previous = grid.objects.insert(
+            stable_id,
+            SmudgeObject {
+                stable_id,
+                native_unique_id,
+                type_id,
+                location,
+                object_alive: true,
+                in_limbo: false,
+            },
+        );
+        assert!(previous.is_none(), "Smudge {stable_id} already exists");
+        self.constructed_id = Some(stable_id);
+    }
+}
 
 /// Smudge category — Burn for scorches, Crater for explosion craters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +145,9 @@ pub struct SmudgeGrid {
     width: u16,
     height: u16,
     cells: Vec<SmudgeCell>,
+    /// Generic Object/SmudgeClass vector membership lasts through UnInit.
+    /// Never joins Logic; scalar destruction removes only the object.
+    objects: BTreeMap<u64, SmudgeObject>,
     /// Cells mutated this tick — drained per tick by the render-update path.
     /// Not part of game state; never serialized.
     #[serde(skip, default)]
@@ -59,6 +161,7 @@ impl SmudgeGrid {
             width,
             height,
             cells: vec![SmudgeCell::default(); count],
+            objects: BTreeMap::new(),
             dirty_cells: Vec::new(),
         }
     }
@@ -68,6 +171,37 @@ impl SmudgeGrid {
     }
     pub fn height(&self) -> u16 {
         self.height
+    }
+
+    pub(crate) fn objects(&self) -> impl Iterator<Item = (u64, &SmudgeObject)> {
+        self.objects.iter().map(|(&id, object)| (id, object))
+    }
+
+    pub(crate) fn object(&self, id: u64) -> Option<&SmudgeObject> {
+        self.objects.get(&id)
+    }
+
+    pub(crate) fn object_count(&self) -> usize {
+        self.objects.len()
+    }
+
+    /// ObjectUnInit5F65F0/Conceal5F4D20 writes these only after both expiry
+    /// broadcasts. The already-written cell footprint remains unchanged.
+    pub(crate) fn finish_uninit(&mut self, id: u64) {
+        let object = self.objects.get_mut(&id).expect("Smudge UnInit identity");
+        object.in_limbo = true;
+        object.object_alive = false;
+    }
+
+    pub(crate) fn finalize_remove(&mut self, id: u64) -> Option<SmudgeObject> {
+        self.objects.remove(&id)
+    }
+
+    pub(crate) fn fold_objects(&self, hasher: &mut impl std::hash::Hasher) {
+        if !self.objects.is_empty() {
+            b"runtime-smudge-objects-v1".hash(hasher);
+            self.objects.hash(hasher);
+        }
     }
 
     pub fn cell(&self, rx: u16, ry: u16) -> &SmudgeCell {
@@ -370,7 +504,7 @@ impl SmudgeGrid {
     /// direct `BuildingClass::DestructionEffects @ 0x004415F0` and
     /// `BuildingClass::SpawnSurvivors @ 0x00442D90` callers do not.
     #[allow(clippy::too_many_arguments)]
-    pub fn try_place(
+    pub(crate) fn try_place(
         &mut self,
         kind: SmudgeKind,
         coord: SimCoord,
@@ -382,6 +516,7 @@ impl SmudgeGrid {
         overlay: &OverlayGrid,
         occupancy: &OccupancyGrid,
         rng: &mut SimRng,
+        construction: Option<&mut SmudgeConstruction<'_>>,
     ) -> bool {
         // The placers' cell: the coordinate over 256 toward zero (`cdq; and edx,
         // 0xFF; add; sar 8`) in 16-bit words. Cell (0, 0), the sentinel
@@ -419,6 +554,30 @@ impl SmudgeGrid {
             return false;
         };
         let chosen = registry.get(chosen_id).unwrap();
+        if let Some(construction) = construction {
+            // Actual constructor assigns/registers ID before Mark6B4BE0.
+            // Its Mark1 repeats CanPlace6B5F80 with allowBuilding1, unless
+            // the shared Scenario-init priority bracket skips that check.
+            construction.construct(self, chosen_id, coord);
+            if !construction.scenario_init_priority
+                && !self.passes_placement_gates(
+                    origin,
+                    chosen.width,
+                    chosen.height,
+                    terrain,
+                    overlay,
+                    Some(occupancy),
+                    true,
+                )
+            {
+                return false;
+            }
+        } else {
+            // Existing primitive oracles hook the full constructor and check
+            // only numeric placement. Production always owns its lifetime.
+            #[cfg(not(test))]
+            panic!("runtime Smudge requires the shared ID owners");
+        }
         self.write_footprint(origin, chosen_id, chosen.width, chosen.height, terrain);
         true
     }
@@ -466,7 +625,7 @@ pub(crate) fn pick_smudge_candidate(
 }
 
 /// Lepton-space coord (256 leptons = 1 cell, matches gamemd's CoordStruct).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SimCoord {
     pub x: i32,
     pub y: i32,
@@ -768,6 +927,7 @@ mod tests {
             &overlay,
             &occupancy,
             &mut rng,
+            None,
         ));
         assert!(grid.cell(4, 4).type_id.is_some());
     }
@@ -796,6 +956,7 @@ mod tests {
             &overlay,
             &occupancy,
             &mut rng,
+            None,
         ));
         assert!(grid.cell(4, 4).type_id.is_none());
     }
@@ -825,6 +986,7 @@ mod tests {
             &overlay,
             &occupancy,
             &mut rng,
+            None,
         ));
     }
 
@@ -863,6 +1025,7 @@ mod tests {
                 &overlay,
                 &occupancy,
                 &mut rng,
+                None,
             );
             // Count occupied cells; must be 0 or 1, never 4.
             let occupied = grid.iter_occupied().count();
@@ -900,6 +1063,7 @@ mod tests {
             &overlay,
             &occupancy,
             &mut rng,
+            None,
         ));
         // 2x2 footprint placed at (4,4): 4 cells written.
         assert_eq!(grid.iter_occupied().count(), 4);
@@ -959,6 +1123,7 @@ mod tests {
             &overlay,
             &occupancy,
             &mut rng,
+            None,
         ));
         // CR1 (id 0) is the only type that fits.
         assert_eq!(grid.cell(4, 4).type_id, Some(0));
@@ -1002,6 +1167,7 @@ mod tests {
             &overlay,
             &occupancy,
             &mut rng,
+            None,
         ));
         // force_big prefers >=2x2, so CR2 lands across all four cells.
         assert_eq!(grid.iter_occupied().count(), 4);
@@ -1021,6 +1187,7 @@ mod tests {
             &overlay,
             &occupancy,
             &mut plain_rng,
+            None,
         ));
         assert_eq!(plain_grid.iter_occupied().count(), 0);
     }
@@ -1061,6 +1228,7 @@ mod tests {
                 &overlay,
                 &vehicle_occupancy,
                 &mut rng,
+                None,
             ),
             "a surviving vehicle is not a building and must not block the mark"
         );
@@ -1089,6 +1257,7 @@ mod tests {
             &overlay,
             &building_occupancy,
             &mut blocked_rng,
+            None,
         ));
         assert_eq!(blocked.iter_occupied().count(), 0);
     }
@@ -1116,6 +1285,7 @@ mod tests {
             &overlay,
             &occupancy,
             &mut rng,
+            None,
         ));
         assert_eq!(grid.iter_occupied().count(), 0);
         assert_eq!(
@@ -1150,6 +1320,7 @@ mod tests {
             &overlay,
             &occupancy,
             &mut origin_rng,
+            None,
         ));
         assert_eq!(origin_rng.logical_state(), origin_state);
 
@@ -1171,6 +1342,7 @@ mod tests {
                 &overlay,
                 &occupancy,
                 &mut rng,
+                None,
             ));
             assert_ne!(rng.logical_state(), SimRng::new(9).logical_state());
         }
@@ -1289,6 +1461,7 @@ mod tests {
                 &map.overlay,
                 &map.occupancy,
                 &mut rng,
+                None,
             );
             oracle_fixture::assert_marks(&before, &map.smudges, &map.terrain, row);
             assert_eq!(placed, !row["marked"].as_array().unwrap().is_empty());

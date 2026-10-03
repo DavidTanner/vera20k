@@ -9,6 +9,12 @@ It checks the original executable identity and maps file-backed PE ranges throug
 the oracle owner. Its linear sweeps do not establish instruction boundaries,
 reachability or exhaustive aliases; preserve those limits in findings.
 
+For read-only before/rehearsal comparisons of decompilation artifacts, known
+callers and native-versus-p-code stack frames, use
+[`python -m tools.ghidra_compare`](../../tools/ghidra_compare.md). Supply explicit
+programs and census paths. Incomplete reads cannot pass; findings still require
+instruction-level interpretation rather than automatic acceptance.
+
 ## Connect to the intended program
 
 Discover the instance and confirm the program path, binary identity and image base
@@ -60,9 +66,9 @@ the analyzed program. Re-importing or enabling analysis is not routine reconnect
   direct call to a function without a stored purge. A call that pops its arguments then
   leaves the rest of that path off by those bytes. FUN_007CA650 is MSVC's `_chkstk`,
   which Ghidra does not recognise, so the decompiles of its 30 callers place their locals
-  above the return address. `frame_compare.py PORT ADDR` in the type-layouts research
-  folder (see `LOCAL.md`) compares the decompiler's offsets with ESP computed from the
-  code.
+  above the return address. The repository's
+  [`ghidra_compare frames`](../../tools/ghidra_compare.md#stack-frames-against-the-native-instructions)
+  command compares the decompiler's offsets with ESP computed from the code.
 - A typed stack aggregate can change the displayed base without moving the address
   the code uses. Follow the full constant pointer expression in high p-code, including
   member offsets: the native LEA at `0x425713` addresses entry stack `-24`; after typing
@@ -499,6 +505,13 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   `this` then takes that struct. It leaves an explicit custom-storage `this` with its
   old type. `set_function_prototype` applies dynamic storage, so run it first. No
   endpoint moves a function back to the global namespace.
+- In the installed headless GhidraMCP 5.14.2, `set_variable_storage` reports
+  `success=true` after printing the current/requested storage and manual instructions;
+  it does not change storage. This was checked against source and installed bytecode
+  on 2026-10-03. Read `get_function_variables` after storage-related writes and verify
+  each register and stack slot. A prototype uses convention-derived dynamic storage;
+  it cannot express every custom ABI. Keep an unrepresentable native contract qualified
+  rather than assign its input to an unsupported register or invent an object receiver.
 - A `__thiscall` prototype must declare as many stack bytes as the function's RETs pop.
   `(void)` on a `ret 0xC` function breaks the stack analysis of its callers. A custom
   prototype that declares only `this` makes every direct caller's decompile drop the

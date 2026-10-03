@@ -2086,6 +2086,7 @@ def source_paths():
                      'src/sim/cell_kernel.rs', 'src/sim/combat/in_range.rs',
                      'src/sim/movement/navcom.rs', 'src/sim/movement/foot_approach.rs',
                      'src/sim/world/world_spawn.rs', 'src/sim/world/lifecycle.rs',
+                     'src/sim/world/object_entry.rs',
                      'src/sim/movement/ground_pose.rs', 'src/sim/movement/slope_transition.rs',
                      'src/sim/door.rs', 'src/sim/game_entity.rs', 'src/sim/gate_runtime.rs',
                      'src/sim/docking/building_dock.rs', 'src/sim/movement/track_host.rs',

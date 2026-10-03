@@ -890,15 +890,20 @@ fn insert_object_keys(
         }
         EntityCategory::Structure => {
             insert(0);
-            // CanBeOccupied buildings need frames 0..3 for the occupancy +
-            // damage-tier frame swap (see building_frame_index in
-            // app/presentation/instances/shp.rs). SHPs with fewer frames silently skip
-            // missing entries; the renderer falls back to frame 0.
+            // Completed Idle bodies use frame0 when healthy and frame1 when
+            // damaged: GetCurrentFrame43EF90, executed in
+            // tools/spatial_oracle/building_body_transition.json. The draw
+            // consumer requests both, so loading only0 hides an ordinary
+            // damaged GAPOWR before its fatal receiver.
+            insert(1);
+            // CanBeOccupied bodies additionally select frames2/3. Missing
+            // entries retain the existing garrison-body fallback in the draw
+            // consumer; this does not invent a frame for a shorter SHP.
             let can_be_occupied = rules
                 .and_then(|r| r.object(type_str))
                 .is_some_and(|obj| obj.can_be_occupied);
             if can_be_occupied {
-                for frame in 1u16..=3 {
+                for frame in 2u16..=3 {
                     insert(frame);
                 }
             }

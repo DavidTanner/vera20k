@@ -1152,9 +1152,8 @@ impl Simulation {
         }
     }
 
-    /// Hash all occupied smudge cells in stable cell-coord order.
-    /// Must be deterministic across replays — visual divergence between clients
-    /// is jarring even though smudges are cosmetic.
+    /// Hash persistent cell marks and transient Smudge identities. Constructor
+    /// IDs and pending order affect later object identity and expiry consumers.
     fn hash_smudge_grid(&self, hasher: &mut impl Hasher) {
         let Some(grid) = &self.smudge_grid else {
             0u8.hash(hasher);
@@ -1170,6 +1169,7 @@ impl Simulation {
         for e in &entries {
             e.hash(hasher);
         }
+        grid.fold_objects(hasher);
     }
 
     /// Hash the radiation field (cell levels as raw f64 bits — the levels are

@@ -23,6 +23,10 @@ use crate::sim::{movement::locomotor::MovementLayer, occupancy::CellObjectMember
 #[path = "unit_entry_tests.rs"]
 mod unit_entry_tests;
 
+#[cfg(test)]
+#[path = "infantry_entry_priority_tests.rs"]
+mod infantry_entry_priority_tests;
+
 /// The +1AC decision reads live simulation state without borrowing the bridge
 /// publisher. Native Map lookups still stamp the canonical shared Dummy through
 /// its existing interior-mutable owner, in the same order as movement/repair.
@@ -356,6 +360,91 @@ mod tests {
             .unwrap()
             .native_cell_identity((16, 15));
         (sim, rules, cell)
+    }
+
+    #[test]
+    fn infantry_usable_area_admission_is_independent_of_game_mode() {
+        // Original51BF90 has no A8B238 read. Executed counter0/mode0/1
+        // controls both return7 for this otherwise-clear unusable rim.
+        let (mut sim, rules, _) = crate::sim::world::entry_test_fixture::fixture();
+        let mut mover = GameEntity::test_default(90, "ENGINEER", "Americans", 15, 15);
+        mover.owner = sim.intern("Americans");
+        mover.type_ref = sim.intern("ENGINEER");
+        mover.category = EntityCategory::Infantry;
+        mover.in_playfield = true;
+        sim.substrate.entities.insert(mover);
+        sim.playfield_bounds = Some(
+            crate::map::playfield::PlayfieldBounds::from_normalized_local_size(16, 0, 0, 1, 1),
+        );
+        let cell = sim
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .native_cell_identity((16, 15));
+        for mode in [false, true] {
+            sim.session.game_mode_nonzero = mode;
+            assert_eq!(
+                sim.foot_entry_receiver(90, &rules, None)
+                    .unwrap()
+                    .can_enter(
+                        cell,
+                        crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+                    ),
+                Ok(7),
+                "mode {mode} cannot bypass Infantry51C13A..51C161",
+            );
+        }
+    }
+
+    #[test]
+    fn nested_escape_priority_restores_the_callers_cell_admission() {
+        let (mut sim, rules, _) = crate::sim::world::entry_test_fixture::fixture();
+        let mut mover = GameEntity::test_default(90, "ENGINEER", "Americans", 15, 15);
+        mover.owner = sim.intern("Americans");
+        mover.type_ref = sim.intern("ENGINEER");
+        mover.category = EntityCategory::Infantry;
+        mover.in_playfield = true;
+        sim.substrate.entities.insert(mover);
+        sim.playfield_bounds = Some(
+            crate::map::playfield::PlayfieldBounds::from_normalized_local_size(16, 0, 0, 1, 1),
+        );
+        let cell = sim
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .native_cell_identity((16, 15));
+        let probe = |sim: &Simulation| {
+            sim.foot_entry_receiver(90, &rules, None)
+                .unwrap()
+                .can_enter(
+                    cell,
+                    crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+                )
+        };
+        let rng_before = [
+            sim.scenario_rng.logical_state(),
+            sim.main_rng.logical_state(),
+            sim.mapgen_rng.logical_state(),
+        ];
+        assert_eq!(probe(&sim), Ok(7));
+        sim.with_object_placement_scope(|sim| {
+            assert_eq!(probe(sim), Ok(0));
+            sim.with_object_placement_scope(|sim| assert_eq!(probe(sim), Ok(0)));
+            assert_eq!(probe(sim), Ok(0), "nested return retains the outer bracket");
+        });
+        assert_eq!(
+            probe(&sim),
+            Ok(7),
+            "outer return restores ordinary admission"
+        );
+        assert_eq!(
+            [
+                sim.scenario_rng.logical_state(),
+                sim.main_rng.logical_state(),
+                sim.mapgen_rng.logical_state(),
+            ],
+            rng_before,
+        );
     }
 
     fn unit_probe(
@@ -1625,8 +1714,9 @@ fn classify_foot_entry<'a>(
         {
             return Ok(0);
         }
-        // Infantry51C58D reads A8E7AC after the earlier Building/target
-        // arms. A raised scope takes the allied occupant arm here only.
+        //Infantry51C579..58D's occupant-list alliance override is local to
+        //this gate. Earlier Building/wall checks and the later raw-owner
+        //query use actual House alliances, including during crew escape.
         let allied = allied || (infantry && live.sim.object_placement_scope_active());
         if !allied {
             if b.cloak.as_ref().is_some_and(|s| s.state == 2) {

@@ -270,8 +270,8 @@ fn discarding_a_constructed_object_releases_its_tracking() {
     let tracking = &sim.houses[&house].tracking;
     assert_eq!((tracking.buildings(), tracking.units_for_test()), (1, 1));
 
-    assert!(sim.discard_constructed_limbo(building));
-    assert!(sim.discard_constructed_limbo(unit));
+    assert!(sim.discard_constructed_limbo(building, Some(&rules)));
+    assert!(sim.discard_constructed_limbo(unit, Some(&rules)));
     let tracking = &sim.houses[&house].tracking;
     assert_eq!((tracking.buildings(), tracking.units_for_test()), (0, 0));
     assert_eq!(tracking.active_for_test(), (0, 0, 0));
