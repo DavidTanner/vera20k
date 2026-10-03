@@ -1067,7 +1067,7 @@ impl Fixture {
         assert_eq!(actual, expected, "native persistent footprint");
     }
 
-    fn assert_stock_pending_snapshot(&self, route: &Value) {
+    fn assert_stock_pending_snapshot(&mut self, route: &Value) {
         use crate::sim::snapshot::{GameSnapshot, SnapshotRestoreError};
         use std::hash::Hasher;
         let Some(stock) = route.get("stock_runtime") else {
@@ -1079,6 +1079,16 @@ impl Fixture {
             .iter()
             .filter(|call| call["kind"] == "smudge_constructor")
             .collect();
+        // Snapshot285 joins main's deferred Smudge identities with the
+        // branch's shared Techno Door. Exercise both in the same full save/load,
+        // using a surviving actor so deferred cleanup must retain its Door.
+        let actor = self.sim.substrate.entities.get_mut(self.unit).unwrap();
+        let original_actor = actor.clone();
+        actor.open_door(7, self.sim.session.binary_frame);
+        let door_phase = actor.door_phase();
+        assert_eq!(door_phase, crate::sim::door::DoorPhase::Opening);
+        let door_timer = actor.door_timer_fields();
+        let mission = actor.mission;
         let grid = self.sim.smudge_grid.as_ref().unwrap();
         assert_eq!(grid.object_count(), constructors.len());
         for ((id, object), native) in grid.objects().zip(constructors) {
@@ -1106,8 +1116,14 @@ impl Fixture {
         self.assert_stock_marks(&stock["final"]);
 
         let bytes = GameSnapshot::save(&self.sim, 0, 0, "native-stock-smudge-pending", 0);
+        // Keep the native route's live continuation at its original input.
+        *self.sim.substrate.entities.get_mut(self.unit).unwrap() = original_actor;
         let mut restored = GameSnapshot::load_unchecked(&bytes).unwrap().sim;
         restored.restore_after_snapshot_load().unwrap();
+        let actor = restored.substrate.entities.get(self.unit).unwrap();
+        assert_eq!(actor.door_phase(), door_phase, "shared Door phase");
+        assert_eq!(actor.door_timer_fields(), door_timer, "shared Door clock");
+        assert_eq!(actor.mission, mission, "shared MissionCom");
         // Native load resets Scenario RNG and Bullet timers. Check the new
         // lifetime authority and its hash contribution without overriding that
         // existing load behavior or claiming unchanged whole-world execution.
@@ -1162,6 +1178,17 @@ impl Fixture {
         );
 
         restored.process_pending_delete_with(Some(&self.rules), Some(&self.registry));
+        let actor = restored.substrate.entities.get(self.unit).unwrap();
+        assert_eq!(
+            actor.door_phase(),
+            door_phase,
+            "Door survives Smudge cleanup"
+        );
+        assert_eq!(
+            actor.door_timer_fields(),
+            door_timer,
+            "Door clock survives cleanup"
+        );
         assert_eq!(restored.smudge_grid.as_ref().unwrap().object_count(), 0);
         assert!(restored.substrate.pending_delete.is_empty());
         assert_eq!(

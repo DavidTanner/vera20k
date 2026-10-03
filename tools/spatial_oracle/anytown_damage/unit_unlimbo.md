@@ -435,6 +435,18 @@ later nonhuman crate branch reads it at `73F405`. The existing Unit entry key
 for that counter. New explicit fields separate these values, and the old
 boundary corpus retains identical inputs/results with corrected metadata.
 
+The [2026-10-03 static crosswalk](unit_unlimbo_counter_crosswalk-20261003.json)
+rechecks these gates through the RE corpus's existing `PEImage` reader. Steam
+image `3e81a617…` has the same documented `.text` hash `4cd5557a…` and matches
+the saved 212-byte Unit and 160-byte Infantry oracle spans. This establishes
+the boundary/crate distinction, not a new whole-image runtime qualification.
+The combined snapshot regression in
+`original_stock_smudges_join_ready_shot_crew_and_deferred_cleanup` saves a
+nondefault shared Door/MissionCom alongside pending runtime Smudge identities,
+restores both and drains Smudges without changing the surviving actor's Door.
+This is a Rust persistence regression; it does not establish native save/load
+parity.
+
 Authored Unit `743270` centers XY and initializes request Z0 at
 `743408..743431`. Its parsed HIGH is converted to a nonzero bit at
 `7434EC..7434F3` and written straight to actor `+8C` OnBridge. If true,
