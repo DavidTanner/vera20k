@@ -220,8 +220,10 @@ fn rocketeer_pair() -> (EntityStore, RuleSet) {
     );
     locomotor.altitude = SimFixed::from_num(500);
     let runtime = locomotor.jumpjet_runtime_mut().unwrap();
-    runtime.phase = crate::sim::movement::jumpjet_flight::STATE_HOLD;
-    runtime.moving = true;
+    *runtime = runtime
+        .clone()
+        .with_phase_for_test(crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_HOLD)
+        .with_moving_for_test(true);
     firer.locomotor = Some(locomotor);
     store.insert(firer);
     store.insert(make_infantry_entity(2, "E2", 8, 5, 125));

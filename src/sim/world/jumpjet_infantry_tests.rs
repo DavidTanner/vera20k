@@ -19,7 +19,7 @@ fn pose(sim: &super::Simulation, id: u64) -> Pose {
     let entity = sim.substrate.entities.get(id).expect("rocketeer");
     let locomotor = entity.locomotor.as_ref().expect("locomotor");
     Pose {
-        phase: locomotor.jumpjet_runtime().expect("Jumpjet").phase,
+        phase: locomotor.jumpjet_runtime().expect("Jumpjet").phase(),
         fraction: entity.foot_speed.applied_fraction().to_bits(),
         doing: entity.mission_leaf.as_infantry().expect("Infantry").doing(),
         // The Doing owns an infantryman's sequence (`infantry_sprite_pose`).
@@ -75,23 +75,55 @@ pub(super) fn retail_dustbowl_rocketeer()
             let level = terrain.cell(x, y)?.level;
             let open = (x.checked_sub(4)?..=x + 16).all(|cx| {
                 (y - 1..=y + 1).all(|cy| {
-                    terrain.cell(cx, cy).is_some_and(|cell| cell.level == level)
-                        && grid.cell(cx, cy).is_some_and(|cell| cell.ground_walkable)
+                    crate::sim::cell_rect::cell_is_in_playfield_height_aware(
+                        (i32::from(cx), i32::from(cy)),
+                        sim.playfield_bounds,
+                        Some(terrain),
+                    ) && terrain.cell(cx, cy).is_some_and(|cell| {
+                        cell.level == level && cell.speed_costs.foot.is_some_and(|cost| cost > 0)
+                    }) && grid.cell(cx, cy).is_some_and(|cell| cell.ground_walkable)
+                        && sim.substrate.raw_cell_occupation.ground_bits(cx, cy) == 0
                 })
             });
             if !open {
                 return None;
             }
-            for (plant, owner, px) in [
-                ("GAPOWR", "Americans", x - 4),
-                ("NAPOWR", "Russians", x + 15),
-            ] {
-                sim.spawn_object(plant, owner, px, y - 1, 0, &resources.rules)?;
-            }
-            let rocketeer = sim.spawn_object("JUMPJET", "Americans", x, y, 64, &resources.rules)?;
+            let rocketeer = sim.spawn_object_with_overlay_registry(
+                "JUMPJET",
+                "Americans",
+                x,
+                y,
+                64,
+                &resources.rules,
+                &resources.overlay_registry,
+            )?;
             Some((rocketeer, x, y))
         })
         .expect("open level ground for the flight");
+    // Select the flight first. Placing both plants inside the candidate search
+    // retained foundations after failed Rocketeer placement, and the old
+    // eastern plant covered the conscript at x+16. Each independent search
+    // now retains one successful plant outside the entire fight.
+    for (plant, owner) in [("GAPOWR", "Americans"), ("NAPOWR", "Russians")] {
+        let owner_id = sim.interner.intern(owner);
+        let plant_type = resources.rules.object(plant).expect("retail power plant");
+        (20..120_u16)
+            .flat_map(|py| (20..120_u16).map(move |px| (px, py)))
+            .filter(|&(px, py)| px.abs_diff(x + 8).max(py.abs_diff(y)) >= 24)
+            .find_map(|(px, py)| {
+                crate::sim::build_site::can_place_building_at(
+                    sim,
+                    &resources.rules,
+                    Some(&resources.overlay_registry),
+                    plant_type,
+                    (px as i16, py as i16),
+                    Some(owner_id),
+                )
+                .then(|| sim.spawn_object(plant, owner, px, py, 0, &resources.rules))
+                .flatten()
+            })
+            .unwrap_or_else(|| panic!("room outside the fight for {plant}"));
+    }
     for (house, ally) in [
         ("AMERICANS", "PLAYER"),
         ("PLAYER", "AMERICANS"),
@@ -188,7 +220,15 @@ fn retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses() {
         resources,
     } = &mut scenario.runtime;
     let conscript = sim
-        .spawn_object("E2", "Russians", x + 16, y, 192, &resources.rules)
+        .spawn_object_with_overlay_registry(
+            "E2",
+            "Russians",
+            x + 16,
+            y,
+            192,
+            &resources.rules,
+            &resources.overlay_registry,
+        )
         .expect("conscript");
     sim.resolve_type_handles(&resources.rules);
     let attack = CommandEnvelope::new(
@@ -200,18 +240,11 @@ fn retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses() {
         },
     );
     let mut orders = vec![attack];
-    let rearm = |sim: &super::Simulation| {
-        sim.substrate
-            .entities
-            .get(rocketeer)
-            .map(|entity| entity.rearm_timer)
-    };
-    let mut last_rearm = rearm(&scenario.runtime.simulation);
     let mut shots = Vec::new();
     let mut fight = Vec::new();
     let mut held_by_speed = 0;
     for _ in 0..400 {
-        retail_frame(&mut scenario, std::mem::take(&mut orders));
+        let output = retail_frame(&mut scenario, std::mem::take(&mut orders));
         let sim = &scenario.runtime.simulation;
         let now = pose(sim, rocketeer);
         fight.push(now);
@@ -235,11 +268,17 @@ fn retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses() {
         if in_range && now.fraction > 6553 && shooter.attack_target.is_some() {
             held_by_speed += 1;
         }
-        // A discharge restarts the Rocketeer's rearm timer.
-        let rearmed = rearm(sim);
-        if rearmed != last_rearm {
+        for event in output
+            .fire_events
+            .iter()
+            .filter(|event| event.attacker_id == rocketeer)
+        {
+            assert_eq!(
+                event.target,
+                crate::sim::combat::TargetKind::Entity(conscript),
+                "the actual discharge targets the conscript"
+            );
             shots.push((now, target.health.current));
-            last_rearm = rearmed;
         }
     }
     assert!(
@@ -251,11 +290,15 @@ fn retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses() {
         "it reached range still at speed: {fight:?}"
     );
     for (shot, target_health) in &shots {
-        // Fired (I4 `0x0051C9B8`) at no more than a tenth of full speed, in
-        // FireFly; the killing shot's target expires the same frame, and its
-        // Assign_Target(NULL) (`0x007079A1`) turns the FireFly to Hover.
+        // I4 (51C9B8) admits at no more than a tenth of full speed.
+        // Infantry51DF70 clears68D before Techno FireAt; caller51BF7B's
+        // moving Jumpjet tail521228..52126B then selects Hover below0.8.
+        // Native jumpjet_infantry_actions rows376/383 establish that suffix;
+        // phase2 retains FireFly. Assign_Target(NULL)0x007079A1 also selects
+        // Hover when the killing shot expires the target.
         assert!(shot.fraction <= 6553, "{shot:?}");
-        let (doing, sequence) = if *target_health > 0 {
+        assert!(matches!(shot.phase, 2 | 3), "{shot:?}");
+        let (doing, sequence) = if *target_health > 0 && shot.phase == 2 {
             (DO_FIRE_FLY, SequenceKind::FireFly)
         } else {
             (DO_HOVER, SequenceKind::Hover)
@@ -266,6 +309,10 @@ fn retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses() {
     assert!(
         shots.iter().any(|(_, health)| *health <= 0),
         "the Rocketeer killed the conscript: {shots:?}"
+    );
+    assert!(
+        fight.iter().any(|pose| pose.doing == DO_FIRE_FLY),
+        "the airborne firing action was displayed: {fight:?}"
     );
     let after = pose(&scenario.runtime.simulation, rocketeer);
     assert_eq!(after.doing, DO_HOVER, "back to its hover: {after:?}");
@@ -324,27 +371,29 @@ fn retail_dustbowl_parked_rocketeer_engages_nearby_enemies() {
     // A conscript three cells beyond the hold, the only enemy within its
     // 20mm's range.
     let conscript = sim
-        .spawn_object("E2", "Russians", x + 11, y, 192, &resources.rules)
+        .spawn_object_with_overlay_registry(
+            "E2",
+            "Russians",
+            x + 11,
+            y,
+            192,
+            &resources.rules,
+            &resources.overlay_registry,
+        )
         .expect("conscript");
     sim.resolve_type_handles(&resources.rules);
     let mut shots = Vec::new();
-    let mut last_rearm = sim
-        .substrate
-        .entities
-        .get(rocketeer)
-        .map(|entity| entity.rearm_timer);
     for _ in 0..300 {
-        retail_frame(&mut scenario, Vec::new());
+        let output = retail_frame(&mut scenario, Vec::new());
         let sim = &scenario.runtime.simulation;
         let entity = sim.substrate.entities.get(rocketeer).expect("rocketeer");
         assert_eq!(entity.mission.current(), move_mission, "it stays on Move");
-        let rearm = Some(entity.rearm_timer);
-        if rearm != last_rearm {
-            last_rearm = rearm;
-            shots.push((
-                entity.attack_target.as_ref().map(|attack| attack.target),
-                pose(sim, rocketeer),
-            ));
+        for event in output
+            .fire_events
+            .iter()
+            .filter(|event| event.attacker_id == rocketeer)
+        {
+            shots.push((event.target, pose(sim, rocketeer)));
         }
         if sim.substrate.entities.get(conscript).is_none() {
             break;
@@ -353,7 +402,7 @@ fn retail_dustbowl_parked_rocketeer_engages_nearby_enemies() {
     assert!(shots.len() >= 2, "the parked Rocketeer fires: {shots:?}");
     for (target, pose) in &shots {
         assert!(
-            target.is_none() || *target == Some(crate::sim::combat::TargetKind::Entity(conscript)),
+            *target == crate::sim::combat::TargetKind::Entity(conscript),
             "it shoots the conscript: {shots:?}"
         );
         assert!(
@@ -414,7 +463,7 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
             .jumpjet_runtime()
             .unwrap();
         if entity.position.rx == 56
-            && runtime.phase == 2
+            && runtime.phase() == 2
             && entity.navigation.nav_com == Some(crate::sim::components::NavTargetRef::cell(56, 52))
         {
             parked = true;
@@ -840,17 +889,24 @@ fn rocketeer_crash_fixture(
         let loco = entity.locomotor.as_mut().unwrap();
         loco.altitude = SimFixed::from_num(height);
         let runtime = loco.jumpjet_runtime_mut().unwrap();
-        runtime.phase = input["owner"]["phase"].as_i64().unwrap() as i32;
-        runtime.moving = input["owner"]["moving"].as_bool().unwrap();
-        runtime.destination = crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 };
-        runtime.flight.facing.snap(0x4000, 1000);
+        let mut flight = runtime.flight();
+        flight.facing.snap(0x4000, 1000);
         // The oracle's locomotor holds `JumpjetHeight=` as its target height
         // whatever the row's height (`jumpjet_infantry_actions` ROCKETEER).
-        runtime.flight.target_height = 500;
+        flight.target_height = 500;
+        *runtime = runtime
+            .clone()
+            .with_phase_for_test(input["owner"]["phase"].as_i64().unwrap() as i32)
+            .with_moving_for_test(input["owner"]["moving"].as_bool().unwrap())
+            .with_destination_for_test(crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 })
+            .with_flight_for_test(flight);
     }
     sim.add_entity_occupancy(1);
     if height > 0 {
-        assert!(sim.substrate.air_slots.claim(52, 52, 1));
+        // This oracle midpoint is already airborne: native takeoff has added
+        // its tracker entry before the held-cell slot is established.
+        sim.aircraft_tracker_add(1);
+        assert!(sim.set_cell_air_slot((52, 52), Some(1)));
     }
     // The row's action, started by Do_Action (forced) as the oracle starts it.
     let doing = input["doing"].as_i64().unwrap() as i32;
@@ -1167,7 +1223,7 @@ fn a_ground_route_order_gives_a_rocketeer_his_navcom_and_move_to() {
         .unwrap()
         .jumpjet_runtime()
         .unwrap();
-    assert!(runtime.moving, "his Move_To ran with the order");
+    assert!(runtime.moving(), "his Move_To ran with the order");
 }
 
 /// So a grounded Rocketeer's Move order survives the frame after it. The
@@ -1210,7 +1266,7 @@ fn a_grounded_rocketeers_move_order_survives_its_first_mission_visit() {
 #[test]
 fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
     use crate::sim::command::Command;
-    use crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
+    use crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_TRANSLATE;
     let input = serde_json::json!({
         "doing": 0,
         "height": 0,
@@ -1236,7 +1292,7 @@ fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
             .unwrap()
             .jumpjet_runtime()
             .unwrap();
-        runtime.phase == STATE_TRANSLATE && rocketeer.position.rx >= 55
+        runtime.phase() == STATE_TRANSLATE && rocketeer.position.rx >= 55
     };
     for _ in 0..240 {
         if cruising(&sim) {
@@ -1265,9 +1321,9 @@ fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
         .unwrap()
         .jumpjet_runtime()
         .unwrap();
-    assert!(runtime.moving, "Stop_Moving re-targets, it does not null");
+    assert!(runtime.moving(), "Stop_Moving re-targets, it does not null");
     assert_eq!(
-        (runtime.destination.x / 256, runtime.destination.y / 256),
+        (runtime.destination().x / 256, runtime.destination().y / 256),
         here,
         "the re-target is the cell he is over"
     );

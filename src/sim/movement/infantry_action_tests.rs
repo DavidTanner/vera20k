@@ -107,8 +107,10 @@ fn rocketeer(input: &Value) -> (Simulation, RuleSet, u64) {
     let locomotor = entity.locomotor.as_mut().expect("Jumpjet locomotor");
     locomotor.altitude = SimFixed::from_num(height);
     let runtime = locomotor.jumpjet_runtime_mut().expect("Jumpjet runtime");
-    runtime.phase = input["owner"]["phase"].as_i64().unwrap_or(2) as i32;
-    runtime.moving = input["owner"]["moving"].as_bool().unwrap_or(true);
+    *runtime = runtime
+        .clone()
+        .with_phase_for_test(input["owner"]["phase"].as_i64().unwrap_or(2) as i32)
+        .with_moving_for_test(input["owner"]["moving"].as_bool().unwrap_or(true));
     (sim, rules, id)
 }
 

@@ -17,7 +17,8 @@ from tools.native_oracle import (
     RET_MAGIC, SCRATCH, STACK_BASE, STACK_SIZE, finish_vectors, provenance,
     run_checked,
 )
-from tools.spatial_oracle.jumpjet_coordinates import Jumpjet
+from tools.spatial_oracle.jumpjet_coordinates import Jumpjet, initialize_jumpjet_levels
+from tools.spatial_oracle.fly_landing_phase import initialize_air_tracker
 from tools.spatial_oracle.map_queries import dwords, packed
 from tools.spatial_oracle.walk_head_occupation import (
     CURRENT, DUMMY, LOCO, MAP, OUTPUT, OWNER, SCENARIO, TYPE, VTABLE,
@@ -44,6 +45,22 @@ OBSERVED = {
 }
 
 
+def initialize_mark_projection(u, *, projection, secondary, count=6561,
+                               extent=(40, 40)):
+    """Bind the existing Mark/Recalc map buffers without replacing those bodies."""
+    u.mem_write(MAP + 0xF4, dwords(*extent))
+    u.mem_write(0x87F850, dwords(projection, count, secondary))
+
+
+def initialize_discovery_prefix(u, block, *, owner):
+    """Existing native Techno constructor/InitManagers discovery prefixes."""
+    block(0x6F2B4B, 0x6F2B4D, {})
+    assert u.reg_read(UC_X86_REG_EBX) == 0
+    block(0x6F2FB5, 0x6F2FC7, {UC_X86_REG_ESI: owner},
+          [0x6F2FB5, 0x6F2FBB, 0x6F2FC1])
+    block(0x6F3F40, 0x6F3F65, {UC_X86_REG_ECX: owner})
+
+
 class Entry(Jumpjet):
     def __init__(self, row):
         self.fixture_ready = False
@@ -56,13 +73,11 @@ class Entry(Jumpjet):
         u.mem_map(SCRATCH + 0x10000, 0x50000)
         # Native Cell metadata recalculation uses these two map projection buffers.
         # The map fixture has blank TMP/overlay metadata and two allocated Cells.
-        u.mem_write(MAP + 0xF4, dwords(40, 40))
-        u.mem_write(0x87F850, dwords(SCRATCH + 0x30000, 6561, SCRATCH + 0x38000))
-        u.mem_write(0x87F914, dwords(40, 40))
-        for bucket in range(400):
-            vector = AIR_TRACKER + bucket * 24
-            u.mem_write(vector + 4, dwords(AIR_ARRAYS + bucket * 16, 4))
-            u.mem_write(vector + 0x10, dwords(0))
+        initialize_mark_projection(u, projection=SCRATCH + 0x30000,
+                                   secondary=SCRATCH + 0x38000)
+        initialize_air_tracker(u, STACK_BASE + STACK_SIZE - 0x1000,
+                               buffers=AIR_ARRAYS, extent=(40, 40),
+                               capacity=4, stride=16, construct=False)
 
         # Original Infantry vtable, except its supplied one-cell footprint.
         u.mem_write(VTABLE, bytes(u.mem_read(0x7EB058, 0x600)))
@@ -101,17 +116,11 @@ class Entry(Jumpjet):
         # Original ctor zeroing and InitManagers discovery prefix. These are
         # interior blocks, not a replacement claim for whole constructors.
         self.stage = "constructor"
-        self.block(0x6F2B4B, 0x6F2B4D, {})
-        assert u.reg_read(UC_X86_REG_EBX) == 0
-        self.block(0x6F2FB5, 0x6F2FC7, {UC_X86_REG_ESI: OWNER},
-                   [0x6F2FB5, 0x6F2FBB, 0x6F2FC1])
-        self.block(0x6F3F40, 0x6F3F65, {UC_X86_REG_ECX: OWNER})
+        initialize_discovery_prefix(u, self.block, owner=OWNER)
         self.after_constructor = self.history()
         # Actual startup table81373C..813754 order, under inherited startup0E7F.
         self.stage = "startup_link"
-        for entry in [0x54AA30, 0x54AA60, 0x54AA80, 0x54AAA0,
-                      0x54AAC0, 0x54AAE0, 0x54AB00]:
-            self.call(entry, 0, [])
+        initialize_jumpjet_levels(self.call)
         self.level_height = self.read32(0xABC5E8)
         self.call(0x54AD30, 0, [LOCO + 4, OWNER])
         u.mem_write(OUTPUT, dwords(row.get("facing", 0)))

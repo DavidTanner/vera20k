@@ -327,7 +327,7 @@ fn jumpjet_infantry_damage_scatter_takes_the_foot_air_setter() {
         "Scatter published the cell NavCom"
     );
     let state = e.locomotor.as_ref().unwrap().jumpjet_runtime().unwrap();
-    assert!(state.moving, "Jumpjet Move_To accepted the scatter cell");
+    assert!(state.moving(), "Jumpjet Move_To accepted the scatter cell");
     assert_eq!(e.mission.queued(), MissionId::from_known(MissionType::Move));
 }
 

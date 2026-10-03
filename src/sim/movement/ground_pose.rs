@@ -14,6 +14,40 @@ use crate::util::lepton::{
     BRIDGE_DECK_HEIGHT_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons,
 };
 
+impl Simulation {
+    /// ObjectClass::SetZ5F6060 writes only Object+A4. A marked owner runs
+    /// virtual Mark(REMOVE), stores Z at5F607A, then Mark(PUT). The unmarked
+    /// leaf5F6092 stores Z directly; it does not move OpenTopped riders.
+    /// Executed native controls: spatial_oracle/jumpjet_states.py.
+    pub(crate) fn set_object_z(
+        &mut self,
+        id: u64,
+        z: i32,
+        rules: Option<&crate::rules::ruleset::RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
+        let marked = self
+            .substrate
+            .entities
+            .get(id)
+            .expect("SetZ owner exists")
+            .lifecycle
+            .cell_marked;
+        if marked {
+            self.foot_mark_remove(id, rules, registry);
+        }
+        self.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .position
+            .exact_z_leptons = Some(z);
+        if marked {
+            self.foot_mark_put(id, rules, registry);
+        }
+    }
+}
+
 /// Map578080 through the caller's query identity. Input queries isolate Dummy;
 /// simulation callbacks use the canonical retained Dummy and its lookup order.
 pub(crate) fn query_ground_height(

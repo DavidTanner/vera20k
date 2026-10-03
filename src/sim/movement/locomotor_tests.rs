@@ -210,7 +210,7 @@ fn fly_target_uses_type_flight_level_without_changing_other_locomotors() {
     obj.locomotor = LocomotorKind::Jumpjet;
     let state = LocomotorState::from_object_type(&obj, 0);
     assert_eq!(
-        state.jumpjet_runtime().unwrap().params.height,
+        state.jumpjet_runtime().unwrap().params().height,
         obj.jumpjet_params.height
     );
     assert!(state.fly_runtime().is_none());
@@ -224,7 +224,7 @@ fn test_jumpjet_air_layer() {
     assert_eq!(state.layer, MovementLayer::Air);
     assert!(!state.is_ground_mover());
     assert!(state.is_air_mover());
-    assert_eq!(state.jumpjet_runtime().unwrap().params.height, 500);
+    assert_eq!(state.jumpjet_runtime().unwrap().params().height, 500);
 }
 
 #[test]
@@ -243,7 +243,7 @@ fn test_jumpjet_with_custom_params() {
         no_wobbles: false,
     };
     let state = LocomotorState::from_object_type(&obj, 0);
-    let params = state.jumpjet_runtime().unwrap().params;
+    let params = state.jumpjet_runtime().unwrap().params();
     assert_eq!(params.height, 750);
     assert_eq!(params.speed, 20);
     assert_eq!(params.climb_bits, 8.0f32.to_bits());
@@ -369,7 +369,7 @@ fn retail_kirov_and_disc_reach_their_authored_hover_altitude() {
         let state = LocomotorState::from_object_type(&obj, 0);
 
         assert_eq!(state.kind, LocomotorKind::Jumpjet, "[{id}]");
-        let params = state.jumpjet_runtime().unwrap().params;
+        let params = state.jumpjet_runtime().unwrap().params();
         assert_eq!(
             params.height, 750,
             "[{id}] hovers at its authored JumpjetHeight"

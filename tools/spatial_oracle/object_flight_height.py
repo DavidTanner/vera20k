@@ -12,10 +12,21 @@ from tools.native_oracle import NATIVE_SHA256,finish_vectors,provenance
 from tools.projectile_oracle.ifv_fire_coord import prepare
 from tools.spatial_oracle.building_body_rules import dwords
 
+def initialize_object_scalars(u, invoke):
+ """Run original Object table8141D8's14CRT entries in table order.
+
+ 5F37C0..5F37F0 writes AC13C8;5F3860 writes AC13BC. These
+ distinct Object scalars feed GetHeight/IsHighFlying, including Jumpjet's
+ live owner-layer query. Map and Jumpjet startup do not initialize them.
+ Reuse the caller's existing native invocation owner; supply no scalar.
+ """
+ initializers=struct.unpack('<14I',u.mem_read(0x8141D8,56))
+ for address in initializers:invoke(address,0,())
+ return initializers
+
 def generate():
  m,source,typ,weapon,cells,initial=prepare();u=m.u
- initializers=struct.unpack('<14I',u.mem_read(0x8141D8,56))
- for address in initializers:m.invoke(address,0)
+ initializers=initialize_object_scalars(u,m.invoke)
  cases=[]
  for marked in (0,1):
   for on_bridge in (0,1):

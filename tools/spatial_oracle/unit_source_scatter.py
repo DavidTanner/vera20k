@@ -20,8 +20,8 @@ MAP, TABLE = 0x87F7E8, 0xC00000
 NEIGHBORS = [(10, 9), (11, 9), (11, 10), (11, 11), (10, 11), (9, 11), (9, 10), (9, 9)]
 
 
-def make_source_fixture(case):
-    u, call, read32 = make_fixture(case)
+def make_source_fixture(case, *, uc=None):
+    u, call, read32 = make_fixture(case, uc=uc)
     u.mem_map(CELLS, 0x90000)
     u.reg_write(UC_X86_REG_FPCW, 0x0E7F)
     table = bytearray(0x100000)
@@ -60,9 +60,11 @@ def make_source_fixture(case):
     u.mem_write(ACTOR + 0x6AF, bytes([case.get('turret_latch', False)]))
     u.mem_write(ACTOR + 0x6D1, bytes([case.get('unload_active', False)]))
     u.mem_write(ACTOR + 0x2B4, dwords(TYPE if case.get('target') else 0))
-    u.mem_write(TYPE + 0x67C, dwords(1))  # supplied speed row 1 (all nine rows agree)
-    u.mem_write(TYPE + 0xDFC, dwords(-1))  # no type-specific land restriction
-    u.mem_write(LOCO + 0x40, dwords(*case.get('head', [0, 0, 0])))
+    if not case.get('retained_type', False):
+        u.mem_write(TYPE + 0x67C, dwords(1))  # supplied speed row 1 (all nine rows agree)
+        u.mem_write(TYPE + 0xDFC, dwords(-1))  # no type-specific land restriction
+    if case.get('family') != 'jumpjet':
+        u.mem_write(LOCO + 0x40, dwords(*case.get('head', [0, 0, 0])))
     control = 0xA8E3A8 + case.get('mission', 5) * 32
     u.mem_write(control + 9, bytes([case.get('mission_scatter', True)]))
     u.mem_write(control + 7, bytes([case.get('paralyzed', False)]))

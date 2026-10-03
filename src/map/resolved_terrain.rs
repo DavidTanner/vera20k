@@ -52,8 +52,8 @@ use std::sync::{
 #[cfg(test)]
 pub(crate) use tests::{
     bridge_constructor_terrain, install_bridge_batch_test_catalog,
-    install_bridge_query_test_catalog, install_ordinary_repair_test_catalog,
-    install_tunnel_repair_test_catalog,
+    install_bridge_query_test_catalog, install_no_registered_tiles_test_catalog,
+    install_ordinary_repair_test_catalog, install_tunnel_repair_test_catalog,
 };
 
 #[path = "resolved_terrain_mutation.rs"]

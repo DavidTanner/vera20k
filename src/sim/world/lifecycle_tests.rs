@@ -1799,15 +1799,15 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     let _ = sim.try_reveal_entity(10, common_raw_request(3, 4, 4, 128, 128));
     let first = sim.substrate.entities.get(20).unwrap();
     let second = sim.substrate.entities.get(10).unwrap();
-    assert!(first.air_spatial_bucket.is_some());
-    assert_eq!(first.air_spatial_bucket, second.air_spatial_bucket);
+    assert!(first.air_spatial_bucket().is_some());
+    assert_eq!(first.air_spatial_bucket(), second.air_spatial_bucket());
     assert!(
-        first.air_spatial_enter_order < second.air_spatial_enter_order,
+        first.air_spatial_enter_order() < second.air_spatial_enter_order(),
         "same-bucket vector retains append order, not stable-ID order"
     );
-    let first_order = first.air_spatial_enter_order;
-    let shared_bucket = second.air_spatial_bucket;
-    let second_order = second.air_spatial_enter_order;
+    let first_order = first.air_spatial_enter_order();
+    let shared_bucket = second.air_spatial_bucket();
+    let second_order = second.air_spatial_enter_order();
 
     sim.tick_air_movement_with_cell_lists_one(20, None, None);
     assert_eq!(
@@ -1815,7 +1815,7 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
             .entities
             .get(20)
             .unwrap()
-            .air_spatial_enter_order,
+            .air_spatial_enter_order(),
         first_order,
         "Fly's temporary cell-list transaction is not an air-vector re-entry"
     );
@@ -1823,15 +1823,15 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     sim.substrate.entities.get_mut(20).unwrap().position.rx = 12;
     sim.tick_air_movement_with_cell_lists_one(20, None, None);
     let crossed = sim.substrate.entities.get(20).unwrap();
-    assert_ne!(crossed.air_spatial_bucket, shared_bucket);
-    assert!(crossed.air_spatial_enter_order > second_order);
+    assert_ne!(crossed.air_spatial_bucket(), shared_bucket);
+    assert!(crossed.air_spatial_enter_order() > second_order);
 
     // FootClass::Limbo removes the tracked aircraft (`0x004DB3AA`); its
     // Mark(UP) does not.
     let _ = sim.techno_limbo(20);
     let exited = sim.substrate.entities.get(20).unwrap();
-    assert_eq!(exited.air_spatial_bucket, None);
-    assert_eq!(exited.air_spatial_enter_order, 0);
+    assert_eq!(exited.air_spatial_bucket(), None);
+    assert_eq!(exited.air_spatial_enter_order(), 0);
 }
 
 /// Foot Unlimbo's AircraftTracker admission (`0x004D72B2..0x004D72DB`) is
@@ -1869,7 +1869,7 @@ fn unlimbo_adds_a_high_flying_considered_aircraft_to_the_air_tracker() {
 
         let jumpjet = sim.substrate.entities.get(30).unwrap();
         assert!(jumpjet.lifecycle.cell_marked);
-        assert_eq!(jumpjet.air_spatial_bucket.is_some(), tracked);
+        assert_eq!(jumpjet.air_spatial_bucket().is_some(), tracked);
         assert!(!sim.substrate.occupancy.contains_entity(3, 4, 30));
     }
 }
@@ -7514,8 +7514,10 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         loco.balloon_hover = true;
         loco.altitude = SimFixed::from_num(500);
         let runtime = loco.jumpjet_runtime_mut().unwrap();
-        runtime.phase = crate::sim::movement::jumpjet_flight::STATE_HOLD;
-        runtime.moving = false;
+        *runtime = runtime
+            .clone()
+            .with_phase_for_test(crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_HOLD)
+            .with_moving_for_test(false);
         e.locomotor = Some(loco);
         sim
     }
@@ -8060,7 +8062,7 @@ fn a_missile_is_tracked_in_the_cell_its_flight_step_reached() {
         )
     };
     assert_eq!(
-        sim.substrate.entities.get(1).unwrap().air_spatial_bucket,
+        sim.substrate.entities.get(1).unwrap().air_spatial_bucket(),
         Some(bucket(&sim, (5, 5)))
     );
 
@@ -8070,5 +8072,5 @@ fn a_missile_is_tracked_in_the_cell_its_flight_step_reached() {
     let missile = sim.substrate.entities.get(1).unwrap();
     let cell = (missile.position.rx, missile.position.ry);
     assert_ne!(cell, (5, 5), "the flight step left the launch cell");
-    assert_eq!(missile.air_spatial_bucket, Some(bucket(&sim, cell)));
+    assert_eq!(missile.air_spatial_bucket(), Some(bucket(&sim, cell)));
 }

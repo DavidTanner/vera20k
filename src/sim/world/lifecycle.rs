@@ -13,8 +13,7 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
 use crate::sim::lifecycle_request::LifecycleRequest;
 use crate::sim::occupancy::{
-    BUILDING_OCCUPATION_BIT, CellListInsertion, air_spatial_bucket_index,
-    air_spatial_tracks_entity, cell_list_layer_for_entity, entity_occupancy_cells,
+    BUILDING_OCCUPATION_BIT, CellListInsertion, cell_list_layer_for_entity, entity_occupancy_cells,
 };
 use crate::sim::passenger::PassengerRole;
 use crate::sim::projectile::ProjectileTarget;
@@ -1689,51 +1688,6 @@ impl Simulation {
             }
         }
         true
-    }
-
-    /// Mirror the native air-vector move producer: retain vector position while
-    /// the object stays in one bucket, otherwise remove from the old vector and
-    /// append to the destination vector's tail.
-    pub(super) fn sync_air_spatial_membership(&mut self, stable_id: u64) {
-        let desired_bucket = self.substrate.entities.get(stable_id).and_then(|entity| {
-            (entity.lifecycle.object_alive
-                && !entity.lifecycle.in_limbo
-                && entity.lifecycle.cell_marked
-                && !entity.passenger_role.is_inside_transport()
-                && if entity
-                    .locomotor
-                    .as_ref()
-                    .and_then(|l| l.fly_runtime())
-                    .is_some()
-                {
-                    entity.air_spatial_bucket.is_some()
-                } else {
-                    air_spatial_tracks_entity(entity)
-                })
-            .then(|| {
-                air_spatial_bucket_index(
-                    entity.position.rx,
-                    entity.position.ry,
-                    self.session.map_width,
-                    self.session.map_height,
-                )
-            })
-        });
-        let current_bucket = self
-            .substrate
-            .entities
-            .get(stable_id)
-            .and_then(|entity| entity.air_spatial_bucket);
-        if current_bucket == desired_bucket {
-            return;
-        }
-        let enter_order = desired_bucket
-            .map(|_| self.substrate.next_air_tracker_order.next())
-            .unwrap_or(0);
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.air_spatial_bucket = desired_bucket;
-            entity.air_spatial_enter_order = enter_order;
-        }
     }
 
     /// Own the represented bridge DropIn's complete cell-list relayer.
@@ -4373,10 +4327,10 @@ impl Simulation {
             self.release_anim_owner_reference(stable_id);
             self.clear_building_anim_reference(stable_id);
         }
-        // A Jumpjet destroyed while hovering never reaches State 4's release,
-        // so its cell AltObject slot (`CellClass+0xE0`) is dropped here rather
-        // than leaving the cell permanently claimed against later hoverers.
-        self.substrate.air_slots.release_owner(stable_id);
+        // Selected original Foot destructor4D3632..4D366E clears only its
+        // cached+564 Cell if+E0 still holds this Foot. UnInit/Limbo retain it;
+        // the block sends no notification and leaves the obsolete+564 intact.
+        self.clear_foot_air_slot_at_destruction(stable_id);
         // Display registration never outlives the object. Fly's phase tail
         // (4CD4DE) resubmits even an owner concealed earlier in the frame.
         self.substrate.display.remove(stable_id);

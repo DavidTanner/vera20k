@@ -183,10 +183,24 @@ fn retail_hills_engineer_cliff_start_is_rejected() {
         .unwrap();
     let owner = runtime.simulation.session.current_house.unwrap();
     let owner_name = runtime.simulation.interner.resolve(owner).to_owned();
-    let engineer = runtime
-        .simulation
-        .spawn_object("ENGINEER", &owner_name, 69, 74, 0, &runtime.resources.rules)
-        .unwrap();
+    // This zone/restore negative control supplies an already-resident actor
+    // on Rock, whose native Foot speed is zero. Object5F4F1B..5F4F4A
+    // bypasses ordinary +1AC admission under the authored A8E7AC scope;
+    // Infantry51E027 also uses it for priority floor placement. End that
+    // context before snapshot/Capture: ordinary cliff Unlimbo is not legal.
+    let engineer = runtime.simulation.with_object_placement_scope(|sim| {
+        sim.spawn_object_with_overlay_registry(
+            "ENGINEER",
+            &owner_name,
+            69,
+            74,
+            0,
+            &runtime.resources.rules,
+            &runtime.resources.overlay_registry,
+        )
+        .unwrap()
+    });
+    assert!(!runtime.simulation.object_placement_scope_active());
     let bytes = GameSnapshot::save_validated(
         &runtime.simulation,
         scenario.map.ini.content_hash(),
@@ -308,13 +322,14 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
     let owner_name = runtime.simulation.interner.resolve(owner).to_owned();
     let engineer = runtime
         .simulation
-        .spawn_object(
+        .spawn_object_with_overlay_registry(
             "ENGINEER",
             &owner_name,
             start.0,
             start.1,
             0,
             &runtime.resources.rules,
+            &runtime.resources.overlay_registry,
         )
         .unwrap();
     let command = CommandEnvelope::new(

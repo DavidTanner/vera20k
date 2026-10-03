@@ -812,21 +812,28 @@ fn jumpjet_fixture(balloon: bool) -> (Simulation, RuleSet, u64, u64) {
         let loco = entity.locomotor.as_mut().unwrap();
         loco.altitude = SimFixed::from_num(500);
         let runtime = loco.jumpjet_runtime_mut().unwrap();
-        runtime.phase = crate::sim::movement::jumpjet_flight::STATE_HOLD;
-        runtime.moving = true;
-        runtime.destination = DriveCoord {
-            x: START,
-            y: START,
-            z: 0,
-        };
-        runtime.flight.facing.snap(0x4000, 1000);
-        runtime.flight.target_height = 500;
+        let mut flight = runtime.flight();
+        flight.facing.snap(0x4000, 1000);
+        flight.target_height = 500;
+        *runtime = runtime
+            .clone()
+            .with_phase_for_test(crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_HOLD)
+            .with_moving_for_test(true)
+            .with_destination_for_test(DriveCoord {
+                x: START,
+                y: START,
+                z: 0,
+            })
+            .with_flight_for_test(flight);
         entity.passenger_role = PassengerRole::Transport {
             cargo: PassengerCargo::new(2, 0),
         };
     }
     sim.add_entity_occupancy(1);
-    assert!(sim.substrate.air_slots.claim(52, 52, 1));
+    // This held-aircraft midpoint follows native takeoff's tracker Add;
+    // marking a Jumpjet does not manufacture that retained registration.
+    sim.aircraft_tracker_add(1);
+    assert!(sim.set_cell_air_slot((52, 52), Some(1)));
     for _ in 0..2 {
         let rider = sim
             .construct_object_limbo_at_height("RIDER", "Americans", 52, 52, 0, 0, &rules)
@@ -1042,9 +1049,9 @@ fn a_shot_down_jumpjet_crashes_through_the_production_receiver() {
         .unwrap()
         .jumpjet_runtime()
         .unwrap();
-    assert!(runtime.moving);
+    assert!(runtime.moving());
     assert_eq!(
-        runtime.destination,
+        runtime.destination(),
         DriveCoord {
             x: START - 256,
             y: START - 256,
@@ -1112,13 +1119,13 @@ fn a_shot_down_balloon_jumpjet_bombs_its_impact_cell() {
     );
 }
 
-/// An order dropped in the cruise (an Attack order or the attack approach
-/// dropping the goal) runs `Stop_Moving` through Foot's null arm, which keeps
+/// A class NULL destination in the cruise runs `Stop_Moving` through Foot's
+/// null arm, which keeps
 /// the moving byte: shot down there, the wreck still latches into State 5 and
 /// reaches the ground. (A hold without the moving byte never latches, natively
 /// too; VERA no longer makes one out of a dropped order.)
 #[test]
-fn a_jumpjet_shot_down_after_its_order_dropped_reaches_the_ground() {
+fn a_jumpjet_shot_down_after_its_null_destination_reaches_the_ground() {
     let (mut sim, rules, _, shooter) = jumpjet_fixture(false);
     assert!(sim.issue_air_cell_destination(1, (60, 52), SimFixed::from_num(30), Some(&rules)));
     // Cruise until the owner has left the hover cell.
@@ -1144,18 +1151,18 @@ fn a_jumpjet_shot_down_after_its_order_dropped_reaches_the_ground() {
             .expect("runtime")
     };
     assert_eq!(
-        runtime(&sim).phase,
-        crate::sim::movement::jumpjet_flight::STATE_TRANSLATE
+        runtime(&sim).phase(),
+        crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_TRANSLATE
     );
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     let here = (entity.position.rx, entity.position.ry);
-    entity.movement_target = None;
+    sim.assign_null_destination(1, Some(&rules), None);
     sim.session.binary_frame = frame;
     sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
     let stopped = runtime(&sim);
-    assert!(stopped.moving, "Stop_Moving keeps the moving byte");
+    assert!(stopped.moving(), "Stop_Moving keeps the moving byte");
     assert_eq!(
-        stopped.destination,
+        stopped.destination(),
         DriveCoord {
             x: i32::from(here.0) * 256 + 128,
             y: i32::from(here.1) * 256 + 128,
@@ -1182,9 +1189,15 @@ fn a_jumpjet_shot_down_touching_down_still_crashes() {
         let loco = entity.locomotor.as_mut().unwrap();
         loco.altitude = SimFixed::from_num(10);
         let runtime = loco.jumpjet_runtime_mut().unwrap();
-        runtime.phase = crate::sim::movement::jumpjet_flight::STATE_DESCEND;
-        runtime.flight.target_height = 0;
-        runtime.landing_latched = true;
+        let mut flight = runtime.flight();
+        flight.target_height = 0;
+        *runtime = runtime
+            .clone()
+            .with_phase_for_test(
+                crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_DESCEND,
+            )
+            .with_flight_for_test(flight)
+            .with_landing_latched_for_test(true);
     }
     shoot_down(&mut sim, &rules, shooter);
     let entity = sim.substrate.entities.get(1).unwrap();
@@ -1196,11 +1209,11 @@ fn a_jumpjet_shot_down_touching_down_still_crashes() {
         .jumpjet_runtime()
         .unwrap();
     assert_eq!(
-        runtime.phase,
-        crate::sim::movement::jumpjet_flight::STATE_ASCEND
+        runtime.phase(),
+        crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_ASCEND
     );
-    assert_eq!(runtime.flight.target_height, 500);
-    assert!(runtime.moving && !runtime.landing_latched);
+    assert_eq!(runtime.flight().target_height, 500);
+    assert!(runtime.moving() && !runtime.landing_latched());
 
     let fall = fall_to_the_impact(&mut sim, &rules);
     assert_eq!(
@@ -1299,8 +1312,10 @@ fn a_landed_jumpjet_dies_where_it_stands() {
         entity.position.exact_z_leptons = Some(0);
         let loco = entity.locomotor.as_mut().unwrap();
         loco.altitude = SimFixed::ZERO;
-        loco.jumpjet_runtime_mut().unwrap().phase =
-            crate::sim::movement::jumpjet_flight::STATE_GROUND;
+        let runtime = loco.jumpjet_runtime_mut().unwrap();
+        *runtime = runtime.clone().with_phase_for_test(
+            crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_GROUND,
+        );
     }
     shoot_down(&mut sim, &rules, shooter);
     assert!(

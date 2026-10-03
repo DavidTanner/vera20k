@@ -228,24 +228,24 @@ fn jumpjet_readiness_reads_the_native_state_field() {
         (5, true),
         (6, true),
     ] {
-        entity
+        let runtime = entity
             .locomotor
             .as_mut()
             .and_then(|locomotor| locomotor.jumpjet_runtime_mut())
-            .expect("a Jumpjet locomotor carries its runtime")
-            .phase = state;
+            .expect("a Jumpjet locomotor carries its runtime");
+        *runtime = runtime.clone().with_phase_for_test(state);
         let ready = ready_state_for(&entity, None, 100).expect("Jumpjet has a producer");
         assert_eq!(ready.is_moving_now(), moving, "native state {state}");
     }
 
     // A pending order does not make a holding Jumpjet "moving": state 2 is
     // excluded whatever the Foot destination says.
-    entity
+    let runtime = entity
         .locomotor
         .as_mut()
         .and_then(|locomotor| locomotor.jumpjet_runtime_mut())
-        .unwrap()
-        .phase = 2;
+        .unwrap();
+    *runtime = runtime.clone().with_phase_for_test(2);
     entity.movement_target = Some(moving_target());
     entity.navigation.path_replay = order_route();
     assert!(!ready_state_for(&entity, None, 100).unwrap().is_moving_now());

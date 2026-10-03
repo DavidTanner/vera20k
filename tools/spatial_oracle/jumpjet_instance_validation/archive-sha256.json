@@ -1,0 +1,1388 @@
+{
+  "checks/focused-g5-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g5-20261003.json",
+    "bytes": 219455,
+    "sha256": "fbb39bea22d65f5806ac59b1309621380f0dfe479c041aaebca4212da6890d9e",
+    "archive_bytes": 93928,
+    "archive_sha256": "f10e9ad771c8d1d69fb13e71d0d380d2afb7ae611cf037bbff966957fcdd81a7",
+    "gzip": true
+  },
+  "checks/focused-g5.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g5-20261003.log",
+    "bytes": 14976,
+    "sha256": "518f36036f5a24fea9e8ffacdb374f093fbb6aa32b2a8b90be398be74364617c",
+    "archive_bytes": 3921,
+    "archive_sha256": "aa3d78f073e429be60c9835c2b8e99c43853ded19a619d9000df7d56df04b2ba",
+    "gzip": true
+  },
+  "checks/primary63-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-primary63-r0-20261003.json",
+    "bytes": 223952,
+    "sha256": "26677ea1257527228c45fa170925ba65f35ced4d6d233236139efe21cfe0fbf1",
+    "archive_bytes": 94902,
+    "archive_sha256": "84981c5ba86effb00fe51071b462810891b952d3a5b310de3122b495f4a27a1e",
+    "gzip": true
+  },
+  "checks/primary63.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-primary63-r0-20261003.log",
+    "bytes": 5056431,
+    "sha256": "8ae93c45a267c7ec2fbd7e55a27ab54eea64df13e9512a3a31f23e5c0ab18bfd",
+    "archive_bytes": 270761,
+    "archive_sha256": "8ff86193652480ba379c15afad11a962dd905e2444f8c770696003c8ff23b9ac",
+    "gzip": true
+  },
+  "checks/full-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-full_lib-r0-20261003.json",
+    "bytes": 216603,
+    "sha256": "df8ce4aaa9ce6c1f851010f4eeed8a4069118534ebdc5ad698b583e5fdec79f0",
+    "archive_bytes": 93237,
+    "archive_sha256": "59e2c4f7ea2a8f2e99b6bba173c11db53d70b022d2cb458d476a4d41623795d6",
+    "gzip": true
+  },
+  "checks/full.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-full_lib-r0-20261003.log",
+    "bytes": 974305,
+    "sha256": "3f141736883575b90d39d6d5a4519dafe8823ad07df5d5529640b1b048f57e7f",
+    "archive_bytes": 201088,
+    "archive_sha256": "d1ad36e9cd76658d31e3be6c1424c3263081f2acfb67500f7c5d8a402a3c2718",
+    "gzip": true
+  },
+  "checks/clippy-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-clippy_lib-r0-20261003.json",
+    "bytes": 216536,
+    "sha256": "034f6d510824d8ec433d355a057ff7aed26f7f0285e1cd6041830e37c44fccde",
+    "archive_bytes": 93220,
+    "archive_sha256": "0277c3d7edbc52f165bd2958e42ef1900b3e26789d4b4ccd2e5d9e4c4399cd88",
+    "gzip": true
+  },
+  "checks/clippy.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-clippy_lib-r0-20261003.log",
+    "bytes": 427124,
+    "sha256": "f56444cd1ea604ec367516fd3d6a42ecc4c67883930140dcef42ae1f5e29722e",
+    "archive_bytes": 67906,
+    "archive_sha256": "75f9fc5d6d35f48ad08be835c29311466238058f4f72e4d7afacd903ca3d1dfb",
+    "gzip": true
+  },
+  "checks/release-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-release_game-r0-20261003.json",
+    "bytes": 216570,
+    "sha256": "46a468210dc356f1368dd9cdf794ab8771beba740c52a08685f30b4bffcb5800",
+    "archive_bytes": 93221,
+    "archive_sha256": "2b5ae42fa3dc6c4e0245c4ed2c964493829ee00dab8425eceae9534385f9405f",
+    "gzip": true
+  },
+  "checks/release.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-release_game-r0-20261003.log",
+    "bytes": 4976,
+    "sha256": "48e1ba1a906a67f0007e0d037c35bcfb3fb2a621ff09ecd8bc6ce6316bad805d",
+    "archive_bytes": 1655,
+    "archive_sha256": "4cc57ce69017009b26649f3400116cad9b12cd84457bb4c9729c0b5f60a26760",
+    "gzip": true
+  },
+  "checks/python-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-python_suite-p1-20261003.json",
+    "bytes": 216479,
+    "sha256": "d17aff150d33bfa8c6ffeb5b299b8d78c2a8ed0cf2e76853113a5e4a002e8db7",
+    "archive_bytes": 93203,
+    "archive_sha256": "bf5eb7efea8b63767e8e6f95b9054a4874c10bc4cfde4faabb8705188e97c1d9",
+    "gzip": true
+  },
+  "checks/python.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-python_suite-p1-20261003.log",
+    "bytes": 106146,
+    "sha256": "755a3dd33522cdd1aa99ff33bcda3850b5bbd6d57b3df5dff24c688ba20afeb6",
+    "archive_bytes": 16751,
+    "archive_sha256": "32eb88536b46a351e49e4aaebc9d766d41f05d13f673e5ac65727e6b27406186",
+    "gzip": true
+  },
+  "checks/measurement-as-run.py.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-measure-red-20261003.py",
+    "bytes": 4112,
+    "sha256": "7d60a7d4291b6f4c230270067a2c6027f0b27ff58e5c734ec1d843d9de907244",
+    "archive_bytes": 1708,
+    "archive_sha256": "49871421259199e49408b966957974587330c6de6bb5cb1087ffcbf84226d339",
+    "gzip": true
+  },
+  "checks/invocation-plan.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-validation-invocation-plan-20261003.json",
+    "bytes": 8781,
+    "sha256": "3e0547c4f91cdcd8017106da74112f50b4dfe18b7ff7ada10bde422deebd49da",
+    "archive_bytes": 8781,
+    "archive_sha256": "3e0547c4f91cdcd8017106da74112f50b4dfe18b7ff7ada10bde422deebd49da",
+    "gzip": false
+  },
+  "checks/field-ratchet.txt": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-field-ratchet-cff-20261003.txt",
+    "bytes": 90,
+    "sha256": "edebe4a58a008c2b28933661f7178c88d6faa28aab5dd6b4d6f79f2d4233bf5b",
+    "archive_bytes": 90,
+    "archive_sha256": "edebe4a58a008c2b28933661f7178c88d6faa28aab5dd6b4d6f79f2d4233bf5b",
+    "gzip": false
+  },
+  "regression/red-r0.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r0-20261003.json",
+    "bytes": 218634,
+    "sha256": "8b4a98934e0a771801ce4a57d68565aa8eb9c3e8feccd73ce14a49d30f512733",
+    "archive_bytes": 93708,
+    "archive_sha256": "b950e646808009f62bf36e0707c9fcfc6bc567b01d1dc74cc92abfe4708e7e45",
+    "gzip": true
+  },
+  "regression/red-r0.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r0-20261003.log",
+    "bytes": 1676,
+    "sha256": "523a5762a4aa03ab4ba42f576c521fb30de9bdf72ea24ab8105e3e4c68470749",
+    "archive_bytes": 786,
+    "archive_sha256": "9ce98aed27d4ec56355c09db9848b233a76ae023b6c2a150cc68150e891663ec",
+    "gzip": true
+  },
+  "regression/red-r1.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r1-20261003.json",
+    "bytes": 218634,
+    "sha256": "eec977cfaefed5b7cb20df074b0e24b9572c6e5d0b8c07d4c551fafbb954fba7",
+    "archive_bytes": 93706,
+    "archive_sha256": "111ed39130016f9cb8c3d606b6c6d7d5ec7da17c80de2b6f413a1fd6d0071c81",
+    "gzip": true
+  },
+  "regression/red-r1.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r1-20261003.log",
+    "bytes": 4365,
+    "sha256": "b3c799f890d5f5d0da8bc5d5fe5ebb99476e35d08a4c7eea58e7d44a1160fe71",
+    "archive_bytes": 1896,
+    "archive_sha256": "d4823158e8fe5c582ec16cafa3aa19726276f9bc2fcabc1e8aefb60e649c095b",
+    "gzip": true
+  },
+  "regression/green-g1.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g1-20261003.json",
+    "bytes": 218961,
+    "sha256": "2c7726c351a48cc040181c2de48f21ec2a8d55e10577e2b52de96e65863f2812",
+    "archive_bytes": 93755,
+    "archive_sha256": "6e3a50dc326f0e6e271eb75c4b43fc562c496b9081241a17939023727117e9c4",
+    "gzip": true
+  },
+  "regression/green-g1.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g1-20261003.log",
+    "bytes": 16952,
+    "sha256": "1f9a9039f8735df30e3b70617a42886d33bedee1b3410549526aaf934f3b9ca1",
+    "archive_bytes": 4353,
+    "archive_sha256": "da879b05d9f57965924914a5355e82de5f380cc3b01db708388398882c3fcc62",
+    "gzip": true
+  },
+  "regression/green-g3.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g3-20261003.json",
+    "bytes": 219053,
+    "sha256": "26de27d8ee7adc205462d3fcc9639b47b58df30cace361b1d9df84c69bf35f37",
+    "archive_bytes": 93780,
+    "archive_sha256": "1aa2ba5e7c17266bc06301b7c8ddc61ba5c445da2abcb9ad4a41f71f531947a2",
+    "gzip": true
+  },
+  "regression/green-g3.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g3-20261003.log",
+    "bytes": 16574,
+    "sha256": "d387b10b1cde2f58b74c7b61c0b5cec6eebd527d019a6e8e6478e810f337b7f8",
+    "archive_bytes": 4272,
+    "archive_sha256": "00847c97303c55617c67935fe275958ba50e7420104a9208315f717a50643a76",
+    "gzip": true
+  },
+  "regression/green-g4.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g4-20261003.json",
+    "bytes": 219209,
+    "sha256": "785458ab36bdaf38d7997971de67816195fe29285017b002cffdbd0ae04079c1",
+    "archive_bytes": 93810,
+    "archive_sha256": "fe985f0f53c90292e20d7ebae994746b4836c3f0e330993dd68dbde346c8f48e",
+    "gzip": true
+  },
+  "regression/green-g4.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g4-20261003.log",
+    "bytes": 15580,
+    "sha256": "4e2ada05c1e1ff75a03e309a60f6eff08d9c7d28c0c4b95e6b667be1d399f2d2",
+    "archive_bytes": 4173,
+    "archive_sha256": "2c3b91cd9f089b1f2be2a2b0ff273cbed53652f28a9e0e7c574f7a7a4cfd79cd",
+    "gzip": true
+  },
+  "native/v3/check.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/check.log",
+    "bytes": 143,
+    "sha256": "07ba216ad08a6b49e7ae3778748b846f24ccd3e31779d6cdb04ea387db89fe36",
+    "archive_bytes": 135,
+    "archive_sha256": "808b8c61948323eebf0d71b6bf3a02a8650b08594f26dbb1338b05c0ca510fe7",
+    "gzip": true
+  },
+  "native/v3/checkpoint-before-compaction.md.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/checkpoint-before-compaction.md",
+    "bytes": 5284,
+    "sha256": "22a1b7014be1dca35aa8d33d960a6b3e77fd9aa575c68591ab48f8a869e3ef80",
+    "archive_bytes": 2904,
+    "archive_sha256": "961315fb03e1a1e7f7c1f652160e011b46cd2860661558088be3170eb1297c33",
+    "gzip": true
+  },
+  "native/v3/cmin-check.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/cmin-check.log",
+    "bytes": 138,
+    "sha256": "ce5f88eb21f88ca80af7d68da8848374a90a01baa6f4fbac0a0e63d5efdd57a9",
+    "archive_bytes": 132,
+    "archive_sha256": "1ca243d91a584fd26f1311e171ee395fa191908a33a089cdb16c81d85174ad20",
+    "gzip": true
+  },
+  "native/v3/cold-object-prerequisite/jumpjet_states.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/cold-object-prerequisite/jumpjet_states.json",
+    "bytes": 13723255,
+    "sha256": "a29f8471ef75e36ee28fcaadab0c779b9e9a9c5f2dbbf80e71704128a492d646",
+    "archive_bytes": 380854,
+    "archive_sha256": "2ea0598265e4793c692542c2502c9b4aa72ce08048fbe79d0d1468efe763fb70",
+    "gzip": true
+  },
+  "native/v3/cold-object-prerequisite/jumpjet_states.meta.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/cold-object-prerequisite/jumpjet_states.meta.json",
+    "bytes": 9920,
+    "sha256": "9054da9448c489199945a57f911d4c67e4d77622dd219dc38b6d897b60a5bea7",
+    "archive_bytes": 4742,
+    "archive_sha256": "0c6e065b4e19869c292c6de6c1aed24fd77d3c09e469ed48fc189606d3490b07",
+    "gzip": true
+  },
+  "native/v3/cold-object-prerequisite/jumpjet_states.raw.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/cold-object-prerequisite/jumpjet_states.raw.json.gz",
+    "bytes": 1030722,
+    "sha256": "1e632969abee71e23236c772cac0765e378b913a265e5b8a0615b17c71f12c68",
+    "archive_bytes": 1030722,
+    "archive_sha256": "1e632969abee71e23236c772cac0765e378b913a265e5b8a0615b17c71f12c68",
+    "gzip": false
+  },
+  "native/v3/cold-object-prerequisite/jumpjet_states.raw.meta.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/cold-object-prerequisite/jumpjet_states.raw.meta.json",
+    "bytes": 10018,
+    "sha256": "20bf03b811a094b30a28f62286b8eb1fad91909027e9e7006c5e3f1f8e596799",
+    "archive_bytes": 4753,
+    "archive_sha256": "75918701551c479da3056497a9111ad6c142a03061a0c5ad2f7aac2cdf08d905",
+    "gzip": true
+  },
+  "native/v3/cold-object-prerequisite/preservation.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/cold-object-prerequisite/preservation.json",
+    "bytes": 757,
+    "sha256": "8df20ecee3ccedb022cbf63fc4121a202460e82eb454c80a5912c7c90a588df6",
+    "archive_bytes": 419,
+    "archive_sha256": "0d12eb3e28059b7bd54fa27a7bc35a207fbe3de58d56ae425eb1470cc79f0a61",
+    "gzip": true
+  },
+  "native/v3/freeze-manifest.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/freeze-manifest.json",
+    "bytes": 5414,
+    "sha256": "f29b8d484c2398a6cd4098c40ec4940b921333c5cfe792601563962d71ce66b7",
+    "archive_bytes": 1998,
+    "archive_sha256": "30caadfdb9ea198d418c40723aae851fc1b0cf91545446b4c443f26bf00ad380",
+    "gzip": true
+  },
+  "native/v3/pre-execution-freeze.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/pre-execution-freeze.json",
+    "bytes": 2196,
+    "sha256": "2ded189319f82841babbd5a780375fbc016ba1d6322fe965f485c2c034fb3b9e",
+    "archive_bytes": 1126,
+    "archive_sha256": "4107dea9d5e21497e45ef09a66a5729931c1bdabdd02cfbda153ae26ed0e992d",
+    "gzip": true
+  },
+  "native/v3/published.meta.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/published.meta.json",
+    "bytes": 9920,
+    "sha256": "9054da9448c489199945a57f911d4c67e4d77622dd219dc38b6d897b60a5bea7",
+    "archive_bytes": 4742,
+    "archive_sha256": "0c6e065b4e19869c292c6de6c1aed24fd77d3c09e469ed48fc189606d3490b07",
+    "gzip": true
+  },
+  "native/v3/published.raw.meta.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/published.raw.meta.json",
+    "bytes": 10018,
+    "sha256": "20bf03b811a094b30a28f62286b8eb1fad91909027e9e7006c5e3f1f8e596799",
+    "archive_bytes": 4753,
+    "archive_sha256": "75918701551c479da3056497a9111ad6c142a03061a0c5ad2f7aac2cdf08d905",
+    "gzip": true
+  },
+  "native/v3/receipt-assembly-attempt1.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/receipt-assembly-attempt1.json",
+    "bytes": 1854,
+    "sha256": "cea594c180bee58c89a30432f21526dd08f5fc5687beeddf9e470ddacaf9bab2",
+    "archive_bytes": 607,
+    "archive_sha256": "48b9105404e512e3f8323b5b19a47cef573b0a67d13342ea8db295ff0889a8b6",
+    "gzip": true
+  },
+  "native/v3/receipt-assembly-attempt2.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/receipt-assembly-attempt2.json",
+    "bytes": 1834,
+    "sha256": "d6de10195c8a5a3c89e8619fd695cb0e84d46e92a8450febab587f58341f1667",
+    "archive_bytes": 604,
+    "archive_sha256": "67bca6104d643683c6a17130b556cde2a2d20443980fbc13112496baba7981b2",
+    "gzip": true
+  },
+  "native/v3/receipt-inspection-error.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/receipt-inspection-error.json",
+    "bytes": 147,
+    "sha256": "0c9f134174117f6ffcfbe42a6a4e9d579c65331c1dc201674a0bf4b2c959d7e8",
+    "archive_bytes": 142,
+    "archive_sha256": "70aa3c55a46d7e68a761381769204609c781b6711467496e6bace5d45f9885ca",
+    "gzip": true
+  },
+  "native/v3/scalar-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/scalar-receipt.json",
+    "bytes": 3815,
+    "sha256": "a87de56c9cbc2d653283254c2733047df1c32acd13355ab8db9e1c67c9690f57",
+    "archive_bytes": 659,
+    "archive_sha256": "9bc0d373b678eb3e21834f2cd4df60c18edb58daeda91d22d3b060c4d72df582",
+    "gzip": true
+  },
+  "native/v3/terminal-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/terminal-receipt.json",
+    "bytes": 3968,
+    "sha256": "b01f244cb12fa9d4113816ef80252638748880d1ea63053cc62923d05d4de29f",
+    "archive_bytes": 1603,
+    "archive_sha256": "0d55c0c5e7f6f322cb047833941967e94748cb13b5d683ccc5dde7d4b733285c",
+    "gzip": true
+  },
+  "native/v3/write.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v3-20261003/write.log",
+    "bytes": 513,
+    "sha256": "ccef13bb9d2ea1f841705eaf471736b2ca1af9ed2a95abfc912d3b94f7dfadd1",
+    "archive_bytes": 190,
+    "archive_sha256": "98cb4e9fd37d28796b5923e6475ee4bfb7839e116c3b7e0853b1510cf16ae04a",
+    "gzip": true
+  },
+  "native/v4/auxiliary-existing-inputs/cmin-check.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/auxiliary-existing-inputs/cmin-check.log",
+    "bytes": 138,
+    "sha256": "ce5f88eb21f88ca80af7d68da8848374a90a01baa6f4fbac0a0e63d5efdd57a9",
+    "archive_bytes": 132,
+    "archive_sha256": "1ca243d91a584fd26f1311e171ee395fa191908a33a089cdb16c81d85174ad20",
+    "gzip": true
+  },
+  "native/v4/auxiliary-existing-inputs/object-flight-height-check.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/auxiliary-existing-inputs/object-flight-height-check.log",
+    "bytes": 149,
+    "sha256": "6d2c80df8cbb871e065edbdb9d616bdd148bf75c0e344f985e545865aa98aa6f",
+    "archive_bytes": 138,
+    "archive_sha256": "37a595ff6bc0bbfd0c5ca24f06b8ca39d790af56490a09b54578f0a4565e7281",
+    "gzip": true
+  },
+  "native/v4/auxiliary-existing-inputs/terminal-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/auxiliary-existing-inputs/terminal-receipt.json",
+    "bytes": 3368,
+    "sha256": "8974c05e599907c7d6c82fad5063d124e5702f7465ab6e947da0aad0699582a9",
+    "archive_bytes": 1179,
+    "archive_sha256": "bc50267a1dc46a9d18d97d524f99b338bf5c4d0aeb7a73203f0b8d59f52ad5b8",
+    "gzip": true
+  },
+  "native/v4/check.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/check.log",
+    "bytes": 143,
+    "sha256": "07ba216ad08a6b49e7ae3778748b846f24ccd3e31779d6cdb04ea387db89fe36",
+    "archive_bytes": 135,
+    "archive_sha256": "808b8c61948323eebf0d71b6bf3a02a8650b08594f26dbb1338b05c0ca510fe7",
+    "gzip": true
+  },
+  "native/v4/checkpoint-before-v4.md.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/checkpoint-before-v4.md",
+    "bytes": 5638,
+    "sha256": "db5abec6ebcb556b614b9d3237109239ed5ad9f51a21d709a849fede9eb1a0b6",
+    "archive_bytes": 3076,
+    "archive_sha256": "9ba87f84e589dbb899dd526e7e7d8d8d39e14b217ebc2495db63911692451a1f",
+    "gzip": true
+  },
+  "native/v4/completion-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/completion-receipt.json",
+    "bytes": 8006,
+    "sha256": "53c651cba59289ab0a905c974f94c50323496e4b54057b398aea840d601ccffb",
+    "archive_bytes": 3393,
+    "archive_sha256": "e1510e81169a5f4b2f8c800934ee094b49a428f95d4c3339ef28eb726c4ba457",
+    "gzip": true
+  },
+  "native/v4/object-flight-height-check.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/object-flight-height-check.log",
+    "bytes": 2013,
+    "sha256": "e550d86e1230a08ac22d209ffd4211e059d8231169d4ba7a03553653781b9c66",
+    "archive_bytes": 765,
+    "archive_sha256": "bd658a747d8dbcb0c3d600589bec7e9d091aff1ddbd66bcf054e0df69b68fcff",
+    "gzip": true
+  },
+  "native/v4/post-execution-freeze.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/post-execution-freeze.json",
+    "bytes": 211382,
+    "sha256": "eba2fbc267e3343d06d626feb2d074a92ad7f8170b776dc06eb86bb331d072c3",
+    "archive_bytes": 92329,
+    "archive_sha256": "0ad23430e1f6a83cd2c24e39f7c9663f79cb9a12f939da386c7cdaf516572696",
+    "gzip": true
+  },
+  "native/v4/pre-execution-freeze.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/pre-execution-freeze.json",
+    "bytes": 211382,
+    "sha256": "eba2fbc267e3343d06d626feb2d074a92ad7f8170b776dc06eb86bb331d072c3",
+    "archive_bytes": 92329,
+    "archive_sha256": "0ad23430e1f6a83cd2c24e39f7c9663f79cb9a12f939da386c7cdaf516572696",
+    "gzip": true
+  },
+  "native/v4/published.meta.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/published.meta.json",
+    "bytes": 10766,
+    "sha256": "f5ef122536c60b653d86ac30ccb44c0152bd017d99dfaceb0ff4de3c1a1df921",
+    "archive_bytes": 5119,
+    "archive_sha256": "559b6115cace304a933c4fcf85039544b7ac1be9f229d51769ab54fc8602fe74",
+    "gzip": true
+  },
+  "native/v4/published.raw.meta.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/published.raw.meta.json",
+    "bytes": 10864,
+    "sha256": "105cac7cfaf1e01647e0a7ff23a669049990e3c510b9b8e52c162e32c517bb37",
+    "archive_bytes": 5133,
+    "archive_sha256": "a3ab44f7e88cb898d4b1af6c2108d1f9d50fa6b3b42f3830ce5d444690223239",
+    "gzip": true
+  },
+  "native/v4/scalar-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/scalar-receipt.json",
+    "bytes": 22192,
+    "sha256": "b9f43227b81eb22abb9ad20dbfd843a646ad63c36f891b45682b73314ac70a0d",
+    "archive_bytes": 2150,
+    "archive_sha256": "400803f0ef60d74afe098d1f89de5cdf06cdac612b39204c6ce4664bd2a626bb",
+    "gzip": true
+  },
+  "native/v4/terminal-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/terminal-receipt.json",
+    "bytes": 2795,
+    "sha256": "3225e9d89ed8d3616839eeac2991709a059fffa1fee3e6a38697234dda727191",
+    "archive_bytes": 902,
+    "archive_sha256": "ee4d3d7f03e2134c88e5a9d7b246da542460694bb5a505b842a99fe69795500d",
+    "gzip": true
+  },
+  "native/v4/write.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v4-20261003/write.log",
+    "bytes": 513,
+    "sha256": "ccef13bb9d2ea1f841705eaf471736b2ca1af9ed2a95abfc912d3b94f7dfadd1",
+    "archive_bytes": 190,
+    "archive_sha256": "98cb4e9fd37d28796b5923e6475ee4bfb7839e116c3b7e0853b1510cf16ae04a",
+    "gzip": true
+  },
+  "native/v5/check.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/check.log",
+    "bytes": 143,
+    "sha256": "07ba216ad08a6b49e7ae3778748b846f24ccd3e31779d6cdb04ea387db89fe36",
+    "archive_bytes": 135,
+    "archive_sha256": "808b8c61948323eebf0d71b6bf3a02a8650b08594f26dbb1338b05c0ca510fe7",
+    "gzip": true
+  },
+  "native/v5/cmin-check.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/cmin-check.log",
+    "bytes": 138,
+    "sha256": "ce5f88eb21f88ca80af7d68da8848374a90a01baa6f4fbac0a0e63d5efdd57a9",
+    "archive_bytes": 132,
+    "archive_sha256": "1ca243d91a584fd26f1311e171ee395fa191908a33a089cdb16c81d85174ad20",
+    "gzip": true
+  },
+  "native/v5/completion-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/completion-receipt.json",
+    "bytes": 8464,
+    "sha256": "ef1401f25faa7487be2388d82fac6e167d65b3af921ac9567cc0ae2d28362ba7",
+    "archive_bytes": 3266,
+    "archive_sha256": "1147f433ac86459647609aeda5891cbe2404e4dd273c438763b85cf33b3b5556",
+    "gzip": true
+  },
+  "native/v5/object-flight-height-check.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/object-flight-height-check.log",
+    "bytes": 149,
+    "sha256": "6d2c80df8cbb871e065edbdb9d616bdd148bf75c0e344f985e545865aa98aa6f",
+    "archive_bytes": 138,
+    "archive_sha256": "37a595ff6bc0bbfd0c5ca24f06b8ca39d790af56490a09b54578f0a4565e7281",
+    "gzip": true
+  },
+  "native/v5/post-execution-freeze.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/post-execution-freeze.json",
+    "bytes": 211382,
+    "sha256": "d3d7bda76a98c240d0622dd54aaee916a48c272418340a1560e8e39a1d621f5c",
+    "archive_bytes": 92332,
+    "archive_sha256": "87db09f1b73bb1ad0d02a9497e7b1debc1b998edfe2c0ebe184419f7a7263beb",
+    "gzip": true
+  },
+  "native/v5/post-verification-first-failure.txt.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/post-verification-first-failure.txt",
+    "bytes": 232,
+    "sha256": "610ef1a850d94ee018fc8ba58d88b05c4e0778af68a6071616805e8f312241e1",
+    "archive_bytes": 190,
+    "archive_sha256": "befa2148d482e65a7036bd57f443b83eff75e6d2b4d30f52d3b619ebd58f7abf",
+    "gzip": true
+  },
+  "native/v5/pre-execution-freeze.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/pre-execution-freeze.json",
+    "bytes": 211382,
+    "sha256": "d3d7bda76a98c240d0622dd54aaee916a48c272418340a1560e8e39a1d621f5c",
+    "archive_bytes": 92332,
+    "archive_sha256": "87db09f1b73bb1ad0d02a9497e7b1debc1b998edfe2c0ebe184419f7a7263beb",
+    "gzip": true
+  },
+  "native/v5/terminal-receipt.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/terminal-receipt.json",
+    "bytes": 3840,
+    "sha256": "a8c361c93bebb924578107820195a43fe98369eec41326a24cedb8465b253d08",
+    "archive_bytes": 991,
+    "archive_sha256": "6927df8e71276f8b87ac04f97fe5c369400f03f8557843e5d38463b11b80d292",
+    "gzip": true
+  },
+  "native/v5/v4-preserved/jumpjet_states.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/v4-preserved/jumpjet_states.json",
+    "bytes": 13939188,
+    "sha256": "3acb896e1bbe5e7d5868057789ad49cc461f31df94e718b77930dc7d71b73a99",
+    "archive_bytes": 386006,
+    "archive_sha256": "a5c99deb1a0748627b028ebf8db181485f09b17a8dbceb35fb6efd6d2db9a1a5",
+    "gzip": true
+  },
+  "native/v5/v4-preserved/jumpjet_states.md.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/v4-preserved/jumpjet_states.md",
+    "bytes": 13340,
+    "sha256": "0798039785e277d7e95087de83de8d87f96446b9b73db11c806d70fe4cf9b563",
+    "archive_bytes": 6178,
+    "archive_sha256": "2ad7fe2945bff9880b405bb09fbc63c54125c71f8426ddba881cd882a4bc04ab",
+    "gzip": true
+  },
+  "native/v5/v4-preserved/jumpjet_states.meta.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/v4-preserved/jumpjet_states.meta.json",
+    "bytes": 10766,
+    "sha256": "f5ef122536c60b653d86ac30ccb44c0152bd017d99dfaceb0ff4de3c1a1df921",
+    "archive_bytes": 5119,
+    "archive_sha256": "559b6115cace304a933c4fcf85039544b7ac1be9f229d51769ab54fc8602fe74",
+    "gzip": true
+  },
+  "native/v5/v4-preserved/jumpjet_states.py.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/v4-preserved/jumpjet_states.py",
+    "bytes": 78547,
+    "sha256": "23309c2f0ee510bfe08cad8a966e74e6b876494112111766b008917ef2cce46e",
+    "archive_bytes": 22332,
+    "archive_sha256": "b2bb472c04436988ca192519f3ec96ee13998f5533ab88a50794a41d4b21c123",
+    "gzip": true
+  },
+  "native/v5/v4-preserved/jumpjet_states.raw.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/v4-preserved/jumpjet_states.raw.json.gz",
+    "bytes": 1035819,
+    "sha256": "9e1c9bbae7fbe57b1670561a2c2e9f11637d69de960794912f1e35fece20181c",
+    "archive_bytes": 1035819,
+    "archive_sha256": "9e1c9bbae7fbe57b1670561a2c2e9f11637d69de960794912f1e35fece20181c",
+    "gzip": false
+  },
+  "native/v5/v4-preserved/jumpjet_states.raw.meta.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/v4-preserved/jumpjet_states.raw.meta.json",
+    "bytes": 10864,
+    "sha256": "105cac7cfaf1e01647e0a7ff23a669049990e3c510b9b8e52c162e32c517bb37",
+    "archive_bytes": 5133,
+    "archive_sha256": "a3ab44f7e88cb898d4b1af6c2108d1f9d50fa6b3b42f3830ce5d444690223239",
+    "gzip": true
+  },
+  "native/v5/v4-preserved/native-owner-checkpoint.md.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/v4-preserved/native-owner-checkpoint.md",
+    "bytes": 6254,
+    "sha256": "7a66364fcbc349dcbb2e2931ab052ee8f2423515d06865c0de440fa6556b29ec",
+    "archive_bytes": 3545,
+    "archive_sha256": "ecc54e1eea9a390ddba316e8d2caa41e509004fad22408cb598686ef9877135a",
+    "gzip": true
+  },
+  "native/v5/v4-preserved/preservation.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/v4-preserved/preservation.json",
+    "bytes": 2219,
+    "sha256": "7b96b8dc71aba0b42671c0aec8c4f8ae40b0809d52af6dfdfe167f0def7a97af",
+    "archive_bytes": 629,
+    "archive_sha256": "8770efb26e559c95b91c67667f43f4a2117e778454b17766baaf1e74faad0910",
+    "gzip": true
+  },
+  "native/v5/write.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-publication-v5-20261003/write.log",
+    "bytes": 513,
+    "sha256": "ccef13bb9d2ea1f841705eaf471736b2ca1af9ed2a95abfc912d3b94f7dfadd1",
+    "archive_bytes": 190,
+    "archive_sha256": "98cb4e9fd37d28796b5923e6475ee4bfb7839e116c3b7e0853b1510cf16ae04a",
+    "gzip": true
+  },
+  "runtime/discovery/child-output/capture.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-discovery-20261003/child-output/capture.json",
+    "bytes": 48942632,
+    "sha256": "05479aec8aef8cfe5d77a431bcefd3060506697d7c5110a21ea72489ef543572",
+    "archive_bytes": 591076,
+    "archive_sha256": "a86a312168c889c8f0d0b67ab4c7945d710a250c562cd2c232daa07774af774a",
+    "gzip": true
+  },
+  "runtime/discovery/child-output/frame.bgra.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-discovery-20261003/child-output/frame.bgra",
+    "bytes": 1920000,
+    "sha256": "0ce74cfd4784d9bc0c4976dc5290e90a387780769aeeb8ccbff285de7fc1ee2d",
+    "archive_bytes": 461567,
+    "archive_sha256": "e2d4447584fd61561fa8f9beb9cd7f97498506c34a7f6e99dcc973ed5470e345",
+    "gzip": true
+  },
+  "runtime/discovery/contract.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-discovery-20261003/contract.json",
+    "bytes": 590,
+    "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+    "archive_bytes": 331,
+    "archive_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986",
+    "gzip": true
+  },
+  "runtime/discovery/profile.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-discovery-20261003/profile.json",
+    "bytes": 4922,
+    "sha256": "e5fe21a7de7c4cf9d2b06637e031b71332fd37ccdc81291c8ba6b9ceeaa837bc",
+    "archive_bytes": 4922,
+    "archive_sha256": "e5fe21a7de7c4cf9d2b06637e031b71332fd37ccdc81291c8ba6b9ceeaa837bc",
+    "gzip": false
+  },
+  "runtime/discovery/run.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-discovery-20261003/run.json",
+    "bytes": 48939433,
+    "sha256": "ead493fd7d4f902f53fa5d91ee709969d4032df3dea2b15380cb544c77127d58",
+    "archive_bytes": 589669,
+    "archive_sha256": "da97f05fed070b66974ef49b4074a6b14f796b2b567d896acf490ce9bd4fb0dc",
+    "gzip": true
+  },
+  "runtime/discovery/stderr.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-discovery-20261003/stderr.log",
+    "bytes": 409,
+    "sha256": "9019d0983d879e93186032ae00f524e378a9b026a92d0b92835e31af61cb77f4",
+    "archive_bytes": 191,
+    "archive_sha256": "b7dd28b9acedc55cc42237ea9d1b6438346e40515e5d77439f7b24c8ca4acacf",
+    "gzip": true
+  },
+  "runtime/discovery/stdout.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-discovery-20261003/stdout.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "archive_bytes": 20,
+    "archive_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "gzip": true
+  },
+  "runtime/failed-budget-r0/child-output/capture.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-20261003/child-output/capture.json",
+    "bytes": 43618392,
+    "sha256": "0c0659362b369bf45b39b41daabd8f8ad9493a181bf5f4032fabc7ca7b23b213",
+    "archive_bytes": 432606,
+    "archive_sha256": "5ebc48a8cfe17237922de8437115e09149526c4e746a06bd9ec0974072f1a0e7",
+    "gzip": true
+  },
+  "runtime/failed-budget-r0/contract.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-20261003/contract.json",
+    "bytes": 590,
+    "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+    "archive_bytes": 331,
+    "archive_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986",
+    "gzip": true
+  },
+  "runtime/failed-budget-r0/profile.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-20261003/profile.json",
+    "bytes": 5578,
+    "sha256": "c783d9670c107a42d4ddfc122c456ef83322b719d32f32d076b39baae9987bf0",
+    "archive_bytes": 5578,
+    "archive_sha256": "c783d9670c107a42d4ddfc122c456ef83322b719d32f32d076b39baae9987bf0",
+    "gzip": false
+  },
+  "runtime/failed-budget-r0/run.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-20261003/run.json",
+    "bytes": 2284,
+    "sha256": "2840c029f4bfbe48fbf331a47a4db31a1b1cbaf7387aa4333b445b43de924bde",
+    "archive_bytes": 987,
+    "archive_sha256": "c24e9328cda3b5e617dd98ee4320961cf74155ec8fe5fd095d6bb80189dd0b46",
+    "gzip": true
+  },
+  "runtime/failed-budget-r0/stderr.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-20261003/stderr.log",
+    "bytes": 482,
+    "sha256": "7752fa73fe77a1ae367f94d77257f7e404dc08678ff4f170415de3057d7c319e",
+    "archive_bytes": 240,
+    "archive_sha256": "faf46feb7c5d923c8e6f04231e6813d467203683a283fbc276fab1c5c993df55",
+    "gzip": true
+  },
+  "runtime/failed-budget-r0/stdout.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-20261003/stdout.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "archive_bytes": 20,
+    "archive_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "gzip": true
+  },
+  "runtime/failed-budget-r1/child-output/capture.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r1-20261003/child-output/capture.json",
+    "bytes": 51859429,
+    "sha256": "1583ddec3fea716ab613285f18d7763b5134f8a4d6e088aa294ebcd5dea94b48",
+    "archive_bytes": 549361,
+    "archive_sha256": "4474e9b56a85acb7aed36b264596767421feb3923429ea71ac2b4941ab18d14f",
+    "gzip": true
+  },
+  "runtime/failed-budget-r1/contract.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r1-20261003/contract.json",
+    "bytes": 590,
+    "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+    "archive_bytes": 331,
+    "archive_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986",
+    "gzip": true
+  },
+  "runtime/failed-budget-r1/profile.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r1-20261003/profile.json",
+    "bytes": 5386,
+    "sha256": "058d105a21f54d48dba330f632b41fd16abaef8546d31bc45b2e7b4fa1e510ca",
+    "archive_bytes": 5386,
+    "archive_sha256": "058d105a21f54d48dba330f632b41fd16abaef8546d31bc45b2e7b4fa1e510ca",
+    "gzip": false
+  },
+  "runtime/failed-budget-r1/run.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r1-20261003/run.json",
+    "bytes": 2293,
+    "sha256": "35351d8650888f177374398f841be1aa734ecffb41883a6bdd254b240c281c45",
+    "archive_bytes": 992,
+    "archive_sha256": "62720576b28731a890ad08c3afbd872bef4a4b00c8dcd19b00ef3bd4b76cbb22",
+    "gzip": true
+  },
+  "runtime/failed-budget-r1/stderr.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r1-20261003/stderr.log",
+    "bytes": 482,
+    "sha256": "7752fa73fe77a1ae367f94d77257f7e404dc08678ff4f170415de3057d7c319e",
+    "archive_bytes": 240,
+    "archive_sha256": "faf46feb7c5d923c8e6f04231e6813d467203683a283fbc276fab1c5c993df55",
+    "gzip": true
+  },
+  "runtime/failed-budget-r1/stdout.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r1-20261003/stdout.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "archive_bytes": 20,
+    "archive_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "gzip": true
+  },
+  "runtime/move-stop/child-output/capture.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r2-20261003/child-output/capture.json",
+    "bytes": 43799656,
+    "sha256": "c901550d798abfab747c4aedf2fd1c3b4ea1492323b251cb80e1b75d3121a859",
+    "archive_bytes": 564743,
+    "archive_sha256": "1510af95e3489740e7b75512b333acc560c9aea17b0c9772b7e0bc7f73f04dfe",
+    "gzip": true
+  },
+  "runtime/move-stop/child-output/frame.bgra.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r2-20261003/child-output/frame.bgra",
+    "bytes": 1920000,
+    "sha256": "b3159b3643fce18725c10623605bf05a6a2b5368afdafb13e273d6fe52b722ca",
+    "archive_bytes": 461294,
+    "archive_sha256": "8b76662d27aa50ea971977ff141acacabf1d7169ad5c7d818cb09f670278e715",
+    "gzip": true
+  },
+  "runtime/move-stop/contract.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r2-20261003/contract.json",
+    "bytes": 590,
+    "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+    "archive_bytes": 331,
+    "archive_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986",
+    "gzip": true
+  },
+  "runtime/move-stop/profile.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r2-20261003/profile.json",
+    "bytes": 5226,
+    "sha256": "fe0c41db422c520d07d3c384fe2ac1774f15d95d4aeda7b286c44b521d0a0a3f",
+    "archive_bytes": 5226,
+    "archive_sha256": "fe0c41db422c520d07d3c384fe2ac1774f15d95d4aeda7b286c44b521d0a0a3f",
+    "gzip": false
+  },
+  "runtime/move-stop/run.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r2-20261003/run.json",
+    "bytes": 43796296,
+    "sha256": "ce043bad0de8b93446dada6e958d2f7ec455fb0431a34daf5e92ee58088494a7",
+    "archive_bytes": 563320,
+    "archive_sha256": "96a7a808d17cc4bd697a664a076b357d2ae107d73a1f542fb43d45c6dfbab072",
+    "gzip": true
+  },
+  "runtime/move-stop/stderr.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r2-20261003/stderr.log",
+    "bytes": 409,
+    "sha256": "9019d0983d879e93186032ae00f524e378a9b026a92d0b92835e31af61cb77f4",
+    "archive_bytes": 191,
+    "archive_sha256": "b7dd28b9acedc55cc42237ea9d1b6438346e40515e5d77439f7b24c8ca4acacf",
+    "gzip": true
+  },
+  "runtime/move-stop/stdout.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r2-20261003/stdout.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "archive_bytes": 20,
+    "archive_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "gzip": true
+  },
+  "runtime/discovery-offline.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-discovery-offline-20261003.json",
+    "bytes": 49420642,
+    "sha256": "77fd2cea5f1be3c24b6064f81673b2de8e611030096e7f5191fe3a764cc775f3",
+    "archive_bytes": 653563,
+    "archive_sha256": "a8144e90ac33504605bbfda67140659a588e19e16cb4853bc157b5553c7ffb22",
+    "gzip": true
+  },
+  "runtime/move-stop-offline.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r2-offline-20261003.json",
+    "bytes": 44277492,
+    "sha256": "f74b1a96d23c4e8a11e212514ea256b4cab0fdd3fb4a5762fea273dee6f67f5e",
+    "archive_bytes": 627189,
+    "archive_sha256": "240b5ee39dd2679dc1ee2cdf2809bd5cca8b8c573c8df534259e04c8c6f255ea",
+    "gzip": true
+  },
+  "runtime/proof.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-runtime-proof-20261003.json",
+    "bytes": 17570,
+    "sha256": "b42a3f54db9a28d811052ac10b6e7becd43eca4ba8fa268e67435142d0376266",
+    "archive_bytes": 17570,
+    "archive_sha256": "b42a3f54db9a28d811052ac10b6e7becd43eca4ba8fa268e67435142d0376266",
+    "gzip": false
+  },
+  "runtime/proof-as-run.py.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-runtime-proof-20261003.py",
+    "bytes": 8554,
+    "sha256": "48d9c2b9f621c30ea350336085782d662ec9e64745fc3eda5a96306360edbb16",
+    "archive_bytes": 2789,
+    "archive_sha256": "1af75bfc0ec3ad3191e1ea862424bfe48d54e44a753c82a3ebd4ed62ef67b933",
+    "gzip": true
+  },
+  "runtime/input-selection.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-discovery-input-selection-20261003.json",
+    "bytes": 9938,
+    "sha256": "d9d8fbc29a0a3737bd35b656d81f823dc051ef3bb53e5222548db3850e7c2395",
+    "archive_bytes": 9938,
+    "archive_sha256": "d9d8fbc29a0a3737bd35b656d81f823dc051ef3bb53e5222548db3850e7c2395",
+    "gzip": false
+  },
+  "runtime/move-stop-view.png": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-r2-view-20261003.png",
+    "bytes": 750300,
+    "sha256": "2eba2bac596953ac4b1648dfab56bbb3d7a115589ef4a8ff833718b164edcfe2",
+    "archive_bytes": 750300,
+    "archive_sha256": "2eba2bac596953ac4b1648dfab56bbb3d7a115589ef4a8ff833718b164edcfe2",
+    "gzip": false
+  },
+  "summary.json": {
+    "archive_sha256": "6f0550b5655964f6865e2aa5e172f268713f3c1674131fa71fee252393971eef"
+  },
+  "review/fresh-critic.md": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-synchronous-critic-cff0947c-20261003.md",
+    "bytes": 14157,
+    "sha256": "8860194c9fe53680a17846486b47725f4c92cdc3c03352d81588df4789f3045c",
+    "archive_bytes": 14157,
+    "archive_sha256": "8860194c9fe53680a17846486b47725f4c92cdc3c03352d81588df4789f3045c",
+    "gzip": false
+  },
+  "review/annotation-proof.json": {
+    "source": "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/tools/spatial_oracle/jumpjet_instance_validation/review/annotation-proof.json",
+    "bytes": 1155,
+    "sha256": "5571910046e13333b077a561bc46d6b931ff17713976430326f6f7fb7d097b7a",
+    "archive_bytes": 1155,
+    "archive_sha256": "5571910046e13333b077a561bc46d6b931ff17713976430326f6f7fb7d097b7a",
+    "gzip": false
+  },
+  "archive-as-run.py.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-archive-evidence-20261003.py",
+    "bytes": 6769,
+    "sha256": "f7c9ffb20a3317766dbed00428d308773c6074bae89d5891c4d44a1d9a284e3b",
+    "archive_bytes": 2243,
+    "archive_sha256": "a6f881f4d61069fb189a96e553ea3f18c46505b33e8ea7ed08696b7a31c21598",
+    "gzip": true
+  },
+  "README.md": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-evidence-readme-latest-20261003.md",
+    "bytes": 11246,
+    "sha256": "15fe583ef95f38663d365f8060e0b47386071996371f6ac176984b6057284fb3",
+    "archive_bytes": 11246,
+    "archive_sha256": "15fe583ef95f38663d365f8060e0b47386071996371f6ac176984b6057284fb3",
+    "gzip": false
+  },
+  "late-main/before/README.md.gz": {
+    "source": "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/tools/spatial_oracle/jumpjet_instance_validation/README.md",
+    "bytes": 10649,
+    "sha256": "a1b0ea869b99eaed193b7e2d6453443d8e91d9dc8625d5c52cbed6910758b77e",
+    "archive_bytes": 4991,
+    "archive_sha256": "bcdb62e199ff029c81c440536b9bbf79a52942f575f98a5c81708333efc857e5",
+    "gzip": true
+  },
+  "late-main/before/archive-sha256.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/tools/spatial_oracle/jumpjet_instance_validation/archive-sha256.json",
+    "bytes": 46511,
+    "sha256": "c6813e05368bface6137a03aa3620d238b43cc9ffbbfbf149265be124dbccb15",
+    "archive_bytes": 9596,
+    "archive_sha256": "60b71caf8c8946f8c58456a7826a1ff6ad44417081273549deac48201f8facf9",
+    "gzip": true
+  },
+  "late-main/checks/full-r1.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-full_lib-r1-20261003.json",
+    "bytes": 219642,
+    "sha256": "ea281b19baf98682dfef8e797ecbbd13c583b10ff8035d5503269e23e2b02474",
+    "archive_bytes": 94414,
+    "archive_sha256": "513d5371ccf1bb3f1a23684f8c64cf31c6c1707fa6c0efbcea727e48541a8964",
+    "gzip": true
+  },
+  "late-main/checks/full-r1.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-full_lib-r1-20261003.log",
+    "bytes": 979086,
+    "sha256": "2023853dad5e80b97a1614997cb1f5db7267c9b9610f7de0a8f72108b5ea8a91",
+    "archive_bytes": 202106,
+    "archive_sha256": "ffe92ad604e0892e47739fefda2a9fff8220dd2c13632d4e9380687aa97448e4",
+    "gzip": true
+  },
+  "late-main/checks/clippy-r1.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-clippy_lib-r1-20261003.json",
+    "bytes": 219574,
+    "sha256": "e173bcc58348494d6e678b0655e1daa86287ad82081921c0e6f10e73af4a4beb",
+    "archive_bytes": 94389,
+    "archive_sha256": "18d2cfec559ad8888990374ce85206e166206891bc35639939c86fcf3c6225e7",
+    "gzip": true
+  },
+  "late-main/checks/clippy-r1.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-clippy_lib-r1-20261003.log",
+    "bytes": 422948,
+    "sha256": "1ade41db2f993d921f418279fbfa546f0d66d3fd9b434c918c89ab862b3336d4",
+    "archive_bytes": 67354,
+    "archive_sha256": "28ff48122d323595111d2bdf398f842453a5b94b922270baa9bb944fd51d373b",
+    "gzip": true
+  },
+  "late-main/checks/python-p2.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-python_suite-p2-20261003.json",
+    "bytes": 219517,
+    "sha256": "cbd6208b634152b7f579a4d8586981d19d303724cf549373d89dbfce0e5a89e1",
+    "archive_bytes": 94370,
+    "archive_sha256": "5f3e2cb4204c6c123a3b6c4b0f24ad3a9647c745b3aa46656a5d574a086d2bc4",
+    "gzip": true
+  },
+  "late-main/checks/python-p2.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-python_suite-p2-20261003.log",
+    "bytes": 109206,
+    "sha256": "cd204424340f8a02c3e8fa9d27083bdca8fb3332b1479baaa9131a2210f900f0",
+    "archive_bytes": 17146,
+    "archive_sha256": "c530982619cd60454ef2134db6473fa813b37319fd5dbd01994901d539270ff8",
+    "gzip": true
+  },
+  "late-main/checks/primary63-r1-failed.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-primary63-r1-20261003.json",
+    "bytes": 226918,
+    "sha256": "f85bf56f6918238ea0e3763496c4682643a8c1a98b7c11854104de6d68a24e2a",
+    "archive_bytes": 96060,
+    "archive_sha256": "0eebbb1051fa722f80100dbb9cdd989ef4788cf0fd711a814ea8fd7c27a0e9a5",
+    "gzip": true
+  },
+  "late-main/checks/primary63-r1-failed.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-primary63-r1-20261003.log",
+    "bytes": 4963807,
+    "sha256": "525700072fb3dc0ff40848df0bb4af7d99e0bbdfb6ccb4731452fb47ea8f9a11",
+    "archive_bytes": 267629,
+    "archive_sha256": "4c1b54864a543cbc908dd35a4838c82e83254b543c83d320199916b3262def14",
+    "gzip": true
+  },
+  "late-main/checks/primary63-r2.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-primary63-r2-20261003.json",
+    "bytes": 226990,
+    "sha256": "c53012e7d1d7ed946697db770a5ca07fa267c7114fe41faa882ca201becceaed",
+    "archive_bytes": 96090,
+    "archive_sha256": "9e0571cca72a8b3d7fac767c5c1abc2f4bb9c4ed36245884d1aaf190f833860c",
+    "gzip": true
+  },
+  "late-main/checks/primary63-r2.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-primary63-r2-20261003.log",
+    "bytes": 5056392,
+    "sha256": "e5de6f1edaeeda8db0d93b6e154d2a20680e629271d75517e2bfc876ebcbbdf0",
+    "archive_bytes": 270772,
+    "archive_sha256": "216129475efd298a11270ea0e907056cd81691556ea5eb16d10c5dbae6eafa7d",
+    "gzip": true
+  },
+  "late-main/checks/release-r1.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-release_game-r1-20261003.json",
+    "bytes": 219610,
+    "sha256": "ae651732daf33c40e771c3a48a2bedb49625e6617e6fb84e9b71a1928fc34a5b",
+    "archive_bytes": 94401,
+    "archive_sha256": "8bf6dbc4ca8ebeb587b08577c8f54b3ae58a7dd5ec54015389ca83489f0e492f",
+    "gzip": true
+  },
+  "late-main/checks/release-r1.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-release_game-r1-20261003.log",
+    "bytes": 5766,
+    "sha256": "a8aa0cc4322a0d350f13dcd861bf8a621b9516b83175c149feecc4672f7b247f",
+    "archive_bytes": 1823,
+    "archive_sha256": "18514e626ee155dbd666bf261194d3b31d693456f74e2aefbc0683cf05944566",
+    "gzip": true
+  },
+  "late-main/checks/r2debug.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r2debug-20261003.json",
+    "bytes": 220280,
+    "sha256": "da2e42ff9936702164bb9be9602a5fc2522e4faf4b3abd6959d893bcbcca6fea",
+    "archive_bytes": 94686,
+    "archive_sha256": "fe8be12649960d83d9e3b318beef4dce2982f21ca09058c6d6af2e02bdd81474",
+    "gzip": true
+  },
+  "late-main/checks/r2debug.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r2debug-20261003.log",
+    "bytes": 5672,
+    "sha256": "04180f3437985f157ddcae93ef87a9d53d756f55b23c9a21ffd3a5160137fb25",
+    "archive_bytes": 1759,
+    "archive_sha256": "3531b7f95356f9d197aa32121f5199adcbcb354894466d3d6d3917934de94947",
+    "gzip": true
+  },
+  "late-main/checks/g6.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g6-20261003.json",
+    "bytes": 220457,
+    "sha256": "51b6a618c8ea3a3e0748fc8a0e9570ce6790e0e010529d4921b3035b89cdec97",
+    "archive_bytes": 94736,
+    "archive_sha256": "0103deb7c816e16747feecf32dbc6e08ec1cd154f6537ad3781429d5c11610fd",
+    "gzip": true
+  },
+  "late-main/checks/g6.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g6-20261003.log",
+    "bytes": 98938,
+    "sha256": "bbf11225e43a110fd5ddec47f324842ef31499cce2776245afa1cd38577b3c87",
+    "archive_bytes": 4652,
+    "archive_sha256": "e965494938ea91bfe94d1c454e2657d7bd3ac308176dbaea7fc22388a9211be8",
+    "gzip": true
+  },
+  "late-main/checks/r3inputs.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r3inputs-20261003.json",
+    "bytes": 220053,
+    "sha256": "596b969376c6ddae1d595f782a678ba4b8bb39c111607ed50969daef77b554f9",
+    "archive_bytes": 94615,
+    "archive_sha256": "6d11732e3d5dfa170ef4752bfef7765b3bd94ec5b5654f84334a691ca405e1a7",
+    "gzip": true
+  },
+  "late-main/checks/r3inputs.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r3inputs-20261003.log",
+    "bytes": 15169,
+    "sha256": "a04ecdd6edaac571d913d1eb997da8d596899f6eef0bfceb0d1b5c2682c36d1b",
+    "archive_bytes": 2215,
+    "archive_sha256": "1f6115796eb8405c014ee3d85d4cb4fb344f8a89a7f8b8178f91c6cd26484abc",
+    "gzip": true
+  },
+  "late-main/checks/g7.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g7-20261003.json",
+    "bytes": 220166,
+    "sha256": "660db78122d816c333227236841f7f2c7592e9203db50693f375157dccc012ac",
+    "archive_bytes": 94653,
+    "archive_sha256": "50015f86e89f90ea2a8a84bad2ca89f8db23412ab50a0c32f10957f657a98366",
+    "gzip": true
+  },
+  "late-main/checks/g7.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g7-20261003.log",
+    "bytes": 2949,
+    "sha256": "9f1a4e86e7e60a93d4d366b57c682e64029aed5f62e1efef6ca532f3090f7da4",
+    "archive_bytes": 1285,
+    "archive_sha256": "bd41b5db58b59936c4129da406c488d931ab261e6e2f5ab94bcbf25da5b85f83",
+    "gzip": true
+  },
+  "late-main/checks/r4fire.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r4fire-20261003.json",
+    "bytes": 219952,
+    "sha256": "de2bc95a00b233edc3f19ce34e240293c76b6c2ae0ef395beddee8bca87c78b3",
+    "archive_bytes": 94587,
+    "archive_sha256": "baf4856053741ba12a95a588e3da039937b03704efffc90bd54b1d7f385b7c07",
+    "gzip": true
+  },
+  "late-main/checks/r4fire.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r4fire-20261003.log",
+    "bytes": 7836,
+    "sha256": "915bb3a03e962465dd97006a0062981d5ed3228fd8c7d921e1bcd86a6d039d39",
+    "archive_bytes": 1790,
+    "archive_sha256": "109cb5c01df54d1dea373007e19aa6de9a035b80e67b8279b40d8bafdd6d477f",
+    "gzip": true
+  },
+  "late-main/checks/g8.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g8-20261003.json",
+    "bytes": 220323,
+    "sha256": "971cb8a436107cc781fbbdddebd02c6d02459efce35b3fde5033297ddbffdec9",
+    "archive_bytes": 94702,
+    "archive_sha256": "613184f20af8a60ae5fd152e6cc87b5cbfb99c6c066b30e76bf38fc4f094497a",
+    "gzip": true
+  },
+  "late-main/checks/g8.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-green-g8-20261003.log",
+    "bytes": 2530,
+    "sha256": "83a9ac10717bfce73ea3c0bd487354df4b20ac7d7d82e0b17b0716e490f36687",
+    "archive_bytes": 1062,
+    "archive_sha256": "7519e80e12a723251e523dec7e4b8d4f1f4e224cdc81ff778e589456be956830",
+    "gzip": true
+  },
+  "late-main/causal/hills-engineer.md": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/hills-engineer-spawn-causal-87705976-20261003.md",
+    "bytes": 8122,
+    "sha256": "81c3defd6ef5b03eee6c899c5ca55624218199daef6a8e37342d704ffef5b303",
+    "archive_bytes": 8122,
+    "archive_sha256": "81c3defd6ef5b03eee6c899c5ca55624218199daef6a8e37342d704ffef5b303",
+    "gzip": false
+  },
+  "late-main/causal/rocketeer-placement.md": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/dustbowl-rocketeer-spawn-causal-87705976-20261003.md",
+    "bytes": 8382,
+    "sha256": "9958cb699b8925a9453faf6246c9182973fd0ebaa07bccf2ba88dd640b0d6457",
+    "archive_bytes": 8382,
+    "archive_sha256": "9958cb699b8925a9453faf6246c9182973fd0ebaa07bccf2ba88dd640b0d6457",
+    "gzip": false
+  },
+  "late-main/causal/rocketeer-fire-pose.md": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/dustbowl-rocketeer-fire-pose-causal-87705976-20261003.md",
+    "bytes": 11193,
+    "sha256": "94a6d3ba0fbad7a7ca82b1ee3d7cb000f1af1b4bf4038f75e95e26ca2d7e760e",
+    "archive_bytes": 11193,
+    "archive_sha256": "94a6d3ba0fbad7a7ca82b1ee3d7cb000f1af1b4bf4038f75e95e26ca2d7e760e",
+    "gzip": false
+  },
+  "late-main/causal/fire-event-witness.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-rocketeer-fire-runtime-witness-20261003.json",
+    "bytes": 7601,
+    "sha256": "b842011ae055e0dc77fc7e17622ce7dae8aecafdc68c98fcb861d33d5dc1c249",
+    "archive_bytes": 7601,
+    "archive_sha256": "b842011ae055e0dc77fc7e17622ce7dae8aecafdc68c98fcb861d33d5dc1c249",
+    "gzip": false
+  },
+  "late-main/binding/early-fixture-proof.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-fixture-correction-20261003.json",
+    "bytes": 7813,
+    "sha256": "74bb6ef33ea154d6cffe5fa4bd559ab4e788afb7ec8e516eb1cbbe44cb849548",
+    "archive_bytes": 7813,
+    "archive_sha256": "74bb6ef33ea154d6cffe5fa4bd559ab4e788afb7ec8e516eb1cbbe44cb849548",
+    "gzip": false
+  },
+  "late-main/binding/final-fixture-proof.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-final-fixture-proof-20261003.json",
+    "bytes": 16521,
+    "sha256": "5e5ea5ab58d5f57afb5b233e056cf7b413a101ff541bc249f61492dd5b7f7778",
+    "archive_bytes": 16521,
+    "archive_sha256": "5e5ea5ab58d5f57afb5b233e056cf7b413a101ff541bc249f61492dd5b7f7778",
+    "gzip": false
+  },
+  "late-main/causal/r3inputs-as-run.rs.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-rocketeer-r3inputs-as-run.rs.gz",
+    "bytes": 13867,
+    "sha256": "c1eb03e2defcbd5690c2592e776f510045f63038ccd83b321079bd5466f96240",
+    "archive_bytes": 13867,
+    "archive_sha256": "c1eb03e2defcbd5690c2592e776f510045f63038ccd83b321079bd5466f96240",
+    "gzip": false
+  },
+  "late-main/causal/r4fire-as-run.rs.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-rocketeer-r4fire-as-run.rs.gz",
+    "bytes": 14204,
+    "sha256": "c4663f0008361f62242e94c547afe89f7d6d9357f5bc9812e99f7e47c7356ef5",
+    "archive_bytes": 14204,
+    "archive_sha256": "c4663f0008361f62242e94c547afe89f7d6d9357f5bc9812e99f7e47c7356ef5",
+    "gzip": false
+  },
+  "late-main/binding/native-bindings.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-native-bindings-20261003.json",
+    "bytes": 8608,
+    "sha256": "821ce78d63a8d90cdaf03aea7fdaa78f66b3c2ddf2724d2f0dba28a81f7793e4",
+    "archive_bytes": 8608,
+    "archive_sha256": "821ce78d63a8d90cdaf03aea7fdaa78f66b3c2ddf2724d2f0dba28a81f7793e4",
+    "gzip": false
+  },
+  "late-main/checks/field-ratchet.txt": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-field-ratchet-20261003.txt",
+    "bytes": 90,
+    "sha256": "eaea7ac0dfaea7a9260a571529c02fe93d978d5c264bc40010fe536b4d29ea3e",
+    "archive_bytes": 90,
+    "archive_sha256": "eaea7ac0dfaea7a9260a571529c02fe93d978d5c264bc40010fe536b4d29ea3e",
+    "gzip": false
+  },
+  "late-main/runtime/proof.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-late-main-runtime-proof-20261003.json",
+    "bytes": 17689,
+    "sha256": "a76eed7206910a12831e684c1aa144bdcfe4459a28f68953578573cee2a593b2",
+    "archive_bytes": 17689,
+    "archive_sha256": "a76eed7206910a12831e684c1aa144bdcfe4459a28f68953578573cee2a593b2",
+    "gzip": false
+  },
+  "late-main/runtime/proof-as-run.py.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-runtime-proof-20261003.py",
+    "bytes": 9298,
+    "sha256": "9850036a329d957d5a6c07d9e65975ef30637d9032ba4e7ccc7c84b81f8e9c83",
+    "archive_bytes": 3092,
+    "archive_sha256": "3a7323ed890dc68f2957aa8deeef54e1c8b61bc6b564b876f44be4d84e91ac15",
+    "gzip": true
+  },
+  "late-main/runtime/input-selection.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-input-selection-20261003.json",
+    "bytes": 6778,
+    "sha256": "7b7f34fdbfcbca8085a052195fedb9adb3db0ff80e14d9f5dd75e0eba23ec9a0",
+    "archive_bytes": 6778,
+    "archive_sha256": "7b7f34fdbfcbca8085a052195fedb9adb3db0ff80e14d9f5dd75e0eba23ec9a0",
+    "gzip": false
+  },
+  "late-main/runtime/discovery-offline.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-offline-20261003.json",
+    "bytes": 49779736,
+    "sha256": "ebe3830611aed74a3de94a9b13fb515afd020e3a978a0a6b3e1887fbf39e5a2e",
+    "archive_bytes": 656585,
+    "archive_sha256": "4406922c0f21789be889e420830f53d3c5a0aa45f7b542ed33f53c38f54d8f71",
+    "gzip": true
+  },
+  "late-main/runtime/move-stop-offline.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-offline-20261003.json",
+    "bytes": 46349309,
+    "sha256": "57cc1809098f784b1eb40aa76f0d5720e319fc9d981889587e6c22a9ccd83bda",
+    "archive_bytes": 635823,
+    "archive_sha256": "5e3974c464033c45ef4e7c5f4a0598c68b3e9601c4e36925f6a348dca1a11c6b",
+    "gzip": true
+  },
+  "late-main/runtime/move-stop-view.png": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-view-20261003.png",
+    "bytes": 686779,
+    "sha256": "29c7006a338f0b64c2303fe2efe2344f73686c919be5fe23e63d2d5ac19c241b",
+    "archive_bytes": 686779,
+    "archive_sha256": "29c7006a338f0b64c2303fe2efe2344f73686c919be5fe23e63d2d5ac19c241b",
+    "gzip": false
+  },
+  "late-main/runtime/failed-analysis/proof-first-as-run.py.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-runtime-proof-first-as-run-20261003.py.gz",
+    "bytes": 3018,
+    "sha256": "b099ddbc5ecb5117f9231663e260c7a22ef17c84c6d91378cb813363cc13fb96",
+    "archive_bytes": 3018,
+    "archive_sha256": "b099ddbc5ecb5117f9231663e260c7a22ef17c84c6d91378cb813363cc13fb96",
+    "gzip": false
+  },
+  "late-main/runtime/failed-analysis/receipt.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-runtime-proof-first-failure-20261003.json",
+    "bytes": 6550,
+    "sha256": "ba2f9ed74ee8a6861fda735412e95b853aeb277e30be2a07adc06935b3987ea0",
+    "archive_bytes": 6550,
+    "archive_sha256": "ba2f9ed74ee8a6861fda735412e95b853aeb277e30be2a07adc06935b3987ea0",
+    "gzip": false
+  },
+  "late-main/runtime/stop-native-static.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-native-stop-static-20261003.json",
+    "bytes": 27146,
+    "sha256": "1cc98278c68728ba36c538cf7b70063004cb725402d65d3e78cefa518370ed8d",
+    "archive_bytes": 2577,
+    "archive_sha256": "6abc213eb2bbfe1eb5803325f35a5a9a132f8bc77253233bc1618938c16ec5a1",
+    "gzip": true
+  },
+  "late-main/runtime/discovery/child-output/capture.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-20261003/child-output/capture.json",
+    "bytes": 49301712,
+    "sha256": "ab39b5f93b2b56c4e4c713408a3b3e579f27a7e1c7257875caa8c594f0e3ac49",
+    "archive_bytes": 594199,
+    "archive_sha256": "de42fd605f2c98304f3edb9191bad508c8fa642ab6c8df906ce72c678c40b58f",
+    "gzip": true
+  },
+  "late-main/runtime/discovery/child-output/frame.bgra.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-20261003/child-output/frame.bgra",
+    "bytes": 1920000,
+    "sha256": "9928cfe4fa405dd83e7b7262d811ecfeb52d1707ea07eff15b1a21d26acfde88",
+    "archive_bytes": 461035,
+    "archive_sha256": "81d65bfe74bd242490eb8fa7b5d89eaa858d67ffe50c2a15b0f76ceeac48e801",
+    "gzip": true
+  },
+  "late-main/runtime/discovery/contract.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-20261003/contract.json",
+    "bytes": 590,
+    "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+    "archive_bytes": 331,
+    "archive_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986",
+    "gzip": true
+  },
+  "late-main/runtime/discovery/profile.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-20261003/profile.json",
+    "bytes": 4922,
+    "sha256": "e5fe21a7de7c4cf9d2b06637e031b71332fd37ccdc81291c8ba6b9ceeaa837bc",
+    "archive_bytes": 4922,
+    "archive_sha256": "e5fe21a7de7c4cf9d2b06637e031b71332fd37ccdc81291c8ba6b9ceeaa837bc",
+    "gzip": false
+  },
+  "late-main/runtime/discovery/run.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-20261003/run.json",
+    "bytes": 49298538,
+    "sha256": "9dc0bc2dbe38d84ddf928495bb080dfef0e573df33a6f24bca665e3659818258",
+    "archive_bytes": 592775,
+    "archive_sha256": "61f06d24c0b66e8a8725c984392dfb6a21c26c76cbe564e6958a5423c42bf4ec",
+    "gzip": true
+  },
+  "late-main/runtime/discovery/stderr.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-20261003/stderr.log",
+    "bytes": 409,
+    "sha256": "9019d0983d879e93186032ae00f524e378a9b026a92d0b92835e31af61cb77f4",
+    "archive_bytes": 191,
+    "archive_sha256": "b7dd28b9acedc55cc42237ea9d1b6438346e40515e5d77439f7b24c8ca4acacf",
+    "gzip": true
+  },
+  "late-main/runtime/discovery/stdout.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-20261003/stdout.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "archive_bytes": 20,
+    "archive_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "gzip": true
+  },
+  "late-main/runtime/move-stop/child-output/capture.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-20261003/child-output/capture.json",
+    "bytes": 45871489,
+    "sha256": "04466ff339bec49a68da97a68d1377be07b3b03efb7227457ddb18b249be6407",
+    "archive_bytes": 574657,
+    "archive_sha256": "fec0a3f939d492199c8ed82c17b7c49e0bd1f400ec6e039de2d60f31631c208b",
+    "gzip": true
+  },
+  "late-main/runtime/move-stop/child-output/frame.bgra.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-20261003/child-output/frame.bgra",
+    "bytes": 1920000,
+    "sha256": "3430f44cb2106efb01742d2f3f86b2d8327a29125e2a7bef91784b6a479c241b",
+    "archive_bytes": 461339,
+    "archive_sha256": "681b11153db22e603965807f9e883967841e43b07a878e6bfb9df344f828b360",
+    "gzip": true
+  },
+  "late-main/runtime/move-stop/contract.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-20261003/contract.json",
+    "bytes": 590,
+    "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+    "archive_bytes": 331,
+    "archive_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986",
+    "gzip": true
+  },
+  "late-main/runtime/move-stop/profile.json": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-20261003/profile.json",
+    "bytes": 5258,
+    "sha256": "36b014abab797e125471ebbe031fed3be2590cf00404fbf8e8cc23979be5efa8",
+    "archive_bytes": 5258,
+    "archive_sha256": "36b014abab797e125471ebbe031fed3be2590cf00404fbf8e8cc23979be5efa8",
+    "gzip": false
+  },
+  "late-main/runtime/move-stop/run.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-20261003/run.json",
+    "bytes": 45868111,
+    "sha256": "ce988c7ef5bafba4b1b5f87ec369083b04ca9e1b9d1b843bc1320e955c4338dd",
+    "archive_bytes": 572661,
+    "archive_sha256": "b08a8fc2143947aa6e844b38bdba6719f28d8e0cd814538a3da6fc81e9984376",
+    "gzip": true
+  },
+  "late-main/runtime/move-stop/stderr.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-20261003/stderr.log",
+    "bytes": 409,
+    "sha256": "9019d0983d879e93186032ae00f524e378a9b026a92d0b92835e31af61cb77f4",
+    "archive_bytes": 191,
+    "archive_sha256": "b7dd28b9acedc55cc42237ea9d1b6438346e40515e5d77439f7b24c8ca4acacf",
+    "gzip": true
+  },
+  "late-main/runtime/move-stop/stdout.log.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-20261003/stdout.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "archive_bytes": 20,
+    "archive_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "gzip": true
+  },
+  "late-main/archive-plan.json.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-archive-plan-20261003.json",
+    "bytes": 10223,
+    "sha256": "d96d15a7008e176ece2af3eee318f81eda9f5475f5ff8c543d6ed93e3c520f80",
+    "archive_bytes": 1126,
+    "archive_sha256": "ecbe097c4f12955c25f70b5322850f92fe3020caefa1376a756b49ddb13ace01",
+    "gzip": true
+  },
+  "late-main/archive-as-run.py.gz": {
+    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-archive-as-run-20261003.py",
+    "bytes": 7005,
+    "sha256": "2239970d7f2439f13bf5898dcdb9f822a9a09d16d48bc5b000ea680b05cf195d",
+    "archive_bytes": 2595,
+    "archive_sha256": "1506f0869bc1de59e9ec83d00b24ffdc6db7b1923642047ea45fa8e75268d3d9",
+    "gzip": true
+  },
+  "late-main/summary.json": {
+    "archive_sha256": "246c9d4bed9bf0efa758d3d2e5189119cb4ddb139c71ecccf2a6861247b24df3"
+  },
+  "late-main/README.md": {
+    "archive_sha256": "397845a296eb79c2278a594010901d264df432e69c20d47f34f9430ed1a05a44"
+  },
+  "late-main/binding/archive-source-proof.json": {
+    "archive_sha256": "c0df13977af27a92e1ff4a55ecd424e128111d9032066fc3db091f275e855aa5"
+  },
+  "late-main/checks/field-ratchet-c257.txt": {
+    "archive_sha256": "533ad520c8db36ba29bffaf3e684768340b8d247edddad39a882a33b759bfb19"
+  },
+  "late-main/binding/hero-main-source-proof.json": {
+    "archive_sha256": "99061a5a8c75728c6e7d6b976e646ed68916f1f85ccaf107470941cf5dc1646d"
+  }
+}

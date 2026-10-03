@@ -6,7 +6,7 @@ and VERA20K_GAMEMD_EXE; --write records and --check reproduces native results.
 No VERA scalar/parser output initializes native AnimType fields. Both existing
 production-export input fixtures are asserted against the native results.
 """
-import json,struct,hashlib,os
+import json,struct,hashlib,os,uuid
 from pathlib import Path
 from tools.rules_oracle.bridge_anim_lists import Lists,HEAP
 from tools.projectile_oracle.flat_art import crc
@@ -55,6 +55,23 @@ class Reader(Lists):
   self.u.mem_write(SP,dwords(RET_MAGIC,*args));self.u.reg_write(UC_X86_REG_ESP,SP);self.u.reg_write(UC_X86_REG_ECX,obj)
   run_checked(self.u,addr,RET_MAGIC,count=2000000,timeout_us=timeout_us,context=context)
   return self.u.reg_read(UC_X86_REG_EAX)
+ def guid_transport(self,u,pc,sp,events):
+  """Existing Mission's two Windows GUID-reader transport boundaries.
+
+  Original527920 reads the INI string and supplies its current GUID default.
+  Only ASCII-to-UTF16 and CLSIDFromString OS calls are supplied here; no type
+  field, caller return or gameplay result is invented. Mission and composed
+  type-input fixtures share this exact transport owner.
+  """
+  if pc==0x527AF9:
+   codepage,flags,source,length,dest,capacity=struct.unpack('<6I',u.mem_read(sp,24));assert (codepage,flags,length)==(0,1,0xffffffff)
+   value=self.string(source);assert value.isascii();raw=(value+'\0').encode('utf-16-le');assert len(raw)//2<=capacity
+   u.mem_write(dest,raw);u.reg_write(UC_X86_REG_EAX,len(raw)//2);u.reg_write(UC_X86_REG_ESP,sp+24);u.reg_write(UC_X86_REG_EIP,0x527AFF);events.append(dict(kind='OS_ascii_to_utf16',value=value));return True
+  if pc==0x527B0C:
+   source,dest=struct.unpack('<2I',u.mem_read(sp,8));s=[]
+   while (v:=struct.unpack('<H',u.mem_read(source+len(s)*2,2))[0]):s.append(chr(v))
+   value=''.join(s);raw=uuid.UUID(value).bytes_le;u.mem_write(dest,raw);u.reg_write(UC_X86_REG_EAX,0);u.reg_write(UC_X86_REG_ESP,sp+8);u.reg_write(UC_X86_REG_EIP,0x527B12);events.append(dict(kind='OS_CLSIDFromString',value=value,bytes=raw.hex()));return True
+  return False
  def make_ini(self,sections):
   u=self.u;u.mem_write(INI,bytes(0x40));rows=[]
   for name,keys in sections.items():

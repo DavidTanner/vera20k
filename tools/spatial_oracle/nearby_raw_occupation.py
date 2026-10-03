@@ -19,6 +19,13 @@ CELL, SEED, OUTPUT = SCRATCH, SCRATCH + 0x200, SCRATCH + 0x210
 OWNER, VTABLE, OWNER_GET, MARK_INPUT = [SCRATCH + i * 0x1000 for i in range(1, 5)]
 
 
+def nearby_arguments(u, read32, sp):
+    """Read this owner's complete15-argument FNPC boundary without executing."""
+    args = [read32(sp + 4 + i * 4) for i in range(15)]
+    return dict(args=args, seed=list(struct.unpack('<hh', u.mem_read(args[1], 4))),
+                target=list(struct.unpack('<hh', u.mem_read(args[12], 4))))
+
+
 def query(row):
     u = Uc(UC_ARCH_X86, UC_MODE_32)
     load_image(u)

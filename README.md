@@ -20,7 +20,8 @@ Pre-alpha. Local skirmish is playable on Windows against a placeholder AI.
 - **Working:** retail and random maps, menus and sidebar, base building,
   [harvesting and refinery deposits](tools/spatial_oracle/refinery_dock.md), core combat,
   and save/load.
-- **Partial:** aircraft attack runs, mind control, crates, death effects, and
+- **Partial:** [Jumpjet movement](tools/spatial_oracle/jumpjet_instance_validation/README.md),
+  aircraft attack runs, mind control, crates, death effects, and
   [bridges](tools/spatial_oracle/bridge_shadow_render.md).
 - **Missing:** multiplayer, the original AI, campaign, most map triggers, movies,
   and several special weapons and superweapons.

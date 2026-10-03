@@ -394,8 +394,12 @@ fn a_jumpjet_cruising_over_water_leaves_no_wake() {
         .and_then(|e| e.locomotor.as_mut())
         .and_then(|loco| loco.jumpjet_runtime_mut())
         .expect("Jumpjet runtime");
-    runtime.phase = crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
-    runtime.moving = true;
+    *runtime = runtime
+        .clone()
+        .with_phase_for_test(
+            crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_TRANSLATE,
+        )
+        .with_moving_for_test(true);
     let speed = crate::sim::movement::SpeedRules::new(
         &rules,
         &sim.interner,

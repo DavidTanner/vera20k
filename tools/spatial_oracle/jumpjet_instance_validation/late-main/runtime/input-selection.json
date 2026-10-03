@@ -1,0 +1,308 @@
+{
+  "classification": "measured Rust release input selection, not a native golden",
+  "stable_id": 1516,
+  "discovery_capture_sha256": "ab39b5f93b2b56c4e4c713408a3b3e579f27a7e1c7257875caa8c594f0e3ac49",
+  "replay_profile_sha256": "36b014abab797e125471ebbe031fed3be2590cf00404fbf8e8cc23979be5efa8",
+  "move_command": {
+    "issue_after_step": 5600,
+    "owner": "VERA-OBSERVER",
+    "payload": {
+      "Move": {
+        "entity_id": 1516,
+        "target_rx": 30,
+        "target_ry": 93,
+        "queue": false
+      }
+    }
+  },
+  "stop_command": {
+    "issue_after_step": 5620,
+    "owner": "VERA-OBSERVER",
+    "payload": {
+      "Stop": {
+        "entity_id": 1516
+      }
+    }
+  },
+  "first_limbo_step": 4601,
+  "first_unlimbo_step": 5196,
+  "first_untethered_step": 5415,
+  "first_settled_step": 5497,
+  "actual_type_identities": {
+    "SHAD": {
+      "category": "Unit",
+      "interned_id": 210,
+      "type_id": "SHAD"
+    },
+    "CMIN": {
+      "category": "Unit",
+      "interned_id": 220,
+      "type_id": "CMIN"
+    },
+    "GAPOWR": {
+      "category": "Structure",
+      "interned_id": 272,
+      "type_id": "GAPOWR"
+    },
+    "GAREFN": {
+      "category": "Structure",
+      "interned_id": 273,
+      "type_id": "GAREFN"
+    },
+    "GACNST": {
+      "category": "Structure",
+      "interned_id": 274,
+      "type_id": "GACNST"
+    },
+    "GAPILE": {
+      "category": "Structure",
+      "interned_id": 275,
+      "type_id": "GAPILE"
+    },
+    "GAWEAP": {
+      "category": "Structure",
+      "interned_id": 279,
+      "type_id": "GAWEAP"
+    }
+  },
+  "before_move": {
+    "active": true,
+    "archive": null,
+    "building": null,
+    "category": "Unit",
+    "cell": [
+      31,
+      93
+    ],
+    "dying": false,
+    "foot": {
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": null,
+        "spatial_enter_order": 0,
+        "tracker_cell_560": [
+          0,
+          0
+        ],
+        "tracker_cell_slot_holder": null
+      },
+      "firing_sequence_latch_68d": 0,
+      "infantry_doing": null,
+      "navigation_leptons": [
+        8064,
+        23936,
+        416
+      ],
+      "navigation_unavailable": null,
+      "pending_entry_500": null,
+      "retarget_after_stop_688": false,
+      "walk_destination_leptons": null,
+      "walk_head_leptons": null,
+      "walk_is_moving": null
+    },
+    "health": 175,
+    "in_limbo": false,
+    "jumpjet": {
+      "destination_leptons": [
+        0,
+        0,
+        0
+      ],
+      "flight": {
+        "bob_phase_bits": 0,
+        "current_speed_bits": 0,
+        "facing": {
+          "current": 25064,
+          "duration_frames": 0,
+          "prev": 24828,
+          "rot_per_frame": 1024,
+          "start_frame": 5461
+        },
+        "target_height": 0,
+        "target_speed_bits": 0
+      },
+      "landing_latched": false,
+      "moving": false,
+      "params": {
+        "accel_bits": 1073741824,
+        "climb_bits": 1092616192,
+        "crash_bits": 1109393408,
+        "deviation": 1,
+        "height": 500,
+        "no_wobbles": false,
+        "speed": 30,
+        "turn_rate": 4,
+        "wobbles_bits": 1008981770
+      },
+      "phase": 0
+    },
+    "miner": null,
+    "mission": {
+      "ai_counter": 101,
+      "current": 5,
+      "dispatch_timer": {
+        "delay": 27,
+        "start_frame": 5579
+      },
+      "effective": 5,
+      "handler_state": 0,
+      "queued": -1,
+      "start_frame": 5498,
+      "suspended": -1
+    },
+    "nav": null,
+    "on_bridge": false,
+    "owner": "VERA-OBSERVER",
+    "physical_leptons": [
+      8064,
+      23936,
+      416
+    ],
+    "radio": {
+      "contacts": [
+        null
+      ],
+      "dock_entered_with": null
+    },
+    "stable_id": 1516,
+    "target": null,
+    "type_id": "SHAD",
+    "unit": {
+      "body_counter_538": 254,
+      "current_turret_124": -1,
+      "current_weapon_138": 0,
+      "deploy_anim_130": null,
+      "deployed_6e0": 0,
+      "deploying_6e1": 0,
+      "landing_for_deploy_134": false,
+      "stage_f8": 0,
+      "undeploying_6e2": 0
+    }
+  },
+  "discovery_sample_cost": 88056,
+  "prefix_commands": [
+    {
+      "issue_after_step": 0,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "DeployMcv": {
+          "entity_id": 1371
+        }
+      }
+    },
+    {
+      "issue_after_step": 70,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "QueueProduction": {
+          "type_id": 272
+        }
+      }
+    },
+    {
+      "issue_after_step": 700,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "PlaceReadyBuilding": {
+          "type_id": 272,
+          "rx": 31,
+          "ry": 89
+        }
+      }
+    },
+    {
+      "issue_after_step": 750,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "QueueProduction": {
+          "type_id": 275
+        }
+      }
+    },
+    {
+      "issue_after_step": 1200,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "PlaceReadyBuilding": {
+          "type_id": 275,
+          "rx": 31,
+          "ry": 91
+        }
+      }
+    },
+    {
+      "issue_after_step": 1300,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "QueueProduction": {
+          "type_id": 273
+        }
+      }
+    },
+    {
+      "issue_after_step": 2800,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "PlaceReadyBuilding": {
+          "type_id": 273,
+          "rx": 31,
+          "ry": 85
+        }
+      }
+    },
+    {
+      "issue_after_step": 2900,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "QueueProduction": {
+          "type_id": 279
+        }
+      }
+    },
+    {
+      "issue_after_step": 4500,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "PlaceReadyBuilding": {
+          "type_id": 279,
+          "rx": 25,
+          "ry": 91
+        }
+      }
+    },
+    {
+      "issue_after_step": 4600,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "QueueProduction": {
+          "type_id": 210
+        }
+      }
+    }
+  ],
+  "terrain_cells": [
+    [
+      30,
+      93
+    ],
+    [
+      31,
+      93
+    ],
+    [
+      32,
+      93
+    ]
+  ],
+  "selection_reason": "The actual produced SHAD is grounded, idle and untethered at5600 in Cell31,93. Select adjacent Cell30,93 for ordinary Move and Stop twenty steps later; replay must establish actual admission/moving Stop/landing cleanup. Terrain probes inspect the supplied target and adjacent cells.",
+  "limits": [
+    "Observed actors alone do not prove whole-world empty occupancy or full building foundations.",
+    "Terrain metadata is Rust production observation, not native class-entry or pixel parity.",
+    "Previous cff SHAD1528/timing are not used as this candidate inputs."
+  ]
+}

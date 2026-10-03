@@ -720,8 +720,10 @@ mod tests {
             actor.category = EntityCategory::Infantry;
             let mut loco = LocomotorState::for_test_kind(kind);
             if let Some(state) = loco.jumpjet_runtime_mut() {
-                state.moving = true;
-                state.phase = 2;
+                *state = state
+                    .clone()
+                    .with_moving_for_test(true)
+                    .with_phase_for_test(2);
             } else {
                 loco.set_walk_destination(Some(DriveCoord::cell(6, 5, 0)));
             }

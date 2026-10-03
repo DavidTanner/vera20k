@@ -35,9 +35,11 @@ pub(crate) fn apply_air_state(entity: &mut GameEntity, input: &Value) {
         );
     } else {
         let state = loco.jumpjet_runtime_mut().unwrap();
-        state.destination = destination;
-        state.moving = moving;
-        state.phase = input["phase"].as_i64().unwrap() as i32;
+        *state = state
+            .clone()
+            .with_destination_for_test(destination)
+            .with_moving_for_test(moving)
+            .with_phase_for_test(input["phase"].as_i64().unwrap() as i32);
     }
     entity.locomotor = Some(loco);
 }

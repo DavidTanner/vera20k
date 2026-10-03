@@ -1,0 +1,1 @@
+2505 crate-visible struct fields in src/sim; 2513 at origin/main (merge base c19e544581).

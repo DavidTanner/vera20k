@@ -1018,9 +1018,9 @@ fn hut_repair_scatters_a_jumpjet_occupant_through_its_air_destination_owner() {
         Some(NavTargetRef::Cell { .. })
     ));
     let state = e.locomotor.as_ref().unwrap().jumpjet_runtime().unwrap();
-    assert!(state.moving);
+    assert!(state.moving());
     assert_ne!(
-        state.destination,
+        state.destination(),
         crate::sim::movement::jumpjet_movement::JumpjetRuntime::NULL
     );
     assert_ne!(
@@ -1589,10 +1589,10 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
                 .unwrap()
                 .jumpjet_runtime()
                 .unwrap();
-            assert!(state.moving);
-            assert_eq!(state.phase, 0, "MoveTo does not activate phase0");
+            assert!(state.moving());
+            assert_eq!(state.phase(), 0, "MoveTo does not activate phase0");
             assert_ne!(
-                state.destination,
+                state.destination(),
                 DriveCoord::cell(20, 15, 0),
                 "Infantry keeps the selected subcell"
             );
@@ -1611,7 +1611,7 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
                     .unwrap()
                     .jumpjet_runtime()
                     .unwrap()
-                    .phase,
+                    .phase(),
                 1
             );
         }
@@ -1745,7 +1745,8 @@ fn jumpjet_query_fields_hash_and_restore_as_one_suspended_instance() {
         .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules)
         .unwrap();
     let initial = sim.state_hash();
-    sim.substrate
+    let runtime = sim
+        .substrate
         .entities
         .get_mut(id)
         .unwrap()
@@ -1753,15 +1754,16 @@ fn jumpjet_query_fields_hash_and_restore_as_one_suspended_instance() {
         .as_mut()
         .unwrap()
         .jumpjet_runtime_mut()
-        .unwrap()
-        .destination = DriveCoord {
+        .unwrap();
+    *runtime = runtime.clone().with_destination_for_test(DriveCoord {
         x: 5312,
         y: 3904,
         z: 208,
-    };
+    });
     let coordinate_hash = sim.state_hash();
     assert_ne!(initial, coordinate_hash);
-    sim.substrate
+    let runtime = sim
+        .substrate
         .entities
         .get_mut(id)
         .unwrap()
@@ -1769,11 +1771,12 @@ fn jumpjet_query_fields_hash_and_restore_as_one_suspended_instance() {
         .as_mut()
         .unwrap()
         .jumpjet_runtime_mut()
-        .unwrap()
-        .moving = true;
+        .unwrap();
+    *runtime = runtime.clone().with_moving_for_test(true);
     let moving_hash = sim.state_hash();
     assert_ne!(coordinate_hash, moving_hash);
-    sim.substrate
+    let runtime = sim
+        .substrate
         .entities
         .get_mut(id)
         .unwrap()
@@ -1781,8 +1784,8 @@ fn jumpjet_query_fields_hash_and_restore_as_one_suspended_instance() {
         .as_mut()
         .unwrap()
         .jumpjet_runtime_mut()
-        .unwrap()
-        .phase = 3;
+        .unwrap();
+    *runtime = runtime.clone().with_phase_for_test(3);
     assert_ne!(moving_hash, sim.state_hash());
     let retained = sim
         .substrate
@@ -1883,11 +1886,11 @@ fn jumpjet_stop_command_keeps_native_moving_and_selected_coordinate() {
         .jumpjet_runtime()
         .unwrap();
     assert!(
-        state.moving,
+        state.moving(),
         "Stop is a new selected destination, not a null MoveTo"
     );
-    assert_eq!(state.phase, before.phase);
-    assert_ne!(state.destination, before.destination);
+    assert_eq!(state.phase(), before.phase());
+    assert_ne!(state.destination(), before.destination());
     // Foot's null arm clears the NavCom the Stop's Move_To wrote, and the
     // movement adapter holds no goal: the locomotor alone flies the re-target.
     let entity = sim.substrate.entities.get(id).unwrap();
@@ -1928,16 +1931,14 @@ fn failed_jumpjet_stop_stock_fatal_receiver_precedes_cache_retirement() {
         }
         let e = sim.substrate.entities.get_mut(id).unwrap();
         e.health.current = i32::try_from(row["input"]["health"].as_i64().unwrap()).unwrap();
-        *e.locomotor.as_mut().unwrap().jumpjet_runtime_mut().unwrap() = JumpjetRuntime {
-            destination: DriveCoord {
+        *e.locomotor.as_mut().unwrap().jumpjet_runtime_mut().unwrap() = JumpjetRuntime::default()
+            .with_destination_for_test(DriveCoord {
                 x: 2752,
                 y: 2752,
                 z: 208,
-            },
-            moving: true,
-            phase: 1,
-            ..Default::default()
-        };
+            })
+            .with_moving_for_test(true)
+            .with_phase_for_test(1);
         assert!(sim.jumpjet_stop_moving(id, Some(&rules), Some(&registry)));
         let e = sim.substrate.entities.get(id).unwrap();
         let state = e.locomotor.as_ref().unwrap().jumpjet_runtime().unwrap();
@@ -1947,14 +1948,14 @@ fn failed_jumpjet_stop_stock_fatal_receiver_precedes_cache_retirement() {
         );
         assert_eq!(
             json!([
-                state.destination.x,
-                state.destination.y,
-                state.destination.z
+                state.destination().x,
+                state.destination().y,
+                state.destination().z
             ]),
             row["output"]["state"]["destination"]
         );
-        assert_eq!(json!(state.moving), row["output"]["state"]["moving"]);
-        assert_eq!(json!(state.phase), row["output"]["state"]["phase"]);
+        assert_eq!(json!(state.moving()), row["output"]["state"]["moving"]);
+        assert_eq!(json!(state.phase()), row["output"]["state"]["phase"]);
         if row["input"]["health"] == 100 {
             assert!(
                 e.dying || !e.is_alive(),

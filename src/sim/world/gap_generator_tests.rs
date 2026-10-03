@@ -63,8 +63,10 @@ fn insert(sim: &mut Simulation, id: u64, owner: InternedId, name: &str, x: u16, 
 
         // The kernel target height is left unset on purpose: the corpus outcome
         // below holds only while the kernel is not holding the unit at 208.
-        loco.jumpjet_runtime_mut().expect("jumpjet runtime").phase =
-            crate::sim::movement::jumpjet_flight::STATE_HOLD;
+        let runtime = loco.jumpjet_runtime_mut().expect("jumpjet runtime");
+        *runtime = runtime.clone().with_phase_for_test(
+            crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_HOLD,
+        );
         entity.locomotor = Some(loco);
     }
     sim.substrate.next_stable_object_id = sim.substrate.next_stable_object_id.max(id + 1);
@@ -226,7 +228,8 @@ pub(crate) fn gap_operational_power_loss_views() -> Vec<(
         assert_eq!(live.state_hash(), before);
         live.reconcile_active_vision_structures(&rules);
         live.session.binary_frame = 239;
-        live.substrate
+        let runtime = live
+            .substrate
             .entities
             .get_mut(10)
             .unwrap()
@@ -234,8 +237,10 @@ pub(crate) fn gap_operational_power_loss_views() -> Vec<(
             .as_mut()
             .unwrap()
             .jumpjet_runtime_mut()
-            .unwrap()
-            .phase = crate::sim::movement::jumpjet_flight::STATE_TRANSLATE;
+            .unwrap();
+        *runtime = runtime.clone().with_phase_for_test(
+            crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_TRANSLATE,
+        );
         live.set_logic_order_for_test(order);
         live.advance_live_object_pass(Some(&rules), None)
             .expect("fixture frame must complete");

@@ -845,12 +845,12 @@ fn airborne_ids_in_spatial_order(
     let mut buckets: BTreeMap<u16, Vec<(u64, u64)>> = BTreeMap::new();
     for entity in entities
         .values()
-        .filter(|entity| entity.air_spatial_bucket.is_some() && air_spatial_tracks_entity(entity))
+        .filter(|entity| entity.air_spatial_bucket().is_some() && air_spatial_tracks_entity(entity))
     {
         buckets
-            .entry(entity.air_spatial_bucket.expect("filtered above"))
+            .entry(entity.air_spatial_bucket().expect("filtered above"))
             .or_default()
-            .push((entity.air_spatial_enter_order, entity.stable_id()));
+            .push((entity.air_spatial_enter_order(), entity.stable_id()));
     }
     for entries in buckets.values_mut() {
         entries.sort_unstable();
@@ -1508,8 +1508,9 @@ mod tests {
             locomotor.layer = MovementLayer::Air;
             locomotor.altitude = SimFixed::from_num(altitude);
             air.locomotor = Some(locomotor);
-            air.air_spatial_bucket = Some(5 + 5 * 20);
-            air.air_spatial_enter_order = stable_id;
+            air = air
+                .with_air_spatial_membership_for_test(Some(5 + 5 * 20), stable_id)
+                .with_air_tracker_cell_for_test((5, 5));
             entities.insert(air);
         }
         let mut interner = test_interner();
@@ -1979,8 +1980,9 @@ mod tests {
                 air_locomotor.layer = MovementLayer::Air;
                 air_locomotor.altitude = SimFixed::from_num(1);
                 air.locomotor = Some(air_locomotor);
-                air.air_spatial_bucket = Some(rx + 5 * 20);
-                air.air_spatial_enter_order = enter_order;
+                air = air
+                    .with_air_spatial_membership_for_test(Some(rx + 5 * 20), enter_order)
+                    .with_air_tracker_cell_for_test((rx as i16, 5));
                 air
             };
             // Same-bucket vector order deliberately reverses stable IDs. The
@@ -4056,8 +4058,9 @@ mod tests {
         air_locomotor.layer = MovementLayer::Air;
         air_locomotor.altitude = SimFixed::from_num(1);
         air.locomotor = Some(air_locomotor);
-        air.air_spatial_bucket = Some(5 + 5 * 20);
-        air.air_spatial_enter_order = 1;
+        air = air
+            .with_air_spatial_membership_for_test(Some(5 + 5 * 20), 1)
+            .with_air_tracker_cell_for_test((5, 5));
         entities.insert(air);
 
         let mut occupancy = OccupancyGrid::new();

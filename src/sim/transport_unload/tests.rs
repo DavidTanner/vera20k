@@ -1081,8 +1081,10 @@ fn jumpjet_transport_unload_waits_on_the_moving_byte_in_the_hold() {
             .and_then(|e| e.locomotor.as_mut())
             .and_then(|loco| loco.jumpjet_runtime_mut())
             .expect("Jumpjet runtime");
-        runtime.phase = crate::sim::movement::jumpjet_flight::STATE_HOLD;
-        runtime.moving = moving;
+        *runtime = runtime
+            .clone()
+            .with_phase_for_test(crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_HOLD)
+            .with_moving_for_test(moving);
         let delay = super::unit_mission_unload(&mut fx.sim, &fx.rules, hind, None);
         (delay, handler_state(&fx, hind))
     };
@@ -1211,11 +1213,12 @@ fn landed_aircraft_transport_unload_asks_the_locomotor_not_the_order() {
     );
     assert_eq!(
         run(&|e| {
-            e.locomotor
+            let runtime = e
+                .locomotor
                 .as_mut()
                 .and_then(|loco| loco.jumpjet_runtime_mut())
-                .expect("Jumpjet runtime")
-                .moving = true;
+                .expect("Jumpjet runtime");
+            *runtime = runtime.clone().with_moving_for_test(true);
         }),
         super::AIR_STATE_WAIT_STOP,
         "a moving Jumpjet keeps it waiting"

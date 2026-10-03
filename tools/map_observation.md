@@ -68,6 +68,30 @@ inspect a zero-step observation before reusing it with different rules or assets
 Use `RUST_LOG=info` with the command above to retain placement foundations in
 `logs/ra2.log`. The profile requires 5600 steps to observe the complete exit.
 
+The [Jumpjet instance discovery profile](map_observation.jumpjet-instance.example.json)
+extends the AnyTown CMIN profile with that same GAWEAP production prefix and
+placement, then queues stock SHAD type210 at step4600. It preserves seed305419896,
+input delay2 and the original6000-step budget; the900-second timeout comes from
+the factory profile. Its type filter records SHAD, GAWEAP and their prerequisites
+alongside CMIN. Factory placement/timing came from the production capture below;
+SHAD admission, spawn time, stable ID and current-candidate placement still require
+an actual run. This profile is a discovery pass, with no guessed Move/Stop handle.
+After inspecting its actual SHAD row, a second profile can append ordinary Move
+and Stop commands using that literal stable ID and suitable later frame boundaries,
+while preserving the discovery pass's seed, launch and production prefix. The
+protocol accepts ordinary command IDs; `observe_types` only filters observations.
+
+Current actor rows include `jumpjet`, null unless an active installed Jumpjet
+runtime exists. Its retained destination XYZ, moving byte, phase, landing latch,
+linked parameters and flight/facing values come from read-only value getters.
+`params` preserves binary32 bits and `flight` preserves binary64 bits rather than
+converting them to JSON floats. Foot rows also include `air`: independent raw
+`tracker_cell_560` and `slot_cell_564`, spatial bucket/enter order, and raw slot
+holder IDs at the actor's current cell, tracker cache and slot cache. NativeNull
+is explicitly `[0,0]`; neither cache is reconstructed from location or membership.
+These projections send no gameplay callbacks or slot/tracker writes. They are
+additive v6 extensions, so sealed older receipts remain readable unchanged.
+
 The 2026-10-02 release observation loaded MIX entry `-854728974` with map payload
 SHA-256 `7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e`.
 Factory1456 placed at step4501, became operational4551, and delivered tank1528

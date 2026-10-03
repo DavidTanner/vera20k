@@ -1,0 +1,27 @@
+{
+  "classification": "image-only incoming main and documentation; code/native payloads unchanged",
+  "incoming_main": "c25732346403752f4d16a039b99da2e15493bf9a",
+  "main_changes_from_prior": [
+    "docs/images/new-conscirpt-hero-image.png"
+  ],
+  "integration_commit": "e261b9f2ddfd9fdaea542c055226b9ee8d446343",
+  "current_source_before_receipt": {
+    "head": "e261b9f2ddfd9fdaea542c055226b9ee8d446343",
+    "branch": "feature/jumpjet-synchronous-scatter",
+    "status": "",
+    "source_sha256": "e44232d84ae50a5bbf5a1faf5bf604a01c3bf158c234a02d151595dc1a573f85"
+  },
+  "release_source": {
+    "head": "fef1b0e71c14ee41917476c6a4ff82ff83cd05b6",
+    "branch": "feature/jumpjet-synchronous-scatter",
+    "status": "",
+    "source_sha256": "0367392746a8efb6294a69d154b2cbbf7e8468925abf5fb67428f171df922755"
+  },
+  "rust_python_count": 1962,
+  "all_rust_python_exact": true,
+  "runtime_repeated": false,
+  "cargo_repeated": false,
+  "reason": "Latest main changes only README hero PNG; integration has no conflicts and all1962 RS/PY bytes match the tested/captured fef candidate. Existing full/retail/clippy/Python/release checks remain bound to their actual code. Native corpus files receive no change.",
+  "field_ratchet": "2505 crate-visible struct fields in src/sim; 2513 at origin/main (merge base c257323464).",
+  "field_ratchet_sha256": "533ad520c8db36ba29bffaf3e684768340b8d247edddad39a882a33b759bfb19"
+}

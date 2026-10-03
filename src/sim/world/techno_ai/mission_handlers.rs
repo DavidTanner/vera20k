@@ -2522,13 +2522,14 @@ mod move_arrival_tests {
         let rules = rules();
         let mut sim = Simulation::new();
         spawn_on_move(&mut sim, "JJV", LocomotorKind::Jumpjet);
-        sim.substrate
+        let runtime = sim
+            .substrate
             .entities
             .get_mut(UNIT_ID)
             .and_then(|e| e.locomotor.as_mut())
             .and_then(|loco| loco.jumpjet_runtime_mut())
-            .expect("Jumpjet runtime")
-            .moving = true;
+            .expect("Jumpjet runtime");
+        *runtime = runtime.clone().with_moving_for_test(true);
 
         assert_eq!(dispatch(&mut sim, &rules), None);
         let entity = sim.substrate.entities.get(UNIT_ID).expect("unit");

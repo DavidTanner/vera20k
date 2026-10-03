@@ -14,6 +14,14 @@ from tools.spatial_oracle.walk_head_occupation import Original, CELL, CURRENT, I
 KIND, TYPE_GET, HEIGHT, MARK, SET_SPEED, CELL_GET, CELL_COORD, DAMAGE = [SCRATCH+0xe000+i*0x100 for i in range(8)]
 RULES = SCRATCH+0xf000
 
+
+def initialize_jumpjet_levels(call):
+    """Original CRT startup table81373C..813754, in its recorded order."""
+    for entry in (0x54AA30, 0x54AA60, 0x54AA80, 0x54AAA0,
+                  0x54AAC0, 0x54AAE0, 0x54AB00):
+        call(entry, 0, [])
+
+
 class Jumpjet(Original):
     def __init__(self, row):
         self.row=row

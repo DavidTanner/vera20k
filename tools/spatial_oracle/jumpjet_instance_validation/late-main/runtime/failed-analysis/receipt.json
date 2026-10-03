@@ -1,0 +1,256 @@
+{
+  "classification": "failed analysis assertion; capture/offline validation passed",
+  "analysis_exit": 1,
+  "script_sha256": "88a39105af79db269f7fd40ecf0c8526a06fc097e5476bd23e981ffc30a8c870",
+  "script_as_run": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-runtime-proof-first-as-run-20261003.py.gz",
+  "failure": "AssertionError at line73: after_stop destination != before_stop destination",
+  "capture_sha256": "04466ff339bec49a68da97a68d1377be07b3b03efb7227457ddb18b249be6407",
+  "stable_id": 1516,
+  "stop_issue_step": 5620,
+  "observed_before": {
+    "active": true,
+    "archive": null,
+    "building": null,
+    "category": "Unit",
+    "cell": [
+      31,
+      93
+    ],
+    "dying": false,
+    "foot": {
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 3,
+        "tracker_cell_560": [
+          31,
+          93
+        ],
+        "tracker_cell_slot_holder": null
+      },
+      "firing_sequence_latch_68d": 0,
+      "infantry_doing": null,
+      "navigation_leptons": [
+        7808,
+        23936,
+        416
+      ],
+      "navigation_unavailable": null,
+      "pending_entry_500": null,
+      "retarget_after_stop_688": false,
+      "walk_destination_leptons": null,
+      "walk_head_leptons": null,
+      "walk_is_moving": null
+    },
+    "health": 175,
+    "in_limbo": false,
+    "jumpjet": {
+      "destination_leptons": [
+        7808,
+        23936,
+        416
+      ],
+      "flight": {
+        "bob_phase_bits": 0,
+        "current_speed_bits": 0,
+        "facing": {
+          "current": 49153,
+          "duration_frames": 23,
+          "prev": 25064,
+          "rot_per_frame": 1024,
+          "start_frame": 5614
+        },
+        "target_height": 500,
+        "target_speed_bits": 4629137466983448576
+      },
+      "landing_latched": false,
+      "moving": true,
+      "params": {
+        "accel_bits": 1073741824,
+        "climb_bits": 1092616192,
+        "crash_bits": 1109393408,
+        "deviation": 1,
+        "height": 500,
+        "no_wobbles": false,
+        "speed": 30,
+        "turn_rate": 4,
+        "wobbles_bits": 1008981770
+      },
+      "phase": 1
+    },
+    "miner": null,
+    "mission": {
+      "ai_counter": 19,
+      "current": 2,
+      "dispatch_timer": {
+        "delay": 15,
+        "start_frame": 5617
+      },
+      "effective": 2,
+      "handler_state": 0,
+      "queued": -1,
+      "start_frame": 5601,
+      "suspended": -1
+    },
+    "nav": {
+      "Cell": {
+        "rx": 30,
+        "ry": 93
+      }
+    },
+    "on_bridge": false,
+    "owner": "VERA-OBSERVER",
+    "physical_leptons": [
+      8064,
+      23936,
+      596
+    ],
+    "radio": {
+      "contacts": [
+        null
+      ],
+      "dock_entered_with": null
+    },
+    "stable_id": 1516,
+    "target": null,
+    "type_id": "SHAD",
+    "unit": {
+      "body_counter_538": 273,
+      "current_turret_124": -1,
+      "current_weapon_138": 0,
+      "deploy_anim_130": null,
+      "deployed_6e0": 0,
+      "deploying_6e1": 0,
+      "landing_for_deploy_134": false,
+      "stage_f8": 0,
+      "undeploying_6e2": 0
+    }
+  },
+  "observed_after": {
+    "active": true,
+    "archive": null,
+    "building": null,
+    "category": "Unit",
+    "cell": [
+      31,
+      93
+    ],
+    "dying": false,
+    "foot": {
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 3,
+        "tracker_cell_560": [
+          31,
+          93
+        ],
+        "tracker_cell_slot_holder": null
+      },
+      "firing_sequence_latch_68d": 0,
+      "infantry_doing": null,
+      "navigation_leptons": [
+        7808,
+        23936,
+        416
+      ],
+      "navigation_unavailable": null,
+      "pending_entry_500": null,
+      "retarget_after_stop_688": false,
+      "walk_destination_leptons": null,
+      "walk_head_leptons": null,
+      "walk_is_moving": null
+    },
+    "health": 175,
+    "in_limbo": false,
+    "jumpjet": {
+      "destination_leptons": [
+        7808,
+        23936,
+        416
+      ],
+      "flight": {
+        "bob_phase_bits": 0,
+        "current_speed_bits": 0,
+        "facing": {
+          "current": 49153,
+          "duration_frames": 23,
+          "prev": 25064,
+          "rot_per_frame": 1024,
+          "start_frame": 5614
+        },
+        "target_height": 500,
+        "target_speed_bits": 4629137466983448576
+      },
+      "landing_latched": false,
+      "moving": true,
+      "params": {
+        "accel_bits": 1073741824,
+        "climb_bits": 1092616192,
+        "crash_bits": 1109393408,
+        "deviation": 1,
+        "height": 500,
+        "no_wobbles": false,
+        "speed": 30,
+        "turn_rate": 4,
+        "wobbles_bits": 1008981770
+      },
+      "phase": 1
+    },
+    "miner": null,
+    "mission": {
+      "ai_counter": 20,
+      "current": 2,
+      "dispatch_timer": {
+        "delay": 15,
+        "start_frame": 5617
+      },
+      "effective": 2,
+      "handler_state": 0,
+      "queued": -1,
+      "start_frame": 5601,
+      "suspended": -1
+    },
+    "nav": null,
+    "on_bridge": false,
+    "owner": "VERA-OBSERVER",
+    "physical_leptons": [
+      8064,
+      23936,
+      606
+    ],
+    "radio": {
+      "contacts": [
+        null
+      ],
+      "dock_entered_with": null
+    },
+    "stable_id": 1516,
+    "target": null,
+    "type_id": "SHAD",
+    "unit": {
+      "body_counter_538": 274,
+      "current_turret_124": -1,
+      "current_weapon_138": 0,
+      "deploy_anim_130": null,
+      "deployed_6e0": 0,
+      "deploying_6e1": 0,
+      "landing_for_deploy_134": false,
+      "stage_f8": 0,
+      "undeploying_6e2": 0
+    }
+  },
+  "correction": "Native54B4D0 searches nearest passable owner cell and invokes MoveTo on its selected coordinate; success branch54B5DF..54B683 does not require inequality with retained destination. The current selected coordinate equals the previous goal. Assert command-induced NavCom clear, retained moving state and final landing/caches instead; record actual destination difference as a boolean.",
+  "evidence_level": "Original static success-path reading plus previously executed stock_taken_state1_stop control; no newly executed original Stop or full-capture native parity.",
+  "native_static_sha256": "1cc98278c68728ba36c538cf7b70063004cb725402d65d3e78cefa518370ed8d"
+}

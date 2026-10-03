@@ -569,11 +569,9 @@ impl HiddenOccupationGrid {
 /// `CellClass+0xE0`, the single airborne object a cell holds (the AltObject
 /// slot).
 ///
-/// gamemd-derived: `0x004135A0` answers whether the slot holds an object other
-/// than the caller, and `0x00487D70` writes it — a zero argument clears it, and
-/// a claim is refused while a different object holds it. One hovering Jumpjet
-/// owns a cell's air slot; the next one to reach cruise height over that cell
-/// scatters to a neighbour instead (`JumpjetLocomotionClass` States 1, 3 and 4).
+/// Raw storage only. The shared Foot air owner implements Cell487D70's
+/// admission and ordered Foot4E00B0 notifications. Tracker membership and the
+/// Foot's two cached Cells are independent of this grid.
 ///
 /// Serialized verbatim alongside the raw occupation planes: which owner holds a
 /// slot, and when it was released, is not reconstructible from entity positions
@@ -589,27 +587,15 @@ impl AirSlotGrid {
         self.cells.get(&(rx, ry)).copied()
     }
 
-    /// `0x00487D70(cell, owner)`. Refused while another object holds the slot,
-    /// which is how the original keeps one hoverer per cell.
-    pub(crate) fn claim(&mut self, rx: u16, ry: u16, owner: u64) -> bool {
-        match self.cells.get(&(rx, ry)) {
-            Some(&held) if held != owner => false,
-            _ => {
-                self.cells.insert((rx, ry), owner);
-                true
-            }
+    /// Raw Cell+E0 write, without admission or a Foot notification. Native
+    /// Foot4E00B0 also clears a matching old slot directly through this storage.
+    pub(crate) fn set_holder(&mut self, cell: (i16, i16), owner: Option<u64>) {
+        let cell = (cell.0 as u16, cell.1 as u16);
+        if let Some(owner) = owner {
+            self.cells.insert(cell, owner);
+        } else {
+            self.cells.remove(&cell);
         }
-    }
-
-    /// `0x00487D70(cell, 0)`.
-    pub(crate) fn release(&mut self, rx: u16, ry: u16) {
-        self.cells.remove(&(rx, ry));
-    }
-
-    /// Drop every slot an object still holds. A Jumpjet removed while hovering
-    /// never runs State 4's release, so lifecycle teardown owns this.
-    pub(crate) fn release_owner(&mut self, owner: u64) {
-        self.cells.retain(|_, held| *held != owner);
     }
 
     pub(crate) fn entry_count(&self) -> usize {

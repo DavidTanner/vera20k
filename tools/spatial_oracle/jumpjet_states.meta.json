@@ -7,12 +7,16 @@
     1,
     33621247
   ],
-  "scope": "Jumpjet Process 0x0054AEC0 per frame - its Is_Moving/Is_Moving_Now Update gate and the state jump table - over States 0, 1, 2, 3 and 4 on a declared flat-or-sloped cell block x=6..20 by y=9..11, entered through the original Move_To 0x0054B1C0. Covers takeoff, cruise, arrival, hold, scatter from a taken air slot, a water hold, a blocked landing and touchdown. Not State5 crash, bridges, building tops, cell objects in the reference height, the radio-contact voice or multi-owner cells.",
+  "scope": "Schema2 retains the ten exact legacy rows and adds sixteen same-VM composed controls. Composed stock SHAD Cell order runs actual Unit741970->Foot4D94B0->Jumpjet54B1C0, FNPC56DC20/56E7C0, Process54AEC0 through trueRET54B199 and following Translate; occupied/free State1 callback/claim, post-operation Mark0/+74 restore/phase suffix, State3 live post-setter LandType tail, State4, Stop/arrival, distinct Foot560/564 caches, slot refusal/replacement/release and active-game UnInit. One arrival control executes original Scenario Random Seed(0) at a declared post-process50 load handoff, then continues to touchdown; this is not whole Scenario Save/Load. The later destructor slot clear is an original interior block, not whole destructor/deferred drain. Legacy scope: Jumpjet Process 0x0054AEC0 per frame - its Is_Moving/Is_Moving_Now Update gate and the state jump table - over States 0, 1, 2, 3 and 4 on a declared flat-or-sloped cell block x=6..20 by y=9..11, entered through the original Move_To 0x0054B1C0. Covers takeoff, cruise, arrival, hold, scatter from a taken air slot, a water hold, a blocked landing and touchdown. Not State5 crash, bridges, building tops, cell objects in the reference height, the radio-contact voice or multi-owner cells.",
   "assumptions": [
-    "FPCW 0E7F, the process control word WinMain installs with _controlfp(0x300, 0x300) at 0x006BBFC1; level height 104 at 0xABC5E8 and deck 416 at 0xABC5DC; direction deltas from the original initializer; frame counter from 1001; owner RTTI 1 (Unit); owner +0x83 clear and +0x41B set so both Process visibility probes are skipped, +0x90 set (airborne layer), +0x425 and +0x427 clear so the crash latch is off, +0x8C/+0x8D/+0x81 clear; per row: the cell corridor level/slope, LandType +0xEC, raw occupation +0x124 and AltObject +0xE0, the type block, BalloonHover +0xD6A, IsSimpleDeployer +0xE13, DeployToLand +0x6AD, the owner piggyback byte +0x6AD and the Can_Enter_Cell answer; TarCom is a non-null marker only."
+    "Legacy rows only: FPCW 0E7F, the process control word WinMain installs with _controlfp(0x300, 0x300) at 0x006BBFC1; level height 104 at 0xABC5E8 and deck 416 at 0xABC5DC; direction deltas from the original initializer; frame counter from 1001; owner RTTI 1 (Unit); owner +0x83 clear and +0x41B set so both Process visibility probes are skipped, +0x90 set (airborne layer), +0x425 and +0x427 clear so the crash latch is off, +0x8C/+0x8D/+0x81 clear; per row: the cell corridor level/slope, LandType +0xEC, raw occupation +0x124 and AltObject +0xE0, the type block, BalloonHover +0xD6A, IsSimpleDeployer +0xE13, DeployToLand +0x6AD, the owner piggyback byte +0x6AD and the Can_Enter_Cell answer; TarCom is a non-null marker only.",
+    "Composed controls: FPCW0E7F; original Rules/UnitType/Country/Jumpjet constructors, selected original physical RULESMD/LANGRULE(absent)/MPBattleMD/AnyTown reader blocks, original Land and BlockagePathDelay readers and Link. Recorded stock production report is a comparison receipt, never a native initializer. Full type/ART/scenario loading is outside coverage; physical INI bytes and admitted reader regions are recorded.",
+    "Composed controls: existing supplied Unit raw fixture, House human/current/Country, 32x32 flat Cell storage; BSS IsoTileArrayA8ED2C/countA8ED38 remain0, Cell+38=0 and overlay+44=-1. Per-control LandType overrides write cached Cell+EC only; original Recalc47D58D invalidates the unregistered tile toFFFF, then47DB48 writes Clear and47DB52 slope0. Original Object14CRT table8141D8 executes before any Mark, producing distinct AC13C8=104/AC13BC=416 rather than borrowing Map/Jumpjet values or supplying a layer. Map metadata, empty nearby zone plane, 40x40 tracker extent with 400 original vector headers, display headers and live foreign Unit/air-slot premises are recorded. All three complete RNG states start seed31; stock_taken_state1_arrival_scenario_seed0 executes original65C6D0 on Scenario+218 with argument0 after process50. This bounded handoff follows original683564..683571 reached by Load689470 via6894C5, but excludes whole native Save/Load and its other work. ordinary histories start frame100. GameActive remains supplied0 for ordinary Process; the UnInit control supplies1 with original House counter/deferred-vector startup. Supplemental handler/gate controls declare all retained writes. Native +520=-1 and distinct +560/+564 NullCell inputs come from original constructor/data owners.",
+    "The full raw archive retains every composed Foot700/Jumpjet98 boundary, all three RNG states, timers, navigation queues and lossless deltas over whole cell/world/map/House/vector storage. Whole .text/vtables, padding guards, FPCW and actual composed PC/ESP/cleanup returns are checked. Destructor control executes only XOR4D3595 and cache4D3632..4D366E with ESI=retired Foot, not whole destructor or deferred drain."
   ],
   "substitutions": [
-    "Owner SetLocation(+0x1B4) writes the coordinate only; Mark(+0x124) records the bracket and does NOT touch the cached cell (0x004D3780 only marks cell lists); the cached-cell setter +0x2F8 is the original 0x0041C160 body, but its only callers are the no-op air-bucket helpers, so +0x560 keeps its supplied value and the State 1 and 3 cell-change probes fire every frame; GetCell(+0x1BC) and the cell-coordinate getter (+0x2F4) answer from the owner coordinate over the declared corridor; SetSpeedFraction(+0x544) records its argument; Can_Enter_Cell (+0x1AC) answers per row; Set_Destination (+0x480) records its argument; the marked predicate (+0x54) answers true; +0xF0, +0xF4, +0x150, +0x18C, +0x198, +0x3DC, +0x488, +0x48C and +0x558 are no-ops carrying their call-site stack cleanup; air-bucket bookkeeping 0x004134A0/0x004135D0/0x004138C0, base link 0x0055A710, radio contact 0x0065AD30, fog 0x00567DA0, crate pickup 0x00481A00, 0x006385C0 and Submit_Object 0x004A9720 are no-ops; the air-slot query 0x004135A0 and set/clear 0x00487D70 are reimplemented over the corridor cells and their calls recorded; the FNPC search 0x0056DC20 answers a declared cell sequence, which feeds both Move_To and the Stop_Moving re-target."
+    "Legacy rows only: Owner SetLocation(+0x1B4) writes the coordinate only; Mark(+0x124) records the bracket and does NOT touch the cached cell (0x004D3780 only marks cell lists); the cached-cell setter +0x2F8 is the original 0x0041C160 body, but its only callers are the no-op air-bucket helpers, so +0x560 keeps its supplied value and the State 1 and 3 cell-change probes fire every frame; GetCell(+0x1BC) and the cell-coordinate getter (+0x2F4) answer from the owner coordinate over the declared corridor; SetSpeedFraction(+0x544) records its argument; Can_Enter_Cell (+0x1AC) answers per row; Set_Destination (+0x480) records its argument; the marked predicate (+0x54) answers true; +0xF0, +0xF4, +0x150, +0x18C, +0x198, +0x3DC, +0x488, +0x48C and +0x558 are no-ops carrying their call-site stack cleanup; air-bucket bookkeeping 0x004134A0/0x004135D0/0x004138C0, base link 0x0055A710, radio contact 0x0065AD30, fog 0x00567DA0, crate pickup 0x00481A00, 0x006385C0 and Submit_Object 0x004A9720 are no-ops; the air-slot query 0x004135A0 and set/clear 0x00487D70 are reimplemented over the corridor cells and their calls recorded; the FNPC search 0x0056DC20 answers a declared cell sequence, which feeds both Move_To and the Stop_Moving re-target.",
+    "Composed controls: existing physical-text lexical transport into original INI caches; Windows ASCII-to-UTF16/CLSIDFromString transport, empty FS SEH chain and checked IsBadReadPtr transport; CRT atexit registration. Reached gameplay bodies, including FNPC, SetDestination, Mark, cell lists/Recalc, occupation, air tracker and fog, execute original instructions with no supplied gameplay result."
   ],
   "entry_points": {
     "direction_delta_init": "0x0049F3A0",
@@ -28,7 +32,77 @@
     "state3": "0x0054BFF0",
     "state4": "0x0054C550",
     "facing_current": "0x004C93D0",
-    "facing_snap": "0x004C9300"
+    "facing_snap": "0x004C9300",
+    "unit_type_constructor": "0x007470D0",
+    "rules_constructor": "0x00665650",
+    "jumpjet_constructor": "0x0054AC40",
+    "country_constructor": "0x005113F0",
+    "unit_set_destination": "0x00741970",
+    "foot_set_destination": "0x004D94B0",
+    "stop": "0x0054B4D0",
+    "fnpc": "0x0056DC20",
+    "fnpc_rectangle": "0x0056E7C0",
+    "foot_mark": "0x004D3780",
+    "cell_recalculate": "0x0047D2B0",
+    "cell_air_slot": "0x00487D70",
+    "foot_remember_slot": "0x004E00B0",
+    "air_add": "0x004134A0",
+    "air_remove": "0x004135D0",
+    "air_update": "0x004138C0",
+    "unit_occupation_set": "0x007441B0",
+    "unit_occupation_clear": "0x00744210",
+    "object_set_z": "0x005F6060",
+    "foot_uninit": "0x004DE5D0",
+    "object_crt_table": "0x008141D8",
+    "object_level_height_init": "0x005F37C0",
+    "object_bridge_height_init": "0x005F3860",
+    "scenario_seed": "0x0065C6D0",
+    "foot_destructor_slot_begin": "0x004D3632",
+    "foot_destructor_slot_end": "0x004D366E"
   },
-  "payload_sha256": "43c492a0299ab35088312e4706f956eba2346f37a0c64ba7b54e9ed8f8b56d21"
+  "source_normalized_lf_sha256": {
+    "tools/native_oracle.py": "141fc5f3981b40d41869643c0350e3988e40be2e470cba8a0b4a77bb7df39b27",
+    "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+    "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+    "tools/projectile_oracle/guided_step.py": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
+    "tools/projectile_oracle/ifv_fire_coord.py": "7fd24f71c68248596b94bd921a13aacb09cadbdb189002adb778cffdf14be9ea",
+    "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+    "tools/rules_oracle/bridge_anim_inputs.py": "fc0d267d9c8453ba3090bfacd056af5207f47cb1170651cce5b0c41c80e90a2e",
+    "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+    "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+    "tools/spatial_oracle/aircraft_fire_location.py": "86b0b1d6380abfb185f8af8cecdd766de24a39b9656e9b930aaf6ac3f197f33c",
+    "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+    "tools/spatial_oracle/crate_ground_membership.py": "5c868d115062900bf0cbd15c53a89126c64e819784c5c579a40848c9d943cc2d",
+    "tools/spatial_oracle/crate_speed_effect.py": "4884d5f647da1e480a6f70aba1fea900491eda1a9875852e0fe53e731834c411",
+    "tools/spatial_oracle/fly_landing_phase.py": "e5a25318a67748fb8112912d698083da9bcc7c3e6a90f8fce6fdd9bc4a4be6a1",
+    "tools/spatial_oracle/house_base_projection.py": "82d663a4ebd5a1a3799737932727cd4d59174114a6d460904d75dd8ec3e40054",
+    "tools/spatial_oracle/jumpjet_coordinates.py": "8e92cf2ad936306d7e6ed281eca6cadfe83043cb7a9d3df224f24093260d4555",
+    "tools/spatial_oracle/jumpjet_entry_discovery.py": "78882a6434ffe2267f2c7b67e2a81aad295e3f749ea61911b5ec0e4488a6f21c",
+    "tools/spatial_oracle/jumpjet_states.py": "ce77939ff68e4ff2af8272c2b74c3ea0ad6073a59bf1df9c4dd8fcdf41147142",
+    "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+    "tools/spatial_oracle/nearby_raw_occupation.py": "44af140399e292250228f2b3b24105d318fdbacd82c1de7383ba910077cbd945",
+    "tools/spatial_oracle/object_flight_height.py": "c8860ed103531d092a817791054b6127a9548d27d98c959bb378a649bdd017ca",
+    "tools/spatial_oracle/track_destination.py": "db7ac918c743ce625bfaaa1c7a56f41d2336def4b42193cb1332fe0eb0d0912d",
+    "tools/spatial_oracle/unit_entry.py": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
+    "tools/spatial_oracle/unit_scatter_state.py": "c8269a41294316c97f990051506c4a9d9dbe923d8143a54a1a92c69645d2a112",
+    "tools/spatial_oracle/unit_source_scatter.py": "3384579566b40ebcc9d8d56d53a0736655eb3a15a6bf7f08730611b15852a009",
+    "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8"
+  },
+  "payload_sha256": "984726ba95d3729c1a9a5328976ab2b5314332d03ccc58d5c110914c2324692f",
+  "raw_archive": {
+    "file": "jumpjet_states.raw.json.gz",
+    "sha256": "621d86d63ace8e1b75d96e2bfbde6a4376b396624026cee19cdb875c56f5821a",
+    "bytes": 1257498,
+    "uncompressed_sha256": "352f5ed2e6f039e7cdc6b9f21a22dd98c7dd20a56b279b4eba06b25a92a57c07",
+    "uncompressed_bytes": 116664109,
+    "canonical_payload_sha256": "7bfc7d5438949f0ed9686ad40fc239cf5fc940b2c3ffedcf1b2e4de72383dacf",
+    "compression": {
+      "format": "gzip",
+      "level": 9,
+      "mtime": 0,
+      "filename": "",
+      "os_byte": 255,
+      "zlib_runtime": "1.2.12"
+    }
+  }
 }
