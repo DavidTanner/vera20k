@@ -1,0 +1,732 @@
+{
+  "status": "PASS",
+  "classification": "bounded Rust release production witness",
+  "native_comparator": "NONE",
+  "parity_certification": "NONE",
+  "source_identity": {
+    "head": "fef1b0e71c14ee41917476c6a4ff82ff83cd05b6",
+    "branch": "feature/jumpjet-synchronous-scatter",
+    "status": "",
+    "source_sha256": "0367392746a8efb6294a69d154b2cbbf7e8468925abf5fb67428f171df922755"
+  },
+  "exact_rust_python_sources": 1962,
+  "binary": {
+    "byte_length": 31663840,
+    "path": "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/target/owned-worktrees/375217c7cf7b0cd5/release/vera20k",
+    "sha256": "cf3da041cc36bebc19ef2e157b9e195d92744b5d5628f30fd772107173d50bfe"
+  },
+  "binary_resolver": "release",
+  "map_source": {
+    "entry_id": -854728974,
+    "kind": "mix",
+    "logical_name": "XMP03T4.MAP",
+    "payload_len": 156269,
+    "source_archive": "multimd.mix",
+    "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+  },
+  "profile": {
+    "byte_length": 5258,
+    "path": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-profile-20261003.json",
+    "sha256": "36b014abab797e125471ebbe031fed3be2590cf00404fbf8e8cc23979be5efa8"
+  },
+  "exact_steps": 6000,
+  "observations": 6001,
+  "initial": {
+    "binary_frame": 0,
+    "deterministic_state_hash": 7493122320080994490,
+    "simulation_tick": 0,
+    "total_simulation_ms": 0
+  },
+  "final": {
+    "binary_frame": 6000,
+    "deterministic_state_hash": 18122832535649224907,
+    "simulation_tick": 6000,
+    "total_simulation_ms": 132000
+  },
+  "stable_id": 1516,
+  "first_limbo_step": 4601,
+  "first_unlimbo_step": 5196,
+  "move_issue_step": 5600,
+  "move_admitted_step": 5601,
+  "stop_issue_step": 5620,
+  "stop_nav_cleared_step": 5621,
+  "stop_destination_changed": false,
+  "stop_before": {
+    "active": true,
+    "archive": null,
+    "building": null,
+    "category": "Unit",
+    "cell": [
+      31,
+      93
+    ],
+    "dying": false,
+    "foot": {
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 3,
+        "tracker_cell_560": [
+          31,
+          93
+        ],
+        "tracker_cell_slot_holder": null
+      },
+      "firing_sequence_latch_68d": 0,
+      "infantry_doing": null,
+      "navigation_leptons": [
+        7808,
+        23936,
+        416
+      ],
+      "navigation_unavailable": null,
+      "pending_entry_500": null,
+      "retarget_after_stop_688": false,
+      "walk_destination_leptons": null,
+      "walk_head_leptons": null,
+      "walk_is_moving": null
+    },
+    "health": 175,
+    "in_limbo": false,
+    "jumpjet": {
+      "destination_leptons": [
+        7808,
+        23936,
+        416
+      ],
+      "flight": {
+        "bob_phase_bits": 0,
+        "current_speed_bits": 0,
+        "facing": {
+          "current": 49153,
+          "duration_frames": 23,
+          "prev": 25064,
+          "rot_per_frame": 1024,
+          "start_frame": 5614
+        },
+        "target_height": 500,
+        "target_speed_bits": 4629137466983448576
+      },
+      "landing_latched": false,
+      "moving": true,
+      "params": {
+        "accel_bits": 1073741824,
+        "climb_bits": 1092616192,
+        "crash_bits": 1109393408,
+        "deviation": 1,
+        "height": 500,
+        "no_wobbles": false,
+        "speed": 30,
+        "turn_rate": 4,
+        "wobbles_bits": 1008981770
+      },
+      "phase": 1
+    },
+    "miner": null,
+    "mission": {
+      "ai_counter": 19,
+      "current": 2,
+      "dispatch_timer": {
+        "delay": 15,
+        "start_frame": 5617
+      },
+      "effective": 2,
+      "handler_state": 0,
+      "queued": -1,
+      "start_frame": 5601,
+      "suspended": -1
+    },
+    "nav": {
+      "Cell": {
+        "rx": 30,
+        "ry": 93
+      }
+    },
+    "on_bridge": false,
+    "owner": "VERA-OBSERVER",
+    "physical_leptons": [
+      8064,
+      23936,
+      596
+    ],
+    "radio": {
+      "contacts": [
+        null
+      ],
+      "dock_entered_with": null
+    },
+    "stable_id": 1516,
+    "target": null,
+    "type_id": "SHAD",
+    "unit": {
+      "body_counter_538": 273,
+      "current_turret_124": -1,
+      "current_weapon_138": 0,
+      "deploy_anim_130": null,
+      "deployed_6e0": 0,
+      "deploying_6e1": 0,
+      "landing_for_deploy_134": false,
+      "stage_f8": 0,
+      "undeploying_6e2": 0
+    }
+  },
+  "stop_after": {
+    "active": true,
+    "archive": null,
+    "building": null,
+    "category": "Unit",
+    "cell": [
+      31,
+      93
+    ],
+    "dying": false,
+    "foot": {
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 3,
+        "tracker_cell_560": [
+          31,
+          93
+        ],
+        "tracker_cell_slot_holder": null
+      },
+      "firing_sequence_latch_68d": 0,
+      "infantry_doing": null,
+      "navigation_leptons": [
+        7808,
+        23936,
+        416
+      ],
+      "navigation_unavailable": null,
+      "pending_entry_500": null,
+      "retarget_after_stop_688": false,
+      "walk_destination_leptons": null,
+      "walk_head_leptons": null,
+      "walk_is_moving": null
+    },
+    "health": 175,
+    "in_limbo": false,
+    "jumpjet": {
+      "destination_leptons": [
+        7808,
+        23936,
+        416
+      ],
+      "flight": {
+        "bob_phase_bits": 0,
+        "current_speed_bits": 0,
+        "facing": {
+          "current": 49153,
+          "duration_frames": 23,
+          "prev": 25064,
+          "rot_per_frame": 1024,
+          "start_frame": 5614
+        },
+        "target_height": 500,
+        "target_speed_bits": 4629137466983448576
+      },
+      "landing_latched": false,
+      "moving": true,
+      "params": {
+        "accel_bits": 1073741824,
+        "climb_bits": 1092616192,
+        "crash_bits": 1109393408,
+        "deviation": 1,
+        "height": 500,
+        "no_wobbles": false,
+        "speed": 30,
+        "turn_rate": 4,
+        "wobbles_bits": 1008981770
+      },
+      "phase": 1
+    },
+    "miner": null,
+    "mission": {
+      "ai_counter": 20,
+      "current": 2,
+      "dispatch_timer": {
+        "delay": 15,
+        "start_frame": 5617
+      },
+      "effective": 2,
+      "handler_state": 0,
+      "queued": -1,
+      "start_frame": 5601,
+      "suspended": -1
+    },
+    "nav": null,
+    "on_bridge": false,
+    "owner": "VERA-OBSERVER",
+    "physical_leptons": [
+      8064,
+      23936,
+      606
+    ],
+    "radio": {
+      "contacts": [
+        null
+      ],
+      "dock_entered_with": null
+    },
+    "stable_id": 1516,
+    "target": null,
+    "type_id": "SHAD",
+    "unit": {
+      "body_counter_538": 274,
+      "current_turret_124": -1,
+      "current_weapon_138": 0,
+      "deploy_anim_130": null,
+      "deployed_6e0": 0,
+      "deploying_6e1": 0,
+      "landing_for_deploy_134": false,
+      "stage_f8": 0,
+      "undeploying_6e2": 0
+    }
+  },
+  "grounded_step": 5679,
+  "grounded_actor": {
+    "active": true,
+    "archive": null,
+    "building": null,
+    "category": "Unit",
+    "cell": [
+      30,
+      93
+    ],
+    "dying": false,
+    "foot": {
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": null,
+        "spatial_enter_order": 0,
+        "tracker_cell_560": [
+          0,
+          0
+        ],
+        "tracker_cell_slot_holder": null
+      },
+      "firing_sequence_latch_68d": 0,
+      "infantry_doing": null,
+      "navigation_leptons": [
+        7808,
+        23936,
+        416
+      ],
+      "navigation_unavailable": null,
+      "pending_entry_500": null,
+      "retarget_after_stop_688": false,
+      "walk_destination_leptons": null,
+      "walk_head_leptons": null,
+      "walk_is_moving": null
+    },
+    "health": 175,
+    "in_limbo": false,
+    "jumpjet": {
+      "destination_leptons": [
+        0,
+        0,
+        0
+      ],
+      "flight": {
+        "bob_phase_bits": 0,
+        "current_speed_bits": 0,
+        "facing": {
+          "current": 51165,
+          "duration_frames": 0,
+          "prev": 50918,
+          "rot_per_frame": 1024,
+          "start_frame": 5642
+        },
+        "target_height": 0,
+        "target_speed_bits": 0
+      },
+      "landing_latched": false,
+      "moving": false,
+      "params": {
+        "accel_bits": 1073741824,
+        "climb_bits": 1092616192,
+        "crash_bits": 1109393408,
+        "deviation": 1,
+        "height": 500,
+        "no_wobbles": false,
+        "speed": 30,
+        "turn_rate": 4,
+        "wobbles_bits": 1008981770
+      },
+      "phase": 0
+    },
+    "miner": null,
+    "mission": {
+      "ai_counter": 78,
+      "current": 2,
+      "dispatch_timer": {
+        "delay": 14,
+        "start_frame": 5677
+      },
+      "effective": 2,
+      "handler_state": 0,
+      "queued": -1,
+      "start_frame": 5601,
+      "suspended": -1
+    },
+    "nav": null,
+    "on_bridge": false,
+    "owner": "VERA-OBSERVER",
+    "physical_leptons": [
+      7808,
+      23936,
+      416
+    ],
+    "radio": {
+      "contacts": [
+        null
+      ],
+      "dock_entered_with": null
+    },
+    "stable_id": 1516,
+    "target": null,
+    "type_id": "SHAD",
+    "unit": {
+      "body_counter_538": 331,
+      "current_turret_124": -1,
+      "current_weapon_138": 0,
+      "deploy_anim_130": null,
+      "deployed_6e0": 0,
+      "deploying_6e1": 0,
+      "landing_for_deploy_134": false,
+      "stage_f8": 0,
+      "undeploying_6e2": 0
+    }
+  },
+  "distinct_xy_after_move": 17,
+  "maximum_physical_z_after_move": 791,
+  "phase_cache_transitions": [
+    {
+      "step": 5601,
+      "xyz": [
+        8064,
+        23936,
+        416
+      ],
+      "phase": 0,
+      "moving": true,
+      "destination": [
+        7808,
+        23936,
+        416
+      ],
+      "nav": {
+        "Cell": {
+          "rx": 30,
+          "ry": 93
+        }
+      },
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": null,
+        "spatial_enter_order": 0,
+        "tracker_cell_560": [
+          0,
+          0
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5602,
+      "xyz": [
+        8064,
+        23936,
+        416
+      ],
+      "phase": 1,
+      "moving": true,
+      "destination": [
+        7808,
+        23936,
+        416
+      ],
+      "nav": {
+        "Cell": {
+          "rx": 30,
+          "ry": 93
+        }
+      },
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 3,
+        "tracker_cell_560": [
+          31,
+          93
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5639,
+      "xyz": [
+        7913,
+        23957,
+        786
+      ],
+      "phase": 3,
+      "moving": true,
+      "destination": [
+        7808,
+        23936,
+        416
+      ],
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 3,
+        "tracker_cell_560": [
+          30,
+          93
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5643,
+      "xyz": [
+        7808,
+        23936,
+        771
+      ],
+      "phase": 4,
+      "moving": true,
+      "destination": [
+        7808,
+        23936,
+        416
+      ],
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 3,
+        "tracker_cell_560": [
+          30,
+          93
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5679,
+      "xyz": [
+        7808,
+        23936,
+        416
+      ],
+      "phase": 0,
+      "moving": false,
+      "destination": [
+        0,
+        0,
+        0
+      ],
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": null,
+        "spatial_enter_order": 0,
+        "tracker_cell_560": [
+          0,
+          0
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    }
+  ],
+  "sample_cost": 76054,
+  "discovery_prefix_exact_frames": 5601,
+  "compared_frame_fields": [
+    "actors",
+    "houses",
+    "completed_steps",
+    "simulation_tick",
+    "binary_frame",
+    "total_simulation_ms",
+    "missing_actor_ids"
+  ],
+  "terrain": [
+    {
+      "allocated": true,
+      "bridge_state": 0,
+      "cell": [
+        30,
+        93
+      ],
+      "deck_level": 4,
+      "final_sub_tile": 0,
+      "final_tile_index": 502,
+      "has_deck": false,
+      "level": 4,
+      "overlay": {
+        "density": 0,
+        "id": null
+      },
+      "presentation_tile": [
+        502,
+        0
+      ],
+      "raw_bridge_flags": 0,
+      "slope": 0,
+      "terrain_object": null,
+      "transition": false,
+      "walkable": false
+    },
+    {
+      "allocated": true,
+      "bridge_state": 0,
+      "cell": [
+        31,
+        93
+      ],
+      "deck_level": 4,
+      "final_sub_tile": 0,
+      "final_tile_index": 493,
+      "has_deck": false,
+      "level": 4,
+      "overlay": {
+        "density": 0,
+        "id": null
+      },
+      "presentation_tile": [
+        493,
+        0
+      ],
+      "raw_bridge_flags": 0,
+      "slope": 0,
+      "terrain_object": null,
+      "transition": false,
+      "walkable": false
+    },
+    {
+      "allocated": true,
+      "bridge_state": 0,
+      "cell": [
+        32,
+        93
+      ],
+      "deck_level": 4,
+      "final_sub_tile": 0,
+      "final_tile_index": 493,
+      "has_deck": false,
+      "level": 4,
+      "overlay": {
+        "density": 0,
+        "id": null
+      },
+      "presentation_tile": [
+        493,
+        0
+      ],
+      "raw_bridge_flags": 0,
+      "slope": 0,
+      "terrain_object": null,
+      "transition": false,
+      "walkable": false
+    }
+  ],
+  "gpu_frame": {
+    "byte_length": 1920000,
+    "file_name": "frame.bgra",
+    "height": 600,
+    "pixel_layout": "BGRA8",
+    "row_stride": 3200,
+    "sha256": "3430f44cb2106efb01742d2f3f86b2d8327a29125e2a7bef91784b6a479c241b",
+    "surface_format": "Bgra8UnormSrgb",
+    "width": 800
+  },
+  "files": {
+    "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-20261003/run.json": {
+      "bytes": 45868111,
+      "sha256": "ce988c7ef5bafba4b1b5f87ec369083b04ca9e1b9d1b843bc1320e955c4338dd"
+    },
+    "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-20261003/child-output/capture.json": {
+      "bytes": 45871489,
+      "sha256": "04466ff339bec49a68da97a68d1377be07b3b03efb7227457ddb18b249be6407"
+    },
+    "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-20261003/child-output/frame.bgra": {
+      "bytes": 1920000,
+      "sha256": "3430f44cb2106efb01742d2f3f86b2d8327a29125e2a7bef91784b6a479c241b"
+    },
+    "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-20261003/run.json": {
+      "bytes": 49298538,
+      "sha256": "9dc0bc2dbe38d84ddf928495bb080dfef0e573df33a6f24bca665e3659818258"
+    },
+    "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-20261003/child-output/capture.json": {
+      "bytes": 49301712,
+      "sha256": "ab39b5f93b2b56c4e4c713408a3b3e579f27a7e1c7257875caa8c594f0e3ac49"
+    },
+    "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-final-release_game-r1-20261003.json": {
+      "bytes": 219610,
+      "sha256": "ae651732daf33c40e771c3a48a2bedb49625e6617e6fb84e9b71a1928fc34a5b"
+    },
+    "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-input-selection-20261003.json": {
+      "bytes": 6778,
+      "sha256": "7b7f34fdbfcbca8085a052195fedb9adb3db0ff80e14d9f5dd75e0eba23ec9a0"
+    },
+    "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-discovery-offline-20261003.json": {
+      "bytes": 49779736,
+      "sha256": "ebe3830611aed74a3de94a9b13fb515afd020e3a978a0a6b3e1887fbf39e5a2e"
+    },
+    "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-jumpjet-move-stop-offline-20261003.json": {
+      "bytes": 46349309,
+      "sha256": "57cc1809098f784b1eb40aa76f0d5720e319fc9d981889587e6c22a9ccd83bda"
+    }
+  },
+  "limits": [
+    "End-frame observations do not prove internal callback PCs/order or individual RNG draws.",
+    "Single SHAD does not exercise a foreign occupied air-slot callback; composed native controls and Rust tests cover that branch.",
+    "Terrain observations and supplied command cells are bounded Rust capture inputs; no native terrain admission equivalence is inferred.",
+    "Prefix equality is limited to the declared observed actors/houses/clocks, not full-world per-frame hashes.",
+    "Historical cff captures and failed diagnostic-budget bundles remain separate evidence."
+  ]
+}

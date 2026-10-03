@@ -1,0 +1,160 @@
+{
+  "classification": "actual Rust retail fire-event and end-frame pose witness; not whole native shot parity",
+  "log": {
+    "path": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r4fire-20261003.log",
+    "sha256": "915bb3a03e962465dd97006a0062981d5ed3228fd8c7d921e1bcd86a6d039d39"
+  },
+  "measurement": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-regression-red-r4fire-20261003.json",
+  "diagnostic_source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-rocketeer-r4fire-as-run.rs.gz",
+  "native_body_and_leaf_evidence": {
+    "path": "/Users/halvor/Documents/vera20k-dev/refactor-goal/dustbowl-rocketeer-fire-pose-causal-87705976-20261003.md",
+    "sha256": "94a6d3ba0fbad7a7ca82b1ee3d7cb000f1af1b4bf4038f75e95e26ca2d7e760e"
+  },
+  "actual_discharge_rows": [
+    {
+      "current_target": {
+        "Entity": 2228
+      },
+      "fire_events": [
+        "SimFireEvent { attacker_id: 2204, attacker_type_ref: InternedId(83), weapon_slot: Primary, weapon_id: InternedId(1169), facing: 74, veterancy: 0, origin_snapshot: FireOriginSnapshot { rx: 79, ry: 41, sub_x: 170, sub_y: 57, z: 1, facing: 74 }, target: Entity(2228), report_sound_id: Some(InternedId(1170)), fire_coord: ProjectileCoord { x: 20492, y: 10572, z: 724 }, fire_offset_y: 19, muzzle_anim: None, occupied_building: false, firer_category: Infantry }"
+      ],
+      "firing_latch": 0,
+      "frame": 327,
+      "new_rearm": {
+        "duration": 31,
+        "start_frame": 326
+      },
+      "old_rearm": {
+        "duration": 0,
+        "start_frame": 0
+      },
+      "pose": "Pose { phase: 3, fraction: 6553, doing: 23, sequence: Some(Hover), altitude: 500 }",
+      "target_health": 100
+    },
+    {
+      "current_target": {
+        "Entity": 2228
+      },
+      "fire_events": [
+        "SimFireEvent { attacker_id: 2204, attacker_type_ref: InternedId(83), weapon_slot: Primary, weapon_id: InternedId(1169), facing: 78, veterancy: 0, origin_snapshot: FireOriginSnapshot { rx: 79, ry: 41, sub_x: 192, sub_y: 64, z: 1, facing: 78 }, target: Entity(2228), report_sound_id: Some(InternedId(1170)), fire_coord: ProjectileCoord { x: 20508, y: 10598, z: 724 }, fire_offset_y: 38, muzzle_anim: None, occupied_building: false, firer_category: Infantry }"
+      ],
+      "firing_latch": 0,
+      "frame": 360,
+      "new_rearm": {
+        "duration": 32,
+        "start_frame": 359
+      },
+      "old_rearm": {
+        "duration": 31,
+        "start_frame": 326
+      },
+      "pose": "Pose { phase: 2, fraction: 0, doing: 26, sequence: Some(FireFly), altitude: 500 }",
+      "target_health": 81
+    },
+    {
+      "current_target": {
+        "Entity": 2228
+      },
+      "fire_events": [
+        "SimFireEvent { attacker_id: 2204, attacker_type_ref: InternedId(83), weapon_slot: Primary, weapon_id: InternedId(1169), facing: 78, veterancy: 0, origin_snapshot: FireOriginSnapshot { rx: 79, ry: 41, sub_x: 192, sub_y: 64, z: 1, facing: 78 }, target: Entity(2228), report_sound_id: Some(InternedId(1170)), fire_coord: ProjectileCoord { x: 20508, y: 10598, z: 724 }, fire_offset_y: 38, muzzle_anim: None, occupied_building: false, firer_category: Infantry }"
+      ],
+      "firing_latch": 0,
+      "frame": 394,
+      "new_rearm": {
+        "duration": 31,
+        "start_frame": 393
+      },
+      "old_rearm": {
+        "duration": 32,
+        "start_frame": 359
+      },
+      "pose": "Pose { phase: 2, fraction: 0, doing: 26, sequence: Some(FireFly), altitude: 500 }",
+      "target_health": 62
+    },
+    {
+      "current_target": {
+        "Entity": 2228
+      },
+      "fire_events": [
+        "SimFireEvent { attacker_id: 2204, attacker_type_ref: InternedId(83), weapon_slot: Primary, weapon_id: InternedId(1169), facing: 78, veterancy: 0, origin_snapshot: FireOriginSnapshot { rx: 79, ry: 41, sub_x: 192, sub_y: 64, z: 1, facing: 78 }, target: Entity(2228), report_sound_id: Some(InternedId(1170)), fire_coord: ProjectileCoord { x: 20508, y: 10598, z: 724 }, fire_offset_y: 38, muzzle_anim: None, occupied_building: false, firer_category: Infantry }"
+      ],
+      "firing_latch": 0,
+      "frame": 427,
+      "new_rearm": {
+        "duration": 31,
+        "start_frame": 426
+      },
+      "old_rearm": {
+        "duration": 31,
+        "start_frame": 393
+      },
+      "pose": "Pose { phase: 2, fraction: 0, doing: 26, sequence: Some(FireFly), altitude: 500 }",
+      "target_health": 43
+    },
+    {
+      "current_target": {
+        "Entity": 2228
+      },
+      "fire_events": [
+        "SimFireEvent { attacker_id: 2204, attacker_type_ref: InternedId(83), weapon_slot: Primary, weapon_id: InternedId(1169), facing: 78, veterancy: 0, origin_snapshot: FireOriginSnapshot { rx: 79, ry: 41, sub_x: 192, sub_y: 64, z: 1, facing: 78 }, target: Entity(2228), report_sound_id: Some(InternedId(1170)), fire_coord: ProjectileCoord { x: 20508, y: 10598, z: 724 }, fire_offset_y: 38, muzzle_anim: None, occupied_building: false, firer_category: Infantry }"
+      ],
+      "firing_latch": 0,
+      "frame": 460,
+      "new_rearm": {
+        "duration": 30,
+        "start_frame": 459
+      },
+      "old_rearm": {
+        "duration": 31,
+        "start_frame": 426
+      },
+      "pose": "Pose { phase: 2, fraction: 0, doing: 26, sequence: Some(FireFly), altitude: 500 }",
+      "target_health": 24
+    },
+    {
+      "current_target": {
+        "Entity": 2228
+      },
+      "fire_events": [
+        "SimFireEvent { attacker_id: 2204, attacker_type_ref: InternedId(83), weapon_slot: Primary, weapon_id: InternedId(1169), facing: 78, veterancy: 0, origin_snapshot: FireOriginSnapshot { rx: 79, ry: 41, sub_x: 192, sub_y: 64, z: 1, facing: 78 }, target: Entity(2228), report_sound_id: Some(InternedId(1170)), fire_coord: ProjectileCoord { x: 20508, y: 10598, z: 724 }, fire_offset_y: 38, muzzle_anim: None, occupied_building: false, firer_category: Infantry }"
+      ],
+      "firing_latch": 0,
+      "frame": 492,
+      "new_rearm": {
+        "duration": 32,
+        "start_frame": 491
+      },
+      "old_rearm": {
+        "duration": 30,
+        "start_frame": 459
+      },
+      "pose": "Pose { phase: 2, fraction: 0, doing: 26, sequence: Some(FireFly), altitude: 500 }",
+      "target_health": 5
+    },
+    {
+      "current_target": null,
+      "fire_events": [
+        "SimFireEvent { attacker_id: 2204, attacker_type_ref: InternedId(83), weapon_slot: Primary, weapon_id: InternedId(1169), facing: 78, veterancy: 0, origin_snapshot: FireOriginSnapshot { rx: 79, ry: 41, sub_x: 192, sub_y: 64, z: 1, facing: 78 }, target: Entity(2228), report_sound_id: Some(InternedId(1170)), fire_coord: ProjectileCoord { x: 20508, y: 10598, z: 724 }, fire_offset_y: 38, muzzle_anim: None, occupied_building: false, firer_category: Infantry }"
+      ],
+      "firing_latch": 0,
+      "frame": 526,
+      "new_rearm": {
+        "duration": 32,
+        "start_frame": 525
+      },
+      "old_rearm": {
+        "duration": 32,
+        "start_frame": 491
+      },
+      "pose": "Pose { phase: 2, fraction: 0, doing: 23, sequence: Some(Hover), altitude: 500 }",
+      "target_health": 0
+    }
+  ],
+  "actual_event_count": 7,
+  "timer_false_positive_established": false,
+  "limits": [
+    "End-frame Rust poses are separate from native selected-body execution and original caller reading.",
+    "This actual diagnostic intentionally retains the overstrict expectation and fails; it is not a green validation.",
+    "Original native controls establish the moving/stationary suffix; no new whole native Rocketeer shot or retail loader comparison was run."
+  ]
+}

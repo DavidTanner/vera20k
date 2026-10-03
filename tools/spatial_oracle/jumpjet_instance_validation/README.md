@@ -21,8 +21,18 @@ Object SetZ `5F6060` uses the shared
 [marked height owner](../../../src/sim/movement/ground_pose.rs); it does not
 substitute Foot SetLocation. Unit touchdown executes its class destination,
 PerCell, slot and tracker callbacks before retiring phase4. Consumers use the
-owners' getters. Snapshot289 saves both independent caches and the complete
+owners' getters. Snapshot290 saves both independent caches and the complete
 instance; the hash preserves prior feeds and adds distinct non-null cache feeds.
+
+## Current merged candidate
+
+[Late-main results](late-main/README.md) bind clean candidate fef1b0e7 after
+incoming barracks main c19e544581: full library9,629, selected retail63/no skips,
+Clippy exit0 and Python575. Four fixture-test repairs preserve all1,958 other
+Rust/Python files. Fresh normal release discovery/Move/Stop each validate6,000
+steps/6,001 observations with measured SHAD1516 and completed landing/cache cleanup.
+Snapshot290 follows incoming main289. The single critic remains the original
+one pass; no second review was run. The cff results below are preserved history.
 
 ## Native body, caller and data evidence
 
@@ -56,7 +66,7 @@ hashes, caches, motion and all three RNG streams through touchdown. Production
 RNG reset behavior is unchanged. This does not execute whole native Save/Load or
 COM class persistence.
 
-## Actual Rust and production validation
+## Historical cff Rust and production validation
 
 [Summary](summary.json) and [byte identities](archive-sha256.json) bind all saved
 logs/receipts. The earlier [focused G5 comparisons](checks/focused-g5-receipt.json.gz)

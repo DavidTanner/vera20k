@@ -1,0 +1,171 @@
+{
+  "classification": "read-only native source/payload integrity after late main integration; not re-execution",
+  "head": "87705976019d4003e98ccfbae879c19e71c04d44",
+  "incoming_main": "c19e544581aff37e9eff5a6a9976ccd78983b6e0",
+  "native_completion_sha256": "ef1401f25faa7487be2388d82fac6e167d65b3af921ac9567cc0ae2d28362ba7",
+  "files": {
+    "tools/spatial_oracle/jumpjet_states.py": {
+      "sha256": "ce77939ff68e4ff2af8272c2b74c3ea0ad6073a59bf1df9c4dd8fcdf41147142",
+      "receipt_sha256": "ce77939ff68e4ff2af8272c2b74c3ea0ad6073a59bf1df9c4dd8fcdf41147142",
+      "exact": true
+    },
+    "tools/spatial_oracle/jumpjet_states.json": {
+      "sha256": "2eb1cb3adfb1e1d3243eca38007206396a109259c220a30083d8453b3a7987ef",
+      "receipt_sha256": "2eb1cb3adfb1e1d3243eca38007206396a109259c220a30083d8453b3a7987ef",
+      "exact": true
+    },
+    "tools/spatial_oracle/jumpjet_states.meta.json": {
+      "sha256": "ea1b6b16b1b2e281d7137122afdac4aad9615280ce18281659d1a89cb0d1dc60",
+      "receipt_sha256": "ea1b6b16b1b2e281d7137122afdac4aad9615280ce18281659d1a89cb0d1dc60",
+      "exact": true
+    },
+    "tools/spatial_oracle/jumpjet_states.raw.json.gz": {
+      "sha256": "621d86d63ace8e1b75d96e2bfbde6a4376b396624026cee19cdb875c56f5821a",
+      "receipt_sha256": "621d86d63ace8e1b75d96e2bfbde6a4376b396624026cee19cdb875c56f5821a",
+      "exact": true
+    },
+    "tools/spatial_oracle/jumpjet_states.raw.meta.json": {
+      "sha256": "f124d85dbe4628614bc765b83a2a334ce5a3fbc3d3225ad38ab65fea37d71894",
+      "receipt_sha256": "f124d85dbe4628614bc765b83a2a334ce5a3fbc3d3225ad38ab65fea37d71894",
+      "exact": true
+    },
+    "tools/spatial_oracle/jumpjet_states.md": {
+      "sha256": "908505586a71664736e338efbbd233ff42c60bd9a7fb631bbd2984718826f6ca",
+      "receipt_sha256": "908505586a71664736e338efbbd233ff42c60bd9a7fb631bbd2984718826f6ca",
+      "exact": true
+    }
+  },
+  "source_pins": {
+    "tools/native_oracle.py": {
+      "sha256": "141fc5f3981b40d41869643c0350e3988e40be2e470cba8a0b4a77bb7df39b27",
+      "receipt_sha256": "141fc5f3981b40d41869643c0350e3988e40be2e470cba8a0b4a77bb7df39b27",
+      "exact": true
+    },
+    "tools/projectile_oracle/bridge_render_inputs.py": {
+      "sha256": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+      "receipt_sha256": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+      "exact": true
+    },
+    "tools/projectile_oracle/flat_art.py": {
+      "sha256": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+      "receipt_sha256": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+      "exact": true
+    },
+    "tools/projectile_oracle/guided_step.py": {
+      "sha256": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
+      "receipt_sha256": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
+      "exact": true
+    },
+    "tools/projectile_oracle/ifv_fire_coord.py": {
+      "sha256": "7fd24f71c68248596b94bd921a13aacb09cadbdb189002adb778cffdf14be9ea",
+      "receipt_sha256": "7fd24f71c68248596b94bd921a13aacb09cadbdb189002adb778cffdf14be9ea",
+      "exact": true
+    },
+    "tools/rmg_oracle/gen_rng_vectors.py": {
+      "sha256": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+      "receipt_sha256": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+      "exact": true
+    },
+    "tools/rules_oracle/bridge_anim_inputs.py": {
+      "sha256": "fc0d267d9c8453ba3090bfacd056af5207f47cb1170651cce5b0c41c80e90a2e",
+      "receipt_sha256": "fc0d267d9c8453ba3090bfacd056af5207f47cb1170651cce5b0c41c80e90a2e",
+      "exact": true
+    },
+    "tools/rules_oracle/bridge_anim_lists.py": {
+      "sha256": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+      "receipt_sha256": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+      "exact": true
+    },
+    "tools/spatial_oracle/__init__.py": {
+      "sha256": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+      "receipt_sha256": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+      "exact": true
+    },
+    "tools/spatial_oracle/aircraft_fire_location.py": {
+      "sha256": "86b0b1d6380abfb185f8af8cecdd766de24a39b9656e9b930aaf6ac3f197f33c",
+      "receipt_sha256": "86b0b1d6380abfb185f8af8cecdd766de24a39b9656e9b930aaf6ac3f197f33c",
+      "exact": true
+    },
+    "tools/spatial_oracle/building_body_rules.py": {
+      "sha256": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+      "receipt_sha256": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+      "exact": true
+    },
+    "tools/spatial_oracle/crate_ground_membership.py": {
+      "sha256": "5c868d115062900bf0cbd15c53a89126c64e819784c5c579a40848c9d943cc2d",
+      "receipt_sha256": "5c868d115062900bf0cbd15c53a89126c64e819784c5c579a40848c9d943cc2d",
+      "exact": true
+    },
+    "tools/spatial_oracle/crate_speed_effect.py": {
+      "sha256": "4884d5f647da1e480a6f70aba1fea900491eda1a9875852e0fe53e731834c411",
+      "receipt_sha256": "4884d5f647da1e480a6f70aba1fea900491eda1a9875852e0fe53e731834c411",
+      "exact": true
+    },
+    "tools/spatial_oracle/fly_landing_phase.py": {
+      "sha256": "e5a25318a67748fb8112912d698083da9bcc7c3e6a90f8fce6fdd9bc4a4be6a1",
+      "receipt_sha256": "e5a25318a67748fb8112912d698083da9bcc7c3e6a90f8fce6fdd9bc4a4be6a1",
+      "exact": true
+    },
+    "tools/spatial_oracle/house_base_projection.py": {
+      "sha256": "82d663a4ebd5a1a3799737932727cd4d59174114a6d460904d75dd8ec3e40054",
+      "receipt_sha256": "82d663a4ebd5a1a3799737932727cd4d59174114a6d460904d75dd8ec3e40054",
+      "exact": true
+    },
+    "tools/spatial_oracle/jumpjet_coordinates.py": {
+      "sha256": "8e92cf2ad936306d7e6ed281eca6cadfe83043cb7a9d3df224f24093260d4555",
+      "receipt_sha256": "8e92cf2ad936306d7e6ed281eca6cadfe83043cb7a9d3df224f24093260d4555",
+      "exact": true
+    },
+    "tools/spatial_oracle/jumpjet_entry_discovery.py": {
+      "sha256": "78882a6434ffe2267f2c7b67e2a81aad295e3f749ea61911b5ec0e4488a6f21c",
+      "receipt_sha256": "78882a6434ffe2267f2c7b67e2a81aad295e3f749ea61911b5ec0e4488a6f21c",
+      "exact": true
+    },
+    "tools/spatial_oracle/jumpjet_states.py": {
+      "sha256": "ce77939ff68e4ff2af8272c2b74c3ea0ad6073a59bf1df9c4dd8fcdf41147142",
+      "receipt_sha256": "ce77939ff68e4ff2af8272c2b74c3ea0ad6073a59bf1df9c4dd8fcdf41147142",
+      "exact": true
+    },
+    "tools/spatial_oracle/map_queries.py": {
+      "sha256": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+      "receipt_sha256": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+      "exact": true
+    },
+    "tools/spatial_oracle/nearby_raw_occupation.py": {
+      "sha256": "44af140399e292250228f2b3b24105d318fdbacd82c1de7383ba910077cbd945",
+      "receipt_sha256": "44af140399e292250228f2b3b24105d318fdbacd82c1de7383ba910077cbd945",
+      "exact": true
+    },
+    "tools/spatial_oracle/object_flight_height.py": {
+      "sha256": "c8860ed103531d092a817791054b6127a9548d27d98c959bb378a649bdd017ca",
+      "receipt_sha256": "c8860ed103531d092a817791054b6127a9548d27d98c959bb378a649bdd017ca",
+      "exact": true
+    },
+    "tools/spatial_oracle/track_destination.py": {
+      "sha256": "db7ac918c743ce625bfaaa1c7a56f41d2336def4b42193cb1332fe0eb0d0912d",
+      "receipt_sha256": "db7ac918c743ce625bfaaa1c7a56f41d2336def4b42193cb1332fe0eb0d0912d",
+      "exact": true
+    },
+    "tools/spatial_oracle/unit_entry.py": {
+      "sha256": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
+      "receipt_sha256": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
+      "exact": true
+    },
+    "tools/spatial_oracle/unit_scatter_state.py": {
+      "sha256": "c8269a41294316c97f990051506c4a9d9dbe923d8143a54a1a92c69645d2a112",
+      "receipt_sha256": "c8269a41294316c97f990051506c4a9d9dbe923d8143a54a1a92c69645d2a112",
+      "exact": true
+    },
+    "tools/spatial_oracle/unit_source_scatter.py": {
+      "sha256": "3384579566b40ebcc9d8d56d53a0736655eb3a15a6bf7f08730611b15852a009",
+      "receipt_sha256": "3384579566b40ebcc9d8d56d53a0736655eb3a15a6bf7f08730611b15852a009",
+      "exact": true
+    },
+    "tools/spatial_oracle/walk_head_occupation.py": {
+      "sha256": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
+      "receipt_sha256": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
+      "exact": true
+    }
+  },
+  "scope": "Original v5 producer/payload bytes remain unchanged; new Rust/main integration is measured separately."
+}

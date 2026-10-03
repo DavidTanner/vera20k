@@ -1,0 +1,25 @@
+{
+  "classification": "documentation/archive addition; validated Rust/Python bytes unchanged",
+  "release_receipt_sha256": "ae651732daf33c40e771c3a48a2bedb49625e6617e6fb84e9b71a1928fc34a5b",
+  "release_source": {
+    "head": "fef1b0e71c14ee41917476c6a4ff82ff83cd05b6",
+    "branch": "feature/jumpjet-synchronous-scatter",
+    "status": "",
+    "source_sha256": "0367392746a8efb6294a69d154b2cbbf7e8468925abf5fb67428f171df922755"
+  },
+  "rust_python_count": 1962,
+  "all_rust_python_exact": true,
+  "old_records": 111,
+  "old_nonreadme_targets_exact": 110,
+  "old_readme_preserved_exact": true,
+  "changed_behavior": false,
+  "documentation_paths": [
+    "README.md",
+    "tools/spatial_oracle/jumpjet_instance_validation/README.md",
+    "tools/spatial_oracle/jumpjet_instance_validation/late-main/README.md"
+  ],
+  "limits": [
+    "Adding evidence changes full repository source identity; compiled source and native payloads are unchanged.",
+    "The manifest and this receipt are evidence metadata, not new native/runtime execution."
+  ]
+}
