@@ -617,7 +617,7 @@ impl Simulation {
             }
             SlaveState::Dead => {
                 if node.timer.expired(now) {
-                    self.regrow_slave(master, node, rules);
+                    self.regrow_slave(master, node, rules, registry);
                 }
             }
         }
@@ -661,7 +661,7 @@ impl Simulation {
         if cell == drop && nav_com.is_none() {
             // 0x006AFBCC: pay, go inside and reload.
             self.slave_deposit(slave, master, rules);
-            self.limbo_slave(slave, rules);
+            self.limbo_slave(slave, rules, registry);
             let reload = self.slave_manager(master).map_or(0, |m| m.reload_rate);
             node.state = SlaveState::Reloading;
             node.timer.start(self.now_frame(), reload);
@@ -1285,7 +1285,7 @@ impl Simulation {
                 continue;
             };
             let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(Some(spot));
-            if !self.unlimbo_slave(slave, drop, (sub_x, sub_y), rules) {
+            if !self.unlimbo_slave(slave, drop, (sub_x, sub_y), rules, registry) {
                 continue;
             }
             if let Some(source) = self.slave_owner_centre(master)
@@ -1329,6 +1329,7 @@ impl Simulation {
             crate::util::fixed_math::SimFixed,
         ),
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> bool {
         let Some(spot) = bump_crush::place_infantry_in_cell(
             &self.substrate.raw_cell_occupation,
@@ -1364,21 +1365,27 @@ impl Simulation {
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             },
-            UninitContext::with_rules(rules),
+            UninitContext::new(Some(rules), registry),
         );
         matches!(outcome, RevealOutcome::Revealed { .. })
     }
 
     /// The slave's Limbo (`vt+0xD4`, `InfantryClass::Limbo @ 0x0051DF10`).
-    fn limbo_slave(&mut self, slave: u64, rules: &RuleSet) {
-        let _ = self.techno_limbo_with_rules(slave, rules);
+    fn limbo_slave(&mut self, slave: u64, rules: &RuleSet, registry: Option<&OverlayTypeRegistry>) {
+        let _ = self.techno_limbo_with_rules(slave, rules, registry);
     }
 
     /// `0x006AF650`: a new slave for the master's house, left in limbo with
     /// the master as its SlaveOwner, and the node back in state 0 with its
     /// timer at now for 0. A refused construction leaves the node lost; its
     /// expired timer retries on the next visit.
-    fn regrow_slave(&mut self, master: u64, node: &mut SlaveNode, rules: &RuleSet) {
+    fn regrow_slave(
+        &mut self,
+        master: u64,
+        node: &mut SlaveNode,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
         let Some((slave_type, owner, cell, z)) =
             self.substrate.entities.get(master).and_then(|m| {
                 let manager = m.slave_manager.as_ref()?;
@@ -1398,7 +1405,7 @@ impl Simulation {
         let Some(slave) = slave else {
             return;
         };
-        self.limbo_slave(slave, rules);
+        self.limbo_slave(slave, rules, registry);
         if let Some(entity) = self.substrate.entities.get_mut(slave) {
             entity.slave.owner = Some(master);
         }
@@ -1599,14 +1606,14 @@ impl Simulation {
             };
             entity.slave.owner = None;
             if entity.lifecycle.in_limbo {
-                self.slave_dies_inside(slave, killer, rules);
+                self.slave_dies_inside(slave, killer, rules, registry);
                 continue;
             }
             let Some(new_house) = new_house else {
                 self.slave_dies_unfreed(slave, rules, registry);
                 continue;
             };
-            self.change_owner_with_rules(slave, new_house, rules);
+            self.change_owner_with_rules(slave, new_house, rules, registry);
             self.reset_orders_to_guard(slave, rules);
             self.slave_cheers(slave, rules);
             first_freed.get_or_insert(slave);
@@ -1621,7 +1628,13 @@ impl Simulation {
 
     /// `vt+0xE0` (TechnoClass::RecordKill) for `killer`, then `vt+0xF8`
     /// (FootClass::UnInit).
-    fn slave_dies_inside(&mut self, slave: u64, killer: Option<u64>, rules: &RuleSet) {
+    fn slave_dies_inside(
+        &mut self,
+        slave: u64,
+        killer: Option<u64>,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
         let killer_owner = killer
             .and_then(|id| self.substrate.entities.get(id))
             .map(|entity| entity.owner());
@@ -1632,7 +1645,7 @@ impl Simulation {
             crate::sim::combat::KillCallback::Terminal,
             rules,
         );
-        self.uninit_with_context(slave, UninitContext::with_rules(rules));
+        self.uninit_with_context(slave, UninitContext::new(Some(rules), registry));
     }
 
     /// `vt+0x16C(&Strength, 0, C4Warhead, 0, 0, 0, 0)` (`0x006B0BDF..`).

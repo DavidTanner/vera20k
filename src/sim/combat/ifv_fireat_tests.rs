@@ -165,7 +165,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
             ),
             is_garrison: false,
         };
-        world_receiver::emit_admitted_fire(&mut world, &rules, shot, frame, &mut emitted);
+        world_receiver::emit_admitted_fire(&mut world, &rules, shot, frame, &mut emitted, None);
         let new_bullets: Vec<_> = world
             .projectiles
             .iter()

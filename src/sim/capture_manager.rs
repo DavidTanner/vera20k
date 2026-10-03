@@ -377,7 +377,7 @@ impl Simulation {
             .map(|manager| manager.victims().rev().collect())
             .unwrap_or_default();
         for victim in released {
-            self.free_unit(controller_id, victim, rules);
+            self.free_unit(controller_id, victim, rules, registry);
         }
         let (Some(controller_owner), Some(original_owner)) = (
             self.substrate
@@ -393,7 +393,7 @@ impl Simulation {
         };
         // 0x00471DB8: ChangeOwner(controller's house, 1). It refuses only an
         // unchanged house, which CanCapture already excluded.
-        self.change_owner_with_rules(target_id, controller_owner, rules);
+        self.change_owner_with_rules(target_id, controller_owner, rules, registry);
         if let Some(manager) = self
             .substrate
             .entities
@@ -555,6 +555,7 @@ impl Simulation {
         controller_id: u64,
         victim_id: u64,
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> bool {
         let Some(manager) = self
             .substrate
@@ -593,7 +594,7 @@ impl Simulation {
                     self.sound_events.push(event);
                 }
             }
-            self.change_owner_with_rules(victim_id, original_owner, rules);
+            self.change_owner_with_rules(victim_id, original_owner, rules, registry);
             // DecideUnitFate runs while `+0x2C0` still names the controller.
             // Back with its own house, the unit cannot join the controller's
             // team, so its fate needs no map overlays.
@@ -616,7 +617,12 @@ impl Simulation {
 
     /// `CaptureManagerClass::FreeAll @ 0x00472140`: every victim, newest node
     /// first.
-    pub(crate) fn free_all_captures(&mut self, controller_id: u64, rules: &RuleSet) {
+    pub(crate) fn free_all_captures(
+        &mut self,
+        controller_id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
         let victims: Vec<u64> = self
             .substrate
             .entities
@@ -625,7 +631,7 @@ impl Simulation {
             .map(|manager| manager.victims().rev().collect())
             .unwrap_or_default();
         for victim in victims {
-            self.free_unit(controller_id, victim, rules);
+            self.free_unit(controller_id, victim, rules, registry);
         }
     }
 

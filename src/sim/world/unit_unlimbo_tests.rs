@@ -888,7 +888,7 @@ fn retail_reused_unit_unlimbo_matches_original_stage_and_rng_tail() {
         assert_stage(&sim, id, &initial["stage_after"], name);
         assert_stage(&sim, id, &row["limbo"]["stage_before"], name);
         assert_eq!(
-            sim.techno_limbo_with_rules(id, &base_rules),
+            sim.techno_limbo_with_rules(id, &base_rules, Some(&registry)),
             super::ConcealOutcome::Concealed,
             "{name}: shared Limbo owner prepares the reused object"
         );

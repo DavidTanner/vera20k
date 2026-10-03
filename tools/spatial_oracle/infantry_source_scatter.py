@@ -32,13 +32,15 @@ MAP, TABLE, DUMMY = 0x87F7E8, 0xC00000, 0xABDC50
 BOUNDS = (16, -16, -16, 64, 64)
 
 
-def query(case, *, teleport_records=None, teleport_type_inputs=None):
+def query(case, *, teleport_records=None, teleport_type_inputs=None, teleport_overlay_inputs=None):
     teleport = bool(case.get('teleport_destination'))
     if teleport:
         assert case.get('live_entry') and case.get('live_setter')
         assert teleport_records is not None and len(teleport_records) == 42
         assert teleport_type_inputs is not None
         assert teleport_type_inputs['records'] == teleport_records
+    if case.get('overlays'):
+        assert teleport and teleport_overlay_inputs is not None
     u = Uc(UC_ARCH_X86, UC_MODE_32)
     load_image(u)
     u.mem_map(SCRATCH, 0xA0000)
@@ -153,12 +155,17 @@ def query(case, *, teleport_records=None, teleport_type_inputs=None):
 
     def cell_snapshot(coord):
         ptr = cell_pointer(coord)
-        return dict(coord=list(coord), pointer=hex(ptr),
-                    raw=[read32(ptr + 0x124), read32(ptr + 0x128)],
-                    owners=[read32(ptr + 0x54), read32(ptr + 0x58)],
-                    structural_flags=read32(ptr + 0x140),
-                    level=u.mem_read(ptr + 0x11B, 1)[0],
-                    slope=u.mem_read(ptr + 0x11C, 1)[0], land=read32(ptr + 0xEC))
+        state = dict(coord=list(coord), pointer=hex(ptr),
+                     raw=[read32(ptr + 0x124), read32(ptr + 0x128)],
+                     owners=[read32(ptr + 0x54), read32(ptr + 0x58)],
+                     structural_flags=read32(ptr + 0x140),
+                     level=u.mem_read(ptr + 0x11B, 1)[0],
+                     slope=u.mem_read(ptr + 0x11C, 1)[0], land=read32(ptr + 0xEC))
+        if case.get('overlays'):
+            state.update(overlay_id=struct.unpack('<i', u.mem_read(ptr + 0x44, 4))[0],
+                         overlay_data=u.mem_read(ptr + 0x11E, 1)[0],
+                         wall_owner=struct.unpack('<i', u.mem_read(ptr + 0x50, 4))[0])
+        return state
 
     def teleport_snapshot():
         nav = read32(ACTOR + 0x5A4)
@@ -200,6 +207,9 @@ def query(case, *, teleport_records=None, teleport_type_inputs=None):
         0x5B3570: ('commence', 0), 0x521B60: ('ready', 0),
         0x50B730: ('is_human', 0),
     }
+    if case.get('overlays'):
+        teleport_points.update({0x701120: ('is_armed', 0), 0x70E140: ('get_weapon', 1),
+                                0x70E1A0: ('get_primary', 0), 0x772AC0: ('weapon_can_destroy_wall', 0)})
 
     def observe_teleport(address, sp):
         for index in range(len(pending_native) - 1, -1, -1):
@@ -214,6 +224,10 @@ def query(case, *, teleport_records=None, teleport_type_inputs=None):
             raise AssertionError(('selected Cell request reached excluded native body', hex(address), phase))
         if address in (0x51B1DE, 0x7181F6, 0x719283, 0x718259):
             native_returns.append(dict(pc=hex(address), phase=phase, esp=hex(sp), eax=u.reg_read(UC_X86_REG_EAX)))
+        if case.get('overlays') and address in (0x51C17C, 0x51C193, 0x51C1BB, 0x51C1D7,
+                                                0x51C1E9, 0x51C205, 0x51C7D0):
+            native_trace.append(dict(kind='overlay_gate', pc=hex(address), phase=phase,
+                                     eax=u.reg_read(UC_X86_REG_EAX), state=teleport_snapshot()))
         if address not in teleport_points:
             return
         name, argc = teleport_points[address]
@@ -376,6 +390,30 @@ def query(case, *, teleport_records=None, teleport_type_inputs=None):
             u.mem_write(TYPE + offset, dwords(type_fields[key]))
         u.mem_write(TYPE + 0xE40, dwords(*type_fields['fire_frames']))
         u.mem_write(TYPE + 0x34C, bytes.fromhex(type_fields['locomotor_guid']))
+        if case.get('overlays'):
+            # Only these additive rows receive the independently native-read
+            # overlay/normal weapon context. Historical22 prestates stay exact.
+            table, overlay_base = SCRATCH + 0x98000, SCRATCH + 0x99000
+            u.mem_write(0xA83D84, dwords(table))
+            for index, (name, fields) in enumerate(teleport_overlay_inputs['fields'].items()):
+                ptr = overlay_base + index * 0x400
+                u.mem_write(ptr, bytes.fromhex(teleport_overlay_inputs['class_hex'][name]))
+                assert read32(ptr + 0x294) == fields['index']
+                u.mem_write(table + fields['index'] * 4, dwords(ptr))
+            for overlay in case['overlays']:
+                ptr = cell_pointer(overlay['cell'])
+                fields = teleport_overlay_inputs['fields'][overlay['name']]
+                u.mem_write(ptr + 0x44, dwords(fields['index']))
+                u.mem_write(ptr + 0x50, dwords(overlay['owner']))
+                u.mem_write(ptr + 0x11E, bytes([overlay['data']]))
+            weapon, warhead = SCRATCH + 0x9A000, SCRATCH + 0x9B000
+            u.mem_write(weapon, bytes.fromhex(teleport_overlay_inputs['weapon_class_hex']))
+            u.mem_write(warhead, bytes.fromhex(teleport_overlay_inputs['warhead_class_hex']))
+            u.mem_write(weapon + 0xAC, dwords(warhead))
+            u.mem_write(TYPE + 0x898, bytes.fromhex(teleport_overlay_inputs['primary_slot_hex']))
+            u.mem_write(TYPE + 0x898, dwords(weapon))
+            u.mem_write(TYPE + 0x808, dwords(teleport_overlay_inputs['weapon_count']))
+            u.mem_write(TYPE + 0xCD5, bytes([teleport_overlay_inputs['is_gattling']]))
         sequences = SCRATCH + 0x90000
         for index, record in enumerate(teleport_records):
             u.mem_write(sequences + index * 36, struct.pack('<9i', *record))
@@ -459,15 +497,21 @@ def query(case, *, teleport_records=None, teleport_type_inputs=None):
                                    trace=native_trace[trace_start:], returns=native_returns[ret_start:]))
         assert code_before == bytes(u.mem_read(0x401000, 0x3E0000))
         assert u.reg_read(UC_X86_REG_FPCW) == 0x0E7F
-        return dict(input=case, before=initial, after=teleport_snapshot(), boundaries=boundaries,
-                    rng_before=initial_rng, rng_after=rng(), startup=startup, constructor=constructor,
-                    human_input=human_input, initial_mark=initial_mark, type_fields=type_fields,
-                    class_slots={hex(slot): hex(read32(VT + slot))
-                                 for slot in (0x38, 0x48, 0xF0, 0xF4, 0x1AC, 0x480, 0x500, 0x558)},
-                    locomotor_interface_vtable=hex(read32(LOCO + 4)), locomotor_owner=hex(read32(LOCO + 0xC)),
-                    text_sha256=hashlib.sha256(code_before).hexdigest(), code_unchanged=True,
-                    original_infantry_vtable_sha256=hashlib.sha256(bytes(u.mem_read(VT, 0x600))).hexdigest(),
-                    fpcw=hex(u.reg_read(UC_X86_REG_FPCW)))
+        result = dict(input=case, before=initial, after=teleport_snapshot(), boundaries=boundaries,
+                      rng_before=initial_rng, rng_after=rng(), startup=startup, constructor=constructor,
+                      human_input=human_input, initial_mark=initial_mark, type_fields=type_fields,
+                      class_slots={hex(slot): hex(read32(VT + slot))
+                                   for slot in (0x38, 0x48, 0xF0, 0xF4, 0x1AC, 0x480, 0x500, 0x558)},
+                      locomotor_interface_vtable=hex(read32(LOCO + 4)), locomotor_owner=hex(read32(LOCO + 0xC)),
+                      text_sha256=hashlib.sha256(code_before).hexdigest(), code_unchanged=True,
+                      original_infantry_vtable_sha256=hashlib.sha256(bytes(u.mem_read(VT, 0x600))).hexdigest(),
+                      fpcw=hex(u.reg_read(UC_X86_REG_FPCW)))
+        if case.get('overlays'):
+            result['overlay_setup'] = dict(fields=teleport_overlay_inputs['fields'],
+                                           weapon=teleport_overlay_inputs['weapon'],
+                                           rookiestate=read32(ACTOR + 0x138),
+                                           registry=hex(read32(0xA83D84)))
+        return result
     if 'facing' in case:
         # Original Facing constructor and Set_Current; the null arm reads
         # Current when the physical coordinate is at its cell centre.

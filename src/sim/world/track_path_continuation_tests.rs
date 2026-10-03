@@ -1111,7 +1111,7 @@ fn owner_change_mid_track_stops_the_tank_at_its_track_end() {
         owner,
         crate::sim::house_state::HouseState::new(owner, 1, None, false, 0, 0),
     );
-    sim.change_owner_with_rules(id, owner, &rules);
+    sim.change_owner_with_rules(id, owner, &rules, Some(&registry));
     let e = sim.substrate.entities.get(id).unwrap();
     assert!(e.navigation.nav_com.is_none());
     assert!(e.drive_locomotion.as_ref().unwrap().destination.is_none());
@@ -1146,7 +1146,7 @@ fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
     order(&mut sim, &rules, id, (10, 16));
     sim.substrate.entities.get_mut(id).unwrap().attack_target = None;
     assert!(
-        sim.mission_restore_after_target_expiry(id, Some(&rules))
+        sim.mission_restore_after_target_expiry(id, Some(&rules), Some(&registry))
             .unwrap()
     );
     let e = sim.substrate.entities.get(id).unwrap();

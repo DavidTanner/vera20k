@@ -279,6 +279,7 @@ impl Simulation {
                         reason: UninitReason::Crush,
                     },
                     rules,
+                    registry,
                 );
             } else {
                 self.apply_lifecycle_request(LifecycleRequest::Uninit {

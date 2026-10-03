@@ -564,7 +564,7 @@ fn a_tower_going_offline_frees_its_captives() {
         .unwrap()
         .health
         .current = 0;
-    sim.visit_building_operational(tower, &rules);
+    sim.visit_building_operational(tower, &rules, None);
     assert_eq!(owner(&sim, gi), "Americans");
     assert!(victims(&sim, tower).is_empty());
 }
@@ -1243,7 +1243,7 @@ fn selling_a_psychic_tower_frees_its_captives() {
     let mut sim = sim(29);
     let tower = spawn(&mut sim, &rules, "YAPSYT", "YuriCountry", 20, 20);
     // A frame's operational visit, which the off edge compares against.
-    sim.visit_building_operational(tower, &rules);
+    sim.visit_building_operational(tower, &rules, None);
     assert!(
         sim.substrate
             .entities
@@ -1331,7 +1331,7 @@ fn capture_and_release_drop_the_previous_order() {
         anchor_rx: 11,
         anchor_ry: 10,
     });
-    assert!(sim.free_unit(yuri, gi, &rules));
+    assert!(sim.free_unit(yuri, gi, &rules, None));
     assert_eq!(owner(&sim, gi), "Americans");
     assert!(
         sim.substrate

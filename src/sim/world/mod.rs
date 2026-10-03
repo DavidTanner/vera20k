@@ -4545,7 +4545,7 @@ impl Simulation {
     /// requested it.
     #[cfg(test)]
     pub(crate) fn change_owner(&mut self, stable_id: u64, new_owner: InternedId) {
-        self.change_owner_impl(stable_id, new_owner, None);
+        self.change_owner_impl(stable_id, new_owner, None, None);
     }
 
     pub(crate) fn change_owner_with_rules(
@@ -4553,8 +4553,9 @@ impl Simulation {
         stable_id: u64,
         new_owner: InternedId,
         rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
-        self.change_owner_impl(stable_id, new_owner, Some(rules));
+        self.change_owner_impl(stable_id, new_owner, Some(rules), registry);
     }
 
     fn change_owner_impl(
@@ -4562,6 +4563,7 @@ impl Simulation {
         stable_id: u64,
         new_owner: InternedId,
         rules: Option<&RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some((old_owner, category, has_spawn_manager, build_const_eligible)) =
             self.substrate.entities.get(stable_id).map(|entity| {
@@ -4747,7 +4749,7 @@ impl Simulation {
         //701674 Mark(UP),70D4A0 detach and701691 Mark(DOWN) all precede
         //the owner store. PlaceDown's Cell discovery therefore observes the
         //old House and can dirty its radar as well as its power.
-        let mark_context = rules.map_or_else(UninitContext::default, UninitContext::with_rules);
+        let mark_context = UninitContext::new(rules, registry);
         if on_map {
             self.unmark_entity_remove(stable_id, mark_context);
         }
@@ -4757,7 +4759,7 @@ impl Simulation {
         // garrison transfer both come through here, so a squad that was firing
         // at a building stops the instant the building changes hands instead of
         // shooting at what is now its own structure.
-        self.stop_all_targeting_on_detach(stable_id, rules);
+        self.stop_all_targeting_on_detach(stable_id, rules, registry);
         if on_map {
             self.mark_entity_put(stable_id, mark_context);
         }
@@ -6426,7 +6428,11 @@ impl Simulation {
             // Override inline (`TechnoClass::ReceiveDamage 0x00702A43`).
             passenger_ownership_changed =
                 passenger::tick_passenger_system(self, rules, overlay_registry);
-            self.tick_order_intents_post_combat_except(Some(rules), &tube_turn_owned_ids);
+            self.tick_order_intents_post_combat_except(
+                Some(rules),
+                &tube_turn_owned_ids,
+                overlay_registry,
+            );
             // `LogicClass__PerTickUpdate @ 0x0055AFB0` calls
             // `MapClass__UpdateCrateRegenTimers @ 0x0056BBE0` at `0x0055B65A`,
             // between `AlphaShapeClass::PurgeDisabled` and the Tactical,

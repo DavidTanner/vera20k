@@ -309,7 +309,7 @@ fn settled_repair_native_health_sample_factory_cadence_radar_and_later_advice() 
                     if row["prior_power_dirty_at_repair"] == true {
                         sim.invalidate_house_power(owner, false);
                     }
-                    production::update_repair_and_power(&mut sim, &rules, PLANT);
+                    production::update_repair_and_power(&mut sim, &rules, PLANT, None);
                 }
                 "actual_global_factory_then_house_prefix" => {
                     production::revalidate_and_step_factories(&mut sim, &rules);

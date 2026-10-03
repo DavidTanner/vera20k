@@ -1621,7 +1621,7 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
         // Mark(UP) unlinks either blocker, and the tank's clears its 0x20.
         // The infantryman's sub-cell bit is left to his Limbo: `FootClass::
         // Limbo` (`0x004DB260`) has Walk release it through Infantry vt+0xF4.
-        let _ = sim.techno_limbo_with_rules(blocker_id, &rules);
+        let _ = sim.techno_limbo_with_rules(blocker_id, &rules, None);
         assert!(
             !sim.substrate.occupancy.contains_entity(13, 11, blocker_id),
             "Limbo must remove the blocker before placement becomes legal"
@@ -3206,13 +3206,13 @@ fn sell_back_admits_by_control_buildup_and_firestorm_wall() {
     for order in [SellOrder::Player, SellOrder::Computer] {
         let mut sim = scene("GAPOWR");
         assert!(!can_sell_building(&sim, &rules, 1));
-        assert!(!sell_back(&mut sim, &rules, 1, order), "{order:?}");
+        assert!(!sell_back(&mut sim, &rules, 1, order, None), "{order:?}");
         assert!(!selling(&sim));
         assert_eq!(clicks(&sim), 0);
 
         let mut sim = scene("GAFWLL");
         assert!(can_sell_building(&sim, &rules, 1));
-        assert!(sell_back(&mut sim, &rules, 1, order), "{order:?}");
+        assert!(sell_back(&mut sim, &rules, 1, order, None), "{order:?}");
         sim.flush_pending_delete();
         assert!(!sim.substrate.entities.contains(1), "{order:?}: removed");
         assert_eq!(clicks(&sim), 0);
@@ -3222,7 +3222,7 @@ fn sell_back_admits_by_control_buildup_and_firestorm_wall() {
     rules.set_buildup_control_for_test("GAPOWR", [0, 25, 2]);
     let mut sim = scene("GAPOWR");
     assert!(can_sell_building(&sim, &rules, 1));
-    assert!(sell_back(&mut sim, &rules, 1, SellOrder::Player));
+    assert!(sell_back(&mut sim, &rules, 1, SellOrder::Player, None));
     assert!(selling(&sim));
     assert!(!can_sell_building(&sim, &rules, 1));
     let sale = sim
@@ -3232,7 +3232,7 @@ fn sell_back_admits_by_control_buildup_and_firestorm_wall() {
         .unwrap()
         .mission
         .dispatch_timer();
-    assert!(sell_back(&mut sim, &rules, 1, SellOrder::Player));
+    assert!(sell_back(&mut sim, &rules, 1, SellOrder::Player, None));
     assert_eq!(clicks(&sim), 2, "the repeated order clicks");
     assert_eq!(
         sim.substrate
@@ -3244,11 +3244,11 @@ fn sell_back_admits_by_control_buildup_and_firestorm_wall() {
         sale,
         "the sale is not restarted"
     );
-    assert!(!sell_back(&mut sim, &rules, 1, SellOrder::Computer));
+    assert!(!sell_back(&mut sim, &rules, 1, SellOrder::Computer, None));
     assert_eq!(clicks(&sim), 2);
 
     let mut sim = scene("GAPOWR");
-    assert!(sell_back(&mut sim, &rules, 1, SellOrder::Computer));
+    assert!(sell_back(&mut sim, &rules, 1, SellOrder::Computer, None));
     assert!(selling(&sim));
     assert_eq!(clicks(&sim), 1);
 
@@ -3261,11 +3261,11 @@ fn sell_back_admits_by_control_buildup_and_firestorm_wall() {
         timer: crate::sim::timer::CdTimer::started(0, 100),
         source_entity_id: None,
     });
-    assert!(!sell_back(&mut sim, &rules, 1, SellOrder::Computer));
+    assert!(!sell_back(&mut sim, &rules, 1, SellOrder::Computer, None));
     assert!(!selling(&sim));
     assert_eq!(clicks(&sim), 0);
     assert!(can_sell_building(&sim, &rules, 1));
-    assert!(sell_back(&mut sim, &rules, 1, SellOrder::Player));
+    assert!(sell_back(&mut sim, &rules, 1, SellOrder::Player, None));
     assert!(selling(&sim));
     assert_eq!(clicks(&sim), 1);
 }

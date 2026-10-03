@@ -194,7 +194,7 @@ fn crash_matches_native_rows() {
         let mut fixture_input = input.clone();
         fixture_input["crashing"] = serde_json::json!(0);
         let (mut sim, rules) = fixture(&fixture_input);
-        let returned = sim.foot_crash(1, None, &rules);
+        let returned = sim.foot_crash(1, None, &rules, None);
         let name = input["name"].as_str().unwrap();
         assert_eq!(returned, row["returned"].as_bool().unwrap(), "{name}");
         let entity = sim.substrate.entities.get(1).unwrap();
@@ -262,7 +262,7 @@ fn live_null_crash_books_one_loss_through_impact_and_retirement() {
         .filter(|call| call["call"] == "record_kill")
         .count() as u32;
     assert_eq!(callbacks, 1);
-    assert!(sim.foot_crash(1, None, &rules));
+    assert!(sim.foot_crash(1, None, &rules, None));
     assert_eq!(sim.houses[&owner].stats.units_lost(), callbacks);
 
     let mut reached_impact = false;

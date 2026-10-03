@@ -348,7 +348,13 @@ fn find_nearby_passable_for(
 /// `Set_Destination(cell, 1)` for an object the handler wants driven — the
 /// production representation is the same pathed move `Command::Move` issues.
 /// Without a path grid (headless fixtures) nothing moves.
-fn issue_pathed_move(sim: &mut Simulation, rules: &RuleSet, id: u64, dest: (u16, u16)) {
+fn issue_pathed_move(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    dest: (u16, u16),
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     let Some(info) = sim.resolve_move_info(id, Some(rules)) else {
         return;
     };
@@ -363,6 +369,7 @@ fn issue_pathed_move(sim: &mut Simulation, rules: &RuleSet, id: u64, dest: (u16,
             object_destination: None,
         },
         Some(rules),
+        overlay_registry,
     );
 }
 
@@ -423,10 +430,16 @@ enum EjectOutcome {
 /// The single draw here is therefore the whole native budget. The infantry
 /// placement writes only the coordinate (`0x0073DA83`), leaving the exit
 /// cell in `[ESP+0x14]` for the relaxed-pass destination.
-fn eject_head_passenger(sim: &mut Simulation, rules: &RuleSet, transport_id: u64) -> EjectOutcome {
+fn eject_head_passenger(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    transport_id: u64,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> EjectOutcome {
     match depart_cargo_head(
         sim,
         rules,
+        overlay_registry,
         transport_id,
         DepartureRoute::Vehicle,
         |sim, pax_id| {
@@ -568,7 +581,7 @@ fn eject_head_passenger(sim: &mut Simulation, rules: &RuleSet, transport_id: u64
                 DockTeardown::None,
                 Some(rules),
             );
-            issue_pathed_move(sim, rules, pax_id, dest);
+            issue_pathed_move(sim, rules, pax_id, dest, overlay_registry);
 
             if let Some(sound) = leave_sound {
                 let sound_id = sim.interner.intern(&sound);
@@ -589,7 +602,12 @@ fn eject_head_passenger(sim: &mut Simulation, rules: &RuleSet, transport_id: u64
 /// The `Passengers > 0` branch of `UnitClass::Mission_Unload @ 0x0073D630`.
 ///
 /// Returns the handler's dispatch delay; the caller writes the epilogue.
-pub(crate) fn unit_mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
+pub(crate) fn unit_mission_unload(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> i32 {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
         return unload_epilogue(sim, rules, id);
@@ -621,7 +639,7 @@ pub(crate) fn unit_mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64
                 {
                     // `Set_Destination` only — the committed selector stays
                     // Unload and state 0 re-runs once the drive has ended.
-                    issue_pathed_move(sim, rules, id, cell);
+                    issue_pathed_move(sim, rules, id, cell, overlay_registry);
                 }
                 return WAIT_MOVING_FRAMES;
             }
@@ -659,7 +677,7 @@ pub(crate) fn unit_mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64
         }
         STATE_EJECT => {
             if cargo_count(entity) > entity.transport_unload_keep_count {
-                let _ = eject_head_passenger(sim, rules, id);
+                let _ = eject_head_passenger(sim, rules, id, overlay_registry);
             } else if let Some(entity) = sim.substrate.entities.get_mut(id) {
                 entity.mission.set_handler_state(STATE_DONE);
             }
@@ -903,6 +921,7 @@ fn eject_from_aircraft(
     let ejected = depart_cargo_head(
         sim,
         rules,
+        overlay_registry,
         aircraft_id,
         DepartureRoute::LandedAircraft,
         |sim, pax_id| {
@@ -980,7 +999,7 @@ fn eject_from_aircraft(
                 Some(rules),
             );
             if let Some(dest) = scan_cell {
-                issue_pathed_move(sim, rules, pax_id, dest);
+                issue_pathed_move(sim, rules, pax_id, dest, overlay_registry);
             }
             Ok(())
         },

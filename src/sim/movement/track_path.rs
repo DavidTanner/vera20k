@@ -733,7 +733,7 @@ impl Simulation {
             super::movement_commands::schedule_track_process(actor, cell(destination), speed);
         } else if let Some((target, coord)) = nav {
             if class {
-                self.finish_class_destination(id, kind, cell(coord), speed, rules);
+                self.finish_class_destination(id, kind, cell(coord), speed, rules, registry);
                 return;
             }
             let object = (!matches!(target, NavTargetRef::Cell { .. })).then_some((target, coord));
@@ -750,7 +750,7 @@ impl Simulation {
         {
             actor.navigation.nav_queue.remove(0);
             if class {
-                self.finish_class_destination(id, kind, (rx, ry), speed, rules);
+                self.finish_class_destination(id, kind, (rx, ry), speed, rules, registry);
                 return;
             }
             super::navcom::set_destination_internal_cell(
@@ -836,12 +836,13 @@ impl Simulation {
         cell: (u16, u16),
         speed: SimFixed,
         rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
     ) {
         if let Some(actor) = self.substrate.entities.get_mut(id) {
             super::navcom::foot_stop_moving(actor);
         }
         if kind == LocomotorKind::Teleport {
-            self.teleport_destination(id, cell, rules);
+            self.teleport_destination(id, cell, rules, registry);
         } else {
             self.issue_air_cell_destination(id, cell, speed, rules);
         }

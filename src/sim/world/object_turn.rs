@@ -963,7 +963,7 @@ impl Simulation {
             let LifecycleRequest::Uninit { stable_id, .. } = request;
             sim.release_move_sound(stable_id);
             if let Some(rules) = rules {
-                sim.apply_lifecycle_request_with_rules(request, rules);
+                sim.apply_lifecycle_request_with_rules(request, rules, overlay_registry);
             } else {
                 sim.apply_lifecycle_request(request);
             }

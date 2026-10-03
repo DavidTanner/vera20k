@@ -94,6 +94,7 @@ pub fn try_drop(
     rules: &RuleSet,
     aircraft_id: u64,
     payload_count_pre_dec: u8,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> DropResult {
     // 1. Snapshot aircraft state (release borrow before mutating).
     // Capture the aircraft's full lepton position (cell + sub-cell) so the
@@ -126,6 +127,7 @@ pub fn try_drop(
     let result = depart_cargo_head(
         sim,
         rules,
+        registry,
         aircraft_id,
         DepartureRoute::Paradrop,
         |sim, passenger_id| {
@@ -542,7 +544,7 @@ mod tests {
         insert_loaded_paradrop_pair(&mut sim, aircraft_id, passenger_id);
 
         assert_eq!(
-            try_drop(&mut sim, &rules, aircraft_id, 4),
+            try_drop(&mut sim, &rules, aircraft_id, 4, None),
             DropResult::Success
         );
         let parachute = sim.interner.get("PARACH").expect("type interned");
@@ -618,7 +620,7 @@ mod tests {
         plane.locomotor = Some(locomotor);
 
         assert_eq!(
-            try_drop(&mut sim, &rules, aircraft_id, 4),
+            try_drop(&mut sim, &rules, aircraft_id, 4, None),
             DropResult::Success
         );
         let passenger = sim.substrate.entities.get(passenger_id).unwrap();
@@ -659,7 +661,7 @@ mod tests {
                 64, 64, cells,
             ));
             insert_loaded_paradrop_pair(&mut sim, 1, 2);
-            let result = try_drop(&mut sim, &rules, 1, 4);
+            let result = try_drop(&mut sim, &rules, 1, 4, None);
             let passenger = sim.substrate.entities.get(2).unwrap();
             (
                 result,
@@ -684,7 +686,7 @@ mod tests {
         let passenger_id = 2;
         insert_loaded_paradrop_pair(&mut sim, aircraft_id, passenger_id);
 
-        let result = try_drop(&mut sim, &rules, aircraft_id, 4);
+        let result = try_drop(&mut sim, &rules, aircraft_id, 4, None);
 
         assert_eq!(result, DropResult::Success);
         assert_eq!(
@@ -755,7 +757,7 @@ mod tests {
             assert!(matches!(sim.reveal(id), RevealOutcome::Revealed { .. }));
         }
 
-        let result = try_drop(&mut sim, &rules, aircraft_id, 4);
+        let result = try_drop(&mut sim, &rules, aircraft_id, 4, None);
 
         assert_eq!(result, DropResult::ImpassableRetry);
         assert!(
@@ -816,7 +818,7 @@ mod tests {
         peer.mark_live_contact_with(missing_passenger_id);
         sim.substrate.entities.insert(peer);
 
-        let result = try_drop(&mut sim, &rules, aircraft_id, 1);
+        let result = try_drop(&mut sim, &rules, aircraft_id, 1, None);
 
         assert_eq!(result, DropResult::AttachFailedRetry);
         assert!(
@@ -881,7 +883,7 @@ mod tests {
             .unwrap();
             let rng_before = sim.scenario_rng.state();
             assert_eq!(
-                try_drop(&mut sim, &rules, 1, 4),
+                try_drop(&mut sim, &rules, 1, 4, None),
                 DropResult::AttachFailedRetry
             );
             let aircraft = sim.substrate.entities.get(1).unwrap();
@@ -925,7 +927,7 @@ mod tests {
                     .unwrap()
                     .lifecycle
                     .cell_marked = false;
-                assert_eq!(try_drop(&mut sim, &rules, 1, 4), DropResult::Success);
+                assert_eq!(try_drop(&mut sim, &rules, 1, 4, None), DropResult::Success);
                 let cargo = sim
                     .substrate
                     .entities

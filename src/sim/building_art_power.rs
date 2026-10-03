@@ -379,7 +379,7 @@ mod tests {
             sim.anim(anim).unwrap().runtime.paused,
             "4467D0 initial pause"
         );
-        sim.visit_building_operational(id, &rules);
+        sim.visit_building_operational(id, &rules, None);
         assert!(!sim.anim(anim).unwrap().runtime.paused);
         sim.substrate
             .anims
@@ -395,12 +395,12 @@ mod tests {
             .frame_timer = CdTimer::started(0, 3);
         sim.power_states.entry(owner).or_default().total_drain = 100;
         sim.session.binary_frame = 20;
-        sim.visit_building_operational(id, &rules);
+        sim.visit_building_operational(id, &rules, None);
         sim.visit_anim(anim, &rules, None);
         assert_eq!(sim.anim(anim).unwrap().runtime.current_frame, 0);
         assert_eq!(sim.anim(anim).unwrap().runtime.frame_timer.start_frame(), 0);
         sim.power_states.get_mut(&owner).unwrap().total_output = 100;
-        sim.visit_building_operational(id, &rules);
+        sim.visit_building_operational(id, &rules, None);
         sim.visit_anim(anim, &rules, None);
         assert_eq!(sim.anim(anim).unwrap().runtime.current_frame, 1);
         assert_eq!(
@@ -466,7 +466,7 @@ mod tests {
                 sim.session.binary_frame,
                 i["outage"].as_u64().unwrap() as u32,
             );
-            sim.visit_building_operational(id, &rules);
+            sim.visit_building_operational(id, &rules, None);
             let entity = sim.entities().get(id).unwrap();
             assert_eq!(
                 entity.building_last_operational,

@@ -1099,7 +1099,7 @@ mod tests {
         assert_eq!(radius, 512);
 
         assert_eq!(
-            sim.techno_limbo_with_rules(second, &rules),
+            sim.techno_limbo_with_rules(second, &rules, None),
             lifecycle::ConcealOutcome::Concealed
         );
         // Both entries are alive/on-map at Building445DA6. The unoccupied
@@ -1111,7 +1111,7 @@ mod tests {
             .unwrap()
             .set_base_center((14, 14));
         assert_eq!(
-            sim.techno_limbo_with_rules(second, &rules),
+            sim.techno_limbo_with_rules(second, &rules, None),
             lifecycle::ConcealOutcome::AlreadyConcealed
         );
         assert_eq!(geometry(&sim, owner), (Some((14, 14)), 512));
@@ -1142,7 +1142,7 @@ mod tests {
         let second = sim
             .spawn_object("SECOND", "Americans", 13, 9, 0, &rules)
             .unwrap();
-        sim.change_owner_with_rules(first, new, &rules);
+        sim.change_owner_with_rules(first, new, &rules, None);
         assert_eq!(sim.houses[&old].tracking.buildings(), 1);
         assert_eq!(sim.houses[&new].tracking.buildings(), 1);
         assert_eq!(sim.houses[&old].base_projection.buildings(), [second]);
@@ -1287,8 +1287,8 @@ mod tests {
         );
         // Restore leaves geometry historical. The NEXT native boundary must
         // produce the same publication and list cleanup on either continuation.
-        sim.techno_limbo_with_rules(second, &rules);
-        restored.techno_limbo_with_rules(second, &rules);
+        sim.techno_limbo_with_rules(second, &rules, None);
+        restored.techno_limbo_with_rules(second, &rules, None);
         assert_eq!(geometry(&restored, owner), geometry(&sim, owner));
         assert_eq!(restored.state_hash(), sim.state_hash());
     }
@@ -1388,7 +1388,7 @@ mod tests {
             [plant]
         );
         assert!(plant_fold(&sim));
-        sim.change_owner_with_rules(plant, allies, &rules);
+        sim.change_owner_with_rules(plant, allies, &rules, None);
         assert_eq!(costs(&sim), (675, 450));
         assert!(
             sim.houses[&soviets]

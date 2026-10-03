@@ -173,17 +173,17 @@ pub(crate) fn gap_operational_power_loss_views() -> Vec<(
     refresh(&mut sim, &rules); // original reveal
     insert(&mut sim, 20, first, "GAGAP", 10, 12);
     power(&mut sim, &rules);
-    sim.visit_building_operational(20, &rules); // gap
-    sim.techno_limbo_with_rules(10, &rules); // leave, with its stored sight
+    sim.visit_building_operational(20, &rules, None); // gap
+    sim.techno_limbo_with_rules(10, &rules, None); // leave, with its stored sight
     insert(&mut sim, 30, last, "GAGAP", 14, 12);
     power(&mut sim, &rules);
-    sim.visit_building_operational(30, &rules); // second gap
+    sim.visit_building_operational(30, &rules, None); // second gap
     assert!(matches!(sim.reveal(10), RevealOutcome::Revealed { .. }));
     refresh(&mut sim, &rules); // real return, not a raw counter assignment
     damage(&mut sim, &rules, 40, 75);
     assert_eq!(sim.substrate.entities.get(40).unwrap().health.current, 25);
     power(&mut sim, &rules);
-    sim.visit_building_operational(20, &rules); // remove first gap
+    sim.visit_building_operational(20, &rules, None); // remove first gap
     sim.fog.flush_pending_gap_conceal(120);
     assert!(!sim.fog.is_cell_revealed(viewer, 12, 12));
 
@@ -292,7 +292,7 @@ fn gap_operational_first_visit_creates_viewers_and_house_is_passive() {
 fn gap_operational_spy_sat_rechecks_live_candidates_per_viewer() {
     let (mut sim, rules, a, owner, b) = fixture();
     insert(&mut sim, 1, owner, "GAGAP", 12, 12);
-    sim.visit_building_operational(1, &rules);
+    sim.visit_building_operational(1, &rules, None);
     power(&mut sim, &rules); // newly low, before another Building turn
     insert(&mut sim, 2, a, "GASPYSAT", 1, 1);
     sim.reconcile_active_vision_structures(&rules);
@@ -333,8 +333,8 @@ fn gap_operational_owner_change_reveals_sight_before_new_gap_and_death_removes()
     let (mut sim, rules, a, owner, _) = fixture();
     insert(&mut sim, 1, owner, "GAGAP", 12, 12);
     refresh(&mut sim, &rules);
-    sim.visit_building_operational(1, &rules);
-    sim.change_owner_with_rules(1, a, &rules);
+    sim.visit_building_operational(1, &rules, None);
+    sim.change_owner_with_rules(1, a, &rules, None);
     assert!(sim.fog.is_cell_visible(a, 12, 12));
     assert!(sim.fog.is_cell_revealed(a, 12, 12));
     assert!(sim.fog.gap_sources[&a].is_empty());
@@ -357,7 +357,7 @@ fn gap_operational_events_invalidate_map_reveal_latch_including_friendly_reentry
     crate::sim::scenario_bootstrap::apply_launch_shroud_option(&mut sim, Some("Americans"));
     assert!(sim.fog.whole_map_revealed_owners.contains(&viewer));
     insert(&mut sim, 1, owner, "GAGAP", 12, 12);
-    sim.visit_building_operational(1, &rules);
+    sim.visit_building_operational(1, &rules, None);
     assert!(!sim.fog.whole_map_revealed_owners.contains(&viewer));
     assert!(!sim.fog.is_cell_revealed(viewer, 12, 12));
     power(&mut sim, &rules); // low power, but no Building turn has removed it
@@ -374,7 +374,7 @@ fn gap_operational_events_invalidate_map_reveal_latch_including_friendly_reentry
     sim.session.game_options.shroud = false;
     crate::sim::scenario_bootstrap::apply_launch_shroud_option(&mut sim, Some("Americans"));
     insert(&mut sim, 1, viewer, "GAGAP", 12, 12);
-    sim.visit_building_operational(1, &rules);
+    sim.visit_building_operational(1, &rules, None);
     assert!(
         !sim.fog.whole_map_revealed_owners.contains(&viewer),
         "friendly admitted add clears240 without a hostile receipt"

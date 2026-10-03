@@ -258,7 +258,14 @@ impl CombatStrike<'_, '_> {
         let id = self.id();
         let boundary = FireCommitBoundary::capture(self.out);
         if let Some((_, Some(shot))) = live_shot(self.world, self.rules, id) {
-            emit_admitted_fire(self.world, self.rules, shot, self.binary_frame, self.out);
+            emit_admitted_fire(
+                self.world,
+                self.rules,
+                shot,
+                self.binary_frame,
+                self.out,
+                self.overlay_registry,
+            );
         }
         boundary.commit(
             self.world,

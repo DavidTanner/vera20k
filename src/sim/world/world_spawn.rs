@@ -16,6 +16,7 @@ use super::{
     PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, SimSoundEvent, Simulation,
 };
 use crate::map::entities::{EntityCategory, MapEntity};
+use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::object_type::{ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
@@ -1830,8 +1831,8 @@ impl Simulation {
         // 0x00739956: a Slave Miner's manager moves to its refinery (the
         // hand-off 0x006B0D10, then SetOwner 0x006AF580) before the unit
         // leaves; the refinery's own fresh slaves are freed.
-        self.transfer_slave_manager(stable_id, new_sid, true, rules, None);
-        self.uninit_with_rules(stable_id, rules);
+        self.transfer_slave_manager(stable_id, new_sid, true, rules, registry);
+        self.uninit_with_context(stable_id, super::UninitContext::new(Some(rules), registry));
 
         if let Some((country_name, side_index, difficulty, tech_level, _)) = recalc_context {
             // The new Building's committed north-west anchor is the native
@@ -1887,9 +1888,20 @@ impl Simulation {
     /// that can undeploy takes `Sell_Back(-1)`, and its Selling mission packs
     /// it up and converts it into its `UndeploysInto=` unit
     /// ([`Self::finish_undeploy`]).
-    pub(crate) fn undeploy_building(&mut self, stable_id: u64, rules: &RuleSet) -> bool {
+    pub(crate) fn undeploy_building(
+        &mut self,
+        stable_id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
         self.can_undeploy_building_runtime(stable_id, rules)
-            && production::sell_back(self, rules, stable_id, production::SellOrder::Undeploy)
+            && production::sell_back(
+                self,
+                rules,
+                stable_id,
+                production::SellOrder::Undeploy,
+                registry,
+            )
     }
 
     /// `BuildingClass::Mission_Selling`'s UndeploysInto conversion (`0x00449CEA`), on
@@ -1971,7 +1983,10 @@ impl Simulation {
             )
             .expect("fresh Techno constructor initialization cannot fail")
         else {
-            self.uninit_with_rules(sid, rules);
+            self.uninit_with_context(
+                sid,
+                super::UninitContext::new(Some(rules), overlay_registry),
+            );
             return;
         };
         let (new_sid, position) = self.store_with_constructor_managers(unit, Some(rules));
@@ -1990,7 +2005,7 @@ impl Simulation {
             })
             .map(|(id, _)| id)
             .collect();
-        let _ = self.techno_limbo_with_rules(sid, rules);
+        let _ = self.techno_limbo_with_rules(sid, rules, overlay_registry);
         let (new_sid, outcome) = self.unlimbo_constructed_parent(
             new_sid,
             position,
@@ -2000,7 +2015,10 @@ impl Simulation {
         );
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
             self.discard_constructed_limbo(new_sid, Some(rules));
-            self.uninit_with_rules(sid, rules);
+            self.uninit_with_context(
+                sid,
+                super::UninitContext::new(Some(rules), overlay_registry),
+            );
             return;
         }
         self.initialize_cloak_after_unlimbo(new_sid, rules);
@@ -2047,7 +2065,10 @@ impl Simulation {
                 );
             }
         }
-        self.uninit_with_rules(sid, rules);
+        self.uninit_with_context(
+            sid,
+            super::UninitContext::new(Some(rules), overlay_registry),
+        );
     }
 
     pub(crate) fn should_show_undeploy_building_command(

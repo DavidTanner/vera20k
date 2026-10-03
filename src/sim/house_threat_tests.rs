@@ -114,7 +114,7 @@ fn threat(sim: &Simulation, owner: &str, cell: (i16, i16)) -> i32 {
 
 #[test]
 fn admitted_unlimbo_publishes_once_and_refusals_preserve_native_uninitialized_domain() {
-    let (mut sim, rules, _) = fixture(7);
+    let (mut sim, rules, registry) = fixture(7);
     let id = sim
         .construct_object_limbo_at_height("MTNK", "Americans", 13, 15, 0, 0, &rules)
         .unwrap();
@@ -174,7 +174,7 @@ fn admitted_unlimbo_publishes_once_and_refusals_preserve_native_uninitialized_do
     assert_eq!(threat(&sim, "Russians", (13, 15)), 7);
     assert_eq!(sim.rng_state(), rng, "threat publication draws no RNG");
     assert_eq!(
-        sim.techno_limbo_with_rules(id, &rules),
+        sim.techno_limbo_with_rules(id, &rules, Some(&registry)),
         ConcealOutcome::Concealed
     );
     assert_eq!(
@@ -192,7 +192,7 @@ fn admitted_unlimbo_publishes_once_and_refusals_preserve_native_uninitialized_do
             .all(|value| *value == 0)
     }));
     assert_eq!(
-        sim.techno_limbo_with_rules(id, &rules),
+        sim.techno_limbo_with_rules(id, &rules, Some(&registry)),
         ConcealOutcome::AlreadyConcealed
     );
 }
@@ -269,7 +269,7 @@ fn foot_bucket_transition_uses_old_history_then_refreshes_cached_live_threat() {
     );
     assert_eq!(threat(&sim, "Russians", (16, 15)), 100);
     assert_eq!(
-        sim.techno_limbo_with_rules(id, &changed_rules),
+        sim.techno_limbo_with_rules(id, &changed_rules, Some(&registry)),
         ConcealOutcome::Concealed
     );
     assert!(sim.houses.values().all(|house| {
@@ -286,7 +286,7 @@ fn owner_transfer_removes_old_contribution_before_recomputing_for_new_house() {
     let id = actor(&mut sim, &rules, (13, 15));
     let russians = sim.interner.get("Russians").unwrap();
     let rng = sim.rng_state();
-    sim.change_owner_with_rules(id, russians, &rules);
+    sim.change_owner_with_rules(id, russians, &rules, None);
     assert_eq!(
         sim.substrate
             .entities

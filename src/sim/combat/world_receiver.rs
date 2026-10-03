@@ -705,7 +705,7 @@ pub(crate) fn commit_entities(
         if reached_exact_zero && postmortem_candidate.is_none() && callbacks_enabled(world) {
             world.object_destroy_callback(
                 target_id,
-                crate::sim::world::UninitContext::with_rules(rules),
+                crate::sim::world::UninitContext::new(Some(rules), overlay_registry),
             );
         }
         if postmortem_candidate.is_some() {
@@ -1188,7 +1188,7 @@ pub(crate) fn handle_death(
             // `0x00702112`: the death arm frees a controller's captives before
             // its death sounds (their fate draws precede the debris draws).
             if callbacks_enabled(world) {
-                world.free_all_captures(dead_id, rules);
+                world.free_all_captures(dead_id, rules, overlay_registry);
             }
             let type_id_str = world.interner.resolve(type_id);
             if let Some(obj) = rules.object(type_id_str) {
@@ -1208,7 +1208,7 @@ pub(crate) fn handle_death(
                 if callbacks_enabled(world) {
                     world.techno_death_stun(
                         dead_id,
-                        crate::sim::world::UninitContext::with_rules(rules),
+                        crate::sim::world::UninitContext::new(Some(rules), overlay_registry),
                     );
                 }
                 // gamemd-derived: the debris block of
@@ -1251,7 +1251,7 @@ pub(crate) fn handle_death(
                 let explodes = death_arm_explodes(rules, obj, veterancy, current_weapon_number);
                 if explodes && callbacks_enabled(world) {
                     let attacker = killing_attacker(world, damage_events, dead_id);
-                    world.kill_passengers(dead_id, attacker, rules);
+                    world.kill_passengers(dead_id, attacker, rules, overlay_registry);
                 }
                 // `Fire_Death_Weapon` fires the object's GetCurrentWeapon
                 // (vtable `+0x3F4`, `0x0070D6C6`).
@@ -1677,13 +1677,17 @@ fn finish_concrete_death(
             dead_id,
             killing_attacker(world, damage_events, dead_id),
             rules,
+            overlay_registry,
         )
     {
         // `AircraftClass::ReceiveDamage` (`0x00416694..0x004166A3`): an
         // airborne aircraft crashes instead of its UnInit. It stays alive and
         // represented, with Health 0, until its fall's impact.
         effects.despawned_ids.push(dead_id);
-    } else if crashable && callbacks_enabled(world) && world.foot_crash(dead_id, None, rules) {
+    } else if crashable
+        && callbacks_enabled(world)
+        && world.foot_crash(dead_id, None, rules, overlay_registry)
+    {
         // `UnitClass::ReceiveDamage` (`0x00738457..0x00738475`): an airborne
         // `Crashable=` unit crashes (`Crash(0)`, no attacker) instead of its
         // UnInit, and falls to its impact (a Jumpjet: `jumpjet_crash_impact`).
@@ -1833,7 +1837,7 @@ fn run_special_detonation_arm(
                 SpecialArmTarget::Cell => crate::sim::temporal::TemporalShotTarget::Cell,
                 SpecialArmTarget::None => crate::sim::temporal::TemporalShotTarget::None,
             };
-            world.temporal_detonation(owner, target, rules);
+            world.temporal_detonation(owner, target, rules, overlay_registry);
         }
         SpecialDetonationAction::IvanBomb => {
             // 0x00469343..0x00469375: the bullet's owner plants on a Techno.
@@ -2448,7 +2452,7 @@ pub(super) fn resolve_attacker_fire(
         &mut fire_error,
         out,
     ) {
-        emit_admitted_fire(world, rules, shot, binary_frame, out);
+        emit_admitted_fire(world, rules, shot, binary_frame, out, overlay_registry);
     }
     fire_error
 }
@@ -3459,6 +3463,7 @@ pub(super) fn emit_admitted_fire(
     shot: AdmittedFire<'_>,
     binary_frame: u32,
     out: &mut CombatEmit,
+    overlay_registry: Option<&OverlayTypeRegistry>,
 ) {
     // Infantry51DF70 clears68D for every direct FireAt caller, including
     // Guard521432 and a launch subsequently refused by Techno6FDD50.
@@ -3906,7 +3911,7 @@ pub(super) fn emit_admitted_fire(
     // store, so the firer may try again next frame. The tail from
     // `0x006FF749` still runs.
     if !launched {
-        fireat_tail(world, rules, snap, weapon, None);
+        fireat_tail(world, rules, snap, weapon, None, overlay_registry);
         return;
     }
 
@@ -4041,7 +4046,14 @@ pub(super) fn emit_admitted_fire(
         reveal_on_fire(world, rules, snap.stable_id, snap.target);
     }
 
-    fireat_tail(world, rules, snap, weapon, Some(bullet_id));
+    fireat_tail(
+        world,
+        rules,
+        snap,
+        weapon,
+        Some(bullet_id),
+        overlay_registry,
+    );
 }
 
 /// `TechnoClass::FireAt 0x006FF749..0x006FF939`, which runs after a launched
@@ -4065,9 +4077,17 @@ fn fireat_tail(
     snap: &AttackerSnapshot,
     weapon: &WeaponType,
     bullet: Option<u64>,
+    overlay_registry: Option<&OverlayTypeRegistry>,
 ) {
     if weapon.limbo_launch {
-        world.parasite_limbo_launch(snap.stable_id, snap.target, weapon, bullet, rules);
+        world.parasite_limbo_launch(
+            snap.stable_id,
+            snap.target,
+            weapon,
+            bullet,
+            rules,
+            overlay_registry,
+        );
     }
 }
 
@@ -4152,7 +4172,12 @@ pub(crate) fn fireat_rearm_frames(get_rof: i32, berserk: bool) -> i32 {
     if berserk { get_rof / 2 } else { get_rof }
 }
 
-fn commit_fire_bookkeeping(world: &mut Simulation, rules: &RuleSet, emit: &mut CombatEmit) {
+fn commit_fire_bookkeeping(
+    world: &mut Simulation,
+    rules: &RuleSet,
+    emit: &mut CombatEmit,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+) {
     let spawn_target_updates = std::mem::take(&mut emit.spawn_target_updates);
     let drain_links = std::mem::take(&mut emit.drain_links);
     // Spawner weapons: hand the fire target to the parent's spawn manager.
@@ -4183,7 +4208,7 @@ fn commit_fire_bookkeeping(world: &mut Simulation, rules: &RuleSet, emit: &mut C
         // `0x0070FDBD`: a drained Psychic Tower frees its captives; then the
         // drainer leaves its team without idling (`0x0070FE19..0x0070FE32`).
         if crate::sim::credit_income::install_drain_link(world, drainer_id, victim_id) {
-            world.free_all_captures(victim_id, rules);
+            world.free_all_captures(victim_id, rules, overlay_registry);
             world.leave_team(drainer_id, true, Some(rules));
         }
         if let Some(drainer) = world.substrate.entities.get_mut(drainer_id) {
@@ -4249,7 +4274,7 @@ impl FireCommitBoundary {
             &mut emit.effects.smudge_spawn_requests,
         );
         under_attack_events.append(&mut pings);
-        commit_fire_bookkeeping(world, rules, emit);
+        commit_fire_bookkeeping(world, rules, emit, overlay_registry);
         let wave_fire_events = emit.fire_events[fire_event_start..].to_vec();
         for event in &wave_fire_events {
             {
@@ -4395,7 +4420,14 @@ pub(crate) fn visit_fire(
                 })
             });
             if let Some(shot) = shot {
-                emit_admitted_fire(world, rules, shot, world.session.binary_frame, emit);
+                emit_admitted_fire(
+                    world,
+                    rules,
+                    shot,
+                    world.session.binary_frame,
+                    emit,
+                    overlay_registry,
+                );
             }
         }
     }

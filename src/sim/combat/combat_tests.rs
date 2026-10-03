@@ -7989,7 +7989,7 @@ fn gsi_04_07_damage_hostile_building_hit_latches_was_attacked_for_ai_repair() {
     // Each building's UpdateRepairAndPower, in its LogicVector visit.
     let repair_and_power = |sim: &mut crate::sim::world::Simulation| {
         for id in [hostile_target, allied_target, null_target] {
-            crate::sim::production::update_repair_and_power(sim, &rules, id);
+            crate::sim::production::update_repair_and_power(sim, &rules, id, None);
         }
     };
     let low_iq_rng = sim.scenario_rng.logical_state();

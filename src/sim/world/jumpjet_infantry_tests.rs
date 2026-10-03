@@ -1154,6 +1154,7 @@ fn a_ground_route_order_gives_a_rocketeer_his_navcom_and_move_to() {
             object_destination: None,
         },
         Some(&rules),
+        None,
     ));
     let rocketeer = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1252,7 +1253,7 @@ fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
         .unwrap()
         .retain_spatial_threat(0);
     let soviets = sim.interner.intern("Soviets");
-    sim.change_owner_with_rules(1, soviets, &rules);
+    sim.change_owner_with_rules(1, soviets, &rules, None);
     let rocketeer = sim.substrate.entities.get(1).unwrap();
     let here = (
         i32::from(rocketeer.position.rx),

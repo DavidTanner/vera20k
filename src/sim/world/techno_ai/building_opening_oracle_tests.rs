@@ -442,7 +442,7 @@ fn stock_opening_matches_original_building_and_same_pass_anim_visits() {
                         // Techno common AI, repair and factory AI. Full object
                         // integration is checked by construction_tests and the
                         // separate normal-match production capture.
-                        sim.visit_building_operational(stable_id, &rules);
+                        sim.visit_building_operational(stable_id, &rules, None);
                         update_animation(sim, stable_id, Some(&rules));
                         ready_commence(sim, stable_id, true);
                         dispatch(sim, stable_id, Some(&rules), ObjectAiCtx::default());

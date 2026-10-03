@@ -409,7 +409,7 @@ impl Simulation {
         //ordinary481180. It remains raised through Scatter/Walk and the
         //mission queue, and is decremented at443288, including failed exits.
         self.with_object_placement_scope(|sim| {
-            if !sim.unlimbo_crew(rules, id, unlimbo, None) {
+            if !sim.unlimbo_crew(rules, id, unlimbo, None, registry) {
                 sim.discard_constructed_limbo(id, Some(rules));
                 return false;
             }
@@ -580,12 +580,12 @@ impl Simulation {
                             placement: PlacementEvidence::MarkSucceeded,
                             logic_eligible: true,
                         },
-                        UninitContext::with_rules(rules),
+                        UninitContext::new(Some(rules), registry),
                     ),
                     RevealOutcome::Revealed { .. }
                 );
             if !revealed {
-                sim.uninit_with_rules(passenger, rules);
+                sim.uninit_with_context(passenger, UninitContext::new(Some(rules), registry));
                 return;
             }
             // Unlimbo's body snap (`0x006F6DAA`) follows the successful Reveal.
@@ -677,7 +677,7 @@ impl Simulation {
         let Some(crew) = self.techno_crew_type(rules, side, armed) else {
             return;
         };
-        let Some(id) = self.construct_crew(rules, &crew, owner, unlimbo) else {
+        let Some(id) = self.construct_crew(rules, &crew, owner, unlimbo, registry) else {
             return;
         };
         // Signed Strength/2 (CDQ; SUB; SAR).
@@ -723,7 +723,7 @@ impl Simulation {
             self.resolved_terrain.as_ref(),
         ) > 0xD0
         {
-            self.kill_passengers(unit_id, dying.attacker, rules);
+            self.kill_passengers(unit_id, dying.attacker, rules, registry);
         }
         if crashable {
             return;
@@ -733,6 +733,7 @@ impl Simulation {
         while crate::sim::passenger::depart_cargo_head(
             self,
             rules,
+            registry,
             unit_id,
             crate::sim::passenger::DepartureRoute::DeathEscape,
             |sim, passenger| {
@@ -822,7 +823,7 @@ impl Simulation {
         // `0x007380A3..0x007380BF`. The unit's IsABomb (`+0x8F`) kills too;
         // VERA has no such byte (module residuals).
         if dying.ignore_defenses || !admitted {
-            self.record_kill_and_uninit(passenger, dying.attacker, rules);
+            self.record_kill_and_uninit(passenger, dying.attacker, rules, registry);
             return;
         }
 
@@ -870,8 +871,8 @@ impl Simulation {
                 locomotor.layer = MovementLayer::Ground;
             }
             // `0x007380EC..0x007380F4`: a refused Unlimbo kills.
-            if !sim.unlimbo_crew(rules, passenger, unlimbo, Some(facing)) {
-                sim.record_kill_and_uninit(passenger, dying.attacker, rules);
+            if !sim.unlimbo_crew(rules, passenger, unlimbo, Some(facing), registry) {
+                sim.record_kill_and_uninit(passenger, dying.attacker, rules, registry);
                 return;
             }
 
@@ -914,10 +915,11 @@ impl Simulation {
         crew: &str,
         owner: InternedId,
         unlimbo: CrewUnlimbo,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> Option<u64> {
         let (rx, ry, z) = unlimbo.cell_level();
         let id = self.construct_crew_limbo(rules, crew, owner, (rx, ry), z)?;
-        if !self.unlimbo_crew(rules, id, unlimbo, None) {
+        if !self.unlimbo_crew(rules, id, unlimbo, None, registry) {
             self.discard_constructed_limbo(id, Some(rules));
             return None;
         }
@@ -950,6 +952,7 @@ impl Simulation {
         id: u64,
         unlimbo: CrewUnlimbo,
         facing: Option<u8>,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> bool {
         let infantry = self
             .substrate
@@ -1041,7 +1044,7 @@ impl Simulation {
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             },
-            UninitContext::with_rules(rules),
+            UninitContext::new(Some(rules), registry),
         );
         let revealed = matches!(outcome, RevealOutcome::Revealed { .. });
         // Unlimbo's body snap (`+0x388` Set_Current, `0x006F6DAA`) follows a
@@ -1132,7 +1135,7 @@ impl Simulation {
             let escaped = self.with_object_placement_scope(|sim| {
                 let pick = sim.scenario_rng.next_range_i32_inclusive(0, last);
                 let cell = cells[pick as usize];
-                if !sim.unlimbo_crew(rules, id, sim.survivor_unlimbo(cell), None) {
+                if !sim.unlimbo_crew(rules, id, sim.survivor_unlimbo(cell), None, registry) {
                     sim.discard_constructed_limbo(id, Some(rules));
                     return false;
                 }

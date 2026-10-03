@@ -1010,7 +1010,7 @@ fn owner_change_finishes_the_paid_walk_head() {
     );
     let head = wait_for_walk_head(&mut sim, &rules, actor);
     let new_owner = sim.substrate.entities.get(victim).unwrap().owner();
-    sim.change_owner_with_rules(actor, new_owner, &rules);
+    sim.change_owner_with_rules(actor, new_owner, &rules, None);
     let e = sim.substrate.entities.get(actor).unwrap();
     assert!(e.movement_target.is_none());
     assert_eq!(e.locomotor.as_ref().unwrap().walk_destination(), None);

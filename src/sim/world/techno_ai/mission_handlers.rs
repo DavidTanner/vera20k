@@ -529,7 +529,10 @@ pub(crate) fn dispatch_foot_mission(
             }) =>
         {
             MissionHandlerEvaluation::cadence(crate::sim::transport_unload::unit_mission_unload(
-                sim, rules, id,
+                sim,
+                rules,
+                id,
+                ctx.overlay_registry,
             ))
         }
         (EntityCategory::Unit, Some(MissionType::Unload))

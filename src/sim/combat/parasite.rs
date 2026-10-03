@@ -969,6 +969,7 @@ impl Simulation {
         weapon: &crate::rules::weapon_type::WeaponType,
         bullet: Option<u64>,
         rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
         let frame = self.session.binary_frame;
         let Some(entity) = self.substrate.entities.get(firer) else {
@@ -1007,7 +1008,7 @@ impl Simulation {
         if object.rejoin_team_if_limboed && target_infantry {
             self.team_script_vm.remember_team_to_rejoin(firer);
         }
-        self.techno_limbo_with_rules(firer, rules);
+        self.techno_limbo_with_rules(firer, rules, registry);
         let parasite = weapon
             .warhead
             .as_deref()

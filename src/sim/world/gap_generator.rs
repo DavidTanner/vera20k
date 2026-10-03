@@ -79,7 +79,12 @@ impl Simulation {
 
     ///43FB20 visits all Buildings, not just gap generators. The4549B0 dispatcher
     /// publishes gap changes before slot power changes, then43FBEF stores6C8.
-    pub(crate) fn visit_building_operational(&mut self, id: u64, rules: &RuleSet) {
+    pub(crate) fn visit_building_operational(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
         if self
             .substrate
             .entities
@@ -104,7 +109,7 @@ impl Simulation {
         // The `0x004549B0` off edge frees a Psychic Tower's captives
         // (`0x00454B3D`) before its gap and power slots.
         if !operational {
-            self.free_all_captures(id, rules);
+            self.free_all_captures(id, rules, registry);
         }
         if let Some((_, radius)) = self.gap_operational_state(id, rules) {
             let viewers = self.gap_viewers();

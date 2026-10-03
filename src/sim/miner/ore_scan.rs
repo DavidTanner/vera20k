@@ -99,7 +99,8 @@ pub(crate) fn search_for_tiberium_and_move(
     if cell == own {
         return true;
     }
-    let _ = super::miner_system::issue_stock_miner_drive_move(sim, rules, id, cell);
+    let _ =
+        super::miner_system::issue_stock_miner_drive_move(sim, rules, id, cell, overlay_registry);
     false
 }
 

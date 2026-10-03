@@ -3872,7 +3872,7 @@ fn captured_harvesting_miner_requeues_harvest_for_the_new_owner() {
         Some(MissionType::Harvest)
     );
 
-    sim.change_owner_with_rules(miner_id, captor, &rules);
+    sim.change_owner_with_rules(miner_id, captor, &rules, None);
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(miner.owner, captor);
@@ -3929,7 +3929,7 @@ fn captured_miner_off_ore_under_a_human_house_parks_on_guard() {
     sim.mission_assign_exact(miner_id, MissionId::from_known(MissionType::Harvest), 0)
         .expect("miner exists");
 
-    sim.change_owner_with_rules(miner_id, captor, &rules);
+    sim.change_owner_with_rules(miner_id, captor, &rules, None);
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(miner.owner, captor);
@@ -3975,7 +3975,7 @@ fn captured_miner_off_ore_under_an_ai_house_requeues_harvest() {
     sim.mission_assign_exact(miner_id, MissionId::from_known(MissionType::Harvest), 0)
         .expect("miner exists");
 
-    sim.change_owner_with_rules(miner_id, captor, &rules);
+    sim.change_owner_with_rules(miner_id, captor, &rules, None);
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(miner.owner, captor);
@@ -4030,7 +4030,7 @@ fn captured_miner_in_radio_contact_gets_only_the_forced_guard() {
         .unwrap()
         .mark_live_contact_with(2);
 
-    sim.change_owner_with_rules(miner_id, captor, &rules);
+    sim.change_owner_with_rules(miner_id, captor, &rules, None);
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(miner.owner, captor);

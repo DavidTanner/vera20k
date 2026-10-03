@@ -143,7 +143,7 @@ impl Simulation {
             if let Err(cause) = self.infantry_stop_driver(id, rules, overlay_registry) {
                 log::debug!("infantry {id} death Stop_Driver: {cause}");
             }
-            self.techno_death_stun(id, super::UninitContext::with_rules(rules));
+            self.techno_death_stun(id, super::UninitContext::new(Some(rules), overlay_registry));
         }
         // `InfantryClass::ReceiveDamage 0x0051810E..0x0051812E`, before the
         // death ladder: Queue_Mission(-1) (refused), Queue_Mission(Guard),
@@ -171,7 +171,7 @@ impl Simulation {
             .object_type(entity.type_ref(), rules)
             .map_or((false, false), |object| (object.jumpjet, object.crashable));
         let recipe = if jumpjet {
-            if crashable && self.foot_crash(id, None, rules) {
+            if crashable && self.foot_crash(id, None, rules, overlay_registry) {
                 ReceiverDeathRecipe::CrashExplode
             } else {
                 ReceiverDeathRecipe::ExternalAnim(INFANTRY_EXPLODE_INF_DEATH)
@@ -309,7 +309,10 @@ impl Simulation {
         {
             self.release_move_sound(id);
             if let Some(rules) = rules {
-                self.uninit_with_rules(id, rules);
+                self.uninit_with_context(
+                    id,
+                    super::UninitContext::new(Some(rules), ctx.overlay_registry),
+                );
             } else {
                 self.uninit(id);
             }

@@ -11,6 +11,7 @@
 //! persistence and command tests below are Rust integration regressions.
 
 use crate::map::entities::EntityCategory;
+use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::playfield::PlayfieldBounds;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::LocomotorKind;
@@ -120,6 +121,9 @@ fn fixture(row: &Value, rules: &RuleSet) -> (Simulation, u64, InternedId) {
         let cell = &mut cells[usize::from(y) * 32 + usize::from(x)];
         cell.level = native["level"].as_u64().unwrap() as u8;
         cell.slope_type = native["slope"].as_u64().unwrap() as u8;
+        if let Some(overlay) = native.get("overlay_id") {
+            cell.bridge_facts.overlay_id = overlay.as_i64().and_then(|id| u8::try_from(id).ok());
+        }
         cell.bridge_facts.raw_flags = native["structural_flags"].as_u64().unwrap() as u32;
         assert_eq!(native["land"], 0, "fixture has only native land0");
     }
@@ -416,7 +420,13 @@ fn assert_state(sim: &Simulation, id: u64, owner: InternedId, native: &Value, co
     }
 }
 
-fn execute(sim: &mut Simulation, id: u64, command: &Value, rules: &RuleSet) {
+fn execute(
+    sim: &mut Simulation,
+    id: u64,
+    command: &Value,
+    rules: &RuleSet,
+    registry: Option<&OverlayTypeRegistry>,
+) {
     match command["kind"].as_str().unwrap() {
         "set_destination" => {
             assert_eq!(command["flag"], 1);
@@ -424,10 +434,12 @@ fn execute(sim: &mut Simulation, id: u64, command: &Value, rules: &RuleSet) {
             //Original class EAX is register residue (e.g.100), not a Bool
             //contract. Compare the owned state/query/fullRNG below instead.
             let _ = sim
-                .set_infantry_destination(id, NavTargetRef::cell(rx, ry), rules, None)
+                .set_infantry_destination(id, NavTargetRef::cell(rx, ry), rules, registry)
                 .unwrap();
         }
-        "stop_moving" => sim.locomotor_stop_moving(id, Some(rules), None).unwrap(),
+        "stop_moving" => sim
+            .locomotor_stop_moving(id, Some(rules), registry)
+            .unwrap(),
         "queue_mission" => {
             sim.mission_queue_exact(
                 id,
@@ -527,7 +539,7 @@ fn cleg_cell_requests_match_every_original_command_boundary() {
             let context = format!("{name} command{index} {}", boundary["input"]);
             assert_state(&sim, id, owner, &boundary["before"], &context);
             assert_rng(&sim, &boundary["rng_before"], &context);
-            execute(&mut sim, id, &boundary["input"], &rules);
+            execute(&mut sim, id, &boundary["input"], &rules, None);
             assert_state(&sim, id, owner, &boundary["after"], &context);
             assert_rng(&sim, &boundary["rng_after"], &context);
             assert_eq!(
@@ -554,7 +566,7 @@ fn stop_does_not_touch_a_stashed_native_cleg_request() {
     let row = row_named(&data, "guard_move_stop_move");
     let (mut sim, id, owner) = fixture(row, &rules);
     let boundaries = row["boundaries"].as_array().unwrap();
-    execute(&mut sim, id, &boundaries[0]["input"], &rules);
+    execute(&mut sim, id, &boundaries[0]["input"], &rules, None);
     assert_state(
         &sim,
         id,
@@ -571,7 +583,7 @@ fn stop_does_not_touch_a_stashed_native_cleg_request() {
         Some(false)
     );
     let raw = bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap();
-    execute(&mut sim, id, &boundaries[1]["input"], &rules);
+    execute(&mut sim, id, &boundaries[1]["input"], &rules, None);
     let entity = sim.substrate.entities.get_mut(id).unwrap();
     assert_eq!(
         *entity
@@ -595,7 +607,7 @@ fn stop_does_not_touch_a_stashed_native_cleg_request() {
         &retained
     );
     assert_eq!(super::super::motion_query::is_moving(entity), Some(true));
-    execute(&mut sim, id, &boundaries[1]["input"], &rules);
+    execute(&mut sim, id, &boundaries[1]["input"], &rules, None);
     assert_runtime(
         &sim,
         id,
@@ -623,8 +635,8 @@ fn native_cleg_reservation_survives_snapshot_and_is_hashed() {
     let boundaries = row["boundaries"].as_array().unwrap();
     for stashed in [false, true] {
         let (mut sim, id, owner) = fixture(row, &rules);
-        execute(&mut sim, id, &boundaries[0]["input"], &rules);
-        execute(&mut sim, id, &boundaries[1]["input"], &rules);
+        execute(&mut sim, id, &boundaries[0]["input"], &rules, None);
+        execute(&mut sim, id, &boundaries[1]["input"], &rules, None);
         assert_state(
             &sim,
             id,
@@ -713,7 +725,7 @@ fn native_cleg_reservation_survives_snapshot_and_is_hashed() {
                     world.substrate.entities.get_mut(id).unwrap()
                 ));
             }
-            execute(world, id, &boundaries[2]["input"], &rules);
+            execute(world, id, &boundaries[2]["input"], &rules, None);
         }
         assert_eq!(
             sim.state_hash(),
@@ -781,5 +793,226 @@ fn two_ordinary_cleg_moves_publish_class_destinations_before_process() {
     assert_ne!(
         sim.substrate.raw_cell_occupation.ground_bits(13, 10) & 0x1c,
         0
+    );
+}
+
+/// An absent caller dependency is a Rust transaction error, not native
+///51BF90 admission. Preflight must refuse before Foot/Teleport writes.
+#[test]
+fn overlay_destination_without_registered_inputs_is_atomic() {
+    use crate::rules::ini_parser::IniFile;
+
+    let Some(retail) = retail_battle_rules_for_map("XMP03T4.MAP") else {
+        return;
+    };
+    let registry = OverlayTypeRegistry::from_ini(&retail.processed_rules, Some(&retail.fixed_art));
+    let ore = registry.id_for_name("GEM01").unwrap();
+    assert!(registry.flags(ore).unwrap().tiberium);
+    let mut rules = retail.rules;
+    rules.general.blockage_path_delay_ticks = 22;
+    let empty = OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
+    let data = corpus();
+    let row = row_named(&data, "guard_two_distinct_cells");
+    for missing in [None, Some(&empty)] {
+        let (mut sim, id, _) = fixture(row, &rules);
+        let terrain = sim.resolved_terrain.as_mut().unwrap();
+        let cell = terrain.native_cell_identity((12, 10));
+        terrain.write_native_cell_overlay(cell, Some(ore));
+        let before = (
+            bincode::serialize(sim.substrate.entities.get(id).unwrap()).unwrap(),
+            bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap(),
+            sim.rng_state(),
+        );
+        let target = NavTargetRef::cell(12, 10);
+        assert!(
+            !sim.infantry_destination_inputs_available(id, target, &rules, missing),
+            "Teleport Cell admission requires registered overlay inputs before mutation"
+        );
+        assert!(
+            sim.set_infantry_destination(id, target, &rules, missing)
+                .is_err()
+        );
+        assert_eq!(
+            (
+                bincode::serialize(sim.substrate.entities.get(id).unwrap()).unwrap(),
+                bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap(),
+                sim.rng_state(),
+            ),
+            before,
+            "missing or incomplete registry leaves NavCom, timers, reservations and RNG intact"
+        );
+    }
+}
+
+/// A broken retained terrain input is a Rust context error. Once resolution
+/// has released raw occupation, it must take the existing refusal cleanup
+/// and Foot timer tail instead of leaking a half-published reservation.
+#[test]
+fn teleport_admission_input_error_restores_physical_occupation() {
+    let Some(rules) = command_fixture_rules() else {
+        return;
+    };
+    let data = corpus();
+    let row = row_named(&data, "guard_two_distinct_cells");
+    let (mut sim, id, _) = fixture(row, &rules);
+    sim.resolved_terrain
+        .as_mut()
+        .unwrap()
+        .cell_mut(12, 10)
+        .unwrap()
+        .speed_costs = crate::rules::terrain_rules::SpeedCostProfile::default();
+    let raw = bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap();
+    assert!(
+        !sim.set_infantry_destination(id, NavTargetRef::cell(12, 10), &rules, None)
+            .unwrap()
+    );
+    let actor = sim.substrate.entities.get(id).unwrap();
+    let runtime = actor
+        .locomotor
+        .as_ref()
+        .unwrap()
+        .teleport_runtime()
+        .unwrap();
+    assert_eq!(runtime.resolved_destination(), None);
+    assert_eq!(super::super::motion_query::is_moving(actor), Some(false));
+    assert_eq!(actor.navigation.nav_com, None);
+    assert_eq!(
+        bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap(),
+        raw
+    );
+    let after = &row["boundaries"][0]["after"]["actor"];
+    assert_eq!(
+        actor.navigation.path_runtime.movement_timer,
+        timer(&after["movement_timer"])
+    );
+    assert_eq!(
+        actor.navigation.path_runtime.blocked_timer,
+        timer(&after["blocked_timer"])
+    );
+    assert_rng(
+        &sim,
+        &row["boundaries"][0]["rng_after"],
+        "selection precedes context error",
+    );
+}
+
+/// Original overlays execute through the same class owner and the ordinary
+/// command caller. Whole-reader inputs and every native boundary are pinned;
+/// this still excludes warp Process and other overlay families.
+#[test]
+fn cleg_overlay_cell_requests_match_every_original_command_boundary() {
+    let Some(retail) = retail_battle_rules_for_map("XMP03T4.MAP") else {
+        return;
+    };
+    let registry = OverlayTypeRegistry::from_ini(&retail.processed_rules, Some(&retail.fixed_art));
+    let mut rules = retail.rules;
+    rules.general.blockage_path_delay_ticks = 22;
+    let data = corpus();
+    for (name, native) in data["overlay_inputs"]["fields"].as_object().unwrap() {
+        let id = registry.id_for_name(name).unwrap();
+        let flags = registry.flags(id).unwrap();
+        assert_eq!(u64::from(id), native["index"].as_u64().unwrap());
+        for (key, actual) in [
+            ("wall", flags.wall),
+            ("tiberium", flags.tiberium),
+            ("crate", flags.crate_type),
+            ("crushable", flags.crushable),
+            ("no_use_tile_land", flags.no_use_tile_land_type),
+        ] {
+            assert_eq!(
+                actual,
+                signed(&native[key]) != 0,
+                "{name}: original {key} reader"
+            );
+        }
+        assert_eq!(
+            u64::from(flags.damage_levels),
+            native["damage_levels"].as_u64().unwrap()
+        );
+        assert_eq!(i32::from(flags.land.as_index()), signed(&native["land"]));
+    }
+    let native_weapon = &data["overlay_inputs"]["weapon"];
+    let weapon = rules
+        .weapon(rules.object("CLEG").unwrap().primary.as_deref().unwrap())
+        .unwrap();
+    assert_eq!(weapon.id, native_weapon["name"].as_str().unwrap());
+    assert_eq!(weapon.damage, signed(&native_weapon["damage"]));
+    assert_eq!(
+        weapon.ambient_damage,
+        signed(&native_weapon["ambient_damage"])
+    );
+    assert_eq!(weapon.warhead.as_deref(), native_weapon["warhead"].as_str());
+    assert_eq!(
+        rules
+            .warhead(weapon.warhead.as_deref().unwrap())
+            .unwrap()
+            .wall,
+        signed(&native_weapon["warhead_wall"]) != 0,
+    );
+    let rows = data["overlay_rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 4);
+    let mut direct_compared = 0;
+    let mut command_compared = 0;
+    for row in rows {
+        assert_eq!(row["code_unchanged"], true);
+        // Event4C73B9 queues Move with flag0 before calling the class setter;
+        // Ready/Commence inside718B70 promotes it. The ordinary comparison
+        // starts from that recorded queued-Move context. Requeuing the same
+        // selector keeps it, and after promotion the second request's Queue
+        // is a no-op (5B3601..5B3612). Guard controls retain direct coverage.
+        let callers: &[bool] = match signed(&row["before"]["actor"]["queued_mission"]) {
+            2 => &[false, true],
+            -1 => &[false],
+            other => panic!("unrepresented overlay caller queued mission {other}"),
+        };
+        for &ordinary_command in callers {
+            let (mut sim, id, owner) = fixture(row, &rules);
+            let name = row["input"]["name"].as_str().unwrap();
+            assert_state(&sim, id, owner, &row["before"], name);
+            assert_rng(&sim, &row["rng_before"], name);
+            for (index, boundary) in row["boundaries"].as_array().unwrap().iter().enumerate() {
+                let context = format!("{name} command{index} ordinary={ordinary_command}");
+                assert_state(&sim, id, owner, &boundary["before"], &context);
+                assert_rng(&sim, &boundary["rng_before"], &context);
+                assert_eq!(boundary["input"]["kind"], "set_destination");
+                if ordinary_command {
+                    let (rx, ry) = pair(&boundary["input"]["cell"]);
+                    assert_eq!(
+                        sim.apply_command_with_overlays(
+                            "Americans",
+                            &Command::Move {
+                                entity_id: id,
+                                target_rx: rx,
+                                target_ry: ry,
+                                queue: false
+                            },
+                            Some(&rules),
+                            Some(&registry),
+                        ),
+                        boundary["query_al"].as_u64().unwrap() != 0,
+                        "{context}: request acceptance"
+                    );
+                } else {
+                    execute(&mut sim, id, &boundary["input"], &rules, Some(&registry));
+                }
+                assert_state(&sim, id, owner, &boundary["after"], &context);
+                assert_rng(&sim, &boundary["rng_after"], &context);
+                assert_eq!(
+                    super::super::motion_query::is_moving(sim.substrate.entities.get(id).unwrap()),
+                    Some(boundary["query_al"].as_u64().unwrap() != 0),
+                    "{context}: original718080",
+                );
+                if ordinary_command {
+                    command_compared += 1;
+                } else {
+                    direct_compared += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(
+        (direct_compared, command_compared),
+        (8, 4),
+        "all eight class boundaries and four matching ordinary-Move boundaries"
     );
 }

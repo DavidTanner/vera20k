@@ -323,6 +323,7 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
                 &rules,
                 1,
                 (12, 8),
+                None,
             )
         );
 

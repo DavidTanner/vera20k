@@ -146,7 +146,7 @@ impl Simulation {
                 self.mplayer_defeated(owner, outcome_tick, savour_frames);
             }
             if let Some(rules) = rules {
-                crate::sim::house_strategy::update_strategy(self, rules, owner);
+                crate::sim::house_strategy::update_strategy(self, rules, owner, registry);
                 crate::sim::ai_base_building::update_production_choices(
                     self, rules, owner, registry,
                 );

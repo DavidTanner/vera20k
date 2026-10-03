@@ -437,7 +437,7 @@ impl Simulation {
         // Building43FB20 samples its operational edge before delayed Health0
         // cleanup. A live dying-animation diversion must not skip that edge.
         if let Some(rules) = rules {
-            self.visit_building_operational(id, rules);
+            self.visit_building_operational(id, rules, ctx.overlay_registry);
         }
         let Some(entity) = self.substrate.entities.get(id) else {
             return ObjectAiOutcome::default();
@@ -463,7 +463,10 @@ impl Simulation {
             );
             if finished {
                 self.release_move_sound(id);
-                self.uninit_with_rules(id, rules);
+                self.uninit_with_context(
+                    id,
+                    super::UninitContext::new(Some(rules), ctx.overlay_registry),
+                );
             }
             return outcome;
         }
@@ -566,7 +569,7 @@ fn techno_ai_shell(
         if category == EntityCategory::Structure {
             sim.update_building_damage_fire(id, rules);
         }
-        if sim.temporal_ai_prologue(id, rules) {
+        if sim.temporal_ai_prologue(id, rules, ctx.overlay_registry) {
             return;
         }
     }
@@ -697,7 +700,12 @@ fn techno_ai_shell(
             // repair step.
             if let Some(rules) = rules {
                 building_missions::process_delayed_fire(sim, id, rules, ctx);
-                crate::sim::production::update_repair_and_power(sim, rules, id);
+                crate::sim::production::update_repair_and_power(
+                    sim,
+                    rules,
+                    id,
+                    ctx.overlay_registry,
+                );
                 // A `Factory=` type's own production (`0x004401BB..0x004401CD`).
                 let factory_type = sim
                     .substrate
@@ -760,7 +768,12 @@ fn techno_ai_shell(
                 );
                 // The remaining aircraft missions dispatch here too, inside
                 // this slot and before Fly Process (FootClass::AI4DA530).
-                if crate::sim::aircraft::dispatch_aircraft_mission(sim, rules, id) {
+                if crate::sim::aircraft::dispatch_aircraft_mission(
+                    sim,
+                    rules,
+                    id,
+                    ctx.overlay_registry,
+                ) {
                     sim.fire_requests.aircraft.insert(id);
                 }
             }
@@ -1169,7 +1182,7 @@ fn open_transport_reach_step(
         crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
     }
     if !approaches {
-        sim.assign_null_destination(id, Some(rules), None);
+        sim.assign_null_destination(id, Some(rules), overlay_registry);
     }
 }
 
@@ -1347,7 +1360,7 @@ fn techno_common_pre(
     if !techno_common_steps(sim, id, rules, overlay_registry) {
         return;
     }
-    super::techno_ai_cloak::tick_stock_cloak_producer(sim, id, rules);
+    super::techno_ai_cloak::tick_stock_cloak_producer(sim, id, rules, overlay_registry);
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };

@@ -662,6 +662,7 @@ pub(super) fn deliver_produced_object(
                     object_destination: None,
                 },
                 Some(rules),
+                overlay_registry,
             );
             if naval_rally.is_some()
                 && let Some(entity) = sim.substrate.entities.get_mut(stable_id)

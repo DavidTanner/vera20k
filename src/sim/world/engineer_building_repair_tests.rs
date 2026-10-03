@@ -287,7 +287,7 @@ impl Fixture {
             // Supply the native owner-race prior using the shared owner to
             // install coherent House/occupancy indexes, then restore the
             // witness's pre-arrival scalar statistics and paid repair state.
-            sim.change_owner_with_rules(building, new_owner, &rules);
+            sim.change_owner_with_rules(building, new_owner, &rules, Some(&registry));
             let entity = sim.substrate.entities.get_mut(building).unwrap();
             entity.repairing = before["paid_repair"] == 1;
             entity.has_been_captured = false;
@@ -722,9 +722,12 @@ fn original_half_threshold_and_friendly_repair_object_actions() {
         .sim
         .houses
         .insert(enemy, HouseState::new(enemy, 0, None, false, 5000, 10));
-    fixture
-        .sim
-        .change_owner_with_rules(fixture.building, enemy, &fixture.rules);
+    fixture.sim.change_owner_with_rules(
+        fixture.building,
+        enemy,
+        &fixture.rules,
+        Some(&fixture.registry),
+    );
     for row in controls["enemy_rows"].as_array().unwrap() {
         fixture
             .sim

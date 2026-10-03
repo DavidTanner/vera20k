@@ -1058,7 +1058,7 @@ fn repair_pointer_expiry_uses_descending_infantry_registry_and_preserves_paid_he
         .unwrap()
         .navigation
         .nav_com = Some(NavTargetRef::Building { id: hut });
-    sim.expire_infantry_bridge_hut_targets(hut);
+    sim.expire_infantry_bridge_hut_targets(hut, &rules, Some(&registry));
     assert_eq!(sim.scenario_rng.state(), expected.state());
     for id in [a, b, c] {
         let e = sim.substrate.entities.get(id).unwrap();
@@ -1101,7 +1101,7 @@ fn repair_pointer_expiry_keeps_sensor_and_occupier_exceptions_and_current_nav_ga
         }
         e.navigation.nav_com_aux = Some(NavTargetRef::Building { id: hut });
         let before = e.navigation.clone();
-        sim.expire_infantry_bridge_hut_targets(hut);
+        sim.expire_infantry_bridge_hut_targets(hut, &rules, Some(&registry));
         let e = sim.substrate.entities.get(id).unwrap();
         assert_eq!(
             e.navigation.nav_com, before.nav_com,

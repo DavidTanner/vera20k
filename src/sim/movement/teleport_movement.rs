@@ -341,6 +341,16 @@ impl crate::sim::world::Simulation {
             .unwrap()
             .resolved_destination()
             .unwrap_or(physical);
+        if infantry
+            && !self.infantry_destination_inputs_available(
+                id,
+                crate::sim::components::NavTargetRef::cell(target.0, target.1),
+                rules,
+                registry,
+            )
+        {
+            return Err("Teleport Infantry resolution requires available class inputs".into());
+        }
         let input =
             super::navcom::target_cell_coord(target.0, target.1, self.resolved_terrain.as_ref());
         let destination = if infantry {
@@ -349,91 +359,105 @@ impl crate::sim::world::Simulation {
             if self.resolved_terrain.is_none() {
                 return Err("Teleport Infantry resolution requires map cells".into());
             }
-            self.object_raw_receiver_at(id, previous, false);
-            let terrain = self.resolved_terrain.as_ref().unwrap();
-            let cells = NativeCellQuery::canonical(terrain);
-            let cell = cells.lookup_world(input.x, input.y);
-            // Original718C23: strict signed comparison, independently of
-            // OnBridge. The structural gate precedes the ground query.
-            // Original717EC0 startup establishes B0EC38=104.
-            let deck = cells.flags(cell) & 0x100 != 0
-                && physical.z
-                    > super::ground_pose::query_ground_height(&cells, input)?
-                        .wrapping_add(3 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS);
-            let layer = if deck {
-                MovementLayer::Bridge
-            } else {
-                MovementLayer::Ground
-            };
-            let key = RawCellKey::from_native(terrain, cell);
-            // Original718C90 Ready ->718C9F Commence follows the release and
-            // deck lookup, before effective-mission reads/Cell481180. Use the
-            // existing Mission authority; a queued Attack can become current
-            // here after51AA40's earlier current-mission Stop decision.
-            if self.mission_ready_to_commence(id, rules) {
-                self.mission_commence_exact(id, self.session.binary_frame)
-                    .map_err(|error| format!("Teleport resolver Commence: {error}"))?;
-            }
-            // Pure Cell NavCom has no object RTTI receiver, so the original
-            // Enter/Eaten/Capture/Patrol priority corridor leaves priority0.
-            let cells = NativeCellQuery::canonical(self.resolved_terrain.as_ref().unwrap());
-            let packed = cells.coord(cell);
-            let ground_raw = self
-                .substrate
-                .raw_cell_occupation
-                .bits_at(key, MovementLayer::Ground);
-            let selected_raw = self.substrate.raw_cell_occupation.bits_at(key, layer);
-            let gate_open = selected_raw & 0x20 == 0
-                && ground_raw & 0x40 != 0
-                && super::bump_crush::ground_gate_is_open(
-                    &self.substrate.occupancy,
-                    &self.substrate.entities,
-                    Some(rules),
-                    &self.interner,
-                    (packed.0 as u16, packed.1 as u16),
+            let resolution = (|| -> Result<Option<DriveCoord>, String> {
+                self.object_raw_receiver_at(id, previous, false);
+                let terrain = self.resolved_terrain.as_ref().unwrap();
+                let cells = NativeCellQuery::canonical(terrain);
+                let cell = cells.lookup_world(input.x, input.y);
+                // Original718C23: strict signed comparison, independently of
+                // OnBridge. The structural gate precedes the ground query.
+                // Original717EC0 startup establishes B0EC38=104.
+                let deck = cells.flags(cell) & 0x100 != 0
+                    && physical.z
+                        > super::ground_pose::query_ground_height(&cells, input)?
+                            .wrapping_add(3 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS);
+                let layer = if deck {
+                    MovementLayer::Bridge
+                } else {
+                    MovementLayer::Ground
+                };
+                let key = RawCellKey::from_native(terrain, cell);
+                // Original718C90 Ready ->718C9F Commence follows the release and
+                // deck lookup, before effective-mission reads/Cell481180. Use the
+                // existing Mission authority; a queued Attack can become current
+                // here after51AA40's earlier current-mission Stop decision.
+                if self.mission_ready_to_commence(id, rules) {
+                    self.mission_commence_exact(id, self.session.binary_frame)
+                        .map_err(|error| format!("Teleport resolver Commence: {error}"))?;
+                }
+                // Pure Cell NavCom has no object RTTI receiver, so the original
+                // Enter/Eaten/Capture/Patrol priority corridor leaves priority0.
+                let cells = NativeCellQuery::canonical(self.resolved_terrain.as_ref().unwrap());
+                let packed = cells.coord(cell);
+                let ground_raw = self
+                    .substrate
+                    .raw_cell_occupation
+                    .bits_at(key, MovementLayer::Ground);
+                let selected_raw = self.substrate.raw_cell_occupation.bits_at(key, layer);
+                let gate_open = selected_raw & 0x20 == 0
+                    && ground_raw & 0x40 != 0
+                    && super::bump_crush::ground_gate_is_open(
+                        &self.substrate.occupancy,
+                        &self.substrate.entities,
+                        Some(rules),
+                        &self.interner,
+                        (packed.0 as u16, packed.1 as u16),
+                    );
+                let slot = super::bump_crush::place_infantry_in_native_cell(
+                    &self.substrate.raw_cell_occupation,
+                    key,
+                    layer,
+                    input,
+                    false,
+                    gate_open,
+                    &mut self.scenario_rng,
                 );
-            let slot = super::bump_crush::place_infantry_in_native_cell(
-                &self.substrate.raw_cell_occupation,
-                key,
-                layer,
-                input,
-                false,
-                gate_open,
-                &mut self.scenario_rng,
-            );
-            // Cell481180 samples floor at the original input after selection;
-            // a failed selection returns NULL without that successful tail.
-            let resolved = if let Some(slot) = slot {
-                let floor = super::ground_pose::query_ground_height(&cells, input)?;
-                Some(super::walk_head::selected_head(input, slot, floor, deck))
-            } else {
-                None
+                // Cell481180 samples floor at the original input after selection;
+                // a failed selection returns NULL without that successful tail.
+                let resolved = if let Some(slot) = slot {
+                    let floor = super::ground_pose::query_ground_height(&cells, input)?;
+                    Some(super::walk_head::selected_head(input, slot, floor, deck))
+                } else {
+                    None
+                };
+                self.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .teleport_runtime_mut()
+                    .unwrap()
+                    .resolved = resolved;
+                let point = resolved.unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
+                let cell = NativeCellQuery::canonical(self.resolved_terrain.as_ref().unwrap())
+                    .lookup_world(point.x, point.y);
+                let answer = self.infantry_can_enter(
+                    id,
+                    cell,
+                    InfantryEntryArgs {
+                        direction: -1,
+                        height: -1,
+                        previous_cell: None,
+                    },
+                    rules,
+                    registry,
+                )?;
+                Ok(if answer.is_nonzero() { None } else { resolved })
+            })();
+            let resolved = match resolution {
+                Ok(Some(resolved)) => Some(resolved),
+                Ok(None) => None,
+                Err(error) => {
+                    // A missing retained input is not a native admission code.
+                    // It must nevertheless leave the raw receiver consistent
+                    // and let Foot finish its ordinary refused-request tail.
+                    log::debug!("Teleport Infantry resolution {id} refused: {error}");
+                    None
+                }
             };
-            self.substrate
-                .entities
-                .get_mut(id)
-                .unwrap()
-                .locomotor
-                .as_mut()
-                .unwrap()
-                .teleport_runtime_mut()
-                .unwrap()
-                .resolved = resolved;
-            let point = resolved.unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
-            let cell = NativeCellQuery::canonical(self.resolved_terrain.as_ref().unwrap())
-                .lookup_world(point.x, point.y);
-            let answer = self.infantry_can_enter(
-                id,
-                cell,
-                InfantryEntryArgs {
-                    direction: -1,
-                    height: -1,
-                    previous_cell: None,
-                },
-                rules,
-                registry,
-            )?;
-            if answer.is_nonzero() || resolved.is_none() {
+            let Some(resolved) = resolved else {
                 self.substrate
                     .entities
                     .get_mut(id)
@@ -447,12 +471,9 @@ impl crate::sim::world::Simulation {
                 // Original719286..7192AE restores the physical raw receiver
                 // before returning false;7181F9 then calls the class NULL arm.
                 self.object_raw_receiver_at(id, physical, true);
-                // Original7181F9 reaches the class NULL setter, rather than
-                // publishing a second NavCom or bypassing its cleanup owner.
                 self.assign_null_destination(id, Some(rules), registry);
                 return Ok(false);
-            }
-            let resolved = resolved.unwrap();
+            };
             self.object_raw_receiver_at(id, resolved, true);
             resolved
         } else {

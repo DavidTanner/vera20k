@@ -528,8 +528,27 @@ impl Simulation {
         let loco = actor.locomotor.as_ref().expect("represented receiver");
         // Every represented Teleport Cell request reaches its native resolver,
         // including the first request before IsMoving becomes true.
-        if loco.active_kind() == LocomotorKind::Teleport && self.resolved_terrain.is_none() {
-            return false;
+        if loco.active_kind() == LocomotorKind::Teleport {
+            let Some(terrain) = self.resolved_terrain.as_ref() else {
+                return false;
+            };
+            let NavTargetRef::Cell { rx, ry } = requested else {
+                return false;
+            };
+            //718B70 reaches51BF90 at the selected target, or at NULL XYZ
+            //after slot refusal. Check only retained input availability here;
+            //canonical Dummy lookup, admission and RNG keep their native order.
+            for (x, y) in [(rx as i16, ry as i16), (0, 0)] {
+                let overlay = match terrain.native_fixed_cell_index(x, y) {
+                    Some(index) => terrain.cells()[index].bridge_facts.overlay_id,
+                    None => {
+                        u8::try_from(terrain.shared_cell_dummy().overlay_identity_state().0).ok()
+                    }
+                };
+                if overlay.is_some_and(|id| registry.and_then(|r| r.flags(id)).is_none()) {
+                    return false;
+                }
+            }
         }
         let Some(moving) = super::motion_query::is_moving(actor) else {
             return false;
@@ -633,6 +652,9 @@ impl Simulation {
                 .is_some_and(|l| (27..=30).contains(&l.doing()))
         {
             return Ok(true);
+        }
+        if !self.infantry_destination_inputs_available(id, requested, rules, registry) {
+            return Err("Infantry destination requires available class inputs".into());
         }
         let speed_type = object.speed_type;
         let type_allows_up = !object.fraidycat && !object.cyborg;

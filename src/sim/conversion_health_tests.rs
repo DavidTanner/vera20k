@@ -120,7 +120,7 @@ fn building_conversion_reads_health_when_animation_finishes() {
         .spawn_object_at_height("YARD", "Neutral", 10, 10, 0, 0, &rules)
         .unwrap();
     damage(&mut sim, source, 750);
-    assert!(sim.undeploy_building(source, &rules));
+    assert!(sim.undeploy_building(source, &rules, None));
     damage(&mut sim, source, 250);
     sim.substrate
         .entities
@@ -162,7 +162,7 @@ fn undeploy(sim: &mut Simulation, rules: &RuleSet, building: u64, into: &str) ->
         .get_mut(building)
         .unwrap()
         .finish_building_construction_for_test();
-    assert!(sim.undeploy_building(building, rules));
+    assert!(sim.undeploy_building(building, rules, None));
     sim.substrate
         .entities
         .get_mut(building)
@@ -245,7 +245,7 @@ fn all_four_conversion_callers_preserve_results_above_u16() {
         sim.advance_tick(&[], Some(&rules), None, None, 22);
     }
     assert!(!sim.substrate.entities.get(yard).unwrap().building_up());
-    assert!(sim.undeploy_building(yard, &rules));
+    assert!(sim.undeploy_building(yard, &rules, None));
     sim.substrate
         .entities
         .get_mut(yard)

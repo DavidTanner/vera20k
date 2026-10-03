@@ -307,7 +307,7 @@ fn a_captured_factory_loses_its_rally_point() {
         Some((40, 12))
     );
     let russians = sim.interner.intern("Russians");
-    sim.change_owner_with_rules(1, russians, &rules);
+    sim.change_owner_with_rules(1, russians, &rules, None);
     assert_eq!(sim.substrate.entities.get(1).unwrap().rally_cell(), None);
 }
 

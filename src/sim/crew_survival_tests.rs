@@ -273,7 +273,7 @@ fn a_captured_building_remembers_it() {
     sim.substrate.entities.get_mut(id).unwrap().repairing = true;
     sim.sound_events.clear();
     let russians = sim.interner.intern("Russians");
-    sim.change_owner_with_rules(id, russians, &rules);
+    sim.change_owner_with_rules(id, russians, &rules, None);
     let building = sim.substrate.entities.get(id).unwrap();
     assert!(building.has_been_captured);
     assert!(!building.repairing);
