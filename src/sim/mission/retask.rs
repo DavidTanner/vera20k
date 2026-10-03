@@ -152,7 +152,7 @@ impl Simulation {
         );
     }
 
-    /// The same retask, plus the Override-archive clear that belongs to the
+    /// The same retask, plus the archive clears that belong to the
     /// MEGAMISSION event specifically.
     ///
     /// Immediately after its `Queue_Mission` at 0x004C73B9,
@@ -164,6 +164,11 @@ impl Simulation {
     /// JMP 0x004C73D1`. `SuspendedMission` itself is deliberately left alone, so
     /// a later Restore reinstates the old selector with a NULL target and NULL
     /// destination.
+    /// After the Slave Manager reset, the ordinary Foot arm clears
+    /// ArchiveTarget through TechnoClass70C610 (`0x004C7448..0x004C7451`),
+    /// before the class target and destination setters. The executed GI
+    /// `archive_A_B` control in `walk_first_path.json` records that order.
+    /// Raw event mission 11 takes the earlier AreaGuard arm instead.
     ///
     /// This is NOT the shared funnel's business, because not every player order
     /// is a MEGAMISSION. Stop is its own opcode — `StopCommandClass::Execute`
@@ -208,6 +213,23 @@ impl Simulation {
             && let Some(rules) = rules
         {
             self.reset_slave_manager(id, rules);
+        }
+        // Event4C7446 tests the Foot receiver; non-Foot actors skip this
+        // call. Raw mission11 uses AreaGuard's separate Archive assignment
+        // at4C7430. AttackMove29 still uses VERA's deferred OrderIntent
+        // adapter rather than Foot4DF0E0's raw-event mapping; preserve that
+        // adapter here pending its recorded migration (#852/#1023). This
+        // exception is not native raw29 behavior, which clears the Archive.
+        if !matches!(mission, MissionType::AreaGuard | MissionType::AttackMove)
+            && let Some(entity) = self.substrate.entities.get_mut(id)
+            && matches!(
+                entity.category,
+                crate::map::entities::EntityCategory::Unit
+                    | crate::map::entities::EntityCategory::Infantry
+                    | crate::map::entities::EntityCategory::Aircraft
+            )
+        {
+            entity.set_archive_target(None);
         }
     }
 

@@ -678,6 +678,13 @@ fn a_host_lost_in_flight_returns_the_drone_to_its_launch_cell() {
             .get(drone)
             .is_some_and(|d| d.lifecycle.in_limbo)
     });
+    // Attack's ordinary MegaMission first clears Archive through70C610
+    // (4C73EF's mission!=11 branch,4C7448..4C7451). Supply this component
+    // prior after that event/launch so the comparison isolates AttachTo's
+    // refusal tail62AA96..62AAD9, which has no Archive assignment.
+    let launched = arena.sim.substrate.entities.get_mut(drone).unwrap();
+    assert_eq!(launched.archive_target(), None);
+    launched.set_archive_target(anchor);
     arena.hit(&rules, tank, Some(rhino), 400, "AP");
     arena.until(&rules, 100, |sim| {
         sim.substrate

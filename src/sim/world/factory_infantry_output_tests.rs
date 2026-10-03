@@ -35,6 +35,926 @@ use serde_json::{Value, json};
 
 const TICK_MS: u32 = 67;
 
+fn gi_command_corpus() -> Value {
+    serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/walk_first_path.json"
+    ))
+    .unwrap()
+}
+
+fn gi_command_history<'a>(corpus: &'a Value, name: &str) -> &'a Value {
+    let row = corpus["gi_reissue"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == name)
+        .unwrap_or_else(|| panic!("missing original GI history {name}"));
+    assert_eq!(
+        row["native_sha256"],
+        "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
+    );
+    assert_eq!(row["status"], "PASS");
+    row
+}
+
+fn gi_coordinate(value: &Value) -> crate::sim::components::DriveCoord {
+    crate::sim::components::DriveCoord {
+        x: value[0].as_i64().unwrap().try_into().unwrap(),
+        y: value[1].as_i64().unwrap().try_into().unwrap(),
+        z: value[2].as_i64().unwrap().try_into().unwrap(),
+    }
+}
+
+fn gi_optional_coordinate(value: &Value) -> Option<crate::sim::components::DriveCoord> {
+    let coord = gi_coordinate(value);
+    (coord.x != 0 || coord.y != 0 || coord.z != 0).then_some(coord)
+}
+
+fn gi_nav_target(state: &Value) -> Option<NavTargetRef> {
+    gi_cell_reference(state, state["nav"].as_u64().unwrap())
+}
+
+fn gi_cell_reference(state: &Value, pointer: u64) -> Option<NavTargetRef> {
+    if pointer == 0 {
+        return None;
+    }
+    let cell = state["cells"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|cell| cell["pointer"] == pointer)
+        .expect("ordinary GI command NavCom names an observed Cell");
+    let (rx, ry) = fixture_cell(&cell["xy"]);
+    Some(NavTargetRef::cell(rx, ry))
+}
+
+fn gi_archive_target(state: &Value) -> Option<TargetKind> {
+    gi_cell_reference(state, state["archive"].as_u64().unwrap()).map(|target| match target {
+        NavTargetRef::Cell { rx, ry } => TargetKind::Cell(rx, ry),
+        _ => unreachable!("original GI archive control supplies a Cell reference"),
+    })
+}
+
+fn gi_rng_hex<'a>(row: &'a Value, state: &Value, stream: &str) -> &'a str {
+    let reference = state["rng"][stream].as_str().unwrap();
+    row["complete_rng_states"][reference]["bytes"]
+        .as_str()
+        .unwrap()
+}
+
+/// Compare an input/class boundary from the initialized original GI. Map,
+/// constructor and Mark use their existing production owners; retained
+/// mission/Walk/path/Stage/RNG priors come from the saved original boundary.
+/// This does not replay HouseAI, factory startup or the preceding whole GI AI.
+fn gi_command_fixture(
+    row: &Value,
+    state: &Value,
+) -> Option<(Simulation, RuleSet, OverlayTypeRegistry, u64)> {
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::mission::{MissionDispatchTimer, MissionId};
+    use crate::sim::rng::SimRng;
+    use crate::sim::stage::StageClass;
+    use crate::sim::timer::CdTimer;
+
+    let retail = retail_battle_rules_for_map("Hills.mmx")?;
+    let context = state.get("input_context");
+    let rules = if context.is_some_and(|context| context["deployer"] == 0) {
+        // The original contrast supplies Type+EC8=0 after retail startup.
+        // Reproduce just that type prior through the existing native ReadBool
+        // production reader; the original flag store is not an INI-read claim.
+        let mut ini = retail.processed_rules.clone();
+        ini.merge(&crate::rules::ini_parser::IniFile::from_str(
+            "[E1]\nDeployer=no\n",
+        ));
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &retail.fixed_art)
+            .expect("original non-Deployer component prior parses");
+        rules.install_art_data(retail.rules.art().clone());
+        rules.replace_animation_sequences_for_test(retail.rules.animation_sequences().clone());
+        rules.general.resolve_art_rates(&retail.fixed_art);
+        rules
+    } else {
+        retail.rules
+    };
+    let object = rules.object("E1").expect("retail GI type");
+    assert_eq!(
+        object.speed_type as i32,
+        state["type"]["speed_type"].as_i64().unwrap() as i32
+    );
+    assert_eq!(
+        object.movement_zone as i32,
+        state["type"]["movement_zone"].as_i64().unwrap() as i32
+    );
+    assert_eq!(object.crawls, state["type"]["crawls"] != 0);
+    assert_eq!(object.cyborg, state["type"]["cyborg"] != 0);
+    assert_eq!(object.fraidycat, state["type"]["fraidycat"] != 0);
+    if let Some(context) = context {
+        assert_eq!(object.deployer, context["deployer"] != 0);
+    }
+    let registry = OverlayTypeRegistry::from_ini(&retail.processed_rules, Some(&retail.fixed_art));
+    let terrain_rules = TerrainRules::from_ini(&retail.processed_rules);
+    let mut sim = Simulation::with_seed(2);
+    sim.intern_rule_type_ids(&rules);
+    sim.resolve_type_handles(&rules);
+    install_ground(&mut sim, &rules, &terrain_rules);
+    let owner = sim.interner.intern("Americans");
+    let human = state["house"]["human"] != 0;
+    let mut house = HouseState::new(owner, 0, Some(owner), human, 10_000, 10);
+    if let Some(context) = context {
+        assert_eq!(human, context["human"] != 0);
+        assert_eq!(state["house"]["pointer"], context["actor_owner"]);
+        assert_eq!(state["house"]["current"], context["current_house"]);
+        house.player_control = context["player_control"] != 0;
+    }
+    house.difficulty = HouseDifficulty::Hard;
+    house.project_country_mults(&rules, &sim.interner);
+    sim.houses.insert(owner, house);
+    sim.session.house_order.push(owner);
+    sim.session.current_house =
+        (state["house"]["current"] == state["house"]["pointer"]).then_some(owner);
+    // The complete original no_rally bootstrap records mode1 -> Skirmish5
+    // at52E10F..52E119, before these continuations. New contrast snapshots
+    // carry the exact mode input; VERA stores its native zero/nonzero decision.
+    sim.session.game_mode_nonzero = context
+        .map(|context| context["game_mode"] != 0)
+        .unwrap_or(true);
+    sim.session.binary_frame = state["frame"].as_u64().unwrap().try_into().unwrap();
+    sim.fog.width = 33;
+    sim.fog.height = 33;
+    sim.fog.reveal_all_for_owner(owner);
+    let location = gi_coordinate(&state["location"]);
+    let id = sim
+        .spawn_object_at_height_with_overlay_registry(
+            "E1",
+            "Americans",
+            (location.x / 256).try_into().unwrap(),
+            (location.y / 256).try_into().unwrap(),
+            64,
+            0,
+            &rules,
+            &registry,
+        )
+        .expect("retail E1 enters the supplied original clear ground");
+    // Retain the observed subcell Location without leaving a competing raw
+    // occupation projection. These setup calls are outside the comparison.
+    assert!(sim.foot_mark_remove(id, Some(&rules), Some(&registry)));
+    ground_pose::foot_set_location(
+        &mut sim.substrate.entities,
+        id,
+        location,
+        Some(&rules),
+        &sim.interner,
+    );
+    assert!(sim.foot_mark_put(id, Some(&rules), Some(&registry)));
+    if row["name"] == "current_cell_raw20_B" && state["walk"]["moving"] != 0 {
+        // The original contrast changes only +124; membership and the
+        // retained infantry-owner slot do not change. Preserve that separation
+        // through the canonical raw-byte owner rather than claiming a cache
+        // or a live vehicle generated this supplied word.
+        let current = ((location.x / 256) as u16, (location.y / 256) as u16);
+        let cell = state["cells"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|cell| fixture_cell(&cell["xy"]) == current)
+            .unwrap();
+        assert_eq!(cell["raw_ground"], 0x20);
+        sim.substrate
+            .raw_cell_occupation
+            .clear_ground(current.0, current.1, u8::MAX);
+        sim.substrate
+            .raw_cell_occupation
+            .mark_ground(current.0, current.1, 0x20);
+    }
+    let timer = |value: &Value| {
+        // +644/+66C/+104 are copied stack residue. Timer owners retain the
+        // original anchor and duration (+640/+648 etc.), never this padding.
+        CdTimer::from_raw(
+            value[0].as_i64().unwrap().try_into().unwrap(),
+            value[2].as_i64().unwrap().try_into().unwrap(),
+        )
+    };
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    assert_eq!(
+        actor.locomotor.as_ref().unwrap().active_kind(),
+        LocomotorKind::Walk
+    );
+    actor.mission.apply_test_fixture(MissionTestFixture {
+        current: MissionId::from_raw(state["mission"].as_i64().unwrap() as i32),
+        suspended: MissionId::NONE,
+        queued: MissionId::from_raw(state["queued"].as_i64().unwrap() as i32),
+        movement_bypass_latch: 0,
+        handler_state: state["mission_status"].as_u64().unwrap() as u32,
+        mission_start_frame: 0,
+        ai_counter: 0,
+        dispatch_timer: MissionDispatchTimer::from_raw(
+            state["mission_timer"][0].as_i64().unwrap() as i32,
+            state["mission_timer"][2].as_i64().unwrap() as i32,
+        ),
+    });
+    actor
+        .mission_leaf
+        .set_infantry_doing_verified(state["doing"].as_i64().unwrap() as i32)
+        .unwrap();
+    actor.infantry.as_mut().unwrap().is_prone = state["prone"] != 0;
+    actor.infantry.as_mut().unwrap().cell_entry_blocked = state["entry_blocked"] != 0;
+    if let Some(context) = context {
+        actor.berserk.active = context["berserk"] != 0;
+    }
+    actor.install_native_stage_fixture(StageClass::from_native_fixture(
+        state["stage_words"][0].as_i64().unwrap() as i32,
+        state["stage_words"][1].as_u64().unwrap() as u8,
+        timer(&state["sequence_timer"]),
+        state["sequence_timer"][3].as_i64().unwrap() as i32,
+        // The shared Stage constructor6F2B5E retains +110=1. The original
+        // initialized GI and these input histories contain no increment write.
+        1,
+    ));
+    actor.navigation.nav_com = gi_nav_target(state);
+    actor.set_archive_target(gi_archive_target(state));
+    actor.navigation.path_replay.directions = state["path"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|word| {
+            let word = word.as_i64().unwrap();
+            assert!((-1..=8).contains(&word));
+            word as u8
+        })
+        .collect();
+    let reference = fixture_cell(&state["reference_cell"]);
+    actor.navigation.path_replay.reference_cell = Some((reference.0 as i16, reference.1 as i16));
+    actor.navigation.path_runtime.movement_timer = timer(&state["movement_timer"]);
+    actor.navigation.path_runtime.blocked_timer = timer(&state["blocked_timer"]);
+    actor.navigation.path_runtime.path_blocked = state["raw_6b7"] != 0;
+    actor.navigation.path_runtime.retries_left = state["retry"].as_u64().unwrap() as u32;
+    assert_eq!(state["nav_queue"]["count"], 0);
+    assert_eq!(state["destination_history"]["count"], 0);
+    let walk = actor.locomotor.as_mut().unwrap();
+    walk.set_step_head(gi_optional_coordinate(&state["walk"]["head"]));
+    walk.set_walk_destination(gi_optional_coordinate(&state["walk"]["destination"]));
+    if state["walk"]["motion"] != 0 {
+        walk.begin_walk_motion();
+    }
+    assert_eq!(walk.walk_is_moving(), Some(state["walk"]["moving"] != 0));
+    if let Some(occupant) = row["ordered_calls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|call| call["kind"] == "existing_original_redirect_occupant")
+    {
+        // These are the real original FindPath target inputs, not a supplied
+        // CanEnter answer. Recreate only the target object needed by the
+        // redirect; unrelated factory objects and the AStar continuation are
+        // outside this class-boundary comparison.
+        let type_id = match row["name"].as_str().unwrap() {
+            "findpath_existing_idle_MTNK" => "MTNK",
+            "findpath_existing_GAPILE" => "GAPILE",
+            name => panic!("unexpected original redirect occupant {name}"),
+        };
+        let cell = fixture_cell(&occupant["cell"]["xy"]);
+        let target = sim
+            .spawn_object_at_height_with_overlay_registry(
+                type_id,
+                "Americans",
+                cell.0,
+                cell.1,
+                128,
+                0,
+                &rules,
+                &registry,
+            )
+            .expect("original redirect target enters the supplied clear ground");
+        // The original live target has already commenced Guard. Runtime
+        // Building placement leaves that mission queued; finish it through
+        // the mission owner before this component-boundary comparison. This
+        // does not compare the target's whole initialization or AI history.
+        sim.mission_commence_exact(target, sim.session.binary_frame)
+            .unwrap();
+        let target_actor = sim.substrate.entities.get(target).unwrap();
+        let ambient = occupant
+            .get("ambient")
+            .expect("refreshed original redirect exports its live target inputs");
+        assert_eq!(ambient["owner"], ambient["gi_owner"]);
+        assert_eq!(target_actor.owner(), owner);
+        assert_eq!(
+            target_actor.health.current,
+            ambient["health"].as_i64().unwrap() as i32
+        );
+        assert_eq!(target_actor.is_object_alive(), ambient["alive"] != 0);
+        assert_eq!(target_actor.lifecycle.in_limbo, ambient["limbo"] != 0);
+        assert_eq!(target_actor.lifecycle.cell_marked, ambient["marked"] != 0);
+        assert_eq!(target_actor.on_bridge, ambient["on_bridge"] != 0);
+        assert_eq!(
+            target_actor.in_logic_vector,
+            ambient["logic_registered"] != 0
+        );
+        assert_eq!(
+            target_actor.mission.current().raw(),
+            ambient["mission"].as_i64().unwrap() as i32
+        );
+        assert_eq!(
+            target_actor.mission.queued().raw(),
+            ambient["queued"].as_i64().unwrap() as i32
+        );
+        assert_eq!(
+            ground_pose::position_world_coord(&target_actor.position),
+            gi_coordinate(&occupant["location"])
+        );
+        if type_id == "MTNK" {
+            let native_type = &ambient["type"];
+            let object = rules.object(type_id).unwrap();
+            assert_eq!(object.speed_type as i32, native_type["speed_type"]);
+            assert_eq!(object.movement_zone as i32, native_type["movement_zone"]);
+            assert_eq!(object.balloon_hover, native_type["balloon_hover"] != 0);
+            assert_eq!(object.teleporter, native_type["teleporter"] != 0);
+            assert_eq!(object.passengers, native_type["passengers"]);
+            assert_eq!(
+                target_actor.locomotor.as_ref().unwrap().active_kind(),
+                LocomotorKind::Drive
+            );
+            assert_eq!(ambient["foot"]["nav"], 0);
+            assert!(target_actor.navigation.nav_com.is_none());
+            assert_eq!(
+                crate::sim::movement::motion_query::is_moving(target_actor),
+                Some(false)
+            );
+        }
+        for (layer, field) in [
+            (
+                crate::sim::movement::locomotor::MovementLayer::Ground,
+                "raw_ground",
+            ),
+            (
+                crate::sim::movement::locomotor::MovementLayer::Bridge,
+                "raw_upper",
+            ),
+        ] {
+            assert_eq!(
+                u64::from(sim.substrate.raw_cell_occupation.bits_at(
+                    crate::sim::occupancy::RawCellKey::Real(cell.0, cell.1),
+                    layer,
+                )),
+                occupant["cell"][field].as_u64().unwrap()
+            );
+        }
+    }
+    sim.main_rng = SimRng::from_native_state_hex_for_test(gi_rng_hex(row, state, "main"));
+    sim.mapgen_rng = SimRng::from_native_state_hex_for_test(gi_rng_hex(row, state, "mapgen"));
+    sim.scenario_rng = SimRng::from_native_state_hex_for_test(gi_rng_hex(row, state, "scenario"));
+    Some((sim, rules, registry, id))
+}
+
+fn assert_gi_command_fields(sim: &Simulation, id: u64, row: &Value, state: &Value) {
+    let actor = sim.substrate.entities.get(id).unwrap();
+    let walk = actor.locomotor.as_ref().unwrap();
+    let context = row["name"].as_str().unwrap();
+    assert_eq!(
+        ground_pose::position_world_coord(&actor.position),
+        gi_coordinate(&state["location"]),
+        "{context}: Location"
+    );
+    assert_eq!(
+        actor.mission.current().raw(),
+        state["mission"].as_i64().unwrap() as i32,
+        "{context}: current mission"
+    );
+    assert_eq!(
+        actor.mission.queued().raw(),
+        state["queued"].as_i64().unwrap() as i32,
+        "{context}: queued mission"
+    );
+    assert_eq!(
+        actor.mission_leaf.as_infantry().unwrap().doing(),
+        state["doing"].as_i64().unwrap() as i32,
+        "{context}: Doing"
+    );
+    assert_eq!(
+        actor.infantry.as_ref().unwrap().is_prone,
+        state["prone"] != 0,
+        "{context}: prone"
+    );
+    assert_eq!(
+        actor.infantry.as_ref().unwrap().cell_entry_blocked,
+        state["entry_blocked"] != 0,
+        "{context}: entry latch"
+    );
+    assert_eq!(
+        actor.navigation.nav_com,
+        gi_nav_target(state),
+        "{context}: NavCom"
+    );
+    assert_eq!(
+        actor.archive_target(),
+        gi_archive_target(state),
+        "{context}: ArchiveTarget"
+    );
+    assert!(actor.navigation.nav_queue.is_empty(), "{context}: NavQueue");
+    assert_eq!(
+        walk.walk_destination(),
+        gi_optional_coordinate(&state["walk"]["destination"]),
+        "{context}: Walk destination"
+    );
+    assert_eq!(
+        walk.step_head(),
+        gi_optional_coordinate(&state["walk"]["head"]),
+        "{context}: paid head"
+    );
+    assert_eq!(
+        walk.walk_is_moving(),
+        Some(state["walk"]["moving"] != 0),
+        "{context}: IsMoving"
+    );
+    assert_eq!(
+        walk.walk_animation_moving(),
+        Some(state["walk"]["motion"] != 0),
+        "{context}: motion"
+    );
+    let native_path: Vec<u8> = state["path"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|word| word.as_i64().unwrap() as u8)
+        .collect();
+    assert_eq!(
+        &actor.navigation.path_replay.directions
+            [usize::from(actor.navigation.path_replay.cursor)..],
+        native_path,
+        "{context}: full path backing suffix"
+    );
+    let reference = fixture_cell(&state["reference_cell"]);
+    assert_eq!(
+        actor.navigation.path_replay.reference_cell,
+        Some((reference.0 as i16, reference.1 as i16)),
+        "{context}: path reference"
+    );
+    for (actual, expected) in [
+        (
+            actor.navigation.path_runtime.movement_timer,
+            &state["movement_timer"],
+        ),
+        (
+            actor.navigation.path_runtime.blocked_timer,
+            &state["blocked_timer"],
+        ),
+    ] {
+        assert_eq!(
+            json!([actual.start_frame(), actual.duration()]),
+            json!([expected[0], expected[2]]),
+            "{context}: Foot timer"
+        );
+    }
+    assert_eq!(
+        actor.navigation.path_runtime.path_blocked,
+        state["raw_6b7"] != 0
+    );
+    assert_eq!(
+        actor.navigation.path_runtime.retries_left,
+        state["retry"].as_u64().unwrap() as u32
+    );
+    assert_eq!(
+        actor.mission.handler_state(),
+        state["mission_status"].as_u64().unwrap() as u32,
+        "{context}: mission status"
+    );
+    let mission_timer = actor.mission.dispatch_timer();
+    assert_eq!(
+        json!([mission_timer.start_frame(), mission_timer.delay()]),
+        json!([state["mission_timer"][0], state["mission_timer"][2]]),
+        "{context}: mission timer"
+    );
+    let stage = actor.native_stage();
+    assert_eq!(
+        stage.value(),
+        state["stage_words"][0].as_i64().unwrap() as i32,
+        "{context}: Stage"
+    );
+    assert_eq!(
+        stage.rate(),
+        state["sequence_timer"][3].as_i64().unwrap() as i32,
+        "{context}: Stage rate"
+    );
+    assert_eq!(
+        json!([stage.timer().start_frame(), stage.timer().duration()]),
+        json!([state["sequence_timer"][0], state["sequence_timer"][2]]),
+        "{context}: Stage timer"
+    );
+    for (stream, actual) in [
+        ("main", &sim.main_rng),
+        ("mapgen", &sim.mapgen_rng),
+        ("scenario", &sim.scenario_rng),
+    ] {
+        assert_eq!(
+            actual.native_state_hex(),
+            gi_rng_hex(row, state, stream),
+            "{context}: complete {stream} RNG"
+        );
+    }
+}
+
+/// Real original input -> MegaMission -> class51AA40 returns, joined twice in
+/// Rust without an intervening AI visit. The later-frame control advances
+/// only the recorded frame, not whole AI. The Shift producer/codec choice is
+/// separately checked by the app input test; decoded Cell commands here have
+/// native ordinary (flag1) semantics regardless of the physical modifier.
+#[test]
+fn initialized_gi_reissues_match_original_command_returns() {
+    use crate::sim::mission::MissionId;
+    use crate::sim::mission::authority::EntityReadyInputProvider;
+
+    let corpus = gi_command_corpus();
+    for name in [
+        "plain_A_B",
+        "shift_A_B",
+        "other12_A_B",
+        "plain_A_A",
+        "plain_A_later_B",
+        "attack_same_A",
+        "prone_A_A",
+    ] {
+        let row = gi_command_history(&corpus, name);
+        let Some((mut sim, rules, registry, id)) = gi_command_fixture(row, &row["initial"]) else {
+            return;
+        };
+        let owner = sim.interner.get("Americans").unwrap();
+        let dispatches: Vec<_> = row["boundaries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|boundary| boundary["label"] == "actual_local_OutList_DoList_dispatch")
+            .collect();
+        assert_eq!(dispatches.len(), 2);
+        for (index, (input, dispatch)) in row["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(dispatches)
+            .enumerate()
+        {
+            if name == "attack_same_A" && index == 1 {
+                let producer = row["boundaries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|boundary| boundary["label"] == "actual_QueueMission_Attack")
+                    .unwrap();
+                sim.mission_queue_exact(
+                    id,
+                    MissionId::from_raw(producer["args"][0].as_i64().unwrap().try_into().unwrap()),
+                    producer["args"][1].as_i64().unwrap().try_into().unwrap(),
+                    sim.session.binary_frame,
+                    &EntityReadyInputProvider,
+                )
+                .unwrap();
+                assert_gi_command_fields(&sim, id, row, &producer["after"]);
+            }
+            if name == "prone_A_A" && index == 1 {
+                let down = row["boundaries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|boundary| boundary["label"] == "actual_GI_DoAction_Down")
+                    .unwrap();
+                assert_eq!(down["args"], json!([5, 1, 0]));
+                let _ = sim.infantry_do_action(id, 5, true, &rules).unwrap();
+                assert_gi_command_fields(&sim, id, row, &down["after"]);
+            }
+            sim.session.binary_frame = dispatch["before"]["frame"]
+                .as_u64()
+                .unwrap()
+                .try_into()
+                .unwrap();
+            let clicked = fixture_cell(&input["clicked"]);
+            let resolved = sim
+                .ordinary_ground_foot_cell_input(owner, id, clicked, &rules)
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            let expected = gi_nav_target(&dispatch["after"]).unwrap();
+            assert_eq!(NavTargetRef::cell(resolved.0, resolved.1), expected);
+            assert!(sim.apply_command_with_overlays(
+                "Americans",
+                &Command::Move {
+                    entity_id: id,
+                    target_rx: resolved.0,
+                    target_ry: resolved.1,
+                    queue: false
+                },
+                Some(&rules),
+                Some(&registry)
+            ));
+            assert_gi_command_fields(&sim, id, row, &dispatch["after"]);
+        }
+    }
+}
+
+/// An actual70C610(Cell) call supplies the retained Archive prior. Real
+/// ordinary input/Event then clears it at4C7448 before the class destination.
+/// This is a free-GI component prior, not replay of the early factory rally.
+#[test]
+fn initialized_gi_move_clears_original_archive_before_destination() {
+    let corpus = gi_command_corpus();
+    let row = gi_command_history(&corpus, "archive_A_B");
+    let click = row["boundaries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|boundary| boundary["label"] == "actual_GI_CellClick")
+        .unwrap();
+    let Some((mut sim, rules, registry, id)) = gi_command_fixture(row, &click["before"]) else {
+        return;
+    };
+    assert!(
+        sim.substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .archive_target()
+            .is_some()
+    );
+    let owner = sim.interner.get("Americans").unwrap();
+    let input = row["inputs"].as_array().unwrap().last().unwrap();
+    let resolved = sim
+        .ordinary_ground_foot_cell_input(owner, id, fixture_cell(&input["clicked"]), &rules)
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(sim.apply_command_with_overlays(
+        "Americans",
+        &Command::Move {
+            entity_id: id,
+            target_rx: resolved.0,
+            target_ry: resolved.1,
+            queue: false
+        },
+        Some(&rules),
+        Some(&registry)
+    ));
+    assert_gi_command_fields(&sim, id, row, &row["final"]);
+}
+
+/// The preceding whole original51BAB0 visit owns the actual paid head and
+/// RNG advances. Import that boundary for paid-head controls; the separate
+/// prone control executes the existing DoAction owner against original Down5.
+/// The raw-word contrast imports an explicit component prior. Stop is the
+/// class51DAF0 method boundary, not keyboard/event Stop ingress.
+#[test]
+fn initialized_gi_retained_priors_and_stop_reissues_match_original_returns() {
+    let corpus = gi_command_corpus();
+    for name in [
+        "paid_head_B",
+        "paid_head_Stop_B",
+        "prone_B",
+        "current_cell_raw20_B",
+    ] {
+        let row = gi_command_history(&corpus, name);
+        let boundaries = row["boundaries"].as_array().unwrap();
+        let prior = if name == "prone_B" {
+            &row["initial"]
+        } else if name == "current_cell_raw20_B" {
+            &boundaries
+                .iter()
+                .rfind(|boundary| boundary["label"] == "actual_GI_CellClick")
+                .unwrap()["before"]
+        } else {
+            &boundaries
+                .iter()
+                .find(|boundary| boundary["label"] == "whole_original_GI_AI_1")
+                .unwrap()["after"]
+        };
+        let Some((mut sim, rules, registry, id)) = gi_command_fixture(row, prior) else {
+            return;
+        };
+        if name == "prone_B" {
+            let down = boundaries
+                .iter()
+                .find(|boundary| boundary["label"] == "actual_GI_DoAction_Down")
+                .unwrap();
+            assert_eq!(down["args"], json!([5, 1, 0]));
+            let _ = sim.infantry_do_action(id, 5, true, &rules).unwrap();
+            assert_gi_command_fields(&sim, id, row, &down["after"]);
+        }
+        if name == "paid_head_Stop_B" {
+            let stop = boundaries
+                .iter()
+                .find(|boundary| boundary["label"] == "actual_GI_Stop")
+                .unwrap();
+            sim.infantry_stop_driver(id, &rules, Some(&registry))
+                .unwrap();
+            assert_gi_command_fields(&sim, id, row, &stop["after"]);
+        }
+        let input = row["inputs"].as_array().unwrap().last().unwrap();
+        let owner = sim.interner.get("Americans").unwrap();
+        let resolved = sim
+            .ordinary_ground_foot_cell_input(owner, id, fixture_cell(&input["clicked"]), &rules)
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(sim.apply_command_with_overlays(
+            "Americans",
+            &Command::Move {
+                entity_id: id,
+                target_rx: resolved.0,
+                target_ry: resolved.1,
+                queue: false
+            },
+            Some(&rules),
+            Some(&registry)
+        ));
+        assert_gi_command_fields(&sim, id, row, &row["final"]);
+    }
+}
+
+/// Actual4D3CC7/4D3DF9 redirects from the initialized original GI. Compare
+/// the real target CanEnter, FNPC selection and class return. The subsequent
+/// AStar path and the unrelated factory map objects are not replayed here.
+#[test]
+fn initialized_gi_findpath_redirects_match_original_class_returns() {
+    use crate::sim::movement::infantry_entry::InfantryEntryArgs;
+
+    let corpus = gi_command_corpus();
+    for name in ["findpath_existing_idle_MTNK", "findpath_existing_GAPILE"] {
+        let row = gi_command_history(&corpus, name);
+        let calls = row["ordered_calls"].as_array().unwrap();
+        let class = calls
+            .iter()
+            .find(|call| call["kind"] == "GI_SetDestination")
+            .unwrap();
+        assert_eq!(class["args"][1], 1);
+        assert_eq!(class["true_ret8_bytes"], "c20800");
+        let Some((mut sim, rules, registry, id)) = gi_command_fixture(row, &class["before"]) else {
+            return;
+        };
+        let target = calls
+            .iter()
+            .find(|call| call["kind"] == "existing_original_redirect_occupant")
+            .unwrap();
+        let xy = fixture_cell(&target["cell"]["xy"]);
+        let cell = sim
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .native_cell_identity((xy.0.try_into().unwrap(), xy.1.try_into().unwrap()));
+        let answer = sim
+            .foot_can_enter(id, cell, InfantryEntryArgs::REPAIR, &rules, Some(&registry))
+            .unwrap();
+        let native_entry = calls
+            .iter()
+            .find(|call| call["kind"] == "GI_CanEnter")
+            .unwrap();
+        assert_eq!(
+            u64::from(answer),
+            native_entry["returned_eax"].as_u64().unwrap()
+        );
+        let goal = sim
+            .find_path_goal_for_answer(
+                id,
+                crate::sim::components::DriveCoord::cell(xy.0, xy.1, 0),
+                answer,
+                &rules,
+                Some(&registry),
+            )
+            .unwrap();
+        let native_near = calls
+            .iter()
+            .find(|call| call["kind"] == "Map_FindNearbyPassable")
+            .unwrap();
+        let near = fixture_cell(&native_near["chosen_cell"]);
+        assert_eq!(
+            goal,
+            crate::sim::components::DriveCoord::cell(near.0, near.1, 0)
+        );
+        assert_gi_command_fields(&sim, id, row, &class["at_ret8"]);
+    }
+}
+
+/// Original input emits no Move for the recorded local-house, Berserk and
+/// Deployer/Doing contexts. Action0 can return CellClick AL1 without issuing
+/// an order; the latter's query2 has a different refusal path.51AA40 owns its
+/// separate later human-class guard.
+#[test]
+fn initialized_gi_cell_input_no_order_contexts_match_original_state() {
+    let corpus = gi_command_corpus();
+    for name in [
+        "human_Doing27_B",
+        "human_Doing27_shift_B",
+        "mode5_current_mismatch_B",
+        "mode5_current_nonhuman_Doing27_input_class_B",
+        "berserk_B",
+    ] {
+        let row = gi_command_history(&corpus, name);
+        let click = row["boundaries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|boundary| boundary["label"] == "actual_GI_CellClick")
+            .unwrap();
+        let Some((sim, rules, _, id)) = gi_command_fixture(row, &click["before"]) else {
+            return;
+        };
+        assert!(
+            rules.object("E1").unwrap().deployer,
+            "original layered E1 Deployer=yes"
+        );
+        if name.contains("Doing27") {
+            assert_eq!(row["inputs"][0]["queried_action"], 2);
+        }
+        assert!(
+            !row["ordered_calls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|call| call["kind"] == "Event_Construct")
+        );
+        let owner = sim.interner.get("Americans").unwrap();
+        assert_eq!(
+            sim.ordinary_ground_foot_cell_input(
+                owner,
+                id,
+                fixture_cell(&row["inputs"][0]["clicked"]),
+                &rules
+            )
+            .unwrap()
+            .unwrap(),
+            None,
+            "original51F250 returns before a Move event exists"
+        );
+        assert_gi_command_fields(&sim, id, row, &click["after"]);
+    }
+}
+
+/// Original Type+EC8=0 is a component contrast after retail initialization.
+/// With Doing27, the input query can emit Move while the independent human
+/// destination-class guard refuses. Compare the actual Event/class outcome.
+#[test]
+fn initialized_gi_non_deployer_input_reaches_original_class_refusal() {
+    let corpus = gi_command_corpus();
+    let row = gi_command_history(&corpus, "nonDeployer_Doing27_B");
+    let click = row["boundaries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|boundary| boundary["label"] == "actual_GI_CellClick")
+        .unwrap();
+    let Some((mut sim, rules, registry, id)) = gi_command_fixture(row, &click["before"]) else {
+        return;
+    };
+    assert!(!rules.object("E1").unwrap().deployer);
+    let owner = sim.interner.get("Americans").unwrap();
+    let resolved = sim
+        .ordinary_ground_foot_cell_input(
+            owner,
+            id,
+            fixture_cell(&row["inputs"][0]["clicked"]),
+            &rules,
+        )
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(sim.apply_command_with_overlays(
+        "Americans",
+        &Command::Move {
+            entity_id: id,
+            target_rx: resolved.0,
+            target_ry: resolved.1,
+            queue: false,
+        },
+        Some(&rules),
+        Some(&registry),
+    ));
+    assert_gi_command_fields(&sim, id, row, &row["final"]);
+}
+
+/// The same original DoAction-produced prior at the class boundary has no
+/// Event prelude. House50B730 decides the class's independent human guard.
+/// The setter is void; compare true-RET8 state rather than incidental EAX.
+#[test]
+fn initialized_gi_deploy_class_contexts_match_original_returns() {
+    let corpus = gi_command_corpus();
+    for name in [
+        "human_Doing27_class_B",
+        "mode5_current_nonhuman_Doing27_input_class_B",
+    ] {
+        let row = gi_command_history(&corpus, name);
+        let call = row["ordered_calls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|call| call["kind"] == "GI_SetDestination")
+            .unwrap();
+        let Some((mut sim, rules, registry, id)) = gi_command_fixture(row, &call["before"]) else {
+            return;
+        };
+        assert_eq!(call["args"][1], 1);
+        assert_eq!(call["true_ret8_bytes"], "c20800");
+        let requested =
+            gi_cell_reference(&call["before"], call["args"][0].as_u64().unwrap()).unwrap();
+        let _ = sim
+            .set_infantry_destination(id, requested, &rules, Some(&registry))
+            .unwrap();
+        assert_gi_command_fields(&sim, id, row, &call["after"]);
+    }
+}
+
 fn corpus() -> Value {
     let data: Value =
         serde_json::from_str(include_str!("fixtures/factory_infantry_local_native.json")).unwrap();

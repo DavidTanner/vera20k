@@ -575,12 +575,9 @@ fn eject_head_passenger(
                 passenger.passively_acquired_target = false;
                 passenger.order_intent = None;
             }
-            sim.queue_megamission_with_teardown(
-                pax_id,
-                MissionType::Move,
-                DockTeardown::None,
-                Some(rules),
-            );
+            // Unit73DBDB queues the passenger's Move directly, before
+            // class destination73DC06; it does not execute a player event.
+            sim.queue_mission_with_teardown(pax_id, MissionType::Move, DockTeardown::None);
             issue_pathed_move(sim, rules, pax_id, dest, overlay_registry);
 
             if let Some(sound) = leave_sound {
@@ -992,12 +989,9 @@ fn eject_from_aircraft(
                 passenger.passively_acquired_target = false;
                 passenger.order_intent = None;
             }
-            sim.queue_megamission_with_teardown(
-                pax_id,
-                MissionType::Move,
-                DockTeardown::None,
-                Some(rules),
-            );
+            // Aircraft415C05 queues Move directly before destination415C21,
+            // followed by its radio callbacks. No Event Archive clear.
+            sim.queue_mission_with_teardown(pax_id, MissionType::Move, DockTeardown::None);
             if let Some(dest) = scan_cell {
                 issue_pathed_move(sim, rules, pax_id, dest, overlay_registry);
             }

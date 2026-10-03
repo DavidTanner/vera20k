@@ -9,7 +9,9 @@
 //! (`MovementPassCache`). Each equals a whole-world build from the entities,
 //! terrain, overlays, alliances and rules at this point of the frame; debug
 //! builds compare the two on every read. Scatter, air and other direct moves
-//! do not come through here. A mover whose active locomotor is Teleport takes
+//! do not come through here. A Walk infantryman takes the existing Infantry
+//! destination owner, including repeated and queued requests; its first
+//! Process owns the path search. A mover on Teleport takes
 //! its class setter instead of a route: no pass moves a Teleport owner. A
 //! Jumpjet's cell order likewise takes Foot's setter, whose `Move_To` flies
 //! it; an object order still takes the route, and the Jumpjet's `Process`
@@ -20,7 +22,7 @@
 //! the factory-rally moves search without owner block sets; the resumed-order
 //! and idle-miner moves also search without terrain costs. Only a mover that
 //! searches when the order is given reads these inputs: not Drive, Ship or a
-//! Walk mover taking a fresh destination, which accept first and search in
+//! represented Walk infantryman, which accept first and search in
 //! their own turn. Aligning the sites changes paths and needs native evidence
 //! per site.
 
@@ -44,18 +46,21 @@ pub(crate) struct GroundMove {
     /// Whether the search reads the block sets as the mover's owner sees
     /// them (friendly movers passable); otherwise it reads none.
     pub(crate) owner_blocks: bool,
-    /// An object order's captured coordinate (see
-    /// `issue_move_command_with_destination`).
+    /// An object order's reference and coordinate for the route adapter.
+    /// A represented class owner instead re-reads the live target's +4C.
     pub(crate) object_destination: Option<(NavTargetRef, DriveCoord)>,
 }
 
 impl Simulation {
     /// Issue `order` with the kept block sets and blocker plane, against the
-    /// canonical path grid. Returns whether the mover accepted the
-    /// destination; without a published grid nothing is issued. A mover on
+    /// canonical path grid. For a represented class, true means dispatched,
+    /// including a guarded no-op: its native setter is void. Route adapters
+    /// require a published grid. A mover on
     /// Teleport takes its class setter ([`Self::teleport_destination`]), and
     /// a Jumpjet's cell order takes Foot's
-    /// ([`Self::jumpjet_cell_destination`]), which ignores `queue`.
+    /// ([`Self::jumpjet_cell_destination`]), which ignores `queue`. A Walk
+    /// infantryman takes Infantry51AA40 before borrowing any path-search
+    /// inputs. Its class flag1 never appends to NavQueue.
     pub(crate) fn issue_ground_move(
         &mut self,
         order: GroundMove,
@@ -66,6 +71,30 @@ impl Simulation {
             self.teleport_destination(order.entity_id, order.target, rules, registry)
         {
             return accepted;
+        }
+        if let Some(rules) = rules {
+            let requested = order.object_destination.map_or_else(
+                || NavTargetRef::cell(order.target.0, order.target.1),
+                |(reference, _)| reference,
+            );
+            if self.infantry_setter_receiver(order.entity_id, requested, rules) {
+                // Event4C747C and the other concrete destination callers
+                // dispatch class+480(target,1), not a second Walk composition.
+                // The class owns current-cell admission, Stop_Driver, prone
+                // Up and path clearing before the shared Foot/Walk tail.
+                return self
+                    .assign_infantry_walk_destination(
+                        order.entity_id,
+                        requested,
+                        order.speed,
+                        rules,
+                        registry,
+                    )
+                    .unwrap_or_else(|cause| {
+                        log::warn!("Infantry ground destination {}: {cause}", order.entity_id);
+                        false
+                    });
+            }
         }
         if order.object_destination.is_none()
             && let Some(accepted) =

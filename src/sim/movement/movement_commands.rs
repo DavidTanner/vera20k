@@ -276,35 +276,36 @@ pub(crate) fn issue_move_command_with_destination(
                 .get(entity_id)
                 .is_some_and(|e| e.movement_target.is_none()))
     {
-        // The ordinary Infantry setter51AA40 -> Foot4D94B0 -> Walk75ACB0
-        // accepts before FindPath. Process75AFC5 reads the live route later;
-        // see tools/spatial_oracle/walk_first_path.json. In particular an
-        // occupied corridor cannot refuse an otherwise accepted destination.
-        //4C747C installs the already encoded destination. The ordinary
-        // click resolver4DE1D0 runs before event production, never here:
-        // topology may have changed while a synchronized order was queued.
-        let effective_target = target;
-        let entity = entities.get_mut(entity_id).expect("resolved mover");
-        if let Some((reference, coord)) = object_destination {
-            super::navcom::set_destination_internal_coord(
-                entity,
-                reference,
-                coord,
-                resolved_terrain,
-                timing.binary_frame,
-            );
-        } else {
-            super::navcom::set_destination_internal_cell(
-                entity,
-                effective_target,
-                resolved_terrain,
-                timing.binary_frame,
-            );
-        }
-        entity.navigation.path_replay.clear_live_head();
-        timing.accept(entity);
-        prepare_destination_execution(entity, effective_target, speed);
-        return true;
+        // Represented Infantry orders return through the full class owner
+        // in Simulation::issue_ground_move. This legacy boundary remains for
+        // context-free fixtures and unrepresented receiver classes; it is
+        // only an accepted Foot/Walk suffix, not another51AA40 port.
+        let destination = object_destination.unwrap_or_else(|| {
+            (
+                crate::sim::components::NavTargetRef::cell(target.0, target.1),
+                super::navcom::target_cell_coord(
+                    target.0,
+                    target.1,
+                    resolved_terrain
+                        .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                        .as_ref(),
+                ),
+            )
+        });
+        entities
+            .get_mut(entity_id)
+            .expect("resolved mover")
+            .navigation
+            .path_replay
+            .clear_live_head();
+        return prepare_walk_destination(
+            entities,
+            entity_id,
+            destination,
+            speed,
+            resolved_terrain,
+            timing,
+        );
     }
     // Retain the existing non-Walk recovery policy. Infantry51AA40 ->
     // Foot4D94B0 -> Walk75ACB0 has no PowerOn; a powered-down Walk still

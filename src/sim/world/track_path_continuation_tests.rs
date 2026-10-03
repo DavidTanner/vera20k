@@ -332,7 +332,7 @@ fn near_native_rows_stop_through_the_continuation_null_setter() {
         // 0x4D404A tail, which returns for a Chebyshev-1 target.
         sim.run_find_path_failed_receiver(id, &rules, Some(&registry))
             .unwrap();
-        sim.finish_find_path_failure(id, DriveCoord::cell(11, 10, 0), &rules)
+        sim.finish_find_path_failure(id, DriveCoord::cell(11, 10, 0), &rules, Some(&registry))
             .unwrap();
         let e = sim.substrate.entities.get(id).unwrap();
         assert!(e.navigation.nav_com.is_some(), "the near tail keeps NavCom");

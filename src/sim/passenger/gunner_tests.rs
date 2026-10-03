@@ -143,6 +143,42 @@ fn unload_at_clear_exit(sim: &mut Simulation, rules: &RuleSet, ifv: u64, passeng
     );
 }
 
+/// Infantry51F190 -> Foot4D76F8 ->6FFBE0 sends Enter7 with the clicked
+/// transport as Destination; Event4C747C preserves that object token. Its
+/// coordinate belongs to Foot4DBDF0 (foot_navigation_coordinate corpus).
+/// This is a production command regression, not a whole boarding comparison.
+#[test]
+fn retail_infantry_enter_keeps_the_transport_destination_reference() {
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
+        return;
+    };
+    let rules = &retail.rules;
+    let (mut sim, _) = arena(rules);
+    let ifv = sim.spawn_object("FV", OWNER, 16, 16, 64, rules).unwrap();
+    let passenger = sim.spawn_object("E1", OWNER, 16, 15, 64, rules).unwrap();
+    let transport_coord = sim.foot_navigation_coordinate(ifv).unwrap();
+
+    assert!(sim.apply_command(
+        OWNER,
+        &Command::EnterTransport {
+            passenger_id: passenger,
+            transport_id: ifv,
+        },
+        Some(rules),
+    ));
+    let passenger = entity(&sim, passenger);
+    assert_eq!(
+        passenger.navigation.nav_com,
+        Some(crate::sim::components::NavTargetRef::object(ifv)),
+        "the native Enter destination is the clicked object, retaining its identity"
+    );
+    assert_eq!(
+        passenger.locomotor.as_ref().unwrap().walk_destination(),
+        Some(transport_coord),
+        "the class setter samples the transport's shared +4C coordinate"
+    );
+}
+
 #[test]
 fn retail_ifv_boarding_and_departure_retry_keep_one_selection_owner() {
     let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules() else {

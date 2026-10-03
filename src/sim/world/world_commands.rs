@@ -587,9 +587,23 @@ impl Simulation {
                     .entities
                     .get(*entity_id)
                     .is_some_and(|e| e.is_deployed())
+                    && !rules.is_some_and(|rules| {
+                        self.infantry_setter_receiver(
+                            *entity_id,
+                            crate::sim::components::NavTargetRef::cell(*target_rx, *target_ry),
+                            rules,
+                        )
+                    })
                 {
                     return false;
                 }
+                // Event4C7353 does not test Infantry Doing. Its prelude queues
+                // Move before class51AA40 applies the independent human
+                // Doing27..30 refusal. The original non-Deployer contrast in
+                // walk_first_path.json emits that Event and retains queued2
+                // even though the void destination setter leaves NavCom NULL.
+                // Other class adapters retain the legacy early gate until
+                // their destination owner is represented (remaining #687).
                 // Native order admission: a dead, zero-strength or in-limbo
                 // actor abandons the whole order and keeps its previous one.
                 if !self.order_actor_admits(*entity_id) {
@@ -1402,6 +1416,29 @@ impl Simulation {
                 if self.duplicate_enter_is_noop(*passenger_id, *transport_id) {
                     return true;
                 }
+                let transport_ref = crate::sim::components::NavTargetRef::object(*transport_id);
+                let object_destination =
+                    if self.infantry_setter_receiver(*passenger_id, transport_ref, rules) {
+                        // Infantry51F190 -> Foot4D76F8 ->6FFBE0 carries the
+                        // clicked object as Destination for Enter7. Event
+                        //4C747C preserves it; Infantry51AA40 samples its live
+                        //+4C through the shared coordinate owner after its
+                        //prelude (foot_navigation_coordinate corpus).
+                        let Ok(coord) = crate::sim::movement::nav_target_coordinate(
+                            transport_ref,
+                            Some(*passenger_id),
+                            &self.substrate.entities,
+                            self.resolved_terrain.as_ref(),
+                            Some((rules, &self.interner)),
+                        ) else {
+                            return false;
+                        };
+                        Some((transport_ref, coord))
+                    } else {
+                        // Other receiver classes retain their existing Cell
+                        // adapter pending their object-click/setter migration.
+                        None
+                    };
                 // Retask onto Enter; the target setter below owns combat cancellation.
                 self.queue_megamission_with_teardown(
                     *passenger_id,
@@ -1418,7 +1455,8 @@ impl Simulation {
                         target_transport_id: *transport_id,
                     };
                 }
-                // Issue movement toward transport cell.
+                // The represented Infantry class keeps the transport token;
+                // the route adapter still uses its physical approach cell.
                 let info = self.resolve_move_info(*passenger_id, Some(rules));
                 let speed = info
                     .as_ref()
@@ -1436,7 +1474,7 @@ impl Simulation {
                         queue: false,
                         speed_type: Some(speed_type),
                         owner_blocks: true,
-                        object_destination: None,
+                        object_destination,
                     },
                     Some(rules),
                     overlay_registry,
@@ -1798,20 +1836,11 @@ impl Simulation {
                 let _ = self.assign_target_represented(*engineer_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*engineer_id) {
                     e.order_intent = None;
-                    // Event4C747C -> Infantry51AA40 -> Foot4D9510 writes
-                    // the actual object destination before locomotor approach.
-                    e.navigation.nav_com = Some(crate::sim::components::NavTargetRef::Building {
-                        id: *target_building_id,
-                    });
-                    e.navigation.nav_com_aux = None;
-                    e.navigation.pending_arrival_clear = false;
-                    movement::set_walk_destination_coord(
-                        e,
-                        target_coord,
-                        self.resolved_terrain.as_ref(),
-                    );
                 }
-                // Issue movement toward the building's cell.
+                // Event4C747C dispatches Infantry51AA40 with the Building
+                // token. The class publishes NavCom and the Walk destination
+                // after its prelude; a caller write would change its moving
+                // and same-reference tests before the actual class call.
                 let info = self.resolve_move_info(*engineer_id, Some(rules));
                 let speed = info
                     .as_ref()
@@ -2598,9 +2627,6 @@ impl Simulation {
         );
         // Foot4DA1C0 (`0x004C7453`) clears the +5AC vector, distinct from
         // NavQueue588/598, and has no represented producer here.
-        if let Some(actor) = self.substrate.entities.get_mut(id) {
-            actor.set_archive_target(None);
-        }
         self.assign_target_represented(id, None, Some(rules))
             .unwrap_or_else(|cause| panic!("Unload order target: {cause}"));
         self.assign_destination_represented(id, None, Some(rules), overlay_registry)

@@ -3521,8 +3521,8 @@
   },
   "public_caller": {
     "path": "tools/spatial_oracle/factory_infantry_output.py",
-    "bytes": 15883,
-    "sha256": "00ffe06b0495f2593a29ccb4af8879a1f7f8768af205b3b4dc0914b93f82b437"
+    "bytes": 15406,
+    "sha256": "82e65c76aaa452492d95efd05197d2c02877279c2d1239139b5698dda217c397"
   },
   "pcm_witness": {
     "source_receipt": {
@@ -3729,6 +3729,11 @@
       "path": "tools/spatial_oracle/factory_infantry_output.py",
       "bytes": 15877,
       "sha256": "65164f19608a1637f23746ec340ec0493de0cb85e0858c71be61f901e25844cc"
+    },
+    {
+      "path": "tools/spatial_oracle/factory_infantry_output.py",
+      "bytes": 15883,
+      "sha256": "00ffe06b0495f2593a29ccb4af8879a1f7f8768af205b3b4dc0914b93f82b437"
     }
   ],
   "prior_fixture_caller_versions": [

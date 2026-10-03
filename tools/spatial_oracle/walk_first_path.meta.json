@@ -32,5 +32,42 @@
     "raw_mark": "0x005217C0",
     "raw_clear": "0x00521850"
   },
-  "payload_sha256": "1218427065ff414f07d8887ad0299a7aeac28b19c5a666fc84b4814abcfec9f4"
+  "gi_reissue_evidence": {
+    "manifest": "_walk_first_path/manifest.json",
+    "sha256": "b90c182f52a7504741de7f0a9bf65570ed1999e42da10adbd7c46e778494a151",
+    "histories": [
+      "plain_A_B",
+      "shift_A_B",
+      "other12_A_B",
+      "paid_head_B",
+      "paid_head_Stop_B",
+      "human_Doing27_B",
+      "human_Doing27_shift_B",
+      "human_Doing27_class_B",
+      "findpath_existing_idle_MTNK",
+      "findpath_existing_GAPILE",
+      "plain_A_A",
+      "plain_A_later_B",
+      "attack_same_A",
+      "current_cell_raw20_B",
+      "archive_A_B",
+      "prone_B",
+      "mode5_current_mismatch_B",
+      "mode5_current_nonhuman_Doing27_input_class_B",
+      "prone_A_A",
+      "nonDeployer_Doing27_B",
+      "berserk_B"
+    ],
+    "selector": "walk_first_path.project_gi_reissue",
+    "check_scope": "Fresh legacy7setter/3head plus saved raw/source-bound GI selection; selected whole-history replay is --check-gi-reissue",
+    "bounds": [
+      "The existing corrected initialized no_rally bootstrap compares complete normalized primary/private payloads before retaining its live VM.",
+      "Authored Cells20,20/21,20 and optional literal SHORT key words use actual Infantry WhatAction/CellClick, ordinary Foot resolver, Event111, local OutList/DoList and class51AA40. No Shift or class-flag1 queue semantics are inferred.",
+      "Default Options4E7E20 keys are executed; configured INI persistence is not established. OS GetKeyState/stdcall cleanup and event wallclock0 remain existing Fixture transport seams.",
+      "Structured boundary/class-RET8 state, all three timer words, ordered writes/calls, full vector backing and all three complete RNG states are selected. Full raw actor/Walk/Cell/map and repeated observer snapshots remain in pinned compressed receipts.",
+      "Event4C6860 leaves byte+0D and other undeclared bytes untouched. Full111 are retained; selected MegaMission semantic fields are type0, house2, frame3, actor7/B, missionC, targetE/12, destination13/17, follow18/1C, flag1D.",
+      "No display hit testing, HWND, complete configured input/Planning Mode, whole-world scheduler, network/checksum, save-load or Tube incidence parity claim."
+    ]
+  },
+  "payload_sha256": "ebac715c69694ca9f39b65aa5fc52bf22a7721f4c7f2308e9fbc2c57fd2b90b1"
 }

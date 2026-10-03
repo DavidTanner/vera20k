@@ -2,6 +2,7 @@
 from pathlib import Path
 import gzip
 import functools
+import contextlib
 import hashlib
 import importlib.util
 import json
@@ -182,6 +183,28 @@ def verify_helpers():
         '; '.join(path + ' observed=' + str(observed) + ' expected=' + str(expected)
                   for path, observed, expected in changes) +
         '. Re-execute the original native controls before registering a new compatibility profile.')
+
+
+@contextlib.contextmanager
+def candidate_helper_profile():
+    """Explicit comparison-only helper map; never register compatibility here.
+
+    The unchanged verification/census owners still check every imported byte.
+    Complete original primary/private comparisons must pass before an on-disk
+    compatibility profile may refer to this map. Default callers cannot use it.
+    """
+    meta = metadata()
+    name = 'unregistered-initialized-candidate'
+    require(name not in meta['helper_profiles'], 'Candidate helper context already active')
+    files = meta.get('initialized_candidate_helper_files')
+    require(files and all(sha(REPO_ROOT/path) == digest for path, digest in files.items()),
+            'Explicit initialized candidate helper bytes changed')
+    meta['helper_profiles'][name] = dict(files=files,
+        status='candidate native comparison only; not registered compatibility')
+    try:
+        yield verify_helpers()
+    finally:
+        del meta['helper_profiles'][name]
 
 
 def write_new(path, value):

@@ -376,6 +376,18 @@
     "inputs/publication-phase-source-manifest.json": {
       "bytes": 1421,
       "sha256": "a0416992e1d4536b0961c742619c9aa183604126bc5294e0e78c99c3cb4e7856"
+    },
+    "compatibility/publication-before_strip-current-r12.json.gz": {
+      "bytes": 348823,
+      "sha256": "c22d234a103444038d7fba184af869b8640c73212ee9612f438e82a4ffad920a",
+      "uncompressed_bytes": 16155269,
+      "uncompressed_sha256": "7e59330b2c2a7d99d20280b833a30d91202c89d3cab9af6bf4affbf473530dc1"
+    },
+    "compatibility/publication-after_strip-current-r12.json.gz": {
+      "bytes": 345068,
+      "sha256": "8c9246a501007f8271c3274866796e39bb8bcd7ae4d0c21866e3ee7db970b1a5",
+      "uncompressed_bytes": 16005954,
+      "uncompressed_sha256": "941986065d774e11438337ebc997bb10b03449b4b1543b40d13d5e9df3364b43"
     }
   },
   "helper_profiles": {
@@ -726,6 +738,101 @@
         "historical_witness_sha256": "1623d8fb6fd69bf6876ed7ab9b23ce74bb6580aad177bde5db80b2b7e1384700"
       },
       "coverage": "Selected initialized two-GI no-rally/rally loops and separate registered UnitReady consumer controls only; shared helper branches outside those controls are not certified"
+    },
+    "infantry-command-compatible": {
+      "files": {
+        "tools/native_oracle.py": "141fc5f3981b40d41869643c0350e3988e40be2e470cba8a0b4a77bb7df39b27",
+        "tools/native_slope.py": "737b8294db419d298d362029825a255ae70df9945bef4c8b588369a53eaf13de",
+        "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+        "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+        "tools/projectile_oracle/guided_step.py": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
+        "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+        "tools/rules_oracle/bridge_anim_inputs.py": "fc0d267d9c8453ba3090bfacd056af5207f47cb1170651cce5b0c41c80e90a2e",
+        "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+        "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
+        "tools/rules_oracle/bridge_landing_inputs.py": "489e7999c957edfc1141d6ca8b5d72e36e570cb4065b2f208564875ed81174e5",
+        "tools/rules_oracle/theater_general_reader.py": "a466f2d5d94e5f4d8908bed0a97c69cf2aeb2d9356694d0af107491349e7afbd",
+        "tools/sidebar_oracle/stock.py": "62b855dba1836bf484bb6c112b9249003ff4427c3004a1ef3d95c3aac985ba9b",
+        "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+        "tools/spatial_oracle/anim_bouncer_launch.py": "f038ac51504a1927efac0d5c65092fe5ddb7bcc4f9525e01bd71c3ca008d2ac3",
+        "tools/spatial_oracle/anytown_damage/__init__.py": "5cca8aa87d9e3c1c8ff349b7a2c105a2bdfbce58bb13acae9fbda5645ef8c66a",
+        "tools/spatial_oracle/anytown_damage/anytown_geometry.py": "012d148f0299bfa6aee589070fb87bfb8ad14ebd09cdc30c3b22bf11df562e69",
+        "tools/spatial_oracle/anytown_damage/anytown_resident.py": "a3fd84ea7a7d038014fac37ebda4e72609f06662619506722fd11318b9d7f285",
+        "tools/spatial_oracle/anytown_damage/inputs.py": "c3e1732837e85deb628f04862aaab8cf72dc3e8ba2804ce55db5dc46f2a68f25",
+        "tools/spatial_oracle/anytown_damage/mission.py": "e04f940e6cf00369303c763ecc4f2c7500c99dabef149a90d2adb7c37283694a",
+        "tools/spatial_oracle/anytown_damage/mission_publication.py": "658212dba467967a1d2673b96279f45303c5ebc1c2d00033a6a01f49d3938f3e",
+        "tools/spatial_oracle/anytown_damage/mtnk_attack.py": "629ce5742d89065c25f897b7ab2336a71f9c88c6176fa2e032e585c59f7113b3",
+        "tools/spatial_oracle/anytown_damage/navigation.py": "84b123f168898386752dae17ad9dec685b3f98ebe1e873c18d14f68c53abf8e4",
+        "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
+        "tools/spatial_oracle/anytown_damage/navigation_publication.py": "4d6d09e465e67bf3ed3415495f1efee7f51f069f8c762f53dbc7cb437be91211",
+        "tools/spatial_oracle/anytown_damage/next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881",
+        "tools/spatial_oracle/anytown_damage/publication.py": "9331a5cc2c46ff487774b898918f267df740347dcb1745b23364703f9e24d650",
+        "tools/spatial_oracle/bridge_rim.py": "5fdcf28d51a05e8e4fddbfd41cea0a5ac19b3ab80f01a87ee36cea5ced676b80",
+        "tools/spatial_oracle/building_art_transition.py": "a747638632208a723b51acc11e3ca4a91560d63a08c85709eb514b153c867fbf",
+        "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+        "tools/spatial_oracle/building_construction.py": "65ddb0c37fc111758368780881ecbdca828c0153e9eb945f4e1ea72a20b9a438",
+        "tools/spatial_oracle/building_death_anims.py": "2c411ebe503db16d01c3a799cb3f227d901ee2c3bc488ecb442fd90cfedcd303",
+        "tools/spatial_oracle/building_slot_replacement.py": "bd4ee5c9be5e0342ec571c193a7a5721ce147b8fd6edcf6146e59a561f589cde",
+        "tools/spatial_oracle/engineer_repair_admission.py": "626e404d7ae92ed14520c87cef9b0157838120aff109ada925e5acc9e7f49777",
+        "tools/spatial_oracle/factory_cadence.py": "324fa00bb554187f9e0127cc48b5bd898e676e3ccb54e01323d66ada55ec47ff",
+        "tools/spatial_oracle/fire_error.py": "ea1137e160745ff92b8d7f87930fca15c307b3d8b7bca92a99d35e2526b9c402",
+        "tools/spatial_oracle/harvest_field.py": "047fd5d2333dcee593d93edfa92a69debd6ad2f7b5a53029711f3dde17b5e087",
+        "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
+        "tools/spatial_oracle/jumpjet_coordinates.py": "8e92cf2ad936306d7e6ed281eca6cadfe83043cb7a9d3df224f24093260d4555",
+        "tools/spatial_oracle/jumpjet_entry_discovery.py": "78882a6434ffe2267f2c7b67e2a81aad295e3f749ea61911b5ec0e4488a6f21c",
+        "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+        "tools/spatial_oracle/mapgen_range.py": "df39b5ab3a2450c98dfa749a67826d5cb87f9d73086dc2511ff3261906724eef",
+        "tools/spatial_oracle/object_health.py": "3e3fd3c18c9dcbfd169432641233dafcaf8f9ba21fa735f362972fdacb2e07c2",
+        "tools/spatial_oracle/refinery_dock.py": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408",
+        "tools/spatial_oracle/shrapnel_repair/__init__.py": "181c307c7f2f1767bee7fc8812eb72698df94241d26c669526254bf13084e003",
+        "tools/spatial_oracle/shrapnel_repair/hierarchy_composition.py": "a545496a5203c56d02dfed6d37da792c0f261b26db6b128db4ea57b9acc19ac0",
+        "tools/spatial_oracle/shrapnel_repair/map_facts.py": "8fec739ee85c0110096180ae7c7712ad96e5191752ec9362dc3d9eb21e5d6768",
+        "tools/spatial_oracle/shrapnel_repair/packet_io.py": "80d7a5dd328c47c9fe453d0048c5ae116feef741220537f1d1dc4e587387b865",
+        "tools/spatial_oracle/shrapnel_repair/production_inputs.py": "0e29a8c5bac7eb2f6f8819e6d54b2959045f3205e4930c162e96e479bef76289",
+        "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": "bc6921d2b04a05e4778fe0c57d9badb3c9c7cf1b429ba807b7baf2b8e060e8d0",
+        "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "766d30e22188ef36c66a940eb4546ad52e025fa80e80c864a9644a1a4662b27c",
+        "tools/spatial_oracle/shrapnel_repair/zone_composition.py": "0eb3b38561c804dd4bfbbfdb3e858babd2e9a1c2214f296eedfe6447901db73e",
+        "tools/spatial_oracle/slave_manager.py": "257ef2d170d2f5bf01e001f1e46561374677168a2d32a21181ef684c3bdb662d",
+        "tools/spatial_oracle/smudge_can_place.py": "0771bef02dae6cb70028054efb6bc87cb532ec3d1f4038ab5def386c2e6461ec",
+        "tools/spatial_oracle/time_to_build.py": "5d298a5744961484485c25f587abb2f848b6261580ee4180ebd0fbd870d7f249",
+        "tools/spatial_oracle/track_destination.py": "db7ac918c743ce625bfaaa1c7a56f41d2336def4b42193cb1332fe0eb0d0912d",
+        "tools/spatial_oracle/unit_entry.py": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
+        "tools/spatial_oracle/unit_scatter_state.py": "c8269a41294316c97f990051506c4a9d9dbe923d8143a54a1a92c69645d2a112",
+        "tools/spatial_oracle/unit_source_scatter.py": "3384579566b40ebcc9d8d56d53a0736655eb3a15a6bf7f08730611b15852a009",
+        "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8"
+      },
+      "profile_sha256": "e380227eca44acdf6ade209b072da8cf65f7828cee8f2c4239032ee2537723d1",
+      "status": "Both complete corrected initialized no_rally/rally primary/private controls and compact projections match pinned native payloads; existing profiles are preserved",
+      "source_head": "4475a1a73afbfc0ae7b289deeb58368e7b9b1050",
+      "comparison_receipts": [
+        {
+          "path": "compatibility/default-no_rally-r6.json.gz",
+          "bytes": 789331,
+          "sha256": "5248ae5559b0fb876c30937bc36c316999b93e97e26101b7e40b959c3df0a167",
+          "uncompressed_bytes": 41743433,
+          "uncompressed_sha256": "a452d3e505547884adc63dbcbb5b5c4819db58a8374e373227fa97f3524bfb80",
+          "repo_path": "tools/spatial_oracle/_walk_first_path/compatibility/default-no_rally-r6.json.gz",
+          "complete_primary_native_equal": true,
+          "complete_private_native_equal": true,
+          "compact_native_projection_equal": true,
+          "complete_primary_native_sha256": "d2466041166db052c2ff73da0edcb513ffa5ea9c06e74bb9fa6635671c78b2bc",
+          "complete_private_native_sha256": "36b4dd1b8a0cbc5f22480e27d8eea8d448fe6572bd1e64f71011d8e817327073"
+        },
+        {
+          "path": "compatibility/default-rally-r6.json.gz",
+          "bytes": 1031515,
+          "sha256": "6bd6081ca58d6611bfc0b177554ba37b66dfd310fd06957ef826ef4396f53fa5",
+          "uncompressed_bytes": 61646920,
+          "uncompressed_sha256": "dc320cfe8284de5a723acd104533b5042d970d191d1c4d87747e1c1e9837b039",
+          "repo_path": "tools/spatial_oracle/_walk_first_path/compatibility/default-rally-r6.json.gz",
+          "complete_primary_native_equal": true,
+          "complete_private_native_equal": true,
+          "compact_native_projection_equal": true,
+          "complete_primary_native_sha256": "a9d2a2546350cd395e3cd53925451297abe5bd1dc7b500ba6ec1be1edf1ff512",
+          "complete_private_native_sha256": "b3b97a0652def2403b8d1aa585f5246e0feac547d692699ec7f743bcf1005b2d"
+        }
+      ],
+      "coverage": "Initialized two-GI no_rally/rally composition only. Historical/default branches outside those controls and other registered consumer/gate/publication components are not certified by this profile."
     }
   },
   "helper_changes": {
@@ -751,7 +858,11 @@
     },
     "tools/spatial_oracle/anytown_damage/mission.py": {
       "original_sha256": "8d791318542167825e371ca8e720fb6c7a254b112baeb25c61ff104b3af60148",
-      "current_sha256": "a59d99851fdf4d7f4f2ba6a547604e4b9cad7eb6fd57764c8dc7d12a0834e25a"
+      "current_sha256": "e04f940e6cf00369303c763ecc4f2c7500c99dabef149a90d2adb7c37283694a"
+    },
+    "tools/spatial_oracle/engineer_repair_admission.py": {
+      "original_sha256": "44abd32d884efb782cb782bf01821a452cef1217e75bda5ac5f9d4b352a6e2e2",
+      "current_sha256": "626e404d7ae92ed14520c87cef9b0157838120aff109ada925e5acc9e7f49777"
     }
   },
   "caller_origin_files": {
@@ -1181,8 +1292,8 @@
       "sha256": "001bc9ded95c782f6391558d19a40ec629e7c14b2ee696c0f1b29c5dd4b82537"
     },
     "runtime.py": {
-      "bytes": 8674,
-      "sha256": "f1f19fd70b303a005c4556a0a435c47034f29ea1584ea0bb30dbd367c9bfb845"
+      "bytes": 9687,
+      "sha256": "58ce7fcff7722d1de0be6949eefaf980835b8283dfa2dedbf021d1d0239ea7a5"
     },
     "producer.py": {
       "bytes": 10478,
@@ -1193,8 +1304,8 @@
       "sha256": "0cafa086f26836a8a2caa8ae6287f8d705e4bd38095faa454b8d298888f6d81f"
     },
     "saved.py": {
-      "bytes": 20472,
-      "sha256": "1c417a293a7e9b52be068a1ac51db7e9054435a7afc2521a11cc21dc9b915486"
+      "bytes": 23490,
+      "sha256": "5e90686cb9f71dfebcffe0c1c4d387077847f388e1db39aab26c69b3a1a815a4"
     },
     "exit.py": {
       "bytes": 12351,
@@ -1205,12 +1316,12 @@
       "sha256": "f2c3773047a69a0f432a901fbc98fb7ed7234742b8db8484ebbb8ceafbdc2ec6"
     },
     "../factory_infantry_output.py": {
-      "bytes": 15883,
-      "sha256": "00ffe06b0495f2593a29ccb4af8879a1f7f8768af205b3b4dc0914b93f82b437"
+      "bytes": 15406,
+      "sha256": "82e65c76aaa452492d95efd05197d2c02877279c2d1239139b5698dda217c397"
     },
     "initialized.py": {
-      "bytes": 17590,
-      "sha256": "26987989b3e4c859109d304faab7c1e1538cec3eda5fc00350013202728ef9d4"
+      "bytes": 19316,
+      "sha256": "644e3cbac5d04deed870001f1c25d4b63e762dadf3545a209743dd3049627531"
     },
     "phase.py": {
       "bytes": 14488,
@@ -1310,6 +1421,10 @@
     {
       "bytes": 15877,
       "sha256": "65164f19608a1637f23746ec340ec0493de0cb85e0858c71be61f901e25844cc"
+    },
+    {
+      "bytes": 15883,
+      "sha256": "00ffe06b0495f2593a29ccb4af8879a1f7f8768af205b3b4dc0914b93f82b437"
     }
   ],
   "prior_fixture_caller_versions": [
@@ -1394,12 +1509,81 @@
       "AfterStrip is an explicit sibling control demonstrating the event-order consequence; it does not assert equivalence to every fresh-click input route.",
       "No Factory stage, changed byte, held object, rally outcome, coordinate, mission, event eligibility, or RNG answer is supplied. Original code sections are guarded. WINMM imported timestamps use the existing supplied0 transport.",
       "Stop after actual firstPLACE268, before its next InfantryAI visit. No retirement/rally arrival/whole-object completion claim. Original no-rally/rally seals and current helper files are untouched."
-    ]
+    ],
+    "compatibility_receipts": {
+      "before_strip": "compatibility/publication-before_strip-current-r12.json.gz",
+      "after_strip": "compatibility/publication-after_strip-current-r12.json.gz"
+    }
   },
   "prior_saved_caller_versions": [
     {
       "bytes": 10465,
       "sha256": "7f0a141f06609a9d49fd5ae23c9f61c50b416a53a2fba41b071cf9979ad9ffdb"
+    },
+    {
+      "bytes": 20472,
+      "sha256": "1c417a293a7e9b52be068a1ac51db7e9054435a7afc2521a11cc21dc9b915486"
     }
-  ]
+  ],
+  "initialized_candidate_helper_files": {
+    "tools/native_oracle.py": "141fc5f3981b40d41869643c0350e3988e40be2e470cba8a0b4a77bb7df39b27",
+    "tools/native_slope.py": "737b8294db419d298d362029825a255ae70df9945bef4c8b588369a53eaf13de",
+    "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+    "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+    "tools/projectile_oracle/guided_step.py": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
+    "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+    "tools/rules_oracle/bridge_anim_inputs.py": "fc0d267d9c8453ba3090bfacd056af5207f47cb1170651cce5b0c41c80e90a2e",
+    "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+    "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
+    "tools/rules_oracle/bridge_landing_inputs.py": "489e7999c957edfc1141d6ca8b5d72e36e570cb4065b2f208564875ed81174e5",
+    "tools/rules_oracle/theater_general_reader.py": "a466f2d5d94e5f4d8908bed0a97c69cf2aeb2d9356694d0af107491349e7afbd",
+    "tools/sidebar_oracle/stock.py": "62b855dba1836bf484bb6c112b9249003ff4427c3004a1ef3d95c3aac985ba9b",
+    "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+    "tools/spatial_oracle/anim_bouncer_launch.py": "f038ac51504a1927efac0d5c65092fe5ddb7bcc4f9525e01bd71c3ca008d2ac3",
+    "tools/spatial_oracle/anytown_damage/__init__.py": "5cca8aa87d9e3c1c8ff349b7a2c105a2bdfbce58bb13acae9fbda5645ef8c66a",
+    "tools/spatial_oracle/anytown_damage/anytown_geometry.py": "012d148f0299bfa6aee589070fb87bfb8ad14ebd09cdc30c3b22bf11df562e69",
+    "tools/spatial_oracle/anytown_damage/anytown_resident.py": "a3fd84ea7a7d038014fac37ebda4e72609f06662619506722fd11318b9d7f285",
+    "tools/spatial_oracle/anytown_damage/inputs.py": "c3e1732837e85deb628f04862aaab8cf72dc3e8ba2804ce55db5dc46f2a68f25",
+    "tools/spatial_oracle/anytown_damage/mission.py": "e04f940e6cf00369303c763ecc4f2c7500c99dabef149a90d2adb7c37283694a",
+    "tools/spatial_oracle/anytown_damage/mission_publication.py": "658212dba467967a1d2673b96279f45303c5ebc1c2d00033a6a01f49d3938f3e",
+    "tools/spatial_oracle/anytown_damage/mtnk_attack.py": "629ce5742d89065c25f897b7ab2336a71f9c88c6176fa2e032e585c59f7113b3",
+    "tools/spatial_oracle/anytown_damage/navigation.py": "84b123f168898386752dae17ad9dec685b3f98ebe1e873c18d14f68c53abf8e4",
+    "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
+    "tools/spatial_oracle/anytown_damage/navigation_publication.py": "4d6d09e465e67bf3ed3415495f1efee7f51f069f8c762f53dbc7cb437be91211",
+    "tools/spatial_oracle/anytown_damage/next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881",
+    "tools/spatial_oracle/anytown_damage/publication.py": "9331a5cc2c46ff487774b898918f267df740347dcb1745b23364703f9e24d650",
+    "tools/spatial_oracle/bridge_rim.py": "5fdcf28d51a05e8e4fddbfd41cea0a5ac19b3ab80f01a87ee36cea5ced676b80",
+    "tools/spatial_oracle/building_art_transition.py": "a747638632208a723b51acc11e3ca4a91560d63a08c85709eb514b153c867fbf",
+    "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+    "tools/spatial_oracle/building_construction.py": "65ddb0c37fc111758368780881ecbdca828c0153e9eb945f4e1ea72a20b9a438",
+    "tools/spatial_oracle/building_death_anims.py": "2c411ebe503db16d01c3a799cb3f227d901ee2c3bc488ecb442fd90cfedcd303",
+    "tools/spatial_oracle/building_slot_replacement.py": "bd4ee5c9be5e0342ec571c193a7a5721ce147b8fd6edcf6146e59a561f589cde",
+    "tools/spatial_oracle/engineer_repair_admission.py": "626e404d7ae92ed14520c87cef9b0157838120aff109ada925e5acc9e7f49777",
+    "tools/spatial_oracle/factory_cadence.py": "324fa00bb554187f9e0127cc48b5bd898e676e3ccb54e01323d66ada55ec47ff",
+    "tools/spatial_oracle/fire_error.py": "ea1137e160745ff92b8d7f87930fca15c307b3d8b7bca92a99d35e2526b9c402",
+    "tools/spatial_oracle/harvest_field.py": "047fd5d2333dcee593d93edfa92a69debd6ad2f7b5a53029711f3dde17b5e087",
+    "tools/spatial_oracle/infantry_entry_raw.py": "0f6c0ac2de9251b32931a04b6d6fedd982d624c7cd4a3a88c3d6e2f5e56fd5fd",
+    "tools/spatial_oracle/jumpjet_coordinates.py": "8e92cf2ad936306d7e6ed281eca6cadfe83043cb7a9d3df224f24093260d4555",
+    "tools/spatial_oracle/jumpjet_entry_discovery.py": "78882a6434ffe2267f2c7b67e2a81aad295e3f749ea61911b5ec0e4488a6f21c",
+    "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+    "tools/spatial_oracle/mapgen_range.py": "df39b5ab3a2450c98dfa749a67826d5cb87f9d73086dc2511ff3261906724eef",
+    "tools/spatial_oracle/object_health.py": "3e3fd3c18c9dcbfd169432641233dafcaf8f9ba21fa735f362972fdacb2e07c2",
+    "tools/spatial_oracle/refinery_dock.py": "c8fb2b33edc7c3100986fb78d90e663b820e10c35d6e450fe5bf923ddb0b8408",
+    "tools/spatial_oracle/shrapnel_repair/__init__.py": "181c307c7f2f1767bee7fc8812eb72698df94241d26c669526254bf13084e003",
+    "tools/spatial_oracle/shrapnel_repair/hierarchy_composition.py": "a545496a5203c56d02dfed6d37da792c0f261b26db6b128db4ea57b9acc19ac0",
+    "tools/spatial_oracle/shrapnel_repair/map_facts.py": "8fec739ee85c0110096180ae7c7712ad96e5191752ec9362dc3d9eb21e5d6768",
+    "tools/spatial_oracle/shrapnel_repair/packet_io.py": "80d7a5dd328c47c9fe453d0048c5ae116feef741220537f1d1dc4e587387b865",
+    "tools/spatial_oracle/shrapnel_repair/production_inputs.py": "0e29a8c5bac7eb2f6f8819e6d54b2959045f3205e4930c162e96e479bef76289",
+    "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": "bc6921d2b04a05e4778fe0c57d9badb3c9c7cf1b429ba807b7baf2b8e060e8d0",
+    "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "766d30e22188ef36c66a940eb4546ad52e025fa80e80c864a9644a1a4662b27c",
+    "tools/spatial_oracle/shrapnel_repair/zone_composition.py": "0eb3b38561c804dd4bfbbfdb3e858babd2e9a1c2214f296eedfe6447901db73e",
+    "tools/spatial_oracle/slave_manager.py": "257ef2d170d2f5bf01e001f1e46561374677168a2d32a21181ef684c3bdb662d",
+    "tools/spatial_oracle/smudge_can_place.py": "0771bef02dae6cb70028054efb6bc87cb532ec3d1f4038ab5def386c2e6461ec",
+    "tools/spatial_oracle/time_to_build.py": "5d298a5744961484485c25f587abb2f848b6261580ee4180ebd0fbd870d7f249",
+    "tools/spatial_oracle/track_destination.py": "db7ac918c743ce625bfaaa1c7a56f41d2336def4b42193cb1332fe0eb0d0912d",
+    "tools/spatial_oracle/unit_entry.py": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
+    "tools/spatial_oracle/unit_scatter_state.py": "c8269a41294316c97f990051506c4a9d9dbe923d8143a54a1a92c69645d2a112",
+    "tools/spatial_oracle/unit_source_scatter.py": "3384579566b40ebcc9d8d56d53a0736655eb3a15a6bf7f08730611b15852a009",
+    "tools/spatial_oracle/walk_head_occupation.py": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8"
+  }
 }

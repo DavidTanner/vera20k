@@ -95,6 +95,68 @@ fn ordinary_foot_input_matches_native_admission_rows() {
     }
 }
 
+/// Original51AA40's human Doing27 gate returns before NavCom, path or Walk
+/// writes (walk_first_path setter row). The incoming Doing is a supplied
+/// boundary control, not a claim that stock E1 can enter this deploy action.
+/// Construction, map setup and ground-order dispatch use their live owners.
+#[test]
+fn ground_walk_order_preserves_native_human_deploy_refusal() {
+    let corpus: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/walk_first_path.json"
+    ))
+    .unwrap();
+    let native = &corpus["setter"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["input"]["doing"] == 27 && row["input"]["human"] != false)
+        .unwrap()["setter"];
+    let (mut sim, rules, id) = Simulation::walk_cell_input_test_scene(false);
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    actor.mission_leaf.set_infantry_doing_verified(27).unwrap();
+    actor.navigation.path_runtime.start_movement(50, 5);
+    let navigation_before = serde_json::to_value(&actor.navigation).unwrap();
+    let rng_before = sim.rng_state();
+    let speed = sim.resolve_move_info(id, Some(&rules)).unwrap().speed;
+
+    // The native class setter is void: its incidental EAX is not acceptance.
+    let _ = sim.issue_ground_move(
+        crate::sim::world::ground_move::GroundMove {
+            entity_id: id,
+            target: (11, 10),
+            speed,
+            queue: true,
+            speed_type: Some(SpeedType::Foot),
+            owner_blocks: true,
+            object_destination: None,
+        },
+        Some(&rules),
+        None,
+    );
+    let actor = sim.substrate.entities.get(id).unwrap();
+    let walk = actor.locomotor.as_ref().unwrap();
+    let raw_coord = |value: Option<DriveCoord>| {
+        let value = value.unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
+        json!([value.x, value.y, value.z])
+    };
+    assert_eq!(raw_coord(walk.walk_destination()), native["destination"]);
+    assert_eq!(raw_coord(walk.step_head()), native["head"]);
+    assert_eq!(
+        json!(u8::from(walk.walk_is_moving().unwrap())),
+        native["moving"]
+    );
+    let timer = actor.navigation.path_runtime.movement_timer;
+    assert_eq!(
+        json!({"start_frame": timer.start_frame(), "duration": timer.duration()}),
+        native["movement_timer"]
+    );
+    assert_eq!(
+        serde_json::to_value(&actor.navigation).unwrap(),
+        navigation_before
+    );
+    assert_eq!(sim.rng_state(), rng_before);
+}
+
 #[test]
 fn isolated_cell_queries_preserve_all_modeled_dummy_inputs_and_identity() {
     let terrain = ResolvedTerrainGrid::from_cells(1, 1, vec![terrain_cell(0, 0)]);
