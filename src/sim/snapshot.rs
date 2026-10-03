@@ -821,7 +821,10 @@ use crate::sim::world::Simulation;
 // in its complete locomotor payload, including suspended instances. The
 // entity mirror is removed; serialization and lockstep hash layout changed.
 
-const SNAPSHOT_VERSION: u32 = 287;
+// 287 -> 288: Drive and Ship retain slope, destination, progress, speed and
+// occupation together in installed or suspended locomotor payloads. Entity
+// copies are removed; the prior layout cannot resume these instances.
+const SNAPSHOT_VERSION: u32 = 288;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3823,7 +3826,7 @@ mod tests {
         // 286 -> 287: the complete Teleport locomotor owns resolved XYZ,
         // request byte and warp effect, including suspended instances.
 
-        assert_eq!(super::SNAPSHOT_VERSION, 287);
+        assert_eq!(super::SNAPSHOT_VERSION, 288);
     }
 
     #[test]
@@ -4187,7 +4190,7 @@ mod tests {
         assert!(matches!(
             loaded.piggyback.as_deref().map(|stashed| &stashed.runtime_payload),
             Some(LocomotorRuntimePayload::Drive(state))
-                if state.hash_fields() == (2, 7, 49, 3)
+                if state.slope().hash_fields() == (2, 7, 49, 3)
         ));
 
         let mut live_cell = crate::map::resolved_terrain::test_clear_cell(0, 0);
@@ -5169,8 +5172,11 @@ mod tests {
     #[test]
     fn gsi_13_06_body_frame_counter_roundtrips_and_changes_hash() {
         use crate::map::entities::EntityCategory;
-        use crate::sim::components::{DriveCoord, Health, ShipLocomotionRuntime};
+        use crate::rules::locomotor_type::LocomotorKind;
+        use crate::sim::components::{DriveCoord, Health};
         use crate::sim::game_entity::GameEntity;
+        use crate::sim::movement::ShipLocomotionRuntime;
+        use crate::sim::movement::locomotor::LocomotorState;
         use crate::util::fixed_math::{SIM_HALF, SIM_ONE};
 
         let mut sim = Simulation::new();
@@ -5205,12 +5211,18 @@ mod tests {
         let ship_head = DriveCoord::cell(6, 5, 0);
         let entity = sim.substrate.entities.get_mut(1).expect("SHP unit");
         entity.foot_speed.set_speed_fraction(SIM_HALF);
-        entity.ship_locomotion = Some(ShipLocomotionRuntime {
-            destination: Some(ship_head),
-            head_to: Some(ship_head),
-            target_speed_fraction: SIM_ONE,
-            ..Default::default()
-        });
+        // This serialization fixture supplies a Ship instance explicitly.
+        entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_ship_state_for_test(Some(
+                ShipLocomotionRuntime::default()
+                    .with_destination_for_test(Some(ship_head))
+                    .with_head_to_for_test(Some(ship_head))
+                    .with_target_speed_fraction_for_test(SIM_ONE),
+            ));
         let populated_shp_state_hash = sim.state_hash();
         assert_ne!(populated_shp_state_hash, populated_counter_hash);
 
@@ -5232,12 +5244,14 @@ mod tests {
             .entities
             .get(1)
             .expect("restored SHP unit")
-            .ship_locomotion
+            .locomotor
             .as_ref()
+            .and_then(|loco| loco.selected_ship_runtime())
+            .and_then(|runtime| runtime.retained())
             .expect("restored Ship runtime");
-        assert_eq!(restored_ship.destination, Some(ship_head));
-        assert_eq!(restored_ship.head_to, Some(ship_head));
-        assert_eq!(restored_ship.target_speed_fraction, SIM_ONE);
+        assert_eq!(restored_ship.destination(), Some(ship_head));
+        assert_eq!(restored_ship.head_to(), Some(ship_head));
+        assert_eq!(restored_ship.target_speed_fraction(), SIM_ONE);
         let restored_owner_speed = &restored.substrate.entities.get(1).unwrap().foot_speed;
         assert_eq!(restored_owner_speed.applied_fraction(), SIM_HALF);
         assert_eq!(restored.state_hash(), populated_shp_state_hash);
@@ -6420,8 +6434,11 @@ mod tests {
 
     #[test]
     fn gsi_04_05_v40_roundtrip_restores_drive_footprint_and_cell_occupation() {
-        use crate::sim::components::{DriveLocomotionRuntime, DriveOccupationFootprint};
+        use crate::rules::locomotor_type::LocomotorKind;
+        use crate::sim::components::DriveOccupationFootprint;
         use crate::sim::game_entity::GameEntity;
+        use crate::sim::movement::DriveLocomotionRuntime;
+        use crate::sim::movement::locomotor::LocomotorState;
         use crate::sim::occupancy::{CellOccupationGrid, VEHICLE_OCCUPATION_BIT};
 
         let mut sim = Simulation::new();
@@ -6431,6 +6448,7 @@ mod tests {
         let mut entity = GameEntity::test_default(entity_id, "MTNK", "AMERICANS", 2, 2);
         entity.owner = owner;
         entity.type_ref = type_ref;
+        entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
         sim.substrate.entities.insert(entity);
         sim.add_entity_occupancy(entity_id);
 
@@ -6443,10 +6461,12 @@ mod tests {
             .entities
             .get_mut(entity_id)
             .expect("Drive unit")
-            .drive_locomotion = Some(DriveLocomotionRuntime {
-            occupation_head_to: Some(footprint),
-            ..Default::default()
-        });
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                DriveLocomotionRuntime::default().with_occupation_head_to_for_test(Some(footprint)),
+            ));
         sim.substrate
             .entities
             .get_mut(entity_id)
@@ -6482,10 +6502,12 @@ mod tests {
                 .entities
                 .get(entity_id)
                 .expect("restored Drive unit")
-                .drive_locomotion
+                .locomotor
                 .as_ref()
+                .and_then(|loco| loco.selected_drive_runtime())
+                .and_then(|runtime| runtime.retained())
                 .expect("restored Drive runtime");
-            assert_eq!(drive.occupation_head_to, Some(footprint));
+            assert_eq!(drive.occupation_head_to(), Some(footprint));
             assert!(
                 !restored
                     .substrate

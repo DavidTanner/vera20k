@@ -1478,9 +1478,11 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
     );
     assert_eq!(
         produced
-            .ship_locomotion
+            .locomotor
             .as_ref()
-            .and_then(|ship| ship.destination)
+            .and_then(|l| l.selected_ship_runtime())
+            .and_then(|r| r.retained())
+            .and_then(|ship| ship.destination())
             .map(|coord| (coord.x / 256, coord.y / 256)),
         Some((20, 10))
     );

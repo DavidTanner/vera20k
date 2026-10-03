@@ -575,6 +575,16 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   signatures and removed inferred ECX/stack inputs. Establish the complete native
   input and return storage before locking a signature, then check fresh C and
   high p-code as well as the stored parameters and purge.
+- Neutral `undefined` can use Ghidra's `DefaultDataType`; its length of 1 does not
+  establish a one-byte native result or `AL:1` storage. On Ghidra 12.1.2,
+  `0x5687F0` retained `<UNASSIGNED>` with no return varnodes before and after a
+  checked `__thiscall` receiver write. Inspect the saved return datatype and
+  storage, and establish any native result from its producers and consumers.
+- When checking saved storage through Ghidra's Java API,
+  `VariableStorage.toString()` includes ` (auto)` for automatic parameters, such
+  as `ECX:4 (auto)`. Compare the literal storage and `isAutoParameter()` together.
+  Removing the tag only from the expected string rejects a correctly stored
+  automatic `this`.
 - A successful type-size lookup or `validate_function_prototype` reply does not
   establish that the signature parser can resolve a datatype. The validator checks
   format and convention without parsing the types. On 2026-10-02, two `GUID` entries

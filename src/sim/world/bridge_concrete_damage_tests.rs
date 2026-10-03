@@ -51,10 +51,7 @@ fn retail_concrete_damage_repair_and_restore_publish_navigation() {
         ));
         for hut in [(85, 58), (89, 51)] {
             assert_eq!(
-                crate::sim::world::bridge_orchestrator::bridge_hut_can_repair(
-                    scene.sim(),
-                    hut
-                ),
+                crate::sim::world::bridge_orchestrator::bridge_hut_can_repair(scene.sim(), hut),
                 collapsed
             );
         }
@@ -232,14 +229,18 @@ fn retail_concrete_collapse_rechecks_an_incoming_drive_head() {
     assert_eq!(entity.health.current, 300);
     // Supplied retained head matches native north_head_center. Normal spawn
     // owns placement/type/locomotor; this fixture does not claim path production.
-    entity
-        .drive_locomotion
-        .get_or_insert_with(Default::default)
-        .head_to = Some(DriveCoord {
-        x: 87 * 256 + 128,
-        y: 54 * 256 + 128,
-        z: 416,
-    });
+    {
+        let loco = entity.locomotor.as_mut().unwrap();
+        assert!(loco.ensure_installed_track_state());
+        assert!(loco.store_track_head(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            Some(DriveCoord {
+                x: 87 * 256 + 128,
+                y: 54 * 256 + 128,
+                z: 416,
+            })
+        ));
+    };
     let event = BridgeDamageEvent {
         rx: 87,
         ry: 54,

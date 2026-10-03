@@ -570,7 +570,7 @@ fn advance_ordinary_mover(
                     entity_id,
                     entity.category,
                     &mut entity.position,
-                    &mut entity.drive_locomotion,
+                    &mut entity.locomotor,
                     &mut entity.low_bridge_tube_state,
                     &mut entity.lifecycle.cell_marked,
                     tube_id,

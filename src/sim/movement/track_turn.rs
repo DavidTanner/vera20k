@@ -5,6 +5,7 @@
 //! entry evidence for the turn part in tools/spatial_oracle/track_process_entry.
 //! Live Facing readiness is deliberately independent of this retained state.
 
+use super::track_process::TrackFamily;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
@@ -23,24 +24,21 @@ pub(super) fn sample(latched: &mut bool, rotating: bool) -> bool {
 /// The world TrackProcess entry calls this once before the scalar prefix.
 pub(super) fn admit_track_entry(entity: &mut GameEntity, has_turret: bool) -> bool {
     let queue_eight = entity.navigation.path_replay.remaining_directions().first() == Some(&8);
-    let (valid, latched, track) = match entity.locomotor.as_ref().map(|l| l.kind) {
-        Some(LocomotorKind::Drive) => {
-            let Some(state) = entity.drive_locomotion.as_mut() else {
-                return false;
-            };
-            (state.track_valid, state.turn_latched, &mut state.track)
-        }
-        Some(LocomotorKind::Ship) => {
-            let Some(state) = entity.ship_locomotion.as_mut() else {
-                return false;
-            };
-            (state.track_valid, state.turn_latched, &mut state.track)
-        }
-        _ => return false,
+    let Some(loco) = entity.locomotor.as_mut() else {
+        return false;
     };
+    let Some(family) = TrackFamily::from_kind(loco.kind) else {
+        return false;
+    };
+    let Some(mut track) = loco.track_progress(family) else {
+        return false;
+    };
+    let valid = loco.track_valid(family).unwrap();
+    let latched = loco.track_turn_latched(family).unwrap();
     let admitted = ((valid && track.turn_index != -1) || queue_eight) && (!latched || has_turret);
     if !admitted {
         track.residual = 0;
+        loco.store_track_progress(family, track);
     }
     admitted
 }
@@ -84,25 +82,12 @@ impl Simulation {
             return false;
         }
         let current = super::ground_pose::position_world_coord(&entity.position);
-        let (latched, valid, destination) = match entity.locomotor.as_ref().map(|l| l.kind) {
-            Some(LocomotorKind::Drive) => {
-                let state = entity.drive_locomotion.get_or_insert_with(Default::default);
-                (
-                    &mut state.turn_latched,
-                    state.track_valid,
-                    state.destination,
-                )
-            }
-            Some(LocomotorKind::Ship) => {
-                let state = entity.ship_locomotion.get_or_insert_with(Default::default);
-                (
-                    &mut state.turn_latched,
-                    state.track_valid,
-                    state.destination,
-                )
-            }
-            _ => return true,
-        };
+        let loco = entity.locomotor.as_mut().unwrap();
+        let family = TrackFamily::from_kind(loco.kind).unwrap();
+        loco.ensure_installed_track_state();
+        let mut latched = loco.track_turn_latched(family).unwrap();
+        let valid = loco.track_valid(family).unwrap();
+        let destination = loco.track_destination(family);
         // Drive4B06D5..4B0772 / Ship69FD7F..69FE1C: Guard (current +AC = 5)
         // with no valid track at its non-null exact destination takes the
         // same stop/waypoint pair, before Facing sampling.
@@ -114,7 +99,12 @@ impl Simulation {
             return false;
         }
         let rotating = entity.body_facing.is_rotating(frame);
-        let completed = sample(latched, rotating);
+        let completed = sample(&mut latched, rotating);
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .store_track_turn_latched(family, latched);
         // Drive4B0788 ->4B078C..893 / Ship69FE35: live rotation
         // returns through the Process tail, never fresh ProcessMovement.
         // The common resting-speed tail remains to be migrated.
@@ -195,16 +185,11 @@ impl Simulation {
         // destination fails the zone precheck clears its head, then stops or
         // takes the next waypoint; either way the tail follows.
         if entity.in_playfield && mission != Some(MissionType::Enter) && moving {
-            let destination = match entity.locomotor.as_ref().map(|l| l.kind) {
-                Some(LocomotorKind::Drive) => {
-                    entity.drive_locomotion.as_ref().and_then(|d| d.destination)
-                }
-                Some(LocomotorKind::Ship) => {
-                    entity.ship_locomotion.as_ref().and_then(|s| s.destination)
-                }
-                _ => None,
-            }
-            .unwrap_or(crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 });
+            let destination = entity
+                .locomotor
+                .as_ref()
+                .and_then(|loco| loco.track_destination(TrackFamily::from_kind(loco.kind)?))
+                .unwrap_or(crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 });
             let Some(rules) = rules else {
                 return true;
             };

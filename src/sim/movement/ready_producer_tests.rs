@@ -5,12 +5,11 @@
 
 use super::*;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, MovementTarget, ShipLocomotionRuntime,
-};
+use crate::sim::components::{DriveCoord, MovementTarget};
 use crate::sim::movement::SpeedRules;
 use crate::sim::movement::motion_query::is_moving_now;
 use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::type_handle_table::TypeHandleTable;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
 use crate::util::native_x87::NativeF64Bits;
@@ -50,11 +49,17 @@ fn driving_mtnk() -> GameEntity {
         z: 0,
     };
     entity.foot_speed.set_speed_fraction(SIM_ONE);
-    entity.drive_locomotion = Some(DriveLocomotionRuntime {
-        destination: Some(head),
-        head_to: Some(head),
-        ..DriveLocomotionRuntime::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                DriveLocomotionRuntime::default()
+                    .with_destination_for_test(Some(head))
+                    .with_head_to_for_test(Some(head))
+            ))
+    );
     entity
 }
 
@@ -126,14 +131,19 @@ fn speed_crate_reaches_the_next_moving_query() {
 #[test]
 fn unit_parked_on_its_head_to_reports_not_moving() {
     let mut entity = entity_with(LocomotorKind::Drive);
-    entity.drive_locomotion = Some(DriveLocomotionRuntime {
-        head_to: Some(DriveCoord {
-            x: 5 * 256 + i32::from(entity.position.sub_x.to_num::<i32>() as i16),
-            y: 5 * 256 + i32::from(entity.position.sub_y.to_num::<i32>() as i16),
-            z: 0,
-        }),
-        ..DriveLocomotionRuntime::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                DriveLocomotionRuntime::default().with_head_to_for_test(Some(DriveCoord {
+                    x: 5 * 256 + i32::from(entity.position.sub_x.to_num::<i32>() as i16),
+                    y: 5 * 256 + i32::from(entity.position.sub_y.to_num::<i32>() as i16),
+                    z: 0,
+                }))
+            ))
+    );
 
     let state = ready_state_for(&entity, None, 100).expect("Drive has a producer");
     assert!(!state.is_moving_now());
@@ -151,11 +161,17 @@ fn ship_mirrors_drive_but_keeps_its_own_variant() {
         speed: SimFixed::from_num(300),
         ..moving_target()
     });
-    entity.ship_locomotion = Some(ShipLocomotionRuntime {
-        destination: Some(head),
-        head_to: Some(head),
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_ship_state_for_test(Some(
+                ShipLocomotionRuntime::default()
+                    .with_destination_for_test(Some(head))
+                    .with_head_to_for_test(Some(head))
+            ))
+    );
     let state = ready_state_for(&entity, None, 100).expect("Ship has a producer");
     assert!(matches!(state, LocomotorReadyState::Ship { .. }));
     assert!(state.is_moving_now());
@@ -322,18 +338,30 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
         let head = optional(coord(&input["head"]));
         match kind {
             LocomotorKind::Drive => {
-                entity.drive_locomotion = Some(DriveLocomotionRuntime {
-                    destination: optional(coord(&input["destination"])),
-                    head_to: head,
-                    ..Default::default()
-                })
+                assert!(
+                    entity
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_drive_state_for_test(Some(
+                            DriveLocomotionRuntime::default()
+                                .with_destination_for_test(optional(coord(&input["destination"])))
+                                .with_head_to_for_test(head)
+                        ))
+                )
             }
             LocomotorKind::Ship => {
-                entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                    destination: optional(coord(&input["destination"])),
-                    head_to: head,
-                    ..Default::default()
-                })
+                assert!(
+                    entity
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_ship_state_for_test(Some(
+                            ShipLocomotionRuntime::default()
+                                .with_destination_for_test(optional(coord(&input["destination"])))
+                                .with_head_to_for_test(head)
+                        ))
+                )
             }
             LocomotorKind::Walk => {
                 let LocomotorRuntimePayload::Walk(state) =

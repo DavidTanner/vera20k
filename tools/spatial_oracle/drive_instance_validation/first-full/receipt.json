@@ -1,0 +1,35 @@
+{
+  "status": "FAILED",
+  "head": "c60d196d548800cec5494ab1d48f5e022719bb81",
+  "incoming_main": "c60d196d548800cec5494ab1d48f5e022719bb81",
+  "source_freeze_sha256": "cb68234516d4cc6a68388d60647dd28a750a0757aa95ca94c4595c95c1de6f21",
+  "runs": [
+    {
+      "label": "full",
+      "args": [
+        "test",
+        "-p",
+        "vera20k",
+        "--lib"
+      ],
+      "exit_code": 101,
+      "elapsed_seconds": 400.79115162498783,
+      "summary": [
+        [
+          "9567",
+          "8",
+          "227",
+          "0"
+        ]
+      ],
+      "fixture_skip_markers": [],
+      "warning_headings": [
+        "warning: function `ground_z_adjust` is never used",
+        "warning: `vera20k` (lib test) generated 1 warning",
+        "warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6"
+      ],
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-final-full-20261003.log",
+      "log_sha256": "e65c38c2abc76e5b1a7261f4c79618c761df8d9e68ac114521524d62a5bf5fad"
+    }
+  ]
+}

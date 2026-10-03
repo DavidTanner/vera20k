@@ -1,0 +1,95 @@
+{
+  "status": "PASS",
+  "scope": "Refresh three ini_value comment-only source stamps after integration of main9f; saved original payload publisher",
+  "fresh_native_vm_generation": false,
+  "head": "e7936f1ee974599bf8051a2ad316d8ad6e21efb9",
+  "protected_json_count": 522,
+  "protected_metadata_count": 382,
+  "helper_sha256": "0ce5e66ec8543ba88aea46300213e3aae2e0105305c2e404792d7f0b68a463fc",
+  "runs": [
+    {
+      "module": "tools.spatial_oracle.infantry_scatter_destination",
+      "args": [
+        "--teleport-cell",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-main-bindings-r3-20261003/staged-infantry_teleport_destination.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.21393670898396522,
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-main-bindings-r3-20261003/infantry_teleport_destination.meta-write.log",
+      "log_sha256": "1e0946d0e964a75f1790bc6affd4f32615242686a4e9d9000d52e6c0fb85b9dc"
+    },
+    {
+      "module": "tools.spatial_oracle.infantry_scatter_destination",
+      "args": [
+        "--teleport-cell",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.3024834579555318,
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-main-bindings-r3-20261003/infantry_teleport_destination.meta-check.log",
+      "log_sha256": "3b14af78da128fe682c8bce5cae4d7e6f9007d9ffb305cda27624df2d1fc9af9"
+    },
+    {
+      "module": "tools.spatial_oracle.anytown_damage.unit_unlimbo",
+      "args": [
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-main-bindings-r3-20261003/staged-unit_unlimbo.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.4198553330497816,
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-main-bindings-r3-20261003/unit_unlimbo.meta-write.log",
+      "log_sha256": "835546ffac9615e6f6741e865a3d71f002076457b69b6b1eb84ec559c6f3d8c8"
+    },
+    {
+      "module": "tools.spatial_oracle.anytown_damage.unit_unlimbo",
+      "args": [
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.6215977090178058,
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-main-bindings-r3-20261003/unit_unlimbo.meta-check.log",
+      "log_sha256": "b61d4e6f0ebd3302360faa66218aab3c6e6cb571e5b4d9419e56e51c728f677d"
+    },
+    {
+      "module": "tools.spatial_oracle.building_guard_attack",
+      "args": [
+        "--gate",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-main-bindings-r3-20261003/staged-building_guard_attack_gate.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.0730722090229392,
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-main-bindings-r3-20261003/building_guard_attack_gate.meta-write.log",
+      "log_sha256": "555ac8df8664fb96b088366dd61c2a66213870f0ff866795c650f4f7fbf197bf"
+    },
+    {
+      "module": "tools.spatial_oracle.building_guard_attack",
+      "args": [
+        "--gate",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.07537904195487499,
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-main-bindings-r3-20261003/building_guard_attack_gate.meta-check.log",
+      "log_sha256": "0a7b3ac6a552ef1070478345a44f747dac19fc635913c326bf1eeaa0f27fa4b4"
+    }
+  ],
+  "changed_source_pins": {
+    "tools/spatial_oracle/infantry_teleport_destination.meta.json": [
+      "src/rules/ini_value.rs"
+    ],
+    "tools/spatial_oracle/anytown_damage/unit_unlimbo.meta.json": [
+      "src/rules/ini_value.rs"
+    ],
+    "tools/spatial_oracle/building_guard_attack_gate.meta.json": [
+      "src/rules/ini_value.rs"
+    ]
+  },
+  "all_tracked_json_raw_byte_exact": true,
+  "all_nonbinding_provenance_exact": true,
+  "source_freeze_preserved": true
+}

@@ -456,19 +456,25 @@ fn assert_command_state(
         Some(NavTargetRef::cell(target.0, target.1)),
     );
     let expected_coord = DriveCoord::cell(target.0, target.1, 0);
-    let drive = entity.drive_locomotion.as_ref().expect("Drive runtime");
-    assert_eq!(drive.destination, Some(expected_coord));
+    let drive = entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .expect("Drive runtime");
+    assert_eq!(drive.destination(), Some(expected_coord));
     // These fixtures depart north from START. Native Drive4B32AF commits
     // current XYZ + one direction offset, independently of the ore destination
     // (saved locomotor_head_coordinates corpus; production coverage in track_head_tests).
     let expected_head = DriveCoord::cell(START.0, START.1 - 1, 0);
-    assert_eq!(drive.head_to, Some(expected_head));
+    assert_eq!(drive.head_to(), Some(expected_head));
     assert_eq!(
-        drive.track.turn_index, 0,
+        drive.track().turn_index,
+        0,
         "accepted northbound straight track"
     );
-    assert!(drive.track.cursor >= 0);
-    assert!(!drive.track.reversed);
+    assert!(drive.track().cursor >= 0);
+    assert!(!drive.track().reversed);
     assert!(!entity.navigation.path_replay.directions.is_empty());
     // The Harvest handler dispatches BEFORE Phase-1 ground movement (the
     // native handler→locomotion order), so by observation time the drive has
@@ -612,7 +618,14 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
         );
         {
             let entity = sim.substrate.entities.get(entity_id).expect("miner");
-            assert!(entity.drive_locomotion.is_some());
+            assert!(
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .is_some()
+            );
             assert!(entity.movement_target.is_some(), "movement");
             // One cell out is inside `SlowdownDistance=500`, so the ramp opens on
             // the destination brake floor and holds there for the whole hop.
@@ -648,7 +661,12 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                 locomotor.kind,
                 LocomotorKind::Teleport,
                 "Drive={:?}; Foot={:?}; position={:?}; Nav={:?}; mission={:?}",
-                entity.drive_locomotion,
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .cloned(),
                 entity.foot_speed,
                 entity.position,
                 entity.navigation,
@@ -657,7 +675,12 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
             assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
             assert_eq!(locomotor.piggyback, None);
             assert!(
-                entity.drive_locomotion.is_none(),
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .is_none(),
                 "native FootClass::AI releases retired Drive"
             );
         }
@@ -716,7 +739,14 @@ fn production_harv_outbound_drive_uses_rule_profile() {
     // the hull one more accel step without running a Harvest dispatch at all.
     advance(&mut sim, &oracle, &grid);
     let entity = sim.substrate.entities.get(entity_id).expect("HARV");
-    assert!(entity.drive_locomotion.is_some());
+    assert!(
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .is_some()
+    );
     assert!(entity.movement_target.is_some(), "movement");
     assert_eq!(
         entity.foot_speed.applied_fraction(),
@@ -771,7 +801,12 @@ fn production_stock_harv_far_return_drive_uses_rule_profile() {
     let harv = oracle.rules.object("HARV").expect("HARV");
     let entity = sim.substrate.entities.get(entity_id).expect("HARV");
     let movement = entity.movement_target.as_ref().expect("movement target");
-    let drive = entity.drive_locomotion.as_ref().expect("Drive runtime");
+    let drive = entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .expect("Drive runtime");
     assert_eq!(entity.miner_state().unwrap(), MinerState::ReturnToRefinery);
     assert!(
         !entity.radio_contacts.contains(refinery_id),
@@ -783,7 +818,7 @@ fn production_stock_harv_far_return_drive_uses_rule_profile() {
         Some(NavTargetRef::cell(staging.0, staging.1)),
     );
     assert_eq!(
-        drive.destination,
+        drive.destination(),
         Some(DriveCoord::cell(staging.0, staging.1, 0)),
     );
     assert_eq!(movement.speed, ra2_speed_to_leptons_per_second(harv.speed),);
@@ -809,7 +844,14 @@ fn production_stock_harv_far_return_drive_uses_rule_profile() {
     assert!(departed, "stock HARV must physically leave {start:?}");
 
     let entity = sim.substrate.entities.get(entity_id).expect("HARV");
-    assert!(entity.drive_locomotion.is_some());
+    assert!(
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .is_some()
+    );
     assert!(entity.movement_target.is_some(), "movement target");
     assert!(
         entity.foot_speed.applied_fraction() >= harv.accel_factor,
@@ -985,10 +1027,12 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
         );
         assert_eq!(
             entity
-                .drive_locomotion
+                .locomotor
                 .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
                 .expect("Drive runtime")
-                .destination,
+                .destination(),
             Some(DriveCoord::cell(original.0, original.1, 0)),
         );
     }
@@ -1013,8 +1057,10 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
         (
             entity.navigation.nav_com,
             entity
-                .drive_locomotion
+                .locomotor
                 .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
                 .expect("Drive runtime")
                 .clone(),
             miner.cargo.clone(),
@@ -1046,7 +1092,14 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
     assert_eq!(entity.miner_state().unwrap(), MinerState::ReturnToRefinery);
     assert_eq!(miner.reserved_refinery, None);
     assert_eq!(entity.navigation.nav_com, nav_before);
-    assert_eq!(entity.drive_locomotion.as_ref(), Some(&drive_before));
+    assert_eq!(
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained()),
+        Some(&drive_before)
+    );
     assert!(entity.movement_target.is_none());
     assert_eq!(miner.cargo, cargo_before);
     assert_eq!(timers_after, timers_before);
@@ -1133,7 +1186,12 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
                 locomotor.kind,
                 LocomotorKind::Teleport,
                 "Drive={:?}; Foot={:?}; position={:?}; Nav={:?}; mission={:?}",
-                entity.drive_locomotion,
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .cloned(),
                 entity.foot_speed,
                 entity.position,
                 entity.navigation,
@@ -1143,7 +1201,14 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
             assert_eq!(locomotor.piggyback, None);
             assert_eq!(entity.navigation.nav_com, None);
             assert!(!entity.navigation.pending_arrival_clear);
-            assert!(entity.drive_locomotion.is_none());
+            assert!(
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .is_none()
+            );
             reached_harvest = true;
             break;
         }
@@ -1360,7 +1425,12 @@ fn production_cmin_arrival_clears_navcom_same_tick_and_releases_drive() {
                 locomotor.kind,
                 LocomotorKind::Teleport,
                 "Drive={:?}; Foot={:?}; position={:?}; Nav={:?}; mission={:?}",
-                entity.drive_locomotion,
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .cloned(),
                 entity.foot_speed,
                 entity.position,
                 entity.navigation,
@@ -1369,7 +1439,12 @@ fn production_cmin_arrival_clears_navcom_same_tick_and_releases_drive() {
             assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
             assert_eq!(locomotor.piggyback, None);
             assert!(
-                entity.drive_locomotion.is_none(),
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .is_none(),
                 "restoring primary Teleport must release retired Drive runtime",
             );
             break;
@@ -1388,7 +1463,14 @@ fn production_cmin_arrival_clears_navcom_same_tick_and_releases_drive() {
             reached_harvest = true;
             assert_eq!(entity.navigation.nav_com, None);
             assert!(!entity.navigation.pending_arrival_clear);
-            assert!(entity.drive_locomotion.is_none());
+            assert!(
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .is_none()
+            );
             break;
         }
     }

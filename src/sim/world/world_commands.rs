@@ -3636,7 +3636,10 @@ mod tests {
                 crate::rules::locomotor_type::LocomotorKind::Drive,
             ),
         );
-        unit.drive_locomotion = Some(Default::default());
+        unit.locomotor
+            .as_mut()
+            .unwrap()
+            .ensure_installed_track_state();
         // Admission-only spawn helper preclears Limbo without placing the
         // object. Restore its constructor gate and publish through Reveal.
         unit.lifecycle.in_limbo = true;
@@ -3670,7 +3673,13 @@ mod tests {
             Some(crate::sim::components::NavTargetRef::cell(9, 11))
         );
         assert_eq!(
-            unit.drive_locomotion.as_ref().unwrap().track.turn_index,
+            unit.locomotor
+                .as_ref()
+                .and_then(|loco| loco.selected_drive_runtime())
+                .and_then(|runtime| runtime.retained())
+                .unwrap()
+                .track()
+                .turn_index,
             0x47
         );
         assert_eq!(
@@ -3710,7 +3719,10 @@ mod tests {
                 crate::rules::locomotor_type::LocomotorKind::Drive,
             ),
         );
-        unit.drive_locomotion = Some(Default::default());
+        unit.locomotor
+            .as_mut()
+            .unwrap()
+            .ensure_installed_track_state();
         // Exercise real cell/Logic membership, not the admission-only helper's
         // already-clear Limbo byte (which makes Reveal a no-op).
         unit.lifecycle.in_limbo = true;
@@ -3782,7 +3794,13 @@ mod tests {
         assert!(!unit.lifecycle.in_limbo);
         assert_eq!((unit.position.rx, unit.position.ry), (10, 10));
         assert_eq!(
-            unit.drive_locomotion.as_ref().unwrap().track.turn_index,
+            unit.locomotor
+                .as_ref()
+                .and_then(|loco| loco.selected_drive_runtime())
+                .and_then(|runtime| runtime.retained())
+                .unwrap()
+                .track()
+                .turn_index,
             0x47
         );
         assert_eq!(

@@ -108,7 +108,13 @@ fn response_defender(id: u64, type_name: &str, x: u16) -> GameEntity {
             crate::rules::locomotor_type::LocomotorKind::Drive,
         ),
     );
-    entity.drive_locomotion = Some(Default::default());
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(Default::default()))
+    );
     entity
 }
 
@@ -139,14 +145,21 @@ fn native_response_uses_the_paid_foot_head_instead_of_navcom() {
         ),
     );
     let head = &row["input"]["stored_head"];
-    candidate.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
-        head_to: Some(crate::sim::components::DriveCoord {
-            x: head[0].as_i64().unwrap() as i32,
-            y: head[1].as_i64().unwrap() as i32,
-            z: head[2].as_i64().unwrap() as i32,
-        }),
-        ..Default::default()
-    });
+    assert!(
+        candidate
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                crate::sim::movement::DriveLocomotionRuntime::default().with_head_to_for_test(
+                    Some(crate::sim::components::DriveCoord {
+                        x: head[0].as_i64().unwrap() as i32,
+                        y: head[1].as_i64().unwrap() as i32,
+                        z: head[2].as_i64().unwrap() as i32,
+                    })
+                )
+            ))
+    );
     candidate.navigation.nav_com =
         Some(crate::sim::components::NavTargetRef::Cell { rx: 7, ry: 7 });
     let mut entities = EntityStore::new();
@@ -715,10 +728,14 @@ fn retail_bridge_base_response_runs_through_the_protected_damage_receiver() {
             entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(xyz.x % 256);
             entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(xyz.y % 256);
             entity.position.exact_z_leptons = Some(xyz.z);
-            entity
-                .drive_locomotion
-                .get_or_insert_with(Default::default)
-                .head_to = Some(native::coord(&input["stored_head"]));
+            {
+                let loco = entity.locomotor.as_mut().unwrap();
+                assert!(loco.ensure_installed_track_state());
+                assert!(loco.store_track_head(
+                    crate::sim::movement::track_process::TrackFamily::Drive,
+                    Some(native::coord(&input["stored_head"]))
+                ));
+            };
         }
         sim.substrate
             .entities

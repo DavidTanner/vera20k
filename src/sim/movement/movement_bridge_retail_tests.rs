@@ -3096,9 +3096,11 @@ fn tank_cannot_cross_a_destroyed_shrapnel_low_bridge() {
     );
     let tank = scenario.sim().entities().get(entity_id).expect("the tank");
     assert!(
-        tank.drive_locomotion
+        tank.locomotor
             .as_ref()
-            .is_some_and(|drive| drive.destination.is_none()),
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .is_some_and(|drive| drive.destination().is_none()),
         "the zone test did not clear the Drive destination"
     );
 

@@ -1,0 +1,31 @@
+{
+  "runs": [
+    {
+      "label": "python-tools",
+      "args": [
+        "-m",
+        "tools.run_tests"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 30.319874958018772,
+      "summary": [
+        "40 modules; 552 tests",
+        "Ran 552 tests in 30.071s",
+        "OK (skipped=5)"
+      ],
+      "log_sha256": "3c0f4c4064a8d2ad3c4d16da841ae61fe97d6cbcaf8698b5cdcd5b8391cdeeb7"
+    },
+    {
+      "label": "skill-sync",
+      "args": [
+        "tools/skill_sync.py",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.03262325003743172,
+      "summary": [],
+      "log_sha256": "75262509650ce729d238e21d471f799bdd0ba9bb5f853986b74d5de69cd5e4a4"
+    }
+  ],
+  "status": "PASS"
+}

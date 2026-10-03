@@ -1765,9 +1765,7 @@ mod tests {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::aircraft::AircraftMission;
     use crate::sim::combat::{AttackTarget, TargetKind};
-    use crate::sim::components::{
-        DriveCoord, DriveLocomotionRuntime, MovementTarget, NavTargetRef,
-    };
+    use crate::sim::components::{DriveCoord, MovementTarget, NavTargetRef};
     use crate::sim::game_entity::{BunkerLink, GameEntity};
     use crate::sim::miner::{Miner, MinerConfig, MinerKind};
     use crate::sim::mission::leaf::MissionLeafState;
@@ -3630,7 +3628,11 @@ mod tests {
         entity.owner = sim.interner.intern("Americans");
         entity.type_ref = sim.interner.intern("TEST");
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-        entity.drive_locomotion = Some(DriveLocomotionRuntime::default());
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .ensure_installed_track_state();
         entity.navigation.nav_com = Some(NavTargetRef::cell(8, 8));
         update_mission_test_fixture(&mut entity.mission, |fixture| {
             fixture.current = MissionId::from_known(MissionType::Move);
@@ -4953,7 +4955,10 @@ mod tests {
         if locomotor.active_kind() != LocomotorKind::Drive || locomotor.piggyback.is_some() {
             return Err(HostTraceError::SpecialLocomotorPath);
         }
-        if entity.drive_locomotion.is_none() && entity.navigation.nav_com.is_some() {
+        if entity.locomotor.as_ref().is_none_or(|loco| {
+            !loco.has_track_state(crate::sim::movement::track_process::TrackFamily::Drive)
+        }) && entity.navigation.nav_com.is_some()
+        {
             return Err(HostTraceError::MissingDriveRuntime);
         }
         Ok(())
@@ -5109,7 +5114,13 @@ mod tests {
                             present: nav_com_present,
                         });
 
-                        if !nav_com_present && entity.drive_locomotion.is_none() {
+                        if !nav_com_present
+                            && entity.locomotor.as_ref().is_none_or(|loco| {
+                                !loco.has_track_state(
+                                    crate::sim::movement::track_process::TrackFamily::Drive,
+                                )
+                            })
+                        {
                             events.push(HostTraceEvent::NullLocomotorInvariant);
                             return Ok(finish_cloned_host_trace(
                                 events,
@@ -5225,7 +5236,9 @@ mod tests {
 
         // This trace records admission only; real Process execution belongs
         // to the live object-turn host and has separate integration coverage.
-        if entity.drive_locomotion.is_some() {
+        if entity.locomotor.as_ref().is_some_and(|loco| {
+            loco.has_track_state(crate::sim::movement::track_process::TrackFamily::Drive)
+        }) {
             events.push(HostTraceEvent::DriveProcessMarker);
         } else {
             events.push(HostTraceEvent::NullLocomotorInvariant);
@@ -5699,7 +5712,11 @@ mod tests {
                 .get_mut(ORDINARY_DRIVE_HOST_ID)
                 .unwrap();
             entity.navigation.nav_com = None;
-            entity.drive_locomotion = None;
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(None);
         }
         let trace = ordinary_drive_host_trace_ok(&sim, 60, HostTraceGates::ordinary());
         assert_eq!(
@@ -5895,26 +5912,32 @@ mod tests {
             if forced {
                 assert!(sim.force_drive_track(ORDINARY_DRIVE_HOST_ID, 0x47, head));
             } else {
-                let drive = sim
+                let loco = sim
                     .substrate
                     .entities
                     .get_mut(ORDINARY_DRIVE_HOST_ID)
                     .unwrap()
-                    .drive_locomotion
+                    .locomotor
                     .as_mut()
                     .unwrap();
-                drive.head_to = Some(head);
-                drive.track.turn_index = 0;
-                drive.track.cursor = 12;
-                drive.track.residual = 5;
+                let family = crate::sim::movement::track_process::TrackFamily::Drive;
+                loco.store_track_head(family, Some(head));
+                let mut track = loco.track_progress(family).unwrap();
+                track.turn_index = 0;
+                track.cursor = 12;
+                track.residual = 5;
+                loco.store_track_progress(family, track);
             }
             let before = sim
                 .substrate
                 .entities
                 .get(ORDINARY_DRIVE_HOST_ID)
                 .unwrap()
-                .drive_locomotion
-                .clone();
+                .locomotor
+                .as_ref()
+                .and_then(|loco| loco.selected_drive_runtime())
+                .and_then(|runtime| runtime.retained())
+                .cloned();
             let trace = ordinary_drive_host_trace_ok(&sim, 120, HostTraceGates::ordinary());
             assert_eq!(
                 trace
@@ -5929,7 +5952,11 @@ mod tests {
                     .entities
                     .get(ORDINARY_DRIVE_HOST_ID)
                     .unwrap()
-                    .drive_locomotion,
+                    .locomotor
+                    .as_ref()
+                    .and_then(|loco| loco.selected_drive_runtime())
+                    .and_then(|runtime| runtime.retained())
+                    .cloned(),
                 before
             );
         }
@@ -6109,7 +6136,10 @@ mod tests {
             .entities
             .get_mut(ORDINARY_DRIVE_HOST_ID)
             .unwrap()
-            .drive_locomotion = None;
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(None);
         assert_ordinary_drive_host_error(
             &missing_runtime,
             &control,
@@ -6661,7 +6691,6 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
             true,
         );
         e.movement_target = Some(MovementTarget::default());
-        e.drive_locomotion = Some(DriveLocomotionRuntime::default());
         // Out of limbo, where `FootClass::AI` admits a Process (`0x004DA86E`).
         // The ground corridor's Walk Process retires the empty target on the
         // first Process.

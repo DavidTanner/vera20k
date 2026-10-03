@@ -8,9 +8,9 @@
 use super::*;
 use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::sim::components::DriveLocomotionRuntime;
 use crate::sim::docking::bunker_install::{BunkerRuntime, BunkerState, tick_bunker_install};
 use crate::sim::game_entity::BunkerLink;
+use crate::sim::movement::DriveLocomotionRuntime;
 use crate::util::fixed_math::SimFixed;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
@@ -60,16 +60,21 @@ fn coord_array(value: Option<DriveCoord>) -> [i32; 3] {
 }
 
 fn mirrored_state(entity: &GameEntity) -> Value {
-    let drive = entity.drive_locomotion.as_ref().unwrap();
+    let drive = entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
     json!({
-        "turn": drive.track.turn_index,
-        "cursor": drive.track.cursor,
-        "reversed": u8::from(drive.track.reversed),
-        "residual": drive.track.residual,
-        "head": coord_array(drive.head_to),
-        "destination": coord_array(drive.destination),
-        "track_valid": u8::from(drive.track_valid),
-        "target_fraction_bits": format!("{:016x}", drive.target_speed_fraction.to_num::<f64>().to_bits()),
+        "turn": drive.track().turn_index,
+        "cursor": drive.track().cursor,
+        "reversed": u8::from(drive.track().reversed),
+        "residual": drive.track().residual,
+        "head": coord_array(drive.head_to()),
+        "destination": coord_array(drive.destination()),
+        "track_valid": u8::from(drive.track_valid()),
+        "target_fraction_bits": format!("{:016x}", drive.target_speed_fraction().to_num::<f64>().to_bits()),
         "applied_fraction_bits": format!("{:016x}", entity.foot_speed.applied_fraction().to_num::<f64>().to_bits()),
         "owner_limbo": u8::from(entity.lifecycle.in_limbo),
         "owner_alive": u8::from(entity.lifecycle.object_alive),
@@ -78,7 +83,10 @@ fn mirrored_state(entity: &GameEntity) -> Value {
 
 fn owner_state(entity: &GameEntity, exclude_bunker_speed_write: bool) -> Value {
     let mut value = serde_json::to_value(entity).unwrap();
-    value.as_object_mut().unwrap().remove("drive_locomotion");
+    value["locomotor"]["runtime_payload"]["Drive"]
+        .as_object_mut()
+        .unwrap()
+        .remove("retained");
     if exclude_bunker_speed_write {
         value["foot_speed"]
             .as_object_mut()
@@ -128,19 +136,25 @@ fn fixture(case: &Value) -> Simulation {
             z: 312,
         },
     );
-    entity.drive_locomotion = Some(DriveLocomotionRuntime {
-        destination: nullable_coord(&before["destination"]),
-        head_to: nullable_coord(&before["head"]),
-        track: TrackProgress {
-            turn_index: integer(&before["turn"]),
-            cursor: integer(&before["cursor"]),
-            reversed: integer(&before["reversed"]) != 0,
-            residual: integer(&before["residual"]),
-        },
-        track_valid: integer(&before["track_valid"]) != 0,
-        target_speed_fraction: fraction(&before["target_fraction_bits"]),
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                DriveLocomotionRuntime::default()
+                    .with_destination_for_test(nullable_coord(&before["destination"]))
+                    .with_head_to_for_test(nullable_coord(&before["head"]))
+                    .with_track_for_test(TrackProgress {
+                        turn_index: integer(&before["turn"]),
+                        cursor: integer(&before["cursor"]),
+                        reversed: integer(&before["reversed"]) != 0,
+                        residual: integer(&before["residual"]),
+                    })
+                    .with_track_valid_for_test(integer(&before["track_valid"]) != 0)
+                    .with_target_speed_fraction_for_test(fraction(&before["target_fraction_bits"]))
+            ))
+    );
     assert_eq!(mirrored_state(&entity), *before, "fixture: {input}");
     sim.substrate.entities.insert(entity);
     let bridge = input["bridge"].as_bool().unwrap_or(false);
@@ -271,9 +285,15 @@ fn supplied_post_crate_continuations_reload_life_head_and_valid_like_native() {
                 );
                 entity.lifecycle.object_alive = effect["alive"].as_bool().unwrap();
                 entity.lifecycle.in_limbo = effect["limbo"].as_bool().unwrap();
-                let drive = entity.drive_locomotion.as_mut().unwrap();
-                drive.head_to = nullable_coord(&effect["head"]);
-                drive.track_valid = effect["track_valid"].as_bool().unwrap();
+                let drive = entity.locomotor.as_mut().unwrap();
+                assert!(drive.store_track_head(
+                    crate::sim::movement::track_process::TrackFamily::Drive,
+                    nullable_coord(&effect["head"])
+                ));
+                assert!(drive.store_track_valid(
+                    crate::sim::movement::track_process::TrackFamily::Drive,
+                    effect["track_valid"].as_bool().unwrap()
+                ));
                 supplied_owner = Some(owner_state(entity, false));
                 assert_eq!(
                     mirrored_state(entity),

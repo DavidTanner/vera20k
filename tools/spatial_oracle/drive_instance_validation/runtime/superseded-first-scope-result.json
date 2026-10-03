@@ -1,0 +1,8 @@
+{
+  "wrapper_status": "VALID",
+  "offline_status": "VALID",
+  "chain_runtime_coverage": "NOT_ESTABLISHED",
+  "CMIN_samples": 0,
+  "cause": "profile copied onlyfirst5 CLEG commands, creatingGAPILE275 instead of laterGAREFN273",
+  "correction": "reuseoriginalfirst7 commands with refinery queue1300/place2800 at31,85"
+}

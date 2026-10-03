@@ -3,8 +3,9 @@
 //! list/raw occupation priors; it does not certify whole Unlimbo or movement.
 
 use super::*;
-use crate::sim::components::{DriveCoord, DriveLocomotionRuntime};
+use crate::sim::components::DriveCoord;
 use crate::sim::house_state::HouseState;
+use crate::sim::movement::DriveLocomotionRuntime;
 use crate::sim::movement::infantry_entry::InfantryEntryArgs;
 use crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload;
 use crate::sim::movement::locomotor::LocomotorState;
@@ -121,14 +122,21 @@ fn escape_counter_matches_native_cell_list_and_raw_owner_gates() {
                 blocker.locomotor = Some(locomotor);
             } else if category == EntityCategory::Unit {
                 blocker.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-                blocker.drive_locomotion = Some(DriveLocomotionRuntime {
-                    destination: moving.then_some(DriveCoord {
-                        x: 3200,
-                        y: 2688,
-                        z: 0,
-                    }),
-                    ..Default::default()
-                });
+                assert!(
+                    blocker
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_drive_state_for_test(Some(
+                            DriveLocomotionRuntime::default().with_destination_for_test(
+                                moving.then_some(DriveCoord {
+                                    x: 3200,
+                                    y: 2688,
+                                    z: 0,
+                                })
+                            )
+                        ))
+                );
             }
             let category = blocker.category;
             sim.substrate.entities.insert(blocker);

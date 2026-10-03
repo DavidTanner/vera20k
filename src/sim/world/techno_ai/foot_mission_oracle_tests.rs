@@ -11,6 +11,7 @@
 //! Timer comparisons cover the represented start/duration fields; the native
 //! timer's auxiliary stack/storage word is outside this state projection.
 
+use crate::sim::movement::DriveLocomotionRuntime;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
@@ -27,7 +28,7 @@ use crate::sim::combat::greatest_threat::{
 };
 use crate::sim::combat::threat_range::ScanMission;
 use crate::sim::combat::{AttackTarget, TargetKind};
-use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, Health, NavTargetRef};
+use crate::sim::components::{DriveCoord, Health, NavTargetRef};
 use crate::sim::game_entity::{GameEntity, InfantryRuntime};
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::state::MissionTestFixture;
@@ -726,10 +727,16 @@ impl SuppliedFootFixture {
                     if infantry {
                         entity.locomotor.as_mut().unwrap().set_step_head(Some(head));
                     } else {
-                        entity.drive_locomotion = Some(DriveLocomotionRuntime {
-                            head_to: Some(head),
-                            ..DriveLocomotionRuntime::default()
-                        });
+                        assert!(
+                            entity
+                                .locomotor
+                                .as_mut()
+                                .unwrap()
+                                .install_drive_state_for_test(Some(
+                                    DriveLocomotionRuntime::default()
+                                        .with_head_to_for_test(Some(head))
+                                ))
+                        );
                     }
                 }
                 entity.passive_scan_timer = MissionTimer::armed(
@@ -1544,8 +1551,13 @@ fn assert_destination_projection(fixture: &SuppliedFootFixture, row: &Value) {
         "{name}: retries"
     );
     let (destination, head) = if row["input"]["family"] == "MTNK" {
-        let loco = actor.drive_locomotion.as_ref().unwrap();
-        (loco.destination, loco.head_to)
+        let loco = actor
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap();
+        (loco.destination(), loco.head_to())
     } else {
         let loco = actor.locomotor.as_ref().unwrap();
         (loco.walk_destination(), loco.step_head())

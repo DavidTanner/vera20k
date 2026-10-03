@@ -195,9 +195,11 @@ impl Scene {
             self.sim.resolved_terrain.as_ref(),
         );
         let destination = unit
-            .drive_locomotion
+            .locomotor
             .as_ref()
-            .and_then(|drive| drive.destination)
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .and_then(|drive| drive.destination())
             .map_or_else(|| json!([0, 0, 0]), |at| json!([at.x, at.y, at.z]));
         json!({
             "frame": self.sim.session.binary_frame,
@@ -521,9 +523,14 @@ fn scene(golden: &Value, row: &Value) -> Scene {
             y: int(&destination[1]),
             z: int(&destination[2]),
         };
-        unit.drive_locomotion
-            .get_or_insert_with(Default::default)
-            .destination = (at != DriveCoord { x: 0, y: 0, z: 0 }).then_some(at);
+        {
+            let loco = unit.locomotor.as_mut().unwrap();
+            assert!(loco.ensure_installed_track_state());
+            assert!(loco.store_track_destination(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                (at != DriveCoord { x: 0, y: 0, z: 0 }).then_some(at)
+            ));
+        };
         if int(&before["locomotor_powered"]) == 0 {
             unit.locomotor.as_mut().unwrap().power_off();
         } else {

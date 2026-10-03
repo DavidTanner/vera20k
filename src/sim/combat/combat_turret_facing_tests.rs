@@ -1050,11 +1050,17 @@ fn drive_with(
     use crate::rules::locomotor_type::LocomotorKind;
     entity.locomotor =
         Some(crate::sim::movement::locomotor::LocomotorState::for_test_kind(LocomotorKind::Drive));
-    entity.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
-        destination,
-        head_to,
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                crate::sim::movement::DriveLocomotionRuntime::default()
+                    .with_destination_for_test(destination)
+                    .with_head_to_for_test(head_to)
+            ))
+    );
 }
 
 #[test]

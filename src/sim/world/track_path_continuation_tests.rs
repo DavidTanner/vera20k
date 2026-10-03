@@ -153,11 +153,21 @@ fn compare(sim: &Simulation, id: u64, row: &Value, outcome: Option<FootPathOutco
     let e = sim.substrate.entities.get(id).unwrap();
     let state = &row["state"];
     let (destination, head, selector) = if row["input"]["family"] == "drive" {
-        let d = e.drive_locomotion.as_ref().unwrap();
-        (d.destination, d.head_to, d.track.turn_index)
+        let d = e
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap();
+        (d.destination(), d.head_to(), d.track().turn_index)
     } else {
-        let s = e.ship_locomotion.as_ref().unwrap();
-        (s.destination, s.head_to, s.track.turn_index)
+        let s = e
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_ship_runtime())
+            .and_then(|r| r.retained())
+            .unwrap();
+        (s.destination(), s.head_to(), s.track().turn_index)
     };
     let p = &e.navigation.path_runtime;
     let nav = e.navigation.nav_com.map(|n| match n {
@@ -350,7 +360,14 @@ fn deferred_restore_completes_toward_navcom_over_a_stale_destination() {
     sim.session.binary_frame = 101;
     sim.complete_pending_order(id, Some(&rules), None);
     let e = sim.substrate.entities.get(id).unwrap();
-    let destination = e.drive_locomotion.as_ref().unwrap().destination.unwrap();
+    let destination = e
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap()
+        .destination()
+        .unwrap();
     assert_eq!((destination.x / 256, destination.y / 256), (10, 13));
     assert_eq!(
         e.movement_target.as_ref().unwrap().final_goal,
@@ -426,13 +443,29 @@ fn ordered_attack_null_destination_stops_a_moving_tank_after_its_track() {
         sim.assign_null_destination(id, Some(&rules), None);
         let e = sim.substrate.entities.get(id).unwrap();
         assert!(e.navigation.nav_com.is_none());
-        assert!(e.drive_locomotion.as_ref().unwrap().destination.is_none());
+        assert!(
+            e.locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .unwrap()
+                .destination()
+                .is_none()
+        );
         for _ in 0..120 {
             visit(&mut sim, &mut frame);
         }
         let e = sim.substrate.entities.get(id).unwrap();
         assert!(e.navigation.nav_com.is_none());
-        assert!(e.drive_locomotion.as_ref().unwrap().destination.is_none());
+        assert!(
+            e.locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .unwrap()
+                .destination()
+                .is_none()
+        );
         assert!(e.movement_target.is_none(), "no adapter was re-armed");
         assert!(!e.navigation.pending_arrival_clear);
         assert_eq!(
@@ -895,7 +928,15 @@ fn forced_track_end_requests_its_own_cell_in_the_same_process() {
             continue;
         }
         assert!(e.navigation.nav_com.is_none());
-        assert_eq!(e.drive_locomotion.as_ref().unwrap().destination, Some(head));
+        assert_eq!(
+            e.locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .unwrap()
+                .destination(),
+            Some(head)
+        );
         // The Find_Path wrapper's +640 = (Frame, 0) (0x4D3EB2) dates this
         // Process's request.
         let timer = e.navigation.path_runtime.movement_timer;
@@ -987,16 +1028,48 @@ fn after_active_rows_gate_the_same_call_continuation() {
         let moving = int(input, "is_moving", 1) != 0;
         match family {
             TrackFamily::Drive => {
-                let d = e.drive_locomotion.get_or_insert_with(Default::default);
-                d.track.turn_index = selector;
-                d.destination = moving.then_some(destination);
-                d.head_to = None;
+                let d = e.locomotor.as_mut().unwrap();
+                assert!(d.ensure_installed_track_state());
+                {
+                    let mut progress = d
+                        .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+                        .unwrap();
+                    progress.turn_index = selector;
+                    assert!(d.store_track_progress(
+                        crate::sim::movement::track_process::TrackFamily::Drive,
+                        progress
+                    ));
+                };
+                assert!(d.store_track_destination(
+                    crate::sim::movement::track_process::TrackFamily::Drive,
+                    moving.then_some(destination)
+                ));
+                assert!(d.store_track_head(
+                    crate::sim::movement::track_process::TrackFamily::Drive,
+                    None
+                ));
             }
             TrackFamily::Ship => {
-                let s = e.ship_locomotion.get_or_insert_with(Default::default);
-                s.track.turn_index = selector;
-                s.destination = moving.then_some(destination);
-                s.head_to = None;
+                let s = e.locomotor.as_mut().unwrap();
+                assert!(s.ensure_installed_track_state());
+                {
+                    let mut progress = s
+                        .track_progress(crate::sim::movement::track_process::TrackFamily::Ship)
+                        .unwrap();
+                    progress.turn_index = selector;
+                    assert!(s.store_track_progress(
+                        crate::sim::movement::track_process::TrackFamily::Ship,
+                        progress
+                    ));
+                };
+                assert!(s.store_track_destination(
+                    crate::sim::movement::track_process::TrackFamily::Ship,
+                    moving.then_some(destination)
+                ));
+                assert!(s.store_track_head(
+                    crate::sim::movement::track_process::TrackFamily::Ship,
+                    None
+                ));
             }
         }
         let queue_head = int(input, "queue_head", -1);
@@ -1032,8 +1105,20 @@ fn after_active_rows_gate_the_same_call_continuation() {
         let moved = events.iter().any(|event| event["event"] == "move_to");
         let e = sim.substrate.entities.get(id).unwrap();
         let after = match family {
-            TrackFamily::Drive => e.drive_locomotion.as_ref().unwrap().destination,
-            TrackFamily::Ship => e.ship_locomotion.as_ref().unwrap().destination,
+            TrackFamily::Drive => e
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .unwrap()
+                .destination(),
+            TrackFamily::Ship => e
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_ship_runtime())
+                .and_then(|r| r.retained())
+                .unwrap()
+                .destination(),
         };
         let expected = if moved {
             navcom.map(|(_, coord)| coord)
@@ -1109,12 +1194,28 @@ fn retaliation_mid_track_stops_the_tank_at_its_track_end() {
         Some(NavTargetRef::cell(20, 10))
     );
     assert!(e.navigation.nav_com.is_none());
-    assert!(e.drive_locomotion.as_ref().unwrap().destination.is_none());
+    assert!(
+        e.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .destination()
+            .is_none()
+    );
     for frame in frame..frame + 120 {
         visit(&mut sim, &rules, &registry, id, frame);
     }
     let e = sim.substrate.entities.get(id).unwrap();
-    assert!(e.drive_locomotion.as_ref().unwrap().destination.is_none());
+    assert!(
+        e.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .destination()
+            .is_none()
+    );
     assert!(e.movement_target.is_none(), "no adapter was re-armed");
     assert_eq!(
         (e.position.rx, e.position.ry),
@@ -1138,12 +1239,28 @@ fn owner_change_mid_track_stops_the_tank_at_its_track_end() {
     sim.change_owner_with_rules(id, owner, &rules, Some(&registry));
     let e = sim.substrate.entities.get(id).unwrap();
     assert!(e.navigation.nav_com.is_none());
-    assert!(e.drive_locomotion.as_ref().unwrap().destination.is_none());
+    assert!(
+        e.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .destination()
+            .is_none()
+    );
     for frame in frame..frame + 120 {
         visit(&mut sim, &rules, &registry, id, frame);
     }
     let e = sim.substrate.entities.get(id).unwrap();
-    assert!(e.drive_locomotion.as_ref().unwrap().destination.is_none());
+    assert!(
+        e.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .destination()
+            .is_none()
+    );
     assert_eq!(
         (e.position.rx, e.position.ry),
         ((head.x / 256) as u16, (head.y / 256) as u16),
@@ -1179,8 +1296,13 @@ fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
         !e.navigation.pending_arrival_clear,
         "the setter ran; none is owed"
     );
-    let drive = e.drive_locomotion.as_ref().unwrap();
-    let restored = drive.destination.unwrap();
+    let drive = e
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
+    let restored = drive.destination().unwrap();
     assert_eq!((restored.x / 256, restored.y / 256), (20, 10));
     assert_eq!(
         crate::sim::movement::track_head::committed_track_head(e),
@@ -1192,7 +1314,14 @@ fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
     );
     let ended = visit_until_head_changes(&mut sim, &rules, &registry, id, head, frame);
     let e = sim.substrate.entities.get(id).unwrap();
-    let destination = e.drive_locomotion.as_ref().unwrap().destination.unwrap();
+    let destination = e
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap()
+        .destination()
+        .unwrap();
     assert_eq!((destination.x / 256, destination.y / 256), (20, 10));
     assert!(!e.navigation.pending_arrival_clear);
     assert!(
@@ -1225,9 +1354,21 @@ fn track_end_frame_spends_one_speed_budget() {
         let progress = |sim: &Simulation| {
             let e = sim.substrate.entities.get(id).unwrap();
             let residual = if family == "drive" {
-                e.drive_locomotion.as_ref().unwrap().track.residual
+                e.locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap()
+                    .track()
+                    .residual
             } else {
-                e.ship_locomotion.as_ref().unwrap().track.residual
+                e.locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap()
+                    .track()
+                    .residual
             };
             (
                 committed_track_head(e),

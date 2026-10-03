@@ -490,16 +490,18 @@ impl LocomotorState {
 
     pub(crate) fn active_slope_transition(&self) -> Option<&SlopeTransitionState> {
         match (self.active_kind(), &self.runtime_payload) {
-            (LocomotorKind::Drive, LocomotorRuntimePayload::Drive(state))
-            | (LocomotorKind::Ship, LocomotorRuntimePayload::Ship(state)) => Some(state),
+            (LocomotorKind::Drive, LocomotorRuntimePayload::Drive(state)) => Some(state.slope()),
+            (LocomotorKind::Ship, LocomotorRuntimePayload::Ship(state)) => Some(state.slope()),
             _ => None,
         }
     }
 
     pub(crate) fn active_slope_transition_mut(&mut self) -> Option<&mut SlopeTransitionState> {
         match (self.kind, &mut self.runtime_payload) {
-            (LocomotorKind::Drive, LocomotorRuntimePayload::Drive(state))
-            | (LocomotorKind::Ship, LocomotorRuntimePayload::Ship(state)) => Some(state),
+            (LocomotorKind::Drive, LocomotorRuntimePayload::Drive(state)) => {
+                Some(state.slope_mut())
+            }
+            (LocomotorKind::Ship, LocomotorRuntimePayload::Ship(state)) => Some(state.slope_mut()),
             _ => None,
         }
     }

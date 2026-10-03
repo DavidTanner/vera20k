@@ -1,0 +1,7 @@
+{
+  "status": "BLOCKED_BEFORE_CARGO",
+  "exit_code": 2,
+  "reason": "15.12GiB available below required16GiB; no comparison was executed",
+  "temporary_control_removed": true,
+  "current_log": "current.log"
+}

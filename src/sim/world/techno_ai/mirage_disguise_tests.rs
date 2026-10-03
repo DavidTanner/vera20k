@@ -17,10 +17,16 @@ fn mirage(order: bool, destination: Option<DriveCoord>) -> (Simulation, RuleSet)
     let mut entity = GameEntity::test_default(1, "MGTK", "Americans", 5, 5);
     entity.category = EntityCategory::Unit;
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    entity.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
-        destination,
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                crate::sim::movement::DriveLocomotionRuntime::default()
+                    .with_destination_for_test(destination)
+            ))
+    );
     entity.movement_target = order.then(MovementTarget::default);
     sim.substrate.entities.insert(entity);
     sim.interner = crate::sim::intern::test_interner();

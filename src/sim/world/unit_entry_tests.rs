@@ -1,6 +1,7 @@
 use super::*;
 use crate::sim::movement::infantry_entry::InfantryEntryArgs;
 use crate::sim::movement::locomotor::LocomotorState;
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::occupancy::CellListInsertion;
 use crate::util::fixed_math::SimFixed;
 
@@ -266,9 +267,7 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                     blocker.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
                 }
                 if let Some(state) = node.get("motion") {
-                    use crate::sim::components::{
-                        DriveCoord, DriveLocomotionRuntime, ShipLocomotionRuntime,
-                    };
+                    use crate::sim::components::DriveCoord;
                     use crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload;
                     let coordinate = |v: &serde_json::Value| {
                         let c = DriveCoord {
@@ -283,20 +282,36 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                     let head = state.get("head").and_then(coordinate);
                     match state["family"].as_str().unwrap() {
                         "drive" => {
-                            blocker.drive_locomotion = Some(DriveLocomotionRuntime {
-                                destination: coordinate(&state["destination"]),
-                                head_to: head,
-                                ..Default::default()
-                            })
+                            assert!(
+                                blocker
+                                    .locomotor
+                                    .as_mut()
+                                    .unwrap()
+                                    .install_drive_state_for_test(Some(
+                                        DriveLocomotionRuntime::default()
+                                            .with_destination_for_test(coordinate(
+                                                &state["destination"]
+                                            ))
+                                            .with_head_to_for_test(head)
+                                    ))
+                            )
                         }
                         "ship" => {
                             blocker.locomotor =
                                 Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
-                            blocker.ship_locomotion = Some(ShipLocomotionRuntime {
-                                destination: coordinate(&state["destination"]),
-                                head_to: head,
-                                ..Default::default()
-                            });
+                            assert!(
+                                blocker
+                                    .locomotor
+                                    .as_mut()
+                                    .unwrap()
+                                    .install_ship_state_for_test(Some(
+                                        ShipLocomotionRuntime::default()
+                                            .with_destination_for_test(coordinate(
+                                                &state["destination"]
+                                            ))
+                                            .with_head_to_for_test(head)
+                                    ))
+                            );
                         }
                         "walk" => {
                             blocker.category = EntityCategory::Infantry;

@@ -45,12 +45,9 @@ impl AtCoordQuery {
     /// and its retained head are reread; a path is not a substitute for either.
     pub(crate) fn from_entity(entity: &crate::sim::game_entity::GameEntity) -> Option<Self> {
         let locomotor = entity.locomotor.as_ref()?;
-        let track = match locomotor.kind {
-            LocomotorKind::Drive => entity.drive_locomotion.as_ref().map(|s| s.track),
-            LocomotorKind::Ship => entity.ship_locomotion.as_ref().map(|s| s.track),
-            _ => None,
-        }
-        .unwrap_or_default();
+        let track = super::track_process::TrackFamily::from_kind(locomotor.kind)
+            .and_then(|family| locomotor.track_progress(family))
+            .unwrap_or_default();
         let head = super::foot_coordinate::stored_head(entity);
         let current = super::foot_coordinate::current_coordinate(entity);
         Self::from_state(

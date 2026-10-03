@@ -50,8 +50,14 @@ pub(super) fn publish_altitude_change(
 /// needs these original XY values even when Head_To resolves to current XYZ.
 pub(super) fn stored_head(entity: &GameEntity) -> Option<DriveCoord> {
     match entity.locomotor.as_ref()?.active_kind() {
-        LocomotorKind::Drive => entity.drive_locomotion.as_ref()?.head_to,
-        LocomotorKind::Ship => entity.ship_locomotion.as_ref()?.head_to,
+        LocomotorKind::Drive => entity
+            .locomotor
+            .as_ref()?
+            .track_head(super::track_process::TrackFamily::Drive),
+        LocomotorKind::Ship => entity
+            .locomotor
+            .as_ref()?
+            .track_head(super::track_process::TrackFamily::Ship),
         LocomotorKind::Walk | LocomotorKind::Hover => entity.locomotor.as_ref()?.step_head(),
         _ => None,
     }

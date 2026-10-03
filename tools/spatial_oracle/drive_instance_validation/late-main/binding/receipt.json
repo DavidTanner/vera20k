@@ -1,0 +1,41 @@
+{
+  "status": "PASS",
+  "scope": "Refresh one frontend atlas-call source stamp after main d2; saved original Compass payload publisher",
+  "fresh_native_vm_generation": false,
+  "head": "60eef94c254e508d84a771f891c69d62c8e274d0",
+  "protected_json_count": 538,
+  "protected_metadata_count": 383,
+  "helper_sha256": "0ce5e66ec8543ba88aea46300213e3aae2e0105305c2e404792d7f0b68a463fc",
+  "runs": [
+    {
+      "module": "tools.spatial_oracle.locomotor_head_coordinates",
+      "args": [
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-late-d2-bindings-20261003/staged-locomotor_head_coordinates.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.11502404196653515,
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-late-d2-bindings-20261003/locomotor_head_coordinates.meta-write.log",
+      "log_sha256": "3f68e419a4c4bc1cd390e0e799c0fe7099c3a632d0022a27db249d1b2ad06276"
+    },
+    {
+      "module": "tools.spatial_oracle.locomotor_head_coordinates",
+      "args": [
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.07330312510021031,
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-late-d2-bindings-20261003/locomotor_head_coordinates.meta-check.log",
+      "log_sha256": "87a544579ac74303be9905a3c6e7ff08a29c8cb6932f8e8146887059cf433c21"
+    }
+  ],
+  "changed_source_pins": {
+    "tools/spatial_oracle/locomotor_head_coordinates.meta.json": [
+      "src/app/frontend/skirmish.rs"
+    ]
+  },
+  "all_tracked_json_raw_byte_exact": true,
+  "all_nonbinding_provenance_exact": true,
+  "source_freeze_preserved": true
+}

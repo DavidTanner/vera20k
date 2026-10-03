@@ -48,7 +48,13 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
     entity.category = EntityCategory::Unit;
     entity.body_facing.snap(0x4000, 0);
     entity.locomotor = Some(make_drive_loco_for_test());
-    entity.drive_locomotion = Some(Default::default());
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(Default::default()))
+    );
     entity.drive_accelerates = false;
     sim.substrate.entities.insert(entity);
     assert!(matches!(
@@ -99,7 +105,17 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
         Some((5, 0))
     );
     assert!(committed_track_head(accepted).is_some());
-    assert!(accepted.drive_locomotion.as_ref().unwrap().track.turn_index >= 0);
+    assert!(
+        accepted
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track()
+            .turn_index
+            >= 0
+    );
 
     for frame in 1..160 {
         sim.session.binary_frame = frame;
@@ -116,7 +132,14 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
                 "ordinary curve retires before tube ownership"
             );
             assert_eq!(
-                entity.drive_locomotion.as_ref().unwrap().track.turn_index,
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap()
+                    .track()
+                    .turn_index,
                 -1
             );
             assert_eq!((entity.position.rx, entity.position.ry), (1, 0));
@@ -124,14 +147,28 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
             assert_eq!(entity.navigation.path_replay.cursor, 2);
             assert_eq!(entity.navigation.path_replay.reference_cell, Some((1, 0)));
             assert_eq!(
-                entity.drive_locomotion.as_ref().unwrap().head_to,
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap()
+                    .head_to(),
                 Some(DriveCoord {
                     x: 1408,
                     y: 128,
                     z: 0
                 })
             );
-            assert!(entity.drive_locomotion.as_ref().unwrap().track_valid);
+            assert!(
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap()
+                    .track_valid()
+            );
             assert!(
                 entity
                     .navigation
@@ -156,8 +193,18 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
     panic!(
         "ordinary move did not hand movement to the tube: position={:?}, track={:?}, runtime={:?}",
         entity.position,
-        entity.drive_locomotion.as_ref().map(|d| d.track),
-        entity.drive_locomotion
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .map(|d| d.track()),
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .cloned()
     );
 }
 
@@ -217,19 +264,26 @@ fn test_drive_arrival_clears_navcom_same_tick() {
     e.drive_accelerates = false;
     e.foot_speed.set_speed_fraction(SIM_ONE);
     e.navigation.nav_com = Some(NavTargetRef::cell(0, 0));
-    e.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
-        destination: Some(crate::sim::components::DriveCoord::cell(0, 0, 0)),
-        head_to: Some(crate::sim::components::DriveCoord::cell(0, 0, 0)),
-        track_valid: true,
-        target_speed_fraction: SIM_ONE,
-        track: crate::sim::components::TrackProgress {
-            turn_index: 0,
-            cursor: drive_track::raw_track_points(1).len() as i32,
-            residual: 7,
-            ..Default::default()
-        },
-        ..Default::default()
-    });
+    assert!(
+        e.locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                crate::sim::movement::DriveLocomotionRuntime::default()
+                    .with_destination_for_test(Some(crate::sim::components::DriveCoord::cell(
+                        0, 0, 0
+                    )))
+                    .with_head_to_for_test(Some(crate::sim::components::DriveCoord::cell(0, 0, 0)))
+                    .with_track_valid_for_test(true)
+                    .with_target_speed_fraction_for_test(SIM_ONE)
+                    .with_track_for_test(crate::sim::components::TrackProgress {
+                        turn_index: 0,
+                        cursor: drive_track::raw_track_points(1).len() as i32,
+                        residual: 7,
+                        ..Default::default()
+                    })
+            ))
+    );
     e.movement_target = Some(MovementTarget {
         // One live speed lepton plus residual7 pays the terminal point.
         speed: SimFixed::from_num(15),
@@ -247,12 +301,17 @@ fn test_drive_arrival_clears_navcom_same_tick() {
     assert!(entity.movement_target.is_none());
     assert_eq!(entity.navigation.nav_com, None);
     assert!(!entity.navigation.pending_arrival_clear);
-    let drive = entity.drive_locomotion.as_ref().expect("drive state");
-    assert_eq!(drive.head_to, None);
-    assert!(!drive.track_valid);
-    assert_eq!(drive.track.turn_index, -1);
-    assert_eq!(drive.track.cursor, 0);
-    assert_eq!(drive.destination, None);
+    let drive = entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .expect("drive state");
+    assert_eq!(drive.head_to(), None);
+    assert!(!drive.track_valid());
+    assert_eq!(drive.track().turn_index, -1);
+    assert_eq!(drive.track().cursor, 0);
+    assert_eq!(drive.destination(), None);
 }
 
 #[test]
@@ -302,7 +361,12 @@ fn test_drive_queue_command_reissues_destination_without_navqueue_append() {
     );
     assert_eq!(movement.final_goal, Some((4, 0)));
     assert_eq!(
-        entity.drive_locomotion.as_ref().and_then(|d| d.destination),
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .and_then(|d| d.destination()),
         Some(DriveCoord {
             x: 4 * 256 + 128,
             y: 128,
@@ -557,7 +621,13 @@ fn drive_slope_boundary_is_detected_on_process_after_forced_track_crossing() {
         LocomotorKind::Drive,
         0,
     ));
-    entity.drive_locomotion = Some(Default::default());
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(Default::default()))
+    );
     sim.substrate.entities.insert(entity);
     assert!(matches!(
         sim.reveal(1),
@@ -925,13 +995,20 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
     entity.category = EntityCategory::Unit;
     entity.locomotor = Some(make_drive_loco_for_test());
     entity.drive_accelerates = false;
-    entity.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
-        track: crate::sim::components::TrackProgress {
-            residual: 5,
-            ..Default::default()
-        },
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                crate::sim::movement::DriveLocomotionRuntime::default().with_track_for_test(
+                    crate::sim::components::TrackProgress {
+                        residual: 5,
+                        ..Default::default()
+                    }
+                )
+            ))
+    );
     sim.substrate.entities.insert(entity);
     assert!(matches!(
         sim.reveal_entity_with_rules(1, &rules),
@@ -961,13 +1038,18 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
     assert!(sim.force_drive_track(1, 0x47, head));
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
-    let drive = entity.drive_locomotion.as_ref().unwrap();
-    assert_eq!(drive.destination, Some(head));
-    assert_eq!(drive.head_to, Some(head));
-    assert_eq!(drive.track.turn_index, 0x47);
-    assert_eq!(drive.track.cursor, 0);
-    assert_eq!(drive.track.residual, 5);
-    assert!(drive.track_valid);
+    let drive = entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
+    assert_eq!(drive.destination(), Some(head));
+    assert_eq!(drive.head_to(), Some(head));
+    assert_eq!(drive.track().turn_index, 0x47);
+    assert_eq!(drive.track().cursor, 0);
+    assert_eq!(drive.track().residual, 5);
+    assert!(drive.track_valid());
     assert!(sim.substrate.occupancy.contains_entity(13, 11, 1));
     assert!(!sim.substrate.occupancy.contains_entity(13, 12, 1));
     let mut previous_cell = (13, 11);
@@ -1006,16 +1088,21 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
         (entity.position.sub_x, entity.position.sub_y),
         (SIM_ZERO, SIM_ZERO)
     );
-    let drive = entity.drive_locomotion.as_ref().unwrap();
+    let drive = entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
     // The terminal keeps +34 (no NavCom skips the arrival arm, 0x4B2121), so
     // the same Process continues into Process_Movement;
     // `forced_track_end_requests_its_own_cell_in_the_same_process` covers
     // that continuation.
-    assert_eq!(drive.head_to, None);
-    assert_eq!(drive.occupation_head_to, None);
-    assert!(!drive.track_valid);
-    assert_eq!(drive.track.turn_index, -1);
-    assert_eq!(drive.track.cursor, 0);
+    assert_eq!(drive.head_to(), None);
+    assert_eq!(drive.occupation_head_to(), None);
+    assert!(!drive.track_valid());
+    assert_eq!(drive.track().turn_index, -1);
+    assert_eq!(drive.track().cursor, 0);
     assert_eq!(
         sim.substrate
             .cell_occupation
@@ -1100,7 +1187,13 @@ fn gsi_06_02_cross_zone_move_order_is_accepted_without_redirect() {
     let mut mover = GameEntity::test_default(1, "MTNK", "Americans", 0, 0);
     mover.category = EntityCategory::Unit;
     mover.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    mover.drive_locomotion = Some(Default::default());
+    assert!(
+        mover
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(Default::default()))
+    );
     entities.insert(mover);
 
     assert!(
@@ -1518,7 +1611,12 @@ fn drive_first_process_route(
     e.type_ref = sim.intern("HTNK");
     e.category = EntityCategory::Unit;
     e.locomotor = Some(make_drive_loco_for_test());
-    e.drive_locomotion = Some(Default::default());
+    assert!(
+        e.locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(Default::default()))
+    );
     sim.substrate.entities.insert(e);
     assert!(matches!(
         sim.reveal(1),
@@ -1798,7 +1896,12 @@ fn gsi_04_10_crusher_and_omnicrusher_never_enter_or_crush_a_terrain_object_cell(
         let mut locomotor = make_drive_loco_for_test();
         locomotor.movement_zone = movement_zone;
         tank.locomotor = Some(locomotor);
-        tank.drive_locomotion = Some(Default::default());
+        assert!(
+            tank.locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(Default::default()))
+        );
         tank.movement_target = Some(MovementTarget {
             speed: SimFixed::from_num(1024),
             final_goal: Some((2, 0)),
@@ -1889,10 +1992,15 @@ fn sharp_turn_preserves_path_node_count() {
     sim.process_ground_locomotor_for_test(1, Some(&drive_type_rules()), Some(&grid), None)
         .unwrap();
     let entity = sim.substrate.entities.get(1).unwrap();
-    let drive_locomotion = &entity.drive_locomotion;
+    let drive_locomotion = &entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .cloned();
 
     assert!(
-        drive_locomotion.as_ref().unwrap().head_to.is_some(),
+        drive_locomotion.as_ref().unwrap().head_to().is_some(),
         "the null-curve substitute should have started a straight drive track"
     );
     assert_eq!(
@@ -1901,14 +2009,14 @@ fn sharp_turn_preserves_path_node_count() {
     );
     let drive = drive_locomotion.as_ref().expect("substitute curve");
     assert_eq!(
-        drive_track::turn_track_at(drive.track.turn_index as usize)
+        drive_track::turn_track_at(drive.track().turn_index as usize)
             .unwrap()
             .normal_track,
         1,
         "the straight cardinal curve"
     );
     assert_eq!(
-        drive.head_to.map(|head| (head.x, head.y)),
+        drive.head_to().map(|head| (head.x, head.y)),
         Some((11 * 256 + 128, 10 * 256 + 128)),
         "the substitute heads for the real path node one cell east, \
          never a cell synthesized from the hull facing"
@@ -1930,11 +2038,16 @@ fn off_octant_hull_turns_before_any_curve_is_selected() {
     sim.process_ground_locomotor_for_test(1, Some(&drive_type_rules()), Some(&grid), None)
         .unwrap();
     let entity = sim.substrate.entities.get(1).unwrap();
-    let drive_locomotion = &entity.drive_locomotion;
+    let drive_locomotion = &entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .cloned();
     assert_eq!(entity.navigation.path_replay.cursor, 0);
 
     assert!(
-        drive_locomotion.as_ref().unwrap().head_to.is_none(),
+        drive_locomotion.as_ref().unwrap().head_to().is_none(),
         "no curve while the hull is off-octant"
     );
     assert_eq!(
@@ -1974,10 +2087,15 @@ fn gsi_06_13_fixture_mover(
         reference_cell: Some((start.0 as i16, start.1 as i16)),
     };
     e.foot_speed.set_speed_fraction(SIM_ONE);
-    e.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
-        target_speed_fraction: SIM_ONE,
-        ..Default::default()
-    });
+    assert!(
+        e.locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                crate::sim::movement::DriveLocomotionRuntime::default()
+                    .with_target_speed_fraction_for_test(SIM_ONE)
+            ))
+    );
     // A seeded path is only the route adapter. Native terminal +504 checks
     // NavCom independently; install the real destination before executing it.
     super::navcom::set_destination_internal_cell(&mut e, goal, None, 0);
