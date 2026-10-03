@@ -1,0 +1,296 @@
+{
+  "head": "69db0588b012f29408c4ea5e62aa7d396fef148e",
+  "incoming_main": "9bee532acb1c86b7edffb774743ba69d1704579f",
+  "source_freeze": "cleg-main1024-final-source-freeze-20261003.json",
+  "runs": [
+    {
+      "label": "focused",
+      "args": [
+        "test",
+        "-p",
+        "vera20k",
+        "--lib",
+        "sim::movement::teleport_movement::cell_destination_tests::",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 158.99010341597022,
+      "summary": [
+        [
+          "8",
+          "0",
+          "0",
+          "0"
+        ]
+      ],
+      "fixture_skip_markers": [],
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-focused-20261003.log",
+      "log_sha256": "7494a9c7dfbce4873c3db4730be998fdaa38dfbf519db17a8cede227eba4d137"
+    },
+    {
+      "label": "restore",
+      "args": [
+        "test",
+        "-p",
+        "vera20k",
+        "--lib",
+        "sim::world::object_turn::teleport_anim_object_turn_tests::",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 59.47570849995827,
+      "summary": [
+        [
+          "11",
+          "0",
+          "0",
+          "0"
+        ]
+      ],
+      "fixture_skip_markers": [],
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-restore-20261003.log",
+      "log_sha256": "3ad2cbd320644eefb0f0e0accbda8070cc2e3419b80f81bc5632a017c0edb460"
+    },
+    {
+      "label": "garrison",
+      "args": [
+        "test",
+        "-p",
+        "vera20k",
+        "--lib",
+        "sim::production::production_sell::tests::",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 59.55133449996356,
+      "summary": [
+        [
+          "13",
+          "0",
+          "0",
+          "0"
+        ]
+      ],
+      "fixture_skip_markers": [],
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-garrison-20261003.log",
+      "log_sha256": "b04cebb72feea950b992b37b5588fa54221cf493e9d2eca1c8e63cbce2e6a140"
+    },
+    {
+      "label": "depot",
+      "args": [
+        "test",
+        "-p",
+        "vera20k",
+        "--lib",
+        "sim::world::techno_ai::building_missions::repair_service_oracle_tests::",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 60.03968420799356,
+      "summary": [
+        [
+          "13",
+          "0",
+          "0",
+          "0"
+        ]
+      ],
+      "fixture_skip_markers": [],
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-depot-20261003.log",
+      "log_sha256": "1ed2fda827db4c08a2c7cb1a6c3d9d8f76345dd87f701c219fb1fb1c5211704d"
+    },
+    {
+      "label": "expiry",
+      "args": [
+        "test",
+        "-p",
+        "vera20k",
+        "--lib",
+        "sim::building_art::expiry_tests::",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 58.19931641698349,
+      "summary": [
+        [
+          "3",
+          "0",
+          "0",
+          "0"
+        ]
+      ],
+      "fixture_skip_markers": [],
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-expiry-20261003.log",
+      "log_sha256": "8720e53ede80a1f1896f5e5fd6416cfcff8e197e68ab5b9590cde277bb4970e9"
+    },
+    {
+      "label": "full",
+      "args": [
+        "test",
+        "-p",
+        "vera20k",
+        "--lib"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 147.25627212499967,
+      "summary": [
+        [
+          "9568",
+          "0",
+          "227",
+          "0"
+        ]
+      ],
+      "fixture_skip_markers": [],
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-full-20261003.log",
+      "log_sha256": "0dc2107dd3d6d268e1b5bc1c24456a020bb4835b46a83918a1eecbab173c02af"
+    },
+    {
+      "label": "clippy",
+      "args": [
+        "clippy",
+        "-p",
+        "vera20k",
+        "--lib"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 85.02670737501467,
+      "summary": [],
+      "fixture_skip_markers": [],
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-clippy-20261003.log",
+      "log_sha256": "25e851a26f282f260d8b376f1c99679726734d105c83db5a5f75054bda0bba2a"
+    },
+    {
+      "label": "build",
+      "args": [
+        "build",
+        "-p",
+        "vera20k",
+        "--release",
+        "--bin",
+        "vera20k"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 123.44862099998863,
+      "summary": [],
+      "fixture_skip_markers": [],
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-build-20261003.log",
+      "log_sha256": "448e81aa966c823b858a357db63162c4d763b003efc95befc67c593516088d6a"
+    },
+    {
+      "label": "primary63",
+      "args": [
+        "test",
+        "-p",
+        "vera20k",
+        "--lib",
+        "--",
+        "--ignored",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1",
+        "app::input::bridge_click_tests::retail_hills_clicks_drive_tank_and_gi_to_both_deck_sides_and_approaches",
+        "app::input::bridge_click_tests::retail_hills_ground_click_keeps_gi_beneath_bridge",
+        "app::input::context_order::retail_bridge_tests::retail_concrete_hut_input_reaches_engineer_entry_and_publication",
+        "app::input::context_order::retail_bridge_tests::retail_wood_hut_input_reaches_engineer_entry_and_publication",
+        "app::input::context_order::retail_engineer_tests::retail_building_repair_input_walk_art_sound_house_and_retirement",
+        "headless_scenario::retail_construction_tests::retail_headless_funnel_construction_is_deterministic_and_populated",
+        "map::resolved_terrain::pavement_catalog_tests::retail_pavement_resident_gate_survives_normal_loader_asset_drop",
+        "map::resolved_terrain::tests::retail_bridge_catalog_after_normal_map_loading",
+        "map::resolved_terrain::tests::retail_bridge_recalc_and_presentation_match_original_execution",
+        "map::rmg::phases::bridge_deck::tests::active_retail_low_end_tmp_blocks_stamp_native_fields",
+        "rules::native_processing::approach_rules_tests::retail_fv_approach_flags_match_original_root_mode_and_map_readers",
+        "sim::combat::open_topped_fire_tests::retail_dustbowl_battle_fortress_rider_walks_in_and_stays_put",
+        "sim::crew_survival::tests::retail_dustbowl_crews_scatter_off_their_wrecks",
+        "sim::crew_survival::tests::retail_dustbowl_passengers_leave_their_destroyed_transports",
+        "sim::movement::movement_bridge_retail_tests::bridge_tile_retail_probe::retail_middle_bridge_resident_recalc_admits_both_families",
+        "sim::movement::movement_bridge_retail_tests::deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes",
+        "sim::movement::movement_bridge_retail_tests::ground_entry_under_a_high_span_is_admitted_on_every_lane",
+        "sim::movement::movement_bridge_retail_tests::hills_native_integration_tests::hills_ground_underpass_keeps_the_ground_route_and_pose",
+        "sim::movement::movement_bridge_retail_tests::hills_native_integration_tests::hills_native_fields_and_mtnk_admission_feed_an_ordinary_ramp_move",
+        "sim::movement::movement_bridge_retail_tests::hills_native_integration_tests::hills_opposing_ordinary_moves_repath_on_the_deck",
+        "sim::movement::movement_bridge_retail_tests::hills_native_integration_tests::hills_same_type_marker_downgrade_reaches_live_foot_search_and_cleanup",
+        "sim::movement::movement_bridge_retail_tests::hills_native_integration_tests::hills_stationary_friendly_deck_blocker_matches_original_repath",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_attack_moved_across_bay_of_pigs_high_bridge_crosses",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_crosses_bay_of_pigs_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_crosses_hills_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_crosses_killer_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_crosses_lostlake_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_ordered_under_bay_of_pigs_high_bridge_crosses_all_four_ground_lanes",
+        "sim::movement::movement_bridge_retail_tests::infantry_attack_moved_across_hills_high_bridge_crosses",
+        "sim::movement::movement_bridge_retail_tests::infantry_crosses_bay_of_pigs_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::infantry_crosses_hills_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::infantry_crosses_killer_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::infantry_crosses_lostlake_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::infantry_ordered_under_hills_high_bridge_crosses_all_four_ground_lanes",
+        "sim::movement::movement_bridge_retail_tests::tank_attack_moved_across_bay_of_pigs_high_bridge_crosses",
+        "sim::movement::movement_bridge_retail_tests::tank_attack_moved_across_hills_high_bridge_crosses",
+        "sim::movement::movement_bridge_retail_tests::tank_cannot_cross_a_destroyed_shrapnel_low_bridge",
+        "sim::movement::movement_bridge_retail_tests::tank_cannot_reach_the_riverbed_beside_bay_of_pigs_high_bridge",
+        "sim::movement::movement_bridge_retail_tests::tank_crosses_bay_of_pigs_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::tank_crosses_hills_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::tank_crosses_killer_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::tank_crosses_lostlake_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::tank_ordered_across_the_deadman_collapse_gap_never_drives_into_it",
+        "sim::movement::movement_bridge_retail_tests::tank_ordered_under_hills_high_bridge_crosses_all_four_ground_lanes",
+        "sim::movement::movement_bridge_retail_tests::tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer",
+        "sim::world::bridge_orchestrator::live_publication::ordinary_publication::concrete_tests::retail_concrete_collapse_rechecks_an_incoming_drive_head",
+        "sim::world::bridge_orchestrator::live_publication::ordinary_publication::concrete_tests::retail_concrete_damage_repair_and_restore_publish_navigation",
+        "sim::world::bridge_orchestrator::live_publication::ordinary_publication::fv_pursuit_tests::retail_fv_approach_matches_native_candidates_admission_and_queue",
+        "sim::world::bridge_orchestrator::live_publication::ordinary_publication::fv_pursuit_tests::retail_fv_approaches_a_firing_cell_before_its_first_paid_step",
+        "sim::world::bridge_orchestrator::live_publication::ordinary_publication::wood_tests::retail_wood_damage_repair_and_restore_publish_navigation",
+        "sim::world::bridge_orchestrator::live_publication::pavement_tests::retail_plain_pavement_native_entry_draw_selection_and_snapshot",
+        "sim::world::bridge_orchestrator::live_publication::tests::middle::retail_middle_perpendicular_live_tiles_match_original_sequences",
+        "sim::world::crash_tests::retail_dustbowl_flak_shoots_a_harrier_down",
+        "sim::world::crash_tests::retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov",
+        "sim::world::jumpjet_cruise::tests::retail_dustbowl_night_hawk_hovers_over_a_tank_on_its_cell",
+        "sim::world::jumpjet_infantry_tests::retail_dustbowl_parked_rocketeer_engages_nearby_enemies",
+        "sim::world::jumpjet_infantry_tests::retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses",
+        "sim::world::jumpjet_infantry_tests::retail_dustbowl_shot_down_rocketeer_falls_and_leaves_no_body",
+        "sim::world::techno_ai::bridge_engineer_entry_tests::retail_hills_engineer_cliff_start_is_rejected",
+        "sim::world::techno_ai::bridge_engineer_entry_tests::retail_hills_engineer_enters_hut_and_repairs",
+        "sim::world::techno_ai::bridge_low_repair_tests::retail_shrapnel_engineer_repairs_authored_water_gap",
+        "sim::world::techno_ai::bridge_low_repair_tests::retail_shrapnel_repair_reaches_moving_water_neighbor",
+        "sim::world::techno_ai::bridge_target_layer_tests::retail_hills_passive_bridge_layers_survive_movement_and_restore"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 583.8069131249795,
+      "summary": [
+        [
+          "63",
+          "0",
+          "0",
+          "0"
+        ]
+      ],
+      "fixture_skip_markers": [],
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-primary63-20261003.log",
+      "log_sha256": "f1d0c0591e89e472a58a39560bf85af0e3beab4cadc2e24aedfb520498a370e2"
+    },
+    {
+      "label": "observer",
+      "exit_code": 0,
+      "elapsed_seconds": 5.594692124985158,
+      "summary": [
+        "Ran 110 tests in 5.508s",
+        "OK"
+      ],
+      "log_sha256": "9e4f13020bcd3a778ff61a5d630b84b29f3e3decefb12480f4b92e7fa755ea8e"
+    },
+    {
+      "label": "observer-optimized",
+      "exit_code": 0,
+      "elapsed_seconds": 5.288490167004056,
+      "summary": [
+        "Ran 110 tests in 5.184s",
+        "OK"
+      ],
+      "log_sha256": "c7b1997760590de1ab4d8ce895180dc942241a375ce4ad4ca9e8ed1a81144e28"
+    }
+  ]
+}

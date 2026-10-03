@@ -1,0 +1,365 @@
+{
+  "status": "TERMINAL_PASS_BINDING_ONLY_PUBLICATION_AND_CHECKS",
+  "acceptance": "Conditional on Root final integrated required-retail Rust/readiness outcomes; this is not a fresh native VM replay or combined-Rust parity proof.",
+  "fresh_native_vm_generation": false,
+  "root_freeze_sha256": "fd8081b7be6f80f235043d739232f80a22d05485a22e84d915607838c524adf0",
+  "root_frozen_sources_count": 1908,
+  "selected_sidecars": [
+    {
+      "path": "tools/spatial_oracle/infantry_teleport_destination.meta.json",
+      "module": "tools.spatial_oracle.infantry_scatter_destination",
+      "modes": [
+        "--teleport-cell"
+      ],
+      "source_count": 79,
+      "pin_count": 8,
+      "pin_changes": {
+        "tools/spatial_oracle/anim_bouncer_launch.py": {
+          "before": "6fa5df589e686573addd7843c16fae49a883c437f6dba3091d4f9c8d7b601055",
+          "after": "f038ac51504a1927efac0d5c65092fe5ddb7bcc4f9525e01bd71c3ca008d2ac3"
+        },
+        "src/sim/movement/mod.rs": {
+          "before": "b65fdbb8ad1dff9fdee48d7d6b6f35eec3a3f51c1584ac7c145b055921eabfbf",
+          "after": "ec8eaf018c3a22e4e6b913fefebd06570c4081bf77b5e048e62aa51438c79481"
+        },
+        "src/sim/game_entity.rs": {
+          "before": "1f1ad3145f901d868b2333bfa439bc6d46fae6e579dac9af7aee75ba7bb4ef6a",
+          "after": "7fd36f578ceca8bb3de91cb627269c7fde8d24d3611d96d83974707618cc2370"
+        },
+        "src/rules/object_type.rs": {
+          "before": "b1b6f181d4c8cb3c848b2df03eeaf17bc544cfc2afe817a2cc8fce39cc2f2fb9",
+          "after": "d239fa0a7f27a421d6c9f001052e8990fc5e26dfd5d61831777eb9c8cb134392"
+        },
+        "src/rules/ruleset.rs": {
+          "before": "7be8ce1456220c1b2fbf0749588213b3948550fee65032dbd2183775c7bfb0e0",
+          "after": "6e316a4e493759659679700a0c7ac436bab2635e3d21088b04ff69af6dc8c8bb"
+        },
+        "src/sim/world/world_commands.rs": {
+          "before": "b1e2e0bcd1c8e9a1b9889fd6124ee712a442ec3d302325c2372adc00911e7c43",
+          "after": "25c8c91771ddc67c178ca3489f774389cb10335e62e6a0a3135bd99a4e964cff"
+        },
+        "src/sim/movement/track_path.rs": {
+          "before": "3d5eae07d2a540ec985f94eae5e61aac49fbbe77889297b11f3b77a850eba833",
+          "after": "38f9ca6e9ac87030cf8fc6195a72b25d561fab59992678199911bc28cfdc9f55"
+        },
+        "src/sim/miner/miner_system.rs": {
+          "before": "691da7eda31d719b7fb13fb5f12ceed7e250b66da03a78e83ff6885b89d466c7",
+          "after": "96d426b3d4d09c550086e95d1e291f1a9814e96355478397c1e75c9d4237f204"
+        }
+      },
+      "stage": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-bindings-8obrh0ix/staged-infantry_teleport_destination.json",
+      "json_raw_sha256": "3ebb007e16568e2aee53865803eecb183f6840fc0e02bb1cae364a5c211b1954",
+      "canonical_payload_sha256": "018ac9143882ed3aaab11cb407e2eafa5503850ba7581f72e0e291fc57a707e4",
+      "old_meta_sha256": "d5cb91041f84e74d32b540397b6eda1c387c0bcb1d02d4ae0ba001c68360b082",
+      "new_meta_sha256": "1804588162c890e1cdff8620fcc4c6ffa191acfe3b8a6f1d5c9d0b339f754b7a",
+      "source_map_sha256": "da373d29cf8a7a3390829073f58cf3ad7d48ca6377d1c4bbc9dd769e0fee98ef",
+      "publication_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.infantry_scatter_destination",
+        "--teleport-cell",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-bindings-8obrh0ix/staged-infantry_teleport_destination.json"
+      ],
+      "publication_exit_code": 0,
+      "publication_seconds": 0.28863750002346933,
+      "publication_log_sha256": "6a9ead8c202420c653b35caf44783203edf31b5406de7a26d6cec8d13c7f697d",
+      "all_nonbinding_provenance_exact": true,
+      "fresh_native_vm_generation": false,
+      "binding_check_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.infantry_scatter_destination",
+        "--teleport-cell",
+        "--check"
+      ],
+      "binding_check_exit_code": 0,
+      "binding_check_log_sha256": "3b14af78da128fe682c8bce5cae4d7e6f9007d9ffb305cda27624df2d1fc9af9"
+    },
+    {
+      "path": "tools/spatial_oracle/anytown_damage/unit_unlimbo.meta.json",
+      "module": "tools.spatial_oracle.anytown_damage.unit_unlimbo",
+      "modes": [],
+      "source_count": 84,
+      "pin_count": 13,
+      "pin_changes": {
+        "tools/spatial_oracle/anim_bouncer_launch.py": {
+          "before": "6fa5df589e686573addd7843c16fae49a883c437f6dba3091d4f9c8d7b601055",
+          "after": "f038ac51504a1927efac0d5c65092fe5ddb7bcc4f9525e01bd71c3ca008d2ac3"
+        },
+        "src/rules/object_type.rs": {
+          "before": "b1b6f181d4c8cb3c848b2df03eeaf17bc544cfc2afe817a2cc8fce39cc2f2fb9",
+          "after": "d239fa0a7f27a421d6c9f001052e8990fc5e26dfd5d61831777eb9c8cb134392"
+        },
+        "src/sim/stage.rs": {
+          "before": "fcd4e96aec1bef724cb19040f4260f82cbc94e1ee4b31efb3623545bf673e865",
+          "after": "dbbc1e239decf9f29b908981a33d109ad39196690f001dbff61deceaa16e950e"
+        },
+        "src/sim/movement/navcom.rs": {
+          "before": "aec2a1d44d036a9bfca8601a33af5563845f4312b10a82a3bf0beaab58978a81",
+          "after": "d348c06b0e97e4e3969b1046cdae950c7e3fd19408831f1abe7c5948cd6fc24d"
+        },
+        "src/sim/world/lifecycle.rs": {
+          "before": "66679cf1656020b9e4326a444474c7cc37336ebe9ece4fb43aa3c2d19a0a6e83",
+          "after": "89b2412d802021459ab4c85c4456dbe1d3115635435fe25fe2c619b1a134b837"
+        },
+        "src/sim/game_entity.rs": {
+          "before": "1f1ad3145f901d868b2333bfa439bc6d46fae6e579dac9af7aee75ba7bb4ef6a",
+          "after": "7fd36f578ceca8bb3de91cb627269c7fde8d24d3611d96d83974707618cc2370"
+        },
+        "src/sim/docking/building_dock.rs": {
+          "before": "067c7de2a0100adbc297bf17db2658025df11be4addc53bf36a4a661d162fae3",
+          "after": "0b9329172011fd308bb1e57b40ee204f4a6ea58b858987b20fbc8208837189c1"
+        },
+        "src/sim/movement/track_host.rs": {
+          "before": "bf3b3c9043cb628e8f4cf4739c40ab67b5bddbcfb5f3c01f83addbcb7c2138e4",
+          "after": "d250375018ec3c93d8bce21351f2aec5f3b8438b47c0391dd76dba72c86ed30b"
+        },
+        "src/sim/world/techno_ai.rs": {
+          "before": "ab385a73ce6e82cf42fefe340c84f6b1739145a94fad28ea031efdb9330b323b",
+          "after": "23e4d6687f9c1401cecd139dafb88fe4db1471a562c296566ad9203b2ed6c835"
+        },
+        "src/sim/world/techno_ai/building_missions.rs": {
+          "before": "1c50342f1b9585daa773e61fcc5410fa93f9b0b9975cd0bda65a8360ba2a26ea",
+          "after": "be096e3354b15892064ccc6345129f2f1ecb91c762d6b6066938fba3790bc6f3"
+        },
+        "src/sim/world/techno_ai/mission_handlers.rs": {
+          "before": "60291094f5ea351927493ee105e58e415960906c04bf2868efc6d0b857e2b80a",
+          "after": "004eb62347ef8f85ee014f60b3f6144c1773b17e651e284aeaae04f541229848"
+        },
+        "src/sim/movement/mod.rs": {
+          "before": "b65fdbb8ad1dff9fdee48d7d6b6f35eec3a3f51c1584ac7c145b055921eabfbf",
+          "after": "ec8eaf018c3a22e4e6b913fefebd06570c4081bf77b5e048e62aa51438c79481"
+        },
+        "src/rules/ruleset.rs": {
+          "before": "7be8ce1456220c1b2fbf0749588213b3948550fee65032dbd2183775c7bfb0e0",
+          "after": "6e316a4e493759659679700a0c7ac436bab2635e3d21088b04ff69af6dc8c8bb"
+        }
+      },
+      "stage": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-bindings-8obrh0ix/staged-unit_unlimbo.json",
+      "json_raw_sha256": "6a039c3e00a159de7ab7fb3431566d8ec919e6b9bbe1587828509048f9139f50",
+      "canonical_payload_sha256": "2915c344ba2fd60cac1782f7a08a053e0b369a4f1eab0f0c61f9869d277e581b",
+      "old_meta_sha256": "fddc7ea4cf53c5aa448162e1d9ff86f701edbc520fba69ee453243d91dc469eb",
+      "new_meta_sha256": "f6704e6df0effecea2bffef6891b71cbac8d5795f54a4d03969acc2b6759a6d2",
+      "source_map_sha256": "840525f4e186d70763a36656eb9bc724c8e0a16d647e6defc730383f3e762286",
+      "publication_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.anytown_damage.unit_unlimbo",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-bindings-8obrh0ix/staged-unit_unlimbo.json"
+      ],
+      "publication_exit_code": 0,
+      "publication_seconds": 0.5501550000044517,
+      "publication_log_sha256": "2e19b87fafb03fc57d8febc92c84b99bec3ac0e7e69909acf6089c569356ce4a",
+      "all_nonbinding_provenance_exact": true,
+      "fresh_native_vm_generation": false,
+      "binding_check_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.anytown_damage.unit_unlimbo",
+        "--check"
+      ],
+      "binding_check_exit_code": 0,
+      "binding_check_log_sha256": "b61d4e6f0ebd3302360faa66218aab3c6e6cb571e5b4d9419e56e51c728f677d"
+    },
+    {
+      "path": "tools/spatial_oracle/building_guard_attack_gate.meta.json",
+      "module": "tools.spatial_oracle.building_guard_attack",
+      "modes": [
+        "--gate"
+      ],
+      "source_count": 94,
+      "pin_count": 17,
+      "pin_changes": {
+        "tools/spatial_oracle/anim_bouncer_launch.py": {
+          "before": "6fa5df589e686573addd7843c16fae49a883c437f6dba3091d4f9c8d7b601055",
+          "after": "f038ac51504a1927efac0d5c65092fe5ddb7bcc4f9525e01bd71c3ca008d2ac3"
+        },
+        "tools/spatial_oracle/building_construction.py": {
+          "before": "9cf2225abea2029ba3b66ca8dae9433001e033c03e4e7056e0a9fd2af73fccf2",
+          "after": "65ddb0c37fc111758368780881ecbdca828c0153e9eb945f4e1ea72a20b9a438"
+        },
+        "tools/spatial_oracle/building_slot_replacement.py": {
+          "before": "df61f9290ee457ce422414847879cb7c1ab2f0805d2fc20aa467b589ffd2c984",
+          "after": "bd4ee5c9be5e0342ec571c193a7a5721ce147b8fd6edcf6146e59a561f589cde"
+        },
+        "src/sim/game_entity.rs": {
+          "before": "1f1ad3145f901d868b2333bfa439bc6d46fae6e579dac9af7aee75ba7bb4ef6a",
+          "after": "7fd36f578ceca8bb3de91cb627269c7fde8d24d3611d96d83974707618cc2370"
+        },
+        "src/sim/stage.rs": {
+          "before": "fcd4e96aec1bef724cb19040f4260f82cbc94e1ee4b31efb3623545bf673e865",
+          "after": "dbbc1e239decf9f29b908981a33d109ad39196690f001dbff61deceaa16e950e"
+        },
+        "src/sim/world/mod.rs": {
+          "before": "eeb5b716b064be263ef68f6a3566b6d94e1faf89fd932ff9ea94a6c73d25edfa",
+          "after": "f98cc2711cdff131e196ff39e9eea8c89804229b8a607de3ab7ae3cd0177c7a4"
+        },
+        "src/sim/world/techno_ai.rs": {
+          "before": "ab385a73ce6e82cf42fefe340c84f6b1739145a94fad28ea031efdb9330b323b",
+          "after": "23e4d6687f9c1401cecd139dafb88fe4db1471a562c296566ad9203b2ed6c835"
+        },
+        "src/sim/world/techno_ai/building_missions.rs": {
+          "before": "1c50342f1b9585daa773e61fcc5410fa93f9b0b9975cd0bda65a8360ba2a26ea",
+          "after": "be096e3354b15892064ccc6345129f2f1ecb91c762d6b6066938fba3790bc6f3"
+        },
+        "src/sim/world/object_turn.rs": {
+          "before": "1a973f769c6f983dbadea0c3e422a10084210b918c33cf31a555463473338512",
+          "after": "5bc2de27ca33ae1ae5284c4c439845e65e520a5aa6e27fa9984944641bd17e5b"
+        },
+        "src/sim/world/world_hash.rs": {
+          "before": "8d3dcd9231f2c00a5f7eb1726b4e6c3928c484120a1a360359da9eb8d2583f38",
+          "after": "c7ba012958e61528f7977e620759669dc6104a6790d09564edcb608e1cfc2368"
+        },
+        "src/sim/snapshot.rs": {
+          "before": "f3ef2b54e47f8de5ba52779f09c569481713d46aa68527fed1c660c2e5f2cb47",
+          "after": "2385fdc179e62debfd73a6d0e84b6a91214bfd68b0e791da6e19f8d5fea93bb1"
+        },
+        "src/sim/mission/leaf.rs": {
+          "before": "fb1969f7338c24028bef16ed6056ecb3283263bdba88da87d1dbc1d71b3206ee",
+          "after": "00583bd0536d0e4ad9c4f5563694b3f1bfaf261498b43807909466ae77490f7a"
+        },
+        "src/sim/movement/track_host.rs": {
+          "before": "bf3b3c9043cb628e8f4cf4739c40ab67b5bddbcfb5f3c01f83addbcb7c2138e4",
+          "after": "d250375018ec3c93d8bce21351f2aec5f3b8438b47c0391dd76dba72c86ed30b"
+        },
+        "src/sim/movement/track_path.rs": {
+          "before": "3d5eae07d2a540ec985f94eae5e61aac49fbbe77889297b11f3b77a850eba833",
+          "after": "38f9ca6e9ac87030cf8fc6195a72b25d561fab59992678199911bc28cfdc9f55"
+        },
+        "src/sim/production/mod.rs": {
+          "before": "53906270ae66ebd762335f42422af312cdcb0d3a1ce60e4ebe12fbf78431c8de",
+          "after": "1bc8375dde3b8fedd70a796e1af8b5d4caeb83dac49656406ed083dc4e8948f4"
+        },
+        "src/rules/ruleset.rs": {
+          "before": "7be8ce1456220c1b2fbf0749588213b3948550fee65032dbd2183775c7bfb0e0",
+          "after": "6e316a4e493759659679700a0c7ac436bab2635e3d21088b04ff69af6dc8c8bb"
+        },
+        "src/rules/object_type.rs": {
+          "before": "b1b6f181d4c8cb3c848b2df03eeaf17bc544cfc2afe817a2cc8fce39cc2f2fb9",
+          "after": "d239fa0a7f27a421d6c9f001052e8990fc5e26dfd5d61831777eb9c8cb134392"
+        }
+      },
+      "stage": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-bindings-8obrh0ix/staged-building_guard_attack_gate.json",
+      "json_raw_sha256": "cb158eeab7a40739b9a340b5e1af85554d4fecc30fa181e24621648caac75eec",
+      "canonical_payload_sha256": "b6d2188c002c3f0f1872442dd3bd49c4378d6dc0f186797e34903d037676fbb2",
+      "old_meta_sha256": "197f0e9c5c4a7ad652e1a2bdd4451ada98914b8aa6758f974713e2e731974eb2",
+      "new_meta_sha256": "a8f764bb060e115b9cf8df71479e26afbfefb02b892ac2b843a39d7159dec35d",
+      "source_map_sha256": "61de2b4bc757470804c71d8bc09d0ae3840f48cad12648587196531b6703be71",
+      "publication_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.building_guard_attack",
+        "--gate",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-bindings-8obrh0ix/staged-building_guard_attack_gate.json"
+      ],
+      "publication_exit_code": 0,
+      "publication_seconds": 0.08157945901621133,
+      "publication_log_sha256": "b95d141cebbea5b86f63c7a71c8a3081845abdb7a4d80a0f045e2208b02d472b",
+      "all_nonbinding_provenance_exact": true,
+      "fresh_native_vm_generation": false,
+      "binding_check_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.building_guard_attack",
+        "--gate",
+        "--check"
+      ],
+      "binding_check_exit_code": 0,
+      "binding_check_log_sha256": "0a7b3ac6a552ef1070478345a44f747dac19fc635913c326bf1eeaa0f27fa4b4"
+    },
+    {
+      "path": "tools/spatial_oracle/locomotor_head_coordinates.meta.json",
+      "module": "tools.spatial_oracle.locomotor_head_coordinates",
+      "modes": [],
+      "source_count": 32,
+      "pin_count": 2,
+      "pin_changes": {
+        "src/sim/world/techno_ai/mission_handlers.rs": {
+          "before": "60291094f5ea351927493ee105e58e415960906c04bf2868efc6d0b857e2b80a",
+          "after": "004eb62347ef8f85ee014f60b3f6144c1773b17e651e284aeaae04f541229848"
+        },
+        "src/sim/miner/miner_system.rs": {
+          "before": "691da7eda31d719b7fb13fb5f12ceed7e250b66da03a78e83ff6885b89d466c7",
+          "after": "96d426b3d4d09c550086e95d1e291f1a9814e96355478397c1e75c9d4237f204"
+        }
+      },
+      "stage": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-bindings-8obrh0ix/staged-locomotor_head_coordinates.json",
+      "json_raw_sha256": "388f3e943ae7de8c4d37c840b81ebd1b9558d1074248af3f29427c3a4046c20b",
+      "canonical_payload_sha256": "1eefc8ff72d7c353895cb8647043f622d96137df43d52066f29e4582e621365e",
+      "old_meta_sha256": "0e093a1200696698e9e9b50c7f8156f4f5098ad501232b3144a9f110367e1b0c",
+      "new_meta_sha256": "718f2f8df896f51d27035b5590f205bc0f5e5d544e7c0b47b34d141ed42db486",
+      "source_map_sha256": "372b7e4f71c92e3fb72d14d158c2cbf85720cbdec590816b4b274563f072dbb5",
+      "publication_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.locomotor_head_coordinates",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-bindings-8obrh0ix/staged-locomotor_head_coordinates.json"
+      ],
+      "publication_exit_code": 0,
+      "publication_seconds": 0.07616004202282056,
+      "publication_log_sha256": "d205b1ff735db4a8004066a5a24bb3658f090d33a74fa4f8900f613605535516",
+      "all_nonbinding_provenance_exact": true,
+      "fresh_native_vm_generation": false,
+      "binding_check_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.locomotor_head_coordinates",
+        "--check"
+      ],
+      "binding_check_exit_code": 0,
+      "binding_check_log_sha256": "87a544579ac74303be9905a3c6e7ff08a29c8cb6932f8e8146887059cf433c21"
+    }
+  ],
+  "total_changed_source_pins": 40,
+  "protected_payload_count": 697,
+  "protected_other_metadata_count": 476,
+  "incoming_depot_expiry": [
+    {
+      "owner": "tools/spatial_oracle/building_repair.depot_service",
+      ".json": {
+        "sha256": "76614921afb7ac9e87c94c7644588a69aa03b4f1069de911982ed08bbfd19172",
+        "incoming_byte_exact": true
+      },
+      ".meta.json": {
+        "sha256": "5c2a3a21946f76e5cfb8da6ac8f8b780a735e61666ff035d9af36dd9c7f83fd7",
+        "incoming_byte_exact": true
+      }
+    },
+    {
+      "owner": "tools/spatial_oracle/building_slot_replacement.expiry",
+      ".json": {
+        "sha256": "21f851dbcb3f964921ba1c06cec3cbfe131609890c1429deed8a2d3a48cb00f7",
+        "incoming_byte_exact": true
+      },
+      ".meta.json": {
+        "sha256": "cd8799219eaffbea1005f5a0b3a65229d321e2f3e0fb3e4fc73d557a0f7605c9",
+        "incoming_byte_exact": true
+      }
+    }
+  ],
+  "all_native_payloads_raw_byte_exact": true,
+  "all_nonbinding_provenance_exact": true,
+  "incoming_depot_expiry_entire_cpp_and_meta_byte_exact": true,
+  "cleg_controls": 26,
+  "cleg_command_boundaries": 54,
+  "semantic_factorization_audit": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-binding-audit-20261003.json",
+  "audit_sha256": "eae28c5b663ea620028e5ad7c3c092e6fa4b79e3a799b357151294ec9f3a86fc",
+  "prior_actual_cleg_native_receipt": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-cell-destination-native-690-tammn8vg/overlay-queued-move-terminal-v5-receipt.json",
+  "prior_three_sidecar_receipt": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-owner-overlay-repair-bindings-vhik37o1/terminal-receipt.json",
+  "factorized_child": "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+  "factorized_child_sha256": "0ce5e66ec8543ba88aea46300213e3aae2e0105305c2e404792d7f0b68a463fc",
+  "script_sha256": "d2b86bb74cedae86d163bbf182e80d0c46757e26d223ec8d43df9526b5d3fe9d",
+  "limits": [
+    "Saved actual CPP dictionaries passed to unchanged central finish_vectors; generator not executed.",
+    "Decoder correction is excluded from selected old caller paths; Gate run_block retains default10000; depot/expiry extensions do not replace old generators.",
+    "Source identities and pin-only/nonbinding/native-data guards passed; final Rust outcomes are Root-owned and pending this receipt."
+  ]
+}

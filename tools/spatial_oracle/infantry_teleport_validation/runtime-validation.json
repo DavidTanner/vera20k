@@ -1,0 +1,43 @@
+{
+  "runs": [
+    {
+      "label": "capture",
+      "args": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.map_observation",
+        "--profile",
+        "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/tools/map_observation.cleg-cell-destination.example.json",
+        "--contract",
+        "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/src/app/diagnostics/tactical_capture/contract.v2.json",
+        "--cwd",
+        "/Users/halvor/Documents/vera20k-worktrees/vera20k-height",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-retail-anytown-20261003"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 95.11262887500925,
+      "log_sha256": "5954e8f73cb5ece8fd0f1763920c847d59f2e644298c1668bba28a7b340d0130",
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-runtime-capture-20261003.log"
+    },
+    {
+      "label": "offline",
+      "args": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.map_observation",
+        "validate",
+        "--run",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-retail-anytown-20261003",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-retail-anytown-offline-20261003.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.578648459049873,
+      "log_sha256": "18d6604fdfeb18faab602b534c2decacabce8a7322ce740971076e61f5ebce3a",
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/cleg-main1024-runtime-offline-20261003.log"
+    }
+  ],
+  "source_freeze": "cleg-main1024-final-source-freeze-20261003.json",
+  "native_parity_claim": false
+}

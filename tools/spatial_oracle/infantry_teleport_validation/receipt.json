@@ -1,0 +1,57 @@
+{
+  "status": "PASS final integrated Rust, selected retail, release capture and independent offline validation",
+  "validated_simulation_head": "69db0588b012f29408c4ea5e62aa7d396fef148e",
+  "candidate_head": "22826e6ac299fb929f48cb079075adb8bbe5f3f4",
+  "incoming_main": "4ef50ecf0bd3f1f21cd0977e8cd6e9e58b77588b",
+  "postvalidation_changed_sources": [
+    "tools/ghidra_compare/frames.py",
+    "tools/tests/test_ghidra_compare.py"
+  ],
+  "postvalidation_reason": "PR1025 changes only Ghidra exporter tools/docs; every Rust file and every other frozen Python file remains exact. All45 Ghidra tool tests pass. No Rust Cargo or release rerun is required for this unrelated tools merge.",
+  "native_evidence_level": "Original26 CLEG controls /54 pre-Process boundaries, original readers and complete three RNG states; binding-only refresh conditional satisfied by recorded Rust validation; no whole native match or pixel parity claim.",
+  "critic_passes": 1,
+  "required_retail_lib": {
+    "passed": 9568,
+    "failed": 0,
+    "ignored": 227
+  },
+  "selected_retail": {
+    "passed": 63,
+    "failed": 0,
+    "ignored": 0,
+    "fixture_skips": 0
+  },
+  "python": {
+    "normal": 110,
+    "optimized": 110,
+    "observer": 83,
+    "cargo_owner": 27,
+    "ghidra_tools": 45
+  },
+  "artifact_sha256": {
+    "build.log.gz": "c2b41d3657b465ea3a7ab3925868d8f18701e0ba99c19f5082f9eab22b845fb8",
+    "capture.json.gz": "b77cdd882621edcf7bbf0857cebfccbaeb037076ff892d086a3eeddc852e265f",
+    "clippy.log.gz": "f53ae1ca5c87ab0578a05fed63c2caee697431030c002056e3c71b008b94e59f",
+    "critic-repair.md": "79bcc65681ba1e168254167374449229598e093416d50a71f2a417b24c30fdc8",
+    "critic.md": "efd56c53022577998be4e5d6af118fd3647cdd95ce2d211666fdfea91999c1ba",
+    "depot.log.gz": "c425aec9130d9deabc14592aa12693b0911b6a2c8caa6c927498ff37583688a8",
+    "expiry.log.gz": "323d70d37e59d82f8537de9436dc4ded8db05f65fafc95c3985f7dd883dfc283",
+    "field-ratchet.log": "0534026b07b1da7a62873dc226913634b99e68a1aa7fe07d8ec06140c157d1a4",
+    "final-frame.png": "2db7932696ed3c0edcb8e94b0cdeedcfe0fa795c185c1f3a2047b1afdc3cded0",
+    "focused.log.gz": "ae731063e446126b0daeaade03b33cb95fc3cb644b72b4869915d02b564bfa85",
+    "frame.bgra.gz": "25070ccc4541286b163d0a6abe9c8c750c32cea0f55ac9299f4d99acf7282320",
+    "full.log.gz": "90555aee353868c1589db70d97991763797d0152560afe0bee368d6abbc179a8",
+    "garrison.log.gz": "839e06f569fb4d284df52f51b988042b74f5b616781f4ca7da2b432082133a16",
+    "native-binding-receipt.json": "88a4348a40a4d98dd85c03f8dbdf661d7e76d6fe1f6378d8b7497fcff2ca14c0",
+    "observer-optimized.log.gz": "d0fe69ff4324320cebb857add5fb22f11557fe1c8fba8352757f9512da96187a",
+    "observer.log.gz": "c7d055ddef8dbe635f3d80391d2b8cd6fd1913261554dc2316c9cbf6f4b141f7",
+    "primary63.log.gz": "4f4a2e1b2f8e825069ac9d48e6308122f2f46deae4a0f8568ce4b967d49bb0ac",
+    "restore.log.gz": "6ca776f9c269f3077968d371a97b0ee06e24faf179562b12b7c6a358628cb1d5",
+    "run.json.gz": "7790f903a182f531dfc6fbadd513001c62258bc185e783bb36b3aac741340e95",
+    "runtime-offline.json.gz": "9ffce9f3efbe0ca82bae5e50b09009179c1250833ea7ac8f63564358ed71da97",
+    "runtime-summary.json": "038dee22f00c1a207c5b9253459edb183ee9ec4a01ac0a3ab8f84a5d4a0e4141",
+    "runtime-validation.json": "dee8ec4a641646a34cf8410b45005c7378930c944ea7cba6fbc22625c9de95ae",
+    "source-freeze.json": "4f20726a25e5daabb38b383384f3397804754efb3b39f1ae497728d56faf45b8",
+    "validation.json": "20f4efdf1ad1d54f07b761a133e993f258fd6a1299460ca411dfefee4cfea81a"
+  }
+}

@@ -160,29 +160,41 @@ The inspected 800×600 GPU readback shows the unit at the destination. This is R
 production integration, separate from the original pre-Process comparison above.
 
 Release executable SHA256 is
-`90e8c98378eaa0a636bf7b761806ceb3a8d0795954980251d4739632f4266ff1`.
+`d786d6a2ee35cef18cbd7ac2ca50108e27bbfa63094af034252710016e1d2ff7`.
 The profile SHA256 is
 `b2add10d8c9145038873dadb5c5fc948f35892f873e36d169927d6e6e13c3486`;
 retained capture/run SHA256 values are
-`cc1de9dd1babce8f396292decca75274d1a821c432b75bd0d933a5d728f24f4a` and
-`f8a64d71b869e614825997536d2325c2604dca0ff08d82895e7e508d6221c7ec`.
+`9c24377620ff5d9d9eb251cb0a2e9d0535ccd31d68ecfbfa6c6eb09fa77c89a3` and
+`ec10f21b9f1799d9cd2c22b10a77956a9fb966720ecd9e53da1c7b50668e97b5`.
 Final BGRA SHA256 is
 `c692b9ac59cd7e8766c730ff229643299cc8d38a052769d31c429d1a8fc713d1`.
 The capture passed the ordinary wrapper and offline validation against the actual
-release binary. Its external `cleg-owner-overlay-repair-runtime-summary-20261003.json`
-retains source/input identities, selected boundaries, artifact hashes and limits.
+release binary. The retained [runtime summary](infantry_teleport_validation/runtime-summary.json)
+records source/input identities, selected boundaries, artifact hashes and limits.
+The final GPU bytes match the prior accepted capture exactly.
 
-Final required-retail library validation passes 9549 tests with 0 failures and 227
+Final required-retail library validation passes 9568 tests with 0 failures and 227
 intentional ignored tests; Clippy passes. A separate exact 63-test retail movement
 and integration sweep passes without fixture skips on the same simulation source.
-The Python observation validator passes 82 tests. The optional exact type filter is
+Normal and optimized Python validation each pass 110 tests: 83 observer and
+27 Cargo-owner checks. The optional exact type filter is
 implemented in the existing observer so this long ordinary tech-tree path fits its
 fixed budget; no simulation or RNG behavior changes with filtering. Earlier failed
 or incomplete profiles remain retained and are not relabelled as runtime passes.
 
-Final repair validation receipt `cleg-owner-overlay-repair-final-v3-validation-20261003.json`
-SHA256 is `9603852ff1afb30bdb8cec7872246e28699c6130e70ca0be90d8fc19b6de4bba`.
+The final [validation archive](infantry_teleport_validation/README.md) retains
+the commands, logs, source freeze, native binding receipt, critic/repair and
+actual capture/run/GPU bytes. The final external Rust validation receipt
+SHA256 is `20f4efdf1ad1d54f07b761a133e993f258fd6a1299460ca411dfefee4cfea81a`.
 The destination8 and restoration11 checks also pass; the garrison13 checks use
 the existing Infantry fixture constructor, preserving the exact Scatter RNG
 and destination assertions. One fresh critic found the missing overlay input
 closure; this owner repair and the native caller comparisons resolve it.
+
+After incoming main1024, the same-binary absent-tag control recovers its
+CDA10AEE6EA0AE46 hash. All601 complete rows match after removing only
+`tick_result.state_hash`; the new Rust baseline is534C7788BB49A3D8. The
+[retained control](infantry_teleport_replay/main1024/README.md) supports an
+independent strict row check. Main1025 subsequently changes only Ghidra
+exporter tools/docs;45 tool tests pass and every Rust file plus all other
+frozen Python files remain exact. No native coverage is extended by that merge.

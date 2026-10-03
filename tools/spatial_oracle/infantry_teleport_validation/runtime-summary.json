@@ -1,0 +1,480 @@
+{
+  "status": "VALID",
+  "offline_validation_status": "VALID",
+  "inputs": {
+    "config": {
+      "byte_length": 612,
+      "path": "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/config.toml",
+      "sha256": "4b0225bf1d36cb269496318d89ba8a35984a748aaad66bc9702041ba857edf45"
+    },
+    "contract": {
+      "byte_length": 590,
+      "path": "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/src/app/diagnostics/tactical_capture/contract.v2.json",
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+    },
+    "executable": {
+      "byte_length": 31657872,
+      "path": "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/target/owned-worktrees/375217c7cf7b0cd5/release/vera20k",
+      "sha256": "d786d6a2ee35cef18cbd7ac2ca50108e27bbfa63094af034252710016e1d2ff7"
+    },
+    "profile": {
+      "byte_length": 6011,
+      "path": "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/tools/map_observation.cleg-cell-destination.example.json",
+      "sha256": "b2add10d8c9145038873dadb5c5fc948f35892f873e36d169927d6e6e13c3486"
+    }
+  },
+  "exact_step_count": 10000,
+  "map_source": {
+    "entry_id": -854728974,
+    "kind": "mix",
+    "logical_name": "XMP03T4.MAP",
+    "payload_len": 156269,
+    "source_archive": "multimd.mix",
+    "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+  },
+  "first_live_cleg_step": 9135,
+  "cleg_id": 1635,
+  "issued_moves": [
+    {
+      "envelope_execute_tick": 9500,
+      "issue_after_step": 9500,
+      "issued_simulation_tick": 9500,
+      "ordinal": 14,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "Move": {
+          "entity_id": 1635,
+          "queue": false,
+          "target_rx": 34,
+          "target_ry": 94
+        }
+      }
+    },
+    {
+      "envelope_execute_tick": 9500,
+      "issue_after_step": 9500,
+      "issued_simulation_tick": 9500,
+      "ordinal": 15,
+      "owner": "VERA-OBSERVER",
+      "payload": {
+        "Move": {
+          "entity_id": 1635,
+          "queue": false,
+          "target_rx": 35,
+          "target_ry": 94
+        }
+      }
+    }
+  ],
+  "selected_boundaries": {
+    "8001": {
+      "active": true,
+      "archive": null,
+      "building": null,
+      "category": "Infantry",
+      "cell": [
+        0,
+        0
+      ],
+      "dying": false,
+      "foot": {
+        "firing_sequence_latch_68d": 0,
+        "infantry_doing": -1,
+        "navigation_leptons": [
+          0,
+          0,
+          0
+        ],
+        "navigation_unavailable": null,
+        "retarget_after_stop_688": false
+      },
+      "health": 125,
+      "in_limbo": true,
+      "miner": null,
+      "mission": {
+        "ai_counter": 0,
+        "current": -1,
+        "dispatch_timer": {
+          "delay": 0,
+          "start_frame": 8000
+        },
+        "effective": -1,
+        "handler_state": 0,
+        "queued": -1,
+        "start_frame": 0,
+        "suspended": -1
+      },
+      "nav": null,
+      "on_bridge": false,
+      "owner": "VERA-OBSERVER",
+      "physical_leptons": [
+        0,
+        0,
+        0
+      ],
+      "radio": {
+        "contacts": [
+          null
+        ],
+        "dock_entered_with": null
+      },
+      "stable_id": 1635,
+      "target": null,
+      "type_id": "CLEG",
+      "unit": null
+    },
+    "9135": {
+      "active": true,
+      "archive": null,
+      "building": null,
+      "category": "Infantry",
+      "cell": [
+        32,
+        92
+      ],
+      "dying": false,
+      "foot": {
+        "firing_sequence_latch_68d": 0,
+        "infantry_doing": -1,
+        "navigation_leptons": [
+          8384,
+          23616,
+          416
+        ],
+        "navigation_unavailable": null,
+        "retarget_after_stop_688": false
+      },
+      "health": 125,
+      "in_limbo": false,
+      "miner": null,
+      "mission": {
+        "ai_counter": 0,
+        "current": 5,
+        "dispatch_timer": {
+          "delay": 0,
+          "start_frame": 9134
+        },
+        "effective": 5,
+        "handler_state": 0,
+        "queued": -1,
+        "start_frame": 9134,
+        "suspended": -1
+      },
+      "nav": null,
+      "on_bridge": false,
+      "owner": "VERA-OBSERVER",
+      "physical_leptons": [
+        8384,
+        23616,
+        416
+      ],
+      "radio": {
+        "contacts": [
+          null
+        ],
+        "dock_entered_with": null
+      },
+      "stable_id": 1635,
+      "target": null,
+      "type_id": "CLEG",
+      "unit": null
+    },
+    "9500": {
+      "active": true,
+      "archive": null,
+      "building": null,
+      "category": "Infantry",
+      "cell": [
+        32,
+        92
+      ],
+      "dying": false,
+      "foot": {
+        "firing_sequence_latch_68d": 0,
+        "infantry_doing": 0,
+        "navigation_leptons": [
+          8384,
+          23616,
+          416
+        ],
+        "navigation_unavailable": null,
+        "retarget_after_stop_688": false
+      },
+      "health": 125,
+      "in_limbo": false,
+      "miner": null,
+      "mission": {
+        "ai_counter": 363,
+        "current": 5,
+        "dispatch_timer": {
+          "delay": 27,
+          "start_frame": 9488
+        },
+        "effective": 5,
+        "handler_state": 0,
+        "queued": -1,
+        "start_frame": 9134,
+        "suspended": -1
+      },
+      "nav": null,
+      "on_bridge": false,
+      "owner": "VERA-OBSERVER",
+      "physical_leptons": [
+        8384,
+        23616,
+        416
+      ],
+      "radio": {
+        "contacts": [
+          null
+        ],
+        "dock_entered_with": null
+      },
+      "stable_id": 1635,
+      "target": null,
+      "type_id": "CLEG",
+      "unit": null
+    },
+    "9501": {
+      "active": true,
+      "archive": null,
+      "building": null,
+      "category": "Infantry",
+      "cell": [
+        32,
+        92
+      ],
+      "dying": false,
+      "foot": {
+        "firing_sequence_latch_68d": 0,
+        "infantry_doing": 0,
+        "navigation_leptons": [
+          8384,
+          23616,
+          416
+        ],
+        "navigation_unavailable": null,
+        "retarget_after_stop_688": false
+      },
+      "health": 125,
+      "in_limbo": false,
+      "miner": null,
+      "mission": {
+        "ai_counter": 0,
+        "current": 2,
+        "dispatch_timer": {
+          "delay": 0,
+          "start_frame": 9500
+        },
+        "effective": 2,
+        "handler_state": 0,
+        "queued": -1,
+        "start_frame": 9500,
+        "suspended": -1
+      },
+      "nav": {
+        "Cell": {
+          "rx": 35,
+          "ry": 94
+        }
+      },
+      "on_bridge": false,
+      "owner": "VERA-OBSERVER",
+      "physical_leptons": [
+        8384,
+        23616,
+        416
+      ],
+      "radio": {
+        "contacts": [
+          null
+        ],
+        "dock_entered_with": null
+      },
+      "stable_id": 1635,
+      "target": null,
+      "type_id": "CLEG",
+      "unit": null
+    },
+    "9502": {
+      "active": true,
+      "archive": null,
+      "building": null,
+      "category": "Infantry",
+      "cell": [
+        35,
+        94
+      ],
+      "dying": false,
+      "foot": {
+        "firing_sequence_latch_68d": 0,
+        "infantry_doing": 0,
+        "navigation_leptons": [
+          9152,
+          24256,
+          416
+        ],
+        "navigation_unavailable": null,
+        "retarget_after_stop_688": false
+      },
+      "health": 125,
+      "in_limbo": false,
+      "miner": null,
+      "mission": {
+        "ai_counter": 1,
+        "current": 2,
+        "dispatch_timer": {
+          "delay": 16,
+          "start_frame": 9501
+        },
+        "effective": 2,
+        "handler_state": 0,
+        "queued": -1,
+        "start_frame": 9500,
+        "suspended": -1
+      },
+      "nav": null,
+      "on_bridge": false,
+      "owner": "VERA-OBSERVER",
+      "physical_leptons": [
+        9152,
+        24256,
+        416
+      ],
+      "radio": {
+        "contacts": [
+          null
+        ],
+        "dock_entered_with": null
+      },
+      "stable_id": 1635,
+      "target": null,
+      "type_id": "CLEG",
+      "unit": null
+    },
+    "9518": {
+      "active": true,
+      "archive": null,
+      "building": null,
+      "category": "Infantry",
+      "cell": [
+        35,
+        94
+      ],
+      "dying": false,
+      "foot": {
+        "firing_sequence_latch_68d": 0,
+        "infantry_doing": 0,
+        "navigation_leptons": [
+          9152,
+          24256,
+          416
+        ],
+        "navigation_unavailable": null,
+        "retarget_after_stop_688": false
+      },
+      "health": 125,
+      "in_limbo": false,
+      "miner": null,
+      "mission": {
+        "ai_counter": 0,
+        "current": 5,
+        "dispatch_timer": {
+          "delay": 0,
+          "start_frame": 9517
+        },
+        "effective": 5,
+        "handler_state": 0,
+        "queued": -1,
+        "start_frame": 9517,
+        "suspended": -1
+      },
+      "nav": null,
+      "on_bridge": false,
+      "owner": "VERA-OBSERVER",
+      "physical_leptons": [
+        9152,
+        24256,
+        416
+      ],
+      "radio": {
+        "contacts": [
+          null
+        ],
+        "dock_entered_with": null
+      },
+      "stable_id": 1635,
+      "target": null,
+      "type_id": "CLEG",
+      "unit": null
+    },
+    "10000": {
+      "active": true,
+      "archive": null,
+      "building": null,
+      "category": "Infantry",
+      "cell": [
+        35,
+        94
+      ],
+      "dying": false,
+      "foot": {
+        "firing_sequence_latch_68d": 0,
+        "infantry_doing": 9,
+        "navigation_leptons": [
+          9152,
+          24256,
+          416
+        ],
+        "navigation_unavailable": null,
+        "retarget_after_stop_688": false
+      },
+      "health": 125,
+      "in_limbo": false,
+      "miner": null,
+      "mission": {
+        "ai_counter": 482,
+        "current": 5,
+        "dispatch_timer": {
+          "delay": 26,
+          "start_frame": 9999
+        },
+        "effective": 5,
+        "handler_state": 0,
+        "queued": -1,
+        "start_frame": 9517,
+        "suspended": -1
+      },
+      "nav": null,
+      "on_bridge": false,
+      "owner": "VERA-OBSERVER",
+      "physical_leptons": [
+        9152,
+        24256,
+        416
+      ],
+      "radio": {
+        "contacts": [
+          null
+        ],
+        "dock_entered_with": null
+      },
+      "stable_id": 1635,
+      "target": null,
+      "type_id": "CLEG",
+      "unit": null
+    }
+  },
+  "sample_count": 56403,
+  "sample_budget": 100000,
+  "artifact_sha256": {
+    "manifest": "9c24377620ff5d9d9eb251cb0a2e9d0535ccd31d68ecfbfa6c6eb09fa77c89a3",
+    "run_json": "ec10f21b9f1799d9cd2c22b10a77956a9fb966720ecd9e53da1c7b50668e97b5",
+    "frame_bgra": "c692b9ac59cd7e8766c730ff229643299cc8d38a052769d31c429d1a8fc713d1"
+  },
+  "evidence_level": "Rust retail production integration; no native whole-match or pixel parity claim",
+  "source_freeze": "cleg-main1024-final-source-freeze-20261003.json",
+  "validation_receipt": "cleg-main1024-runtime-validation-20261003.json",
+  "gpu_frame_inspected": true,
+  "inspected_png_sha256": "2db7932696ed3c0edcb8e94b0cdeedcfe0fa795c185c1f3a2047b1afdc3cded0"
+}
