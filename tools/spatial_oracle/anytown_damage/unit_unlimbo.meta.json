@@ -905,7 +905,7 @@
     }
   },
   "source_normalized_lf_sha256": {
-    "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+    "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
     "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
     "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
     "tools/projectile_oracle/guided_step.py": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
@@ -917,7 +917,7 @@
     "tools/projectile_oracle/ordinary_collision.py": "3dbbd6691f56cf4c8546f58317799169f7d52ea7741ebbfcec52390c97f01cf6",
     "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
     "tools/rmg_oracle/harness.py": "7bb907427ae09d76fceb9ad10b785c352f87c9fa47fb492e246d3a629b348014",
-    "tools/rules_oracle/bridge_anim_inputs.py": "6908ba41e5a9b4292b8f7b0c9bd2c9eaaf8c5982b11a9470c7d0792a86558737",
+    "tools/rules_oracle/bridge_anim_inputs.py": "d9b25e536250aab83bd42b9ff8a5a7f2417e603023389db4c70d72db2d443a4e",
     "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
     "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
     "tools/rules_oracle/theater_general_reader.py": "a466f2d5d94e5f4d8908bed0a97c69cf2aeb2d9356694d0af107491349e7afbd",
@@ -926,7 +926,7 @@
     "tools/spatial_oracle/anytown_damage/anytown_geometry.py": "012d148f0299bfa6aee589070fb87bfb8ad14ebd09cdc30c3b22bf11df562e69",
     "tools/spatial_oracle/anytown_damage/anytown_resident.py": "a3fd84ea7a7d038014fac37ebda4e72609f06662619506722fd11318b9d7f285",
     "tools/spatial_oracle/anytown_damage/inputs.py": "c3e1732837e85deb628f04862aaab8cf72dc3e8ba2804ce55db5dc46f2a68f25",
-    "tools/spatial_oracle/anytown_damage/mission.py": "01eece73f9b723dd560d3e4b1b3eec5f8511ac7167d30fab06858b4d4e4b8ab5",
+    "tools/spatial_oracle/anytown_damage/mission.py": "a59d99851fdf4d7f4f2ba6a547604e4b9cad7eb6fd57764c8dc7d12a0834e25a",
     "tools/spatial_oracle/anytown_damage/mission_counter.py": "6ad38e9778339909671173c1303d7a7ede089b29cc2ac44e2636ed86fda69922",
     "tools/spatial_oracle/anytown_damage/mission_interleaving.py": "55397c7d0f2b22e75b18147ed5647a8d846e4698828dafba48cea5be94dbfc77",
     "tools/spatial_oracle/anytown_damage/mission_publication.py": "658212dba467967a1d2673b96279f45303c5ebc1c2d00033a6a01f49d3938f3e",

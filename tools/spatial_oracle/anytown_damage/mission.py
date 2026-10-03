@@ -91,7 +91,12 @@ class Mission:
    name=m.string(m.read32(m.read32(m.read32(0xB1D37C)+index*4))+0x6C) if index<m.read32(0xB1D388) else str(index)
    self.events.append(dict(kind='sound_boundary',frame=self.frame,name=name,position=base.xyz(u,u.reg_read(UC_X86_REG_EDX))));m.ret(0,4);return
   if a>=0x7E1000 and a!=RET_MAGIC:raise AssertionError(('non-image-code',hex(a)))
- def setup(self,*,placement_observer=None):
+ def setup(self,*,placement_observer=None,context=None):
+  if context is not None and not isinstance(context,dict):
+   raise TypeError('Mission setup diagnostic context must be a JSON object')
+  fixture=type(self).__module__+'.'+type(self).__qualname__
+  diagnostic_context={'case':fixture+'.setup',**(context or {}),
+   'setup':dict(fixture=fixture,phase=self.phase,frame=self.frame,continuation=self.continuation)}
   m=self.m;u=self.u
   # Existing native retirement owner supplies a valid empty Windows SEH chain.
   u.mem_map(0,0x1000);u.mem_write(0,dwords(-1))
@@ -115,10 +120,12 @@ class Mission:
   self.inputs['ai_rules_layers']=[]
   for name,path in base.layers():
    if not path.exists():continue
-   sections,lines=base.lexical(path.read_bytes(),{'General','Radiation'});m.rules_cache(sections)
-   # Full retail GeneralRules includes original type construction. Its measured
-   # host wall-time can exceed 10s; retain the shared two-million instruction cap.
-   general=m.invoke(0x66D530,self.rules,(RULES,),timeout_us=30_000_000);radiation=m.invoke(0x66CF70,self.rules,(RULES,))
+   raw=path.read_bytes();sections,lines=base.lexical(raw,{'General','Radiation'});m.rules_cache(sections)
+   layer_context={**diagnostic_context,'rules_layer':dict(name=name,path=str(path),sha256=hashlib.sha256(raw).hexdigest())}
+   # Full retail GeneralRules retains its measured30s wall-time override and
+   # unchanged shared two-million instruction cap; diagnostics add no VM writes.
+   general=m.invoke(0x66D530,self.rules,(RULES,),timeout_us=30_000_000,context=layer_context)
+   radiation=m.invoke(0x66CF70,self.rules,(RULES,),context=layer_context)
    self.inputs['ai_rules_layers'].append(dict(file=name,general_al=general&255,radiation_al=radiation&255,rad_application_delay=m.read32(self.rules+0x1808)))
   # Country and side registry construction from physical ordered names. Their
   # scalar readers still execute below; this does not model complete load order.

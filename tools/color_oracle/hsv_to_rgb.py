@@ -49,6 +49,7 @@ def native_rgb(hsv: bytes) -> bytes:
         writes={HSV: hsv, RGB - 1: guard},
         dumps={"input": (HSV, 3), "guarded_rgb": (RGB - 1, 5)},
         timeout_instr=1000,
+        context={"case": "HSV_To_RGB", "input_hsv": list(hsv)},
     )
     output = bytes.fromhex(result["dumps"]["guarded_rgb"])
     if result["eax"] != RGB or output[0] != guard[0] or output[-1] != guard[-1]:

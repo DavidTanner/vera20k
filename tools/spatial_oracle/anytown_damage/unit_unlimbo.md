@@ -716,3 +716,33 @@ in scratch, retaining original class `+1AC`; scatter-only Queue/Set observer
 slots are never reached. Original executable/vtable tables are unchanged.
 The new modes do not replace any selected gameplay admission, RNG, timer,
 Mark/radio/queue or Unlimbo return.
+
+## Failure-diagnostic integration (main2909aba80)
+
+Main #1015 changes the shared native runner's diagnostics, with no incoming Rust
+behavior changes. The merge preserves the single inherited Reader.invoke owner,
+its two-million-instruction/default10s limits, the measured GeneralRules30s
+wall-time override and Unit placement observer. Successful calls retain their
+native writes, calling convention, endpoints, ordering and returned fields.
+The new entry register/stack snapshot is readonly; Python instruction counting
+adds host overhead and may affect wall-time completion. This does not establish
+performance equivalence. All38 shared-runner diagnostic tests pass.
+
+The selected corpora's source-only metadata repairs use their existing publication
+owners and the prior actually executed original results cited above. Complete
+payloads and nonbinding provenance remain frozen. Checks of reused saved payloads
+establish current source binding, not fresh execution of every Unit/factory or
+retained-navigation fixture. Unrelated historical source-pin drift is inventoried
+without rewriting those corpora. The external binding receipt `native-diagnostics-factorized-qchk69r6/terminal-receipt.json`
+has SHA-256 `cc14c32881da45302055600ea2b48f7775832545ce3c9081708c7cf9b5bf5b93`:
+13 sidecars,28 source-pin changes, all668 CPP payloads and464 unowned metadata
+files preserved. The source audit `native-diagnostics-success-audit-zfem993f/success-path-audit.json`
+has SHA-256 `9c381efd74a18f4aca6da462b2b3b5c51134c468a0da51c9d08ed6b0f58e537a`.
+It checks unchanged VM-mutation calls/limits and a readonly diagnostic snapshot.
+Fresh original counter8/boundary100, recoil/barrel and four selected complete
+Gate rows pass under the updated runner, including retained ABI/trueRET,
+fields, FPCW, original text and declared RNG assertions. Their receipt
+`pr1018-diagnostics-short-native-receipt-20261003.json` has SHA-256
+`3bfd039c44020066e5da7e0dc212a454058d331099eb000ec640efa56d62912b`.
+The source hash inventory's omitted Gate entry was corrected from the existing
+owner's two actual changed pins. No whole corpus/performance claim is added.

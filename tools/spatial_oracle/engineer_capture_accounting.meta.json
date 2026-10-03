@@ -124,8 +124,8 @@
     "tools/spatial_oracle/engineer_capture_accounting.py": "ed82f35d4090ee39d1f71e6f768d936ecf067bc0c64d1f70cdac58ffcbde01b9",
     "tools/spatial_oracle/engineer_repair_admission.py": "44abd32d884efb782cb782bf01821a452cef1217e75bda5ac5f9d4b352a6e2e2",
     "tools/spatial_oracle/building_construction.py": "9cf2225abea2029ba3b66ca8dae9433001e033c03e4e7056e0a9fd2af73fccf2",
-    "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
-    "tools/rules_oracle/bridge_anim_inputs.py": "6908ba41e5a9b4292b8f7b0c9bd2c9eaaf8c5982b11a9470c7d0792a86558737",
+    "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
+    "tools/rules_oracle/bridge_anim_inputs.py": "d9b25e536250aab83bd42b9ff8a5a7f2417e603023389db4c70d72db2d443a4e",
     "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
     "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
     "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
@@ -138,7 +138,7 @@
     "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
     "tools/spatial_oracle/anim_bouncer_launch.py": "6fa5df589e686573addd7843c16fae49a883c437f6dba3091d4f9c8d7b601055",
     "tools/spatial_oracle/building_slot_replacement.py": "df61f9290ee457ce422414847879cb7c1ab2f0805d2fc20aa467b589ffd2c984",
-    "tools/spatial_oracle/anytown_damage/mission.py": "01eece73f9b723dd560d3e4b1b3eec5f8511ac7167d30fab06858b4d4e4b8ab5"
+    "tools/spatial_oracle/anytown_damage/mission.py": "a59d99851fdf4d7f4f2ba6a547604e4b9cad7eb6fd57764c8dc7d12a0834e25a"
   },
   "payload_sha256": "6ce9aa96aa057fbbbeb6964d4fb1cc43c0d289ed305b832e730ae555da4609da"
 }

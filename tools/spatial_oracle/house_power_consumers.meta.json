@@ -37,7 +37,7 @@
     "speed_normalize": "0x005FB2E0"
   },
   "source_normalized_lf_sha256": {
-    "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+    "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
     "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
     "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
     "tools/spatial_oracle/building_construction.py": "9cf2225abea2029ba3b66ca8dae9433001e033c03e4e7056e0a9fd2af73fccf2",

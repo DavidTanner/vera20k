@@ -51,8 +51,10 @@ class Reader(Lists):
   out=self.cursor;self.cursor+=(n+15)&~15;assert self.cursor<HEAP+0x400000;return out
  def cstring(self,s):
   raw=s.encode('latin1')+b'\0';ptr=self.alloc(len(raw));self.u.mem_write(ptr,raw);return ptr
- def invoke(self,addr,obj,args=(),*,timeout_us=10_000_000):
-  self.u.mem_write(SP,dwords(RET_MAGIC,*args));self.u.reg_write(UC_X86_REG_ESP,SP);self.u.reg_write(UC_X86_REG_ECX,obj);run_checked(self.u,addr,RET_MAGIC,count=2000000,timeout_us=timeout_us);return self.u.reg_read(UC_X86_REG_EAX)
+ def invoke(self,addr,obj,args=(),*,timeout_us=10_000_000,context=None):
+  self.u.mem_write(SP,dwords(RET_MAGIC,*args));self.u.reg_write(UC_X86_REG_ESP,SP);self.u.reg_write(UC_X86_REG_ECX,obj)
+  run_checked(self.u,addr,RET_MAGIC,count=2000000,timeout_us=timeout_us,context=context)
+  return self.u.reg_read(UC_X86_REG_EAX)
  def make_ini(self,sections):
   u=self.u;u.mem_write(INI,bytes(0x40));rows=[]
   for name,keys in sections.items():

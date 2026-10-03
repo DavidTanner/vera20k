@@ -35,13 +35,13 @@
     "scenario_random": "0x0065C7E0"
   },
   "source_normalized_lf_sha256": {
-    "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+    "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
     "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
     "tools/projectile_oracle/bridge_render_inputs_selection.py": "6b41e97912cfd17a625f1ce1303bbe72fc2a7480f4a31ef03355f886a7c94205",
     "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
     "tools/projectile_oracle/guided_step.py": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
     "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
-    "tools/rules_oracle/bridge_anim_inputs.py": "6908ba41e5a9b4292b8f7b0c9bd2c9eaaf8c5982b11a9470c7d0792a86558737",
+    "tools/rules_oracle/bridge_anim_inputs.py": "d9b25e536250aab83bd42b9ff8a5a7f2417e603023389db4c70d72db2d443a4e",
     "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
     "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
     "tools/rules_oracle/bridge_landing_inputs.py": "489e7999c957edfc1141d6ca8b5d72e36e570cb4065b2f208564875ed81174e5",

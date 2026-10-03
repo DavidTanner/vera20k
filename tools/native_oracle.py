@@ -15,12 +15,14 @@ import json
 import os
 from pathlib import Path
 import struct
+import uuid
 
 import unicorn
 from unicorn import Uc, UcError, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE, UC_QUERY_TIMEOUT
 from unicorn.x86_const import (
-    UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_ESP,
-    UC_X86_REG_EIP, UC_X86_REG_FPCW,
+    UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX,
+    UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_ESP, UC_X86_REG_EBP,
+    UC_X86_REG_EIP, UC_X86_REG_EFLAGS, UC_X86_REG_FPCW,
 )
 
 NATIVE_SHA256 = "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
@@ -37,6 +39,62 @@ NATIVE_FPCW = 0x0E7F
 
 class OracleError(RuntimeError):
     """No trustworthy result was obtained; do not publish reference outputs."""
+
+
+class NativeExecutionError(OracleError):
+    """An unsuccessful run with captured evidence, never a native result."""
+
+    def __init__(self, message: str, diagnostics: dict):
+        self.diagnostics = diagnostics
+        self.report_path = None
+        directory = os.environ.get("VERA20K_NATIVE_FAILURE_DIR")
+        if directory:
+            try:
+                parent = Path(directory).expanduser().resolve()
+                parent.mkdir(parents=True, exist_ok=True)
+                path = parent / f"native-failure-{uuid.uuid4().hex}.json"
+                # Never replace a golden or an earlier failure, including when
+                # several processes use the same diagnostic directory.
+                with path.open("x", encoding="utf-8") as output:
+                    output.write(json.dumps(diagnostics, indent=2, allow_nan=False) + "\n")
+                self.report_path = path
+                message += f"; failure report: {path}"
+            except (OSError, ValueError) as error:
+                message += f"; Could not save failure report: {error}"
+        super().__init__(message)
+
+
+def _machine_state(uc: Uc) -> dict:
+    """Read a bounded diagnostic snapshot without mapping or changing memory."""
+    registers = {}
+    unavailable = {}
+    for name, register in (
+        ("eax", UC_X86_REG_EAX), ("ebx", UC_X86_REG_EBX),
+        ("ecx", UC_X86_REG_ECX), ("edx", UC_X86_REG_EDX),
+        ("esi", UC_X86_REG_ESI), ("edi", UC_X86_REG_EDI),
+        ("esp", UC_X86_REG_ESP), ("ebp", UC_X86_REG_EBP),
+        ("eip", UC_X86_REG_EIP), ("eflags", UC_X86_REG_EFLAGS),
+        ("fpcw", UC_X86_REG_FPCW),
+    ):
+        try:
+            registers[name] = uc.reg_read(register)
+        except UcError as error:
+            unavailable[name] = str(error)
+    stack = {"address": registers.get("esp"), "words": [], "requested_words": 16}
+    if stack["address"] is not None:
+        for index in range(stack["requested_words"]):
+            address = stack["address"] + 4 * index
+            if address + 4 > 0x100000000:
+                stack["unavailable"] = "Stack sample reached the end of the x86 address space"
+                break
+            try:
+                stack["words"].append(struct.unpack("<I", uc.mem_read(address, 4))[0])
+            except UcError as error:
+                stack["unavailable"] = str(error)
+                break
+    else:
+        stack["unavailable"] = "ESP unavailable"
+    return {"registers": registers, "unavailable_registers": unavailable, "stack": stack}
 
 
 def configured_gamemd() -> Path:
@@ -138,7 +196,7 @@ def load_image(uc: Uc) -> None:
 
 def run_checked(uc: Uc, begin: int, end: int | tuple[int, ...], *,
                 count: int = 5_000_000, timeout_us: int = 10_000_000,
-                required_addresses=()) -> int:
+                required_addresses=(), context: dict | None = None) -> int:
     """Execute to a declared return/region boundary or fail with a short trace.
 
     Boundaries are reached BEFORE executing their instruction. Existing hooks may
@@ -146,6 +204,11 @@ def run_checked(uc: Uc, begin: int, end: int | tuple[int, ...], *,
     count/time limits stop emulation normally, so absence of UcError is not proof
     of completion (uc.c:987, unicorn.h uc_emu_start). This function owns exits for
     this run; custom ctl_set_exits are disabled in favor of these explicit ends.
+
+    Failures carry JSON-compatible diagnostics; set VERA20K_NATIVE_FAILURE_DIR
+    to also save them. context may identify the case and supplied fixture inputs.
+    A reached instruction budget is an observation, not proof that an external
+    hook did not stop at that same instruction.
     """
     ends = (end,) if isinstance(end, int) else tuple(end)
     if not ends or begin in ends or count <= 0 or timeout_us <= 0:
@@ -153,34 +216,68 @@ def run_checked(uc: Uc, begin: int, end: int | tuple[int, ...], *,
     required = set(required_addresses)
     if required.intersection(ends):
         raise ValueError("Required instruction addresses must precede the stop boundary")
+    if context is not None and not isinstance(context, dict):
+        raise TypeError("Native diagnostic context must be a JSON object")
+    # Freeze caller inputs before hooks execute, and fail invalid context before
+    # running anything. This does not change the successful result schema.
+    diagnostic_context = json.loads(_canonical(context or {}))
+    initial = _machine_state(uc)
     visited = set()
     trail = deque(maxlen=16)
+    observed = 0
 
     def observe(_uc, address, _size, _data):
+        nonlocal observed
         trail.append(address)
         if address in required:
             visited.add(address)
         if address in ends:
             _uc.emu_stop()
+        else:
+            observed += 1
 
     uc.ctl_exits_enabled(False)
     hook = uc.hook_add(UC_HOOK_CODE, observe)
     try:
+        fault = None
         try:
             uc.emu_start(begin, ends[0], timeout=timeout_us, count=count)
         except UcError as error:
-            trace = ", ".join(f"0x{x:08X}" for x in trail)
-            raise OracleError(f"Native execution 0x{begin:08X} faulted: {error}; trace: {trace}") from error
+            fault = error
+        # Query before another emulation or diagnostic callback can replace it.
+        timed_out = bool(uc.query(UC_QUERY_TIMEOUT))
         pc = uc.reg_read(UC_X86_REG_EIP)
-        if uc.query(UC_QUERY_TIMEOUT) or pc not in ends:
-            trace = ", ".join(f"0x{x:08X}" for x in trail)
-            raise OracleError(
-                f"Incomplete execution from 0x{begin:08X}: stopped at 0x{pc:08X}; "
-                f"expected {', '.join(f'0x{x:08X}' for x in ends)} "
-                f"(limit or early stop); trace: {trace}")
         missing = required - visited
-        if missing:
-            raise OracleError(f"Required native instruction addresses not reached: {sorted(hex(x) for x in missing)}")
+        if fault or timed_out or pc not in ends or missing:
+            if fault:
+                reason = "fault"
+                message = f"Native execution 0x{begin:08X} faulted: {fault}"
+            elif timed_out or pc not in ends:
+                reason = ("timeout" if timed_out else
+                          "instruction_limit_reached" if observed >= count else "early_stop")
+                message = (f"Incomplete execution from 0x{begin:08X}: stopped at 0x{pc:08X}; "
+                           f"expected {', '.join(f'0x{x:08X}' for x in ends)}")
+            else:
+                reason = "required_addresses_missing"
+                message = f"Required native instruction addresses not reached: {sorted(hex(x) for x in missing)}"
+            trace = ", ".join(f"0x{x:08X}" for x in trail)
+            diagnostics = {
+                "schema": "vera20k.native-execution-failure.v1", "reason": reason,
+                "entry": begin, "expected_endpoints": list(ends), "timed_out": timed_out,
+                "instruction_limit": count, "timeout_us": timeout_us,
+                "observed_instructions": observed,
+                "required_addresses": sorted(required), "missing_required_addresses": sorted(missing),
+                "trace": list(trail), "initial": initial, "final": _machine_state(uc),
+                "context": diagnostic_context,
+                "fault": {"errno": fault.errno, "message": str(fault)} if fault else None,
+                "unicorn_binding": unicorn.__version__, "unicorn_core": list(unicorn.uc_version()),
+                # run_checked also accepts synthetic machines and cannot attest
+                # their image identity just because this runner knows the pin.
+                "expected_native_sha256": NATIVE_SHA256,
+            }
+            raise NativeExecutionError(
+                f"{message}; reason={reason}, timeout={timed_out}, "
+                f"observed={observed}/{count}; trace: {trace}", diagnostics) from fault
         return pc
     finally:
         uc.hook_del(hook)
@@ -188,7 +285,8 @@ def run_checked(uc: Uc, begin: int, end: int | tuple[int, ...], *,
 
 def call(func: int, *, ecx=None, edx=None, stack_args=None, writes=None,
          dumps=None, capture_st0=False, fpcw=NATIVE_FPCW,
-         timeout_instr=5_000_000, timeout_us=10_000_000, required_addresses=()) -> dict:
+         timeout_instr=5_000_000, timeout_us=10_000_000, required_addresses=(),
+         context: dict | None = None) -> dict:
     """Run one function in fresh state. Results preserve the legacy harness schema.
 
     ECX/EDX and stack arguments are explicit calling-convention inputs. Writes
@@ -229,8 +327,16 @@ def call(func: int, *, ecx=None, edx=None, stack_args=None, writes=None,
     required = set(required_addresses)
     if capture_st0:
         required.add(RET_MAGIC)
+    detail = dict(context or {})
+    if "call" in detail:
+        raise ValueError("The diagnostic context key 'call' is reserved for calling-convention inputs")
+    detail["call"] = {
+        "function": func, "ecx": ecx, "edx": edx, "stack_args": list(stack_args or []),
+        "fpcw": fpcw, "capture_st0": capture_st0,
+        "writes": [{"address": address, "bytes": len(blob)} for address, blob in (writes or {}).items()],
+    }
     run_checked(uc, func, stop_at, count=timeout_instr, timeout_us=timeout_us,
-                required_addresses=required)
+                required_addresses=required, context=detail)
     result = {"eax": uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF, "dumps": {}}
     for name, (address, length) in (dumps or {}).items():
         result["dumps"][name] = bytes(uc.mem_read(address, length)).hex()

@@ -73,8 +73,8 @@
   },
   "source_normalized_lf_sha256": {
     "tools/spatial_oracle/building_construction.py": "9cf2225abea2029ba3b66ca8dae9433001e033c03e4e7056e0a9fd2af73fccf2",
-    "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
-    "tools/rules_oracle/bridge_anim_inputs.py": "6908ba41e5a9b4292b8f7b0c9bd2c9eaaf8c5982b11a9470c7d0792a86558737",
+    "tools/native_oracle.py": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
+    "tools/rules_oracle/bridge_anim_inputs.py": "d9b25e536250aab83bd42b9ff8a5a7f2417e603023389db4c70d72db2d443a4e",
     "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
     "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
     "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
