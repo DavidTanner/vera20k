@@ -4,8 +4,7 @@
 //! instances for the bridge body, body shadow, and railing passes per the
 //! per-frame draw chain in `BRIDGE_DISPLAY_TABLE_GHIDRA_REPORT.md` §3.3, §3.4.
 //!
-//! Three open-RE values ship as named constants here so each is a single
-//! change-point if visual diff resolves them differently.
+//! Shadow caller/raster execution: `tools/spatial_oracle/bridge_shadow_render.md`.
 //!
 //! ## Dependency rules
 //! - Part of the app layer — may depend on everything.
@@ -52,8 +51,8 @@ const BRIDGE_BODY_Z_ADJUST_PX: i32 = -2;
 /// X for bridge cells whose state byte is in 9..=0x11, in the same branch that
 /// adds the +7 to Y. The RE doc's open question between -15 and -45 is closed.
 pub const BRIDGE_SHADOW_EW_DX: i32 = -15;
-/// Shadow Y displacement on EW states 9..17. Verified -0x2D = +7
-/// (RE doc §3.3.2, ledger #10).
+/// Shadow Y displacement on flagged EW states 9..17: original 0047F510 adds 7.
+/// Full caller execution is pinned in tools/spatial_oracle/bridge_shadow_render.json.
 pub const BRIDGE_SHADOW_EW_DY: i32 = 7;
 
 /// A cell that carries a bridge deck: the live 0x100 structural bit, or the
@@ -101,8 +100,8 @@ fn compute_bridge_body_shp_frame(state: DamageState, axis: Axis, rx: u16, ry: u1
     axis_base + local
 }
 
-fn compute_bridge_body_y_offset(state: DamageState, axis: Axis) -> f32 {
-    match state.to_state_byte(axis) {
+fn bridge_anchor_y_offset(state_byte: u8) -> f32 {
+    match state_byte {
         9..=17 => BRIDGE_BODY_Y_OFFSET_STATE_9_TO_17,
         _ => BRIDGE_BODY_Y_OFFSET_STATE_0_TO_8,
     }
@@ -140,8 +139,7 @@ fn bridge_body_z_adjust(depth_z: u8) -> f32 {
 ///
 /// Takes only the fields the body builder actually needs from `AppState`
 /// so the function is exercisable in unit tests with a pure-data mock atlas
-/// (`BridgeAtlasLookup` trait). Shadow + railing builders below still take
-/// `&AppState` directly — same minimal-context refactor pending.
+/// (`BridgeAtlasLookup` trait). The shadow builder uses the same lookup seam.
 #[allow(clippy::too_many_arguments)]
 pub fn build_bridge_body_instances_inner(
     terrain: &ResolvedTerrainGrid,
@@ -176,7 +174,7 @@ pub fn build_bridge_body_instances_inner(
         }
 
         let frame = compute_bridge_body_shp_frame(render_state, axis, rx, ry);
-        let y_offset = compute_bridge_body_y_offset(render_state, axis);
+        let y_offset = bridge_anchor_y_offset(render_state.to_state_byte(axis));
 
         let z: u8 = height_map
             .get(&(rx, ry))
@@ -271,16 +269,15 @@ pub(crate) fn build_bridge_body_instances(
     );
 }
 
-/// Build sprite instances for the bridge body shadow pass (RE doc §3.3.2,
-/// Step 5 pass 2). Shadow frame = `(frame_count / 2) + state`. EW states
-/// 9..17 get a `(BRIDGE_SHADOW_EW_DX, +BRIDGE_SHADOW_EW_DY)` shift per
-/// ledger #9–10. Drawn passthrough (Z-test ON, Z-write OFF, neutral tint).
+/// CellClass::DrawOverlay_Shadow @ 0047F510, called by the second
+/// Tactical cell sweep (006D7031..006D71CD). Read raw live overlay/state/level;
+/// structural deck admission and body frame jitter do not apply to shadows.
+/// Native execution: tools/spatial_oracle/bridge_shadow_render.py.
 #[allow(clippy::too_many_arguments)]
-fn build_bridge_shadow_instances_inner(
+pub(crate) fn build_bridge_shadow_instances_inner(
     terrain: &ResolvedTerrainGrid,
     atlas: &dyn BridgeAtlasLookup,
     overlay_names: &BTreeMap<u8, String>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     origin_y: f32,
     world_height: f32,
     cam_x: f32,
@@ -289,70 +286,66 @@ fn build_bridge_shadow_instances_inner(
     sh: f32,
     out: &mut Vec<SpriteInstance>,
 ) {
-    for cell in terrain.iter() {
+    let mut cells: Vec<_> = terrain
+        .iter()
+        .filter_map(|cell| {
+            let overlay = cell.bridge_facts.overlay_id?;
+            let name = overlay_names.get(&overlay)?;
+            is_high_bridge_body_identity(overlay, name).then_some((cell, name))
+        })
+        .collect();
+    // The native shadow sweep descends diagonals, advancing X within each.
+    // Neither elevation, atlas frame nor the compatibility depth scalar owns
+    // the order in which an overlap reads the previous color and Z stores.
+    cells.sort_unstable_by_key(|(cell, _)| {
+        (
+            std::cmp::Reverse(u32::from(cell.rx) + u32::from(cell.ry)),
+            cell.rx,
+        )
+    });
+    for (cell, name) in cells {
         let (rx, ry) = (cell.rx, cell.ry);
-        if !bridge_deck_present(cell) {
-            continue;
-        }
-        let Some((render_state, axis)) = cell_render_state(cell.bridge_facts) else {
-            continue;
-        };
-        let Some(overlay) = cell.bridge_facts.overlay_id else {
-            continue;
-        };
-        let Some(name) = overlay_names.get(&overlay) else {
-            continue;
-        };
-        if !is_high_bridge_body_identity(overlay, name) {
-            continue;
-        }
-
-        // DRIFT, recorded and deliberately not chased: this reuses the body's
-        // frame helper, which applies the per-cell variety jitter on state
-        // bytes 0 and 9. The native shadow path reads the cell's state byte
-        // raw and applies no jitter. Visible impact is nil — the frames the
-        // jitter can select are byte-identical in the shadow half — so the
-        // cost of a separate un-jittered shadow helper buys nothing.
-        let frame = compute_bridge_body_shp_frame(render_state, axis, rx, ry);
-        let y_offset = compute_bridge_body_y_offset(render_state, axis);
-
-        let z: u8 = height_map
-            .get(&(rx, ry))
-            .copied()
-            .unwrap_or(cell.bridge_deck_level);
-        let (mut sx, mut sy) = terrain::iso_to_screen(rx, ry, z);
-        sy += y_offset;
-
-        // EW-axis shadow shift (RE doc §3.3.2, ledger #9-10).
-        if axis == Axis::EW {
-            sx += BRIDGE_SHADOW_EW_DX as f32;
-            sy += BRIDGE_SHADOW_EW_DY as f32;
-        }
-
-        if !in_view(sx, sy, 120.0, 120.0, cam_x, cam_y, sw, sh, 120.0) {
-            continue;
-        }
-
+        let frame = cell.bridge_facts.state_byte;
         let Some(spr) = atlas.shadow_entry(name, frame) else {
-            log::warn!("bridge shadow atlas miss: name={name} frame={frame} cell=({rx},{ry})");
             continue;
         };
-
-        let depth_z = z.saturating_add(BRIDGE_HEIGHT_BONUS);
-        let depth = compute_sprite_depth_params(origin_y, world_height, sy, depth_z);
-        // Shadow uses neutral tint, no per-cell lighting (ledger #12).
-        let tint: [f32; 3] = lighting::DEFAULT_TINT;
+        let (mut sx, mut sy) = terrain::iso_to_screen(rx, ry, cell.level);
+        if cell.bridge_facts.raw_flags & crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF != 0 {
+            sy += bridge_anchor_y_offset(frame);
+            if (9..=17).contains(&frame) {
+                sx += BRIDGE_SHADOW_EW_DX as f32;
+                sy += BRIDGE_SHADOW_EW_DY as f32;
+            }
+        }
+        let position = [
+            sx + TILE_WIDTH / 2.0 + spr.offset_x,
+            sy + TILE_HEIGHT / 2.0 + spr.offset_y,
+        ];
+        if !in_view(
+            position[0],
+            position[1],
+            spr.pixel_size[0],
+            spr.pixel_size[1],
+            cam_x,
+            cam_y,
+            sw,
+            sh,
+            0.0,
+        ) {
+            continue;
+        }
+        let z_adjust = crate::render::native_z::ground_anchored_z_adjust(
+            i32::from(cell.level as i8),
+            crate::render::native_z::SHP_DRAW_Z_ADJUST_PX,
+        );
         out.push(SpriteInstance {
-            position: [
-                sx + TILE_WIDTH / 2.0 + spr.offset_x,
-                sy + TILE_HEIGHT / 2.0 + spr.offset_y,
-            ],
+            position,
             size: spr.pixel_size,
             uv_origin: spr.uv_origin,
             uv_size: spr.uv_size,
-            depth,
-            tint,
-            alpha: 1.0,
+            depth: compute_sprite_depth_params(origin_y, world_height, position[1], cell.level),
+            z_adjust: z_adjust as f32,
+            z_gradient: crate::render::native_z::ZGradient::Flat as u32,
             ..Default::default()
         });
     }
@@ -389,12 +382,10 @@ pub(crate) fn build_bridge_shadow_instances(
         state.match_state.input.camera_x,
         state.match_state.input.camera_y,
     );
-    let height_map = state.height_map();
     build_bridge_shadow_instances_inner(
         terrain,
         atlas,
         &state.match_state.match_presentation.overlay_names,
-        &height_map,
         origin_y,
         world_height,
         cam_x,
@@ -616,7 +607,7 @@ mod tests {
             DamageState::PartialCollapseA,
             DamageState::PartialCollapseB,
         ] {
-            assert_eq!(compute_bridge_body_y_offset(state, Axis::NS), -16.0);
+            assert_eq!(bridge_anchor_y_offset(state.to_state_byte(Axis::NS)), -16.0);
         }
 
         for state in [
@@ -626,17 +617,17 @@ mod tests {
             DamageState::PartialCollapseA,
             DamageState::PartialCollapseB,
         ] {
-            assert_eq!(compute_bridge_body_y_offset(state, Axis::EW), -31.0);
+            assert_eq!(bridge_anchor_y_offset(state.to_state_byte(Axis::EW)), -31.0);
         }
 
         // Destroyed cells are skipped before rendering, but their binary state
         // byte encoding is still 0, so the helper should follow the low range.
         assert_eq!(
-            compute_bridge_body_y_offset(DamageState::Destroyed, Axis::NS),
+            bridge_anchor_y_offset(DamageState::Destroyed.to_state_byte(Axis::NS)),
             -16.0
         );
         assert_eq!(
-            compute_bridge_body_y_offset(DamageState::Destroyed, Axis::EW),
+            bridge_anchor_y_offset(DamageState::Destroyed.to_state_byte(Axis::EW)),
             -16.0
         );
     }
@@ -872,7 +863,6 @@ mod tests {
             &terrain,
             &atlas,
             &overlay_names,
-            &height_map,
             0.0,
             5000.0,
             cam_x,

@@ -12,7 +12,7 @@ use crate::app::presentation::sidebar_render::{
     current_sidebar_gclock_texture,
 };
 use crate::app::presentation::ui_overlays::current_software_cursor_texture;
-use crate::render::batch::{BatchRenderer, BatchTexture, InstanceBufferPool};
+use crate::render::batch::{BatchRenderer, BatchTexture, InstanceBufferPool, SpriteInstance};
 use crate::render::bridge_atlas::BridgeAtlas;
 use crate::render::overlay_atlas::OverlayAtlas;
 use crate::render::tactical_draw_plan::RenderZPolicy;
@@ -27,6 +27,7 @@ use super::merge_passes;
 /// depth values that match the uploaded GPU buffers.
 pub(super) struct DrawPassData<'a> {
     pub overlay_render_z: &'a [RenderZPolicy],
+    pub bridge_shadows: &'a [SpriteInstance],
     pub object_layers: &'a [super::draw_plan_lowering::ObjectLayerPass; 5],
     pub ghost_page: u8,
 }
@@ -118,38 +119,37 @@ pub(super) fn dispatch_draw_passes(
         data.overlay_render_z,
     );
 
-    // --- Step 3.5: Overlay shadows — bridge decks ---
-    //
-    // **This is the only separate shadow pass in the renderer.** GSI-13.11
-    // covers three — ground, object and voxel. Voxel ground vehicles and ships
-    // now cast their shadow as the first piece of their own draw (see
-    // `instances::units::emit_unit_shadow_sprite`, `VxlLayer::Shadow`).
-    // Still missing: infantry and SHP vehicle shadow halves, building shadows,
-    // and aircraft (FlyLocomotion shadow matrix/point). Recorded, not closed.
-    // Trigger: every frame with such an object on screen. Player effect: those
-    // objects read flat against retail. Frequency: continuous.
-    // Downstream risk: the SHP-blitter contract the bridge path already honours
-    // (1-bit stencil half, composited darken) is the shape the object pass has
-    // to reuse, and `BRIDGE_SHADOW_DARKEN_ALPHA` already carries its own
-    // recorded lightness drift against the native halve.
-    // Second sweep of the native cell-content layer: after every overlay body
-    // is down, each overlay-bearing cell draws its shadow half. The atlas bakes
-    // these as black texels whose alpha approximates the blitter's darken, so
-    // the ordinary passthrough pipeline gets the shape and the
-    // composite-on-overlap behaviour. The darken STRENGTH is a known drift —
-    // this pass blends in linear space against an sRGB target while the blitter
-    // halves the encoded word, leaving the shadow lighter than retail. See
-    // `render::bridge_atlas::SHADOW_DARKEN_ALPHA`.
-    //
-    // Only bridge decks are covered so far — ore, gem and wall shadows still
-    // need their own instance bucket and pooled buffer.
-    draw_pooled_bridge_passthrough(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        state.match_state.match_presentation.bridge_atlas.as_ref(),
-        "overlay_bridge_body_shadow",
-    );
+    // Cell::DrawOverlay_Shadow0047F510 uses native destination halving and
+    // read/write Z after all overlay bodies. End the ordinary pass before the
+    // shared renderer snapshots the same live color/depth attachments. Its
+    // signed comparison must precede the low16 Z store; hardware Less alone
+    // cannot implement negative native candidates. Original caller/shape
+    // vectors: tools/spatial_oracle/bridge_shadow_render.md.
+    if !data.bridge_shadows.is_empty() {
+        drop(pass);
+        state
+            .renderer
+            .terrain_draw_renderer
+            .note_external_passes(encoder, 1);
+        draw_bridge_shadows(
+            encoder,
+            view,
+            &state.renderer.depth_view,
+            &mut state.renderer.terrain_draw_renderer,
+            [tac_x, tac_y, tac_w, tac_h],
+            &state.renderer.batch_renderer,
+            pool.get("overlay_bridge_body_shadow"),
+            data.bridge_shadows,
+            state
+                .match_state
+                .match_presentation
+                .bridge_atlas
+                .as_ref()
+                .map(|atlas| &atlas.texture),
+        );
+        pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
+        pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
+    }
 
     // (Smudges are drawn back at step 1.5, inside the terrain layer, matching
     // the native per-cell tile-then-smudge dispatch. Instance construction now
@@ -160,8 +160,9 @@ pub(super) fn dispatch_draw_passes(
 
     // Native 0x547230 railing draw is reached through 0x4802A0 / 0x6D7C00
     // in the cell-content layer (0x6D3040), before the object loop (0x6D3D10).
-    // Flags 0x4601 do not write Z. A late railing pass would repaint units
-    // after their native composite depth test. See the bridge depth report.
+    // This separate tile-shadow/railing path retains its existing policy.
+    // It does not select the bridge overlay shadow frames handled above.
+    // Its C_SHADOW/RAILBRDG binding remains a separate rendering residual.
     draw_pooled_bridge_railing(
         &mut pass,
         &state.renderer.batch_renderer,
@@ -979,19 +980,41 @@ fn draw_pooled_depth_test_texture<'a>(
     }
 }
 
-/// Draw a pooled bridge buffer with passthrough (no depth test, no depth
-/// write). Used for the body shadow pass — same texture as the bridge body,
-/// just a different draw pipeline.
-fn draw_pooled_bridge_passthrough<'a>(
-    pass: &mut wgpu::RenderPass<'a>,
-    batch: &'a BatchRenderer,
-    pool: &'a InstanceBufferPool,
-    atlas: Option<&'a BridgeAtlas>,
-    key: &'static str,
-) {
-    if let (Some(a), Some((buf, count))) = (atlas, pool.get(key)) {
-        batch.draw_with_buffer_passthrough(pass, &a.texture, buf, count);
-    }
+/// Submit the bridge shadow cell sweep between overlay bodies and objects.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn draw_bridge_shadows(
+    encoder: &mut wgpu::CommandEncoder,
+    color: &wgpu::TextureView,
+    depth: &wgpu::TextureView,
+    terrain: &mut crate::render::terrain_draw::TerrainDrawRenderer,
+    tactical: [u32; 4],
+    batch: &BatchRenderer,
+    buffer: Option<(&wgpu::Buffer, u32)>,
+    instances: &[SpriteInstance],
+    texture: Option<&BatchTexture>,
+) -> crate::render::terrain_draw::TerrainBatchStats {
+    let (Some((buffer, count)), Some(texture)) = (buffer, texture) else {
+        return Default::default();
+    };
+    assert_eq!(count as usize, instances.len());
+    terrain.draw_span(
+        encoder,
+        color,
+        depth,
+        batch,
+        |_| Some(texture),
+        buffer,
+        instances,
+        (0..count).map(
+            |index| crate::render::terrain_draw::DestinationEditCommand {
+                index,
+                piece: crate::render::terrain_draw::TerrainPiece::Shadow,
+                render_z: RenderZPolicy::ReadWrite,
+                atlas_slot: 0,
+            },
+        ),
+        tactical,
+    )
 }
 
 /// Draw a pooled buffer using the bridge railing atlas with passthrough

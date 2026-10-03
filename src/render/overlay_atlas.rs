@@ -928,7 +928,7 @@ fn render_decoded_overlay_frame(
 /// adds the stored frame X/Y before passing its width/height to the walker.
 /// Keep that cropped rectangle: padding a 43-row GAWALL frame to its 70-row
 /// canvas changes the upright Z seed even though its color pixels stay put.
-fn stored_frame_offset(
+pub(crate) fn stored_frame_offset(
     canvas_width: u16,
     canvas_height: u16,
     frame_x: u16,

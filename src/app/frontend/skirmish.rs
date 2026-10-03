@@ -2831,7 +2831,8 @@ pub(crate) fn build_overlay_atlas_from_map(
     let bridge_atlas: Option<BridgeAtlas> = theater_palette.as_ref().and_then(|theater_pal| {
         let unit_pal: &Palette = unit_palette.as_ref().unwrap_or(theater_pal);
         bridge_atlas::build_bridge_atlas(
-            gpu,
+            &gpu.device,
+            &gpu.queue,
             batch,
             &wall_overlays,
             &overlay_names,
