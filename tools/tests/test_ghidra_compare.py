@@ -54,7 +54,7 @@ def op(mnemonic, inputs, output=None, addr=BASE):
 
 
 def pcode(ops, **extra):
-    return json.dumps(dict(address=f'{BASE:08x}', high_pcodes=ops, **extra))
+    return json.dumps(dict(address=f'{BASE:08x}', basic_blocks=[{'pcodes': ops}], **extra))
 
 
 class Disconnected(unittest.TestCase):
@@ -252,6 +252,32 @@ class FrameTests(Disconnected):
         for response in cases:
             with self.subTest(response=response), self.assertRaises(client.ReadError):
                 frames.read_frame(FakeClient(responses={'/get_function_pcode': response}), '0x00401000', image('c3'))
+
+    def test_low_memory_export_preserves_native_stack_destination(self):
+        good = op('COPY', [var('register', 0)], var('stack', -12), BASE + 6)
+        payload = json.dumps(dict(address=f'{BASE:08x}', basic_blocks=[{'pcodes': [good]}]))
+        def response(**args):
+            if args.get('granularity') != 'basic':
+                raise client.ReadError('No HTTP reply after full-export heap failure')
+            return payload
+        result = frames.read_frame(FakeClient(responses={'/get_function_pcode': response}),
+                                   '0x00401000', image('5589e583ec0889042483c4085dc3'))
+        self.assertEqual(frames.agreement(result, {f'{BASE + 6:08x}': [[-12, 4]]}),
+                         {'agree': 1, 'wrong': []})
+
+    def test_partial_basic_block_export_never_becomes_a_frame(self):
+        good = op('RETURN', [])
+        cases = [
+            dict(address=f'{BASE:08x}', basic_blocks=[{'pcodes': [good]}], basic_blocks_error='truncated'),
+            dict(address=f'{BASE:08x}', basic_blocks=[{'pcodes': [good]}, {}]),
+            dict(address=f'{BASE:08x}', basic_blocks=[]),
+            dict(address=f'{BASE:08x}', basic_blocks=[{'pcodes': []}]),
+            dict(address=f'{BASE:08x}', high_pcodes=[good]),
+        ]
+        for payload in cases:
+            with self.subTest(payload=payload), self.assertRaises(client.ReadError):
+                frames.read_frame(FakeClient(responses={'/get_function_pcode': json.dumps(payload)}),
+                                  '0x00401000', image('c3'))
 
     def test_stack_depths_solve_unknown_call_purge_from_return(self):
         code = '6a01ffd08b442404c3'  # push 1; call eax; mov eax,[esp+4]; ret

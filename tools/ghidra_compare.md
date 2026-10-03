@@ -78,6 +78,16 @@ new warnings still fail. This never exempts missing or partial reads.
 
 ## Stack frames against the native instructions
 
+Frame reads request `granularity=basic` from GhidraMCP 5.14.2. On the installed
+Ghidra 12.1.2 endpoint this exports each operation of the fresh decoded
+`HighFunction` once, retaining its SSA inputs, outputs and widths. The full mode
+also repeats those operations in a global array and can exhaust a 2 GB server
+heap during JSON serialization (`0x675210`: 248,735 operations). Missing blocks,
+export errors and malformed operations fail the read; no frame is inferred from
+a partial graph. This equivalence concerns the endpoint's unchanged decoded AST,
+not a generally edited p-code bank, which can contain dead operations outside
+blocks.
+
 Frame checks require an explicit **before** census JSONL file. Export one from the
 exact saved project with the repository's
 [`SignatureCensus.java`](ghidra_compare/SignatureCensus.java). The exporter reads
