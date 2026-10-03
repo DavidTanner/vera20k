@@ -213,16 +213,16 @@ fn actor(input: &Value) -> GameEntity {
     path_runtime.path_blocked = true;
     path_runtime.retries_left = 7;
     if input["warp_out"] == true || input["warp_in"] == true {
-        e.teleport_state = Some(TeleportState {
-            phase: if input["warp_out"] == true {
+        e.install_teleport_state_for_test(Some(TeleportState::for_test(
+            if input["warp_out"] == true {
                 TeleportPhase::Relocate
             } else {
                 TeleportPhase::ChronoDelay
             },
-            target_rx: 11,
-            target_ry: 10,
-            being_warped_ticks: 3,
-        });
+            11,
+            10,
+            3,
+        )));
     }
     e
 }
@@ -489,7 +489,9 @@ fn live_drive_target_refresh_resumes_after_owner_warp_ends() {
     ));
     assert_eq!(e.drive_locomotion, before);
     // Existing teleport owner clears the arrival byte when its timer expires.
-    e.teleport_state.as_mut().unwrap().being_warped_ticks = 0;
+    e.teleport_state_for_test_mut()
+        .unwrap()
+        .set_ticks_for_test(0);
     assert!(refresh_drive_destination_coord(
         &mut e,
         destination,

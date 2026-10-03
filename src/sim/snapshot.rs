@@ -812,7 +812,10 @@ use crate::sim::world::Simulation;
 // deferred destructor, separately from its persistent cell marks.
 // 284 -> 285: every Techno saves one shared DoorClass; Gate Open/handler
 // status come from MissionCom rather than a second gate mission/transition.
-const SNAPSHOT_VERSION: u32 = 285;
+// 285 -> 286: Teleport's request, armed/resolved XYZ and warp adapter live
+// in its complete locomotor payload, including suspended instances. The
+// entity mirror is removed; serialization and lockstep hash layout changed.
+const SNAPSHOT_VERSION: u32 = 286;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3819,7 +3822,9 @@ mod tests {
         // 281 -> 282: independent depot pending entry and sole MissionCom cadence.
         // 282 -> 283: private optional turret/barrel recoil components.
         // 284 -> 285: shared Techno Door/Gate plus retained Smudge identities.
-        assert_eq!(super::SNAPSHOT_VERSION, 285);
+        // 285 -> 286: the complete Teleport locomotor owns its resolved XYZ,
+        // request byte and warp effect, including a suspended instance.
+        assert_eq!(super::SNAPSHOT_VERSION, 286);
     }
 
     #[test]

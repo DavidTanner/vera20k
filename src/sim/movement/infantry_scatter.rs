@@ -526,10 +526,12 @@ impl Simulation {
             return false;
         }
         let loco = actor.locomotor.as_ref().expect("represented receiver");
-        if loco.active_kind() != LocomotorKind::Walk {
-            return true; // The retained Teleport arm is restricted to Cell.
+        // Every represented Teleport Cell request reaches its native resolver,
+        // including the first request before IsMoving becomes true.
+        if loco.active_kind() == LocomotorKind::Teleport && self.resolved_terrain.is_none() {
+            return false;
         }
-        let Some(moving) = loco.walk_is_moving() else {
+        let Some(moving) = super::motion_query::is_moving(actor) else {
             return false;
         };
         if !moving {
@@ -634,7 +636,7 @@ impl Simulation {
         }
         let speed_type = object.speed_type;
         let type_allows_up = !object.fraidycat && !object.cyborg;
-        let moving = actor.locomotor.as_ref().and_then(|l| l.walk_is_moving()) == Some(true);
+        let moving = super::motion_query::is_moving(actor) == Some(true);
         // 51ABA2 invokes the shared Cell leaf BEFORE the Attack/same-NavCom
         // exception. The current physical coordinate owns this lookup.
         if moving && self.infantry_destination_current_cell_clear(id, speed_type, registry)? {
@@ -672,13 +674,14 @@ impl Simulation {
             let frame = self.session.binary_frame;
             let actor = self.substrate.entities.get_mut(id).unwrap();
             super::navcom::publish_nav_com(actor, requested);
-            let accepted = super::teleport_movement::teleport_move_to(
-                actor,
+            let accepted = self.teleport_move_to(
+                id,
                 teleport_cell.expect("represented Teleport target is a Cell"),
-                &rules.general,
+                rules,
                 false,
-                frame,
-            );
+                registry,
+            )?;
+            let actor = self.substrate.entities.get_mut(id).unwrap();
             super::DestinationTiming::from_rules(frame, Some(rules)).accept(actor);
             return Ok(accepted);
         }

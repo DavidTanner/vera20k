@@ -30,7 +30,7 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::miner::{CargoBale, MinerState, ResourceType};
-use crate::sim::movement::teleport_movement::{self, TeleportPhase, TeleportState};
+use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
 use crate::sim::radio;
 use crate::sim::world::SimSoundEvent;
 use serde_json::Value;
@@ -202,12 +202,12 @@ pub(super) fn dress_cmin(s: &mut Scene, input: &Value) {
         entity.temporal = crate::sim::temporal::TemporalState::warped_by_for_test(s.other);
     }
     if input["warp_in"] == true {
-        entity.teleport_state = Some(TeleportState {
-            phase: TeleportPhase::ChronoDelay,
-            target_rx: 10,
-            target_ry: 10,
-            being_warped_ticks: 30,
-        });
+        entity.install_teleport_state_for_test(Some(TeleportState::for_test(
+            TeleportPhase::ChronoDelay,
+            10,
+            10,
+            30,
+        )));
     }
 }
 
@@ -262,9 +262,8 @@ fn compare_cmin(s: &Scene, state: &Value, context: &str) {
     }
     let teleport = &state["teleport"];
     let armed = entity
-        .teleport_state
-        .as_ref()
-        .filter(|warp| warp.phase == TeleportPhase::Relocate);
+        .teleport_state()
+        .filter(|warp| warp.phase() == TeleportPhase::Relocate);
     assert_eq!(
         u64::from(armed.is_some()),
         teleport["moving"].as_u64().unwrap(),
@@ -273,7 +272,7 @@ fn compare_cmin(s: &Scene, state: &Value, context: &str) {
     if let Some(warp) = armed {
         let destination = coord(&teleport["destination"]);
         assert_eq!(
-            (warp.target_rx, warp.target_ry),
+            warp.target_cell().unwrap(),
             ((destination.x >> 8) as u16, (destination.y >> 8) as u16),
             "{context}: Teleport destination"
         );
@@ -406,22 +405,20 @@ fn teleport_move_to_guards_match_the_original_refusals() {
         let input = &row["input"];
         let context = input["name"].as_str().unwrap().to_string();
         let mut s = cmin_scene(input);
-        let frame = s.sim.session.binary_frame;
-        let general = s.rules.general.clone();
-        let entity = s.sim.substrate.entities.get_mut(s.miner).unwrap();
         assert!(
-            !teleport_movement::teleport_move_to(
-                entity,
-                cell(&input["dest"]),
-                &general,
-                true,
-                frame
-            ),
+            !s.sim
+                .teleport_move_to(s.miner, cell(&input["dest"]), &s.rules, true, None,)
+                .unwrap(),
             "{context}: refused"
         );
         // The warp-in row's prestate is a running delay, not a request.
         if input["warp_in"] == true {
-            entity.teleport_state = None;
+            s.sim
+                .substrate
+                .entities
+                .get_mut(s.miner)
+                .unwrap()
+                .install_teleport_state_for_test(None);
         }
         compare_cmin(&s, &row["state"], &context);
     }
@@ -436,14 +433,15 @@ fn teleport_warp_matches_the_original_process() {
         let mut s = cmin_scene(input);
         let harvester = input["harvester"] != false;
         let frame = s.sim.session.binary_frame;
-        let general = s.rules.general.clone();
         let dest = cell(&input["dest"]);
+        assert!(
+            s.sim
+                .teleport_move_to(s.miner, dest, &s.rules, harvester, None)
+                .unwrap()
+        );
         {
             let entity = s.sim.substrate.entities.get_mut(s.miner).unwrap();
             // Armed by a direct Move_To, as the oracle does; the mission waits.
-            assert!(teleport_movement::teleport_move_to(
-                entity, dest, &general, harvester, frame
-            ));
             entity
                 .mission
                 .write_dispatch_epilogue(frame as i32, 100_000);

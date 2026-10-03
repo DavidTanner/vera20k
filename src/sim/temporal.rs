@@ -241,8 +241,7 @@ impl GameEntity {
     pub fn is_warped_out(&self) -> bool {
         self.temporal.is_warped()
             || self
-                .teleport_state
-                .as_ref()
+                .teleport_state()
                 .is_some_and(|teleport| teleport.warp_out_active())
     }
 
@@ -260,8 +259,7 @@ impl GameEntity {
     /// `TechnoClass+0x271` (vtable `+0x1D8`, `0x0070C5C0`): the teleport's
     /// warp-in.
     pub fn is_warping_in(&self) -> bool {
-        self.teleport_state
-            .as_ref()
+        self.teleport_state()
             .is_some_and(|teleport| teleport.warp_in_active())
     }
 

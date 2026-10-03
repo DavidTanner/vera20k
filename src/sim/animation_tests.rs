@@ -377,20 +377,20 @@ fn gsi_13_06_counter_suppressions_hold_the_persistent_value() {
     falling.set_falling_down_for_test(true);
     variants.push(("falling", falling));
     let mut warp_out = base.clone();
-    warp_out.teleport_state = Some(TeleportState {
-        phase: TeleportPhase::Relocate,
-        target_rx: 8,
-        target_ry: 8,
-        being_warped_ticks: 0,
-    });
+    warp_out.install_teleport_state_for_test(Some(TeleportState::for_test(
+        TeleportPhase::Relocate,
+        8,
+        8,
+        0,
+    )));
     variants.push(("warp out", warp_out));
     let mut warp_in = base.clone();
-    warp_in.teleport_state = Some(TeleportState {
-        phase: TeleportPhase::ChronoDelay,
-        target_rx: 8,
-        target_ry: 8,
-        being_warped_ticks: 1,
-    });
+    warp_in.install_teleport_state_for_test(Some(TeleportState::for_test(
+        TeleportPhase::ChronoDelay,
+        8,
+        8,
+        1,
+    )));
     variants.push(("warp in", warp_in));
     let mut swapped = base.clone();
     swapped.foot_locomotor_swap_active = true;
@@ -1472,16 +1472,16 @@ fn unit_body_counter_matches_original_foot_cadence() {
             }
             entity.foot_locomotor_swap_active = flag("locomotor_swap");
             if flag("warp_out") || flag("warp_in") {
-                entity.teleport_state = Some(TeleportState {
-                    phase: if flag("warp_out") {
+                entity.install_teleport_state_for_test(Some(TeleportState::for_test(
+                    if flag("warp_out") {
                         TeleportPhase::Relocate
                     } else {
                         TeleportPhase::ChronoDelay
                     },
-                    target_rx: 8,
-                    target_ry: 8,
-                    being_warped_ticks: u32::from(flag("warp_in")),
-                });
+                    8,
+                    8,
+                    u32::from(flag("warp_in")),
+                )));
             }
             tick_unit_body_frame_counter(
                 &mut entity,

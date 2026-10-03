@@ -34,7 +34,6 @@ use crate::sim::miner::Miner;
 use crate::sim::mission::{MissionCom, MissionLeafState, MissionTimer, MissionType};
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::rocket_movement::RocketState;
-use crate::sim::movement::teleport_movement::TeleportState;
 use crate::sim::movement::tube_movement::LowBridgeTubeMovementState;
 use crate::sim::passenger::PassengerRole;
 use crate::sim::radio::Contacts;
@@ -859,8 +858,6 @@ pub struct GameEntity {
     /// Core disguise identity, timestamp, and reveal tuple.
     #[serde(default)]
     pub disguise: Option<DisguiseRuntime>,
-    /// Teleport movement state machine (warp out/in phases).
-    pub teleport_state: Option<TeleportState>,
     /// Active low-bridge TubeClass movement. Active YR behaviour — not to be
     /// confused with the subterranean tunnel locomotor, which is Tiberian Sun
     /// legacy and was removed as unreachable in stock YR.
@@ -1692,7 +1689,6 @@ impl GameEntity {
             cloak: None,
             sensor_deposit: None,
             disguise: None,
-            teleport_state: None,
             low_bridge_tube_state: None,
             capture_manager: None,
             spawn_manager: None,

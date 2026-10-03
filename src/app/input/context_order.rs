@@ -2734,13 +2734,17 @@ mod tests {
                     crate::sim::temporal::TemporalState::warped_by_for_test(hover.stable_id);
             }
             if gates["warp_in"] == true {
-                sim.entities_mut().get_mut(engineer).unwrap().teleport_state =
-                    Some(crate::sim::movement::teleport_movement::TeleportState {
-                        phase: crate::sim::movement::teleport_movement::TeleportPhase::ChronoDelay,
-                        target_rx: 8,
-                        target_ry: 10,
-                        being_warped_ticks: 1,
-                    });
+                sim.entities_mut()
+                    .get_mut(engineer)
+                    .unwrap()
+                    .install_teleport_state_for_test(Some(
+                        crate::sim::movement::teleport_movement::TeleportState::for_test(
+                            crate::sim::movement::teleport_movement::TeleportPhase::ChronoDelay,
+                            8,
+                            10,
+                            1,
+                        ),
+                    ));
             }
             if gates["slave_owner"] == true {
                 sim.entities_mut().get_mut(engineer).unwrap().slave =

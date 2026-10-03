@@ -137,6 +137,13 @@ comparisons are documented by the existing
 [Unit Unlimbo evidence owner](spatial_oracle/anytown_damage/unit_unlimbo.md);
 this profile does not establish native whole-object clock or pixel equivalence.
 
+The [CLEG Cell destination profile](map_observation.cleg-cell-destination.example.json)
+uses the same retail start, builds America's AMRADR and a Battle Lab, then produces
+CLEG 1635. Two ordinary Cell orders share step 9500, with the second replacing the
+first before Process. The optional type filter keeps its 10000-step capture within
+the fixed sample budget. The [destination evidence owner](spatial_oracle/infantry_teleport_destination.md#production-integration-and-validation)
+records the observed arrival, NavCom cleanup, Guard return and GPU/input identities.
+
 A new wrapper v6 bundle contains sealed `profile.json`, `config.toml` and
 `contract.json` copies, plus `stdout.log`, `stderr.log`, `run.json` and the child's
 atomically published `child-output/{capture.json,frame.bgra}`. Runtime still reads
@@ -584,7 +591,8 @@ cadence and admission comparisons are recorded in
 
 Profile v1 remains accepted and retains its original JSON projection. It cannot
 declare the following extension fields, even as empty arrays. Profile v2 adds
-optional `commands`, `observe_owners`, `camera_cell` and `terrain_cells`; omitted
+optional `commands`, `observe_owners`, `observe_types`, `camera_cell` and
+`terrain_cells`; omitted
 fields stay omitted in the sealed request, and explicit null is rejected.
 The existing v1 example is unchanged. Start retail bridge discovery with
 [`map_observation.bridge-response.example.json`](map_observation.bridge-response.example.json):
@@ -596,6 +604,15 @@ it has no structural elevated deck stamp. Verify those facts in the L0 terrain
 receipt before choosing orders. A high-deck response needs a separate map site.
 Its disabled shroud is an explicit launch option for this diagnostic observation.
 No actor IDs or gameplay state are granted by the profile.
+
+For a long production run, `observe_types` can narrow actor discovery to 1..256
+unique, nonempty names from the loaded rule registry, for example `["CLEG"]`.
+Names are literal and case sensitive. Discovery requires both a requested owner
+and a requested type; omitting the field keeps the existing owner-only behavior.
+Once discovered, a stable ID remains observed through owner/type changes, and
+its disappearance produces a missing-ID row. The transcript includes
+`type_filter` only when requested. House and terrain observations are unchanged,
+and filtering never changes the simulation or increases the sample budget.
 
 First retain L0 to discover the actual generated AMCV, MTNK and E1 stable IDs and
 positions. A short ordinary deployment probe then discovers the actual GACNST

@@ -1516,7 +1516,6 @@ impl Simulation {
             entity.spotlight_capable.hash(hasher);
             entity.building_light.hash(hasher);
             entity.low_bridge_tube_state.hash(hasher);
-            hash_teleport_state(entity.teleport_state.as_ref(), hasher);
             hash_rocket_state(entity.rocket_state.as_ref(), hasher);
             if let Some(cloak) = entity.cloak.as_ref() {
                 1u8.hash(hasher);
@@ -1998,12 +1997,9 @@ fn hash_locomotor_payload(
             1u8.hash(hasher);
             state.hash(hasher);
         }
-        // Teleport and Rocket state is the entity's (folded with it); the
-        // retired payload copy folds as absent, so these tags hash as before
-        // for an owner with no state.
-        LocomotorRuntimePayload::Teleport => {
+        LocomotorRuntimePayload::Teleport(state) => {
             2u8.hash(hasher);
-            hash_teleport_state(None, hasher);
+            state.hash(hasher);
         }
         LocomotorRuntimePayload::Rocket => {
             4u8.hash(hasher);
@@ -2053,28 +2049,6 @@ fn hash_slope_transition_state(
     transition_total.hash(hasher);
 }
 
-/// TeleportLocomotionClass::Process @ 0x007192f0 owns this complete, named
-/// runtime state; its target and materialization timer must not escape lockstep.
-fn hash_teleport_state(
-    state: Option<&crate::sim::movement::teleport_movement::TeleportState>,
-    hasher: &mut impl Hasher,
-) {
-    match state {
-        None => 0u8.hash(hasher),
-        Some(state) => {
-            1u8.hash(hasher);
-            let phase = match state.phase {
-                crate::sim::movement::teleport_movement::TeleportPhase::Relocate => 0u8,
-                crate::sim::movement::teleport_movement::TeleportPhase::ChronoDelay => 1,
-            };
-            phase.hash(hasher);
-            state.target_rx.hash(hasher);
-            state.target_ry.hash(hasher);
-            state.being_warped_ticks.hash(hasher);
-        }
-    }
-}
-
 /// RocketLocomotionClass::Process @ 0x006622c0 owns the complete flight table
 /// selection and current flight state. `pitch` is render-only, so it is omitted.
 fn hash_rocket_state(
@@ -2121,12 +2095,7 @@ mod teleport_rocket_hash_tests {
     use crate::util::fixed_math::SimFixed;
 
     fn teleport_state() -> TeleportState {
-        TeleportState {
-            phase: TeleportPhase::Relocate,
-            target_rx: 17,
-            target_ry: 29,
-            being_warped_ticks: 41,
-        }
+        TeleportState::for_test(TeleportPhase::Relocate, 17, 29, 41)
     }
 
     fn rocket_state() -> RocketState {
@@ -2162,7 +2131,7 @@ mod teleport_rocket_hash_tests {
 
     fn hash_teleport(state: Option<TeleportState>) -> u64 {
         let mut entity = GameEntity::test_default(1, "CHRP", "Americans", 5, 5);
-        entity.teleport_state = state;
+        entity.install_teleport_state_for_test(state);
         hash_entity(entity)
     }
 
@@ -2189,10 +2158,18 @@ mod teleport_rocket_hash_tests {
     #[test]
     fn teleport_hash_projects_presence_phase_target_and_materialization_timer() {
         assert_ne!(hash_teleport(None), hash_teleport(Some(teleport_state())));
-        assert_teleport_change(|state| state.phase = TeleportPhase::ChronoDelay);
-        assert_teleport_change(|state| state.target_rx += 1);
-        assert_teleport_change(|state| state.target_ry += 1);
-        assert_teleport_change(|state| state.being_warped_ticks += 1);
+        assert_teleport_change(|state| state.set_phase_for_test(TeleportPhase::ChronoDelay));
+        assert_teleport_change(|state| {
+            let mut destination = state.destination().unwrap();
+            destination.x += 256;
+            state.set_destination_for_test(destination);
+        });
+        assert_teleport_change(|state| {
+            let mut destination = state.destination().unwrap();
+            destination.y += 256;
+            state.set_destination_for_test(destination);
+        });
+        assert_teleport_change(|state| state.set_ticks_for_test(state.being_warped_ticks() + 1));
     }
 
     #[test]

@@ -208,12 +208,16 @@ fn gsi_04_18_first_warping_candidate_blocks_later_uplink_but_selling_is_skipped(
     assert!(sim.houses[&owner].spy_sat_active);
     assert!(sim.houses[&owner].map_is_clear);
 
-    sim.substrate.entities.get_mut(1).unwrap().teleport_state = Some(TeleportState {
-        phase: TeleportPhase::Relocate,
-        target_rx: 10,
-        target_ry: 10,
-        being_warped_ticks: 0,
-    });
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .install_teleport_state_for_test(Some(TeleportState::for_test(
+            TeleportPhase::Relocate,
+            10,
+            10,
+            0,
+        )));
 
     sim.reconcile_active_vision_structures(&rules);
     assert!(!sim.houses[&owner].spy_sat_active);

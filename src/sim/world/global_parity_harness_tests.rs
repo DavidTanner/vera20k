@@ -532,7 +532,11 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // off/on boundaries equal except tick_result.state_hash. Omitting only Door
 // restores incoming main; the temporary control is removed. Bounded Rust
 // attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x3388_4CED_CDBD_70FD;
+// Snapshot286: the entity-level absent Teleport tag is removed; the complete
+//class payload owns its fold. Restoring only that old0 tag recovers the prior
+//hash exactly, with all existing pose/gameplay and absolute RNG tripwires intact.
+// See tools/spatial_oracle/infantry_teleport_destination.md. Rust hash ratchet only.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x72DE_989C_EC3F_71B1;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

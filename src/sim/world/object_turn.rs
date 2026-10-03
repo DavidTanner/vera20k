@@ -314,8 +314,8 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .and_then(|entity| entity.teleport_state.as_ref())
-            .is_some_and(|state| state.phase == teleport_movement::TeleportPhase::Relocate);
+            .and_then(|entity| entity.teleport_state())
+            .is_some_and(|state| state.phase() == teleport_movement::TeleportPhase::Relocate);
         // Teleport Process 0x007197AF: already on the destination, no warp.
         let teleport_reached = sim.substrate.entities.get(stable_id).is_some_and(|entity| {
             teleport_movement::warp_destination_reached(entity, sim.resolved_terrain.as_ref())

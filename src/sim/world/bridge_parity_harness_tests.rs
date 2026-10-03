@@ -299,7 +299,11 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // off/on boundaries equal except tick_result.state_hash. Omitting only Door
 // restores incoming main; the temporary control is removed. Bounded Rust
 // attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xE535_E954_E40A_0B11;
+// Snapshot286: the entity-level absent Teleport tag is removed; the complete
+//class payload owns its fold. Restoring only that old0 tag recovers the prior
+//hash exactly, with all existing pose/gameplay and absolute RNG tripwires intact.
+// See tools/spatial_oracle/infantry_teleport_destination.md. Rust hash ratchet only.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x514E_76C3_3555_46F9;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

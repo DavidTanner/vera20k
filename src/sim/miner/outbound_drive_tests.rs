@@ -595,7 +595,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                 assert_eq!(locomotor.effective_kind(), LocomotorKind::Drive);
                 assert_eq!(locomotor.piggyback, None);
             }
-            assert!(entity.teleport_state.is_none());
+            assert!(entity.teleport_state().is_none());
         }
 
         // The epilogue paces the next dispatch 14-16 frames out, so the ticks
@@ -626,7 +626,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
             let entity = sim.substrate.entities.get(entity_id).expect("miner");
             physically_departed |= position_tuple(&sim, entity_id) != start_position;
             reached_harvest |= entity.miner_state().expect("miner") == MinerState::Harvest;
-            assert!(entity.teleport_state.is_none());
+            assert!(entity.teleport_state().is_none());
             if type_id == "CMIN" && entity.movement_target.is_some() {
                 let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
                 assert_eq!(locomotor.kind, LocomotorKind::Drive);
@@ -1110,7 +1110,7 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
             LocomotorKind::Teleport,
         );
         assert!(
-            entity.teleport_state.is_none(),
+            entity.teleport_state().is_none(),
             "the outbound leg must never start a warp"
         );
     }
@@ -1119,7 +1119,7 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
     for _ in 0..240 {
         advance(&mut sim, &oracle, &grid);
         let entity = sim.substrate.entities.get(entity_id).expect("CMIN");
-        assert!(entity.teleport_state.is_none());
+        assert!(entity.teleport_state().is_none());
         if entity.movement_target.is_some() {
             let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
             assert_eq!(locomotor.kind, LocomotorKind::Drive);
@@ -1350,7 +1350,7 @@ fn production_cmin_arrival_clears_navcom_same_tick_and_releases_drive() {
     for _ in 0..128 {
         advance(&mut sim, &oracle, &grid);
         let entity = sim.substrate.entities.get(entity_id).expect("CMIN");
-        assert!(entity.teleport_state.is_none());
+        assert!(entity.teleport_state().is_none());
         if (entity.position.rx, entity.position.ry) == target && entity.movement_target.is_none() {
             arrived = true;
             assert_eq!(entity.navigation.nav_com, None);

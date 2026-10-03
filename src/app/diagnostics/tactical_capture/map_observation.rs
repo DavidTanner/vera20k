@@ -16,6 +16,7 @@ const CHILD_SCHEMA: &str = "vera20k.map-observation.v6";
 const OBSERVATION_POLICY: &str = "map-ordinary-command-observation-v3";
 const MAX_COMMANDS: usize = 1024;
 const MAX_OBSERVED_OWNERS: usize = 30;
+const MAX_OBSERVED_TYPES: usize = 256;
 const MAX_TERRAIN_CELLS: usize = 256;
 const MAX_OBSERVATION_SAMPLES: usize = 100_000;
 const MAX_RECEIPT_BYTES: usize = 128 * 1024 * 1024;
@@ -85,6 +86,12 @@ pub(crate) struct MapCaptureProfile {
         deserialize_with = "deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
+    observe_types: Option<Vec<String>>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
     camera_cell: Option<[u16; 2]>,
     #[serde(
         default,
@@ -117,6 +124,7 @@ impl MapCaptureProfile {
             ensure!(
                 self.commands.is_none()
                     && self.observe_owners.is_none()
+                    && self.observe_types.is_none()
                     && self.camera_cell.is_none()
                     && self.terrain_cells.is_none(),
                 "map observation profile v1 cannot declare v2 extension fields"
@@ -174,6 +182,19 @@ impl MapCaptureProfile {
                 !owner.is_empty() && unique_owners.insert(owner),
                 "empty or duplicate observed owner"
             );
+        }
+        if let Some(types) = &self.observe_types {
+            ensure!(
+                !types.is_empty() && types.len() <= MAX_OBSERVED_TYPES,
+                "observed types must contain 1..256 names"
+            );
+            let mut unique_types = BTreeSet::new();
+            for name in types {
+                ensure!(
+                    !name.is_empty() && unique_types.insert(name),
+                    "empty or duplicate observed type"
+                );
+            }
         }
         let cells = self.terrain_cells();
         ensure!(
@@ -234,6 +255,20 @@ impl MapCaptureProfile {
     fn terrain_cells(&self) -> &[[u16; 2]] {
         self.terrain_cells.as_deref().unwrap_or_default()
     }
+
+    fn validate_observed_rule_types(&self, rule_types: &[Value]) -> Result<()> {
+        if let Some(types) = &self.observe_types {
+            for name in types {
+                ensure!(
+                    rule_types
+                        .iter()
+                        .any(|row| row["type_id"].as_str() == Some(name.as_str())),
+                    "observed type {name:?} is absent from the loaded rule types"
+                );
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -280,6 +315,35 @@ struct MapDrawTime {
 }
 
 impl MapObservation {
+    fn observes_actor(
+        &self,
+        profile: &MapCaptureProfile,
+        id: u64,
+        owner: &str,
+        type_name: &str,
+    ) -> bool {
+        self.observed_ids.contains(&id)
+            || (profile.observe_owners().iter().any(|watch| watch == owner)
+                && profile
+                    .observe_types
+                    .as_ref()
+                    .is_none_or(|types| types.iter().any(|watch| watch == type_name)))
+    }
+
+    fn transcript(&self, profile: &MapCaptureProfile) -> Value {
+        let mut observations = json!({
+            "policy": OBSERVATION_POLICY,
+            "owners": profile.observe_owners(),
+            "rule_types": self.rule_types,
+            "commands": self.commands,
+            "frames": self.frames,
+        });
+        if let Some(types) = &profile.observe_types {
+            observations["type_filter"] = json!(types);
+        }
+        observations
+    }
+
     fn pending_command<'a>(
         &self,
         profile: &'a MapCaptureProfile,
@@ -543,6 +607,7 @@ impl TacticalCaptureSession {
                         "category": category}));
                 }
             }
+            profile.validate_observed_rule_types(&rule_types)?;
             // Owner strings must name real loaded Houses before the ordinary
             // input owner is allowed to intern a command receiver.
             for owner in profile.observe_owners().iter().map(String::as_str).chain(
@@ -675,16 +740,16 @@ impl TacticalCaptureSession {
         let sim = &runtime.simulation;
         let grid = runtime.view().resolved_terrain();
         // This derived diagnostic index retains every observed stable handle.
-        // Captured objects continue to report their actual new owner; destroyed
-        // objects retain a missing row rather than disappearing from history.
-        let mut ids = self.map_state()?.observed_ids.clone();
+        // Captured or retyped objects continue to report their actual state;
+        // destroyed objects retain a missing row rather than disappearing.
+        let map = self.map_state()?;
+        let mut ids = map.observed_ids.clone();
         let mut actors = Vec::new();
         if !profile.observe_owners().is_empty() {
             for (id, entity) in sim.entities().iter_sorted() {
                 let owner = sim.interner.resolve(entity.owner());
-                if !ids.contains(&id)
-                    && !profile.observe_owners().iter().any(|watch| watch == owner)
-                {
+                let type_name = sim.interner.resolve(entity.type_ref());
+                if !map.observes_actor(profile, id, owner, type_name) {
                     continue;
                 }
                 ids.insert(id);
@@ -776,7 +841,7 @@ impl TacticalCaptureSession {
                     .collect();
                 actors.push(json!({
                     "stable_id": id, "owner": owner,
-                    "type_id": sim.interner.resolve(entity.type_ref()), "category": entity.category,
+                    "type_id": type_name, "category": entity.category,
                     "cell": [entity.position.rx, entity.position.ry],
                     "physical_leptons": [coord.x, coord.y, coord.z], "on_bridge": entity.on_bridge,
                     "health": entity.health.current, "active": entity.is_active(),
@@ -988,8 +1053,7 @@ impl TacticalCaptureSession {
             "final": self.map_fingerprint(state)?, "exact_step_count": self.exact_step_receipts.len(),
             "first_exact_step": self.exact_step_receipts.first(), "last_exact_step": self.exact_step_receipts.last(),
             "frame": frame, "render": render,
-            "observations": {"policy": OBSERVATION_POLICY, "owners": profile.value.observe_owners(),
-                "rule_types": map.rule_types, "commands": map.commands, "frames": map.frames},
+            "observations": map.transcript(&profile.value),
             "lifecycle": {"window_hidden": state.platform.window.is_visible() == Some(false),
                 "window_focused": state.platform.window.has_focus(), "focus_violations": self.focus_violations,
                 "input_violations": self.input_violations},
@@ -1017,8 +1081,7 @@ impl TacticalCaptureSession {
             "contract": {"sha256": self.request.sealed_contract().sha256},
             "failure": {"stage": self.failure_stage, "message": error}, "frame": null,
             "exact_step_count": self.exact_step_receipts.len(), "map_source": self.map_source_evidence,
-            "observations": {"policy": OBSERVATION_POLICY, "owners": profile.value.observe_owners(),
-                "rule_types": map.rule_types, "commands": map.commands, "frames": map.frames},
+            "observations": map.transcript(&profile.value),
             "native_comparator": "NONE", "parity_certification": "NONE"});
         ensure!(
             encode_manifest(&manifest)?.len() < MAX_RECEIPT_BYTES,
@@ -1165,15 +1228,25 @@ mod tests {
         let mut legacy = example();
         legacy.commands = Some(Vec::new());
         assert!(legacy.validate().is_err());
+        let mut legacy = example();
+        legacy.observe_types = Some(vec!["CLEG".to_owned()]);
+        assert!(legacy.validate().is_err());
         let mut modern = original;
         modern["schema_version"] = json!(PROFILE_V2);
         modern["commands"] = json!([{"issue_after_step": 0, "owner": "Computer1",
             "payload": {"DeployMcv": {"entity_id": 1}}}]);
         modern["observe_owners"] = json!(["Computer1"]);
+        modern["observe_types"] = json!(["CLEG"]);
         let profile: MapCaptureProfile = serde_json::from_value(modern.clone()).unwrap();
         profile.validate().unwrap();
         assert_eq!(serde_json::to_value(profile).unwrap(), modern);
-        for key in ["commands", "observe_owners", "camera_cell", "terrain_cells"] {
+        for key in [
+            "commands",
+            "observe_owners",
+            "observe_types",
+            "camera_cell",
+            "terrain_cells",
+        ] {
             let mut invalid = modern.clone();
             invalid[key] = Value::Null;
             assert!(
@@ -1189,6 +1262,95 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    #[test]
+    fn type_filters_require_bounded_unique_names_from_the_exact_loaded_registry() {
+        let mut profile = example();
+        profile.schema_version = PROFILE_V2.to_owned();
+        for types in [
+            Vec::new(),
+            vec![String::new()],
+            vec!["CLEG".to_owned(), "CLEG".to_owned()],
+            (0..=MAX_OBSERVED_TYPES)
+                .map(|n| format!("TYPE{n}"))
+                .collect(),
+        ] {
+            profile.observe_types = Some(types);
+            assert!(profile.validate().is_err());
+        }
+        profile.observe_types = Some(
+            (0..MAX_OBSERVED_TYPES)
+                .map(|n| format!("TYPE{n}"))
+                .collect(),
+        );
+        profile.validate().unwrap();
+        profile.observe_types = Some(vec!["CLEG".to_owned(), "MTNK".to_owned()]);
+        profile.validate().unwrap();
+        let registry = vec![
+            json!({"type_id": "CLEG", "interned_id": 3, "category": "Infantry"}),
+            json!({"type_id": "MTNK", "interned_id": 7, "category": "Unit"}),
+        ];
+        profile.validate_observed_rule_types(&registry).unwrap();
+        assert!(
+            profile
+                .validate_observed_rule_types(&registry[..1])
+                .is_err()
+        );
+        profile.observe_types = Some(vec!["cleg".to_owned()]);
+        assert!(profile.validate_observed_rule_types(&registry).is_err());
+        profile.observe_types = None;
+        profile.validate_observed_rule_types(&[]).unwrap();
+    }
+
+    #[test]
+    fn type_discovery_preserves_retained_identity_and_optional_transcript_presence() {
+        let mut profile = example();
+        profile.schema_version = PROFILE_V2.to_owned();
+        profile.observe_owners = Some(vec!["Computer1".to_owned()]);
+        profile.observe_types = Some(vec!["MTNK".to_owned(), "CLEG".to_owned()]);
+        let mut map = initialized_map();
+        assert!(map.observes_actor(&profile, 7, "Computer1", "CLEG"));
+        assert!(!map.observes_actor(&profile, 8, "Computer2", "CLEG"));
+        assert!(!map.observes_actor(&profile, 9, "Computer1", "GAPOWR"));
+        assert!(!map.observes_actor(&profile, 10, "Computer1", "cleg"));
+        map.observe_frame(
+            MapFrameObservation {
+                completed_steps: 0,
+                simulation_tick: 0,
+                binary_frame: 0,
+                total_simulation_ms: 0,
+                actors: vec![json!({"stable_id": 7, "owner": "Computer1", "type_id": "CLEG"})],
+                houses: Vec::new(),
+                missing_actor_ids: Vec::new(),
+                terrain: Vec::new(),
+            },
+            BTreeSet::from([7]),
+        )
+        .unwrap();
+        assert!(map.observes_actor(&profile, 7, "Computer2", "GAPOWR"));
+        map.observe_frame(
+            MapFrameObservation {
+                completed_steps: 1,
+                simulation_tick: 1,
+                binary_frame: 1,
+                total_simulation_ms: 22,
+                actors: Vec::new(),
+                houses: Vec::new(),
+                missing_actor_ids: vec![7],
+                terrain: Vec::new(),
+            },
+            BTreeSet::from([7]),
+        )
+        .unwrap();
+        assert!(map.observes_actor(&profile, 7, "Computer2", "GAPOWR"));
+        let transcript = map.transcript(&profile);
+        assert_eq!(transcript["type_filter"], json!(["MTNK", "CLEG"]));
+        assert_eq!(transcript["frames"][1]["missing_actor_ids"], json!([7]));
+        profile.observe_types = None;
+        assert!(map.observes_actor(&profile, 9, "Computer1", "GAPOWR"));
+        assert!(!map.observes_actor(&profile, 8, "Computer2", "CLEG"));
+        assert!(map.transcript(&profile).get("type_filter").is_none());
     }
 
     #[test]

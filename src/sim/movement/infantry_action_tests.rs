@@ -401,9 +401,9 @@ fn walk_locomotion_actions_match_original_consumer_rows() {
 /// controls from `jumpjet_infantry_actions.py --default-motion` (54 rows).
 /// Rules/ART use the production retail readers and sequence binder. The
 /// ordinary Teleport request is produced through its existing move/stop owner;
-/// native Infantry subcell resolution and its preceding RNG draw are separate
-/// from this sequencer comparison. The phase adapter is not a full Teleport
-/// lifetime or Chronosphere claim.
+/// subcell resolution uses the same placement owner and is compared separately
+/// in teleport_cell_destination_tests. This corpus bounds the subsequent
+/// sequencer, rather than full Teleport lifetime or Chronosphere behaviour.
 #[test]
 fn retail_teleport_default_action_matches_the_native_sequencer() {
     let Some((retail_rules, retail_art)) = crate::rules::retail_ini_fixture::retail_rules_and_art()
@@ -430,10 +430,32 @@ fn retail_teleport_default_action_matches_the_native_sequencer() {
     }
     let rows = corpus["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 54);
+    let clear_costs = rules
+        .terrain_rules
+        .semantics_by_name("Clear")
+        .unwrap()
+        .speed_costs;
     for (index, row) in rows.iter().enumerate() {
         let input = &row["input"];
         let name = format!("Teleport row {index} {input}");
         let mut sim = Simulation::with_seed(31);
+        sim.resolved_terrain = Some(
+            crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+                32,
+                32,
+                (0..32)
+                    .flat_map(|y| {
+                        (0..32).map(move |x| {
+                            let mut cell =
+                                crate::sim::world::common_raw_test_terrain_cell(x, y, 0, false);
+                            cell.speed_costs = clear_costs;
+                            cell.base_speed_costs = cell.speed_costs;
+                            cell
+                        })
+                    })
+                    .collect(),
+            ),
+        );
         sim.session.binary_frame = 1000;
         sim.session.game_options.game_speed = 1;
         let house = sim.interner.intern("Americans");
@@ -456,14 +478,12 @@ fn retail_teleport_default_action_matches_the_native_sequencer() {
         );
         let producer = input["producer"].as_str().unwrap();
         if producer != "ctor" {
-            assert!(super::super::teleport_movement::teleport_move_to(
-                actor,
-                (12, 10),
-                &rules.general,
-                false,
-                1000,
-            ));
+            assert!(
+                sim.teleport_move_to(id, (12, 10), &rules, false, None,)
+                    .unwrap()
+            );
         }
+        let actor = sim.substrate.entities.get_mut(id).unwrap();
         if producer == "move_stop" {
             super::super::teleport_movement::teleport_stop_moving(actor);
         }

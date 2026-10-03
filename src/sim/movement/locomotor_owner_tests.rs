@@ -143,7 +143,7 @@ fn dock_pad_destination_retires_drive_before_teleport_move_to() {
 
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_retired(entity);
-    assert!(entity.teleport_state.is_some());
+    assert!(entity.teleport_state().is_some());
 }
 
 #[test]
@@ -202,7 +202,7 @@ fn refused_restore_keeps_live_head_and_forced_segment() {
             entity.mission.queued(),
             crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Enter)
         );
-        assert!(entity.teleport_state.is_none());
+        assert!(entity.teleport_state().is_none());
     }
 }
 
@@ -331,7 +331,7 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
         assert_eq!(entity.navigation.path_runtime, path_runtime);
         assert!(matches!(
             entity.locomotor.as_ref().unwrap().runtime_payload,
-            LocomotorRuntimePayload::Teleport
+            LocomotorRuntimePayload::Teleport(_)
         ));
         assert!(entity.movement_target.is_none());
     }

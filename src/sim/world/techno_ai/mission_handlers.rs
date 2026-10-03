@@ -2299,12 +2299,7 @@ mod harvester_guard_override_tests {
             .entities
             .get_mut(MINER_ID)
             .expect("miner")
-            .teleport_state = Some(TeleportState {
-            phase,
-            target_rx: 14,
-            target_ry: 11,
-            being_warped_ticks: 30,
-        });
+            .install_teleport_state_for_test(Some(TeleportState::for_test(phase, 14, 11, 30)));
     }
 
     /// Arm (iii), second test: full storage and the teleport locomotor's

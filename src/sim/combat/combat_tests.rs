@@ -2750,12 +2750,12 @@ fn gsi_04_07_damage_invulnerability_impact_precedes_warping_and_postlude() {
             kind,
         });
         if warping {
-            victim.teleport_state = Some(TeleportState {
-                phase: TeleportPhase::Relocate,
-                target_rx: 20,
-                target_ry: 20,
-                being_warped_ticks: 1,
-            });
+            victim.install_teleport_state_for_test(Some(TeleportState::for_test(
+                TeleportPhase::Relocate,
+                20,
+                20,
+                1,
+            )));
         }
         id
     });

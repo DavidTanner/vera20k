@@ -1213,19 +1213,28 @@ impl Simulation {
                 }
                 Some(LocomotorKind::Teleport) => {
                     super::navcom::publish_nav_com(actor, requested);
-                    super::teleport_movement::teleport_move_to(
-                        actor,
+                    self.teleport_move_to(
+                        id,
                         requested_cell.expect("only a Cell target keeps the Teleport primary"),
-                        &rules.general,
+                        rules,
                         info.is_harvester,
-                        frame,
+                        None,
                     )
+                    .unwrap_or_else(|error| {
+                        log::debug!("Unit Teleport MoveTo {id}: {error}");
+                        false
+                    })
                 }
                 _ => false,
             }
         };
         // 0x004D96C2..0x004D9707: +6B7 and the +640/+668 restarts follow the
         // Move_To (or its skip) whatever it answered.
+        let actor = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .expect("same setter actor");
         timing.accept(actor);
         // The successful depot tail742D0B calls Foot before its
         // unconditional first path-word clear742D11 and early return.

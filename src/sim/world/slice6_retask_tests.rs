@@ -283,7 +283,11 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // off/on boundaries equal except tick_result.state_hash. Omitting only Door
 // restores incoming main; the temporary control is removed. Bounded Rust
 // attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
-const SLICE6_BASELINE_HASH: u64 = 0x657A_4E48_7E8A_C526;
+// Snapshot286: the entity-level absent Teleport tag is removed; the complete
+//class payload owns its fold. Restoring only that old0 tag recovers the prior
+//hash exactly, with all existing pose/gameplay and absolute RNG tripwires intact.
+// See tools/spatial_oracle/infantry_teleport_destination.md. Rust hash ratchet only.
+const SLICE6_BASELINE_HASH: u64 = 0x43BC_438F_280E_7D17;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

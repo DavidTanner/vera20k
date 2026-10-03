@@ -122,6 +122,8 @@ class MapObservationTests(unittest.TestCase):
                          for index, request in enumerate(self.profile.get('commands', []))],
             'frames': frames,
         }
+        if 'observe_types' in self.profile:
+            manifest['observations']['type_filter'] = deepcopy(self.profile['observe_types'])
         self.change(manifest)
         (directory / 'capture.json').write_text(json.dumps(manifest))
         return self.result
@@ -204,6 +206,49 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(transcript['frames'][0]['actors'][0]['nav'], {'Object': {'id': 9}})
         self.assertEqual(report['capture']['camera']['requested_cell'], [87, 53])
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_type_filter_binds_discovery_and_retains_identity_after_type_and_owner_change(self):
+        self.scripted_profile()
+        self.profile['observe_types'] = ['E1']
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.rule_types.append({'type_id': 'E1', 'interned_id': 43, 'category': 'Infantry'})
+        self.actor_frames[0] = []
+        self.actor_frames[2][0].update(type_id='MTNK', owner='OtherHouse')
+        self.actor_frames[3] = []
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        observed = report['capture']['observations']
+        self.assertEqual(observed['type_filter'], ['E1'])
+        self.assertEqual(observed['frames'][3]['missing_actor_ids'], [1])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_type_filter_rejects_unrequested_discovery_and_mismatched_manifest(self):
+        self.scripted_profile()
+        self.profile['observe_types'] = ['E1']
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.rule_types.append({'type_id': 'E1', 'interned_id': 43, 'category': 'Infantry'})
+        self.actor_frames[0][0]['type_id'] = 'MTNK'
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertTrue(any('type filter' in error for error in report['errors']))
+        self.actor_frames[0][0]['type_id'] = 'E1'
+        self.output = self.root / 'mismatched-filter'
+        self.change = lambda manifest: manifest['observations'].update(type_filter=['MTNK'])
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertTrue(any('type_filter' in error for error in report['errors']))
+
+    def test_type_filter_requires_literal_registry_names_and_a_nonempty_unique_list(self):
+        self.scripted_profile()
+        for value in ([], [''], ['E1', 'E1'], None, [1], ['E1'] * 257):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                observation._profile_extensions({**self.profile, 'observe_types': value})
+        self.profile['observe_types'] = ['e1']
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.rule_types.append({'type_id': 'E1', 'interned_id': 43, 'category': 'Infantry'})
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertTrue(any('absent from rule_types' in error for error in report['errors']))
 
     def production_profile(self):
         self.scripted_profile()

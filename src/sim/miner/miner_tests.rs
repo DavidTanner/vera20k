@@ -731,7 +731,7 @@ fn chrono_miner_does_not_warp_outbound() {
 
     let entity = sim.substrate.entities.get(miner_id).expect("entity");
     assert!(
-        entity.teleport_state.is_none(),
+        entity.teleport_state().is_none(),
         "chrono miner must NOT issue a teleport on outbound SearchOre — \
          only the inbound (ore → refinery) leg warps"
     );
@@ -759,7 +759,7 @@ fn chrono_miner_drives_to_ore() {
 
     let entity = sim.substrate.entities.get(miner_id).expect("entity");
     assert!(
-        entity.teleport_state.is_none(),
+        entity.teleport_state().is_none(),
         "Chrono Miner should drive to ore, not warp"
     );
 }
@@ -1784,7 +1784,7 @@ fn harvester_caps_extraction_at_remaining_capacity() {
 
     let entity = sim.substrate.entities.get(miner_id).expect("miner entity");
     assert!(entity.movement_target.is_none());
-    assert!(entity.teleport_state.is_none());
+    assert!(entity.teleport_state().is_none());
 
     let after_remaining = crate::sim::tiberium::test_support::stock_amount_at(&sim, (20, 20));
     assert_eq!(after_remaining, 9 * 120, "cell drops to density 9");
@@ -1842,7 +1842,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert_eq!(entity.archive_target(), None);
         assert_eq!(miner.reserved_refinery, None);
         assert!(entity.movement_target.is_none());
-        assert!(entity.teleport_state.is_none());
+        assert!(entity.teleport_state().is_none());
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(overlay.visible);
         assert_eq!(overlay.frame, 6);
@@ -1901,7 +1901,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         );
         assert_eq!(miner.reserved_refinery, None);
         assert!(entity.movement_target.is_none());
-        assert!(entity.teleport_state.is_none());
+        assert!(entity.teleport_state().is_none());
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(!overlay.visible);
         assert_eq!(overlay.frame, 0);

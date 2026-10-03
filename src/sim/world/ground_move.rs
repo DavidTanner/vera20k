@@ -166,16 +166,11 @@ impl Simulation {
                 let harvester = self
                     .object_type(entity.type_ref(), rules)
                     .is_some_and(|object| object.harvester);
-                let frame = self.session.binary_frame;
-                self.substrate.entities.get_mut(id).is_some_and(|entity| {
-                    movement::teleport_movement::teleport_move_to(
-                        entity,
-                        cell,
-                        &rules.general,
-                        harvester,
-                        frame,
-                    )
-                })
+                self.teleport_move_to(id, cell, rules, harvester, None)
+                    .unwrap_or_else(|error| {
+                        log::debug!("Unit Teleport order {id}: {error}");
+                        false
+                    })
             }
             EntityCategory::Aircraft | EntityCategory::Structure => return None,
         })

@@ -4,9 +4,8 @@
 //! ([`is_really_moving_now`]). Native callers dispatch one slot or another,
 //! and `Is_Moving` and `Is_Moving_Now` answer differently in every family
 //! except Teleport. Native retained-state readers are shared here; Teleport
-//! still delegates to its documented Relocate-phase adapter, pending the
-//! complete request-byte lifecycle. Rocket's destination lifecycle remains
-//! unrepresented and its `Is_Moving` query returns `None`.
+//! reads the active complete instance's request byte. Rocket's destination
+//! lifecycle remains unrepresented and its `Is_Moving` query returns `None`.
 use super::track_process::TrackFamily;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;
@@ -15,7 +14,8 @@ use crate::sim::game_entity::GameEntity;
 /// Hover514C30. Teleport718080 delegates to its existing state owner.
 /// Evidence: locomotor_moving, air_locomotor_moving, cmin_dock and
 /// jumpjet_infantry_actions --default-motion native corpora; Teleport's
-/// ordinary move/stop controls do not establish its complete request lifetime.
+/// ordinary move/stop controls (infantry_teleport_destination) establish the
+/// Cell setter/Stop boundaries; full Process/Chronosphere lifetime stays bounded.
 pub(crate) fn is_moving(entity: &GameEntity) -> Option<bool> {
     let locomotor = entity.locomotor.as_ref()?;
     match locomotor.active_kind() {
@@ -29,12 +29,9 @@ pub(crate) fn is_moving(entity: &GameEntity) -> Option<bool> {
         LocomotorKind::Hover => locomotor
             .hover_runtime()
             .map(super::hover::HoverRuntime::is_moving),
-        LocomotorKind::Teleport => Some(
-            entity
-                .teleport_state
-                .as_ref()
-                .is_some_and(super::teleport_movement::TeleportState::is_moving),
-        ),
+        LocomotorKind::Teleport => locomotor
+            .teleport_runtime()
+            .map(super::teleport_movement::TeleportRuntime::is_moving),
         // Rocket destination storage still requires its native
         // producer/lifecycle migration.
         _ => None,

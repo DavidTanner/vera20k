@@ -583,12 +583,14 @@ fn a_teleport_warp_ejects_the_drone_before_the_host_relocates() {
             crate::rules::locomotor_type::LocomotorKind::Teleport,
         ),
     );
-    host.teleport_state = Some(crate::sim::movement::teleport_movement::TeleportState {
-        phase: crate::sim::movement::teleport_movement::TeleportPhase::Relocate,
-        target_rx: 20,
-        target_ry: 20,
-        being_warped_ticks: 0,
-    });
+    host.install_teleport_state_for_test(Some(
+        crate::sim::movement::teleport_movement::TeleportState::for_test(
+            crate::sim::movement::teleport_movement::TeleportPhase::Relocate,
+            20,
+            20,
+            0,
+        ),
+    ));
     arena.step(&rules);
 
     assert_eq!(arena.cell(tank), (20, 20));

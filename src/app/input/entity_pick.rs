@@ -1577,12 +1577,12 @@ mod tests {
             true,
         ));
         let mut warp_out = item83_entity(2, 11, 10, owner, amcv, EntityCategory::Unit, false);
-        warp_out.teleport_state = Some(TeleportState {
-            phase: TeleportPhase::Relocate,
-            target_rx: 20,
-            target_ry: 20,
-            being_warped_ticks: 0,
-        });
+        warp_out.install_teleport_state_for_test(Some(TeleportState::for_test(
+            TeleportPhase::Relocate,
+            20,
+            20,
+            0,
+        )));
         entities.insert(warp_out);
         entities.insert(item83_entity(
             3,

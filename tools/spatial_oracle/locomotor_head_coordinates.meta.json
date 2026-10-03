@@ -61,7 +61,7 @@
     "src/sim/spawn_manager.rs": "95b1f8e6d93eed8afc29aa0ea1931d4e70724de986ab7369eae741d12116721f",
     "src/sim/world/world_orders.rs": "adb5bde12c3c686af3fd590266f0a00bed7be08f1185f49d16f0919080bf5c13",
     "src/sim/cell_rect.rs": "711e9dbfdbb2e70fc2891a60b2034129d0368654f28eb61fff7a03faeb905fec",
-    "src/sim/world/techno_ai/mission_handlers.rs": "2e0a2ab2fd23e1bdc9cfe0426887371d80a9bae4c7feaa8783f102c437a2ea75",
+    "src/sim/world/techno_ai/mission_handlers.rs": "2dd28b17a0bfa4cf9efa3eb810e332cc5148b8d43aedc7106bb295a1dc325607",
     "src/sim/miner/miner_system.rs": "02de13e0536e52f6252b607867973a3e450dec20c6786713f4a5b851ad445424",
     "src/sim/overlay_grid.rs": "a201b15558e8613f10d4d64ab7be93980b405fb8a84f8992787001a96c0654db",
     "src/sim/scenario_bootstrap.rs": "56aafe8c6f554a4bbd43ff37836fb219ed6e54353b8a5479366ae40b63900ad7",

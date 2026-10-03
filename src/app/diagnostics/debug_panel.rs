@@ -469,7 +469,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                         ui.label(format!("Archived ore: ({x},{y})"));
                     }
                     let has_mt = entity.movement_target.is_some();
-                    let has_tp = entity.teleport_state.is_some();
+                    let has_tp = entity.teleport_state().is_some();
                     ui.label(format!(
                         "Movement: {} Teleport: {}",
                         if has_mt { "active" } else { "idle" },

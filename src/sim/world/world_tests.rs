@@ -3703,10 +3703,16 @@ fn native_frame_committed_late_gate_captures_pre_increment_frame() {
     let gate_id = sim
         .spawn_object("GAGATE_A", "Americans", 10, 10, 0, &rules)
         .expect("spawn gate");
-    sim.mission_assign_exact(gate_id, crate::sim::mission::MissionId::NONE, 0).unwrap();
-    sim.mission_queue_exact(gate_id,
-        crate::sim::mission::MissionId::from_known(MissionType::Open), 0, 0,
-        &crate::sim::mission::authority::EntityReadyInputProvider).unwrap();
+    sim.mission_assign_exact(gate_id, crate::sim::mission::MissionId::NONE, 0)
+        .unwrap();
+    sim.mission_queue_exact(
+        gate_id,
+        crate::sim::mission::MissionId::from_known(MissionType::Open),
+        0,
+        0,
+        &crate::sim::mission::authority::EntityReadyInputProvider,
+    )
+    .unwrap();
     sim.mission_commence_exact(gate_id, 0).unwrap();
     assert_eq!(sim.session.binary_frame, 0, "fresh sim starts at frame 0");
 
@@ -3721,8 +3727,11 @@ fn native_frame_committed_late_gate_captures_pre_increment_frame() {
     let gate = sim.substrate.entities.get(gate_id).expect("gate entity");
     assert_eq!(gate.door_phase(), crate::sim::door::DoorPhase::Opening);
     assert_eq!(gate.mission.handler_state(), 1);
-    assert_eq!(gate.door_timer_fields().0, 0,
-        "gate captured pre-increment frame 0, not post-increment 1");
+    assert_eq!(
+        gate.door_timer_fields().0,
+        0,
+        "gate captured pre-increment frame 0, not post-increment 1"
+    );
 }
 
 #[test]
@@ -6026,12 +6035,16 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
         .spawn_object("MTNK", "Americans", 21, 22, 0, &rules)
         .expect("spawn second MTNK");
     assert!(sim.try_select_object(tank, Some(&rules)));
-    sim.substrate.entities.get_mut(tank).unwrap().teleport_state = Some(TeleportState {
-        phase: TeleportPhase::Relocate,
-        target_rx: 30,
-        target_ry: 30,
-        being_warped_ticks: 0,
-    });
+    sim.substrate
+        .entities
+        .get_mut(tank)
+        .unwrap()
+        .install_teleport_state_for_test(Some(TeleportState::for_test(
+            TeleportPhase::Relocate,
+            30,
+            30,
+            0,
+        )));
 
     assert!(
         sim.substrate.entities.get(tank).unwrap().selected,
@@ -6865,7 +6878,7 @@ fn test_move_command_chrono_miner_uses_ground_path() {
         sim.substrate
             .entities
             .get(entity)
-            .and_then(|e| e.teleport_state.as_ref())
+            .and_then(|e| e.teleport_state())
             .is_none(),
         "Chrono Miner should not enter teleport movement on a normal move order"
     );
@@ -6899,7 +6912,7 @@ fn test_move_command_non_harvester_teleporter_drives() {
         sim.substrate
             .entities
             .get(entity)
-            .and_then(|e| e.teleport_state.as_ref())
+            .and_then(|e| e.teleport_state())
             .is_none(),
         "the arm drives a Teleporter= Unit to a non-dock cell"
     );
@@ -6918,7 +6931,7 @@ fn test_move_command_non_harvester_teleporter_drives() {
 fn legionnaire_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n0=CLEG\n\n[VehicleTypes]\n\n[AircraftTypes]\n\n[BuildingTypes]\n\n\
-         [CLEG]\nStrength=125\nSpeed=4\nTeleporter=yes\n\
+         [CLEG]\nStrength=125\nSpeed=4\nTeleporter=yes\nSpeedType=Foot\nMovementZone=Infantry\n\
          Locomotor={4A582747-9839-11d1-B709-00A024DDAFD1}\n",
     ))
     .expect("legionnaire rules")
@@ -6949,6 +6962,10 @@ fn a_paralyzed_or_warping_in_teleport_infantryman_refuses_a_move_order() {
         queue: false,
     };
     let spawn = |sim: &mut Simulation| {
+        // Infantry718B70/51BF90 require allocated cells, a passable Foot row
+        // and a usable playfield; the command fixture supplies clear ground.
+        install_rectangular_test_map(sim, 32, 32);
+        sim.install_resolved_terrain_for_new_map(gsi_04_10_clear_terrain(32, 32));
         sim.spawn_object("CLEG", "Americans", 2, 2, 64, &rules)
             .expect("spawn legionnaire")
     };
@@ -6960,7 +6977,7 @@ fn a_paralyzed_or_warping_in_teleport_infantryman_refuses_a_move_order() {
     tick(&mut sim, &[order(id, 8)]);
     let entity = sim.substrate.entities.get(id).unwrap();
     assert_eq!(entity.navigation.nav_com, cell(8));
-    assert!(entity.teleport_state.is_some());
+    assert!(entity.teleport_state().is_some());
     tick(&mut sim, &[]);
     let entity = sim.substrate.entities.get(id).unwrap();
     assert_eq!((entity.position.rx, entity.position.ry), (8, 2));
@@ -6990,7 +7007,7 @@ fn a_paralyzed_or_warping_in_teleport_infantryman_refuses_a_move_order() {
     tick(&mut sim, &[]);
     let entity = sim.substrate.entities.get(id).unwrap();
     assert_eq!((entity.position.rx, entity.position.ry), (2, 2));
-    assert!(entity.teleport_state.is_none());
+    assert!(entity.teleport_state().is_none());
     assert_eq!(entity.navigation.nav_com, None);
 }
 
@@ -7000,6 +7017,8 @@ fn a_paralyzed_or_warping_in_teleport_infantryman_refuses_a_move_order() {
 fn the_infantry_setter_moves_a_teleport_infantryman() {
     let rules = legionnaire_rules();
     let mut sim: Simulation = Simulation::new();
+    install_rectangular_test_map(&mut sim, 32, 32);
+    sim.install_resolved_terrain_for_new_map(gsi_04_10_clear_terrain(32, 32));
     let id = sim
         .spawn_object("CLEG", "Americans", 2, 2, 64, &rules)
         .expect("spawn legionnaire");
@@ -7013,7 +7032,7 @@ fn the_infantry_setter_moves_a_teleport_infantryman() {
         Ok(true)
     );
     let entity = sim.substrate.entities.get(id).unwrap();
-    assert!(entity.teleport_state.is_some());
+    assert!(entity.teleport_state().is_some());
     assert_eq!(
         entity.navigation.nav_com,
         Some(crate::sim::components::NavTargetRef::cell(8, 2))
@@ -7060,7 +7079,7 @@ fn test_attack_move_command_chrono_miner_uses_ground_path() {
         sim.substrate
             .entities
             .get(entity)
-            .and_then(|e| e.teleport_state.as_ref())
+            .and_then(|e| e.teleport_state())
             .is_none(),
         "Chrono Miner should not enter teleport movement on attack-move"
     );

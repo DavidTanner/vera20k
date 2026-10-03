@@ -534,8 +534,13 @@ impl Simulation {
                     &sim.substrate.raw_cell_occupation,
                     cell,
                     MovementLayer::Ground,
-                    SimFixed::from_num(SURVIVOR_REQUEST_X),
-                    SimFixed::from_num(SURVIVOR_REQUEST_Y),
+                    crate::sim::components::DriveCoord {
+                        x: SURVIVOR_REQUEST_X,
+                        y: SURVIVOR_REQUEST_Y,
+                        z: 0,
+                    },
+                    false,
+                    false,
                     &mut sim.scenario_rng,
                 );
             }
