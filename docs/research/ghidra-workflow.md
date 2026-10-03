@@ -9,6 +9,13 @@ It checks the original executable identity and maps file-backed PE ranges throug
 the oracle owner. Its linear sweeps do not establish instruction boundaries,
 reachability or exhaustive aliases; preserve those limits in findings.
 
+Loaded PE images can contain zero-filled virtual tails with no original file bytes.
+Do not record an empty string or zero read there as an executable literal. For
+example, retail `0x889F64` is not file-backed: the inspection tool rejects a one-byte
+read. Keep that address as a pointer lead until its producer or runtime contents
+are established. Validate literal ranges with `native_oracle.file_span`; reading
+zeroes from a loaded image does not establish the current contents of mutable data.
+
 For read-only before/rehearsal comparisons of decompilation artifacts, known
 callers and native-versus-p-code stack frames, use
 [`python -m tools.ghidra_compare`](../../tools/ghidra_compare.md). Supply explicit
