@@ -2,12 +2,12 @@ use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, FootPathQueue, MovementTarget, NavTargetRef,
-    ShipLocomotionRuntime, TrackProgress,
+    DriveCoord, FootPathQueue, MovementTarget, NavTargetRef, TrackProgress,
 };
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::drive_track;
 use crate::sim::movement::locomotor::LocomotorState;
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::util::fixed_math::SimFixed;
 
 fn passive_rules() -> RuleSet {
@@ -28,18 +28,24 @@ fn fixture() -> (Simulation, RuleSet) {
     entity.is_voxel = false;
     entity.drive_accelerates = false;
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    entity.drive_locomotion = Some(DriveLocomotionRuntime {
-        head_to: Some(DriveCoord::cell(10, 9, 0)),
-        track_valid: true,
-        target_speed_fraction: SimFixed::from_num(1),
-        track: TrackProgress {
-            turn_index: 0,
-            cursor: 0,
-            reversed: false,
-            residual: 0,
-        },
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                DriveLocomotionRuntime::default()
+                    .with_head_to_for_test(Some(DriveCoord::cell(10, 9, 0)))
+                    .with_track_valid_for_test(true)
+                    .with_target_speed_fraction_for_test(SimFixed::from_num(1))
+                    .with_track_for_test(TrackProgress {
+                        turn_index: 0,
+                        cursor: 0,
+                        reversed: false,
+                        residual: 0,
+                    })
+            ))
+    );
     // The accepted head (10,9) was the route's last cell, so Foot+5E0 holds
     // no word beyond it: the committed head alone models the route.
     entity.movement_target = Some(MovementTarget {
@@ -76,16 +82,39 @@ fn post_ai_object_alive_gate_precedes_drive_ship_process_slope_sampling() {
                 .collect();
             sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(32, 32, cells));
             let entity = sim.substrate.entities.get_mut(1).unwrap();
+            // Preserve the supplied retained value before replacing its complete class.
+            let drive = entity
+                .locomotor
+                .as_ref()
+                .unwrap()
+                .selected_drive_runtime()
+                .unwrap()
+                .retained()
+                .unwrap()
+                .clone();
             entity.locomotor = Some(LocomotorState::for_test_kind(kind));
-            if kind == LocomotorKind::Ship {
-                let drive = entity.drive_locomotion.take().unwrap();
-                entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                    head_to: drive.head_to,
-                    track: drive.track,
-                    track_valid: drive.track_valid,
-                    target_speed_fraction: drive.target_speed_fraction,
-                    ..Default::default()
-                });
+            if kind == LocomotorKind::Drive {
+                assert!(
+                    entity
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_drive_state_for_test(Some(drive))
+                );
+            } else {
+                assert!(
+                    entity
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_ship_state_for_test(Some(
+                            ShipLocomotionRuntime::default()
+                                .with_head_to_for_test(drive.head_to())
+                                .with_track_for_test(drive.track())
+                                .with_track_valid_for_test(drive.track_valid())
+                                .with_target_speed_fraction_for_test(drive.target_speed_fraction())
+                        ))
+                );
             }
             slope_transition::snap_after_successful_unlimbo(entity, 2, 9);
             let old_slope = *slope_transition::state_for_entity(entity).unwrap();
@@ -108,8 +137,20 @@ fn post_ai_object_alive_gate_precedes_drive_ship_process_slope_sampling() {
                 );
                 assert_eq!(outcome.movement.moved_steps, 0, "{kind:?}");
                 let track = match kind {
-                    LocomotorKind::Drive => entity.drive_locomotion.as_ref().unwrap().track,
-                    LocomotorKind::Ship => entity.ship_locomotion.as_ref().unwrap().track,
+                    LocomotorKind::Drive => entity
+                        .locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_drive_runtime())
+                        .and_then(|r| r.retained())
+                        .unwrap()
+                        .track(),
+                    LocomotorKind::Ship => entity
+                        .locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_ship_runtime())
+                        .and_then(|r| r.retained())
+                        .unwrap()
+                        .track(),
                     _ => unreachable!(),
                 };
                 assert_eq!(track.cursor, 0, "{kind:?}");
@@ -127,7 +168,17 @@ fn ordinary_object_turn_pays_multiple_points_and_runs_prefix_and_shp_once() {
         .expect("fixture object turn must complete");
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(outcome.movement.moved_steps >= 2);
-    assert!(entity.drive_locomotion.as_ref().unwrap().track.cursor >= 2);
+    assert!(
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track()
+            .cursor
+            >= 2
+    );
     assert_eq!(
         entity
             .navigation
@@ -138,7 +189,14 @@ fn ordinary_object_turn_pays_multiple_points_and_runs_prefix_and_shp_once() {
     );
     assert_eq!(entity.body_frame_counter, 1);
     assert_eq!(
-        entity.drive_locomotion.as_ref().unwrap().track.turn_index,
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track()
+            .turn_index,
         0,
         "paid points retain the active straight-track selector"
     );
@@ -183,19 +241,41 @@ fn active_drive_ship_track_preserves_target_across_changed_path_and_terrain_requ
             .collect();
         sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(32, 32, cells));
         let entity = sim.substrate.entities.get_mut(1).unwrap();
+        // The former entity Option outlived class replacement; supply that same
+        // value explicitly to the new coherent class fixture.
+        let drive = entity
+            .locomotor
+            .as_ref()
+            .unwrap()
+            .selected_drive_runtime()
+            .unwrap()
+            .retained()
+            .unwrap()
+            .clone()
+            .with_target_speed_fraction_for_test(SIM_HALF);
         entity.locomotor = Some(LocomotorState::for_test_kind(kind));
-        let mut drive = entity.drive_locomotion.take().unwrap();
-        drive.target_speed_fraction = SIM_HALF;
         if kind == LocomotorKind::Drive {
-            entity.drive_locomotion = Some(drive);
+            assert!(
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_drive_state_for_test(Some(drive))
+            );
         } else {
-            entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                head_to: drive.head_to,
-                track: drive.track,
-                track_valid: drive.track_valid,
-                target_speed_fraction: SIM_HALF,
-                ..Default::default()
-            });
+            assert!(
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_ship_state_for_test(Some(
+                        ShipLocomotionRuntime::default()
+                            .with_head_to_for_test(drive.head_to())
+                            .with_track_for_test(drive.track())
+                            .with_track_valid_for_test(drive.track_valid())
+                            .with_target_speed_fraction_for_test(SIM_HALF)
+                    ))
+            );
         }
         sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
             .expect("retained track first visit");
@@ -235,11 +315,29 @@ fn active_drive_ship_track_preserves_target_across_changed_path_and_terrain_requ
             .expect("retained track changed-request visit");
         let entity = sim.substrate.entities.get(1).unwrap();
         let (retained, progress, head) = if kind == LocomotorKind::Drive {
-            let state = entity.drive_locomotion.as_ref().unwrap();
-            (state.target_speed_fraction, state.track, state.head_to)
+            let state = entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .unwrap();
+            (
+                state.target_speed_fraction(),
+                state.track(),
+                state.head_to(),
+            )
         } else {
-            let state = entity.ship_locomotion.as_ref().unwrap();
-            (state.target_speed_fraction, state.track, state.head_to)
+            let state = entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_ship_runtime())
+                .and_then(|r| r.retained())
+                .unwrap();
+            (
+                state.target_speed_fraction(),
+                state.track(),
+                state.head_to(),
+            )
         };
         assert_eq!(retained, SIM_HALF, "{kind:?}");
         assert_eq!(entity.foot_speed.applied_fraction(), SIM_HALF, "{kind:?}");
@@ -261,10 +359,25 @@ fn terminal_sensor_receiver_finishes_before_shp_and_is_not_deferred_to_cell_chan
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     entity.position.rx = 10;
     entity.navigation.nav_com = Some(NavTargetRef::cell(10, 10));
-    let drive = entity.drive_locomotion.as_mut().unwrap();
-    drive.head_to = Some(DriveCoord::cell(10, 10, 0));
-    drive.destination = drive.head_to;
-    drive.track.cursor = drive_track::raw_track_points(1).len() as i32;
+    let drive = entity.locomotor.as_mut().unwrap();
+    assert!(drive.store_track_head(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        Some(DriveCoord::cell(10, 10, 0))
+    ));
+    assert!(drive.store_track_destination(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        drive.track_head(crate::sim::movement::track_process::TrackFamily::Drive)
+    ));
+    {
+        let mut progress = drive
+            .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+            .unwrap();
+        progress.cursor = drive_track::raw_track_points(1).len() as i32;
+        assert!(drive.store_track_progress(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            progress
+        ));
+    };
     entity.body_frame_counter = 5;
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .expect("fixture object turn must complete");
@@ -320,19 +433,36 @@ fn accepted_chain_runs_sensor_callback_and_consumes_more_paid_points_in_same_obj
         cursor: 0,
         reference_cell: Some((10, 10)),
     };
-    entity.drive_locomotion.as_mut().unwrap().track = TrackProgress {
-        turn_index: 1,
-        cursor: i32::from(drive_track::raw_track_meta(3).unwrap().chain_index),
-        reversed: false,
-        residual: 0,
-    };
+    assert!(entity.locomotor.as_mut().unwrap().store_track_progress(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        TrackProgress {
+            turn_index: 1,
+            cursor: i32::from(drive_track::raw_track_meta(3).unwrap().chain_index),
+            reversed: false,
+            residual: 0,
+        }
+    ));
     let outcome = sim
         .advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .expect("fixture object turn must complete");
     let entity = sim.substrate.entities.get(1).unwrap();
-    let track = entity.drive_locomotion.as_ref().unwrap().track;
+    let track = entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap()
+        .track();
     assert_eq!(track.turn_index, selection.turn_track_index as i32);
-    assert!(entity.drive_locomotion.as_ref().unwrap().track_valid);
+    assert!(
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track_valid()
+    );
     assert!(track.cursor > i32::from(selection.entry_index));
     assert_eq!(entity.navigation.path_replay.cursor, 1);
     // Retail RawTrack[3]7E7A58 -> point37 at7E66B4=(-136,136,32).
@@ -372,8 +502,12 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
             ))
             .unwrap();
             let entity = sim.substrate.entities.get_mut(1).unwrap();
-            entity.drive_locomotion = None;
-            entity.ship_locomotion = None;
+            if let Some(loco) = entity.locomotor.as_mut() {
+                let _ = loco.install_drive_state_for_test(None);
+            };
+            if let Some(loco) = entity.locomotor.as_mut() {
+                let _ = loco.install_ship_state_for_test(None);
+            };
             entity.movement_target = None;
             entity.locomotor = Some(LocomotorState::for_test_kind(kind));
             let grid = crate::sim::pathfinding::PathGrid::new(32, 32);
@@ -397,11 +531,22 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
             }
             let entity = sim.substrate.entities.get(1).unwrap();
             let head = if kind == LocomotorKind::Drive {
-                let state = entity.drive_locomotion.as_ref().unwrap();
-                assert!(!state.track_valid);
-                state.head_to
+                let state = entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
+                assert!(!state.track_valid());
+                state.head_to()
             } else {
-                entity.ship_locomotion.as_ref().unwrap().head_to
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap()
+                    .head_to()
             };
             assert!(head.is_none(), "the command has not run ProcessMovement");
             assert_eq!(
@@ -413,12 +558,22 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
                 .expect("fixture object turn must complete");
             let entity = sim.substrate.entities.get(1).unwrap();
             if kind == LocomotorKind::Drive {
-                let drive = entity.drive_locomotion.as_ref().unwrap();
-                assert!(drive.track_valid);
-                assert_eq!((drive.track.cursor, drive.track.residual), (0, 0));
+                let drive = entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
+                assert!(drive.track_valid());
+                assert_eq!((drive.track().cursor, drive.track().residual), (0, 0));
             } else {
-                let ship = entity.ship_locomotion.as_ref().unwrap();
-                assert_eq!((ship.track.cursor, ship.track.residual), (0, 0));
+                let ship = entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
+                assert_eq!((ship.track().cursor, ship.track().residual), (0, 0));
             }
             assert_eq!(sim.current_speed_for_test(1, &rules), 0);
             assert_eq!(
@@ -443,9 +598,21 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
     let (mut sim, rules) = fixture();
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     entity.navigation.nav_com = Some(NavTargetRef::cell(10, 9));
-    let drive = entity.drive_locomotion.as_mut().unwrap();
-    drive.destination = drive.head_to;
-    drive.track.cursor = drive_track::raw_track_points(1).len() as i32;
+    let drive = entity.locomotor.as_mut().unwrap();
+    assert!(drive.store_track_destination(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        drive.track_head(crate::sim::movement::track_process::TrackFamily::Drive)
+    ));
+    {
+        let mut progress = drive
+            .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+            .unwrap();
+        progress.cursor = drive_track::raw_track_points(1).len() as i32;
+        assert!(drive.store_track_progress(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            progress
+        ));
+    };
     entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .expect("fixture object turn must complete");
@@ -495,8 +662,12 @@ fn ship_fresh_claim_survives_next_object_visit_and_snapshot_rebuild() {
     let (mut sim, rules) = fixture();
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
-    entity.drive_locomotion = None;
-    entity.ship_locomotion = None;
+    if let Some(loco) = entity.locomotor.as_mut() {
+        let _ = loco.install_drive_state_for_test(None);
+    };
+    if let Some(loco) = entity.locomotor.as_mut() {
+        let _ = loco.install_ship_state_for_test(None);
+    };
     entity.movement_target = None;
     let grid = crate::sim::pathfinding::PathGrid::new(32, 32);
     assert!(crate::sim::movement::issue_move_command(
@@ -520,10 +691,12 @@ fn ship_fresh_claim_survives_next_object_visit_and_snapshot_rebuild() {
         .entities
         .get(1)
         .unwrap()
-        .ship_locomotion
+        .locomotor
         .as_ref()
+        .and_then(|l| l.selected_ship_runtime())
+        .and_then(|r| r.retained())
         .unwrap()
-        .occupation_head_to
+        .occupation_head_to()
         .unwrap();
     assert!(
         !sim.substrate
@@ -575,12 +748,15 @@ fn ordinary_default_passive_false_does_not_accept_a_chain() {
         32,
     ));
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.drive_locomotion.as_mut().unwrap().track = TrackProgress {
-        turn_index: 1,
-        cursor: 37,
-        reversed: false,
-        residual: 0,
-    };
+    assert!(entity.locomotor.as_mut().unwrap().store_track_progress(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        TrackProgress {
+            turn_index: 1,
+            cursor: 37,
+            reversed: false,
+            residual: 0,
+        }
+    ));
     entity.navigation.path_replay = FootPathQueue {
         directions: vec![2, 3],
         cursor: 0,
@@ -590,7 +766,14 @@ fn ordinary_default_passive_false_does_not_accept_a_chain() {
         .expect("fixture object turn must complete");
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
-        entity.drive_locomotion.as_ref().unwrap().track.turn_index,
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track()
+            .turn_index,
         1
     );
     assert_eq!(entity.navigation.path_replay.cursor, 0);
@@ -606,11 +789,26 @@ fn bridge_terminal_uses_owner_height_to_reach_ground_navcom_target() {
     entity.on_bridge = true;
     entity.navigation.nav_com = Some(NavTargetRef::cell(10, 9));
     entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
-    let drive = entity.drive_locomotion.as_mut().unwrap();
+    let drive = entity.locomotor.as_mut().unwrap();
     let deck = DriveCoord::cell(10, 9, 416);
-    drive.head_to = Some(deck);
-    drive.destination = Some(deck);
-    drive.track.cursor = drive_track::raw_track_points(1).len() as i32;
+    assert!(drive.store_track_head(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        Some(deck)
+    ));
+    assert!(drive.store_track_destination(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        Some(deck)
+    ));
+    {
+        let mut progress = drive
+            .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+            .unwrap();
+        progress.cursor = drive_track::raw_track_points(1).len() as i32;
+        assert!(drive.store_track_progress(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            progress
+        ));
+    };
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .expect("fixture object turn must complete");
     let entity = sim.substrate.entities.get(1).unwrap();
@@ -618,10 +816,12 @@ fn bridge_terminal_uses_owner_height_to_reach_ground_navcom_target() {
     assert!(entity.navigation.nav_com.is_none());
     assert!(
         entity
-            .drive_locomotion
+            .locomotor
             .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
             .unwrap()
-            .destination
+            .destination()
             .is_none()
     );
     assert!(entity.movement_target.is_none());
@@ -634,18 +834,24 @@ fn terminal_piggyback_end_is_synchronous_and_preserves_owner_speed() {
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
     assert!(crate::sim::movement::locomotor_owner::begin_drive_for_teleporter(entity, 10));
-    entity.drive_locomotion = Some(DriveLocomotionRuntime {
-        head_to: Some(DriveCoord::cell(10, 9, 0)),
-        destination: Some(DriveCoord::cell(10, 9, 0)),
-        target_speed_fraction: SimFixed::from_num(1),
-        track_valid: true,
-        track: TrackProgress {
-            turn_index: 0,
-            cursor: drive_track::raw_track_points(1).len() as i32,
-            ..Default::default()
-        },
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                DriveLocomotionRuntime::default()
+                    .with_head_to_for_test(Some(DriveCoord::cell(10, 9, 0)))
+                    .with_destination_for_test(Some(DriveCoord::cell(10, 9, 0)))
+                    .with_target_speed_fraction_for_test(SimFixed::from_num(1))
+                    .with_track_valid_for_test(true)
+                    .with_track_for_test(TrackProgress {
+                        turn_index: 0,
+                        cursor: drive_track::raw_track_points(1).len() as i32,
+                        ..Default::default()
+                    })
+            ))
+    );
     entity.navigation.nav_com = Some(NavTargetRef::cell(10, 9));
     entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
@@ -655,7 +861,14 @@ fn terminal_piggyback_end_is_synchronous_and_preserves_owner_speed() {
         entity.locomotor.as_ref().unwrap().kind,
         LocomotorKind::Teleport
     );
-    assert!(entity.drive_locomotion.is_none());
+    assert!(
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .is_none()
+    );
     assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::from_num(1));
     assert!(entity.navigation.nav_com.is_none());
 }

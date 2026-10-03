@@ -74,7 +74,8 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
     let rules = RuleSet::from_ini_with_fixed_art_for_test(
         &IniFile::from_str(
             "[InfantryTypes]\n[VehicleTypes]\n0=MTNK\n[AircraftTypes]\n[BuildingTypes]\n0=BIG\n\
-         [MTNK]\nStrength=300\nSpeed=6\n[BIG]\nStrength=1000\n",
+         [MTNK]\nStrength=300\nSpeed=6\n\
+         Locomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n[BIG]\nStrength=1000\n",
         ),
         &IniFile::from_str("[BIG]\nFoundation=2x1\n"),
     )
@@ -159,19 +160,44 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
         .entities
         .get_mut(older)
         .unwrap()
-        .drive_locomotion
-        .get_or_insert_with(Default::default);
-    drive.occupation_head_to = Some(crate::sim::components::DriveOccupationFootprint {
-        rx: 8,
-        ry: 8,
-        layer: MovementLayer::Ground,
-    });
-    drive.occupation_handoff = Some(crate::sim::components::DriveOccupationFootprint {
-        rx: 9,
-        ry: 8,
-        layer: MovementLayer::Bridge,
-    });
-    let drive_before = bincode::serialize(drive).unwrap();
+        .locomotor
+        .as_mut()
+        .unwrap();
+    assert!(drive.ensure_installed_track_state());
+    assert!(
+        drive.publish_track_occupation(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            Some(crate::sim::components::DriveOccupationFootprint {
+                rx: 8,
+                ry: 8,
+                layer: MovementLayer::Ground,
+            }),
+            drive
+                .selected_drive_runtime()
+                .unwrap()
+                .retained()
+                .unwrap()
+                .occupation_handoff()
+        )
+    );
+    assert!(
+        drive.publish_track_occupation(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            drive
+                .selected_drive_runtime()
+                .unwrap()
+                .retained()
+                .unwrap()
+                .occupation_head_to(),
+            Some(crate::sim::components::DriveOccupationFootprint {
+                rx: 9,
+                ry: 8,
+                layer: MovementLayer::Bridge,
+            })
+        )
+    );
+    let drive_before =
+        bincode::serialize(drive.selected_drive_runtime().unwrap().retained().unwrap()).unwrap();
     sim.substrate.cell_occupation.reconcile_entity(
         sim.substrate.entities.get(older).unwrap(),
         &sim.substrate.occupancy,
@@ -227,8 +253,10 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
                 .entities
                 .get(older)
                 .unwrap()
-                .drive_locomotion
+                .locomotor
                 .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
                 .unwrap()
         )
         .unwrap(),

@@ -435,7 +435,10 @@ mod tests {
                 crate::rules::locomotor_type::LocomotorKind::Drive,
             ),
         );
-        ge.drive_locomotion = Some(Default::default());
+        ge.locomotor
+            .as_mut()
+            .unwrap()
+            .ensure_installed_track_state();
         sim.substrate.entities.insert(ge);
     }
 
@@ -476,11 +479,16 @@ mod tests {
             y: 10 * 256 + 160,
             z: 0,
         };
-        let drive = unit.drive_locomotion.as_ref().expect("Drive runtime");
-        assert_eq!(drive.destination, Some(exact_head));
-        assert_eq!(drive.head_to, Some(exact_head));
+        let drive = unit
+            .locomotor
+            .as_ref()
+            .and_then(|loco| loco.selected_drive_runtime())
+            .and_then(|runtime| runtime.retained())
+            .expect("Drive runtime");
+        assert_eq!(drive.destination(), Some(exact_head));
+        assert_eq!(drive.head_to(), Some(exact_head));
         assert_eq!(
-            drive.occupation_head_to,
+            drive.occupation_head_to(),
             Some(crate::sim::components::DriveOccupationFootprint {
                 rx: 10,
                 ry: 10,

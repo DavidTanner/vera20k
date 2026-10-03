@@ -14,10 +14,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::map::entities::EntityCategory;
-use crate::sim::components::DriveLocomotionRuntime;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
-use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+use crate::sim::movement::track_process::TrackFamily;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 /// UnitClass vehicle-occupation bit in both CellClass occupation planes.
@@ -861,21 +861,10 @@ impl CellOccupationGrid {
                 layer,
             );
         }
-        for mark in entity
-            .drive_locomotion
-            .as_ref()
-            .into_iter()
-            .flat_map(|drive| [drive.occupation_handoff, drive.occupation_head_to])
-            .chain(
-                entity
-                    .ship_locomotion
-                    .as_ref()
-                    .into_iter()
-                    .flat_map(|ship| [ship.occupation_handoff, ship.occupation_head_to]),
-            )
-            .flatten()
-        {
-            self.mark_vehicle_on_layer(mark.rx, mark.ry, entity.stable_id(), mark.layer);
+        if let Some(loco) = entity.locomotor.as_ref() {
+            loco.visit_track_occupation(|mark| {
+                self.mark_vehicle_on_layer(mark.rx, mark.ry, entity.stable_id(), mark.layer);
+            });
         }
         if self
             .footprints_by_owner
@@ -1036,7 +1025,6 @@ impl CellOccupationGrid {
 #[cfg(test)]
 pub(crate) fn clear_current_drive_occupation_for_paid_point(
     foot_occupation_enabled: &mut bool,
-    _drive: &mut DriveLocomotionRuntime,
     occupation: &mut CellOccupationGrid,
     entity_id: u64,
     current_cell: (u16, u16),
@@ -1049,16 +1037,15 @@ pub(crate) fn clear_current_drive_occupation_for_paid_point(
 /// Hard limbo/world removal clears the pending head-to cell before the ordinary
 /// current-cell RemoveContent clear.
 pub(crate) fn clear_drive_head_to_occupation_for_remove(
-    drive: &mut DriveLocomotionRuntime,
+    loco: &mut LocomotorState,
     occupation: &mut CellOccupationGrid,
     entity_id: u64,
 ) {
-    for mark in [
-        drive.occupation_handoff.take(),
-        drive.occupation_head_to.take(),
-    ]
-    .into_iter()
-    .flatten()
+    for mark in loco
+        .take_track_occupation(TrackFamily::Drive)
+        .unwrap_or([None; 2])
+        .into_iter()
+        .flatten()
     {
         occupation.clear_vehicle_on_layer(mark.rx, mark.ry, entity_id, mark.layer);
     }
@@ -2420,7 +2407,11 @@ mod tests {
                 crate::rules::locomotor_type::LocomotorKind::Drive,
             ),
         );
-        entity.drive_locomotion = Some(DriveLocomotionRuntime::default());
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .ensure_installed_track_state();
         entity
     }
 
@@ -2439,18 +2430,8 @@ mod tests {
         let mut bits = CellOccupationGrid::new();
         bits.mark_vehicle_on_layer(2, 2, 1, MovementLayer::Ground);
         bits.mark_vehicle_on_layer(3, 2, 1, MovementLayer::Ground);
-        let mut drive = DriveLocomotionRuntime {
-            occupation_head_to: Some(DriveOccupationFootprint {
-                rx: 3,
-                ry: 2,
-                layer: MovementLayer::Ground,
-            }),
-            ..Default::default()
-        };
-
         clear_current_drive_occupation_for_paid_point(
             &mut foot_occupation_enabled,
-            &mut drive,
             &mut bits,
             1,
             (2, 2),
@@ -2471,7 +2452,11 @@ mod tests {
             ry: 2,
             layer: MovementLayer::Ground,
         };
-        entity.drive_locomotion.as_mut().unwrap().occupation_head_to = Some(head);
+        entity.locomotor.as_mut().unwrap().publish_track_occupation(
+            TrackFamily::Drive,
+            Some(head),
+            None,
+        );
         let mut bits = CellOccupationGrid::rebuild(
             &{
                 let mut entities = crate::sim::entity_store::EntityStore::new();
@@ -2484,7 +2469,15 @@ mod tests {
         crate::sim::movement::track_stop_moving(&mut entity);
 
         assert_eq!(
-            entity.drive_locomotion.as_ref().unwrap().occupation_head_to,
+            entity
+                .locomotor
+                .as_ref()
+                .unwrap()
+                .selected_drive_runtime()
+                .unwrap()
+                .retained()
+                .unwrap()
+                .occupation_head_to(),
             Some(head)
         );
         assert_eq!(bits.vehicle_bits(3, 2, MovementLayer::Ground), 0x20);
@@ -2497,12 +2490,15 @@ mod tests {
         const UNRELATED_OWNERS: u16 = 2_048;
 
         let mut entity = gsi_04_05_unit(1, 1, 1);
-        entity.drive_locomotion.as_mut().unwrap().occupation_head_to =
+        entity.locomotor.as_mut().unwrap().publish_track_occupation(
+            TrackFamily::Drive,
             Some(DriveOccupationFootprint {
                 rx: 2,
                 ry: 1,
                 layer: MovementLayer::Ground,
-            });
+            }),
+            None,
+        );
         let mut entities = crate::sim::entity_store::EntityStore::new();
         entities.insert(entity.clone());
         let mut bits = CellOccupationGrid::rebuild(&entities, &OccupancyGrid::new());
@@ -2519,12 +2515,15 @@ mod tests {
         }
 
         entity.position.rx = 3;
-        entity.drive_locomotion.as_mut().unwrap().occupation_head_to =
+        entity.locomotor.as_mut().unwrap().publish_track_occupation(
+            TrackFamily::Drive,
             Some(DriveOccupationFootprint {
                 rx: 3,
                 ry: 1,
                 layer: MovementLayer::Ground,
-            });
+            }),
+            None,
+        );
         bits.reconcile_entity(&entity, &OccupancyGrid::new());
 
         assert_eq!(bits.vehicle_bits(1, 1, MovementLayer::Ground), 0);
@@ -2558,19 +2557,30 @@ mod tests {
         let mut bits = CellOccupationGrid::new();
         bits.mark_vehicle_on_layer(2, 2, 1, MovementLayer::Ground);
         bits.mark_vehicle_on_layer(3, 2, 1, MovementLayer::Ground);
-        let mut drive = DriveLocomotionRuntime {
-            occupation_head_to: Some(DriveOccupationFootprint {
+        let mut loco =
+            LocomotorState::for_test_kind(crate::rules::locomotor_type::LocomotorKind::Drive);
+        loco.ensure_installed_track_state();
+        loco.publish_track_occupation(
+            TrackFamily::Drive,
+            Some(DriveOccupationFootprint {
                 rx: 3,
                 ry: 2,
                 layer: MovementLayer::Ground,
             }),
-            ..Default::default()
-        };
+            None,
+        );
 
-        clear_drive_head_to_occupation_for_remove(&mut drive, &mut bits, 1);
+        clear_drive_head_to_occupation_for_remove(&mut loco, &mut bits, 1);
         bits.clear_vehicle_on_layer(2, 2, 1, MovementLayer::Ground);
 
-        assert_eq!(drive.occupation_head_to, None);
+        assert_eq!(
+            loco.selected_drive_runtime()
+                .unwrap()
+                .retained()
+                .unwrap()
+                .occupation_head_to(),
+            None
+        );
         assert_eq!(bits.vehicle_bits(2, 2, MovementLayer::Ground), 0);
         assert_eq!(bits.vehicle_bits(3, 2, MovementLayer::Ground), 0);
     }
@@ -2602,12 +2612,15 @@ mod tests {
     fn gsi_04_05_rebuild_restores_active_current_and_head_footprint() {
         let mut entities = crate::sim::entity_store::EntityStore::new();
         let mut unit = gsi_04_05_unit(1, 2, 2);
-        unit.drive_locomotion.as_mut().unwrap().occupation_head_to =
+        unit.locomotor.as_mut().unwrap().publish_track_occupation(
+            TrackFamily::Drive,
             Some(DriveOccupationFootprint {
                 rx: 3,
                 ry: 2,
                 layer: MovementLayer::Ground,
-            });
+            }),
+            None,
+        );
         entities.insert(unit);
 
         let bits = CellOccupationGrid::rebuild(&entities, &OccupancyGrid::new());

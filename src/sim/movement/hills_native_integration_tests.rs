@@ -726,12 +726,29 @@ fn hills_same_type_marker_downgrade_reaches_live_foot_search_and_cleanup() {
         assert!(crate::sim::movement::navcom::track_stop_moving(actor));
         assert!(actor.navigation.nav_com.is_none());
         assert_eq!(actor.foot_speed.applied_fraction(), SIM_ZERO);
-        let drive = actor.drive_locomotion.as_mut().unwrap();
-        assert!(drive.destination.is_none());
-        assert!(drive.head_to.is_none());
-        drive.destination = Some(drive_coord(0x34));
-        drive.head_to = Some(drive_coord(0x40));
-        assert_eq!(drive.destination, drive.head_to);
+        let drive = actor.locomotor.as_mut().unwrap();
+        assert!(
+            drive
+                .track_destination(crate::sim::movement::track_process::TrackFamily::Drive)
+                .is_none()
+        );
+        assert!(
+            drive
+                .track_head(crate::sim::movement::track_process::TrackFamily::Drive)
+                .is_none()
+        );
+        assert!(drive.store_track_destination(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            Some(drive_coord(0x34))
+        ));
+        assert!(drive.store_track_head(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            Some(drive_coord(0x40))
+        ));
+        assert_eq!(
+            drive.track_destination(crate::sim::movement::track_process::TrackFamily::Drive),
+            drive.track_head(crate::sim::movement::track_process::TrackFamily::Drive)
+        );
         assert_eq!(
             crate::sim::movement::motion_query::is_moving(actor),
             Some(true)

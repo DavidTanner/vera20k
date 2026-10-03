@@ -4,8 +4,9 @@
 
 use super::*;
 use crate::rules::{ini_parser::IniFile, locomotor_type::LocomotorKind};
-use crate::sim::components::{DriveCoord, DriveLocomotionRuntime};
+use crate::sim::components::DriveCoord;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::movement::DriveLocomotionRuntime;
 use crate::sim::movement::{drive_track, locomotor::LocomotorState};
 use crate::sim::snapshot::GameSnapshot;
 use crate::util::fixed_math::{SIM_ONE, SimFixed};
@@ -44,7 +45,13 @@ fn fixture(selector: i32) -> Simulation {
     entity.drive_accelerates = false;
     entity.is_voxel = false;
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    entity.drive_locomotion = Some(DriveLocomotionRuntime::default());
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(DriveLocomotionRuntime::default()))
+    );
     sim.substrate.entities.insert(entity);
     sim.substrate.next_stable_object_id = 2;
     assert!(matches!(
@@ -94,10 +101,12 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
                 .entities
                 .get(1)
                 .unwrap()
-                .drive_locomotion
+                .locomotor
                 .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
                 .unwrap()
-                .track;
+                .track();
             if track.turn_index < 0 {
                 break;
             }
@@ -150,7 +159,14 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
             assert!(stats.moved_steps <= 1, "Speed=1 cannot pay two points");
             if frame == 0 {
                 assert_eq!(
-                    entity.drive_locomotion.as_ref().unwrap().track.cursor,
+                    entity
+                        .locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_drive_runtime())
+                        .and_then(|r| r.retained())
+                        .unwrap()
+                        .track()
+                        .cursor,
                     before_cursor,
                     "first visit retains an unpaid cursor"
                 );
@@ -159,7 +175,14 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
         assert_eq!(observed, [true; 3], "selector={selector}");
         let entity = sim.substrate.entities.get(1).unwrap();
         assert_eq!(
-            entity.drive_locomotion.as_ref().unwrap().track.turn_index,
+            entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .unwrap()
+                .track()
+                .turn_index,
             -1
         );
         assert_eq!(
@@ -175,11 +198,28 @@ fn forced_object_turn_queries_live_speed_and_advances_shp_once() {
     let mut sim = fixture(0x43);
     tick(&mut sim, &rules(1), 0);
     let entity = sim.substrate.entities.get(1).unwrap();
-    let before = entity.drive_locomotion.as_ref().unwrap().track.cursor;
+    let before = entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap()
+        .track()
+        .cursor;
     let before_body = entity.body_frame_counter;
     let outcome = tick(&mut sim, &rules(6), 1);
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(entity.drive_locomotion.as_ref().unwrap().track.cursor > before + 1);
+    assert!(
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track()
+            .cursor
+            > before + 1
+    );
     assert!(outcome.moved_steps > 1);
     assert_eq!(entity.body_frame_counter, before_body + 1);
     assert!(entity.movement_target.is_none());

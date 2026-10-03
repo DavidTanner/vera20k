@@ -2,6 +2,7 @@
 //! movement commands, combat, bridge traversal, ship pathfinding, deploy/undeploy,
 //! and multi-system interactions.
 
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use std::collections::BTreeMap;
 
 #[path = "navigation_tests.rs"]
@@ -22,9 +23,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::bridge_state::{BridgeDamageEvent, BridgeRuntimeState};
 use crate::sim::combat::AttackTarget;
 use crate::sim::command::{Command, CommandEnvelope};
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, MovementTarget, ShipLocomotionRuntime,
-};
+use crate::sim::components::{DriveCoord, MovementTarget};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::FacingClass;
@@ -444,9 +443,16 @@ fn a_ship_wakes_every_eighth_frame_unless_it_is_underwater() {
             y: 128,
             z: 0,
         };
-        let runtime = ship.ship_locomotion.get_or_insert_with(Default::default);
-        runtime.destination = Some(ahead);
-        runtime.head_to = Some(ahead);
+        let runtime = ship.locomotor.as_mut().unwrap();
+        assert!(runtime.ensure_installed_track_state());
+        assert!(runtime.store_track_destination(
+            crate::sim::movement::track_process::TrackFamily::Ship,
+            Some(ahead)
+        ));
+        assert!(runtime.store_track_head(
+            crate::sim::movement::track_process::TrackFamily::Ship,
+            Some(ahead)
+        ));
         ship.foot_speed
             .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
     }
@@ -537,11 +543,16 @@ Rate=120
             y: 128,
             z: 0,
         };
-        let drive = boat
-            .drive_locomotion
-            .get_or_insert_with(crate::sim::components::DriveLocomotionRuntime::default);
-        drive.destination = Some(ahead);
-        drive.head_to = Some(ahead);
+        let drive = boat.locomotor.as_mut().unwrap();
+        assert!(drive.ensure_installed_track_state());
+        assert!(drive.store_track_destination(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            Some(ahead)
+        ));
+        assert!(drive.store_track_head(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            Some(ahead)
+        ));
         boat.foot_speed
             .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
     }
@@ -2435,7 +2446,13 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
             _ => unreachable!("fixture is Foot only"),
         }));
         if category == EntityCategory::Unit {
-            entity.drive_locomotion = Some(DriveLocomotionRuntime::default());
+            assert!(
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_drive_state_for_test(Some(DriveLocomotionRuntime::default()))
+            );
         } else {
             entity.navigation.nav_com = Some(crate::sim::components::NavTargetRef::building(2));
         }
@@ -6172,10 +6189,12 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
                 entity.locomotor.as_ref().map(|locomotor| locomotor.kind),
                 Some(LocomotorKind::Drive),
             );
-            let drive = entity
-                .drive_locomotion
-                .get_or_insert_with(DriveLocomotionRuntime::default);
-            drive.target_speed_fraction = SimFixed::lit("0.4");
+            let drive = entity.locomotor.as_mut().unwrap();
+            assert!(drive.ensure_installed_track_state());
+            assert!(drive.store_track_target_fraction(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                SimFixed::lit("0.4")
+            ));
             entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
         }
 
@@ -6196,8 +6215,13 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
                 .entities
                 .get(entity_id)
                 .expect("Drive vehicle remains live");
-            let drive = entity.drive_locomotion.as_ref().expect("drive state");
-            assert_eq!(drive.target_speed_fraction, SimFixed::lit("0.4"));
+            let drive = entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .expect("drive state");
+            assert_eq!(drive.target_speed_fraction(), SimFixed::lit("0.4"));
             assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
             let movement = entity
                 .movement_target
@@ -6213,13 +6237,18 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
             .entities
             .get(entity_id)
             .expect("Drive vehicle remains live");
-        let drive = entity.drive_locomotion.as_ref().expect("drive state");
+        let drive = entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .expect("drive state");
         let expected_current = if accelerates {
             SimFixed::lit("0.28")
         } else {
             SIM_ONE
         };
-        assert_eq!(drive.target_speed_fraction, SIM_ONE);
+        assert_eq!(drive.target_speed_fraction(), SIM_ONE);
         assert_eq!(entity.foot_speed.applied_fraction(), expected_current);
         let raw_stage = (movement_speed / SimFixed::from_num(15)).to_num::<i32>();
         let expected_owner = (SimFixed::from_num(raw_stage) * expected_current).to_num::<i32>();
@@ -6456,7 +6485,13 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
                 crate::rules::locomotor_type::LocomotorKind::Drive,
             ),
         );
-        entity.drive_locomotion = Some(Default::default());
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(Default::default()))
+        );
         entity.body_facing.snap(0x4000, 0);
     }
 
@@ -6501,19 +6536,23 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         .entities
         .get(1)
         .unwrap()
-        .drive_locomotion
+        .locomotor
         .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
         .unwrap()
-        .track;
+        .track();
     assert!(committed_track.turn_index >= 0);
     let committed_head = sim
         .substrate
         .entities
         .get(1)
         .unwrap()
-        .drive_locomotion
+        .locomotor
         .as_ref()
-        .and_then(|drive| drive.occupation_head_to)
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .and_then(|drive| drive.occupation_head_to())
         .expect("first Drive step has a committed occupation head");
     assert_eq!((committed_head.rx, committed_head.ry), (5, 4));
     assert_eq!(
@@ -6552,13 +6591,19 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         stopped_target.final_goal,
         Some((committed_head.rx, committed_head.ry))
     );
-    let drive = stopped.drive_locomotion.as_ref().unwrap();
+    let drive = stopped
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
     assert_eq!(
-        drive.track, committed_track,
+        drive.track(),
+        committed_track,
         "Stop preserves the active track"
     );
-    assert!(drive.head_to.is_some());
-    assert!(drive.occupation_head_to.is_some());
+    assert!(drive.head_to().is_some());
+    assert!(drive.occupation_head_to().is_some());
     assert!(sim.substrate.occupancy.contains_entity(4, 4, 1));
     assert!(
         !sim.substrate
@@ -6566,7 +6611,14 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
             .contains_entity(committed_head.rx, committed_head.ry, 1)
     );
 
-    let initial_point_index = stopped.drive_locomotion.as_ref().unwrap().track.cursor;
+    let initial_point_index = stopped
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap()
+        .track()
+        .cursor;
     let mut cursor_advanced = false;
     for _ in 0..32 {
         let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
@@ -6575,9 +6627,11 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
             .entities
             .get(1)
             .unwrap()
-            .drive_locomotion
+            .locomotor
             .as_ref()
-            .is_some_and(|drive| drive.track.cursor > initial_point_index);
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .is_some_and(|drive| drive.track().cursor > initial_point_index);
         if cursor_advanced {
             break;
         }
@@ -6620,10 +6674,15 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         (committed_head.rx, committed_head.ry)
     );
     assert!(entity.movement_target.is_none());
-    let drive = entity.drive_locomotion.as_ref().unwrap();
-    assert_eq!((drive.track.turn_index, drive.track.cursor), (-1, 0));
-    assert_eq!(drive.head_to, None);
-    assert_eq!(drive.occupation_head_to, None);
+    let drive = entity
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
+    assert_eq!((drive.track().turn_index, drive.track().cursor), (-1, 0));
+    assert_eq!(drive.head_to(), None);
+    assert_eq!(drive.occupation_head_to(), None);
     assert!(
         sim.substrate
             .occupancy
@@ -6662,9 +6721,14 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         "Stop must remain parked at the committed head after the old route is gone"
     );
     assert!(parked.movement_target.is_none());
-    let drive = parked.drive_locomotion.as_ref().unwrap();
-    assert_eq!(drive.head_to, None);
-    assert_eq!(drive.occupation_head_to, None);
+    let drive = parked
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
+    assert_eq!(drive.head_to(), None);
+    assert_eq!(drive.occupation_head_to(), None);
     assert!(!sim.substrate.occupancy.contains_entity(6, 4, 1));
     assert_eq!(
         sim.substrate
@@ -6701,7 +6765,13 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
     {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
-        entity.ship_locomotion = Some(ShipLocomotionRuntime::default());
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_ship_state_for_test(Some(ShipLocomotionRuntime::default()))
+        );
         entity.body_facing.snap(0x4000, 0);
     }
 
@@ -6741,13 +6811,23 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
         .expect("Ship Process must commit the first segment before Stop");
     let (committed_head, committed_track) = {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        let ship = entity.ship_locomotion.as_mut().expect("Ship runtime");
-        assert!(ship.track.turn_index >= 0);
-        ship.target_speed_fraction = SIM_ONE;
+        let ship = entity.locomotor.as_mut().unwrap();
+        assert!(
+            ship.track_progress(crate::sim::movement::track_process::TrackFamily::Ship)
+                .unwrap()
+                .turn_index
+                >= 0
+        );
+        assert!(ship.store_track_target_fraction(
+            crate::sim::movement::track_process::TrackFamily::Ship,
+            SIM_ONE
+        ));
         entity.foot_speed.set_speed_fraction(SIM_HALF);
         (
-            ship.head_to.expect("Ship curve has a committed head"),
-            ship.track,
+            ship.track_head(crate::sim::movement::track_process::TrackFamily::Ship)
+                .expect("Ship curve has a committed head"),
+            ship.track_progress(crate::sim::movement::track_process::TrackFamily::Ship)
+                .unwrap(),
         )
     };
     let committed_cell = (
@@ -6772,14 +6852,20 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
             .is_empty()
     );
     assert_eq!(target.final_goal, Some(committed_cell));
-    let ship = stopped.ship_locomotion.as_ref().expect("Ship runtime");
+    let ship = stopped
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_ship_runtime())
+        .and_then(|r| r.retained())
+        .expect("Ship runtime");
     assert_eq!(
-        ship.track, committed_track,
+        ship.track(),
+        committed_track,
         "Stop preserves the active track"
     );
-    assert_eq!(ship.destination, None);
-    assert_eq!(ship.head_to, Some(committed_head));
-    assert_eq!(ship.target_speed_fraction, SimFixed::lit("0.3"));
+    assert_eq!(ship.destination(), None);
+    assert_eq!(ship.head_to(), Some(committed_head));
+    assert_eq!(ship.target_speed_fraction(), SimFixed::lit("0.3"));
     assert_eq!(stopped.foot_speed.applied_fraction(), SIM_HALF);
 }
 
@@ -8812,7 +8898,11 @@ fn stacking_motion_state(sim: &Simulation, id: u64) -> String {
     format!(
         "{adapter} nav={:?} drive={:?} foot={:?} mission={:?} marked={} occupation={}",
         e.navigation.nav_com,
-        e.drive_locomotion,
+        e.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .cloned(),
         e.foot_speed,
         e.mission.current(),
         e.lifecycle.cell_marked,
@@ -9833,7 +9923,12 @@ fn stacking_reservation_state(sim: &Simulation, id: u64) -> String {
     let Some(e) = sim.substrate.entities.get(id) else {
         return format!("{id}:<gone>");
     };
-    let Some(d) = e.drive_locomotion.as_ref() else {
+    let Some(d) = e
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+    else {
         return format!("{id}:<no drive>");
     };
     format!(
@@ -9842,7 +9937,7 @@ fn stacking_reservation_state(sim: &Simulation, id: u64) -> String {
         e.position.ry,
         e.position.sub_x,
         e.position.sub_y,
-        d.occupation_head_to.map(|f| (f.rx, f.ry)),
+        d.occupation_head_to().map(|f| (f.rx, f.ry)),
         !e.foot_occupation_enabled,
     )
 }
@@ -9902,8 +9997,13 @@ fn repro_two_moving_vehicles_reservation_trace() {
                 sim.substrate
                     .entities
                     .get(id)
-                    .and_then(|e| e.drive_locomotion.as_ref())
-                    .and_then(|d| d.occupation_head_to)
+                    .and_then(|e| {
+                        e.locomotor
+                            .as_ref()
+                            .and_then(|l| l.selected_drive_runtime())
+                            .and_then(|r| r.retained())
+                    })
+                    .and_then(|d| d.occupation_head_to())
                     .map(|f| (f.rx, f.ry))
             })
             .collect();

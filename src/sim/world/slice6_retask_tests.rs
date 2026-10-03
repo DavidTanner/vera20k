@@ -287,7 +287,11 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 //class payload owns its fold. Restoring only that old0 tag recovers the prior
 //hash exactly, with all existing pose/gameplay and absolute RNG tripwires intact.
 // See tools/spatial_oracle/infantry_teleport_destination.md. Rust hash ratchet only.
-const SLICE6_BASELINE_HASH: u64 = 0x43BC_438F_280E_7D17;
+// Snapshot288: the complete Drive/Ship payload owns its retained Option fold.
+// Same-binary old-feed control recovers43BC438F280E7D17; all17 complete rows
+// match except state_hash, including all3 RNG states. Control removed.
+// Rust attribution: tools/spatial_oracle/drive_instance_replay/other/slice6/receipt.json.
+const SLICE6_BASELINE_HASH: u64 = 0xE28A_BFC8_CA12_3369;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -446,9 +450,14 @@ fn replay_hash_stable_through_slice6() {
                 (5, 14),
                 "Stop retains Attack's dispatch timer and counter"
             );
-            let drive = tank.drive_locomotion.as_ref().expect("Drive owner");
+            let drive = tank
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .expect("Drive owner");
             if tick == 10 {
-                stopped_head = drive.head_to;
+                stopped_head = drive.head_to();
                 assert!(
                     stopped_head.is_some(),
                     "Stop must exercise an already committed segment"
@@ -459,11 +468,11 @@ fn replay_hash_stable_through_slice6() {
                 "Stop clears owner NavCom"
             );
             assert!(
-                drive.destination.is_none(),
+                drive.destination().is_none(),
                 "Stop clears the class destination"
             );
             assert!(
-                drive.head_to.is_none() || drive.head_to == stopped_head,
+                drive.head_to().is_none() || drive.head_to() == stopped_head,
                 "Stop must not select a new head from abandoned orders"
             );
             // The Unit setter's one-word PathHead clear (Path[0] = -1,

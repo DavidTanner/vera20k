@@ -158,10 +158,16 @@ fn unit_checks_active_locomotor_and_body_rotation_not_stashed_slot_or_turret() {
     assert!(crate::sim::movement::locomotor_owner::begin_drive_for_teleporter(&mut actor, 100));
     actor.turret_rotation_latch = true;
     actor.navigation.nav_com = Some(NavTargetRef::cell(8, 8));
-    actor.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
-        head_to: Some(DriveCoord::cell(6, 5, 0)),
-        ..Default::default()
-    });
+    assert!(
+        actor
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                crate::sim::movement::DriveLocomotionRuntime::default()
+                    .with_head_to_for_test(Some(DriveCoord::cell(6, 5, 0)))
+            ))
+    );
     assert!(
         unit_scatter_admitted(&actor, flags, &rules, 100),
         "no moving or turret gate, and no-kidding passes the NavCom"
@@ -199,11 +205,17 @@ fn unit_receiver_does_not_read_its_own_motion() {
     actor
         .foot_speed
         .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
-    actor.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
-        destination: Some(head),
-        head_to: Some(head),
-        ..Default::default()
-    });
+    assert!(
+        actor
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                crate::sim::movement::DriveLocomotionRuntime::default()
+                    .with_destination_for_test(Some(head))
+                    .with_head_to_for_test(Some(head))
+            ))
+    );
     assert_eq!(super::super::motion_query::is_moving(&actor), Some(true));
     assert!(unit_scatter_admitted(
         &actor,

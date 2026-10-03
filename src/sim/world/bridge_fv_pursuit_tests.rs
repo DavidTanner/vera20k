@@ -124,17 +124,19 @@ fn paid_snapshot(
     let position = crate::sim::movement::ground_pose::position_world_coord(&actor.position);
     let dispatch = actor.mission.dispatch_timer();
     // Constructor storage is lazy until the first Drive Process.
-    let constructor_drive = crate::sim::components::DriveLocomotionRuntime::default();
+    let constructor_drive = crate::sim::movement::DriveLocomotionRuntime::default();
     let drive = actor
-        .drive_locomotion
+        .locomotor
         .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
         .unwrap_or(&constructor_drive);
     let path = &actor.navigation.path_runtime;
     let track_state = json!({
         "movement_timer":[path.movement_timer.start_frame(), path.movement_timer.duration()],
         "blocked_timer":[path.blocked_timer.start_frame(), path.blocked_timer.duration()],
-        "residual":drive.track.residual,
-        "target_speed_fixed_bits":drive.target_speed_fraction.to_bits(),
+        "residual":drive.track().residual,
+        "target_speed_fixed_bits":drive.target_speed_fraction().to_bits(),
     });
     let cell = sim.resolved_terrain.as_ref().unwrap().cell(87, 54).unwrap();
     let bullets: Vec<_> = sim
@@ -178,8 +180,8 @@ fn paid_snapshot(
             "dispatch":[dispatch.start_frame(),dispatch.delay()],
             "rearm":[actor.rearm_timer.start_frame(),actor.rearm_timer.duration()]},
         "nav_cell":nav(actor.navigation.nav_com),
-        "drive_destination":coordinate(actor.drive_locomotion.as_ref().and_then(|d| d.destination)),
-        "drive_head":coordinate(actor.drive_locomotion.as_ref().and_then(|d| d.head_to)),
+        "drive_destination":coordinate(actor.locomotor.as_ref().and_then(|l| l.selected_drive_runtime()).and_then(|r| r.retained()).and_then(|d| d.destination())),
+        "drive_head":coordinate(actor.locomotor.as_ref().and_then(|l| l.selected_drive_runtime()).and_then(|r| r.retained()).and_then(|d| d.head_to())),
         "track_state":track_state,
         "target_present":actor.attack_target.is_some(),
         "live_bullet_positions":bullets.iter().map(|b|b["position"].clone()).collect::<Vec<_>>(),
@@ -582,12 +584,26 @@ fn retail_fv_approach_matches_native_candidates_admission_and_queue() {
                 "{group}/{name} destination"
             );
             assert_eq!(
-                coordinate(actor.drive_locomotion.as_ref().and_then(|d| d.destination)),
+                coordinate(
+                    actor
+                        .locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_drive_runtime())
+                        .and_then(|r| r.retained())
+                        .and_then(|d| d.destination())
+                ),
                 row["drive_destination"],
                 "{name} Drive destination"
             );
             assert_eq!(
-                coordinate(actor.drive_locomotion.as_ref().and_then(|d| d.head_to)),
+                coordinate(
+                    actor
+                        .locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_drive_runtime())
+                        .and_then(|r| r.retained())
+                        .and_then(|d| d.head_to())
+                ),
                 row["drive_head"],
                 "{name} paid head"
             );

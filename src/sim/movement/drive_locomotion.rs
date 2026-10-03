@@ -2,14 +2,810 @@
 //!
 //! This module owns Drive-specific state updates that should not leak into the
 //! generic `MovementTarget` path. Detailed DriveTrack consumption remains in
-//! `track_host`; this file holds the Drive/Ship speed prefix.
+//! `track_host`; this file owns private per-instance storage and the Drive/Ship
+//! speed prefix. Storage operations do not duplicate native movement ports.
 
+use super::locomotion::piggyback::LocomotorRuntimePayload;
+use super::locomotor::LocomotorState;
+use super::slope_transition::SlopeTransitionState;
+use super::track_process::TrackFamily;
+use crate::rules::locomotor_type::LocomotorKind;
 #[cfg(test)]
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, FootSpeedState, ShipLocomotionRuntime,
-};
+use crate::sim::components::FootSpeedState;
+use crate::sim::components::{DriveCoord, DriveOccupationFootprint, TrackProgress};
 use crate::sim::game_entity::GameEntity;
-use crate::util::fixed_math::SimFixed;
+use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+
+/// ShipLocomotion-owned destination, committed head, and target speed state.
+///
+/// Ships share the ordinary TurnTrack/RawTrack curves and target fraction
+/// with Drive; tube and forced-track operations remain Drive-specific.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ShipLocomotionRuntime {
+    #[serde(default)]
+    destination: Option<DriveCoord>,
+    #[serde(default)]
+    head_to: Option<DriveCoord>,
+    #[serde(default)]
+    track: TrackProgress,
+    /// Ship+63, independent of head XYZ; admission6A05FC reads this byte.
+    #[serde(default)]
+    track_valid: bool,
+    /// Native class+62: last eligible Process observation of body rotation.
+    /// Do_Turn and track-point facing updates do not write this latch.
+    #[serde(default)]
+    turn_latched: bool,
+    #[serde(default)]
+    target_speed_fraction: SimFixed,
+    #[serde(default)]
+    occupation_head_to: Option<DriveOccupationFootprint>,
+    #[serde(default)]
+    occupation_handoff: Option<DriveOccupationFootprint>,
+}
+
+/// DriveLocomotion-owned destination/head-to state.
+///
+/// Native can clear destination,
+/// head-to, and active track state at different points in the lifecycle.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct DriveLocomotionRuntime {
+    #[serde(default)]
+    destination: Option<DriveCoord>,
+    #[serde(default)]
+    head_to: Option<DriveCoord>,
+    #[serde(default)]
+    track: TrackProgress,
+    /// Drive+65, seeded true at constructor4AF5BB. Native4B4BE0/4B4BF0
+    /// disable/enable END while Foot Find_Path removes a Team membership.
+    #[serde(default = "drive_end_permitted_default")]
+    end_permitted: bool,
+    #[serde(default)]
+    track_valid: bool,
+    /// Native class+62: last eligible Process observation of body rotation.
+    /// Do_Turn and track-point facing updates do not write this latch.
+    #[serde(default)]
+    turn_latched: bool,
+    #[serde(default)]
+    target_speed_fraction: SimFixed,
+    /// Head-to vehicle-occupation mark, independent from CellClass object-list
+    /// membership. Ordinary flat Drive installs one mark for its accepted next
+    /// cell before any paid track point is consumed.
+    #[serde(default)]
+    occupation_head_to: Option<DriveOccupationFootprint>,
+    /// Forward RawTrack handoff mark. A turning curve comes to rest on its head
+    /// cell but *passes through* an intermediate one, and the original claims
+    /// both: `Apply_Track_Occupation_Mode` applies the same mode to the track's
+    /// `+0x0C` handoff point — transformed around the stored head — before it
+    /// applies it to the supplied head coordinate. Without this the cell a
+    /// turning mover is about to drive through looks free to every other mover.
+    #[serde(default)]
+    occupation_handoff: Option<DriveOccupationFootprint>,
+}
+
+fn drive_end_permitted_default() -> bool {
+    true
+}
+
+impl Default for DriveLocomotionRuntime {
+    fn default() -> Self {
+        Self {
+            destination: None,
+            head_to: None,
+            track: TrackProgress::default(),
+            end_permitted: true,
+            track_valid: false,
+            turn_latched: false,
+            target_speed_fraction: SIM_ZERO,
+            occupation_head_to: None,
+            occupation_handoff: None,
+        }
+    }
+}
+
+impl DriveLocomotionRuntime {
+    #[cfg(test)]
+    pub(crate) fn destination(&self) -> Option<DriveCoord> {
+        self.destination
+    }
+    #[cfg(test)]
+    pub(crate) fn head_to(&self) -> Option<DriveCoord> {
+        self.head_to
+    }
+    #[cfg(test)]
+    pub(crate) fn track(&self) -> TrackProgress {
+        self.track
+    }
+    #[cfg(test)]
+    pub(crate) fn track_valid(&self) -> bool {
+        self.track_valid
+    }
+    #[cfg(test)]
+    pub(crate) fn turn_latched(&self) -> bool {
+        self.turn_latched
+    }
+    #[cfg(test)]
+    pub(crate) fn target_speed_fraction(&self) -> SimFixed {
+        self.target_speed_fraction
+    }
+    #[cfg(test)]
+    pub(crate) fn occupation_head_to(&self) -> Option<DriveOccupationFootprint> {
+        self.occupation_head_to
+    }
+    #[cfg(test)]
+    pub(crate) fn occupation_handoff(&self) -> Option<DriveOccupationFootprint> {
+        self.occupation_handoff
+    }
+    pub(crate) fn end_permitted(&self) -> bool {
+        self.end_permitted
+    }
+    #[cfg(test)]
+    pub(crate) fn with_destination_for_test(mut self, value: Option<DriveCoord>) -> Self {
+        self.destination = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_head_to_for_test(mut self, value: Option<DriveCoord>) -> Self {
+        self.head_to = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_track_for_test(mut self, value: TrackProgress) -> Self {
+        self.track = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_track_valid_for_test(mut self, value: bool) -> Self {
+        self.track_valid = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_turn_latched_for_test(mut self, value: bool) -> Self {
+        self.turn_latched = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_target_speed_fraction_for_test(mut self, value: SimFixed) -> Self {
+        self.target_speed_fraction = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_occupation_head_to_for_test(
+        mut self,
+        value: Option<DriveOccupationFootprint>,
+    ) -> Self {
+        self.occupation_head_to = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_occupation_handoff_for_test(
+        mut self,
+        value: Option<DriveOccupationFootprint>,
+    ) -> Self {
+        self.occupation_handoff = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_end_permitted_for_test(mut self, value: bool) -> Self {
+        self.end_permitted = value;
+        self
+    }
+}
+
+impl ShipLocomotionRuntime {
+    #[cfg(test)]
+    pub(crate) fn destination(&self) -> Option<DriveCoord> {
+        self.destination
+    }
+    #[cfg(test)]
+    pub(crate) fn head_to(&self) -> Option<DriveCoord> {
+        self.head_to
+    }
+    #[cfg(test)]
+    pub(crate) fn track(&self) -> TrackProgress {
+        self.track
+    }
+    #[cfg(test)]
+    pub(crate) fn track_valid(&self) -> bool {
+        self.track_valid
+    }
+    #[cfg(test)]
+    pub(crate) fn turn_latched(&self) -> bool {
+        self.turn_latched
+    }
+    #[cfg(test)]
+    pub(crate) fn target_speed_fraction(&self) -> SimFixed {
+        self.target_speed_fraction
+    }
+    #[cfg(test)]
+    pub(crate) fn occupation_head_to(&self) -> Option<DriveOccupationFootprint> {
+        self.occupation_head_to
+    }
+    #[cfg(test)]
+    pub(crate) fn occupation_handoff(&self) -> Option<DriveOccupationFootprint> {
+        self.occupation_handoff
+    }
+    #[cfg(test)]
+    pub(crate) fn with_destination_for_test(mut self, value: Option<DriveCoord>) -> Self {
+        self.destination = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_head_to_for_test(mut self, value: Option<DriveCoord>) -> Self {
+        self.head_to = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_track_for_test(mut self, value: TrackProgress) -> Self {
+        self.track = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_track_valid_for_test(mut self, value: bool) -> Self {
+        self.track_valid = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_target_speed_fraction_for_test(mut self, value: SimFixed) -> Self {
+        self.target_speed_fraction = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_occupation_head_to_for_test(
+        mut self,
+        value: Option<DriveOccupationFootprint>,
+    ) -> Self {
+        self.occupation_head_to = value;
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_occupation_handoff_for_test(
+        mut self,
+        value: Option<DriveOccupationFootprint>,
+    ) -> Self {
+        self.occupation_handoff = value;
+        self
+    }
+}
+
+/// Complete Drive4AF540 class payload (tools/spatial_oracle/cmin_dock).
+/// Absence preserves the existing lazy adapter;
+/// constructing or suspending a locomotor does not materialize retained state.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DriveRuntime {
+    slope: SlopeTransitionState,
+    retained: Option<DriveLocomotionRuntime>,
+}
+
+impl DriveRuntime {
+    pub(super) fn at_binary_frame(frame: u32) -> Self {
+        Self {
+            slope: SlopeTransitionState::at_binary_frame(frame),
+            retained: None,
+        }
+    }
+
+    pub(crate) fn slope(&self) -> &SlopeTransitionState {
+        &self.slope
+    }
+    pub(super) fn slope_mut(&mut self) -> &mut SlopeTransitionState {
+        &mut self.slope
+    }
+    pub(crate) fn retained(&self) -> Option<&DriveLocomotionRuntime> {
+        self.retained.as_ref()
+    }
+}
+
+/// Complete Ship69EC50 class payload (tools/spatial_oracle/foot_bridge_layer).
+/// Absence preserves the existing lazy adapter;
+/// constructing or suspending a locomotor does not materialize retained state.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ShipRuntime {
+    slope: SlopeTransitionState,
+    retained: Option<ShipLocomotionRuntime>,
+}
+
+impl ShipRuntime {
+    pub(super) fn at_binary_frame(frame: u32) -> Self {
+        Self {
+            slope: SlopeTransitionState::at_binary_frame(frame),
+            retained: None,
+        }
+    }
+
+    pub(crate) fn slope(&self) -> &SlopeTransitionState {
+        &self.slope
+    }
+    pub(super) fn slope_mut(&mut self) -> &mut SlopeTransitionState {
+        &mut self.slope
+    }
+    pub(crate) fn retained(&self) -> Option<&ShipLocomotionRuntime> {
+        self.retained.as_ref()
+    }
+}
+
+/// Both reads and conditional writes choose the same complete class object.
+/// A matching installed class with absent retained state masks older stashes.
+#[derive(Clone, Copy)]
+enum TrackStorageSelection {
+    Installed,
+    Stashed,
+    Absent,
+}
+
+enum TrackRuntimeRef<'a> {
+    Drive(&'a DriveRuntime),
+    Ship(&'a ShipRuntime),
+}
+enum TrackRetainedRef<'a> {
+    Drive(&'a DriveLocomotionRuntime),
+    Ship(&'a ShipLocomotionRuntime),
+}
+enum TrackRetainedMut<'a> {
+    Drive(&'a mut DriveLocomotionRuntime),
+    Ship(&'a mut ShipLocomotionRuntime),
+}
+
+/// Typed private-storage forwarding through the existing boxed-stash owner.
+/// These operations neither allocate nor implement Move/Stop/Process decisions.
+pub(super) enum TrackStateMutation {
+    Destination(Option<DriveCoord>),
+    Head(Option<DriveCoord>),
+    Progress(TrackProgress),
+    Valid(bool),
+    TurnLatched(bool),
+    TargetFraction(SimFixed),
+    Occupation {
+        head: Option<DriveOccupationFootprint>,
+        handoff: Option<DriveOccupationFootprint>,
+    },
+}
+
+impl TrackRetainedRef<'_> {
+    fn destination(&self) -> Option<DriveCoord> {
+        match self {
+            Self::Drive(state) => state.destination,
+            Self::Ship(state) => state.destination,
+        }
+    }
+    fn head_to(&self) -> Option<DriveCoord> {
+        match self {
+            Self::Drive(state) => state.head_to,
+            Self::Ship(state) => state.head_to,
+        }
+    }
+    fn track(&self) -> TrackProgress {
+        match self {
+            Self::Drive(state) => state.track,
+            Self::Ship(state) => state.track,
+        }
+    }
+    fn track_valid(&self) -> bool {
+        match self {
+            Self::Drive(state) => state.track_valid,
+            Self::Ship(state) => state.track_valid,
+        }
+    }
+    fn turn_latched(&self) -> bool {
+        match self {
+            Self::Drive(state) => state.turn_latched,
+            Self::Ship(state) => state.turn_latched,
+        }
+    }
+    fn target_speed_fraction(&self) -> SimFixed {
+        match self {
+            Self::Drive(state) => state.target_speed_fraction,
+            Self::Ship(state) => state.target_speed_fraction,
+        }
+    }
+    fn occupation_head_to(&self) -> Option<DriveOccupationFootprint> {
+        match self {
+            Self::Drive(state) => state.occupation_head_to,
+            Self::Ship(state) => state.occupation_head_to,
+        }
+    }
+    fn occupation_handoff(&self) -> Option<DriveOccupationFootprint> {
+        match self {
+            Self::Drive(state) => state.occupation_handoff,
+            Self::Ship(state) => state.occupation_handoff,
+        }
+    }
+}
+
+impl TrackRetainedMut<'_> {
+    fn apply(self, mutation: TrackStateMutation) {
+        match mutation {
+            TrackStateMutation::Destination(value) => match self {
+                Self::Drive(state) => state.destination = value,
+                Self::Ship(state) => state.destination = value,
+            },
+            TrackStateMutation::Head(value) => match self {
+                Self::Drive(state) => state.head_to = value,
+                Self::Ship(state) => state.head_to = value,
+            },
+            TrackStateMutation::Progress(value) => match self {
+                Self::Drive(state) => state.track = value,
+                Self::Ship(state) => state.track = value,
+            },
+            TrackStateMutation::Valid(value) => match self {
+                Self::Drive(state) => state.track_valid = value,
+                Self::Ship(state) => state.track_valid = value,
+            },
+            TrackStateMutation::TurnLatched(value) => match self {
+                Self::Drive(state) => state.turn_latched = value,
+                Self::Ship(state) => state.turn_latched = value,
+            },
+            TrackStateMutation::TargetFraction(value) => match self {
+                Self::Drive(state) => state.target_speed_fraction = value,
+                Self::Ship(state) => state.target_speed_fraction = value,
+            },
+            TrackStateMutation::Occupation { head, handoff } => match self {
+                Self::Drive(state) => {
+                    state.occupation_head_to = head;
+                    state.occupation_handoff = handoff;
+                }
+                Self::Ship(state) => {
+                    state.occupation_head_to = head;
+                    state.occupation_handoff = handoff;
+                }
+            },
+        }
+    }
+
+    fn take_occupation(self) -> [Option<DriveOccupationFootprint>; 2] {
+        match self {
+            Self::Drive(state) => [
+                state.occupation_handoff.take(),
+                state.occupation_head_to.take(),
+            ],
+            Self::Ship(state) => [
+                state.occupation_handoff.take(),
+                state.occupation_head_to.take(),
+            ],
+        }
+    }
+
+    fn forget_occupation(self, mark: DriveOccupationFootprint) {
+        match self {
+            Self::Drive(state) => {
+                if state.occupation_handoff == Some(mark) {
+                    state.occupation_handoff = None;
+                }
+                if state.occupation_head_to == Some(mark) {
+                    state.occupation_head_to = None;
+                }
+            }
+            Self::Ship(state) => {
+                if state.occupation_handoff == Some(mark) {
+                    state.occupation_handoff = None;
+                }
+                if state.occupation_head_to == Some(mark) {
+                    state.occupation_head_to = None;
+                }
+            }
+        }
+    }
+}
+
+impl LocomotorState {
+    fn track_storage_selection(&self, family: TrackFamily) -> TrackStorageSelection {
+        let kind = match family {
+            TrackFamily::Drive => LocomotorKind::Drive,
+            TrackFamily::Ship => LocomotorKind::Ship,
+        };
+        if self.kind == kind {
+            match (family, &self.runtime_payload) {
+                (TrackFamily::Drive, LocomotorRuntimePayload::Drive(_))
+                | (TrackFamily::Ship, LocomotorRuntimePayload::Ship(_)) => {
+                    TrackStorageSelection::Installed
+                }
+                _ => TrackStorageSelection::Absent,
+            }
+        } else if self.piggyback.is_some() {
+            TrackStorageSelection::Stashed
+        } else {
+            TrackStorageSelection::Absent
+        }
+    }
+
+    fn selected_track_runtime(&self, family: TrackFamily) -> Option<TrackRuntimeRef<'_>> {
+        match self.track_storage_selection(family) {
+            TrackStorageSelection::Installed => match &self.runtime_payload {
+                LocomotorRuntimePayload::Drive(state) => Some(TrackRuntimeRef::Drive(state)),
+                LocomotorRuntimePayload::Ship(state) => Some(TrackRuntimeRef::Ship(state)),
+                _ => None,
+            },
+            TrackStorageSelection::Stashed => {
+                self.piggyback.as_ref()?.selected_track_runtime(family)
+            }
+            TrackStorageSelection::Absent => None,
+        }
+    }
+
+    fn selected_track_retained(&self, family: TrackFamily) -> Option<TrackRetainedRef<'_>> {
+        match self.selected_track_runtime(family)? {
+            TrackRuntimeRef::Drive(state) => state.retained.as_ref().map(TrackRetainedRef::Drive),
+            TrackRuntimeRef::Ship(state) => state.retained.as_ref().map(TrackRetainedRef::Ship),
+        }
+    }
+
+    fn installed_track_retained_mut(&mut self) -> Option<TrackRetainedMut<'_>> {
+        match (self.kind, &mut self.runtime_payload) {
+            (LocomotorKind::Drive, LocomotorRuntimePayload::Drive(state)) => {
+                state.retained.as_mut().map(TrackRetainedMut::Drive)
+            }
+            (LocomotorKind::Ship, LocomotorRuntimePayload::Ship(state)) => {
+                state.retained.as_mut().map(TrackRetainedMut::Ship)
+            }
+            _ => None,
+        }
+    }
+
+    /// Selected immutable class view; this never dispatches suspended Process.
+    #[cfg(test)]
+    pub(crate) fn selected_drive_runtime(&self) -> Option<&DriveRuntime> {
+        match self.selected_track_runtime(TrackFamily::Drive)? {
+            TrackRuntimeRef::Drive(state) => Some(state),
+            _ => None,
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn selected_ship_runtime(&self) -> Option<&ShipRuntime> {
+        match self.selected_track_runtime(TrackFamily::Ship)? {
+            TrackRuntimeRef::Ship(state) => Some(state),
+            _ => None,
+        }
+    }
+
+    /// Only existing lazy allocation sites may call this. Stashes are never
+    /// selected, reset or materialized by an installed-instance initializer.
+    pub(crate) fn ensure_installed_track_state(&mut self) -> bool {
+        match (self.kind, &mut self.runtime_payload) {
+            (LocomotorKind::Drive, LocomotorRuntimePayload::Drive(state)) => {
+                state.retained.get_or_insert_with(Default::default);
+                true
+            }
+            (LocomotorKind::Ship, LocomotorRuntimePayload::Ship(state)) => {
+                state.retained.get_or_insert_with(Default::default);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn has_track_state(&self, family: TrackFamily) -> bool {
+        self.selected_track_retained(family).is_some()
+    }
+    pub(crate) fn track_destination(&self, family: TrackFamily) -> Option<DriveCoord> {
+        self.selected_track_retained(family)
+            .and_then(|state| state.destination())
+    }
+    pub(crate) fn track_head(&self, family: TrackFamily) -> Option<DriveCoord> {
+        self.selected_track_retained(family)
+            .and_then(|state| state.head_to())
+    }
+    pub(crate) fn track_progress(&self, family: TrackFamily) -> Option<TrackProgress> {
+        self.selected_track_retained(family)
+            .map(|state| state.track())
+    }
+    pub(crate) fn track_valid(&self, family: TrackFamily) -> Option<bool> {
+        self.selected_track_retained(family)
+            .map(|state| state.track_valid())
+    }
+    pub(crate) fn track_turn_latched(&self, family: TrackFamily) -> Option<bool> {
+        self.selected_track_retained(family)
+            .map(|state| state.turn_latched())
+    }
+    pub(crate) fn track_target_fraction(&self, family: TrackFamily) -> Option<SimFixed> {
+        self.selected_track_retained(family)
+            .map(|state| state.target_speed_fraction())
+    }
+
+    /// Constructor permission for an absent installed Drive remains true.
+    pub(crate) fn drive_end_permitted(&self) -> bool {
+        match (self.kind, &self.runtime_payload) {
+            (LocomotorKind::Drive, LocomotorRuntimePayload::Drive(state)) => state
+                .retained
+                .as_ref()
+                .is_none_or(|state| state.end_permitted()),
+            _ => true,
+        }
+    }
+
+    pub(super) fn apply_track_state_mutation(
+        &mut self,
+        family: TrackFamily,
+        mutation: TrackStateMutation,
+    ) -> bool {
+        match self.track_storage_selection(family) {
+            TrackStorageSelection::Installed => {
+                let Some(state) = self.installed_track_retained_mut() else {
+                    return false;
+                };
+                state.apply(mutation);
+                true
+            }
+            TrackStorageSelection::Stashed => self
+                .piggyback
+                .as_mut()
+                .unwrap()
+                .apply_track_state_mutation(family, mutation),
+            TrackStorageSelection::Absent => false,
+        }
+    }
+    pub(crate) fn store_track_destination(
+        &mut self,
+        family: TrackFamily,
+        value: Option<DriveCoord>,
+    ) -> bool {
+        self.apply_track_state_mutation(family, TrackStateMutation::Destination(value))
+    }
+    pub(crate) fn store_track_head(
+        &mut self,
+        family: TrackFamily,
+        value: Option<DriveCoord>,
+    ) -> bool {
+        self.apply_track_state_mutation(family, TrackStateMutation::Head(value))
+    }
+    pub(crate) fn store_track_progress(
+        &mut self,
+        family: TrackFamily,
+        value: TrackProgress,
+    ) -> bool {
+        self.apply_track_state_mutation(family, TrackStateMutation::Progress(value))
+    }
+    pub(crate) fn store_track_valid(&mut self, family: TrackFamily, value: bool) -> bool {
+        self.apply_track_state_mutation(family, TrackStateMutation::Valid(value))
+    }
+    pub(crate) fn store_track_turn_latched(&mut self, family: TrackFamily, value: bool) -> bool {
+        self.apply_track_state_mutation(family, TrackStateMutation::TurnLatched(value))
+    }
+    pub(crate) fn store_track_target_fraction(
+        &mut self,
+        family: TrackFamily,
+        value: SimFixed,
+    ) -> bool {
+        self.apply_track_state_mutation(family, TrackStateMutation::TargetFraction(value))
+    }
+
+    pub(crate) fn store_drive_end_permission(&mut self, value: bool) -> bool {
+        match (self.kind, &mut self.runtime_payload) {
+            (LocomotorKind::Drive, LocomotorRuntimePayload::Drive(state)) => {
+                let Some(state) = state.retained.as_mut() else {
+                    return false;
+                };
+                state.end_permitted = value;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn publish_track_occupation(
+        &mut self,
+        family: TrackFamily,
+        head: Option<DriveOccupationFootprint>,
+        handoff: Option<DriveOccupationFootprint>,
+    ) -> bool {
+        self.apply_track_state_mutation(family, TrackStateMutation::Occupation { head, handoff })
+    }
+
+    /// Clear only the selected projections, in native handoff-before-head order.
+    pub(crate) fn take_track_occupation(
+        &mut self,
+        family: TrackFamily,
+    ) -> Option<[Option<DriveOccupationFootprint>; 2]> {
+        match self.track_storage_selection(family) {
+            TrackStorageSelection::Installed => self
+                .installed_track_retained_mut()
+                .map(TrackRetainedMut::take_occupation),
+            TrackStorageSelection::Stashed => {
+                self.piggyback.as_mut()?.take_track_occupation(family)
+            }
+            TrackStorageSelection::Absent => None,
+        }
+    }
+
+    pub(crate) fn forget_track_occupation(&mut self, mark: DriveOccupationFootprint) {
+        if let Some(state) = self.installed_track_retained_mut() {
+            state.forget_occupation(mark);
+        }
+        if let Some(stashed) = self.piggyback.as_mut() {
+            stashed.forget_track_occupation(mark);
+        }
+    }
+
+    pub(crate) fn clear_track_occupation_projections(&mut self) {
+        if let Some(state) = self.installed_track_retained_mut() {
+            state.take_occupation();
+        }
+        if let Some(stashed) = self.piggyback.as_mut() {
+            stashed.clear_track_occupation_projections();
+        }
+    }
+
+    fn visit_family_occupation(
+        &self,
+        family: TrackFamily,
+        visitor: &mut impl FnMut(DriveOccupationFootprint),
+    ) {
+        if matches!(
+            self.track_storage_selection(family),
+            TrackStorageSelection::Installed
+        ) {
+            let state = match &self.runtime_payload {
+                LocomotorRuntimePayload::Drive(state) => {
+                    state.retained.as_ref().map(TrackRetainedRef::Drive)
+                }
+                LocomotorRuntimePayload::Ship(state) => {
+                    state.retained.as_ref().map(TrackRetainedRef::Ship)
+                }
+                _ => None,
+            };
+            if let Some(state) = state {
+                if let Some(mark) = state.occupation_handoff() {
+                    visitor(mark);
+                }
+                if let Some(mark) = state.occupation_head_to() {
+                    visitor(mark);
+                }
+            }
+        }
+        if let Some(stashed) = self.piggyback.as_ref() {
+            stashed.visit_family_occupation(family, visitor);
+        }
+    }
+
+    /// Saved projections are observed without processing the suspended class.
+    /// Drive handoff/head precede Ship handoff/head; traversal allocates nothing.
+    pub(crate) fn visit_track_occupation(&self, mut visitor: impl FnMut(DriveOccupationFootprint)) {
+        self.visit_family_occupation(TrackFamily::Drive, &mut visitor);
+        self.visit_family_occupation(TrackFamily::Ship, &mut visitor);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn install_drive_state_for_test(
+        &mut self,
+        retained: Option<DriveLocomotionRuntime>,
+    ) -> bool {
+        match self.track_storage_selection(TrackFamily::Drive) {
+            TrackStorageSelection::Installed => match &mut self.runtime_payload {
+                LocomotorRuntimePayload::Drive(state) => {
+                    state.retained = retained;
+                    true
+                }
+                _ => false,
+            },
+            TrackStorageSelection::Stashed => self
+                .piggyback
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(retained),
+            TrackStorageSelection::Absent => false,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn install_ship_state_for_test(
+        &mut self,
+        retained: Option<ShipLocomotionRuntime>,
+    ) -> bool {
+        match self.track_storage_selection(TrackFamily::Ship) {
+            TrackStorageSelection::Installed => match &mut self.runtime_payload {
+                LocomotorRuntimePayload::Ship(state) => {
+                    state.retained = retained;
+                    true
+                }
+                _ => false,
+            },
+            TrackStorageSelection::Stashed => self
+                .piggyback
+                .as_mut()
+                .unwrap()
+                .install_ship_state_for_test(retained),
+            TrackStorageSelection::Absent => false,
+        }
+    }
+}
 
 // Drive qwords 0x7E6240/0x7E6248/0x7E6250 (Ship 0x7F1308/0x7F1310/0x7F1318):
 // the 0.3 brake floor, the 0.1 sinking floor and the 0.0015 sinking brake,
@@ -131,6 +927,100 @@ mod tests {
     use crate::sim::movement::foot_speed::owner_current_speed_from_fraction;
     use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SIM_ZERO};
 
+    #[test]
+    fn complete_track_payload_survives_suspension_serialization_and_end() {
+        use super::super::locomotion::piggyback::{self, BeginOutcome};
+        use super::super::locomotor::MovementLayer;
+
+        for (family, kind) in [
+            (TrackFamily::Drive, LocomotorKind::Drive),
+            (TrackFamily::Ship, LocomotorKind::Ship),
+        ] {
+            let mut state = LocomotorState::for_test_kind(kind);
+            assert!(!state.has_track_state(family));
+            assert!(!state.store_track_valid(family, true));
+            assert!(state.ensure_installed_track_state());
+            state.active_slope_transition_mut().unwrap().snap(2, 100);
+            state
+                .active_slope_transition_mut()
+                .unwrap()
+                .sample_process_entry(5, 200);
+            let destination = Some(DriveCoord::cell(9, 8, 416));
+            let head = Some(DriveCoord::cell(8, 8, 416));
+            let progress = TrackProgress {
+                turn_index: 3,
+                cursor: 7,
+                reversed: true,
+                residual: -11,
+            };
+            let mark = DriveOccupationFootprint {
+                rx: 8,
+                ry: 8,
+                layer: MovementLayer::Bridge,
+            };
+            assert!(state.store_track_destination(family, destination));
+            assert!(state.store_track_head(family, head));
+            assert!(state.store_track_progress(family, progress));
+            assert!(state.store_track_valid(family, true));
+            assert!(state.store_track_turn_latched(family, true));
+            assert!(state.store_track_target_fraction(family, SimFixed::lit("1.2")));
+            assert!(state.publish_track_occupation(family, Some(mark), None));
+            if family == TrackFamily::Drive {
+                assert!(state.store_drive_end_permission(false));
+            }
+            let before = state.clone();
+            assert_eq!(
+                piggyback::begin(&mut state, LocomotorKind::Teleport, 999),
+                BeginOutcome::Installed
+            );
+            assert_eq!(state.track_destination(family), destination);
+            assert_eq!(state.track_head(family), head);
+            assert_eq!(state.track_progress(family), Some(progress));
+            assert!(!state.ensure_installed_track_state());
+            let mut marks = Vec::new();
+            state.visit_track_occupation(|mark| marks.push(mark));
+            assert_eq!(marks, vec![mark]);
+
+            let bytes = serde_json::to_vec(&state).unwrap();
+            let mut loaded: LocomotorState = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(loaded, state);
+            let released = piggyback::end(&mut loaded).unwrap();
+            assert_eq!(released.kind, LocomotorKind::Teleport);
+            assert_eq!(loaded, before);
+            assert_eq!(
+                loaded.take_track_occupation(family),
+                Some([None, Some(mark)])
+            );
+            assert_eq!(loaded.track_destination(family), destination);
+            assert_eq!(loaded.track_progress(family), Some(progress));
+        }
+    }
+
+    #[test]
+    fn matching_installed_absence_masks_saved_retained_state() {
+        use super::super::locomotion::piggyback::{self, BeginOutcome};
+
+        let mut state = LocomotorState::for_test_kind(LocomotorKind::Drive);
+        assert!(state.ensure_installed_track_state());
+        let destination = Some(DriveCoord::cell(5, 6, 0));
+        assert!(state.store_track_destination(TrackFamily::Drive, destination));
+        let before = state.clone();
+        assert_eq!(
+            piggyback::begin(&mut state, LocomotorKind::Drive, 200),
+            BeginOutcome::Installed
+        );
+        assert!(!state.has_track_state(TrackFamily::Drive));
+        assert_eq!(state.track_destination(TrackFamily::Drive), None);
+        assert!(!state.store_track_destination(TrackFamily::Drive, None));
+        assert!(!state.store_drive_end_permission(false));
+        assert!(state.drive_end_permitted());
+        assert!(state.ensure_installed_track_state());
+        assert_eq!(state.track_destination(TrackFamily::Drive), None);
+        piggyback::end(&mut state).unwrap();
+        assert_eq!(state, before);
+        assert_eq!(state.track_destination(TrackFamily::Drive), destination);
+    }
+
     fn prefix(accelerates: bool, raw_type_speed: i32, slowdown_distance: i32) -> TrackSpeedPrefix {
         TrackSpeedPrefix {
             accelerates,
@@ -179,10 +1069,8 @@ mod tests {
         let speed = ra2_speed_to_leptons_per_second(8);
         let mut owner_speed = FootSpeedState::default();
         owner_speed.set_speed_fraction(SIM_HALF);
-        let ship = ShipLocomotionRuntime {
-            target_speed_fraction: SimFixed::lit("0.3"),
-            ..Default::default()
-        };
+        let ship = ShipLocomotionRuntime::default()
+            .with_target_speed_fraction_for_test(SimFixed::lit("0.3"));
 
         let mut ship = ship;
         for _ in 0..10 {
@@ -193,14 +1081,14 @@ mod tests {
                     0,
                 ),
                 || 256,
-                ship.target_speed_fraction,
+                ship.target_speed_fraction(),
                 owner_speed.applied_fraction(),
             );
-            ship.target_speed_fraction = step.target;
+            ship = ship.with_target_speed_fraction_for_test(step.target);
             if let Some(fraction) = step.set_fraction {
                 owner_speed.set_speed_fraction(fraction);
             }
-            assert_eq!(ship.target_speed_fraction, SimFixed::lit("0.3"));
+            assert_eq!(ship.target_speed_fraction(), SimFixed::lit("0.3"));
             assert!(owner_current_speed_from_fraction(speed, owner_speed.applied_fraction()) > 0);
         }
 
@@ -218,7 +1106,13 @@ mod tests {
                 crate::rules::locomotor_type::LocomotorKind::Drive,
             ),
         );
-        entity.drive_locomotion = Some(DriveLocomotionRuntime::default());
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .ensure_installed_track_state()
+        );
         entity
     }
 
@@ -235,8 +1129,13 @@ mod tests {
         entity.movement_target = Some(crate::sim::components::MovementTarget::default());
         assert!(!drive_is_moving(&entity), "an order alone is not moving");
 
-        entity.drive_locomotion.as_mut().expect("drive").destination =
-            Some(DriveCoord::cell(9, 3, 0));
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .store_track_destination(TrackFamily::Drive, Some(DriveCoord::cell(9, 3, 0)))
+        );
         assert!(drive_is_moving(&entity));
     }
 
@@ -249,22 +1148,37 @@ mod tests {
         entity.position.sub_x = SimFixed::from_num(128);
         entity.position.sub_y = SimFixed::from_num(128);
 
-        let drive = entity.drive_locomotion.as_mut().expect("drive");
-        drive.head_to = Some(DriveCoord::cell(3, 3, 0));
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .store_track_head(TrackFamily::Drive, Some(DriveCoord::cell(3, 3, 0)))
+        );
         assert!(
             !drive_is_moving(&entity),
             "head-to at the owner's own cell centre is not moving"
         );
 
-        let drive = entity.drive_locomotion.as_mut().expect("drive");
-        drive.head_to = Some(DriveCoord::cell(3, 3, 7));
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .store_track_head(TrackFamily::Drive, Some(DriveCoord::cell(3, 3, 7)))
+        );
         assert!(
             !drive_is_moving(&entity),
             "a Z-only difference does not make it moving"
         );
 
-        let drive = entity.drive_locomotion.as_mut().expect("drive");
-        drive.head_to = Some(DriveCoord::cell(4, 3, 0));
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .store_track_head(TrackFamily::Drive, Some(DriveCoord::cell(4, 3, 0)))
+        );
         assert!(drive_is_moving(&entity));
     }
 
@@ -280,17 +1194,17 @@ mod tests {
         owner_speed.set_speed_fraction(SIM_ZERO);
         let mut drive = DriveLocomotionRuntime::default();
 
-        drive.target_speed_fraction = SimFixed::lit("1.2");
+        drive = drive.with_target_speed_fraction_for_test(SimFixed::lit("1.2"));
         let step = track_speed_prefix(
             &prefix(false, 10, 500),
             || 1000,
-            drive.target_speed_fraction,
+            drive.target_speed_fraction(),
             owner_speed.applied_fraction(),
         );
-        drive.target_speed_fraction = step.target;
+        drive = drive.with_target_speed_fraction_for_test(step.target);
         owner_speed.set_speed_fraction(step.set_fraction.unwrap());
 
-        assert_eq!(drive.target_speed_fraction, SimFixed::lit("1.2"));
+        assert_eq!(drive.target_speed_fraction(), SimFixed::lit("1.2"));
         assert_eq!(owner_speed.applied_fraction(), SIM_ONE);
     }
 }

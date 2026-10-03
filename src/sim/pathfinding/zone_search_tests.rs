@@ -794,7 +794,13 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
         locomotor.layer = MovementLayer::Bridge;
         mover.locomotor = Some(locomotor);
         mover.on_bridge = true;
-        mover.drive_locomotion = Some(Default::default());
+        assert!(
+            mover
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(Default::default()))
+        );
         entities.insert(mover);
         entities.insert(gsi_04_12_cell_listed_entity(2, "HTNK", "Russians", 2, 0));
         entities
@@ -1372,7 +1378,13 @@ fn gsi_04_12_attack_pursuit_entry_threads_exact_blocker_counts() {
     locomotor.layer = MovementLayer::Bridge;
     attacker.locomotor = Some(locomotor);
     attacker.on_bridge = true;
-    attacker.drive_locomotion = Some(Default::default());
+    assert!(
+        attacker
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(Default::default()))
+    );
     attacker.attack_target = Some(AttackTarget::for_cell(3, 0));
     let blocker = gsi_04_12_cell_listed_entity(2, "MTNK", "Russians", 2, 0);
 
@@ -1444,7 +1456,13 @@ fn gsi_04_12_phase_six_order_resume_threads_exact_blocker_counts() {
     locomotor.layer = MovementLayer::Bridge;
     mover.locomotor = Some(locomotor);
     mover.on_bridge = true;
-    mover.drive_locomotion = Some(Default::default());
+    assert!(
+        mover
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(Default::default()))
+    );
     mover.order_intent = Some(OrderIntent::AttackMove {
         goal_rx: 3,
         goal_ry: 0,
@@ -1528,7 +1546,13 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
     locomotor.layer = MovementLayer::Bridge;
     mover.locomotor = Some(locomotor);
     mover.on_bridge = true;
-    mover.drive_locomotion = Some(Default::default());
+    assert!(
+        mover
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(Default::default()))
+    );
     mover.navigation.nav_com = Some(NavTargetRef::cell(3, 0));
     mover.navigation.pending_arrival_clear = true;
     let blocker = gsi_04_12_cell_listed_entity(2, "MTNK", "Russians", 2, 0);
@@ -1623,7 +1647,13 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
         locomotor.layer = MovementLayer::Bridge;
         miner.locomotor = Some(locomotor);
         miner.on_bridge = true;
-        miner.drive_locomotion = Some(Default::default());
+        assert!(
+            miner
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(Default::default()))
+        );
         let blocker = gsi_04_12_cell_listed_entity(2, "HARV", "Russians", 2, 0);
 
         let mut sim = Simulation::new();

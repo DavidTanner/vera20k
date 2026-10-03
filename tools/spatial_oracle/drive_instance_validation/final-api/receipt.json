@@ -1,0 +1,92 @@
+{
+  "status": "PASS",
+  "scope": "18 inspection getters restricted to test builds; no production logic change",
+  "source_freeze_sha256": "03b5af1d3b4fac43dba8693bb26d75aa022f912de37186ce3298a0974977a798",
+  "runs": [
+    {
+      "label": "focused",
+      "args": [
+        "test",
+        "-p",
+        "vera20k",
+        "--lib",
+        "--",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1",
+        "sim::movement::drive_locomotion::tests::a_downhill_target_stays_above_one_but_the_owner_fraction_does_not",
+        "sim::movement::drive_locomotion::tests::complete_track_payload_survives_suspension_serialization_and_end",
+        "sim::movement::drive_locomotion::tests::gsi_06_12_drive_is_moving_compares_head_to_against_the_owner_position",
+        "sim::movement::drive_locomotion::tests::gsi_06_12_drive_is_moving_reads_its_own_destination",
+        "sim::movement::drive_locomotion::tests::gsi_13_06_nonterminal_ship_post_stop_process_preserves_clamped_target",
+        "sim::movement::drive_locomotion::tests::gsi_13_06_stock_shp_current_speed_preserves_native_truncation",
+        "sim::movement::drive_locomotion::tests::matching_installed_absence_masks_saved_retained_state",
+        "sim::movement::locomotor_owner::tests::dock_pad_destination_retires_drive_before_teleport_move_to",
+        "sim::movement::locomotor_owner::tests::foot_ai_restore_retires_same_drive_fields_as_direct_destination",
+        "sim::movement::locomotor_owner::tests::foot_idle_drive_end_uses_native_gates_and_preserves_owner_state",
+        "sim::movement::locomotor_owner::tests::drive_end_denial_flags_survive_save_and_block_generic_restore",
+        "sim::movement::locomotor_owner::tests::foot_queue_survives_drive_retirement_construction_and_reuse",
+        "sim::movement::locomotor_owner::tests::foot_queue_without_class_payload_roundtrips_and_hashes_each_field",
+        "sim::movement::locomotor_owner::tests::foot_speed_ownership_matches_original_helper_witnesses",
+        "sim::movement::locomotor_owner::tests::foot_speed_without_class_payload_roundtrips_and_hashes_each_field",
+        "sim::movement::locomotor_owner::tests::foot_stop_preserves_queue",
+        "sim::movement::locomotor_owner::tests::out_of_contact_destination_installs_fresh_drive_without_previous_instance_state",
+        "sim::movement::locomotor_owner::tests::refused_installation_and_absent_stash_preserve_instance_and_foot_state",
+        "sim::movement::locomotor_owner::tests::foot_queue_operations_match_original_memory_witnesses",
+        "sim::movement::locomotor_owner::tests::refused_miner_order_leaves_teleport_payload_untouched",
+        "sim::movement::locomotor_owner::tests::reusing_active_drive_keeps_complete_instance_including_forced_track",
+        "sim::movement::locomotor_owner::tests::refused_restore_keeps_live_head_and_forced_segment",
+        "sim::movement::locomotor_owner::tests::stop_command_retires_only_the_drive_admitted_by_its_existing_gate",
+        "sim::world::cmin_dock_oracle_tests::instance_tests::far_move_reuse_refusals_end_and_repeat_match_complete_native_instances",
+        "sim::world::cmin_dock_oracle_tests::instance_tests::fresh_begin_owns_native_slope_frame_without_eager_retained_allocation",
+        "sim::world::cmin_dock_oracle_tests::instance_tests::moving_pad_setter_stops_then_foot_end_releases_same_complete_drive",
+        "sim::world::cmin_dock_oracle_tests::instance_tests::stopped_pad_setter_releases_complete_drive_before_teleport_move",
+        "sim::world::global_parity_harness_tests::global_skirmish_replay_is_deterministic_and_baseline_stable",
+        "sim::world::bridge_parity_harness_tests::bridge_crossing_replay_is_deterministic_and_baseline_stable",
+        "sim::world::slice6_retask_tests::replay_hash_stable_through_slice6"
+      ],
+      "exit_code": 0,
+      "summary": [
+        [
+          "30",
+          "0",
+          "0",
+          "0"
+        ]
+      ],
+      "elapsed_seconds": 184.11773541709408,
+      "log_sha256": "88b7faaad14a55b3466ddc810d27a9b759aa3a14ace4cc5efc8fe6fc1b995b12",
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-test-api-final-focused-20261003.log"
+    },
+    {
+      "label": "clippy",
+      "args": [
+        "clippy",
+        "-p",
+        "vera20k",
+        "--lib"
+      ],
+      "exit_code": 0,
+      "summary": [],
+      "elapsed_seconds": 100.07561070797965,
+      "log_sha256": "970edd2508009f705c34473c25cb5c2ee3e011977ebcfe876879ecd75950919a",
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-test-api-final-clippy-20261003.log"
+    },
+    {
+      "label": "release",
+      "args": [
+        "build",
+        "-p",
+        "vera20k",
+        "--release",
+        "--bin",
+        "vera20k"
+      ],
+      "exit_code": 0,
+      "summary": [],
+      "elapsed_seconds": 325.36945875000674,
+      "log_sha256": "11a86e043bb3ab88ce1f43b177db9889c9d954855403f745378618a241c68f33",
+      "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-test-api-final-release-20261003.log"
+    }
+  ]
+}

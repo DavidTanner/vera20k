@@ -29,8 +29,10 @@ use std::ops::Deref;
 
 use crate::rules::locomotor_type::LocomotorKind;
 
+use super::super::drive_locomotion::{DriveRuntime, ShipRuntime, TrackStateMutation};
 use super::super::locomotor::LocomotorState;
-use super::super::slope_transition::SlopeTransitionState;
+use super::super::track_process::TrackFamily;
+use crate::sim::components::DriveOccupationFootprint;
 
 /// Walk MoveTo75ACB0 / Stop75ADA0 retain destination independently of the
 /// committed head. Both XYZ values belong to this complete locomotor instance.
@@ -58,12 +60,12 @@ pub struct WalkRuntime {
 /// state remains entity-owned; its variant only marks that class.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LocomotorRuntimePayload {
-    Drive(SlopeTransitionState),
+    Drive(DriveRuntime),
     Walk(WalkRuntime),
     Teleport(super::super::teleport_movement::TeleportRuntime),
     Rocket,
     Hover(super::super::hover::HoverRuntime),
-    Ship(SlopeTransitionState),
+    Ship(ShipRuntime),
     Fly(super::super::fly_height::FlyRuntime),
     Jumpjet(super::super::jumpjet_movement::JumpjetRuntime),
 }
@@ -71,14 +73,12 @@ pub enum LocomotorRuntimePayload {
 impl LocomotorRuntimePayload {
     pub(crate) fn for_kind(kind: LocomotorKind, binary_frame: u32) -> Self {
         match kind {
-            LocomotorKind::Drive => {
-                Self::Drive(SlopeTransitionState::at_binary_frame(binary_frame))
-            }
+            LocomotorKind::Drive => Self::Drive(DriveRuntime::at_binary_frame(binary_frame)),
             LocomotorKind::Walk => Self::Walk(WalkRuntime::default()),
             LocomotorKind::Teleport => Self::Teleport(Default::default()),
             LocomotorKind::Rocket => Self::Rocket,
             LocomotorKind::Hover => Self::Hover(Default::default()),
-            LocomotorKind::Ship => Self::Ship(SlopeTransitionState::at_binary_frame(binary_frame)),
+            LocomotorKind::Ship => Self::Ship(ShipRuntime::at_binary_frame(binary_frame)),
             LocomotorKind::Fly => Self::Fly(Default::default()),
             LocomotorKind::Jumpjet => Self::Jumpjet(Default::default()),
         }
@@ -104,6 +104,50 @@ impl Deref for StashedLocomotor {
 }
 
 impl StashedLocomotor {
+    /// Forward typed private-storage operations without exposing the boxed
+    /// object's mutable state or dispatching its suspended Process.
+    pub(in crate::sim::movement) fn apply_track_state_mutation(
+        &mut self,
+        family: TrackFamily,
+        mutation: TrackStateMutation,
+    ) -> bool {
+        self.0.apply_track_state_mutation(family, mutation)
+    }
+
+    pub(in crate::sim::movement) fn take_track_occupation(
+        &mut self,
+        family: TrackFamily,
+    ) -> Option<[Option<DriveOccupationFootprint>; 2]> {
+        self.0.take_track_occupation(family)
+    }
+
+    pub(in crate::sim::movement) fn forget_track_occupation(
+        &mut self,
+        mark: DriveOccupationFootprint,
+    ) {
+        self.0.forget_track_occupation(mark);
+    }
+
+    pub(in crate::sim::movement) fn clear_track_occupation_projections(&mut self) {
+        self.0.clear_track_occupation_projections();
+    }
+
+    #[cfg(test)]
+    pub(in crate::sim::movement) fn install_drive_state_for_test(
+        &mut self,
+        retained: Option<super::super::drive_locomotion::DriveLocomotionRuntime>,
+    ) -> bool {
+        self.0.install_drive_state_for_test(retained)
+    }
+
+    #[cfg(test)]
+    pub(in crate::sim::movement) fn install_ship_state_for_test(
+        &mut self,
+        retained: Option<super::super::drive_locomotion::ShipLocomotionRuntime>,
+    ) -> bool {
+        self.0.install_ship_state_for_test(retained)
+    }
+
     /// Nothing processes a suspended object; only fixtures write it.
     #[cfg(test)]
     pub(crate) fn suspended_mut_for_test(&mut self) -> &mut LocomotorState {

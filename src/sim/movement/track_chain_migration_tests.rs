@@ -19,11 +19,12 @@ use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, FootPathQueue, TrackProgress};
+use crate::sim::components::{DriveCoord, FootPathQueue, TrackProgress};
 use crate::sim::components::{MovementTarget, NavTargetRef};
 use crate::sim::game_entity::{BuildingGateRuntime, GameEntity};
 use crate::sim::intern::test_interner;
 use crate::sim::mission::MissionType;
+use crate::sim::movement::DriveLocomotionRuntime;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::track_host::TrackWorldEvent;
 use crate::sim::movement::track_process::{TrackFamily, TrackInvocation};
@@ -55,17 +56,23 @@ fn chain_fixture(passive: bool) -> (Simulation, RuleSet, TrackInvocation) {
     mover.lifecycle.object_alive = true;
     mover.lifecycle.in_limbo = false;
     mover.lifecycle.cell_marked = true;
-    mover.drive_locomotion = Some(DriveLocomotionRuntime {
-        head_to: Some(head),
-        track_valid: true,
-        track: TrackProgress {
-            turn_index: 1,
-            cursor: 37,
-            reversed: false,
-            residual: 0,
-        },
-        ..Default::default()
-    });
+    assert!(
+        mover
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                DriveLocomotionRuntime::default()
+                    .with_head_to_for_test(Some(head))
+                    .with_track_valid_for_test(true)
+                    .with_track_for_test(TrackProgress {
+                        turn_index: 1,
+                        cursor: 37,
+                        reversed: false,
+                        residual: 0,
+                    })
+            ))
+    );
     mover.navigation.path_replay = FootPathQueue {
         directions: vec![2, 3],
         cursor: 0,
@@ -108,10 +115,16 @@ fn add_blocker(sim: &mut Simulation, moving: bool) {
         // retains Foot+6B6 while moving.
         blocker.movement_target = Some(MovementTarget::default());
         blocker.navigation.nav_com = Some(NavTargetRef::cell(20, 9));
-        blocker.drive_locomotion = Some(DriveLocomotionRuntime {
-            destination: Some(DriveCoord::cell(20, 9, 0)),
-            ..Default::default()
-        });
+        assert!(
+            blocker
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(
+                    DriveLocomotionRuntime::default()
+                        .with_destination_for_test(Some(DriveCoord::cell(20, 9, 0)))
+                ))
+        );
         blocker.foot_occupation_enabled = true;
     }
     sim.substrate.entities.insert(blocker);
@@ -121,14 +134,20 @@ fn add_blocker(sim: &mut Simulation, moving: bool) {
 
 fn assert_old_chain_continues(sim: &Simulation) {
     let mover = sim.substrate.entities.get(MOVER).unwrap();
-    let drive = mover.drive_locomotion.as_ref().unwrap();
-    assert_eq!(drive.track.turn_index, 1);
+    let drive = mover
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
+    assert_eq!(drive.track().turn_index, 1);
     assert_eq!(
-        drive.track.cursor, 38,
+        drive.track().cursor,
+        38,
         "a refused chain still completes its paid point"
     );
-    assert_eq!(drive.track.residual, 1);
-    assert_eq!(drive.head_to, Some(DriveCoord::cell(10, 9, 0)));
+    assert_eq!(drive.track().residual, 1);
+    assert_eq!(drive.head_to(), Some(DriveCoord::cell(10, 9, 0)));
     assert_eq!(mover.navigation.path_replay.cursor, 0);
 }
 
@@ -240,14 +259,19 @@ fn production_chain_clear_and_code2_share_admission_and_never_scatter_or_repath(
             });
             if passive {
                 let mover = sim.substrate.entities.get(MOVER).unwrap();
-                let drive = mover.drive_locomotion.as_ref().unwrap();
+                let drive = mover
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
                 let selected =
                     super::super::drive_track::select_drive_track(32, 64, false).unwrap();
-                assert_eq!(drive.track.turn_index, selected.turn_track_index as i32);
-                assert_eq!(drive.track.cursor, i32::from(selected.entry_index));
-                assert_eq!(drive.track.residual, 1);
+                assert_eq!(drive.track().turn_index, selected.turn_track_index as i32);
+                assert_eq!(drive.track().cursor, i32::from(selected.entry_index));
+                assert_eq!(drive.track().residual, 1);
                 assert_eq!(
-                    drive.head_to,
+                    drive.head_to(),
                     Some(DriveCoord::cell(CANDIDATE.0, CANDIDATE.1, 0))
                 );
                 assert_eq!(mover.navigation.path_replay.cursor, 1);
@@ -368,15 +392,18 @@ fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continu
         .entities
         .get(MOVER)
         .unwrap()
-        .drive_locomotion
+        .locomotor
         .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
         .unwrap();
     assert_eq!(
-        drive.head_to,
+        drive.head_to(),
         Some(DriveCoord::cell(CANDIDATE.0, CANDIDATE.1, 0))
     );
     assert_eq!(
-        drive.track.residual, 1,
+        drive.track().residual,
+        1,
         "the same paid call resumes after both removals"
     );
 }

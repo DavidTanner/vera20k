@@ -272,7 +272,11 @@ mod gsi_04_03b_tests {
             miner.type_ref = type_ref;
             miner.body_facing.snap(u16::from(facing) << 8, 0);
             miner.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-            miner.drive_locomotion = Some(Default::default());
+            miner
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .ensure_installed_track_state();
             sim.substrate.entities.insert(miner);
             assert!(matches!(
                 sim.reveal(entity_id),
@@ -294,10 +298,12 @@ mod gsi_04_03b_tests {
                 .entities
                 .get(1)
                 .unwrap()
-                .drive_locomotion
+                .locomotor
                 .as_ref()
+                .and_then(|loco| loco.selected_drive_runtime())
+                .and_then(|runtime| runtime.retained())
                 .unwrap()
-                .head_to
+                .head_to()
                 .is_none(),
             "the helper issues an order; Process owns head admission"
         );
@@ -308,8 +314,12 @@ mod gsi_04_03b_tests {
             sim.substrate
                 .entities
                 .get(1)
-                .and_then(|entity| entity.drive_locomotion.as_ref())
-                .and_then(|drive| drive.occupation_head_to)
+                .and_then(|entity| entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|loco| loco.selected_drive_runtime())
+                    .and_then(|runtime| runtime.retained()))
+                .and_then(|drive| drive.occupation_head_to())
                 .map(|head| (head.rx, head.ry)),
             Some(shared_head)
         );
@@ -334,9 +344,11 @@ mod gsi_04_03b_tests {
         let second = sim.substrate.entities.get(2).expect("second miner");
         assert_ne!(
             second
-                .drive_locomotion
+                .locomotor
                 .as_ref()
-                .and_then(|drive| drive.occupation_head_to)
+                .and_then(|loco| loco.selected_drive_runtime())
+                .and_then(|runtime| runtime.retained())
+                .and_then(|drive| drive.occupation_head_to())
                 .map(|head| (head.rx, head.ry)),
             Some(shared_head),
             "the second miner must observe the first Process head mark immediately"
@@ -1853,7 +1865,10 @@ mod harvest_scan_dispatch_tests {
                 crate::rules::locomotor_type::LocomotorKind::Drive,
             ),
         );
-        ge.drive_locomotion = Some(Default::default());
+        ge.locomotor
+            .as_mut()
+            .unwrap()
+            .ensure_installed_track_state();
         ge.miner = Some(Miner::new(MinerKind::War, &MinerConfig::default(), 0));
         ge.mission.set_handler_state(MinerState::SearchOre.cursor());
         sim.substrate.entities.insert(ge);
@@ -2277,7 +2292,12 @@ mod harvest_scan_dispatch_tests {
     /// The Drive locomotor destination's cell (+34), the goal when the order
     /// adapter has none.
     fn drive_destination_cell(entity: &GameEntity) -> Option<(u16, u16)> {
-        let coord = entity.drive_locomotion.as_ref()?.destination?;
+        let coord = entity
+            .locomotor
+            .as_ref()
+            .and_then(|loco| loco.selected_drive_runtime())
+            .and_then(|runtime| runtime.retained())?
+            .destination()?;
         Some(((coord.x / 256) as u16, (coord.y / 256) as u16))
     }
 

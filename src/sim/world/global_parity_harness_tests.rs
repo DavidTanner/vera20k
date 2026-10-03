@@ -546,7 +546,11 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // CDA10AEE6EA0AE46 in the same test binary. All 601 complete observations remain
 // equal except tick_result.state_hash. The control is removed in this candidate.
 // tools/spatial_oracle/infantry_teleport_replay/main1024/receipt.json.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x534C_7788_BB49_A3D8;
+// Snapshot288: retained Drive/Ship state hashes once in its complete class payload.
+// The same-binary old entity-feed control recovers incoming534C7788BB49A3D8;
+// all601 complete rows match except state_hash. Bounded Rust attribution:
+// tools/spatial_oracle/drive_instance_replay/receipt.json. Control removed.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB966_DA80_21F0_8904;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -1335,12 +1339,18 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
             call["sampled_after"].as_u64().unwrap() >> 8,
             "ROT={rot}: same-frame native sample"
         );
-        let drive = entity.drive_locomotion.as_ref().unwrap();
+        let drive = entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap();
         assert_eq!(
-            drive.track.turn_index, -1,
+            drive.track().turn_index,
+            -1,
             "turn must return before admission"
         );
-        assert!(drive.head_to.is_none());
+        assert!(drive.head_to().is_none());
         if rot > 0 {
             assert_eq!(
                 u64::from(entity.body_facing.current(sim.session.binary_frame - 1)),
@@ -1396,7 +1406,14 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
             if tick == 4 {
                 let entity = sim.substrate.entities.get(1).unwrap();
                 assert_eq!(
-                    entity.drive_locomotion.as_ref().unwrap().head_to.is_some(),
+                    entity
+                        .locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_drive_runtime())
+                        .and_then(|r| r.retained())
+                        .unwrap()
+                        .head_to()
+                        .is_some(),
                     rot == 0
                 );
             }

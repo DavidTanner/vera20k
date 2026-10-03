@@ -1,0 +1,71 @@
+{
+  "status": "PASS",
+  "fresh_native_vm_generation": false,
+  "scope": "binding-only reuse of saved actual native payload through central finish_vectors publisher",
+  "selected_sidecars": [
+    {
+      "sidecar": "tools/spatial_oracle/anytown_damage/unit_unlimbo.meta.json",
+      "changed_pins": [
+        "src/sim/world/techno_ai.rs"
+      ]
+    },
+    {
+      "sidecar": "tools/spatial_oracle/building_guard_attack_gate.meta.json",
+      "changed_pins": [
+        "src/sim/world/techno_ai.rs"
+      ]
+    }
+  ],
+  "protected_payload_count": 497,
+  "all_native_payloads_raw_byte_exact": true,
+  "all_nonbinding_provenance_exact": true,
+  "runs": [
+    {
+      "module": "tools.spatial_oracle.anytown_damage.unit_unlimbo",
+      "args": [
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-fixture-bindings-20261003/staged-unit_unlimbo.json"
+      ],
+      "mode": "write",
+      "exit_code": 0,
+      "log": "unit_unlimbo-write.log",
+      "log_sha256": "8528ff3ff8fcde21a48a81199a6404d2fda0329dfea80e9b7e49936c09588fe7"
+    },
+    {
+      "module": "tools.spatial_oracle.anytown_damage.unit_unlimbo",
+      "args": [
+        "--check"
+      ],
+      "mode": "check",
+      "exit_code": 0,
+      "log": "unit_unlimbo-check.log",
+      "log_sha256": "b61d4e6f0ebd3302360faa66218aab3c6e6cb571e5b4d9419e56e51c728f677d"
+    },
+    {
+      "module": "tools.spatial_oracle.building_guard_attack",
+      "args": [
+        "--gate",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-fixture-bindings-20261003/staged-building_guard_attack_gate.json"
+      ],
+      "mode": "write",
+      "exit_code": 0,
+      "log": "building_guard_attack_gate-write.log",
+      "log_sha256": "86d1af31fceda47d20fbec17d47f58a450b25e5e3024cf88bea8f3033a728271"
+    },
+    {
+      "module": "tools.spatial_oracle.building_guard_attack",
+      "args": [
+        "--gate",
+        "--check"
+      ],
+      "mode": "check",
+      "exit_code": 0,
+      "log": "building_guard_attack_gate-check.log",
+      "log_sha256": "0a7b3ac6a552ef1070478345a44f747dac19fc635913c326bf1eeaa0f27fa4b4"
+    }
+  ],
+  "helper_sha256": "0ce5e66ec8543ba88aea46300213e3aae2e0105305c2e404792d7f0b68a463fc"
+}

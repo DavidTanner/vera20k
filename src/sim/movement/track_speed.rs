@@ -2,6 +2,7 @@
 //! The speed prefix works in `SimFixed`, not native binary64 (see
 //! `drive_locomotion::track_speed_prefix`).
 
+use super::track_process::TrackFamily;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::object_type::ObjectType;
@@ -59,22 +60,19 @@ pub(super) fn publish_fresh_track_target(
 /// the class target (+50); otherwise it goes to the Foot setter
 /// (`SetSpeedFraction`4D3710) when it differs from the applied fraction.
 fn publish_target_fraction(entity: &mut GameEntity, requested: SimFixed) {
-    let Some(kind) = entity.locomotor.as_ref().map(|loco| loco.kind) else {
+    let Some(loco) = entity.locomotor.as_mut() else {
         return;
     };
-    let (selector, retained) = match kind {
-        LocomotorKind::Drive => {
-            let state = entity.drive_locomotion.get_or_insert_with(Default::default);
-            (state.track.turn_index, &mut state.target_speed_fraction)
-        }
-        LocomotorKind::Ship => {
-            let state = entity.ship_locomotion.get_or_insert_with(Default::default);
-            (state.track.turn_index, &mut state.target_speed_fraction)
-        }
-        _ => return,
+    let Some(family) = TrackFamily::from_kind(loco.kind) else {
+        return;
     };
+    loco.ensure_installed_track_state();
+    let Some(progress) = loco.track_progress(family) else {
+        return;
+    };
+    let selector = progress.turn_index;
     if selector < 64 {
-        *retained = requested;
+        loco.store_track_target_fraction(family, requested);
     } else if entity.foot_speed.applied_fraction() != requested {
         entity.foot_speed.set_speed_fraction(requested);
     }
@@ -131,20 +129,6 @@ fn braking_distance(
     isqrt_i64(dx * dx + dy * dy + dz * dz) as i32
 }
 
-/// The class target (+0x50) of the active Drive or Ship.
-fn retained_target(entity: &mut GameEntity, kind: LocomotorKind) -> Option<&mut SimFixed> {
-    match kind {
-        LocomotorKind::Drive => entity
-            .drive_locomotion
-            .as_mut()
-            .map(|d| &mut d.target_speed_fraction),
-        _ => entity
-            .ship_locomotion
-            .as_mut()
-            .map(|s| &mut s.target_speed_fraction),
-    }
-}
-
 /// One TrackProcess invocation consumes its retained class target, even when
 /// callbacks have changed the path, terrain, health, or destination request.
 pub(super) fn advance(
@@ -168,17 +152,10 @@ pub(super) fn advance(
         rules.map_or(1.0, |r| r.general.veteran_speed),
         houses,
     );
-    let (destination, selector) = match kind {
-        LocomotorKind::Drive => entity
-            .drive_locomotion
-            .as_ref()
-            .map_or((None, -1), |d| (d.destination, d.track.turn_index)),
-        LocomotorKind::Ship => entity
-            .ship_locomotion
-            .as_ref()
-            .map_or((None, -1), |s| (s.destination, s.track.turn_index)),
-        _ => unreachable!(),
-    };
+    let family = TrackFamily::from_kind(kind).unwrap();
+    let destination = loco.track_destination(family);
+    let selector = loco.track_progress(family).map_or(-1, |p| p.turn_index);
+    let retained_target = loco.track_target_fraction(family);
     let prefix = super::drive_locomotion::TrackSpeedPrefix {
         accelerates: entity.drive_accelerates,
         unit_passive: entity.category == crate::map::entities::EntityCategory::Unit
@@ -195,15 +172,15 @@ pub(super) fn advance(
         // slowdown never caps the target.
         crush_slowdown: false,
     };
-    if let Some(target) = retained_target(entity, kind).map(|target| *target) {
+    if let Some(target) = retained_target {
         let step = super::drive_locomotion::track_speed_prefix(
             &prefix,
             || braking_distance(entity, destination, terrain, grid),
             target,
             entity.foot_speed.applied_fraction(),
         );
-        if let Some(retained) = retained_target(entity, kind) {
-            *retained = step.target;
+        if let Some(loco) = entity.locomotor.as_mut() {
+            loco.store_track_target_fraction(family, step.target);
         }
         if let Some(fraction) = step.set_fraction {
             entity.foot_speed.set_speed_fraction(fraction);
@@ -219,50 +196,26 @@ pub(super) fn advance(
 mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
-    use crate::sim::components::{DriveLocomotionRuntime, ShipLocomotionRuntime};
     use crate::sim::movement::locomotor::LocomotorState;
 
     fn entity(kind: LocomotorKind, selector: i32, target: SimFixed) -> GameEntity {
         let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 8, 8);
         entity.locomotor = Some(LocomotorState::for_test_kind(kind));
-        match kind {
-            LocomotorKind::Drive => {
-                let mut state = DriveLocomotionRuntime::default();
-                state.track.turn_index = selector;
-                state.track_valid = true;
-                state.target_speed_fraction = target;
-                entity.drive_locomotion = Some(state);
-            }
-            LocomotorKind::Ship => {
-                let mut state = ShipLocomotionRuntime::default();
-                state.track.turn_index = selector;
-                state.track_valid = true;
-                state.target_speed_fraction = target;
-                entity.ship_locomotion = Some(state);
-            }
-            _ => unreachable!(),
-        }
+        let family = TrackFamily::from_kind(kind).unwrap();
+        let loco = entity.locomotor.as_mut().unwrap();
+        loco.ensure_installed_track_state();
+        let mut progress = loco.track_progress(family).unwrap();
+        progress.turn_index = selector;
+        loco.store_track_progress(family, progress);
+        loco.store_track_valid(family, true);
+        loco.store_track_target_fraction(family, target);
         entity
     }
 
     fn retained(entity: &GameEntity) -> SimFixed {
-        match entity.locomotor.as_ref().unwrap().kind {
-            LocomotorKind::Drive => {
-                entity
-                    .drive_locomotion
-                    .as_ref()
-                    .unwrap()
-                    .target_speed_fraction
-            }
-            LocomotorKind::Ship => {
-                entity
-                    .ship_locomotion
-                    .as_ref()
-                    .unwrap()
-                    .target_speed_fraction
-            }
-            _ => unreachable!(),
-        }
+        let loco = entity.locomotor.as_ref().unwrap();
+        loco.track_target_fraction(TrackFamily::from_kind(loco.kind).unwrap())
+            .unwrap()
     }
 
     #[test]

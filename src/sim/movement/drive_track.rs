@@ -3441,13 +3441,9 @@ pub(crate) fn occupant_can_use_track(
 pub(crate) fn occupant_slot_a4_answers_true(
     occupant: &crate::sim::game_entity::GameEntity,
 ) -> bool {
-    use crate::rules::locomotor_type::LocomotorKind;
-    let kind = occupant.locomotor.as_ref().map(|locomotor| locomotor.kind);
-    let track = match kind {
-        Some(LocomotorKind::Drive) => occupant.drive_locomotion.as_ref().map(|drive| &drive.track),
-        Some(LocomotorKind::Ship) => occupant.ship_locomotion.as_ref().map(|ship| &ship.track),
-        _ => None,
-    };
+    let track = occupant.locomotor.as_ref().and_then(|loco| {
+        loco.track_progress(super::track_process::TrackFamily::from_kind(loco.kind)?)
+    });
     let Some(track) = track else {
         return false;
     };
@@ -3457,7 +3453,7 @@ pub(crate) fn occupant_slot_a4_answers_true(
         .remaining_directions()
         .first()
         .copied();
-    occupant_can_use_track(track, path_head)
+    occupant_can_use_track(&track, path_head)
 }
 
 /// Get the RawTrack metadata by index.

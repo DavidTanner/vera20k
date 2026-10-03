@@ -234,9 +234,16 @@ fn fixture(row: &Value) -> Scene {
             int(&before["stage_step"]),
         ));
         if before["loco_destination"].is_array() {
-            let drive = e.drive_locomotion.get_or_insert_with(Default::default);
-            drive.destination = coord(&before["loco_destination"]);
-            drive.head_to = coord(&before["loco_head"]);
+            let drive = e.locomotor.as_mut().unwrap();
+            assert!(drive.ensure_installed_track_state());
+            assert!(drive.store_track_destination(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                coord(&before["loco_destination"])
+            ));
+            assert!(drive.store_track_head(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                coord(&before["loco_head"])
+            ));
         }
     }
     {
@@ -381,14 +388,19 @@ fn compare(s: &Scene, native: &Value, context: &str) {
             "{context}: {field}"
         );
     }
-    if let Some(drive) = e.drive_locomotion.as_ref() {
+    if let Some(drive) = e
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+    {
         assert_eq!(
-            coord_value(drive.destination),
+            coord_value(drive.destination()),
             native["loco_destination"],
             "{context}: Drive destination"
         );
         assert_eq!(
-            coord_value(drive.head_to),
+            coord_value(drive.head_to()),
             native["loco_head"],
             "{context}: Drive head"
         );
@@ -518,9 +530,15 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
             e.position.ry = ry;
             e.position.sub_x = crate::util::fixed_math::SimFixed::from_num(128);
             e.position.sub_y = crate::util::fixed_math::SimFixed::from_num(128);
-            let drive = e.drive_locomotion.as_mut().unwrap();
-            drive.destination = None;
-            drive.head_to = None;
+            let drive = e.locomotor.as_mut().unwrap();
+            assert!(drive.store_track_destination(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                None
+            ));
+            assert!(drive.store_track_head(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                None
+            ));
             s.sim.substrate.occupancy.move_entity(
                 old.0,
                 old.1,

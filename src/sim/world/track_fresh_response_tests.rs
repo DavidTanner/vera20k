@@ -297,22 +297,32 @@ fn compare(sim: &Simulation, id: u64, row: &Value, out: bool) {
     let e = sim.substrate.entities.get(id).unwrap();
     let state = &row["state"];
     let (destination, head, valid, selector, target) = if row["input"]["family"] == "drive" {
-        let d = e.drive_locomotion.as_ref().unwrap();
+        let d = e
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap();
         (
-            d.destination,
-            d.head_to,
-            d.track_valid,
-            d.track.turn_index,
-            d.target_speed_fraction,
+            d.destination(),
+            d.head_to(),
+            d.track_valid(),
+            d.track().turn_index,
+            d.target_speed_fraction(),
         )
     } else {
-        let s = e.ship_locomotion.as_ref().unwrap();
+        let s = e
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_ship_runtime())
+            .and_then(|r| r.retained())
+            .unwrap();
         (
-            s.destination,
-            s.head_to,
-            s.track_valid,
-            s.track.turn_index,
-            s.target_speed_fraction,
+            s.destination(),
+            s.head_to(),
+            s.track_valid(),
+            s.track().turn_index,
+            s.target_speed_fraction(),
         )
     };
     let coord = |c: Option<DriveCoord>| {
@@ -433,11 +443,33 @@ fn fresh_arm_rows_match_the_original_responses() {
         }
         // A retained selector with the valid byte clear.
         if let Some(selector) = input["selector"].as_i64() {
-            if let Some(drive) = e.drive_locomotion.as_mut() {
-                drive.track.turn_index = selector as i32;
+            if let Some(drive) = e.locomotor.as_mut().filter(|l| {
+                l.has_track_state(crate::sim::movement::track_process::TrackFamily::Drive)
+            }) {
+                {
+                    let mut progress = drive
+                        .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+                        .unwrap();
+                    progress.turn_index = selector as i32;
+                    assert!(drive.store_track_progress(
+                        crate::sim::movement::track_process::TrackFamily::Drive,
+                        progress
+                    ));
+                };
             }
-            if let Some(ship) = e.ship_locomotion.as_mut() {
-                ship.track.turn_index = selector as i32;
+            if let Some(ship) = e.locomotor.as_mut().filter(|l| {
+                l.has_track_state(crate::sim::movement::track_process::TrackFamily::Ship)
+            }) {
+                {
+                    let mut progress = ship
+                        .track_progress(crate::sim::movement::track_process::TrackFamily::Ship)
+                        .unwrap();
+                    progress.turn_index = selector as i32;
+                    assert!(ship.store_track_progress(
+                        crate::sim::movement::track_process::TrackFamily::Ship,
+                        progress
+                    ));
+                };
             }
         }
         sim.session.binary_frame = 101;

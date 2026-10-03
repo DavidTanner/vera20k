@@ -422,7 +422,16 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                 head_input["facing_raw"]
             );
             assert_eq!(actor.lifecycle.cell_marked, head_input["initial_marked"]);
-            assert!(actor.ship_locomotion.as_ref().unwrap().head_to.is_none());
+            assert!(
+                actor
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap()
+                    .head_to()
+                    .is_none()
+            );
             assert_eq!(head_input["initial_head"], json!([0, 0, 0]));
         }
         let command = if frame == 0 {
@@ -446,7 +455,7 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
             .map(|command| CommandEnvelope::new(owner, scene.sim().session.tick + 1, command));
         let before = scene.sim().entities().get(ship).map(|e| {
             json!({
-                "position":e.position,"ship":e.ship_locomotion,"lifecycle":e.lifecycle,
+                "position":e.position,"ship":e.locomotor.as_ref().and_then(|l| l.selected_ship_runtime()).and_then(|r| r.retained()).cloned(),"lifecycle":e.lifecycle,
                 "health":e.health,"entity":e,
             })
         });
@@ -481,9 +490,14 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                 // Full native Ship69FC10 -> Foot4D3920 -> AStar429A90
                 // produces this first head without supplied path answers.
                 // Compare the live logical queue, not its unused raw suffix.
-                let loco = actor.ship_locomotion.as_ref().unwrap();
-                let head = loco.head_to.unwrap();
-                let destination = loco.destination.unwrap();
+                let loco = actor
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
+                let head = loco.head_to().unwrap();
+                let destination = loco.destination().unwrap();
                 let coord =
                     crate::sim::movement::ground_pose::position_world_coord(&actor.position);
                 let route: Vec<u8> = head_process["path"]
@@ -502,13 +516,13 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                 );
                 assert_eq!(actor.navigation.path_replay.remaining_directions(), route);
                 assert_eq!(
-                    i64::from(loco.track.turn_index),
+                    i64::from(loco.track().turn_index),
                     head_process["track_selector"]
                 );
-                assert_eq!(i64::from(loco.track.cursor), head_process["track_cursor"]);
-                assert_eq!(u64::from(loco.track_valid), head_process["head_valid"]);
+                assert_eq!(i64::from(loco.track().cursor), head_process["track_cursor"]);
+                assert_eq!(u64::from(loco.track_valid()), head_process["head_valid"]);
                 assert_eq!(
-                    loco.target_speed_fraction.to_num::<f64>(),
+                    loco.target_speed_fraction().to_num::<f64>(),
                     head_process["fraction"].as_f64().unwrap()
                 );
                 let timer = actor.navigation.path_runtime.movement_timer;
@@ -541,12 +555,17 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                     &native["after_damage"],
                     initial_losses,
                 );
-                let loco = actor.ship_locomotion.as_ref().unwrap();
+                let loco = actor
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
                 let coord =
                     crate::sim::movement::ground_pose::position_world_coord(&actor.position);
                 if repair_frame.is_none() {
                     repair_frame = Some(frame);
-                    retained_track = Some(loco.track);
+                    retained_track = Some(loco.track());
                     assert_eq!(
                         json!([coord.x, coord.y, coord.z]),
                         native["after_damage"]["coord"]
@@ -566,7 +585,11 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                     assert_eq!((coord.x, coord.y), (before.x, before.y));
                     assert_eq!(coord.z - before.z, fall_per_visit, "frame{frame}");
                 }
-                assert_eq!(Some(loco.track), retained_track, "sinking bypasses Process");
+                assert_eq!(
+                    Some(loco.track()),
+                    retained_track,
+                    "sinking bypasses Process"
+                );
                 saw_last_live_height |= coord.z == last_live_z;
                 assert_eq!(
                     ships(scene.sim()) - other_ships,
@@ -745,10 +768,15 @@ fn assert_retained_naval_ship(
         json!([coord.x, coord.y]),
         json!([native["coord"][0], native["coord"][1]])
     );
-    let loco = actor.ship_locomotion.as_ref().unwrap();
-    let head = loco.head_to.unwrap();
+    let loco = actor
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_ship_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
+    let head = loco.head_to().unwrap();
     assert_eq!(json!([head.x, head.y, head.z]), native["head"]);
-    assert!(loco.destination.is_none());
+    assert!(loco.destination().is_none());
     assert_eq!(native["destination"], json!([0, 0, 0]));
     assert_eq!(
         sim.houses[&actor.owner()].stats.units_lost() - initial_losses,

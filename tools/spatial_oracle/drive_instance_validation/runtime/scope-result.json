@@ -1,0 +1,66 @@
+{
+  "status": "VALID",
+  "offline_status": "VALID",
+  "steps": 6000,
+  "final_tick": 6000,
+  "observations": 6001,
+  "type_samples": {
+    "GAPOWR": 5930,
+    "GAREFN": 4700,
+    "CMIN": 3150
+  },
+  "CMIN_id": 1453,
+  "CMIN_first_step": 2851,
+  "CMIN_unique_positions": 1137,
+  "maximum_cargo_bales": 20,
+  "harvesting_samples": 1806,
+  "unloading_samples": 96,
+  "large_xy_jumps": [
+    {
+      "step": 3465,
+      "from": [
+        8320,
+        20864,
+        416
+      ],
+      "to": [
+        8832,
+        22144,
+        416
+      ]
+    },
+    {
+      "step": 4328,
+      "from": [
+        8320,
+        20352,
+        416
+      ],
+      "to": [
+        8832,
+        22144,
+        416
+      ]
+    },
+    {
+      "step": 5257,
+      "from": [
+        8320,
+        19840,
+        416
+      ],
+      "to": [
+        8832,
+        22144,
+        416
+      ]
+    }
+  ],
+  "native_comparator": "NONE",
+  "parity_certification": "NONE",
+  "source_receipts": {
+    "run.json": "583288bd6fe578da079198f1ef3d148759daf70e4e3ed9a3604e1112621c8d7c",
+    "capture.json": "de0564a3aeb7aa6c7e21997b0082701fa7d5cb7c738b34ba1c996d0a7bad2f7c",
+    "frame.bgra": "09e7a78b33d4d97b50bc80d32b43ac2be5469f19b50c8ddd9eb3d9c068379e15"
+  }
+}

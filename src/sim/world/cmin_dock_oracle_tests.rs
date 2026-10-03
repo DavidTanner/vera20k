@@ -186,10 +186,16 @@ pub(super) fn dress_cmin(s: &mut Scene, input: &Value) {
         assert!(crate::sim::movement::locomotor_owner::begin_drive_for_teleporter(entity, frame));
         if input["moving"] == true {
             let current = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
-            let drive = entity.drive_locomotion.get_or_insert_with(Default::default);
-            drive.head_to = Some(current);
-            drive.destination =
-                nav.map(|(x, y)| crate::sim::movement::target_cell_coord(x, y, terrain.as_ref()));
+            let drive = entity.locomotor.as_mut().unwrap();
+            assert!(drive.ensure_installed_track_state());
+            assert!(drive.store_track_head(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                Some(current)
+            ));
+            assert!(drive.store_track_destination(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                nav.map(|(x, y)| crate::sim::movement::target_cell_coord(x, y, terrain.as_ref()))
+            ));
         }
     }
     entity.navigation.nav_com = nav.map(|(x, y)| NavTargetRef::cell(x, y));
@@ -250,9 +256,11 @@ fn compare_cmin(s: &Scene, state: &Value, context: &str) {
     );
     if locomotor.active_kind() == LocomotorKind::Drive {
         let destination = entity
-            .drive_locomotion
+            .locomotor
             .as_ref()
-            .and_then(|drive| drive.destination)
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .and_then(|drive| drive.destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         assert_eq!(
             destination,
@@ -704,3 +712,6 @@ fn replay_covers_every_row() {
         .collect();
     assert_eq!(names.len(), UNREPRESENTED.len(), "{names:?}");
 }
+
+#[path = "cmin_instance_tests.rs"]
+mod instance_tests;

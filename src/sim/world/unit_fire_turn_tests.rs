@@ -8,9 +8,10 @@
 use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::sim::combat::AttackTarget;
-use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, MovementTarget, TrackProgress};
+use crate::sim::components::{DriveCoord, MovementTarget, TrackProgress};
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
+use crate::sim::movement::DriveLocomotionRuntime;
 use crate::sim::projectile::ProjectileCoord;
 use crate::util::fixed_math::SimFixed;
 
@@ -79,18 +80,24 @@ fn install_paid_track(sim: &mut Simulation, id: u64) {
     let entity = sim.substrate.entities.get_mut(id).unwrap();
     let (x, y) = (entity.position.rx, entity.position.ry);
     entity.drive_accelerates = false;
-    entity.drive_locomotion = Some(DriveLocomotionRuntime {
-        head_to: Some(DriveCoord::cell(x, y - 1, 0)),
-        track_valid: true,
-        target_speed_fraction: SimFixed::from_num(1),
-        track: TrackProgress {
-            turn_index: 0,
-            cursor: 0,
-            reversed: false,
-            residual: 0,
-        },
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                DriveLocomotionRuntime::default()
+                    .with_head_to_for_test(Some(DriveCoord::cell(x, y - 1, 0)))
+                    .with_track_valid_for_test(true)
+                    .with_target_speed_fraction_for_test(SimFixed::from_num(1))
+                    .with_track_for_test(TrackProgress {
+                        turn_index: 0,
+                        cursor: 0,
+                        reversed: false,
+                        residual: 0,
+                    })
+            ))
+    );
     // The accepted head (x, y-1) was the route's last cell, so Foot+5E0
     // holds no word beyond it: the committed head alone models the route.
     entity.movement_target = Some(MovementTarget {

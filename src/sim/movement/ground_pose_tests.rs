@@ -5,11 +5,10 @@ use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, MovementTarget, ShipLocomotionRuntime,
-};
+use crate::sim::components::{DriveCoord, MovementTarget};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
 
@@ -40,17 +39,29 @@ fn mover(sim: &mut Simulation, kind: LocomotorKind) -> GameEntity {
     match kind {
         LocomotorKind::Drive => {
             entity.foot_speed.set_speed_fraction(SIM_ONE);
-            entity.drive_locomotion = Some(DriveLocomotionRuntime {
-                target_speed_fraction: SIM_ONE,
-                ..Default::default()
-            })
+            assert!(
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_drive_state_for_test(Some(
+                        DriveLocomotionRuntime::default()
+                            .with_target_speed_fraction_for_test(SIM_ONE)
+                    ))
+            )
         }
         LocomotorKind::Ship => {
             entity.foot_speed.set_speed_fraction(SIM_ONE);
-            entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                target_speed_fraction: SIM_ONE,
-                ..Default::default()
-            })
+            assert!(
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_ship_state_for_test(Some(
+                        ShipLocomotionRuntime::default()
+                            .with_target_speed_fraction_for_test(SIM_ONE)
+                    ))
+            )
         }
         LocomotorKind::Walk => {
             entity.category = EntityCategory::Infantry;
@@ -87,16 +98,38 @@ fn seed_track(entity: &mut GameEntity, kind: LocomotorKind, cursor: i32, head: D
     };
     match kind {
         LocomotorKind::Drive => {
-            let state = entity.drive_locomotion.get_or_insert_with(Default::default);
-            state.head_to = Some(head);
-            state.track = track;
-            state.track_valid = true;
+            let state = entity.locomotor.as_mut().unwrap();
+            assert!(state.ensure_installed_track_state());
+            assert!(state.store_track_head(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                Some(head)
+            ));
+            assert!(state.store_track_progress(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                track
+            ));
+            assert!(state.store_track_valid(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                true
+            ));
         }
         LocomotorKind::Ship => {
-            let state = entity.ship_locomotion.get_or_insert_with(Default::default);
-            state.head_to = Some(head);
-            state.track = track;
-            state.track_valid = true;
+            let state = entity.locomotor.as_mut().unwrap();
+            assert!(state.ensure_installed_track_state());
+            assert!(state.store_track_head(
+                crate::sim::movement::track_process::TrackFamily::Ship,
+                Some(head)
+            ));
+            assert!(state.store_track_progress(
+                crate::sim::movement::track_process::TrackFamily::Ship,
+                track
+            ));
+            assert!(
+                state.store_track_valid(
+                    crate::sim::movement::track_process::TrackFamily::Ship,
+                    true
+                )
+            );
         }
         _ => unreachable!(),
     }
@@ -104,8 +137,20 @@ fn seed_track(entity: &mut GameEntity, kind: LocomotorKind, cursor: i32, head: D
 
 fn track(entity: &GameEntity) -> crate::sim::components::TrackProgress {
     match entity.locomotor.as_ref().unwrap().kind {
-        LocomotorKind::Drive => entity.drive_locomotion.as_ref().unwrap().track,
-        LocomotorKind::Ship => entity.ship_locomotion.as_ref().unwrap().track,
+        LocomotorKind::Drive => entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track(),
+        LocomotorKind::Ship => entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_ship_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track(),
         _ => unreachable!(),
     }
 }
@@ -271,7 +316,13 @@ fn residual_bridge_crossing_preserves_z_and_projects_the_layer_from_on_bridge() 
         // EnterIdleMode and its Foot SetSpeedFraction(0) at that first end.
         super::navcom::set_destination_internal_cell(&mut entity, (3, 1), Some(&terrain), 0);
         assert_eq!(
-            entity.drive_locomotion.as_ref().unwrap().destination,
+            entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .unwrap()
+                .destination(),
             Some(DriveCoord::cell(3, 1, 416))
         );
         // Retained cursor 11 is the next sample after paid point10 at Y7.
@@ -945,11 +996,21 @@ fn ordinary_drive_ship_command_keeps_subcell_origin_through_terminal_cleanup() {
             );
             assert!(super::track_head::committed_track_head(entity).is_none());
             assert_eq!(
-                entity.drive_locomotion.as_ref().and_then(|d| d.head_to),
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .and_then(|d| d.head_to()),
                 None
             );
             assert_eq!(
-                entity.ship_locomotion.as_ref().and_then(|s| s.head_to),
+                entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .and_then(|s| s.head_to()),
                 None
             );
         }
@@ -986,29 +1047,40 @@ fn chained_mover(sim: &mut Simulation, kind: LocomotorKind) -> (GameEntity, Driv
     let offset = super::track_head::offset_head;
     let current = super::ground_pose::position_world_coord(&entity.position);
     let head = offset(offset(current, (turn / 8) as u8), (turn % 8) as u8);
-    super::track_head::accept_fresh_progress(
-        kind,
-        &mut entity.drive_locomotion,
-        &mut entity.ship_locomotion,
-        turn,
-    );
+    super::track_head::accept_fresh_progress(entity.locomotor.as_mut().unwrap(), turn);
     let mut replay = crate::sim::components::FootPathQueue::default();
     super::path_markers::install_path_replay(&mut replay, (3, 3), &path, 1);
     super::path_markers::accept_path_replay(&mut replay, (4, 1), 2);
     entity.navigation.path_replay = replay;
     match kind {
         LocomotorKind::Drive => {
-            let d = entity.drive_locomotion.as_mut().unwrap();
-            d.head_to = Some(head);
-            d.occupation_head_to = Some(crate::sim::components::DriveOccupationFootprint {
-                rx: (head.x / 256) as u16,
-                ry: (head.y / 256) as u16,
-                layer: MovementLayer::Ground,
-            });
+            let d = entity.locomotor.as_mut().unwrap();
+            assert!(d.store_track_head(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                Some(head)
+            ));
+            assert!(
+                d.publish_track_occupation(
+                    crate::sim::movement::track_process::TrackFamily::Drive,
+                    Some(crate::sim::components::DriveOccupationFootprint {
+                        rx: (head.x / 256) as u16,
+                        ry: (head.y / 256) as u16,
+                        layer: MovementLayer::Ground,
+                    }),
+                    d.selected_drive_runtime()
+                        .unwrap()
+                        .retained()
+                        .unwrap()
+                        .occupation_handoff()
+                )
+            );
         }
         LocomotorKind::Ship => {
-            let s = entity.ship_locomotion.as_mut().unwrap();
-            s.head_to = Some(head);
+            let s = entity.locomotor.as_mut().unwrap();
+            assert!(s.store_track_head(
+                crate::sim::movement::track_process::TrackFamily::Ship,
+                Some(head)
+            ));
         }
         _ => unreachable!(),
     }
@@ -1039,12 +1111,22 @@ fn admitted_tick_chain_uses_remaining_queue_and_retains_old_head_z() {
             let entity = sim.substrate.entities.get(1).unwrap();
             let (stored, queue) = match kind {
                 LocomotorKind::Drive => {
-                    let d = entity.drive_locomotion.as_ref().unwrap();
-                    (d.head_to, &entity.navigation.path_replay)
+                    let d = entity
+                        .locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_drive_runtime())
+                        .and_then(|r| r.retained())
+                        .unwrap();
+                    (d.head_to(), &entity.navigation.path_replay)
                 }
                 LocomotorKind::Ship => {
-                    let s = entity.ship_locomotion.as_ref().unwrap();
-                    (s.head_to, &entity.navigation.path_replay)
+                    let s = entity
+                        .locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_ship_runtime())
+                        .and_then(|r| r.retained())
+                        .unwrap();
+                    (s.head_to(), &entity.navigation.path_replay)
                 }
                 _ => unreachable!(),
             };
@@ -1087,7 +1169,13 @@ fn destination_cell_height_keeps_receiver_before_structural_lookup() {
     // truncation, including negative heights. Setter4AFD40 then looks up real
     // cell(0,0), because signed division truncates toward zero, and adds416.
     assert_eq!(
-        entity.drive_locomotion.as_ref().unwrap().destination,
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .destination(),
         Some(crate::sim::components::DriveCoord {
             x: -128,
             y: -128,

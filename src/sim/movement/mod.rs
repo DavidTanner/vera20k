@@ -146,6 +146,8 @@ pub use facing_class::FacingClass;
 
 pub(crate) use drive_locomotion::drive_do_turn;
 #[cfg(test)]
+pub(crate) use drive_locomotion::{DriveLocomotionRuntime, ShipLocomotionRuntime};
+#[cfg(test)]
 pub(crate) use foot_speed::owner_current_speed_from_fraction;
 #[cfg(test)]
 pub(crate) use foot_speed::owner_speed_bonus;

@@ -2474,10 +2474,18 @@ fn gsi_04_07_damage_retaliation_is_receiver_synchronous_and_uses_mission_overrid
                 0,
             ),
         );
-        victim.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
-            destination: Some(crate::sim::components::DriveCoord::cell(9, 5, 0)),
-            ..Default::default()
-        });
+        assert!(
+            victim
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(
+                    crate::sim::movement::DriveLocomotionRuntime::default()
+                        .with_destination_for_test(Some(crate::sim::components::DriveCoord::cell(
+                            9, 5, 0
+                        )))
+                ))
+        );
         victim.movement_target = Some(crate::sim::components::MovementTarget::default());
         entities.insert(victim);
 

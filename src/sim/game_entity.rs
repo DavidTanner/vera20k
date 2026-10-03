@@ -22,9 +22,8 @@ use crate::sim::cloak_disguise::{CloakRuntime, DisguiseRuntime};
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::combat::{AttackTarget, TargetKind};
 use crate::sim::components::{
-    C4PlantState, DriveLocomotionRuntime, HarvestOverlay, Health, MovementTarget, NavigationState,
-    OrderIntent, PendingC4Detonation, Position, RockingState, ShipLocomotionRuntime,
-    VoxelAnimation,
+    C4PlantState, HarvestOverlay, Health, MovementTarget, NavigationState, OrderIntent,
+    PendingC4Detonation, Position, RockingState, VoxelAnimation,
 };
 use crate::sim::debug_event_log::{DebugEventKind, DebugEventLog};
 use crate::sim::docking::aircraft_dock::AircraftAmmo;
@@ -905,12 +904,6 @@ pub struct GameEntity {
     /// Psychedelic/chaos runtime, separate from reversible mind control.
     #[serde(default)]
     pub berserk: BerserkState,
-    /// DriveLocomotion destination/head-to state separate from curve stepping.
-    #[serde(default)]
-    pub drive_locomotion: Option<DriveLocomotionRuntime>,
-    /// ShipLocomotion destination/head-to and target speed state.
-    #[serde(default)]
-    pub ship_locomotion: Option<ShipLocomotionRuntime>,
     /// Native Foot/Unit+500 entry target, independent of Radio contacts.
     /// Unit741D9F installs it; Foot70D84F/70D889 and expiry clear it.
     pending_entry: Option<u64>,
@@ -1708,8 +1701,6 @@ impl GameEntity {
             temporal: Default::default(),
             bomb: None,
             berserk: BerserkState::default(),
-            drive_locomotion: None,
-            ship_locomotion: None,
             pending_entry: None,
             aircraft_ammo: None,
             aircraft_mission: None,

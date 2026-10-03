@@ -201,7 +201,10 @@ impl Simulation {
                     locomotor.kind == crate::rules::locomotor_type::LocomotorKind::Ship
                 })
             {
-                ge.ship_locomotion = Some(Default::default());
+                ge.locomotor
+                    .as_mut()
+                    .unwrap()
+                    .ensure_installed_track_state();
             }
         }
         // Retain the signed native count even for Ammo=-1. Mission_Attack's
