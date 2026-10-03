@@ -1374,14 +1374,15 @@
     "archive_sha256": "246c9d4bed9bf0efa758d3d2e5189119cb4ddb139c71ecccf2a6861247b24df3"
   },
   "late-main/README.md": {
-    "source": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-late-main-readme-20261003.md",
-    "bytes": 7972,
-    "sha256": "7d1a3df8b63387ad6b20b2b09450d353a703750bfcb606b6794321c6aac6f670",
-    "archive_bytes": 7972,
-    "archive_sha256": "7d1a3df8b63387ad6b20b2b09450d353a703750bfcb606b6794321c6aac6f670",
-    "gzip": false
+    "archive_sha256": "397845a296eb79c2278a594010901d264df432e69c20d47f34f9430ed1a05a44"
   },
   "late-main/binding/archive-source-proof.json": {
     "archive_sha256": "c0df13977af27a92e1ff4a55ecd424e128111d9032066fc3db091f275e855aa5"
+  },
+  "late-main/checks/field-ratchet-c257.txt": {
+    "archive_sha256": "533ad520c8db36ba29bffaf3e684768340b8d247edddad39a882a33b759bfb19"
+  },
+  "late-main/binding/hero-main-source-proof.json": {
+    "archive_sha256": "99061a5a8c75728c6e7d6b976e646ed68916f1f85ccaf107470941cf5dc1646d"
   }
 }

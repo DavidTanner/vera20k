@@ -10,7 +10,12 @@ incoming main `c19e544581` (PR1034) and integration `87705976`. The observer kee
 both air/Walk projections and pending-entry state; private Foot marked-byte swap
 coexists with main's Mark(2)/Techno radio callback. Snapshot290 composes those
 changes with the two independent native air caches. Production RNG reset is
-unchanged. The [summary](summary.json) preserves actual run identities.
+unchanged. The [summary](summary.json) preserves actual run identities. Latest
+main c257323464 updates only the README hero PNG; conflict-free integration
+e261b9f2 keeps all1,962 tested/captured RS/PY bytes exact. Its
+[code binding](binding/hero-main-source-proof.json) and
+[final ratchet](checks/field-ratchet-c257.txt) preserve that check; no Cargo or
+runtime rerun was needed for the image-only integration.
 
 ## Rust and retail results
 
