@@ -1342,7 +1342,10 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
     }
     // Each transport on the first central cell that admits it, with level
     // walkable ground around it for its GIs (the row south) and their
-    // Scatter, four or more cells from the others.
+    // Scatter, four or more cells from the others. Check the shared playfield
+    // owner for the entire neighborhood: fresh Unit +3D5=false admission can
+    // succeed outside it (original73F34C; unit_entry_boundary rows24/30), so
+    // transport placement does not establish that its GIs can reveal there.
     let mut loads: Vec<(&str, u64, (u16, u16), Vec<u64>)> = Vec::new();
     for (kind, count) in [("BFRT", 5_u16), ("FV", 1), ("HTK", 3)] {
         let mut placed = None;
@@ -1355,7 +1358,11 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
                 let level = terrain.cell(x, y)?.level;
                 Some((x - 2..=x + 2).all(|cx| {
                     (y - 2..=y + 2).all(|cy| {
-                        terrain.cell(cx, cy).is_some_and(|cell| cell.level == level)
+                        crate::sim::cell_rect::cell_is_in_playfield_height_aware(
+                            (i32::from(cx), i32::from(cy)),
+                            sim.playfield_bounds,
+                            Some(terrain),
+                        ) && terrain.cell(cx, cy).is_some_and(|cell| cell.level == level)
                             && grid.cell(cx, cy).is_some_and(|cell| cell.ground_walkable)
                     })
                 }))
@@ -1380,7 +1387,13 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
                         0,
                         rules,
                     )
-                    .expect("GI spawns");
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{kind} GI {i} rejected at ({}, {}) beside transport ({tx}, {ty})",
+                            tx - 1 + i % 3,
+                            if i < 3 { ty + 1 } else { ty - 1 },
+                        )
+                    });
                 sim.substrate.entities.get_mut(id).unwrap().passenger_role =
                     PassengerRole::Boarding {
                         target_transport_id: transport,
