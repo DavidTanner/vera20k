@@ -59,6 +59,12 @@ the analyzed program. Re-importing or enabling analysis is not routine reconnect
   saves ECX at `0x7CA650` and restores it at `0x7CA678`; treating that call as an
   ordinary volatile-register call hides `Find_Path`'s receiver save at `0x4D3936`
   and its indexed path-buffer access at `0x4D3E98` (`this+index*4+0x5E0`).
+- Ghidra 12.1.2 defaults to ignoring NaN tests attached to floating comparisons.
+  Read the original x87 status test before porting an equality: `0x5B38E5` does
+  `FCOMP`, `FNSTSW AX`, then tests C3 with `TEST AH,0x40`; its equal branch also
+  admits unordered operands. The decompile shows equality alone on both sides
+  of the INI typing pass. A displayed `NAN(...)` is a p-code predicate, not proof
+  of a native function call; check the instruction and high p-code.
 - Check a decompile's stack offsets against the code when a parameter or local looks
   misplaced (`unaff_retaddr`, `in_stack_`, a parameter where another is pushed). For a
   call whose stack change it does not know, the decompiler assumes the call pops nothing,
@@ -543,7 +549,19 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   callers read the stack that many bytes off after each call (8 with ECX and EDX). Write
   `__stdcall` with only the stack parameters first, then the `__fastcall` prototype. No
   endpoint reads a purge; the signature census of a staging copy does.
+  For a native caller-cleanup `__cdecl` helper whose purge is unknown, use a
+  zero-argument `__stdcall` prelude before the full `__cdecl` prototype. On 2026-10-03,
+  directly typing comparators `0x52B6A0`/`0x52B720` stored 8 despite their bare native
+  RETs; the signature and parameter readbacks looked correct. Check the stored purge
+  with the census. Further prototype writes preserve an already valid purge, so this
+  prelude cannot repair an existing incorrect stored value.
 - The server renumbers parameters named `param_N` by position.
+- A return-type-only write can pass metadata readback while leaving the decompile
+  unusable. In the 2026-10-03 INI rehearsal, `undefined1` left eight inferred
+  full-EAX returns unchanged; concrete `byte` then locked their still-unknown
+  signatures and removed inferred ECX/stack inputs. Establish the complete native
+  input and return storage before locking a signature, then check fresh C and
+  high p-code as well as the stored parameters and purge.
 - A successful type-size lookup or `validate_function_prototype` reply does not
   establish that the signature parser can resolve a datatype. The validator checks
   format and convention without parsing the types. On 2026-10-02, two `GUID` entries
