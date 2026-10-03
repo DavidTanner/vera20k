@@ -1,0 +1,429 @@
+{
+  "schema_version": 1,
+  "scope": "Actual bounded native/Rust validation for the ordinary GI command-owner chain; original native manifest remains independently sealed",
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "native_manifest_path": "../manifest.json",
+  "native_manifest_sha256": "b90c182f52a7504741de7f0a9bf65570ed1999e42da10adbd7c46e778494a151",
+  "as_run_source_boundary": "g16 before validation-only archive commit; HEAD48669cd22 with main2135df0e3 integrated and parasite test prior corrected",
+  "validated_merge_head": "686791b0cc2ee2414de22c0ca0ae3615f5b3e146",
+  "bounds": [
+    "21 native command histories are executed controls, not whole-map or physical screen input parity.",
+    "Native paid GI_AI boundary is imported in Rust, not replayed as complete AI.",
+    "Full9662/0, selected retail63/0/no skips, Clippy exit0, Python582/5optional skips.",
+    "Fresh release500-step run and current binary validate; retained historical501 actor rows matchg8, whose binary was superseded.",
+    "Timer padding and native Event padding remain in raw receipts; only authoritative Rust fields are compared."
+  ],
+  "files": {
+    "checks/movement-queued-687-regression-green-g13-20261003.json.gz": {
+      "path": "checks/movement-queued-687-regression-green-g13-20261003.json.gz",
+      "bytes": 97444,
+      "sha256": "5c3e3f0605fb622dc40b607152db2a7c5e90f4f8f93c7e2fcc5423f82e9c5b95",
+      "uncompressed_bytes": 262098,
+      "uncompressed_sha256": "0e1e4fe9b988291047fa7dbb4cc23fe5bf74d5e1d0ae6071c0af3e1a6669f7e9"
+    },
+    "checks/movement-queued-687-regression-green-g13-20261003.log.gz": {
+      "path": "checks/movement-queued-687-regression-green-g13-20261003.log.gz",
+      "bytes": 2056,
+      "sha256": "0e76a65582e588f0e326fed72210dc016d5c3ac6c3f33af3f4416dadbabca263",
+      "uncompressed_bytes": 26185,
+      "uncompressed_sha256": "6f8bfa08fbca487223b10627986d3838adc739569da5bed78bdc064f5171a0ae"
+    },
+    "checks/movement-queued-687-regression-green-g15-20261003.json.gz": {
+      "path": "checks/movement-queued-687-regression-green-g15-20261003.json.gz",
+      "bytes": 96974,
+      "sha256": "998857bdefb5e96fd0ff531dcdd088c3fb4d769c88556f76365107e12c7933ef",
+      "uncompressed_bytes": 233650,
+      "uncompressed_sha256": "acfabc96b7841084302069a59fa1055df27b15cdc991f6b8d718fd7506b9b416"
+    },
+    "checks/movement-queued-687-regression-green-g15-20261003.log.gz": {
+      "path": "checks/movement-queued-687-regression-green-g15-20261003.log.gz",
+      "bytes": 1466,
+      "sha256": "a7877295b5128e6ae3f4646a784190e15abc2bfff569efdcb4c1c217dce47755",
+      "uncompressed_bytes": 3611,
+      "uncompressed_sha256": "ebc2fef75831a1e86d712070921877c28dcae5d7bf2ac66ada1269f6a4153b17"
+    },
+    "checks/movement-queued-687-final-full_lib-g14-20261003.json.gz": {
+      "path": "checks/movement-queued-687-final-full_lib-g14-20261003.json.gz",
+      "bytes": 96904,
+      "sha256": "f66809f02e00e882b4db75e8cd65c87fc94269f5f0a6c9b3d9b3807379d466cd",
+      "uncompressed_bytes": 233473,
+      "uncompressed_sha256": "27009e73fd697bf0d9c35313a1c1005e24f75406537148175ad3a8d8bc024b52"
+    },
+    "checks/movement-queued-687-final-full_lib-g14-20261003.log.gz": {
+      "path": "checks/movement-queued-687-final-full_lib-g14-20261003.log.gz",
+      "bytes": 203497,
+      "sha256": "c442399ff35a9bd66fb9a44e264f38adac29c0669960638cc98ffb33499a410a",
+      "uncompressed_bytes": 984829,
+      "uncompressed_sha256": "5c3f327db4882e358449b009d8f6c5f6036177949263ef5c7ea61fec9fa74ae6"
+    },
+    "checks/movement-queued-687-final-full_lib-g16-20261003.json.gz": {
+      "path": "checks/movement-queued-687-final-full_lib-g16-20261003.json.gz",
+      "bytes": 96946,
+      "sha256": "25b6733db67260a5c73d456011739ccc5a758075b159033aab45cb7639336a9f",
+      "uncompressed_bytes": 233583,
+      "uncompressed_sha256": "e02ba23de4e66f7237fbca5ae63b27f5f7fc2109821a60aef798c80b3e572102"
+    },
+    "checks/movement-queued-687-final-full_lib-g16-20261003.log.gz": {
+      "path": "checks/movement-queued-687-final-full_lib-g16-20261003.log.gz",
+      "bytes": 203175,
+      "sha256": "7272b54de4aa206312d738d01cd938bbd39b2dc3a9cf48d1082c721c432eb963",
+      "uncompressed_bytes": 984351,
+      "uncompressed_sha256": "8f5f9015e1d9297e7010b5fcd09631a7b0eb117a46d0561a905ca93469025654"
+    },
+    "checks/movement-queued-687-final-clippy_lib-g16-20261003.json.gz": {
+      "path": "checks/movement-queued-687-final-clippy_lib-g16-20261003.json.gz",
+      "bytes": 96925,
+      "sha256": "9f2a481ed0b376521bb7630f3007142726a3bd9dd07857aeb9fe3d34728d415b",
+      "uncompressed_bytes": 233515,
+      "uncompressed_sha256": "96c7f90f9954e6ebd6f382b688edd9863d8b5024893ac2ad53f38174373fa2b9"
+    },
+    "checks/movement-queued-687-final-clippy_lib-g16-20261003.log.gz": {
+      "path": "checks/movement-queued-687-final-clippy_lib-g16-20261003.log.gz",
+      "bytes": 68322,
+      "sha256": "e53dbefd6c2d8d668fbd8712905a9b320ae0b21db9f212f04016f8d141f71252",
+      "uncompressed_bytes": 425752,
+      "uncompressed_sha256": "07f488977c05f82cddbc8eb8bcf4193049ab1991f5ca504d0bb35574d2c2fc73"
+    },
+    "checks/movement-queued-687-final-primary63-g16-20261003.json.gz": {
+      "path": "checks/movement-queued-687-final-primary63-g16-20261003.json.gz",
+      "bytes": 98513,
+      "sha256": "d830a7e378cdbc2a39eb949f744258b8e6f1a26beb739c1ac9fb125170fe748e",
+      "uncompressed_bytes": 240930,
+      "uncompressed_sha256": "909773f24538920c250eb4b6a6d97691d0dee6117928a909c873b30a0e93152c"
+    },
+    "checks/movement-queued-687-final-primary63-g16-20261003.log.gz": {
+      "path": "checks/movement-queued-687-final-primary63-g16-20261003.log.gz",
+      "bytes": 270740,
+      "sha256": "6feef9a78fc6483cff8653e3704c400c54a580857a3a2e79d9e884efea0df54a",
+      "uncompressed_bytes": 5056232,
+      "uncompressed_sha256": "3df6204948f3cd47e4f97c85289efb5a9897eadd3b7530d3bbc30ad4d479c2ef"
+    },
+    "checks/movement-queued-687-final-python_suite-g14-20261003.json.gz": {
+      "path": "checks/movement-queued-687-final-python_suite-g14-20261003.json.gz",
+      "bytes": 96888,
+      "sha256": "4778acf0beb70d87c84e7fea0991e38b6c37db1898d391f0369589d43b54efe4",
+      "uncompressed_bytes": 233419,
+      "uncompressed_sha256": "1d9a53e29cd085438c7ea23cb3d3776f0329df4c6948090a4561f1318dc48d0d"
+    },
+    "checks/movement-queued-687-final-python_suite-g14-20261003.log.gz": {
+      "path": "checks/movement-queued-687-final-python_suite-g14-20261003.log.gz",
+      "bytes": 17368,
+      "sha256": "b569a1d956db05ce3d661d75d8fbbf5af0cebf151313056df6b87af99a93b813",
+      "uncompressed_bytes": 110704,
+      "uncompressed_sha256": "1f084a924d97846ee26c1906db5d25fc5c92d1944673a5a1252c2150de56a3db"
+    },
+    "checks/movement-queued-687-final-release_game-g16-20261003.json.gz": {
+      "path": "checks/movement-queued-687-final-release_game-g16-20261003.json.gz",
+      "bytes": 96926,
+      "sha256": "700d1e145e66e4bc6848f061c94f26f5f423c6692e4990462dbe5453f8d48de9",
+      "uncompressed_bytes": 233549,
+      "uncompressed_sha256": "bfe2ce0ec0bd0d3ec1a097396ee3c8726d2f26bb183a637dabc5549271fdb426"
+    },
+    "checks/movement-queued-687-final-release_game-g16-20261003.log.gz": {
+      "path": "checks/movement-queued-687-final-release_game-g16-20261003.log.gz",
+      "bytes": 1907,
+      "sha256": "a1d2585f2686ce0e72524ba69f3e0fa1a2e92538f0a67e9a75e78093138df6d7",
+      "uncompressed_bytes": 6112,
+      "uncompressed_sha256": "4f42640dad17513a7579d4e79578d62129cf0bbe4fd55b60bf7bd7fdcb9b22f5"
+    },
+    "checks/movement-queued-687-native-archive-integrity-g15-20261004.json.gz": {
+      "path": "checks/movement-queued-687-native-archive-integrity-g15-20261004.json.gz",
+      "bytes": 9006,
+      "sha256": "615ad742380af9a6ad586624e61b6929619b1a7e2e90b4f491def17a76ad814c",
+      "uncompressed_bytes": 50739,
+      "uncompressed_sha256": "46e832986227221793bc985bd6debfb6aeb01f3e65bee4d81355f14ebd65ccab"
+    },
+    "checks/movement-queued-687-event-attack-archive-source-g15-20261004.json.gz": {
+      "path": "checks/movement-queued-687-event-attack-archive-source-g15-20261004.json.gz",
+      "bytes": 1331,
+      "sha256": "2ac2ac0a64d0f28c0274a77b18496d03606c084391b8e1dbeb70c821aa76c850",
+      "uncompressed_bytes": 9790,
+      "uncompressed_sha256": "cfd85552f15fe9db54fbc3f93eb927778eba5c596e12bd0133d70a910fd6d563"
+    },
+    "checks/movement-queued-687-parasite-attach-refusal-source-g15b-20261004.json.gz": {
+      "path": "checks/movement-queued-687-parasite-attach-refusal-source-g15b-20261004.json.gz",
+      "bytes": 1397,
+      "sha256": "f1b9a3ccf75bbdf15b2684240b48c55dcb9bfc0b09e19d8a8186e123a83c9ca7",
+      "uncompressed_bytes": 12758,
+      "uncompressed_sha256": "78e4be43f50d80b385d343684dac582383043c4c5f937848607babdef45b62ed"
+    },
+    "checks/movement-queued-687-runtime-assertions-g16-20261004.json.gz": {
+      "path": "checks/movement-queued-687-runtime-assertions-g16-20261004.json.gz",
+      "bytes": 1179,
+      "sha256": "432c336b8addbd1c7da6c75b64295587af63234df24fb28af962058b547d7244",
+      "uncompressed_bytes": 2611,
+      "uncompressed_sha256": "74df4b465bebaccf198e3d74339b066e07fc55e4e66d2771f54a28191c8d4c89"
+    },
+    "checks/movement-queued-687-runtime-validate-g16-20261004.json.gz": {
+      "path": "checks/movement-queued-687-runtime-validate-g16-20261004.json.gz",
+      "bytes": 34857,
+      "sha256": "61fff9970ae175833cf0a811f6b72c6e356b6686c2fb8f7ee3152c2a5f7e00d2",
+      "uncompressed_bytes": 1293875,
+      "uncompressed_sha256": "d76f3f5f763fba157f7c2ad73009e17f248f919b818e98cddb3edc110d075875"
+    },
+    "checks/movement-queued-687-validation-invocation-plan-20261003.json.gz": {
+      "path": "checks/movement-queued-687-validation-invocation-plan-20261003.json.gz",
+      "bytes": 2214,
+      "sha256": "f197b632ad9f73e65adee6c8adbb452723a12f3fec92d7df69722995640e6de0",
+      "uncompressed_bytes": 8932,
+      "uncompressed_sha256": "5d1f758f390f1b68ca6740051913a08ab08bab2dbf32caeda5b919d1515a1c79"
+    },
+    "checks/native-main-compatibility-and-HOLD.json.gz": {
+      "path": "checks/native-main-compatibility-and-HOLD.json.gz",
+      "bytes": 2991,
+      "sha256": "f94aca8db0895149f1938360efbe488bac494f228a1387127ce8c12599a24a2e",
+      "uncompressed_bytes": 9864,
+      "uncompressed_sha256": "08b105e7f1358690608f7c9f7e6d505bdd3440bc1af1f524dfa055ffba661be0"
+    },
+    "as-run-g16/candidate.diff.gz": {
+      "path": "as-run-g16/candidate.diff.gz",
+      "bytes": 25038,
+      "sha256": "7d09af7c397de825afce8bfeee621c10b44f81dfe5a7322051963824a3ee92ed",
+      "uncompressed_bytes": 100390,
+      "uncompressed_sha256": "ed65f05e36394fb1b70f92ec80e86a3f57115c8d6b29922556366af565905f60"
+    },
+    "as-run-g16/manifest.json.gz": {
+      "path": "as-run-g16/manifest.json.gz",
+      "bytes": 1594,
+      "sha256": "6e532ee17a92fad44af71765bdb4f997f6fa5397afe290bde9b4854749181216",
+      "uncompressed_bytes": 3798,
+      "uncompressed_sha256": "2d3c892f87fae97e87a93447cd9fbf443c432a703077cf8d19f4a7cdbcdcfc08"
+    },
+    "as-run-g16/src/app/input/bridge_click_tests.rs.gz": {
+      "path": "as-run-g16/src/app/input/bridge_click_tests.rs.gz",
+      "bytes": 6701,
+      "sha256": "7d52666f8d31d1d9383498517de0a578d420e9bed59c50d2e4b9e03f96d25093",
+      "uncompressed_bytes": 23364,
+      "uncompressed_sha256": "958946dfe99962f0c21fbd88502c937192c8ea170ccc18389efd21d8ff6fc7df"
+    },
+    "as-run-g16/src/app/input/commands.rs.gz": {
+      "path": "as-run-g16/src/app/input/commands.rs.gz",
+      "bytes": 11577,
+      "sha256": "5a7846c449b64bb60e97e88499d8e5175be8bedf9ed51f98741ae521782ddf80",
+      "uncompressed_bytes": 50561,
+      "uncompressed_sha256": "5a2ebc363bb38971db9aed2fc0b5dafb797ed27d86e4235c6129db9ae528d27c"
+    },
+    "as-run-g16/src/app/input/context_order.rs.gz": {
+      "path": "as-run-g16/src/app/input/context_order.rs.gz",
+      "bytes": 28326,
+      "sha256": "00c02f01340766bd57e6c1a6c9202a41901a64ed43ba230e82d2356aeb6d7215",
+      "uncompressed_bytes": 126043,
+      "uncompressed_sha256": "5c4d6469189ca7e2092a33bc6c2f2491de90b4e77550bc0ab76f8e8205d42aaa"
+    },
+    "as-run-g16/src/sim/combat/parasite_tests.rs.gz": {
+      "path": "as-run-g16/src/sim/combat/parasite_tests.rs.gz",
+      "bytes": 9603,
+      "sha256": "0deb3e81cd965dfa2461837fa1f018e61a3ab4d68be263d8cd4360aed7a5e4a0",
+      "uncompressed_bytes": 37349,
+      "uncompressed_sha256": "99a04916912958d484c308d9bfc48c9487e63017d36e1488aeae8107313c6d1b"
+    },
+    "as-run-g16/src/sim/mission/retask.rs.gz": {
+      "path": "as-run-g16/src/sim/mission/retask.rs.gz",
+      "bytes": 4616,
+      "sha256": "63d57cffbe712a2eb95939fc7725b6583050d0596f58004db976b17f86f4d637",
+      "uncompressed_bytes": 13050,
+      "uncompressed_sha256": "ea2326083e6a607a53fa047806ea9bdd541c651b23bd638df6ebe8b3760dbcd3"
+    },
+    "as-run-g16/src/sim/movement/foot_path.rs.gz": {
+      "path": "as-run-g16/src/sim/movement/foot_path.rs.gz",
+      "bytes": 14463,
+      "sha256": "877fdbfc7b887c881cc23e9d1ad8fda0b31b0a7eb8f025bf02e6084079746619",
+      "uncompressed_bytes": 55691,
+      "uncompressed_sha256": "5d5d4bb341172087f51e40e52e3d37ce735b92146f786a4f6173e6a983c5515e"
+    },
+    "as-run-g16/src/sim/movement/infantry_scatter.rs.gz": {
+      "path": "as-run-g16/src/sim/movement/infantry_scatter.rs.gz",
+      "bytes": 9441,
+      "sha256": "8b44a52028ce92b81af5f6ea810015bde43c9318c310f2af0ae1404a0e77c87d",
+      "uncompressed_bytes": 37144,
+      "uncompressed_sha256": "0ebc0ea1bcdaf9c604510d2c86aea78c442ab51285dee50e6c2498c2b822e0bd"
+    },
+    "as-run-g16/src/sim/movement/mod.rs.gz": {
+      "path": "as-run-g16/src/sim/movement/mod.rs.gz",
+      "bytes": 7257,
+      "sha256": "fdea2a157d74eebe56fafdbe029e98fb1543a37f1b9e4574f43c7c95d583b338",
+      "uncompressed_bytes": 21323,
+      "uncompressed_sha256": "9ce3cf58effae4676d56523e4f3b2d037230cfd696793c3307b1afe8b4d3c707"
+    },
+    "as-run-g16/src/sim/movement/movement_commands.rs.gz": {
+      "path": "as-run-g16/src/sim/movement/movement_commands.rs.gz",
+      "bytes": 7519,
+      "sha256": "6a596719e7470f46c989470f87731e6e64555cda1a2532338ee41de049d329f1",
+      "uncompressed_bytes": 26375,
+      "uncompressed_sha256": "71a1542910207794603a3a257a6591f2044a84a9bdb1f97b2165c8f4b188f549"
+    },
+    "as-run-g16/src/sim/passenger/gunner_tests.rs.gz": {
+      "path": "as-run-g16/src/sim/passenger/gunner_tests.rs.gz",
+      "bytes": 3560,
+      "sha256": "ca194a604ad34ea840f8851b5a47d08277bc2c3132e4ce5ba2028ca4ebe4e960",
+      "uncompressed_bytes": 13082,
+      "uncompressed_sha256": "6255eaf6dcc3863e84cd8d9b3aecf1156e0eeff6ca1d7ac5486b6de3603056d1"
+    },
+    "as-run-g16/src/sim/transport_unload/tests.rs.gz": {
+      "path": "as-run-g16/src/sim/transport_unload/tests.rs.gz",
+      "bytes": 13108,
+      "sha256": "0e4a23cee7f3ca444a7a97b4bbb1800834b2841647317b9212a097ff07b082c2",
+      "uncompressed_bytes": 52144,
+      "uncompressed_sha256": "0b433346c3cf428334261adcf4d224475132aa6c5582754aaaff0d16047330e9"
+    },
+    "as-run-g16/src/sim/transport_unload.rs.gz": {
+      "path": "as-run-g16/src/sim/transport_unload.rs.gz",
+      "bytes": 13545,
+      "sha256": "9c5dfc3ec4d61fa8fc5a200894f5617ddeb7322fbf0706e8d7f2cca212af3d7d",
+      "uncompressed_bytes": 45573,
+      "uncompressed_sha256": "a156de688f2882cd5b99e62e1bec07c8147d38507c7225a112fd8699e4e876cb"
+    },
+    "as-run-g16/src/sim/world/factory_infantry_output_tests.rs.gz": {
+      "path": "as-run-g16/src/sim/world/factory_infantry_output_tests.rs.gz",
+      "bytes": 14628,
+      "sha256": "6231dac53d021134e962d4e2ab76188df10eed411e28fd356b6e05c69b42f038",
+      "uncompressed_bytes": 62530,
+      "uncompressed_sha256": "393fcf30c8eae0e3fe707062c65d80850aefcd596c76e9d7c42a1917d7303774"
+    },
+    "as-run-g16/src/sim/world/ground_move.rs.gz": {
+      "path": "as-run-g16/src/sim/world/ground_move.rs.gz",
+      "bytes": 3331,
+      "sha256": "04f2e53518323b65fd0064fe298ddfcc232af8853fc799042f4461d6d0b8dac8",
+      "uncompressed_bytes": 9854,
+      "uncompressed_sha256": "0e84c985a8d4d915d0d90c257ef0d7cf2c1ceab73bc190edfc67e468eaa7f295"
+    },
+    "as-run-g16/src/sim/world/move_cell_input.rs.gz": {
+      "path": "as-run-g16/src/sim/world/move_cell_input.rs.gz",
+      "bytes": 4383,
+      "sha256": "3847247bb88d0af74719c6e9e75ccc71d832807acac6de58f391a0a031f1be80",
+      "uncompressed_bytes": 13124,
+      "uncompressed_sha256": "2c18e33dab77c83be6d59214c0025aeee53bb0f3ddb072f072621142c8bb5cf9"
+    },
+    "as-run-g16/src/sim/world/move_cell_input_tests.rs.gz": {
+      "path": "as-run-g16/src/sim/world/move_cell_input_tests.rs.gz",
+      "bytes": 4340,
+      "sha256": "1454e3eec6fe04f4b8f374f8a986dafcabd31ad1607fbc439c00c23853d10030",
+      "uncompressed_bytes": 13597,
+      "uncompressed_sha256": "9c60f851bf7f6d524d1eab5b48544909c3da828f906329f10683949a8bfd70e6"
+    },
+    "as-run-g16/src/sim/world/track_path_continuation_tests.rs.gz": {
+      "path": "as-run-g16/src/sim/world/track_path_continuation_tests.rs.gz",
+      "bytes": 14971,
+      "sha256": "4432ff89b18aea10f3a99f94da0f95e0be1df373f58c7acf6615072bfd7ba00f",
+      "uncompressed_bytes": 66821,
+      "uncompressed_sha256": "f0bf30ddbf0b71dc088e6bbc46bb1bfe3489c5139c104a19fe473bb56044ec34"
+    },
+    "as-run-g16/src/sim/world/walk_failed_path_tests.rs.gz": {
+      "path": "as-run-g16/src/sim/world/walk_failed_path_tests.rs.gz",
+      "bytes": 4837,
+      "sha256": "ad1a5738f39d528b92504700239e3dc6e3f1be965316b96710bac163283fd4e6",
+      "uncompressed_bytes": 18210,
+      "uncompressed_sha256": "e6dbdd94246f5efcc6b58b1acd45867bbdef3540b7b9a8e197442b6d9069a7e3"
+    },
+    "as-run-g16/src/sim/world/world_commands.rs.gz": {
+      "path": "as-run-g16/src/sim/world/world_commands.rs.gz",
+      "bytes": 32010,
+      "sha256": "7a77c648975a12f51f6587a0f1e5102b3c737f15730b39687010bca9a9cc94da",
+      "uncompressed_bytes": 160992,
+      "uncompressed_sha256": "39774c14b2f7410f0141f775a0f4cfa47d83a3ed20cc09761e8d04e4a8582f5c"
+    },
+    "as-run-g16/src/sim/world/world_orders.rs.gz": {
+      "path": "as-run-g16/src/sim/world/world_orders.rs.gz",
+      "bytes": 18028,
+      "sha256": "49863cf7a566f8bf40080f5295c5c9566dda77a42761cf1cda44b71020985adf",
+      "uncompressed_bytes": 67668,
+      "uncompressed_sha256": "787d619be962c5fd50f4c8bfa73ac69447b2c82e86075df3e5f254adb34a4e76"
+    },
+    "as-run-g16/src/sim/world/world_orders_bridge_repair_tests.rs.gz": {
+      "path": "as-run-g16/src/sim/world/world_orders_bridge_repair_tests.rs.gz",
+      "bytes": 9640,
+      "sha256": "00bab966c027d8c6c572ab89272df4facbb1c11418541e3f105b6703b2c16f3c",
+      "uncompressed_bytes": 43234,
+      "uncompressed_sha256": "7f73cc34012190cac647a2746c54b9403b6cea341902cda4cb9b777d97afc1f4"
+    },
+    "runtime-g16/run.json.gz": {
+      "path": "runtime-g16/run.json.gz",
+      "bytes": 29262,
+      "sha256": "79541b2812802223cd41a2e7e036ff6fc4dd2041e5ebb091d77478ffc0dfec66",
+      "uncompressed_bytes": 1256542,
+      "uncompressed_sha256": "6e7dac6643e92a44b28271fd80fb5d460b7e90d6d1047f76bc89734dac7e63d7"
+    },
+    "runtime-g16/profile.json.gz": {
+      "path": "runtime-g16/profile.json.gz",
+      "bytes": 1056,
+      "sha256": "9a3b8cb25533d80000863e85f4f2e11ff08f7910bef27856039ae00d3111cf3c",
+      "uncompressed_bytes": 3842,
+      "uncompressed_sha256": "af0bfa3e985496b740cdfe29b06e3e429920b1215658173d73ed48f9f19b523f"
+    },
+    "runtime-g16/contract.json.gz": {
+      "path": "runtime-g16/contract.json.gz",
+      "bytes": 331,
+      "sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986",
+      "uncompressed_bytes": 590,
+      "uncompressed_sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+    },
+    "runtime-g16/config.toml.gz": {
+      "path": "runtime-g16/config.toml.gz",
+      "bytes": 428,
+      "sha256": "06d0d0f049555d6a25c20c814f0868862f38606fd07385f21bf3e55482a7c0ab",
+      "uncompressed_bytes": 612,
+      "uncompressed_sha256": "4b0225bf1d36cb269496318d89ba8a35984a748aaad66bc9702041ba857edf45"
+    },
+    "runtime-g16/stdout.log.gz": {
+      "path": "runtime-g16/stdout.log.gz",
+      "bytes": 20,
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "uncompressed_bytes": 0,
+      "uncompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "runtime-g16/stderr.log.gz": {
+      "path": "runtime-g16/stderr.log.gz",
+      "bytes": 191,
+      "sha256": "b7dd28b9acedc55cc42237ea9d1b6438346e40515e5d77439f7b24c8ca4acacf",
+      "uncompressed_bytes": 409,
+      "uncompressed_sha256": "9019d0983d879e93186032ae00f524e378a9b026a92d0b92835e31af61cb77f4"
+    },
+    "runtime-g16/child-output/capture.json.gz": {
+      "path": "runtime-g16/child-output/capture.json.gz",
+      "bytes": 30553,
+      "sha256": "5ac966a80532602e7058a8b7eafd5ee879d48da19a3a0f02db60da9b255145f2",
+      "uncompressed_bytes": 1259168,
+      "uncompressed_sha256": "a4f1c0f74375ae4e1d85477354ecae2bff126339e3b4d9dd14f9a9fd299737fb"
+    },
+    "runtime-g16/child-output/frame.bgra.gz": {
+      "path": "runtime-g16/child-output/frame.bgra.gz",
+      "bytes": 261902,
+      "sha256": "94cc86762a595161cc60d83e4b354d959b1ba7077da7ff62e919f5a74f8c16e8",
+      "uncompressed_bytes": 1920000,
+      "uncompressed_sha256": "f30df367981afdb71072609d0fe6b87f02d543af83c9ddc2712ec90edf53c2e7"
+    },
+    "runtime-g16/gi-reissue-owned.map.gz": {
+      "path": "runtime-g16/gi-reissue-owned.map.gz",
+      "bytes": 17095,
+      "sha256": "8b25b88c1e4dcd08668960092c399a15edb53b2a76b7f29e769b8c4d3274899b",
+      "uncompressed_bytes": 74196,
+      "uncompressed_sha256": "22000b3a904c2ea0d39700a252cfe8a7e242f4747d92c9a07f57ea43737447da"
+    },
+    "runtime-g16/frame.png": {
+      "path": "runtime-g16/frame.png",
+      "bytes": 248413,
+      "sha256": "72e111ca6b62c6ee5dcc27916fee1889faf4955257c464b248d0c2d82b9bd7cd"
+    },
+    "checks/movement-queued-687-post-archive-walk-check-g16-20261004.log.gz": {
+      "path": "checks/movement-queued-687-post-archive-walk-check-g16-20261004.log.gz",
+      "bytes": 137,
+      "sha256": "2c3901aa0e859cb513ab9df3952e3461d920c44fe3a0470dbd13d7f5396e80fd",
+      "uncompressed_bytes": 144,
+      "uncompressed_sha256": "b284848a32cc8ea722632a8a3a5bcb425d9e79a9d56d36ea453a43803a8675e1"
+    },
+    "checks/movement-queued-687-post-archive-factory-check-g16-20261004.log.gz": {
+      "path": "checks/movement-queued-687-post-archive-factory-check-g16-20261004.log.gz",
+      "bytes": 4986,
+      "sha256": "e5cc7e71008c4454b3216c9dcefe53d4b99360d67460be52bd9ce2795b2c300f",
+      "uncompressed_bytes": 14509,
+      "uncompressed_sha256": "22d8e89e7cdd4fc8371c41017ae1509ccc4507ef566ccd8c0cc9a32e04392d32"
+    },
+    "checks/movement-queued-687-post-archive-checks-g16-20261004.json.gz": {
+      "path": "checks/movement-queued-687-post-archive-checks-g16-20261004.json.gz",
+      "bytes": 422,
+      "sha256": "232e39b52599c935167731d80a6fd24b1ca24cc3e1e0b4d97abad138869032d1",
+      "uncompressed_bytes": 787,
+      "uncompressed_sha256": "75d2aad88461bce5ff50e424950679ef5e1cbebd1b1832969a84694fe84ec1e8"
+    }
+  }
+}

@@ -222,3 +222,6 @@ scheduling, networking/checksum, save-load and stock-map Tube incidence remain
 outside this evidence. All21 named controls have successful original executions within those bounds.
 A failed observer, wrapper or budget remains a separate failed receipt and does
 not establish a native gameplay result.
+
+The connected Rust consumers, final retail checks and production observation are
+preserved in the [command-owner validation archive](validation/README.md).
