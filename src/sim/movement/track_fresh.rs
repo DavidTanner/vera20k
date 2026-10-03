@@ -69,7 +69,7 @@ use super::track_path::{clear_track_head, track_destination};
 use super::track_process::TrackFamily;
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
-use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
+use crate::rules::locomotor_type::MovementZone;
 use crate::rules::mission_data::MissionType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_kernel::native_xyz_distance;
@@ -683,17 +683,13 @@ impl Simulation {
         //+60 = 0 are written now, before the crate question and the second
         //query, so a second-stage stop or retry keeps the new selector.
         let turn_index = super::drive_track::fresh_turn_index(direction, second as u8);
-        if let Some(actor) = self.substrate.entities.get_mut(id) {
-            let kind = actor
-                .locomotor
-                .as_ref()
-                .map_or(LocomotorKind::Drive, |l| l.kind);
-            super::track_head::select_fresh_progress(
-                kind,
-                &mut actor.drive_locomotion,
-                &mut actor.ship_locomotion,
-                turn_index,
-            );
+        if let Some(loco) = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .and_then(|actor| actor.locomotor.as_mut())
+        {
+            super::track_head::select_fresh_progress(loco, turn_index);
         }
         let two_node = super::drive_track::turn_track_at(turn_index)
             .is_some_and(|turn| turn.flags & super::drive_track::TURN_TRACK_TURNS_FLAG != 0);
@@ -850,26 +846,9 @@ impl Simulation {
             consumed,
         );
         //4B46C3..4B46D7: install the selector and head (+63 = 1).
-        super::track_head::accept_fresh_progress(
-            actor
-                .locomotor
-                .as_ref()
-                .map_or(LocomotorKind::Drive, |l| l.kind),
-            &mut actor.drive_locomotion,
-            &mut actor.ship_locomotion,
-            turn_index,
-        );
-        match call.family {
-            TrackFamily::Drive => {
-                if let Some(drive) = actor.drive_locomotion.as_mut() {
-                    drive.head_to = Some(candidate);
-                }
-            }
-            TrackFamily::Ship => {
-                if let Some(ship) = actor.ship_locomotion.as_mut() {
-                    ship.head_to = Some(candidate);
-                }
-            }
+        if let Some(loco) = actor.locomotor.as_mut() {
+            super::track_head::accept_fresh_progress(loco, turn_index);
+            loco.store_track_head(call.family, Some(candidate));
         }
         //4B46DF..4B46FA: the crate question (see residual), then limbo.
         if !actor.lifecycle.in_limbo {
@@ -1070,18 +1049,12 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        match actor.locomotor.as_ref().map(|loco| loco.kind) {
-            Some(LocomotorKind::Drive) => {
-                if let Some(drive) = actor.drive_locomotion.as_mut() {
-                    drive.track.turn_index = -1;
-                }
-            }
-            Some(LocomotorKind::Ship) => {
-                if let Some(ship) = actor.ship_locomotion.as_mut() {
-                    ship.track.turn_index = -1;
-                }
-            }
-            _ => {}
+        if let Some(loco) = actor.locomotor.as_mut()
+            && let Some(family) = TrackFamily::from_kind(loco.kind)
+            && let Some(mut progress) = loco.track_progress(family)
+        {
+            progress.turn_index = -1;
+            loco.store_track_progress(family, progress);
         }
     }
 

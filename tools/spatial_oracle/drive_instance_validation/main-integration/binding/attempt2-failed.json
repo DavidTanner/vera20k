@@ -1,0 +1,8 @@
+{
+  "status": "FAILED_BEFORE_BINDING",
+  "exit_code": 1,
+  "producer_write_exit_code": 0,
+  "reason": "Comparison used metadata path instead of corpus path; assertion stopped before repository mutation",
+  "fresh_native_vm_generation": false,
+  "script_sha256": "b02ae4f245775d9632b26858b443211c469643c4febfab1027144b6ea1dd3187"
+}

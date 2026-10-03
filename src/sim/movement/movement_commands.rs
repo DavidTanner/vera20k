@@ -652,11 +652,11 @@ pub(super) fn schedule_track_process(entity: &mut GameEntity, target: (u16, u16)
 /// (`track_continuation`) or on the next visit. With no destination left it
 /// retires.
 pub(super) fn spend_track_route(entity: &mut GameEntity) {
-    let destination = match entity.locomotor.as_ref().map(|loco| loco.active_kind()) {
-        Some(LocomotorKind::Drive) => entity.drive_locomotion.as_ref().and_then(|d| d.destination),
-        Some(LocomotorKind::Ship) => entity.ship_locomotion.as_ref().and_then(|s| s.destination),
-        _ => None,
-    };
+    let destination = entity.locomotor.as_ref().and_then(|loco| {
+        loco.track_destination(super::track_process::TrackFamily::from_kind(
+            loco.active_kind(),
+        )?)
+    });
     if destination.is_none() {
         entity.movement_target = None;
     }

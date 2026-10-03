@@ -4,30 +4,18 @@
 //! (41C250), links it (7426C9), begins piggyback (74276F) and swaps (74277E).
 //! Constructor4AF540 initializes its own destination/head/track/speed state.
 //! END4AF930 transfers the stashed object; owner742587 / FootAI4DAEC3 then
-//! release the displaced instance. Rust's external Drive fields follow that
-//! lifetime here. The generic piggyback gate and other class policies stay with
+//! release the displaced complete instance, including its private retained
+//! state. The generic piggyback gate and other class policies stay with
 //! their existing owners. These helpers do not mutate Cell occupation.
 
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;
 
-fn clear_drive_instance(entity: &mut GameEntity) {
-    entity.drive_locomotion = None;
-}
-
 pub(crate) fn begin_drive_for_teleporter(entity: &mut GameEntity, binary_frame: u32) -> bool {
     let Some(locomotor) = entity.locomotor.as_mut() else {
         return false;
     };
-    let reused_drive = locomotor.active_kind() == LocomotorKind::Drive;
-    let accepted = locomotor.begin_drive_piggyback_for_teleporter(binary_frame);
-    if accepted && !reused_drive {
-        // The incoming Drive is a new object, even if a retired instance left
-        // external fields on this entity. A coherent active Drive is reused
-        // and retains its head, curve and residual on repeated destinations.
-        clear_drive_instance(entity);
-    }
-    accepted
+    locomotor.begin_drive_piggyback_for_teleporter(binary_frame)
 }
 
 pub(crate) fn try_restore_primary(entity: &mut GameEntity) -> bool {
@@ -58,12 +46,10 @@ pub(crate) fn try_end_drive_at_foot_idle(entity: &mut GameEntity) -> bool {
 /// Is_Moving_Now, which also counts hull rotation and live speed.
 fn drive_end_admitted(entity: &GameEntity) -> bool {
     entity.locomotor.as_ref().is_some_and(|locomotor| {
-        locomotor.active_kind() == LocomotorKind::Drive && locomotor.piggyback.is_some()
-    }) && entity
-        .drive_locomotion
-        .as_ref()
-        .is_none_or(|drive| drive.end_permitted)
-        && super::motion_query::is_moving(entity) != Some(true)
+        locomotor.active_kind() == LocomotorKind::Drive
+            && locomotor.piggyback.is_some()
+            && locomotor.drive_end_permitted()
+    }) && super::motion_query::is_moving(entity) != Some(true)
         && !entity.foot_locomotor_swap_active
 }
 
@@ -74,15 +60,11 @@ pub(crate) fn restore_admitted_primary(entity: &mut GameEntity) -> bool {
     let Some(locomotor) = entity.locomotor.as_mut() else {
         return false;
     };
-    let retired_drive = locomotor.active_kind() == LocomotorKind::Drive;
     let restored = locomotor.end_piggyback();
     if restored {
         // END transfers the controller without moving Object+9C. Restored
         // altitude is controller state, not an addition to this exact XYZ.
         entity.position.exact_z_leptons = Some(physical.z);
-    }
-    if restored && retired_drive {
-        clear_drive_instance(entity);
     }
     restored
 }

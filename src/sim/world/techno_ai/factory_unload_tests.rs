@@ -11,12 +11,13 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
 use crate::rules::retail_ini_fixture::retail_rules_and_art;
 use crate::rules::terrain_rules::TerrainRules;
-use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, NavTargetRef, TrackProgress};
+use crate::sim::components::{DriveCoord, NavTargetRef, TrackProgress};
 use crate::sim::door::{DoorClass, DoorPhase};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId};
+use crate::sim::movement::DriveLocomotionRuntime;
 use crate::sim::movement::{PerCellReason, factory_exit_track_coordinate, ground_pose};
 use crate::sim::radio::{self, RadioMessage, RadioPayload};
 use crate::sim::rng::SimRng;
@@ -448,24 +449,28 @@ fn fixture_input(fixture: &mut Fixture, rules: &RuleSet, native: &Value) {
         &native["producer"],
     );
     let drive = &native["drive"];
-    let runtime = DriveLocomotionRuntime {
-        destination: (drive["destination"] != json!([0, 0, 0]))
-            .then(|| coord(&drive["destination"])),
-        head_to: (drive["head"] != json!([0, 0, 0])).then(|| coord(&drive["head"])),
-        track: TrackProgress {
+    let runtime = DriveLocomotionRuntime::default()
+        .with_destination_for_test(
+            (drive["destination"] != json!([0, 0, 0])).then(|| coord(&drive["destination"])),
+        )
+        .with_head_to_for_test((drive["head"] != json!([0, 0, 0])).then(|| coord(&drive["head"])))
+        .with_track_for_test(TrackProgress {
             turn_index: int(&drive["selector"]),
             cursor: int(&drive["cursor"]),
             reversed: drive["reversed"] == 1,
             residual: int(&drive["residual"]),
-        },
-        track_valid: drive["valid"] == 1,
-        target_speed_fraction: SimFixed::from_num(f64::from_bits(bits(
+        })
+        .with_track_valid_for_test(drive["valid"] == 1)
+        .with_target_speed_fraction_for_test(SimFixed::from_num(f64::from_bits(bits(
             &drive["target_fraction_bits"],
-        ))),
-        ..Default::default()
-    };
+        ))));
     let unit = sim.substrate.entities.get_mut(*product).unwrap();
-    unit.drive_locomotion = Some(runtime);
+    assert!(
+        unit.locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(runtime))
+    );
     unit.foot_speed
         .set_speed_fraction_native_bits(bits(&drive["applied_fraction_bits"]));
     unit.navigation.nav_com = native_nav(native);
@@ -617,30 +622,35 @@ fn assert_snapshot(fixture: &Fixture, native: &Value, name: &str) {
         native_nav(native),
         "{name}: Unit NavCom"
     );
-    let actual = product.drive_locomotion.as_ref().unwrap();
+    let actual = product
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
     let drive = &native["drive"];
     for (key, value) in [
-        ("selector", actual.track.turn_index),
-        ("cursor", actual.track.cursor),
-        ("residual", actual.track.residual),
+        ("selector", actual.track().turn_index),
+        ("cursor", actual.track().cursor),
+        ("residual", actual.track().residual),
     ] {
         assert_eq!(json!(value), drive[key], "{name}: Drive {key}");
     }
-    assert_eq!(json!(u8::from(actual.track.reversed)), drive["reversed"]);
-    assert_eq!(json!(u8::from(actual.track_valid)), drive["valid"]);
+    assert_eq!(json!(u8::from(actual.track().reversed)), drive["reversed"]);
+    assert_eq!(json!(u8::from(actual.track_valid())), drive["valid"]);
     let zero = DriveCoord { x: 0, y: 0, z: 0 };
     assert_eq!(
-        xyz(actual.head_to.unwrap_or(zero)),
+        xyz(actual.head_to().unwrap_or(zero)),
         drive["head"],
         "{name}: Drive head"
     );
     assert_eq!(
-        xyz(actual.destination.unwrap_or(zero)),
+        xyz(actual.destination().unwrap_or(zero)),
         drive["destination"],
         "{name}: Drive destination"
     );
     assert_eq!(
-        f64_hex(actual.target_speed_fraction.to_num::<f64>()),
+        f64_hex(actual.target_speed_fraction().to_num::<f64>()),
         drive["target_fraction_bits"].as_str().unwrap(),
         "{name}: Drive target fraction"
     );

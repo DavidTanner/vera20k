@@ -6,14 +6,13 @@
 
 use super::*;
 use crate::rules::ini_parser::IniFile;
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, ShipLocomotionRuntime, TrackProgress,
-};
+use crate::sim::components::{DriveCoord, TrackProgress};
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId};
 use crate::sim::movement::PerCellReason;
 use crate::sim::movement::facing_class::FacingClass;
 use crate::sim::movement::locomotor::LocomotorState;
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::snapshot::GameSnapshot;
 use serde_json::{Value, json};
@@ -55,12 +54,22 @@ fn family(input: &Value) -> LocomotorKind {
 fn retained(entity: &GameEntity, kind: LocomotorKind) -> (bool, bool, TrackProgress) {
     match kind {
         LocomotorKind::Drive => {
-            let state = entity.drive_locomotion.as_ref().unwrap();
-            (state.track_valid, state.turn_latched, state.track)
+            let state = entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .unwrap();
+            (state.track_valid(), state.turn_latched(), state.track())
         }
         LocomotorKind::Ship => {
-            let state = entity.ship_locomotion.as_ref().unwrap();
-            (state.track_valid, state.turn_latched, state.track)
+            let state = entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_ship_runtime())
+                .and_then(|r| r.retained())
+                .unwrap();
+            (state.track_valid(), state.turn_latched(), state.track())
         }
         _ => unreachable!(),
     }
@@ -75,16 +84,34 @@ fn set_retained(
 ) {
     match kind {
         LocomotorKind::Drive => {
-            let state = entity.drive_locomotion.as_mut().unwrap();
-            state.track_valid = valid;
-            state.turn_latched = latch;
-            state.track = track;
+            let state = entity.locomotor.as_mut().unwrap();
+            assert!(state.store_track_valid(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                valid
+            ));
+            assert!(state.store_track_turn_latched(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                latch
+            ));
+            assert!(state.store_track_progress(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                track
+            ));
         }
         LocomotorKind::Ship => {
-            let state = entity.ship_locomotion.as_mut().unwrap();
-            state.track_valid = valid;
-            state.turn_latched = latch;
-            state.track = track;
+            let state = entity.locomotor.as_mut().unwrap();
+            assert!(state.store_track_valid(
+                crate::sim::movement::track_process::TrackFamily::Ship,
+                valid
+            ));
+            assert!(state.store_track_turn_latched(
+                crate::sim::movement::track_process::TrackFamily::Ship,
+                latch
+            ));
+            assert!(state.store_track_progress(
+                crate::sim::movement::track_process::TrackFamily::Ship,
+                track
+            ));
         }
         _ => unreachable!(),
     }
@@ -100,8 +127,20 @@ fn fixture(kind: LocomotorKind) -> Simulation {
     entity.lifecycle.cell_marked = true;
     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
     match kind {
-        LocomotorKind::Drive => entity.drive_locomotion = Some(DriveLocomotionRuntime::default()),
-        LocomotorKind::Ship => entity.ship_locomotion = Some(ShipLocomotionRuntime::default()),
+        LocomotorKind::Drive => assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(DriveLocomotionRuntime::default()))
+        ),
+        LocomotorKind::Ship => assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_ship_state_for_test(Some(ShipLocomotionRuntime::default()))
+        ),
         _ => unreachable!(),
     }
     sim.substrate.entities.insert(entity);
@@ -153,11 +192,12 @@ fn track_entry_matches_all_144_native_rows_and_only_changes_rejected_residual() 
         entity.navigation.path_replay.cursor = 1;
         let mut expected = serde_json::to_value(&*entity).unwrap();
         let field = if kind == LocomotorKind::Drive {
-            "drive_locomotion"
+            "Drive"
         } else {
-            "ship_locomotion"
+            "Ship"
         };
-        expected[field]["track"]["residual"] = case["residual_after"].clone();
+        expected["locomotor"]["runtime_payload"][field]["retained"]["track"]["residual"] =
+            case["residual_after"].clone();
         let actual = admit_track_entry(entity, bit(&input["turret"]));
         assert_eq!(
             actual,
@@ -309,8 +349,17 @@ fn setup_turn(sim: &mut Simulation, kind: LocomotorKind, live: bool, latch: bool
             z: 0,
         });
         match kind {
-            LocomotorKind::Drive => entity.drive_locomotion.as_mut().unwrap().head_to = head,
-            LocomotorKind::Ship => entity.ship_locomotion.as_mut().unwrap().head_to = head,
+            LocomotorKind::Drive => assert!(entity.locomotor.as_mut().unwrap().store_track_head(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                head
+            )),
+            LocomotorKind::Ship => assert!(
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .store_track_head(crate::sim::movement::track_process::TrackFamily::Ship, head)
+            ),
             _ => unreachable!(),
         }
     }
@@ -400,10 +449,16 @@ fn actual_process_exact_destination_bypasses_sampler_for_guard_but_not_move() {
             ));
             match kind {
                 LocomotorKind::Drive => {
-                    entity.drive_locomotion.as_mut().unwrap().destination = destination
+                    assert!(entity.locomotor.as_mut().unwrap().store_track_destination(
+                        crate::sim::movement::track_process::TrackFamily::Drive,
+                        destination
+                    ))
                 }
                 LocomotorKind::Ship => {
-                    entity.ship_locomotion.as_mut().unwrap().destination = destination
+                    assert!(entity.locomotor.as_mut().unwrap().store_track_destination(
+                        crate::sim::movement::track_process::TrackFamily::Ship,
+                        destination
+                    ))
                 }
                 _ => unreachable!(),
             }
@@ -439,13 +494,23 @@ fn both_family_latches_survive_serde_snapshot_and_change_current_hash() {
         set_retained(entity, kind, valid, true, track);
         match kind {
             LocomotorKind::Drive => {
-                let state = entity.drive_locomotion.as_ref().unwrap();
+                let state = entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
                 let restored: DriveLocomotionRuntime =
                     bincode::deserialize(&bincode::serialize(state).unwrap()).unwrap();
                 assert_eq!(&restored, state);
             }
             LocomotorKind::Ship => {
-                let state = entity.ship_locomotion.as_ref().unwrap();
+                let state = entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
                 let restored: ShipLocomotionRuntime =
                     bincode::deserialize(&bincode::serialize(state).unwrap()).unwrap();
                 assert_eq!(&restored, state);
@@ -461,8 +526,34 @@ fn both_family_latches_survive_serde_snapshot_and_change_current_hash() {
         let restored = GameSnapshot::load(&bytes).unwrap().sim;
         let before = sim.substrate.entities.get(1).unwrap();
         let after = restored.substrate.entities.get(1).unwrap();
-        assert_eq!(after.drive_locomotion, before.drive_locomotion);
-        assert_eq!(after.ship_locomotion, before.ship_locomotion);
+        assert_eq!(
+            after
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .cloned(),
+            before
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .cloned()
+        );
+        assert_eq!(
+            after
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_ship_runtime())
+                .and_then(|r| r.retained())
+                .cloned(),
+            before
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_ship_runtime())
+                .and_then(|r| r.retained())
+                .cloned()
+        );
         assert_eq!(after.body_facing, before.body_facing);
         assert_eq!(restored.state_hash(), latched_hash);
     }
@@ -488,18 +579,28 @@ fn actual_entry_turn_gate_precedes_speed_and_points_for_both_families() {
             set_retained(entity, kind, valid, latch, track);
             match kind {
                 LocomotorKind::Drive => {
-                    entity
-                        .drive_locomotion
-                        .as_mut()
-                        .unwrap()
-                        .target_speed_fraction = SimFixed::ONE
+                    assert!(
+                        entity
+                            .locomotor
+                            .as_mut()
+                            .unwrap()
+                            .store_track_target_fraction(
+                                crate::sim::movement::track_process::TrackFamily::Drive,
+                                SimFixed::ONE
+                            )
+                    )
                 }
                 LocomotorKind::Ship => {
-                    entity
-                        .ship_locomotion
-                        .as_mut()
-                        .unwrap()
-                        .target_speed_fraction = SimFixed::ONE
+                    assert!(
+                        entity
+                            .locomotor
+                            .as_mut()
+                            .unwrap()
+                            .store_track_target_fraction(
+                                crate::sim::movement::track_process::TrackFamily::Ship,
+                                SimFixed::ONE
+                            )
+                    )
                 }
                 _ => unreachable!(),
             }
@@ -587,18 +688,28 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                 let target_fraction = SimFixed::lit("0.375");
                 match kind {
                     LocomotorKind::Drive => {
-                        entity
-                            .drive_locomotion
-                            .as_mut()
-                            .unwrap()
-                            .target_speed_fraction = target_fraction;
+                        assert!(
+                            entity
+                                .locomotor
+                                .as_mut()
+                                .unwrap()
+                                .store_track_target_fraction(
+                                    crate::sim::movement::track_process::TrackFamily::Drive,
+                                    target_fraction
+                                )
+                        );
                     }
                     LocomotorKind::Ship => {
-                        entity
-                            .ship_locomotion
-                            .as_mut()
-                            .unwrap()
-                            .target_speed_fraction = target_fraction;
+                        assert!(
+                            entity
+                                .locomotor
+                                .as_mut()
+                                .unwrap()
+                                .store_track_target_fraction(
+                                    crate::sim::movement::track_process::TrackFamily::Ship,
+                                    target_fraction
+                                )
+                        );
                     }
                     _ => unreachable!(),
                 }
@@ -658,20 +769,20 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                 }
                 assert_eq!(entity.foot_speed, speed_before);
                 let retained_fraction = match kind {
-                    LocomotorKind::Drive => {
-                        entity
-                            .drive_locomotion
-                            .as_ref()
-                            .unwrap()
-                            .target_speed_fraction
-                    }
-                    LocomotorKind::Ship => {
-                        entity
-                            .ship_locomotion
-                            .as_ref()
-                            .unwrap()
-                            .target_speed_fraction
-                    }
+                    LocomotorKind::Drive => entity
+                        .locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_drive_runtime())
+                        .and_then(|r| r.retained())
+                        .unwrap()
+                        .target_speed_fraction(),
+                    LocomotorKind::Ship => entity
+                        .locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_ship_runtime())
+                        .and_then(|r| r.retained())
+                        .unwrap()
+                        .target_speed_fraction(),
                     _ => unreachable!(),
                 };
                 assert_eq!(retained_fraction, target_fraction);
@@ -833,14 +944,26 @@ fn actual_turn_and_arrival_crush_use_binary_frame_for_both_shield_kinds() {
                     if arrival {
                         match kind {
                             LocomotorKind::Drive => {
-                                let state = crusher.drive_locomotion.as_mut().unwrap();
-                                state.head_to = Some(current);
-                                state.target_speed_fraction = SimFixed::ONE;
+                                let state = crusher.locomotor.as_mut().unwrap();
+                                assert!(state.store_track_head(
+                                    crate::sim::movement::track_process::TrackFamily::Drive,
+                                    Some(current)
+                                ));
+                                assert!(state.store_track_target_fraction(
+                                    crate::sim::movement::track_process::TrackFamily::Drive,
+                                    SimFixed::ONE
+                                ));
                             }
                             LocomotorKind::Ship => {
-                                let state = crusher.ship_locomotion.as_mut().unwrap();
-                                state.head_to = Some(current);
-                                state.target_speed_fraction = SimFixed::ONE;
+                                let state = crusher.locomotor.as_mut().unwrap();
+                                assert!(state.store_track_head(
+                                    crate::sim::movement::track_process::TrackFamily::Ship,
+                                    Some(current)
+                                ));
+                                assert!(state.store_track_target_fraction(
+                                    crate::sim::movement::track_process::TrackFamily::Ship,
+                                    SimFixed::ONE
+                                ));
                             }
                             _ => unreachable!(),
                         }

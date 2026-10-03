@@ -40,11 +40,21 @@ pub(super) fn record(sim: &Simulation, building: u64, unit: u64, name: &'static 
                 .is_some_and(|loco| loco.is_powered()),
             speed: unit.map(|unit| unit.foot_speed.applied_fraction()),
             head: unit
-                .and_then(|unit| unit.drive_locomotion.as_ref())
-                .and_then(|drive| drive.head_to),
+                .and_then(|unit| {
+                    unit.locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_drive_runtime())
+                        .and_then(|r| r.retained())
+                })
+                .and_then(|drive| drive.head_to()),
             destination: unit
-                .and_then(|unit| unit.drive_locomotion.as_ref())
-                .and_then(|drive| drive.destination),
+                .and_then(|unit| {
+                    unit.locomotor
+                        .as_ref()
+                        .and_then(|l| l.selected_drive_runtime())
+                        .and_then(|r| r.retained())
+                })
+                .and_then(|drive| drive.destination()),
         })
     });
 }
@@ -65,10 +75,31 @@ fn release_fixture() -> Simulation {
     unit.radio_contacts.insert(2);
     unit.locomotor.as_mut().unwrap().power_off();
     unit.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
-    let drive = unit.drive_locomotion.as_mut().unwrap();
-    drive.track.residual = 971;
-    drive.track.reversed = true;
-    drive.destination = Some(DriveCoord::cell(7, 8, 417));
+    let drive = unit.locomotor.as_mut().unwrap();
+    {
+        let mut progress = drive
+            .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+            .unwrap();
+        progress.residual = 971;
+        assert!(drive.store_track_progress(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            progress
+        ));
+    };
+    {
+        let mut progress = drive
+            .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+            .unwrap();
+        progress.reversed = true;
+        assert!(drive.store_track_progress(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            progress
+        ));
+    };
+    assert!(drive.store_track_destination(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        Some(DriveCoord::cell(7, 8, 417))
+    ));
     take_trace();
     crate::sim::radio::clear_test_trace();
     sim
@@ -114,16 +145,21 @@ fn sell_release_uses_building_center_preserves_pose_and_orders_links_after_speed
     let unit = sim.substrate.entities.get(1).unwrap();
     assert_eq!(position_world_coord(&unit.position), pose);
     assert_eq!(unit.body_facing.destination(), 0);
-    let drive = unit.drive_locomotion.as_ref().unwrap();
+    let drive = unit
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
     assert_eq!(
         (
-            drive.track.turn_index,
-            drive.track.cursor,
-            drive.track.residual
+            drive.track().turn_index,
+            drive.track().cursor,
+            drive.track().residual
         ),
         (0x47, 0, 971)
     );
-    assert!(drive.track.reversed);
+    assert!(drive.track().reversed);
     assert!(!unit.lifecycle.in_limbo && unit.in_logic_vector);
     assert!(!unit.radio_contacts.contains(2));
     assert!(
@@ -211,11 +247,16 @@ fn force_limbo_early_return_does_not_skip_caller_speed_links_or_break() {
     assert_eq!(unit.foot_speed.applied_fraction(), SIM_ONE);
     assert_eq!(unit.bunker_link, BunkerLink::None);
     assert!(!unit.radio_contacts.contains(2));
-    let drive = unit.drive_locomotion.as_ref().unwrap();
-    assert_eq!(drive.head_to, None);
-    assert!(!drive.track_valid);
-    assert_eq!(drive.track.turn_index, 0x47);
-    assert_eq!(drive.destination, Some(DriveCoord::cell(7, 8, 417)));
+    let drive = unit
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .unwrap();
+    assert_eq!(drive.head_to(), None);
+    assert!(!drive.track_valid());
+    assert_eq!(drive.track().turn_index, 0x47);
+    assert_eq!(drive.destination(), Some(DriveCoord::cell(7, 8, 417)));
     assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
 }
 

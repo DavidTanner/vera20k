@@ -2,6 +2,7 @@ use super::*;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::LocomotorState;
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::pathfinding::PathGrid;
 use crate::util::fixed_math::SimFixed;
 
@@ -99,20 +100,42 @@ fn first_process_publishes_raw_head_and_matching_progress_for_drive_and_ship() {
             .unwrap();
         let entity = sim.substrate.entities.get(1).unwrap();
         let head = match kind {
-            LocomotorKind::Drive => entity.drive_locomotion.as_ref().unwrap().head_to,
-            LocomotorKind::Ship => entity.ship_locomotion.as_ref().unwrap().head_to,
+            LocomotorKind::Drive => entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .unwrap()
+                .head_to(),
+            LocomotorKind::Ship => entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_ship_runtime())
+                .and_then(|r| r.retained())
+                .unwrap()
+                .head_to(),
             _ => unreachable!(),
         };
         assert_eq!(head, Some(expected), "{kind:?}");
         assert_eq!(committed_track_head(entity), Some(expected));
         let progress = match kind {
             LocomotorKind::Drive => {
-                let state = entity.drive_locomotion.as_ref().unwrap();
-                state.track
+                let state = entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
+                state.track()
             }
             LocomotorKind::Ship => {
-                let state = entity.ship_locomotion.as_ref().unwrap();
-                state.track
+                let state = entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
+                state.track()
             }
             _ => unreachable!(),
         };
@@ -131,17 +154,35 @@ fn destination_change_preserves_the_committed_head() {
         y: 2201,
         z: 731,
     };
-    entity.drive_locomotion = Some(crate::sim::components::DriveLocomotionRuntime {
-        head_to: Some(head),
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                crate::sim::movement::DriveLocomotionRuntime::default()
+                    .with_head_to_for_test(Some(head))
+            ))
+    );
     crate::sim::movement::navcom::set_destination_internal_cell(&mut entity, (13, 8), None, 0);
     assert_eq!(
-        entity.drive_locomotion.as_ref().unwrap().head_to,
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .head_to(),
         Some(head)
     );
     assert_eq!(
-        entity.drive_locomotion.as_ref().unwrap().destination,
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .destination(),
         Some(DriveCoord::cell(13, 8, 0))
     );
     crate::sim::movement::navcom::refresh_drive_destination_coord(
@@ -154,7 +195,13 @@ fn destination_change_preserves_the_committed_head() {
         None,
     );
     assert_eq!(
-        entity.drive_locomotion.as_ref().unwrap().head_to,
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .head_to(),
         Some(head)
     );
 }
@@ -181,36 +228,78 @@ fn committed_head_requires_active_family_head_and_selector_independently_of_driv
         z: 731,
     };
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    entity.drive_locomotion = Some(DriveLocomotionRuntime {
-        head_to: Some(head),
-        track: crate::sim::components::TrackProgress {
-            turn_index: 18,
-            ..Default::default()
-        },
-        track_valid: false,
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                DriveLocomotionRuntime::default()
+                    .with_head_to_for_test(Some(head))
+                    .with_track_for_test(crate::sim::components::TrackProgress {
+                        turn_index: 18,
+                        ..Default::default()
+                    })
+                    .with_track_valid_for_test(false)
+            ))
+    );
     assert_eq!(committed_track_head(&entity), Some(head));
-    entity.drive_locomotion.as_mut().unwrap().head_to = None;
+    assert!(entity.locomotor.as_mut().unwrap().store_track_head(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        None
+    ));
     assert_eq!(committed_track_head(&entity), None);
-    entity.drive_locomotion.as_mut().unwrap().head_to = Some(head);
-    entity.drive_locomotion.as_mut().unwrap().track.turn_index = -1;
+    assert!(entity.locomotor.as_mut().unwrap().store_track_head(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        Some(head)
+    ));
+    {
+        let mut progress = entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+            .unwrap();
+        progress.turn_index = -1;
+        assert!(entity.locomotor.as_mut().unwrap().store_track_progress(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            progress
+        ));
+    };
     assert_eq!(committed_track_head(&entity), None);
-    entity.drive_locomotion.as_mut().unwrap().track.turn_index = 18;
+    {
+        let mut progress = entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+            .unwrap();
+        progress.turn_index = 18;
+        assert!(entity.locomotor.as_mut().unwrap().store_track_progress(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            progress
+        ));
+    };
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
     assert_eq!(
         committed_track_head(&entity),
         None,
         "inactive Drive cannot supply a Ship head"
     );
-    entity.ship_locomotion = Some(ShipLocomotionRuntime {
-        head_to: Some(head),
-        track: crate::sim::components::TrackProgress {
-            turn_index: 18,
-            ..Default::default()
-        },
-        ..Default::default()
-    });
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_ship_state_for_test(Some(
+                ShipLocomotionRuntime::default()
+                    .with_head_to_for_test(Some(head))
+                    .with_track_for_test(crate::sim::components::TrackProgress {
+                        turn_index: 18,
+                        ..Default::default()
+                    })
+            ))
+    );
     assert_eq!(committed_track_head(&entity), Some(head));
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
     assert_eq!(committed_track_head(&entity), None);
@@ -218,7 +307,7 @@ fn committed_head_requires_active_family_head_and_selector_independently_of_driv
 
 #[test]
 fn production_process_admission_uses_valid_selector_independently_of_head() {
-    use crate::sim::components::{DriveLocomotionRuntime, ShipLocomotionRuntime, TrackProgress};
+    use crate::sim::components::TrackProgress;
     for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
         for valid in [false, true] {
             for selector in [-1, 0] {
@@ -236,21 +325,33 @@ fn production_process_admission_uses_valid_selector_independently_of_head() {
                     };
                     let head_to = nonnull_head.then_some(DriveCoord::cell(8, 7, 0));
                     if kind == LocomotorKind::Drive {
-                        entity.drive_locomotion = Some(DriveLocomotionRuntime {
-                            track,
-                            head_to,
-                            track_valid: valid,
-                            target_speed_fraction: SimFixed::lit("0.75"),
-                            ..Default::default()
-                        });
+                        assert!(
+                            entity
+                                .locomotor
+                                .as_mut()
+                                .unwrap()
+                                .install_drive_state_for_test(Some(
+                                    DriveLocomotionRuntime::default()
+                                        .with_track_for_test(track)
+                                        .with_head_to_for_test(head_to)
+                                        .with_track_valid_for_test(valid)
+                                        .with_target_speed_fraction_for_test(SimFixed::lit("0.75"))
+                                ))
+                        );
                     } else {
-                        entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                            track,
-                            head_to,
-                            track_valid: valid,
-                            target_speed_fraction: SimFixed::lit("0.75"),
-                            ..Default::default()
-                        });
+                        assert!(
+                            entity
+                                .locomotor
+                                .as_mut()
+                                .unwrap()
+                                .install_ship_state_for_test(Some(
+                                    ShipLocomotionRuntime::default()
+                                        .with_track_for_test(track)
+                                        .with_head_to_for_test(head_to)
+                                        .with_track_valid_for_test(valid)
+                                        .with_target_speed_fraction_for_test(SimFixed::lit("0.75"))
+                                ))
+                        );
                     }
                     let mut sim = crate::sim::world::Simulation::new();
                     sim.interner = crate::sim::intern::test_interner();
@@ -276,7 +377,7 @@ fn production_process_admission_uses_valid_selector_independently_of_head() {
 
 #[test]
 fn retained_admission_matches_native_entry_cases_without_tube_or_turn_latch() {
-    use crate::sim::components::{DriveLocomotionRuntime, ShipLocomotionRuntime, TrackProgress};
+    use crate::sim::components::TrackProgress;
     let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/track_process_entry.json"
     ))
@@ -298,18 +399,30 @@ fn retained_admission_matches_native_entry_cases_without_tube_or_turn_latch() {
         };
         if input["family"] == "drive" {
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-            entity.drive_locomotion = Some(DriveLocomotionRuntime {
-                track,
-                track_valid: valid,
-                ..Default::default()
-            });
+            assert!(
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_drive_state_for_test(Some(
+                        DriveLocomotionRuntime::default()
+                            .with_track_for_test(track)
+                            .with_track_valid_for_test(valid)
+                    ))
+            );
         } else {
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
-            entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                track,
-                track_valid: valid,
-                ..Default::default()
-            });
+            assert!(
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_ship_state_for_test(Some(
+                        ShipLocomotionRuntime::default()
+                            .with_track_for_test(track)
+                            .with_track_valid_for_test(valid)
+                    ))
+            );
         }
         assert_eq!(
             active_track_family(&entity).is_some(),

@@ -55,38 +55,16 @@ impl TrackPass {
     }
 }
 
-fn progress(entity: &GameEntity, family: TrackFamily) -> Option<&TrackProgress> {
-    match family {
-        TrackFamily::Drive => entity.drive_locomotion.as_ref().map(|state| &state.track),
-        TrackFamily::Ship => entity.ship_locomotion.as_ref().map(|state| &state.track),
-    }
-}
-
-fn progress_mut(entity: &mut GameEntity, family: TrackFamily) -> Option<&mut TrackProgress> {
-    match family {
-        TrackFamily::Drive => entity
-            .drive_locomotion
-            .as_mut()
-            .map(|state| &mut state.track),
-        TrackFamily::Ship => entity
-            .ship_locomotion
-            .as_mut()
-            .map(|state| &mut state.track),
-    }
+fn progress(entity: &GameEntity, family: TrackFamily) -> Option<TrackProgress> {
+    entity.locomotor.as_ref()?.track_progress(family)
 }
 
 fn head(entity: &GameEntity, family: TrackFamily) -> DriveCoord {
-    match family {
-        TrackFamily::Drive => entity
-            .drive_locomotion
-            .as_ref()
-            .and_then(|state| state.head_to),
-        TrackFamily::Ship => entity
-            .ship_locomotion
-            .as_ref()
-            .and_then(|state| state.head_to),
-    }
-    .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 })
+    entity
+        .locomotor
+        .as_ref()
+        .and_then(|loco| loco.track_head(family))
+        .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 })
 }
 
 fn head_or_null(entity: Option<&GameEntity>, family: TrackFamily) -> DriveCoord {
@@ -96,32 +74,14 @@ fn head_or_null(entity: Option<&GameEntity>, family: TrackFamily) -> DriveCoord 
 }
 
 fn set_head(entity: &mut GameEntity, family: TrackFamily, value: Option<DriveCoord>) {
-    match family {
-        TrackFamily::Drive => {
-            if let Some(state) = entity.drive_locomotion.as_mut() {
-                state.head_to = value;
-            }
-        }
-        TrackFamily::Ship => {
-            if let Some(state) = entity.ship_locomotion.as_mut() {
-                state.head_to = value;
-            }
-        }
+    if let Some(loco) = entity.locomotor.as_mut() {
+        loco.store_track_head(family, value);
     }
 }
 
 fn set_track_valid(entity: &mut GameEntity, family: TrackFamily, value: bool) {
-    match family {
-        TrackFamily::Drive => {
-            if let Some(state) = entity.drive_locomotion.as_mut() {
-                state.track_valid = value;
-            }
-        }
-        TrackFamily::Ship => {
-            if let Some(state) = entity.ship_locomotion.as_mut() {
-                state.track_valid = value;
-            }
-        }
+    if let Some(loco) = entity.locomotor.as_mut() {
+        loco.store_track_valid(family, value);
     }
 }
 
@@ -159,13 +119,16 @@ impl Simulation {
         {
             return false;
         }
-        let drive = entity.drive_locomotion.get_or_insert_with(Default::default);
-        drive.track.select_forced(selector);
+        let loco = entity.locomotor.as_mut().unwrap();
+        loco.ensure_installed_track_state();
+        let mut progress = loco.track_progress(TrackFamily::Drive).unwrap();
+        progress.select_forced(selector);
+        loco.store_track_progress(TrackFamily::Drive, progress);
         if supplied == (DriveCoord { x: 0, y: 0, z: 0 }) {
             return false;
         }
-        drive.head_to = Some(supplied);
-        drive.track_valid = true;
+        loco.store_track_head(TrackFamily::Drive, Some(supplied));
+        loco.store_track_valid(TrackFamily::Drive, true);
         //4B0D14/4B0D1B: address the supplied cell, then synchronous crate
         // pickup. The shared track host's crate receiver is still incomplete;
         // the observer preserves its callback/reload boundary for witnesses.
@@ -178,24 +141,25 @@ impl Simulation {
         if !survives {
             if let Some(entity) = self.substrate.entities.get_mut(id)
                 && entity.lifecycle.object_alive
-                && let Some(drive) = entity.drive_locomotion.as_mut()
+                && let Some(loco) = entity.locomotor.as_mut()
             {
-                drive.head_to = None;
-                drive.track_valid = false;
+                loco.store_track_head(TrackFamily::Drive, None);
+                loco.store_track_valid(TrackFamily::Drive, false);
             }
             return false;
         }
         self.track_apply_occupation_at(id, TrackFamily::Drive, supplied, true);
-        let Some(drive) = self
+        let Some(loco) = self
             .substrate
             .entities
             .get_mut(id)
-            .and_then(|entity| entity.drive_locomotion.as_mut())
+            .and_then(|entity| entity.locomotor.as_mut())
+            .filter(|loco| loco.has_track_state(TrackFamily::Drive))
         else {
             return false;
         };
-        drive.destination = Some(supplied);
-        drive.target_speed_fraction = crate::util::fixed_math::SIM_ONE;
+        loco.store_track_destination(TrackFamily::Drive, Some(supplied));
+        loco.store_track_target_fraction(TrackFamily::Drive, crate::util::fixed_math::SIM_ONE);
         true
     }
 
@@ -269,7 +233,7 @@ impl Simulation {
     ) -> Option<(TrackProgress, DriveCoord, DriveCoord)> {
         let entity = self.substrate.entities.get(id)?;
         Some((
-            *progress(entity, family)?,
+            progress(entity, family)?,
             head(entity, family),
             position_world_coord(&entity.position),
         ))
@@ -356,16 +320,16 @@ impl Simulation {
                     // Drive4B2104 / Ship6A1747 clear the active class's +63
                     // before selector retirement and the terminal PerCell.
                     set_track_valid(entity, family, false);
-                    if let Some(state) = progress_mut(entity, family) {
+                    if let Some(mut state) = progress(entity, family) {
                         state.clear_selector();
+                        entity
+                            .locomotor
+                            .as_mut()
+                            .unwrap()
+                            .store_track_progress(family, state);
                     }
-                    if let Some(drive) = entity.drive_locomotion.as_mut() {
-                        drive.occupation_head_to = None;
-                        drive.occupation_handoff = None;
-                    }
-                    if let Some(ship) = entity.ship_locomotion.as_mut() {
-                        ship.occupation_head_to = None;
-                        ship.occupation_handoff = None;
+                    if let Some(loco) = entity.locomotor.as_mut() {
+                        loco.clear_track_occupation_projections();
                     }
                 }
                 // Native clears Head_To and selector before target+4C, then
@@ -373,17 +337,8 @@ impl Simulation {
                 let reached = self.track_reached_destination(id, family, rules)?;
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
                     if reached {
-                        match family {
-                            TrackFamily::Drive => {
-                                if let Some(state) = entity.drive_locomotion.as_mut() {
-                                    state.destination = None;
-                                }
-                            }
-                            TrackFamily::Ship => {
-                                if let Some(state) = entity.ship_locomotion.as_mut() {
-                                    state.destination = None;
-                                }
-                            }
+                        if let Some(loco) = entity.locomotor.as_mut() {
+                            loco.store_track_destination(family, None);
                         }
                     }
                 }
@@ -556,18 +511,28 @@ impl Simulation {
             let Some(entity) = self.substrate.entities.get_mut(id) else {
                 return Ok(TrackPass::paid(moved));
             };
-            let Some(state) = progress_mut(entity, family) else {
+            let Some(mut state) = progress(entity, family) else {
                 return Ok(TrackPass::paid(moved));
             };
-            call.finish_surviving_point(state);
+            call.finish_surviving_point(&mut state);
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .store_track_progress(family, state);
         }
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return Ok(TrackPass::paid(moved));
         };
-        let Some(state) = progress_mut(entity, family) else {
+        let Some(mut state) = progress(entity, family) else {
             return Ok(TrackPass::paid(moved));
         };
-        call.store_residual(state);
+        call.store_residual(&mut state);
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .store_track_progress(family, state);
         let Some((live, stored_head, current)) = self.track_state(id, family) else {
             return Ok(TrackPass::paid(moved));
         };
@@ -652,21 +617,8 @@ impl Simulation {
                 layer,
             };
             if let Some(entity) = self.substrate.entities.get_mut(id) {
-                if let Some(state) = entity.drive_locomotion.as_mut() {
-                    if state.occupation_handoff == Some(mark) {
-                        state.occupation_handoff = None;
-                    }
-                    if state.occupation_head_to == Some(mark) {
-                        state.occupation_head_to = None;
-                    }
-                }
-                if let Some(state) = entity.ship_locomotion.as_mut() {
-                    if state.occupation_handoff == Some(mark) {
-                        state.occupation_handoff = None;
-                    }
-                    if state.occupation_head_to == Some(mark) {
-                        state.occupation_head_to = None;
-                    }
+                if let Some(loco) = entity.locomotor.as_mut() {
+                    loco.forget_track_occupation(mark);
                 }
             }
         }
@@ -824,21 +776,16 @@ impl Simulation {
         let layer = self.track_raw_mark_at(id, supplied, put);
         if put {
             if let Some(entity) = self.substrate.entities.get_mut(id) {
-                let marks = match family {
-                    TrackFamily::Drive => entity.drive_locomotion.as_mut().map(|state| {
-                        (&mut state.occupation_handoff, &mut state.occupation_head_to)
-                    }),
-                    TrackFamily::Ship => entity.ship_locomotion.as_mut().map(|state| {
-                        (&mut state.occupation_handoff, &mut state.occupation_head_to)
-                    }),
-                };
-                if let Some((handoff, head)) = marks {
-                    *handoff = handoff_mark;
-                    *head = Some(DriveOccupationFootprint {
-                        rx: cell(supplied).0,
-                        ry: cell(supplied).1,
-                        layer,
-                    });
+                if let Some(loco) = entity.locomotor.as_mut() {
+                    loco.publish_track_occupation(
+                        family,
+                        Some(DriveOccupationFootprint {
+                            rx: cell(supplied).0,
+                            ry: cell(supplied).1,
+                            layer,
+                        }),
+                        handoff_mark,
+                    );
                 }
             }
         }
@@ -958,10 +905,16 @@ impl Simulation {
             return Ok(false);
         }
         let entity = self.substrate.entities.get_mut(id).unwrap();
-        if !call.accept_chain(
-            progress_mut(entity, family).unwrap(),
-            selection.turn_track_index as i32,
-        ) {
+        let Some(mut state) = progress(entity, family) else {
+            return Ok(false);
+        };
+        let accepted = call.accept_chain(&mut state, selection.turn_track_index as i32);
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .store_track_progress(family, state);
+        if !accepted {
             return Ok(false);
         }
         set_head(entity, family, None);
@@ -1017,16 +970,10 @@ impl Simulation {
             self.resolved_terrain.as_ref(),
             rules.map(|rules| (rules, &self.interner)),
         )?;
-        let destination = match family {
-            TrackFamily::Drive => entity
-                .drive_locomotion
-                .as_ref()
-                .and_then(|state| state.destination),
-            TrackFamily::Ship => entity
-                .ship_locomotion
-                .as_ref()
-                .and_then(|state| state.destination),
-        };
+        let destination = entity
+            .locomotor
+            .as_ref()
+            .and_then(|loco| loco.track_destination(family));
         let Some(destination) = destination else {
             return Ok(false);
         };

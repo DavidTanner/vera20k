@@ -1,0 +1,7 @@
+{
+  "status": "FAILED_BEFORE_BINDING",
+  "exit_code": 1,
+  "reason": "Corpus filename was used as module name; ImportError before any repository change",
+  "fresh_native_vm_generation": false,
+  "script_sha256": "5f8fc40fd8b8e64bc6e9bff64a707293712bf700758763b6fb8030f589d4483d"
+}

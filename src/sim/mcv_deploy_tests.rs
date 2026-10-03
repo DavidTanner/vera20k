@@ -69,7 +69,11 @@ fn finish(sim: &mut Simulation, rules: &RuleSet, id: u64) -> usize {
         sim.substrate.entities.get(id).map(|e| (
             &e.position,
             &e.navigation,
-            &e.drive_locomotion,
+            e.locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .cloned(),
             &e.movement_target,
             &e.body_facing,
             e.mcv_deploy_pending,
@@ -458,12 +462,30 @@ fn active_track_and_same_cell_destination_preserve_the_rotation_latch() {
     let (mut sim, rules, id) = fixture("AMCV", 128, 5, 4);
     let e = sim.substrate.entities.get_mut(id).unwrap();
     e.mcv_deploy_pending = true;
-    let drive = e.drive_locomotion.get_or_insert_with(Default::default);
-    drive.turn_latched = true;
-    drive.track.turn_index = 3;
-    drive.track_valid = true;
+    let drive = e.locomotor.as_mut().unwrap();
+    assert!(drive.ensure_installed_track_state());
+    assert!(drive.store_track_turn_latched(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        true
+    ));
+    {
+        let mut progress = drive
+            .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+            .unwrap();
+        progress.turn_index = 3;
+        assert!(drive.store_track_progress(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            progress
+        ));
+    };
+    assert!(drive.store_track_valid(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        true
+    ));
     assert!(
-        drive.head_to.is_none(),
+        drive
+            .track_head(crate::sim::movement::track_process::TrackFamily::Drive)
+            .is_none(),
         "the native +63/selector gate is independent of Head_To"
     );
     sim.process_ground_locomotor_for_test(id, Some(&rules), None, None)
@@ -473,14 +495,19 @@ fn active_track_and_same_cell_destination_preserve_the_rotation_latch() {
             .entities
             .get(id)
             .unwrap()
-            .drive_locomotion
+            .locomotor
             .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
             .unwrap()
-            .turn_latched
+            .turn_latched()
     );
     assert_eq!(yards(&sim), 0);
     let e = sim.substrate.entities.get_mut(id).unwrap();
-    e.drive_locomotion.as_mut().unwrap().track_valid = false;
+    assert!(e.locomotor.as_mut().unwrap().store_track_valid(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        false
+    ));
     e.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(20, 22));
     sim.process_ground_locomotor_for_test(id, Some(&rules), None, None)
         .unwrap();
@@ -489,17 +516,35 @@ fn active_track_and_same_cell_destination_preserve_the_rotation_latch() {
             .entities
             .get(id)
             .unwrap()
-            .drive_locomotion
+            .locomotor
             .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
             .unwrap()
-            .turn_latched
+            .turn_latched()
     );
     assert_eq!(yards(&sim), 0);
     let e = sim.substrate.entities.get_mut(id).unwrap();
     e.navigation.nav_com = None;
     // A retained selector alone cannot override the cleared +63 authority.
-    assert_eq!(e.drive_locomotion.as_ref().unwrap().track.turn_index, 3);
-    assert!(!e.drive_locomotion.as_ref().unwrap().track_valid);
+    assert_eq!(
+        e.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track()
+            .turn_index,
+        3
+    );
+    assert!(
+        !e.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track_valid()
+    );
     sim.process_ground_locomotor_for_test(id, Some(&rules), None, None)
         .unwrap();
     assert_eq!(yards(&sim), 1);

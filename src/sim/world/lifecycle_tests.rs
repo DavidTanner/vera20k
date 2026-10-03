@@ -1,5 +1,6 @@
 //! Focused regression tests for ordered lifecycle authority.
 
+use crate::sim::movement::DriveLocomotionRuntime;
 use std::collections::BTreeMap;
 
 use crate::map::bridge_facts::{
@@ -11,9 +12,7 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::anim_class::{AnimObject, AnimRuntime, AnimWorldCoord};
 use crate::sim::combat::{AttackTarget, TargetKind};
-use crate::sim::components::{
-    C4PlantState, DriveLocomotionRuntime, DriveOccupationFootprint, Health, NavTargetRef,
-};
+use crate::sim::components::{C4PlantState, DriveOccupationFootprint, Health, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::state::MissionTestFixture;
@@ -2400,14 +2399,21 @@ fn gsi_04_05_hard_limbo_clears_pending_then_current_vehicle_occupation() {
     {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-        entity.drive_locomotion = Some(DriveLocomotionRuntime {
-            occupation_head_to: Some(DriveOccupationFootprint {
-                rx: head.0,
-                ry: head.1,
-                layer: MovementLayer::Ground,
-            }),
-            ..Default::default()
-        });
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(
+                    DriveLocomotionRuntime::default().with_occupation_head_to_for_test(Some(
+                        DriveOccupationFootprint {
+                            rx: head.0,
+                            ry: head.1,
+                            layer: MovementLayer::Ground,
+                        }
+                    ))
+                ))
+        );
     }
     sim.substrate
         .cell_occupation
@@ -2434,10 +2440,12 @@ fn gsi_04_05_hard_limbo_clears_pending_then_current_vehicle_occupation() {
             .entities
             .get(1)
             .unwrap()
-            .drive_locomotion
+            .locomotor
             .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
             .unwrap()
-            .occupation_head_to,
+            .occupation_head_to(),
         None
     );
 }

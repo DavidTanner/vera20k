@@ -5,6 +5,7 @@ use super::*;
 use crate::sim::components::FootPathQueue;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::timer::CdTimer;
 use serde_json::{Value, json};
 
@@ -98,11 +99,21 @@ fn shared_null_destination_matches_original_gate_and_timer_boundaries() {
             }
             let e = sim.substrate.entities.get(1).unwrap();
             let (destination, head) = if input["family"] == "drive" {
-                let runtime = e.drive_locomotion.as_ref().unwrap();
-                (runtime.destination, runtime.head_to)
+                let runtime = e
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
+                (runtime.destination(), runtime.head_to())
             } else {
-                let runtime = e.ship_locomotion.as_ref().unwrap();
-                (runtime.destination, runtime.head_to)
+                let runtime = e
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
+                (runtime.destination(), runtime.head_to())
             };
             assert_eq!(
                 destination.unwrap_or(ZERO),
@@ -189,17 +200,27 @@ fn actor(input: &Value) -> GameEntity {
         z: 900,
     });
     if kind == LocomotorKind::Drive {
-        e.drive_locomotion = Some(DriveLocomotionRuntime {
-            destination,
-            head_to: head,
-            ..Default::default()
-        });
+        assert!(
+            e.locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(
+                    DriveLocomotionRuntime::default()
+                        .with_destination_for_test(destination)
+                        .with_head_to_for_test(head)
+                ))
+        );
     } else {
-        e.ship_locomotion = Some(ShipLocomotionRuntime {
-            destination,
-            head_to: head,
-            ..Default::default()
-        });
+        assert!(
+            e.locomotor
+                .as_mut()
+                .unwrap()
+                .install_ship_state_for_test(Some(
+                    ShipLocomotionRuntime::default()
+                        .with_destination_for_test(destination)
+                        .with_head_to_for_test(head)
+                ))
+        );
     }
     e.navigation.nav_com_aux = Some(NavTargetRef::cell(0, 0));
     e.navigation.path_replay = FootPathQueue {
@@ -229,11 +250,21 @@ fn actor(input: &Value) -> GameEntity {
 
 fn compare(e: &GameEntity, row: &Value) {
     let (destination, head) = if row["input"]["family"] == "drive" {
-        let d = e.drive_locomotion.as_ref().unwrap();
-        (d.destination, d.head_to)
+        let d = e
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap();
+        (d.destination(), d.head_to())
     } else {
-        let d = e.ship_locomotion.as_ref().unwrap();
-        (d.destination, d.head_to)
+        let d = e
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_ship_runtime())
+            .and_then(|r| r.retained())
+            .unwrap();
+        (d.destination(), d.head_to())
     };
     assert_eq!(
         destination,
@@ -452,8 +483,12 @@ fn unit_setters_clear_navqueue_like_the_original() {
 fn refused_track_request_does_not_allocate_payload_or_stamp_dummy() {
     for family in ["drive", "ship"] {
         let mut e = actor(&json!({"family":family,"warp_out":true}));
-        e.drive_locomotion = None;
-        e.ship_locomotion = None;
+        if let Some(loco) = e.locomotor.as_mut() {
+            let _ = loco.install_drive_state_for_test(None);
+        };
+        if let Some(loco) = e.locomotor.as_mut() {
+            let _ = loco.install_ship_state_for_test(None);
+        };
         let terrain = ResolvedTerrainGrid::from_cells(1, 1, Vec::new());
         terrain.stamp_dummy_cell_requested_coord(7, 8);
         let before = terrain.shared_cell_dummy().snapshot();
@@ -467,7 +502,18 @@ fn refused_track_request_does_not_allocate_payload_or_stamp_dummy() {
         } else {
             ship_set_destination(&mut e, coord, Some(&terrain));
         }
-        assert!(e.drive_locomotion.is_none() && e.ship_locomotion.is_none());
+        assert!(
+            e.locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .is_none()
+                && e.locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_ship_runtime())
+                    .and_then(|r| r.retained())
+                    .is_none()
+        );
         assert_eq!(terrain.shared_cell_dummy().snapshot(), before);
     }
 }
@@ -475,7 +521,12 @@ fn refused_track_request_does_not_allocate_payload_or_stamp_dummy() {
 #[test]
 fn live_drive_target_refresh_resumes_after_owner_warp_ends() {
     let mut e = actor(&json!({"family":"drive","warp_in":true}));
-    let before = e.drive_locomotion.clone();
+    let before = e
+        .locomotor
+        .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
+        .cloned();
     let terrain = terrain(false);
     let destination = DriveCoord {
         x: 2944,
@@ -487,7 +538,14 @@ fn live_drive_target_refresh_resumes_after_owner_warp_ends() {
         destination,
         Some(&terrain)
     ));
-    assert_eq!(e.drive_locomotion, before);
+    assert_eq!(
+        e.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .cloned(),
+        before
+    );
     // Existing teleport owner clears the arrival byte when its timer expires.
     e.teleport_state_for_test_mut()
         .unwrap()
@@ -498,12 +556,22 @@ fn live_drive_target_refresh_resumes_after_owner_warp_ends() {
         Some(&terrain)
     ));
     assert_eq!(
-        e.drive_locomotion.as_ref().unwrap().destination,
+        e.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .destination(),
         Some(destination)
     );
     assert_eq!(
-        e.drive_locomotion.as_ref().unwrap().head_to,
-        before.unwrap().head_to
+        e.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .head_to(),
+        before.unwrap().head_to()
     );
 }
 
@@ -618,11 +686,17 @@ fn destination_receipt_actor(
     let destination = coord(&before["locomotor"]["destination"]);
     let head = coord(&before["locomotor"]["head"]);
     if family == "MTNK" {
-        actor.drive_locomotion = Some(DriveLocomotionRuntime {
-            destination: (destination != ZERO).then_some(destination),
-            head_to: (head != ZERO).then_some(head),
-            ..Default::default()
-        });
+        assert!(
+            actor
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(
+                    DriveLocomotionRuntime::default()
+                        .with_destination_for_test((destination != ZERO).then_some(destination))
+                        .with_head_to_for_test((head != ZERO).then_some(head))
+                ))
+        );
     } else {
         actor
             .locomotor
@@ -797,10 +871,15 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
         for actor in [actual, &restored] {
             let loco = actor.locomotor.as_ref().unwrap();
             let (destination, head, moving) = if family == "MTNK" {
-                let drive = actor.drive_locomotion.as_ref().unwrap();
+                let drive = actor
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .unwrap();
                 (
-                    drive.destination,
-                    drive.head_to,
+                    drive.destination(),
+                    drive.head_to(),
                     super::super::track_head::motion_state(
                         actor,
                         super::super::track_process::TrackFamily::Drive,

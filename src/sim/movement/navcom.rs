@@ -3,11 +3,10 @@
 //! These helpers model the owner `NavCom` lifecycle separately from
 //! `MovementTarget`, which remains the active path execution adapter.
 
+use super::track_process::TrackFamily;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, NavTargetRef, ShipLocomotionRuntime,
-};
+use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
@@ -140,11 +139,15 @@ pub(super) fn refresh_drive_destination_coord(
     coord: DriveCoord,
     terrain: Option<&ResolvedTerrainGrid>,
 ) -> bool {
-    let Some(drive) = entity.drive_locomotion.as_ref() else {
+    let Some(loco) = entity
+        .locomotor
+        .as_ref()
+        .filter(|l| l.has_track_state(TrackFamily::Drive))
+    else {
         return false;
     };
     let requested = (coord != (DriveCoord { x: 0, y: 0, z: 0 })).then_some(coord);
-    if drive.destination == requested {
+    if loco.track_destination(TrackFamily::Drive) == requested {
         return false;
     }
     drive_set_destination(entity, coord, terrain)
@@ -348,12 +351,12 @@ fn drive_set_destination(
         return false;
     }
     let destination = adjusted_destination(destination, terrain);
-    let drive = entity
-        .drive_locomotion
-        .get_or_insert_with(DriveLocomotionRuntime::default);
+    let Some(loco) = entity.locomotor.as_mut() else {
+        return false;
+    };
+    loco.ensure_installed_track_state();
     // Native4AFD40 writes destination only. Accepted movement owns Head_To.
-    drive.destination = destination;
-    true
+    loco.store_track_destination(TrackFamily::Drive, destination)
 }
 
 /// ILocomotion +0x44 Move_To of the active Drive/Ship instance without the
@@ -394,22 +397,26 @@ pub(crate) fn track_stop_moving(entity: &mut GameEntity) -> bool {
 }
 
 fn drive_stop_moving(entity: &mut GameEntity) {
-    let drive = entity
-        .drive_locomotion
-        .get_or_insert_with(DriveLocomotionRuntime::default);
+    let Some(loco) = entity.locomotor.as_mut() else {
+        return;
+    };
+    loco.ensure_installed_track_state();
     // 0x4AFE00 clamps the class target fraction (+0x50), then clears only
     // the destination; the head (+0x40) may continue to its endpoint. The
     // IsTrain follower cascade has no stock type (no retail IsTrain=yes).
-    if drive.target_speed_fraction > TRACK_STOP_TARGET_FRACTION {
-        drive.target_speed_fraction = TRACK_STOP_TARGET_FRACTION;
+    if loco
+        .track_target_fraction(TrackFamily::Drive)
+        .is_some_and(|v| v > TRACK_STOP_TARGET_FRACTION)
+    {
+        loco.store_track_target_fraction(TrackFamily::Drive, TRACK_STOP_TARGET_FRACTION);
     }
-    drive.destination = None;
+    loco.store_track_destination(TrackFamily::Drive, None);
     // OPEN Process-host timing: native Stop4AFE00 clamps only class target
     // and clears destination. The owner zero belongs to the admitted Process
     // rest tail4B0828, which also tests queue emptiness. Several ordinary
     // arrival returns skip that tail. Preserve the existing adapter timing
     // here until that continuation is wired; this is not Stop parity.
-    if drive.head_to.is_none() {
+    if loco.track_head(TrackFamily::Drive).is_none() {
         if entity.foot_speed.applied_fraction() > SIM_ZERO {
             entity.foot_speed.set_speed_fraction(SIM_ZERO);
         }
@@ -427,29 +434,34 @@ fn ship_set_destination(
         return;
     }
     let destination = adjusted_destination(destination, terrain);
-    let ship = entity
-        .ship_locomotion
-        .get_or_insert_with(ShipLocomotionRuntime::default);
+    let Some(loco) = entity.locomotor.as_mut() else {
+        return;
+    };
+    loco.ensure_installed_track_state();
     // Ship's Move_To slot writes only +0x30. The committed +0x3C head is
     // selected later by Process_Movement from the owner's path.
-    ship.destination = destination;
+    loco.store_track_destination(TrackFamily::Ship, destination);
 }
 
 fn ship_stop_moving(entity: &mut GameEntity) {
-    let ship = entity
-        .ship_locomotion
-        .get_or_insert_with(ShipLocomotionRuntime::default);
+    let Some(loco) = entity.locomotor.as_mut() else {
+        return;
+    };
+    loco.ensure_installed_track_state();
     // Ship Stop_Moving clamps the class-owned target fraction, then clears
     // only +0x30. A committed head may continue to its track endpoint.
-    if ship.target_speed_fraction > TRACK_STOP_TARGET_FRACTION {
-        ship.target_speed_fraction = TRACK_STOP_TARGET_FRACTION;
+    if loco
+        .track_target_fraction(TrackFamily::Ship)
+        .is_some_and(|v| v > TRACK_STOP_TARGET_FRACTION)
+    {
+        loco.store_track_target_fraction(TrackFamily::Ship, TRACK_STOP_TARGET_FRACTION);
     }
-    ship.destination = None;
+    loco.store_track_destination(TrackFamily::Ship, None);
 
     // OPEN Process-host correction: this preexisting adapter applies the
     // rest speed before the native Process-tail admission. FootStop4DF0D0
     // does NOT clear Foot+5E0; explicit abandonment is a separate owner call.
-    if ship.head_to.is_none() {
+    if loco.track_head(TrackFamily::Ship).is_none() {
         if entity.foot_speed.applied_fraction() > SIM_ZERO {
             entity.foot_speed.set_speed_fraction(SIM_ZERO);
         }
@@ -604,6 +616,7 @@ mod tests {
     use super::*;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotor::LocomotorState;
+    use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
     use crate::util::fixed_math::{SIM_HALF, SIM_ONE};
 
     #[test]
@@ -612,21 +625,28 @@ mod tests {
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
 
         set_destination_internal_cell(&mut entity, (4, 3), None, 0);
-        let ship = entity.ship_locomotion.as_mut().expect("Ship runtime");
-        assert_eq!(ship.destination, Some(DriveCoord::cell(4, 3, 0)));
+        let loco = entity.locomotor.as_mut().unwrap();
         assert_eq!(
-            ship.head_to, None,
+            loco.track_destination(TrackFamily::Ship),
+            Some(DriveCoord::cell(4, 3, 0))
+        );
+        assert_eq!(
+            loco.track_head(TrackFamily::Ship),
+            None,
             "Move_To does not invent a committed head"
         );
-        ship.target_speed_fraction = SIM_ONE;
+        loco.store_track_target_fraction(TrackFamily::Ship, SIM_ONE);
         entity.foot_speed.set_speed_fraction(SIM_HALF);
         entity.navigation.path_replay.directions = vec![2, 2];
         entity.navigation.path_replay.cursor = 0;
 
         track_stop_moving(&mut entity);
-        let ship = entity.ship_locomotion.as_ref().expect("Ship runtime");
-        assert_eq!(ship.destination, None);
-        assert_eq!(ship.target_speed_fraction, TRACK_STOP_TARGET_FRACTION);
+        let loco = entity.locomotor.as_ref().unwrap();
+        assert_eq!(loco.track_destination(TrackFamily::Ship), None);
+        assert_eq!(
+            loco.track_target_fraction(TrackFamily::Ship),
+            Some(TRACK_STOP_TARGET_FRACTION)
+        );
         assert_eq!(entity.navigation.path_replay.cursor, 0);
         assert_eq!(entity.foot_speed.applied_fraction(), SIM_ZERO);
     }
@@ -642,33 +662,42 @@ mod tests {
             ..Default::default()
         };
         entity.foot_speed.set_speed_fraction(SIM_HALF);
-        entity.ship_locomotion = Some(ShipLocomotionRuntime {
-            destination: Some(DriveCoord::cell(5, 3, 0)),
-            head_to: Some(DriveCoord::cell(4, 3, 0)),
-            target_speed_fraction: SIM_ONE,
-            track: Default::default(),
-            ..Default::default()
-        });
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_ship_state_for_test(Some(
+                ShipLocomotionRuntime::default()
+                    .with_destination_for_test(Some(DriveCoord::cell(5, 3, 0)))
+                    .with_head_to_for_test(Some(DriveCoord::cell(4, 3, 0)))
+                    .with_target_speed_fraction_for_test(SIM_ONE),
+            ));
 
         track_stop_moving(&mut entity);
 
-        let ship = entity.ship_locomotion.as_ref().expect("Ship runtime");
-        assert_eq!(ship.destination, None);
-        assert_eq!(ship.head_to, Some(DriveCoord::cell(4, 3, 0)));
-        assert_eq!(ship.target_speed_fraction, TRACK_STOP_TARGET_FRACTION);
+        let loco = entity.locomotor.as_ref().unwrap();
+        assert_eq!(loco.track_destination(TrackFamily::Ship), None);
+        assert_eq!(
+            loco.track_head(TrackFamily::Ship),
+            Some(DriveCoord::cell(4, 3, 0))
+        );
+        assert_eq!(
+            loco.track_target_fraction(TrackFamily::Ship),
+            Some(TRACK_STOP_TARGET_FRACTION)
+        );
         assert_eq!(entity.foot_speed.applied_fraction(), SIM_HALF);
 
-        let ship = entity.ship_locomotion.as_mut().expect("Ship runtime");
-        ship.destination = Some(DriveCoord::cell(5, 3, 0));
-        ship.target_speed_fraction = SimFixed::lit("0.2");
+        let loco = entity.locomotor.as_mut().unwrap();
+        loco.store_track_destination(TrackFamily::Ship, Some(DriveCoord::cell(5, 3, 0)));
+        loco.store_track_target_fraction(TrackFamily::Ship, SimFixed::lit("0.2"));
         track_stop_moving(&mut entity);
         assert_eq!(
             entity
-                .ship_locomotion
+                .locomotor
                 .as_ref()
                 .expect("Ship runtime")
-                .target_speed_fraction,
-            SimFixed::lit("0.2"),
+                .track_target_fraction(TrackFamily::Ship),
+            Some(SimFixed::lit("0.2")),
             "Stop stores min(previous target, 0.3)"
         );
     }
@@ -677,10 +706,14 @@ mod tests {
         let mut entity = GameEntity::test_default(1, "HARV", "Americans", 3, 3);
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
         entity.foot_speed.set_speed_fraction(SIM_ONE);
-        entity.drive_locomotion = Some(DriveLocomotionRuntime {
-            destination: Some(DriveCoord::cell(3, 3, 0)),
-            ..Default::default()
-        });
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(
+                DriveLocomotionRuntime::default()
+                    .with_destination_for_test(Some(DriveCoord::cell(3, 3, 0))),
+            ));
         entity
     }
 
@@ -694,9 +727,9 @@ mod tests {
 
         track_stop_moving(&mut entity);
 
-        let drive = entity.drive_locomotion.as_ref().expect("drive state");
+        let loco = entity.locomotor.as_ref().unwrap();
         assert_eq!(entity.foot_speed.applied_fraction(), SIM_ZERO);
-        assert_eq!(drive.destination, None);
+        assert_eq!(loco.track_destination(TrackFamily::Drive), None);
     }
 
     /// The reset is gated, not unconditional: gamemd requires the head-to coord
@@ -705,10 +738,10 @@ mod tests {
     fn gsi_06_11_drive_rest_reset_requires_an_empty_head_to() {
         let mut entity = resting_drive_miner();
         entity
-            .drive_locomotion
+            .locomotor
             .as_mut()
             .expect("drive state")
-            .head_to = Some(DriveCoord::cell(4, 3, 0));
+            .store_track_head(TrackFamily::Drive, Some(DriveCoord::cell(4, 3, 0)));
         entity.foot_speed.set_speed_fraction(SIM_HALF);
 
         track_stop_moving(&mut entity);

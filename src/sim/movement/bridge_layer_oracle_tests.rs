@@ -7,12 +7,11 @@ use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::map::tube_facts::{TubeFact, TubeId};
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::bridge_state::{BridgeEndpointRecord, BridgeRecordKind};
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, NavTargetRef, ShipLocomotionRuntime,
-};
+use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::tube_movement::LowBridgeTubeMovementState;
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::pathfinding::{PathGrid, zone_map::ZoneGrid};
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SimFixed;
@@ -73,18 +72,30 @@ pub(crate) fn candidate(input: &Value, id: u64, type_name: &str) -> GameEntity {
         };
         match kind {
             LocomotorKind::Drive => {
-                entity.drive_locomotion = Some(DriveLocomotionRuntime {
-                    head_to: Some(head),
-                    track,
-                    ..Default::default()
-                })
+                assert!(
+                    entity
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_drive_state_for_test(Some(
+                            DriveLocomotionRuntime::default()
+                                .with_head_to_for_test(Some(head))
+                                .with_track_for_test(track)
+                        ))
+                )
             }
             LocomotorKind::Ship => {
-                entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                    head_to: Some(head),
-                    track,
-                    ..Default::default()
-                })
+                assert!(
+                    entity
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_ship_state_for_test(Some(
+                            ShipLocomotionRuntime::default()
+                                .with_head_to_for_test(Some(head))
+                                .with_track_for_test(track)
+                        ))
+                )
             }
             LocomotorKind::Hover => entity
                 .locomotor
@@ -251,8 +262,12 @@ fn native_bridge_fresh_drive_ship_queries_survive_snapshot() {
         let mut entity = candidate(input, 1, "DEFENDER");
         // Drive4AF540/Ship69EC50, including base55A6C0, initialize a null
         // retained head. The Rust owner stores that fresh payload lazily.
-        entity.drive_locomotion = None;
-        entity.ship_locomotion = None;
+        if let Some(loco) = entity.locomotor.as_mut() {
+            let _ = loco.install_drive_state_for_test(None);
+        };
+        if let Some(loco) = entity.locomotor.as_mut() {
+            let _ = loco.install_ship_state_for_test(None);
+        };
         sim.substrate.entities.insert(entity);
         let bytes = crate::sim::snapshot::GameSnapshot::save(&sim, 1, 0, context, 0);
         let mut restored = crate::sim::snapshot::GameSnapshot::load(&bytes)

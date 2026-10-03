@@ -119,32 +119,19 @@ fn teleporter_unit(sim: &Simulation, entity: &GameEntity, rules: Option<&RuleSet
 }
 
 pub(super) fn track_destination(entity: &GameEntity) -> Option<DriveCoord> {
-    match entity.locomotor.as_ref()?.kind {
-        LocomotorKind::Drive => entity.drive_locomotion.as_ref()?.destination,
-        LocomotorKind::Ship => entity.ship_locomotion.as_ref()?.destination,
-        _ => None,
-    }
+    let loco = entity.locomotor.as_ref()?;
+    loco.track_destination(super::track_process::TrackFamily::from_kind(loco.kind)?)
 }
 
 /// `if (head != Null) { head = Null; +63 = 0; }` as every arm here writes it.
 /// Raw occupation marks are untouched, as in native.
 pub(super) fn clear_track_head(entity: &mut GameEntity) {
-    match entity.locomotor.as_ref().map(|loco| loco.kind) {
-        Some(LocomotorKind::Drive) => {
-            if let Some(drive) = entity.drive_locomotion.as_mut()
-                && drive.head_to.take().is_some()
-            {
-                drive.track_valid = false;
-            }
-        }
-        Some(LocomotorKind::Ship) => {
-            if let Some(ship) = entity.ship_locomotion.as_mut()
-                && ship.head_to.take().is_some()
-            {
-                ship.track_valid = false;
-            }
-        }
-        _ => {}
+    if let Some(loco) = entity.locomotor.as_mut()
+        && let Some(family) = super::track_process::TrackFamily::from_kind(loco.kind)
+        && loco.track_head(family).is_some()
+    {
+        loco.store_track_head(family, None);
+        loco.store_track_valid(family, false);
     }
 }
 
@@ -421,18 +408,12 @@ impl Simulation {
             .ok_or("retired Drive/Ship path owner")?;
         clear_track_head(actor);
         //4B2F07: selector (+58) = -1. +61 has no reader in the program.
-        match actor.locomotor.as_ref().map(|loco| loco.kind) {
-            Some(LocomotorKind::Drive) => {
-                if let Some(drive) = actor.drive_locomotion.as_mut() {
-                    drive.track.turn_index = -1;
-                }
-            }
-            Some(LocomotorKind::Ship) => {
-                if let Some(ship) = actor.ship_locomotion.as_mut() {
-                    ship.track.turn_index = -1;
-                }
-            }
-            _ => {}
+        if let Some(loco) = actor.locomotor.as_mut()
+            && let Some(family) = super::track_process::TrackFamily::from_kind(loco.kind)
+            && let Some(mut progress) = loco.track_progress(family)
+        {
+            progress.turn_index = -1;
+            loco.store_track_progress(family, progress);
         }
         Ok(FootPathOutcome::Returned)
     }
@@ -623,11 +604,13 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        let head = match actor.locomotor.as_ref().map(|loco| loco.kind) {
-            Some(LocomotorKind::Drive) => actor.drive_locomotion.as_ref().and_then(|d| d.head_to),
-            Some(LocomotorKind::Ship) => actor.ship_locomotion.as_ref().and_then(|s| s.head_to),
-            _ => return,
+        let Some(loco) = actor.locomotor.as_ref() else {
+            return;
         };
+        let Some(family) = super::track_process::TrackFamily::from_kind(loco.kind) else {
+            return;
+        };
+        let head = loco.track_head(family);
         if track_destination(actor).is_none()
             && head.is_none()
             && super::track_head::active_track_family(actor).is_none()
@@ -722,11 +705,9 @@ impl Simulation {
         actor.navigation.pending_arrival_clear = false;
         let speed = info.as_ref().map_or(SimFixed::lit("25"), |info| info.speed);
         let cell = |coord: DriveCoord| ((coord.x / 256) as u16, (coord.y / 256) as u16);
-        let retained = match kind {
-            LocomotorKind::Drive => actor.drive_locomotion.as_ref().and_then(|d| d.destination),
-            LocomotorKind::Ship => actor.ship_locomotion.as_ref().and_then(|s| s.destination),
-            _ => None,
-        };
+        let retained = actor.locomotor.as_ref().and_then(|loco| {
+            loco.track_destination(super::track_process::TrackFamily::from_kind(kind)?)
+        });
         let agrees =
             |destination: DriveCoord| nav.is_none_or(|(_, coord)| cell(coord) == cell(destination));
         if let Some(destination) = retained.filter(|&destination| agrees(destination)) {

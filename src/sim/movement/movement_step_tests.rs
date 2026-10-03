@@ -1,13 +1,12 @@
 use super::*;
 use crate::map::entities::EntityCategory;
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, ShipLocomotionRuntime, TrackProgress,
-};
+use crate::sim::components::{DriveCoord, TrackProgress};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::drive_track;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::track_host::TrackWorldEvent;
 use crate::sim::movement::track_process::{TrackFamily, TrackInvocation};
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SIM_ONE;
@@ -84,19 +83,31 @@ fn native_track_fixture(kind: LocomotorKind, budget: i32) -> (Simulation, TrackI
         residual: 0,
     };
     if kind == LocomotorKind::Drive {
-        entity.drive_locomotion = Some(DriveLocomotionRuntime {
-            head_to: Some(head),
-            track,
-            track_valid: true,
-            ..Default::default()
-        });
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(
+                    DriveLocomotionRuntime::default()
+                        .with_head_to_for_test(Some(head))
+                        .with_track_for_test(track)
+                        .with_track_valid_for_test(true)
+                ))
+        );
     } else {
-        entity.ship_locomotion = Some(ShipLocomotionRuntime {
-            head_to: Some(head),
-            track,
-            track_valid: true,
-            ..Default::default()
-        });
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_ship_state_for_test(Some(
+                    ShipLocomotionRuntime::default()
+                        .with_head_to_for_test(Some(head))
+                        .with_track_for_test(track)
+                        .with_track_valid_for_test(true)
+                ))
+        );
     }
     sim.interner = crate::sim::intern::test_interner();
     sim.substrate.entities.insert(entity);
@@ -120,9 +131,21 @@ fn native_track_fixture(kind: LocomotorKind, budget: i32) -> (Simulation, TrackI
 
 fn retained_track(entity: &GameEntity, kind: LocomotorKind) -> TrackProgress {
     if kind == LocomotorKind::Drive {
-        entity.drive_locomotion.as_ref().unwrap().track
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track()
     } else {
-        entity.ship_locomotion.as_ref().unwrap().track
+        entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_ship_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track()
     }
 }
 
@@ -147,13 +170,25 @@ fn fresh_retry_terminal_retains_raw_head_for_both_track_families() {
             residual: 8,
         };
         if kind == LocomotorKind::Drive {
-            let state = entity.drive_locomotion.as_mut().unwrap();
-            state.head_to = Some(head);
-            state.track = track;
+            let state = entity.locomotor.as_mut().unwrap();
+            assert!(state.store_track_head(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                Some(head)
+            ));
+            assert!(state.store_track_progress(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                track
+            ));
         } else {
-            let state = entity.ship_locomotion.as_mut().unwrap();
-            state.head_to = Some(head);
-            state.track = track;
+            let state = entity.locomotor.as_mut().unwrap();
+            assert!(state.store_track_head(
+                crate::sim::movement::track_process::TrackFamily::Ship,
+                Some(head)
+            ));
+            assert!(state.store_track_progress(
+                crate::sim::movement::track_process::TrackFamily::Ship,
+                track
+            ));
         }
         assert_eq!(sim.run_track_points(invocation, budget, None, None), 1);
         let entity = sim.substrate.entities.get(1).unwrap();
@@ -167,11 +202,21 @@ fn fresh_retry_terminal_retains_raw_head_for_both_track_families() {
         assert_eq!(retained_track(entity, kind).cursor, 0);
         assert_eq!(super::super::track_head::committed_track_head(entity), None);
         assert_eq!(
-            entity.drive_locomotion.as_ref().and_then(|s| s.head_to),
+            entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .and_then(|s| s.head_to()),
             None
         );
         assert_eq!(
-            entity.ship_locomotion.as_ref().and_then(|s| s.head_to),
+            entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_ship_runtime())
+                .and_then(|r| r.retained())
+                .and_then(|s| s.head_to()),
             None
         );
     }

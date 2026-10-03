@@ -2351,9 +2351,14 @@ mod harvester_guard_override_tests {
         let entity = sim.substrate.entities.get_mut(MINER_ID).expect("miner");
         assert!(crate::sim::movement::locomotor_owner::begin_drive_for_teleporter(entity, 0));
         entity
-            .drive_locomotion
-            .get_or_insert_with(Default::default)
-            .destination = Some(crate::sim::components::DriveCoord::cell(45, 40, 0));
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .ensure_installed_track_state();
+        entity.locomotor.as_mut().unwrap().store_track_destination(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            Some(crate::sim::components::DriveCoord::cell(45, 40, 0)),
+        );
         entity
             .foot_speed
             .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);

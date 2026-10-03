@@ -103,7 +103,6 @@ mod drive_ship_slope_hash_tests {
     use crate::map::entities::EntityCategory;
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::game_entity::GameEntity;
-    use crate::sim::movement::locomotion::LocomotorRuntimePayload;
     use crate::sim::movement::locomotor::LocomotorState;
     use crate::sim::movement::slope_transition::SlopeTransitionState;
 
@@ -112,11 +111,7 @@ mod drive_ship_slope_hash_tests {
         let mut entity = GameEntity::test_default(1, "SLOPE", "Americans", 2, 2);
         entity.category = EntityCategory::Unit;
         let mut locomotor = LocomotorState::for_test_kind(kind);
-        locomotor.runtime_payload = match kind {
-            LocomotorKind::Drive => LocomotorRuntimePayload::Drive(state),
-            LocomotorKind::Ship => LocomotorRuntimePayload::Ship(state),
-            _ => unreachable!(),
-        };
+        *locomotor.active_slope_transition_mut().unwrap() = state;
         if stashed {
             assert!(locomotor.begin_piggyback(LocomotorKind::Teleport, 90,));
         }
@@ -366,14 +361,6 @@ mod shared_dummy_bridge_hash_tests {
             "dummy slope alone is unconditional hash authority"
         );
     }
-}
-
-fn hash_retained_track_classes(
-    entity: &crate::sim::game_entity::GameEntity,
-    hasher: &mut impl Hasher,
-) {
-    entity.drive_locomotion.hash(hasher);
-    entity.ship_locomotion.hash(hasher);
 }
 
 /// Fold the `MissionCom` mission component into the state hash.
@@ -1482,7 +1469,6 @@ impl Simulation {
             entity.navigation.nav_queue.hash(hasher);
             entity.navigation.pending_arrival_clear.hash(hasher);
 
-            hash_retained_track_classes(entity, hasher);
             entity.foot_speed.applied_fraction().hash(hasher);
             if entity.flight_attitude != Default::default() {
                 0x2e8_u32.hash(hasher);
@@ -1993,7 +1979,8 @@ fn hash_locomotor_payload(
     match payload {
         LocomotorRuntimePayload::Drive(state) => {
             0u8.hash(hasher);
-            hash_slope_transition_state(state, hasher);
+            hash_slope_transition_state(state.slope(), hasher);
+            state.retained().hash(hasher);
         }
         LocomotorRuntimePayload::Walk(state) => {
             1u8.hash(hasher);
@@ -2013,7 +2000,8 @@ fn hash_locomotor_payload(
         }
         LocomotorRuntimePayload::Ship(state) => {
             8u8.hash(hasher);
-            hash_slope_transition_state(state, hasher);
+            hash_slope_transition_state(state.slope(), hasher);
+            state.retained().hash(hasher);
         }
         LocomotorRuntimePayload::Fly(state) => {
             9u8.hash(hasher);
@@ -2693,10 +2681,13 @@ mod mission_authority_hash_tests {
 #[cfg(test)]
 mod track_authority_hash_tests {
     use super::Simulation;
-    use crate::sim::components::{
-        DriveCoord, DriveLocomotionRuntime, ShipLocomotionRuntime, TrackProgress,
-    };
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::sim::components::{DriveCoord, DriveOccupationFootprint, TrackProgress};
     use crate::sim::game_entity::GameEntity;
+    use crate::sim::movement::locomotor::LocomotorState;
+    use crate::sim::movement::locomotor::MovementLayer;
+    use crate::sim::movement::track_process::TrackFamily;
+    use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 
     fn supplied_track_world(ship: bool, active: bool) -> Simulation {
         let mut sim = Simulation::new();
@@ -2711,54 +2702,55 @@ mod track_authority_hash_tests {
             TrackProgress::default()
         };
         let head_to = active.then_some(DriveCoord::cell(10, 9, 0));
-        if ship {
-            entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                track,
-                head_to,
-                track_valid: active,
-                ..Default::default()
-            });
+        let mut loco = LocomotorState::for_test_kind(if ship {
+            LocomotorKind::Ship
         } else {
-            entity.drive_locomotion = Some(DriveLocomotionRuntime {
-                track,
-                head_to,
-                track_valid: active,
-                ..Default::default()
-            });
-        }
+            LocomotorKind::Drive
+        });
+        let family = TrackFamily::from_kind(loco.kind).unwrap();
+        loco.ensure_installed_track_state();
+        loco.store_track_progress(family, track);
+        loco.store_track_head(family, head_to);
+        loco.store_track_valid(family, active);
+        entity.locomotor = Some(loco);
         sim.substrate.entities.insert(entity);
         sim
     }
 
     #[test]
     fn current_hash_covers_each_retained_track_progress_field() {
-        for ship in [false, true] {
+        for (ship, suspended) in [(false, false), (false, true), (true, false), (true, true)] {
             for field in 0..6 {
                 let mut sim = supplied_track_world(ship, true);
+                if suspended {
+                    assert!(
+                        sim.substrate
+                            .entities
+                            .get_mut(1)
+                            .unwrap()
+                            .locomotor
+                            .as_mut()
+                            .unwrap()
+                            .begin_piggyback(LocomotorKind::Teleport, 0)
+                    );
+                }
                 let before = sim.state_hash();
                 let entity = sim.substrate.entities.get_mut(1).unwrap();
-                if field == 5 {
-                    if ship {
-                        let state = entity.ship_locomotion.as_mut().unwrap();
-                        state.turn_latched = !state.turn_latched;
-                    } else {
-                        let state = entity.drive_locomotion.as_mut().unwrap();
-                        state.turn_latched = !state.turn_latched;
-                    }
-                } else if field == 4 {
-                    if ship {
-                        let state = entity.ship_locomotion.as_mut().unwrap();
-                        state.track_valid = !state.track_valid;
-                    } else {
-                        let state = entity.drive_locomotion.as_mut().unwrap();
-                        state.track_valid = !state.track_valid;
-                    }
+                let family = if ship {
+                    TrackFamily::Ship
                 } else {
-                    let track = if ship {
-                        &mut entity.ship_locomotion.as_mut().unwrap().track
-                    } else {
-                        &mut entity.drive_locomotion.as_mut().unwrap().track
-                    };
+                    TrackFamily::Drive
+                };
+                let loco = entity.locomotor.as_mut().unwrap();
+                if field == 5 {
+                    loco.store_track_turn_latched(
+                        family,
+                        !loco.track_turn_latched(family).unwrap(),
+                    );
+                } else if field == 4 {
+                    loco.store_track_valid(family, !loco.track_valid(family).unwrap());
+                } else {
+                    let mut track = loco.track_progress(family).unwrap();
                     match field {
                         0 => track.turn_index = 1,
                         1 => track.cursor = 1,
@@ -2766,9 +2758,102 @@ mod track_authority_hash_tests {
                         3 => track.residual = 1,
                         _ => unreachable!(),
                     }
+                    loco.store_track_progress(family, track);
                 }
-                assert_ne!(before, sim.state_hash(), "ship={ship} field={field}");
+                assert_ne!(
+                    before,
+                    sim.state_hash(),
+                    "ship={ship} suspended={suspended} field={field}"
+                );
             }
+        }
+    }
+
+    #[test]
+    fn current_hash_covers_retained_coordinates_speed_permission_and_occupation() {
+        let point = DriveCoord::cell(3, 4, 731);
+        let mark = DriveOccupationFootprint {
+            rx: 3,
+            ry: 4,
+            layer: MovementLayer::Bridge,
+        };
+        let drives = [
+            DriveLocomotionRuntime::default().with_destination_for_test(Some(point)),
+            DriveLocomotionRuntime::default().with_head_to_for_test(Some(point)),
+            DriveLocomotionRuntime::default()
+                .with_target_speed_fraction_for_test(crate::util::fixed_math::SIM_HALF),
+            DriveLocomotionRuntime::default().with_end_permitted_for_test(false),
+            DriveLocomotionRuntime::default().with_occupation_head_to_for_test(Some(mark)),
+            DriveLocomotionRuntime::default().with_occupation_handoff_for_test(Some(mark)),
+        ];
+        let ships = [
+            ShipLocomotionRuntime::default().with_destination_for_test(Some(point)),
+            ShipLocomotionRuntime::default().with_head_to_for_test(Some(point)),
+            ShipLocomotionRuntime::default()
+                .with_target_speed_fraction_for_test(crate::util::fixed_math::SIM_HALF),
+            ShipLocomotionRuntime::default().with_occupation_head_to_for_test(Some(mark)),
+            ShipLocomotionRuntime::default().with_occupation_handoff_for_test(Some(mark)),
+        ];
+        for (ship, suspended) in [(false, false), (false, true), (true, false), (true, true)] {
+            let base = supplied_track_world(ship, false);
+            let mut empty = base;
+            if suspended {
+                assert!(
+                    empty
+                        .substrate
+                        .entities
+                        .get_mut(1)
+                        .unwrap()
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .begin_piggyback(LocomotorKind::Teleport, 0)
+                );
+            }
+            let original = empty.state_hash();
+            for field in 0..if ship { ships.len() } else { drives.len() } {
+                let mut changed = Simulation::new();
+                changed
+                    .substrate
+                    .entities
+                    .insert(empty.substrate.entities.get(1).unwrap().clone());
+                let loco = changed
+                    .substrate
+                    .entities
+                    .get_mut(1)
+                    .unwrap()
+                    .locomotor
+                    .as_mut()
+                    .unwrap();
+                assert!(if ship {
+                    loco.install_ship_state_for_test(Some(ships[field].clone()))
+                } else {
+                    loco.install_drive_state_for_test(Some(drives[field].clone()))
+                });
+                assert_ne!(
+                    original,
+                    changed.state_hash(),
+                    "ship={ship} suspended={suspended} retained field={field}"
+                );
+            }
+            let loco = empty
+                .substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .locomotor
+                .as_mut()
+                .unwrap();
+            assert!(if ship {
+                loco.install_ship_state_for_test(None)
+            } else {
+                loco.install_drive_state_for_test(None)
+            });
+            assert_ne!(
+                original,
+                empty.state_hash(),
+                "absence must differ from a present default instance"
+            );
         }
     }
 }
@@ -2776,8 +2861,11 @@ mod track_authority_hash_tests {
 #[cfg(test)]
 mod state_hash_field_tests {
     use super::Simulation;
-    use crate::sim::components::{DriveCoord, DriveLocomotionRuntime};
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::sim::components::DriveCoord;
     use crate::sim::game_entity::GameEntity;
+    use crate::sim::movement::locomotor::LocomotorState;
+    use crate::sim::movement::track_process::TrackFamily;
 
     /// A factory's rally point is its ArchiveTarget cell, folded with the
     /// base-defence state.
@@ -2797,13 +2885,16 @@ mod state_hash_field_tests {
     fn drive_locomotion_state_changes_state_hash() {
         let mut sim_a = Simulation::new();
         let mut sim_b = Simulation::new();
-        let entity_a = GameEntity::test_default(1, "AMCV", "Americans", 10, 10);
+        let mut entity_a = GameEntity::test_default(1, "AMCV", "Americans", 10, 10);
+        entity_a.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
         let mut entity_b = entity_a.clone();
-        let mut drive = DriveLocomotionRuntime::default();
-        drive.destination = Some(DriveCoord::cell(45, 40, 0));
         entity_b.navigation.path_replay.directions = vec![2, 2, 2, 2, 2];
-        drive.track.residual = 3;
-        entity_b.drive_locomotion = Some(drive);
+        let loco = entity_b.locomotor.as_mut().unwrap();
+        loco.ensure_installed_track_state();
+        loco.store_track_destination(TrackFamily::Drive, Some(DriveCoord::cell(45, 40, 0)));
+        let mut progress = loco.track_progress(TrackFamily::Drive).unwrap();
+        progress.residual = 3;
+        loco.store_track_progress(TrackFamily::Drive, progress);
         sim_a.substrate.entities.insert(entity_a);
         sim_b.substrate.entities.insert(entity_b);
 

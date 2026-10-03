@@ -6,6 +6,7 @@ use super::*;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
+use crate::sim::movement::ShipLocomotionRuntime;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::SimFixed;
 
@@ -471,7 +472,7 @@ fn retained_health_one_ship_is_illegal_as_firer_and_target() {
 #[test]
 fn retained_ship_skips_process_but_keeps_its_head_and_runs_sinking_ai() {
     use crate::rules::locomotor_type::LocomotorKind;
-    use crate::sim::components::{DriveCoord, ShipLocomotionRuntime, TrackProgress};
+    use crate::sim::components::{DriveCoord, TrackProgress};
     use crate::sim::movement::locomotor::LocomotorState;
     use crate::sim::movement::slope_transition;
     use crate::sim::world::techno_ai::ObjectAiCtx;
@@ -481,18 +482,23 @@ fn retained_ship_skips_process_but_keeps_its_head_and_runs_sinking_ai() {
     let head = DriveCoord::cell(114, 59, 208);
     let hull = sim.substrate.entities.get_mut(id).unwrap();
     hull.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
-    hull.ship_locomotion = Some(ShipLocomotionRuntime {
-        head_to: Some(head),
-        track_valid: true,
-        target_speed_fraction: SimFixed::from_num(1),
-        track: TrackProgress {
-            turn_index: 0,
-            cursor: 0,
-            reversed: false,
-            residual: 0,
-        },
-        ..Default::default()
-    });
+    assert!(
+        hull.locomotor
+            .as_mut()
+            .unwrap()
+            .install_ship_state_for_test(Some(
+                ShipLocomotionRuntime::default()
+                    .with_head_to_for_test(Some(head))
+                    .with_track_valid_for_test(true)
+                    .with_target_speed_fraction_for_test(SimFixed::from_num(1))
+                    .with_track_for_test(TrackProgress {
+                        turn_index: 0,
+                        cursor: 0,
+                        reversed: false,
+                        residual: 0,
+                    })
+            ))
+    );
     slope_transition::snap_after_successful_unlimbo(hull, 5, 0);
     let slope_before = *slope_transition::state_for_entity(hull).unwrap();
     // A second Stun (Unit setter, Path[0] = -1, Stop_Driver) clears the
@@ -501,8 +507,25 @@ fn retained_ship_skips_process_but_keeps_its_head_and_runs_sinking_ai() {
     sim.advance_live_object_turn(id, Some(&rules), ObjectAiCtx::default())
         .unwrap();
     let hull = sim.substrate.entities.get(id).unwrap();
-    assert_eq!(hull.ship_locomotion.as_ref().unwrap().head_to, Some(head));
-    assert_eq!(hull.ship_locomotion.as_ref().unwrap().track.cursor, 0);
+    assert_eq!(
+        hull.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_ship_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .head_to(),
+        Some(head)
+    );
+    assert_eq!(
+        hull.locomotor
+            .as_ref()
+            .and_then(|l| l.selected_ship_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .track()
+            .cursor,
+        0
+    );
     assert_eq!(
         *slope_transition::state_for_entity(hull).unwrap(),
         slope_before

@@ -561,34 +561,6 @@ impl FootSpeedState {
     }
 }
 
-/// ShipLocomotion-owned destination, committed head, and target speed state.
-///
-/// Ships share the ordinary TurnTrack/RawTrack curves and target fraction
-/// with Drive, but do not own Drive's
-/// tube, forced-track, or raw-occupation state.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct ShipLocomotionRuntime {
-    #[serde(default)]
-    pub destination: Option<DriveCoord>,
-    #[serde(default)]
-    pub head_to: Option<DriveCoord>,
-    #[serde(default)]
-    pub track: TrackProgress,
-    /// Ship+63, independent of head XYZ; admission6A05FC reads this byte.
-    #[serde(default)]
-    pub track_valid: bool,
-    /// Native class+62: last eligible Process observation of body rotation.
-    /// Do_Turn and track-point facing updates do not write this latch.
-    #[serde(default)]
-    pub turn_latched: bool,
-    #[serde(default)]
-    pub target_speed_fraction: SimFixed,
-    #[serde(default)]
-    pub occupation_head_to: Option<DriveOccupationFootprint>,
-    #[serde(default)]
-    pub occupation_handoff: Option<DriveOccupationFootprint>,
-}
-
 /// One active Drive/Ship locomotor's retained track selector, signed cursor,
 /// short-track choice and residual (+58/+5C/+60/+4C). Curve geometry and a
 /// temporary Process_Track call must not own serialized copies of this state.
@@ -625,66 +597,6 @@ pub struct DriveOccupationFootprint {
     pub rx: u16,
     pub ry: u16,
     pub layer: MovementLayer,
-}
-
-/// DriveLocomotion-owned destination/head-to state.
-///
-/// Native can clear destination,
-/// head-to, and active track state at different points in the lifecycle.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct DriveLocomotionRuntime {
-    #[serde(default)]
-    pub destination: Option<DriveCoord>,
-    #[serde(default)]
-    pub head_to: Option<DriveCoord>,
-    #[serde(default)]
-    pub track: TrackProgress,
-    /// Drive+65, seeded true at constructor4AF5BB. Native4B4BE0/4B4BF0
-    /// disable/enable END while Foot Find_Path removes a Team membership.
-    /// No production Rust writer models that synchronous pair yet.
-    #[serde(default = "drive_end_permitted_default")]
-    pub end_permitted: bool,
-    #[serde(default)]
-    pub track_valid: bool,
-    /// Native class+62: last eligible Process observation of body rotation.
-    /// Do_Turn and track-point facing updates do not write this latch.
-    #[serde(default)]
-    pub turn_latched: bool,
-    #[serde(default)]
-    pub target_speed_fraction: SimFixed,
-    /// Head-to vehicle-occupation mark, independent from CellClass object-list
-    /// membership. Ordinary flat Drive installs one mark for its accepted next
-    /// cell before any paid track point is consumed.
-    #[serde(default)]
-    pub occupation_head_to: Option<DriveOccupationFootprint>,
-    /// Forward RawTrack handoff mark. A turning curve comes to rest on its head
-    /// cell but *passes through* an intermediate one, and the original claims
-    /// both: `Apply_Track_Occupation_Mode` applies the same mode to the track's
-    /// `+0x0C` handoff point — transformed around the stored head — before it
-    /// applies it to the supplied head coordinate. Without this the cell a
-    /// turning mover is about to drive through looks free to every other mover.
-    #[serde(default)]
-    pub occupation_handoff: Option<DriveOccupationFootprint>,
-}
-
-fn drive_end_permitted_default() -> bool {
-    true
-}
-
-impl Default for DriveLocomotionRuntime {
-    fn default() -> Self {
-        Self {
-            destination: None,
-            head_to: None,
-            track: TrackProgress::default(),
-            end_permitted: true,
-            track_valid: false,
-            turn_latched: false,
-            target_speed_fraction: SIM_ZERO,
-            occupation_head_to: None,
-            occupation_handoff: None,
-        }
-    }
 }
 
 /// Default acceleration/deceleration values — zero means no ramping,
@@ -963,6 +875,7 @@ pub struct PendingC4Detonation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sim::movement::DriveLocomotionRuntime;
 
     #[test]
     fn test_position_creation() {
@@ -1015,19 +928,19 @@ mod tests {
     #[test]
     fn drive_locomotion_default_is_inert() {
         let drive = DriveLocomotionRuntime::default();
-        assert_eq!(drive.destination, None);
-        assert_eq!(drive.head_to, None);
+        assert_eq!(drive.destination(), None);
+        assert_eq!(drive.head_to(), None);
         let navigation = NavigationState::default();
         assert!(navigation.path_replay.directions.is_empty());
         assert_eq!(navigation.path_replay.cursor, 0);
-        assert_eq!(drive.track.turn_index, -1);
-        assert_eq!(drive.track.cursor, -1);
-        assert!(!drive.track_valid);
-        assert!(!drive.track.reversed);
-        assert_eq!(drive.target_speed_fraction, SIM_ZERO);
+        assert_eq!(drive.track().turn_index, -1);
+        assert_eq!(drive.track().cursor, -1);
+        assert!(!drive.track_valid());
+        assert!(!drive.track().reversed);
+        assert_eq!(drive.target_speed_fraction(), SIM_ZERO);
         let owner_speed = FootSpeedState::default();
         assert_eq!(owner_speed.applied_fraction, SIM_ZERO);
-        assert_eq!(drive.track.residual, 0);
+        assert_eq!(drive.track().residual, 0);
     }
 
     /// `FootClass::SetSpeedFraction @ 0x004D3710` executed on the original
@@ -1084,9 +997,12 @@ mod tests {
         }
 
         let drive_a = DriveLocomotionRuntime::default();
-        let mut drive_b = DriveLocomotionRuntime::default();
-        drive_b.destination = Some(DriveCoord::cell(45, 40, 0));
-        drive_b.track.residual = 6;
+        let drive_b = DriveLocomotionRuntime::default()
+            .with_destination_for_test(Some(DriveCoord::cell(45, 40, 0)))
+            .with_track_for_test(TrackProgress {
+                residual: 6,
+                ..Default::default()
+            });
 
         assert_ne!(hash_drive(&drive_a), hash_drive(&drive_b));
     }

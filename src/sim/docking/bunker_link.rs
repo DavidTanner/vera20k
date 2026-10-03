@@ -493,7 +493,10 @@ mod tests {
                 crate::rules::locomotor_type::LocomotorKind::Drive,
             ),
         );
-        ge.drive_locomotion = Some(Default::default());
+        ge.locomotor
+            .as_mut()
+            .unwrap()
+            .ensure_installed_track_state();
         sim.substrate.entities.insert(ge);
     }
 
@@ -596,7 +599,13 @@ mod tests {
             Some(crate::sim::components::NavTargetRef::cell(9, 11))
         );
         assert_eq!(
-            unit.drive_locomotion.as_ref().unwrap().track.turn_index,
+            unit.locomotor
+                .as_ref()
+                .and_then(|loco| loco.selected_drive_runtime())
+                .and_then(|runtime| runtime.retained())
+                .unwrap()
+                .track()
+                .turn_index,
             0x47
         );
         // Release queues Move (the host's Ready→Commence promotes it next pass).
@@ -621,7 +630,13 @@ mod tests {
         assert_eq!((unit.position.rx, unit.position.ry), (12, 12));
         assert_eq!(unit.body_facing.destination(), 0);
         assert_eq!(
-            unit.drive_locomotion.as_ref().unwrap().track.turn_index,
+            unit.locomotor
+                .as_ref()
+                .and_then(|loco| loco.selected_drive_runtime())
+                .and_then(|runtime| runtime.retained())
+                .unwrap()
+                .track()
+                .turn_index,
             0x47
         );
         assert_eq!(
@@ -746,7 +761,13 @@ mod tests {
         assert!(unit.in_logic_vector, "occupant remains active after sell");
         assert_eq!((unit.position.rx, unit.position.ry), (12, 12));
         assert_eq!(
-            unit.drive_locomotion.as_ref().unwrap().track.turn_index,
+            unit.locomotor
+                .as_ref()
+                .and_then(|loco| loco.selected_drive_runtime())
+                .and_then(|runtime| runtime.retained())
+                .unwrap()
+                .track()
+                .turn_index,
             0x47
         );
         assert_eq!(down_sounds(&sim), 0, "sell is silent (UndockUnit)");

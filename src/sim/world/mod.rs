@@ -3359,10 +3359,16 @@ impl Simulation {
             sub_y_bits: entity.position.sub_y.to_bits(),
             facing: entity.body_facing,
             track_point: entity
-                .drive_locomotion
+                .locomotor
                 .as_ref()
-                .map(|state| &state.track)
-                .or_else(|| entity.ship_locomotion.as_ref().map(|state| &state.track))
+                .and_then(|loco| {
+                    loco.track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
+                        .or_else(|| {
+                            loco.track_progress(
+                                crate::sim::movement::track_process::TrackFamily::Ship,
+                            )
+                        })
+                })
                 .filter(|track| track.turn_index >= 0)
                 .and_then(|track| u16::try_from(track.cursor).ok()),
         })

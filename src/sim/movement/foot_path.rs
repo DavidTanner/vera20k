@@ -637,7 +637,7 @@ impl Simulation {
             //(0x6A4210/0x6A4220) writes its own +65, which VERA's Ship END
             //does not read; Walk's (0x4B6650/0x4B6660) are empty.
             let drive_end = |sim: &mut Self, permitted: bool| {
-                if let Some(drive) = sim
+                if let Some(loco) = sim
                     .substrate
                     .entities
                     .get_mut(id)
@@ -647,9 +647,9 @@ impl Simulation {
                             .as_ref()
                             .is_some_and(|loco| loco.active_kind() == LocomotorKind::Drive)
                     })
-                    .and_then(|actor| actor.drive_locomotion.as_mut())
+                    .and_then(|actor| actor.locomotor.as_mut())
                 {
-                    drive.end_permitted = permitted;
+                    loco.store_drive_end_permission(permitted);
                 }
             };
             drive_end(self, false);

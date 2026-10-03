@@ -1,0 +1,15 @@
+{
+  "scope": "Actual original CMIN runs; v1 field-width correction superseded by v2; old50 exact",
+  "artifacts_sha256": {
+    "native/check-attempt-1.log.gz": "1ca243d91a584fd26f1311e171ee395fa191908a33a089cdb16c81d85174ad20",
+    "native/check-v2-attempt-1.log.gz": "1ca243d91a584fd26f1311e171ee395fa191908a33a089cdb16c81d85174ad20",
+    "native/terminal-receipt-v1.json.gz": "ffc8def62e6de18d5cec2948f8a9692eed3c8438d6cdac9ee400d7b09305b84d",
+    "native/terminal-receipt-v2.json.gz": "7d83aef3ea1aa291f9b60984d0f0e3fa8671aa5756448cb1ad560dcc98afc252",
+    "native/v1-cmin_dock.json.gz": "acc0da57bbcade47b7c11b33434b34ef225e1f15e83bcf95d96eb3a9b196853f",
+    "native/v1-cmin_dock.md.gz": "74b792e19845b45f47f779b849f8399d2c03ad593fc102b1ee038901d2cf08a0",
+    "native/v1-cmin_dock.meta.json.gz": "1fd53a59b8233bda3c6e71b6ce9cf2b4f230a8baa9b40302dd1eacebfa6e6495",
+    "native/v1-cmin_dock.py.gz": "112d478131f39c87cceeb2b38ecbb9a17f85545d69445e1def81a4095b248550",
+    "native/write-attempt-1.log.gz": "928bfd7e0efe434aec4df7c325bb536802e0812bc7da4ef7ea2c256c145a6872",
+    "native/write-v2-attempt-1.log.gz": "928bfd7e0efe434aec4df7c325bb536802e0812bc7da4ef7ea2c256c145a6872"
+  }
+}

@@ -10,12 +10,14 @@
 
 use std::sync::OnceLock;
 
+use super::locomotor::LocomotorState;
+use super::track_process::TrackFamily;
 use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::retail_trig::TrigTable;
 use crate::map::tube_facts::{TubeFact, TubeId, TubeSource};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{DriveCoord, DriveLocomotionRuntime, Position};
+use crate::sim::components::{DriveCoord, Position};
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
@@ -95,7 +97,7 @@ pub(crate) fn begin_path_tube_step(
     entity_id: u64,
     category: EntityCategory,
     position: &mut Position,
-    drive_locomotion: &mut Option<DriveLocomotionRuntime>,
+    locomotor: &mut Option<LocomotorState>,
     low_bridge_tube_state: &mut Option<LowBridgeTubeMovementState>,
     cell_marked: &mut bool,
     tube_id: TubeId,
@@ -108,9 +110,10 @@ pub(crate) fn begin_path_tube_step(
         return Err(TubeBeginError::UnsupportedCategory);
     }
     if category == EntityCategory::Unit
-        && drive_locomotion
+        && locomotor
             .as_ref()
-            .is_some_and(|drive| drive.track.turn_index != -1)
+            .and_then(|loco| loco.track_progress(TrackFamily::Drive))
+            .is_some_and(|track| track.turn_index != -1)
     {
         return Err(TubeBeginError::MissingTerrain);
     }
@@ -124,29 +127,34 @@ pub(crate) fn begin_path_tube_step(
         entity_id,
         category,
         position,
-        drive_locomotion,
+        locomotor,
         cell_marked,
         occupancy,
         cell_occupation,
         raw_cell_occupation,
     );
     if category == EntityCategory::Unit
-        && let Some(drive) = drive_locomotion.as_mut()
+        && let Some(loco) = locomotor.as_mut()
+        && let Some(mut progress) = loco.track_progress(TrackFamily::Drive)
     {
         // Original4B1352/1357/135A stores the signed exit center in Head_To
         // with Z=0. Destination, cursor, short selection and residual survive.
         // The queue shift4B1362..136E does not rewrite Foot+558's reference.
-        drive.head_to = Some(DriveCoord {
-            x: i32::from(tube.exit.0 as i16)
-                .wrapping_mul(256)
-                .wrapping_add(128),
-            y: i32::from(tube.exit.1 as i16)
-                .wrapping_mul(256)
-                .wrapping_add(128),
-            z: 0,
-        });
-        drive.track_valid = true; // Original4B1480.
-        drive.track.turn_index = -1; // Original4B1484; cursor is untouched.
+        loco.store_track_head(
+            TrackFamily::Drive,
+            Some(DriveCoord {
+                x: i32::from(tube.exit.0 as i16)
+                    .wrapping_mul(256)
+                    .wrapping_add(128),
+                y: i32::from(tube.exit.1 as i16)
+                    .wrapping_mul(256)
+                    .wrapping_add(128),
+                z: 0,
+            }),
+        );
+        loco.store_track_valid(TrackFamily::Drive, true); // Original4B1480.
+        progress.turn_index = -1; // Original4B1484; cursor is untouched.
+        loco.store_track_progress(TrackFamily::Drive, progress);
     }
     super::path_markers::consume_path_replay(path_replay, 1);
     *low_bridge_tube_state = Some(state);
@@ -203,7 +211,7 @@ fn detach_for_tube(
     entity_id: u64,
     category: EntityCategory,
     position: &Position,
-    drive_locomotion: &mut Option<DriveLocomotionRuntime>,
+    locomotor: &mut Option<LocomotorState>,
     cell_marked: &mut bool,
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
@@ -214,9 +222,12 @@ fn detach_for_tube(
     occupancy.remove_on_layer(rx, ry, entity_id, MovementLayer::Ground);
     match category {
         EntityCategory::Unit => {
-            if let Some(drive) = drive_locomotion.as_mut() {
+            if let Some(loco) = locomotor
+                .as_mut()
+                .filter(|l| l.has_track_state(TrackFamily::Drive))
+            {
                 crate::sim::occupancy::clear_drive_head_to_occupation_for_remove(
-                    drive,
+                    loco,
                     cell_occupation,
                     entity_id,
                 );
@@ -491,8 +502,8 @@ fn finalize_tube_object(
             if let Some(cell) = terrain.cell(tube.exit.0, tube.exit.1) {
                 entity.position.z = cell.level;
             }
-            if let Some(drive) = entity.drive_locomotion.as_mut() {
-                drive.target_speed_fraction = SIM_ONE;
+            if let Some(loco) = entity.locomotor.as_mut() {
+                loco.store_track_target_fraction(TrackFamily::Drive, SIM_ONE);
             }
             // Unit73604F writes the live Foot owner even if PerCell replaced
             // Drive. Exact post-callback timing remains part of the Process host.
@@ -598,8 +609,8 @@ fn locomotor_is_moving(entity: &GameEntity) -> bool {
 
 fn stop_blocked_mover(entities: &mut EntityStore, entity_id: u64) {
     if let Some(entity) = entities.get_mut(entity_id) {
-        if let Some(drive) = entity.drive_locomotion.as_mut() {
-            drive.target_speed_fraction = SIM_ZERO;
+        if let Some(loco) = entity.locomotor.as_mut() {
+            loco.store_track_target_fraction(TrackFamily::Drive, SIM_ZERO);
         }
         // Unit735F6A / Infantry51B8FC apply zero on the live Foot owner.
         entity.foot_speed.set_speed_fraction(SIM_ZERO);
@@ -696,7 +707,7 @@ mod tests {
     use super::*;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::map::tube_facts::TubeSource;
-    use crate::sim::components::{DriveLocomotionRuntime, Health, MovementTarget};
+    use crate::sim::components::{Health, MovementTarget};
     use crate::sim::game_entity::GameEntity;
     use crate::sim::occupancy::CellListInsertion;
 
@@ -784,7 +795,14 @@ mod tests {
         );
         entity.lifecycle.in_limbo = false;
         entity.lifecycle.cell_marked = true;
-        entity.drive_locomotion = Some(DriveLocomotionRuntime::default());
+        entity.locomotor = Some(LocomotorState::for_test_kind(
+            crate::rules::locomotor_type::LocomotorKind::Drive,
+        ));
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .ensure_installed_track_state();
         entity
     }
 
@@ -827,7 +845,6 @@ mod tests {
             let terrain = explicit_terrain(vec![2, 2]);
             let mut entity = unit(1);
             entity.category = category;
-            entity.drive_locomotion = None;
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
             entity.lifecycle.cell_marked = false;
             entity.position.rx = 2;
@@ -875,7 +892,9 @@ mod tests {
                 &mut ScatterRequests::default(),
             ));
             let owner = entities.get(1).unwrap();
-            assert!(owner.drive_locomotion.is_none());
+            assert!(owner.locomotor.as_ref().is_none_or(|loco| {
+                !loco.has_track_state(crate::sim::movement::track_process::TrackFamily::Drive)
+            }));
             assert_eq!(
                 owner.locomotor.as_ref().unwrap().active_kind(),
                 LocomotorKind::Teleport
@@ -958,14 +977,17 @@ mod tests {
             reversed: true,
             residual: 6,
         };
-        let drive = entity.drive_locomotion.as_mut().unwrap();
-        drive.destination = Some(destination);
-        drive.head_to = Some(DriveCoord {
-            x: 43,
-            y: 81,
-            z: 512,
-        });
-        drive.track = retained;
+        let loco = entity.locomotor.as_mut().unwrap();
+        loco.store_track_destination(TrackFamily::Drive, Some(destination));
+        loco.store_track_head(
+            TrackFamily::Drive,
+            Some(DriveCoord {
+                x: 43,
+                y: 81,
+                z: 512,
+            }),
+        );
+        loco.store_track_progress(TrackFamily::Drive, retained);
         entity.navigation.path_replay = crate::sim::components::FootPathQueue {
             directions: vec![8, 2],
             cursor: 0,
@@ -991,7 +1013,7 @@ mod tests {
             entity.stable_id,
             entity.category,
             &mut entity.position,
-            &mut entity.drive_locomotion,
+            &mut entity.locomotor,
             &mut entity.low_bridge_tube_state,
             &mut entity.lifecycle.cell_marked,
             TubeId(0),
@@ -1007,18 +1029,23 @@ mod tests {
         assert_eq!(raw.ground_bits(0, 0), 0);
         assert_eq!(cell_occupation.vehicle_bits(0, 0, MovementLayer::Ground), 0);
         assert_eq!(entity.low_bridge_tube_state.unwrap().target.x, 384);
-        let drive = entity.drive_locomotion.as_ref().unwrap();
-        assert_eq!(drive.destination, Some(destination));
+        let drive = entity
+            .locomotor
+            .as_ref()
+            .and_then(|loco| loco.selected_drive_runtime())
+            .and_then(|runtime| runtime.retained())
+            .unwrap();
+        assert_eq!(drive.destination(), Some(destination));
         assert_eq!(
-            drive.head_to,
+            drive.head_to(),
             Some(DriveCoord {
                 x: 640,
                 y: 128,
                 z: 0
             })
         );
-        assert!(drive.track_valid);
-        assert_eq!(drive.track, retained);
+        assert!(drive.track_valid());
+        assert_eq!(drive.track(), retained);
         assert_eq!(entity.navigation.path_replay.cursor, 1);
         assert_eq!(entity.navigation.path_replay.reference_cell, Some((-3, 7)));
     }
@@ -1085,7 +1112,6 @@ mod tests {
         terrain.cell_mut(2, 0).unwrap().slope_type = 1;
         let mut entity = unit(1);
         entity.category = EntityCategory::Infantry;
-        entity.drive_locomotion = None;
         entity.lifecycle.cell_marked = false;
         entity.position.rx = 2;
         entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(64);

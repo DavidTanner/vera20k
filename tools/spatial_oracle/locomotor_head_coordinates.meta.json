@@ -61,16 +61,16 @@
     "src/sim/spawn_manager.rs": "79d7fbcc4da61bb98b6d0e3f68edf4f3c61196cc745ce8551aa6cd7f374c12fc",
     "src/sim/world/world_orders.rs": "c81a440239b805188441f53b5dccd140421a7fc10f17cbb4577b1bdaa64faaec",
     "src/sim/cell_rect.rs": "711e9dbfdbb2e70fc2891a60b2034129d0368654f28eb61fff7a03faeb905fec",
-    "src/sim/world/techno_ai/mission_handlers.rs": "004eb62347ef8f85ee014f60b3f6144c1773b17e651e284aeaae04f541229848",
-    "src/sim/miner/miner_system.rs": "96d426b3d4d09c550086e95d1e291f1a9814e96355478397c1e75c9d4237f204",
+    "src/sim/world/techno_ai/mission_handlers.rs": "7055467cc93c61bde80311974296f34be230e80f28fc1e6b006bc4a4e9f002b5",
+    "src/sim/miner/miner_system.rs": "abdbb5bbd226f1f5c18314181322f1af8b842dfd033546fcf3565e1f64800625",
     "src/sim/overlay_grid.rs": "a201b15558e8613f10d4d64ab7be93980b405fb8a84f8992787001a96c0654db",
     "src/sim/scenario_bootstrap.rs": "56aafe8c6f554a4bbd43ff37836fb219ed6e54353b8a5479366ae40b63900ad7",
     "src/sim/pathfinding/core.rs": "66ef97899a72a277c7894fe4dbeb6b82c2a8bab2b8550012947598a5046ce819",
     "src/sim/pathfinding/zone_build.rs": "05d3483fcccf2f9e2596de78cb9aefee68a1c45e072e7de3544eb71369ec384c",
     "src/sim/pathfinding/zone_incremental.rs": "f3675f5d1b82589e1d53037dda666b39fabbf27e59c9d397f7883764c908a7b0",
-    "src/sim/transport_unload/tests.rs": "a90c879dd7bb8ccda1ea1d2788ba388ee145315fc33baa48320bcf9b97fc03dd",
+    "src/sim/transport_unload/tests.rs": "cc61a623b11e77868bd3ed9b9c645c0f0023fbf0b75d3723867a248f0aa6f0d9",
     "src/sim/pathfinding/base_zone_repair_native_tests.rs": "aa8a2ed0ef028f85a1c9fca3920d8268f9d646d924e068457cd5b945d75b0a19",
-    "src/app/frontend/skirmish.rs": "11d2a9586c22cf0f20817130cfe405d16fd1342e75aa7049ed7743add1e5d7e3"
+    "src/app/frontend/skirmish.rs": "5d3f115f35bb1af11ddc87a84376be2802f910fe9d113a09ad970529dff71be7"
   },
   "payload_sha256": "1eefc8ff72d7c353895cb8647043f622d96137df43d52066f29e4582e621365e"
 }

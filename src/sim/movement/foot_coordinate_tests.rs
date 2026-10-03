@@ -1,9 +1,10 @@
 use super::*;
 use crate::map::entities::EntityCategory;
 use crate::map::tube_facts::{TubeFact, TubeId};
-use crate::sim::components::{DriveLocomotionRuntime, NavTargetRef, ShipLocomotionRuntime};
+use crate::sim::components::NavTargetRef;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::tube_movement::LowBridgeTubeMovementState;
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::util::fixed_math::SimFixed;
 use serde_json::Value;
 
@@ -30,16 +31,24 @@ fn entity(id: u64, kind: LocomotorKind, current: DriveCoord, head: DriveCoord) -
     e.locomotor = Some(LocomotorState::for_test_kind(kind));
     match kind {
         LocomotorKind::Drive => {
-            e.drive_locomotion = Some(DriveLocomotionRuntime {
-                head_to: Some(head),
-                ..Default::default()
-            })
+            assert!(
+                e.locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_drive_state_for_test(Some(
+                        DriveLocomotionRuntime::default().with_head_to_for_test(Some(head))
+                    ))
+            )
         }
         LocomotorKind::Ship => {
-            e.ship_locomotion = Some(ShipLocomotionRuntime {
-                head_to: Some(head),
-                ..Default::default()
-            })
+            assert!(
+                e.locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_ship_state_for_test(Some(
+                        ShipLocomotionRuntime::default().with_head_to_for_test(Some(head))
+                    ))
+            )
         }
         LocomotorKind::Walk => e.locomotor.as_mut().unwrap().set_step_head(Some(head)),
         LocomotorKind::Hover => e
@@ -71,8 +80,12 @@ fn lazy_track_constructor_projects_original_null_head_coordinates() {
             continue;
         }
         let mut actor = entity(1, kind, coord(&input["current"]), NULL_COORD);
-        actor.drive_locomotion = None;
-        actor.ship_locomotion = None;
+        if let Some(loco) = actor.locomotor.as_mut() {
+            let _ = loco.install_drive_state_for_test(None);
+        };
+        if let Some(loco) = actor.locomotor.as_mut() {
+            let _ = loco.install_ship_state_for_test(None);
+        };
         assert_eq!(
             navigation_coordinate(&actor, None).unwrap(),
             coord(&row["coordinate"])
@@ -106,14 +119,18 @@ fn world_queries_match_all_original_foot_coordinate_rows_and_snapshot() {
             coord(&input["current"]),
             coord(&input["stored_head"]),
         );
-        let track = e
-            .drive_locomotion
-            .as_mut()
-            .map(|s| &mut s.track)
-            .or_else(|| e.ship_locomotion.as_mut().map(|s| &mut s.track));
-        if let Some(track) = track {
-            track.turn_index = input["turn_index"].as_i64().unwrap() as i32;
-            track.cursor = input["cursor"].as_i64().unwrap() as i32;
+        let family = match kind {
+            LocomotorKind::Drive => Some(crate::sim::movement::track_process::TrackFamily::Drive),
+            LocomotorKind::Ship => Some(crate::sim::movement::track_process::TrackFamily::Ship),
+            _ => None,
+        };
+        if let Some(family) = family {
+            let loco = e.locomotor.as_mut().unwrap();
+            if let Some(mut track) = loco.track_progress(family) {
+                track.turn_index = input["turn_index"].as_i64().unwrap() as i32;
+                track.cursor = input["cursor"].as_i64().unwrap() as i32;
+                assert!(loco.store_track_progress(family, track));
+            }
         }
         if let Some(tube) = input["tube"].as_array() {
             let exit = (
@@ -225,7 +242,10 @@ fn production_drive_reaim_reads_retained_target_head() {
         NULL_COORD,
     );
     mover.navigation.nav_com = Some(NavTargetRef::Entity { id: 2 });
-    mover.drive_locomotion.as_mut().unwrap().destination = Some(DriveCoord::cell(7, 4, 0));
+    assert!(mover.locomotor.as_mut().unwrap().store_track_destination(
+        crate::sim::movement::track_process::TrackFamily::Drive,
+        Some(DriveCoord::cell(7, 4, 0))
+    ));
     let target_head = DriveCoord::cell(8, 4, 416);
     sim.substrate.entities.insert(mover);
     sim.substrate.entities.insert(entity(
@@ -239,10 +259,12 @@ fn production_drive_reaim_reads_retained_target_head() {
             .entities
             .get(1)
             .unwrap()
-            .drive_locomotion
+            .locomotor
             .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
             .unwrap()
-            .destination
+            .destination()
     };
     // Drive 0x4B05D0 is reached only after a track end in the same Process;
     // an ordinary visit leaves +34 alone.

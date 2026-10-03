@@ -8,11 +8,9 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, FootPathQueue, Health, MovementTarget,
-    ShipLocomotionRuntime,
-};
+use crate::sim::components::{DriveCoord, FootPathQueue, Health, MovementTarget};
 use crate::sim::game_entity::GameEntity;
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::snapshot::GameSnapshot;
@@ -65,8 +63,20 @@ fn fixture(kind: LocomotorKind) -> Simulation {
     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
     entity.drive_accelerates = false;
     match kind {
-        LocomotorKind::Drive => entity.drive_locomotion = Some(DriveLocomotionRuntime::default()),
-        LocomotorKind::Ship => entity.ship_locomotion = Some(ShipLocomotionRuntime::default()),
+        LocomotorKind::Drive => assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(DriveLocomotionRuntime::default()))
+        ),
+        LocomotorKind::Ship => assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_ship_state_for_test(Some(ShipLocomotionRuntime::default()))
+        ),
         LocomotorKind::Walk => {}
         _ => unreachable!(),
     }

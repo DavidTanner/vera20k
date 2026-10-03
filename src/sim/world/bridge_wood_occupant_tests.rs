@@ -158,20 +158,33 @@ fn prime(scene: &mut HeadlessScenario, input: &Value, initial: &Value, rng: &Val
         // Use the existing Stop_Moving owner to materialize that default before
         // supplying the native packet's head/fraction. No movement tick runs.
         assert!(crate::sim::movement::track_stop_moving(actor));
-        let drive = actor
-            .drive_locomotion
-            .as_mut()
-            .expect("retail Drive locomotor");
-        drive.destination = None;
-        drive.head_to = input.get("head_cell").map(|p| {
-            DriveCoord::cell(
-                p[0].as_u64().unwrap() as u16,
-                p[1].as_u64().unwrap() as u16,
-                208,
+        let drive = actor.locomotor.as_mut().unwrap();
+        assert!(drive.store_track_destination(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            None
+        ));
+        assert!(drive.store_track_head(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            input.get("head_cell").map(|p| {
+                DriveCoord::cell(
+                    p[0].as_u64().unwrap() as u16,
+                    p[1].as_u64().unwrap() as u16,
+                    208,
+                )
+            })
+        ));
+        assert!(
+            drive.store_track_valid(
+                crate::sim::movement::track_process::TrackFamily::Drive,
+                drive
+                    .track_head(crate::sim::movement::track_process::TrackFamily::Drive)
+                    .is_some()
             )
-        });
-        drive.track_valid = drive.head_to.is_some();
-        drive.target_speed_fraction = SimFixed::from_num(initial["fraction"].as_f64().unwrap());
+        );
+        assert!(drive.store_track_target_fraction(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            SimFixed::from_num(initial["fraction"].as_f64().unwrap())
+        ));
     }
     // The joined native constructors receive frame 1000 and GameSpeed 4 at
     // their supplied boundary (0x00A8EB60); normalized Anim rates depend on it.
@@ -219,10 +232,12 @@ fn snapshot(
     let terrain = sim.resolved_terrain.as_ref().unwrap();
     let xyz = position_world_coord(&actor.position);
     let head = actor
-        .drive_locomotion
+        .locomotor
         .as_ref()
+        .and_then(|l| l.selected_drive_runtime())
+        .and_then(|r| r.retained())
         .unwrap()
-        .head_to
+        .head_to()
         .map_or([0; 3], |head| [head.x, head.y, head.z]);
     json!({
         "second":second,"health":actor.health.current,"alive":u8::from(actor.lifecycle.object_alive),
@@ -264,10 +279,12 @@ fn assert_state(
                     .entities
                     .get(actors[0])
                     .unwrap()
-                    .drive_locomotion
+                    .locomotor
                     .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
                     .unwrap()
-                    .target_speed_fraction,
+                    .target_speed_fraction(),
                 SimFixed::from_num(expected.as_f64().unwrap()),
                 "{context}: Drive+50"
             );

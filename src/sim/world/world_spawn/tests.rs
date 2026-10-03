@@ -1154,7 +1154,15 @@ fn techno_constructor_routes_preserve_components_and_authored_overrides() {
                         entity.locomotor.as_ref().unwrap().kind,
                         crate::rules::locomotor_type::LocomotorKind::Ship
                     );
-                    assert_eq!(entity.ship_locomotion.is_some(), route != 0);
+                    assert_eq!(
+                        entity
+                            .locomotor
+                            .as_ref()
+                            .and_then(|l| l.selected_ship_runtime())
+                            .and_then(|r| r.retained())
+                            .is_some(),
+                        route != 0
+                    );
                     let cargo = entity.passenger_role.cargo().unwrap();
                     assert_eq!((cargo.capacity, cargo.size_limit), (3, 2));
                 }

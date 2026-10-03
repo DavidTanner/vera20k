@@ -9,14 +9,13 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::animation::*;
 use crate::sim::combat::AttackTarget;
-use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, MovementTarget, ShipLocomotionRuntime,
-};
+use crate::sim::components::{DriveCoord, MovementTarget};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::game_options::GameOptions;
 use crate::sim::intern::StringInterner;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::movement::{FacingClass, SpeedRules};
 use crate::sim::type_handle_table::TypeHandleTable;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
@@ -233,19 +232,31 @@ fn gsi_13_06_active_shp_unit(type_name: &str, kind: LocomotorKind) -> GameEntity
     match kind {
         LocomotorKind::Drive => {
             entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
-            entity.drive_locomotion = Some(DriveLocomotionRuntime {
-                destination: Some(head),
-                head_to: Some(head),
-                ..Default::default()
-            });
+            assert!(
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_drive_state_for_test(Some(
+                        DriveLocomotionRuntime::default()
+                            .with_destination_for_test(Some(head))
+                            .with_head_to_for_test(Some(head))
+                    ))
+            );
         }
         LocomotorKind::Ship => {
             entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
-            entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                destination: Some(head),
-                head_to: Some(head),
-                ..Default::default()
-            });
+            assert!(
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_ship_state_for_test(Some(
+                        ShipLocomotionRuntime::default()
+                            .with_destination_for_test(Some(head))
+                            .with_head_to_for_test(Some(head))
+                    ))
+            );
         }
         _ => unreachable!("stock SHP vehicle fixture uses Drive or Ship"),
     }
@@ -332,9 +343,19 @@ fn gsi_13_06_body_counter_wraps_and_survives_moving_idle_transitions() {
     assert_eq!(entity.body_frame_counter, 0, "native dword wraps");
 
     entity.body_frame_counter = 9;
-    if let Some(drive) = entity.drive_locomotion.as_mut() {
-        drive.destination = None;
-        drive.head_to = None;
+    if let Some(drive) = entity
+        .locomotor
+        .as_mut()
+        .filter(|l| l.has_track_state(crate::sim::movement::track_process::TrackFamily::Drive))
+    {
+        assert!(drive.store_track_destination(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            None
+        ));
+        assert!(drive.store_track_head(
+            crate::sim::movement::track_process::TrackFamily::Drive,
+            None
+        ));
         entity.foot_speed.set_speed_fraction(SIM_ZERO);
     }
     tick_unit_body_frame_counter(
@@ -487,17 +508,27 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
         match kind {
             LocomotorKind::Drive => {
                 entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
-                entity.drive_locomotion = Some(DriveLocomotionRuntime {
-                    head_to: Some(owner),
-                    ..Default::default()
-                });
+                assert!(
+                    entity
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_drive_state_for_test(Some(
+                            DriveLocomotionRuntime::default().with_head_to_for_test(Some(owner))
+                        ))
+                );
             }
             LocomotorKind::Ship => {
                 entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
-                entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                    head_to: Some(owner),
-                    ..Default::default()
-                });
+                assert!(
+                    entity
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_ship_state_for_test(Some(
+                            ShipLocomotionRuntime::default().with_head_to_for_test(Some(owner))
+                        ))
+                );
             }
             _ => unreachable!(),
         }
@@ -519,19 +550,31 @@ fn gsi_13_06_shp_movement_predicates_ignore_path_execution_surrogates() {
         match kind {
             LocomotorKind::Drive => {
                 entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
-                entity.drive_locomotion = Some(DriveLocomotionRuntime {
-                    destination: Some(head),
-                    head_to: Some(head),
-                    ..Default::default()
-                });
+                assert!(
+                    entity
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_drive_state_for_test(Some(
+                            DriveLocomotionRuntime::default()
+                                .with_destination_for_test(Some(head))
+                                .with_head_to_for_test(Some(head))
+                        ))
+                );
             }
             LocomotorKind::Ship => {
                 entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
-                entity.ship_locomotion = Some(ShipLocomotionRuntime {
-                    destination: Some(head),
-                    head_to: Some(head),
-                    ..Default::default()
-                });
+                assert!(
+                    entity
+                        .locomotor
+                        .as_mut()
+                        .unwrap()
+                        .install_ship_state_for_test(Some(
+                            ShipLocomotionRuntime::default()
+                                .with_destination_for_test(Some(head))
+                                .with_head_to_for_test(Some(head))
+                        ))
+                );
             }
             _ => unreachable!(),
         }

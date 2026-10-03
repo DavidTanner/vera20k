@@ -63,6 +63,14 @@ impl TrackInvocation {
 }
 
 impl TrackFamily {
+    pub(crate) fn from_kind(kind: crate::rules::locomotor_type::LocomotorKind) -> Option<Self> {
+        match kind {
+            crate::rules::locomotor_type::LocomotorKind::Drive => Some(Self::Drive),
+            crate::rules::locomotor_type::LocomotorKind::Ship => Some(Self::Ship),
+            _ => None,
+        }
+    }
+
     fn turn(self, index: i32) -> Option<&'static TurnTrack> {
         let count = match self {
             Self::Drive => 72,

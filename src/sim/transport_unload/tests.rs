@@ -1027,9 +1027,14 @@ fn unit_unload_waits_on_the_locomotors_is_moving_not_the_order() {
     );
     assert_eq!(
         run(&|e| {
-            e.drive_locomotion
-                .get_or_insert_with(Default::default)
-                .destination = Some(crate::sim::components::DriveCoord::cell(25, 20, 0));
+            {
+                let loco = e.locomotor.as_mut().unwrap();
+                assert!(loco.ensure_installed_track_state());
+                assert!(loco.store_track_destination(
+                    crate::sim::movement::track_process::TrackFamily::Drive,
+                    Some(crate::sim::components::DriveCoord::cell(25, 20, 0))
+                ));
+            };
             e.foot_speed.set_speed_fraction(SIM_ZERO);
         }),
         waiting,

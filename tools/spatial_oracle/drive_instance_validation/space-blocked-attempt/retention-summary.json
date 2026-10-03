@@ -1,0 +1,30 @@
+{
+  "dry_run": true,
+  "policy": {
+    "cache_bytes": 34359738368,
+    "incremental_bytes": 4294967296,
+    "min_free_bytes": 17179869184
+  },
+  "state": "planned",
+  "errors": [],
+  "projected_removed_allocated_bytes": 0,
+  "free_before": {
+    "16777234": 16176439296
+  },
+  "free_after": {
+    "16777234": 16144752640
+  },
+  "unmet_targets": {
+    "cache_bytes": 5310709760,
+    "incremental_bytes": 365846528,
+    "free_bytes": {
+      "16777234": 1003429888
+    }
+  },
+  "receipt_path": "/Users/halvor/Documents/vera20k/.git/owned-builds/retention/1791018994908289000-b6656f4b.json",
+  "receipt_sha256": "295c8784b13dad516a6fbc6cd4bd61c0eab32f261cac48feaf10b2ce8c6b50d1",
+  "selected_count": 0,
+  "saved_labels_preserved": 70,
+  "goal_owned_height_labels": 0,
+  "deletion_applied": false
+}

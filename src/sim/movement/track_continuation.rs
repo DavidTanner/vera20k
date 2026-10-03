@@ -46,10 +46,11 @@ impl Simulation {
             return Ok(false);
         }
         // 4B0592: a selector still set keeps its track (common tail 4B078C).
-        let selector = match family {
-            TrackFamily::Drive => entity.drive_locomotion.as_ref().map(|d| d.track.turn_index),
-            TrackFamily::Ship => entity.ship_locomotion.as_ref().map(|s| s.track.turn_index),
-        };
+        let selector = entity
+            .locomotor
+            .as_ref()
+            .and_then(|loco| loco.track_progress(family))
+            .map(|p| p.turn_index);
         if selector.is_some_and(|selector| selector != -1) {
             return Ok(false);
         }
@@ -152,15 +153,8 @@ impl Simulation {
             if entity.movement_target.is_some() {
                 return None;
             }
-            match entity.locomotor.as_ref()?.active_kind() {
-                crate::rules::locomotor_type::LocomotorKind::Drive => {
-                    entity.drive_locomotion.as_ref()?.destination
-                }
-                crate::rules::locomotor_type::LocomotorKind::Ship => {
-                    entity.ship_locomotion.as_ref()?.destination
-                }
-                _ => None,
-            }
+            let loco = entity.locomotor.as_ref()?;
+            loco.track_destination(TrackFamily::from_kind(loco.active_kind())?)
         });
         let Some(destination) = destination else {
             return;

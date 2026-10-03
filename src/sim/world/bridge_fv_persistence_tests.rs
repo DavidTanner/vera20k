@@ -63,9 +63,11 @@ fn settled(sim: &Simulation, source: u64, ambient: &AmbientAnims) -> bool {
     actor.attack_target.is_none()
         && actor.navigation.nav_com.is_none()
         && actor
-            .drive_locomotion
+            .locomotor
             .as_ref()
-            .is_some_and(|drive| drive.destination.is_none() && drive.head_to.is_none())
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .is_some_and(|drive| drive.destination().is_none() && drive.head_to().is_none())
         && actor.mission.current() == MissionId::from_known(MissionType::Guard)
         && actor.mission.queued() == MissionId::NONE
         && transient_ids(sim, ambient).is_empty()
@@ -139,9 +141,16 @@ fn retail_fv_pursuit_missiles_collapse_and_guard_survive_restore() {
         let name = match checkpoints.len() {
             0 if actor.attack_target.is_some()
                 && actor.navigation.nav_com.is_some()
-                && actor.drive_locomotion.as_ref().is_some_and(|drive| {
-                    drive.destination.is_some() && drive.head_to.is_some() && drive.track_valid
-                }) =>
+                && actor
+                    .locomotor
+                    .as_ref()
+                    .and_then(|l| l.selected_drive_runtime())
+                    .and_then(|r| r.retained())
+                    .is_some_and(|drive| {
+                        drive.destination().is_some()
+                            && drive.head_to().is_some()
+                            && drive.track_valid()
+                    }) =>
             {
                 Some("pursuing")
             }

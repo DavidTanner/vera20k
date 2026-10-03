@@ -30,9 +30,11 @@ fn has_bunker_release_track(entity: &GameEntity) -> bool {
         .as_ref()
         .is_some_and(|state| state.kind == LocomotorKind::Drive)
         && entity
-            .drive_locomotion
+            .locomotor
             .as_ref()
-            .is_some_and(|drive| drive.track.turn_index == 0x47 && drive.head_to.is_some())
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .is_some_and(|drive| drive.track().turn_index == 0x47 && drive.head_to().is_some())
 }
 
 /// Minimal rules that know about HARV, CMIN, and GAREFN.
@@ -162,7 +164,12 @@ fn spawn_miner(sim: &mut Simulation, sid: u64, kind: MinerKind, rx: u16, ry: u16
         }
         MinerKind::War => {
             ge.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-            ge.drive_locomotion = Some(Default::default());
+            assert!(
+                ge.locomotor
+                    .as_mut()
+                    .unwrap()
+                    .install_drive_state_for_test(Some(Default::default()))
+            );
         }
         MinerKind::Slave => {}
     }
@@ -2734,7 +2741,13 @@ fn open_playfield(sim: &mut Simulation) {
 fn give_drive(sim: &mut Simulation, miner_id: u64) {
     let entity = sim.substrate.entities.get_mut(miner_id).expect("miner");
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    entity.drive_locomotion = Some(Default::default());
+    assert!(
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .install_drive_state_for_test(Some(Default::default()))
+    );
 }
 
 /// Put a live occupant into a refinery's `Contacts[]` (HELLO accepted) and
@@ -3411,7 +3424,13 @@ fn refinery_death_drops_the_unloading_miner_at_the_kill() {
             .get_mut(miner_id)
             .expect("miner entity");
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-        entity.drive_locomotion = Some(Default::default());
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .install_drive_state_for_test(Some(Default::default()))
+        );
         entity
             .foot_speed
             .set_speed_fraction(crate::util::fixed_math::SimFixed::lit("0.25"));
@@ -3424,7 +3443,12 @@ fn refinery_death_drops_the_unloading_miner_at_the_kill() {
         let entity = sim.substrate.entities.get(miner_id).unwrap();
         (
             crate::sim::movement::ground_pose::position_world_coord(&entity.position),
-            entity.drive_locomotion.clone(),
+            entity
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .cloned(),
             entity.miner.as_ref().unwrap().cargo.clone(),
         )
     };
@@ -3463,7 +3487,13 @@ fn refinery_death_drops_the_unloading_miner_at_the_kill() {
         position_before
     );
     assert_ne!(
-        miner_entity.drive_locomotion, drive_before,
+        miner_entity
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .cloned(),
+        drive_before,
         "RUN_AWAY scattered the miner off the pad"
     );
     assert_eq!(miner.cargo, cargo_before);

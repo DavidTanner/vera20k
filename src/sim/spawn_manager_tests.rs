@@ -751,10 +751,14 @@ fn a_moving_launcher_holds_its_missile() {
 fn a_launcher_asks_its_locomotor_whether_it_is_moving() {
     assert!(
         missile_held_after(|entity, _| {
-            entity
-                .drive_locomotion
-                .get_or_insert_with(Default::default)
-                .destination = Some(crate::sim::components::DriveCoord::cell(14, 10, 0));
+            {
+                let loco = entity.locomotor.as_mut().unwrap();
+                assert!(loco.ensure_installed_track_state());
+                assert!(loco.store_track_destination(
+                    crate::sim::movement::track_process::TrackFamily::Drive,
+                    Some(crate::sim::components::DriveCoord::cell(14, 10, 0))
+                ));
+            };
         }),
         "a Drive with a destination holds the missile"
     );

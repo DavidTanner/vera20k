@@ -2612,14 +2612,14 @@ impl Simulation {
             log::debug!("infantry {stable_id} Limbo Stop_Driver: {cause}");
         }
         self.release_track_occupation_before_foot_limbo(stable_id);
-        // The legacy Drive lane keeps its own head-to and handoff projections
-        // of that +9C(0) release; they leave with it on the first Limbo.
+        // The Drive instance retains head-to and handoff projections of that
+        // +9C(0) release; they leave with it on the first Limbo.
         if let Some(entity) = self.substrate.entities.get_mut(stable_id)
             && !entity.lifecycle.in_limbo
-            && let Some(drive) = entity.drive_locomotion.as_mut()
+            && let Some(loco) = entity.locomotor.as_mut()
         {
             crate::sim::occupancy::clear_drive_head_to_occupation_for_remove(
-                drive,
+                loco,
                 &mut self.substrate.cell_occupation,
                 stable_id,
             );

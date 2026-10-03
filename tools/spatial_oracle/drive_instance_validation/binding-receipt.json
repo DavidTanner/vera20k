@@ -1,0 +1,283 @@
+{
+  "status": "PASS",
+  "acceptance": "Binding-only saved actual native payload reuse through existing central CLI owner; current Rust compatibility validated separately",
+  "fresh_native_vm_generation": false,
+  "selected_sidecars": [
+    {
+      "path": "tools/spatial_oracle/infantry_teleport_destination.meta.json",
+      "module": "tools.spatial_oracle.infantry_scatter_destination",
+      "modes": [
+        "--teleport-cell"
+      ],
+      "source_count": 79,
+      "stage": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-bindings-20261003/staged-infantry_teleport_destination.json",
+      "pin_count": 7,
+      "pin_changes": {
+        "src/sim/movement/locomotor.rs": {
+          "before": "3d0c79de048604c69d0cdaddf5c59cd3d3c6963ce09b838de29b9532a1b08614",
+          "after": "6bb2b30ee467ae648801c5a386b59e1825a34ee00919acdda13baafccd47a927"
+        },
+        "src/sim/movement/locomotor_owner.rs": {
+          "before": "ddbb399b21ae5d40cebadfc6cb59a9fe9a68c02e6368789838da297ac5192e71",
+          "after": "45431cc8344dbb34c7611e9977f06a530ca89feddca1de27a2468490880b55ee"
+        },
+        "src/sim/movement/mod.rs": {
+          "before": "ec8eaf018c3a22e4e6b913fefebd06570c4081bf77b5e048e62aa51438c79481",
+          "after": "645357f8e56513c274894d5e50b897e3a5c74c3ed064bf82f9d50a062b248e24"
+        },
+        "src/sim/game_entity.rs": {
+          "before": "7fd36f578ceca8bb3de91cb627269c7fde8d24d3611d96d83974707618cc2370",
+          "after": "cb4ef7ac7e46319b651ac4d3e717ad3602d04963c624594f0c8a3cf313312fd8"
+        },
+        "src/sim/world/world_commands.rs": {
+          "before": "25c8c91771ddc67c178ca3489f774389cb10335e62e6a0a3135bd99a4e964cff",
+          "after": "f18426ed282dc088247c44ddcedc9069e2fd19f03d7845a73a8c4219d88daceb"
+        },
+        "src/sim/movement/track_path.rs": {
+          "before": "38f9ca6e9ac87030cf8fc6195a72b25d561fab59992678199911bc28cfdc9f55",
+          "after": "450acd992abf087c8d4f305b672e22c68dce94df707b5a3bcbaa43c3ec9d60a2"
+        },
+        "src/sim/miner/miner_system.rs": {
+          "before": "96d426b3d4d09c550086e95d1e291f1a9814e96355478397c1e75c9d4237f204",
+          "after": "abdbb5bbd226f1f5c18314181322f1af8b842dfd033546fcf3565e1f64800625"
+        }
+      },
+      "old_meta_sha256": "1804588162c890e1cdff8620fcc4c6ffa191acfe3b8a6f1d5c9d0b339f754b7a",
+      "new_meta_sha256": "683525ea981cdb694317c3db53d2b4248a1244892616cad8e9bf82b0cfa34d96",
+      "payload_sha256": "3ebb007e16568e2aee53865803eecb183f6840fc0e02bb1cae364a5c211b1954",
+      "publication_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.infantry_scatter_destination",
+        "--teleport-cell",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-bindings-20261003/staged-infantry_teleport_destination.json"
+      ],
+      "publication_exit_code": 0,
+      "publication_seconds": 0.2687784159788862,
+      "publication_log_sha256": "5b4032f4c642b9959fd30ad3f9eeadd86c59cd9f4f598b83dd7667fc48b269c0",
+      "all_nonbinding_provenance_exact": true,
+      "fresh_native_vm_generation": false,
+      "binding_check_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.infantry_scatter_destination",
+        "--teleport-cell",
+        "--check"
+      ],
+      "binding_check_exit_code": 0,
+      "binding_check_log_sha256": "3b14af78da128fe682c8bce5cae4d7e6f9007d9ffb305cda27624df2d1fc9af9"
+    },
+    {
+      "path": "tools/spatial_oracle/anytown_damage/unit_unlimbo.meta.json",
+      "module": "tools.spatial_oracle.anytown_damage.unit_unlimbo",
+      "modes": [],
+      "source_count": 84,
+      "stage": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-bindings-20261003/staged-unit_unlimbo.json",
+      "pin_count": 8,
+      "pin_changes": {
+        "src/sim/movement/navcom.rs": {
+          "before": "d348c06b0e97e4e3969b1046cdae950c7e3fd19408831f1abe7c5948cd6fc24d",
+          "after": "56f2e1c7bf7fc571b2ec6a0e442332da9aa19457c2702b1251ae51332cc23028"
+        },
+        "src/sim/world/lifecycle.rs": {
+          "before": "89b2412d802021459ab4c85c4456dbe1d3115635435fe25fe2c619b1a134b837",
+          "after": "664684a93109413447eae1986cedf285667524498639babf9eecebe373f7e301"
+        },
+        "src/sim/game_entity.rs": {
+          "before": "7fd36f578ceca8bb3de91cb627269c7fde8d24d3611d96d83974707618cc2370",
+          "after": "cb4ef7ac7e46319b651ac4d3e717ad3602d04963c624594f0c8a3cf313312fd8"
+        },
+        "src/sim/movement/track_host.rs": {
+          "before": "d250375018ec3c93d8bce21351f2aec5f3b8438b47c0391dd76dba72c86ed30b",
+          "after": "b695b4e31d034a66fb850f83d38570e6e4ca5c2dd738d007f63c1aa536a79524"
+        },
+        "src/sim/world/techno_ai.rs": {
+          "before": "23e4d6687f9c1401cecd139dafb88fe4db1471a562c296566ad9203b2ed6c835",
+          "after": "59986b9f2ab62f15d55e69c415eee3230a2491a14c237e3c493a1e3740d1cae7"
+        },
+        "src/sim/world/techno_ai/mission_handlers.rs": {
+          "before": "004eb62347ef8f85ee014f60b3f6144c1773b17e651e284aeaae04f541229848",
+          "after": "7055467cc93c61bde80311974296f34be230e80f28fc1e6b006bc4a4e9f002b5"
+        },
+        "src/sim/world/techno_ai/factory_unload_tests.rs": {
+          "before": "80dff0629d3900f808ffb59c84ab304f5e2c38fd3c2790df66bcae75a22aa22a",
+          "after": "208d444bfd647791442d2973b4436a3f7c0d8293d1169fb0e0235170cce703bf"
+        },
+        "src/sim/movement/mod.rs": {
+          "before": "ec8eaf018c3a22e4e6b913fefebd06570c4081bf77b5e048e62aa51438c79481",
+          "after": "645357f8e56513c274894d5e50b897e3a5c74c3ed064bf82f9d50a062b248e24"
+        }
+      },
+      "old_meta_sha256": "f6704e6df0effecea2bffef6891b71cbac8d5795f54a4d03969acc2b6759a6d2",
+      "new_meta_sha256": "691954b66949c6bae119e3dd39291f3e03a80bf772bf8e443324ced62d79d577",
+      "payload_sha256": "6a039c3e00a159de7ab7fb3431566d8ec919e6b9bbe1587828509048f9139f50",
+      "publication_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.anytown_damage.unit_unlimbo",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-bindings-20261003/staged-unit_unlimbo.json"
+      ],
+      "publication_exit_code": 0,
+      "publication_seconds": 0.4896062079933472,
+      "publication_log_sha256": "8c9a827074b9f02147b0c9db8ab7f3bb87dffcb7631dda8666baf0378c4c2322",
+      "all_nonbinding_provenance_exact": true,
+      "fresh_native_vm_generation": false,
+      "binding_check_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.anytown_damage.unit_unlimbo",
+        "--check"
+      ],
+      "binding_check_exit_code": 0,
+      "binding_check_log_sha256": "b61d4e6f0ebd3302360faa66218aab3c6e6cb571e5b4d9419e56e51c728f677d"
+    },
+    {
+      "path": "tools/spatial_oracle/building_guard_attack_gate.meta.json",
+      "module": "tools.spatial_oracle.building_guard_attack",
+      "modes": [
+        "--gate"
+      ],
+      "source_count": 94,
+      "stage": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-bindings-20261003/staged-building_guard_attack_gate.json",
+      "pin_count": 13,
+      "pin_changes": {
+        "tools/spatial_oracle/cmin_dock.py": {
+          "before": "bd9a69016801f2da94796ae5bb453a31f65f8e37cea6a54939a523de97e019ed",
+          "after": "9bd54c2ba8ad33183a1269f28bddd62a6757ddfc4c56f6a889558f953381a87b"
+        },
+        "src/sim/game_entity.rs": {
+          "before": "7fd36f578ceca8bb3de91cb627269c7fde8d24d3611d96d83974707618cc2370",
+          "after": "cb4ef7ac7e46319b651ac4d3e717ad3602d04963c624594f0c8a3cf313312fd8"
+        },
+        "src/sim/components.rs": {
+          "before": "7c39fad996f2bfa2e2455510c28205be8837bbdc3ac801206818445d3f959d67",
+          "after": "22027d52ae214887440dafec5d680f608b0a6f2eb54d102cb2a85db8f159592b"
+        },
+        "src/sim/world/mod.rs": {
+          "before": "f98cc2711cdff131e196ff39e9eea8c89804229b8a607de3ab7ae3cd0177c7a4",
+          "after": "6eacb7de4ea55376679acf48a6239459f7da5fdd6ca97e91646fb64837aa14c6"
+        },
+        "src/sim/world/world_spawn/construction.rs": {
+          "before": "f1934777bb9a8ca3fcad083533dacc42f89d6a759d78b98f81cad2a0018da15b",
+          "after": "6c8e3faf25d13855951148ebd81dcde48eecacecca58adc8dbbf74699cd3c207"
+        },
+        "src/sim/world/techno_ai.rs": {
+          "before": "23e4d6687f9c1401cecd139dafb88fe4db1471a562c296566ad9203b2ed6c835",
+          "after": "59986b9f2ab62f15d55e69c415eee3230a2491a14c237e3c493a1e3740d1cae7"
+        },
+        "src/sim/world/world_hash.rs": {
+          "before": "c7ba012958e61528f7977e620759669dc6104a6790d09564edcb608e1cfc2368",
+          "after": "5ff1c47a8c5fc41d6e9740a317282659899683da2a67387d111db4da1f814bcc"
+        },
+        "src/sim/snapshot.rs": {
+          "before": "2385fdc179e62debfd73a6d0e84b6a91214bfd68b0e791da6e19f8d5fea93bb1",
+          "after": "264d0d21a03c0fec31df030d415ea3c7bc6360c48d2c64c863be0803bee53467"
+        },
+        "src/sim/movement/track_fresh.rs": {
+          "before": "e07b39c82e3737fe601317280f653e5d21f0576d188fa8f1a2b4a9b865aed817",
+          "after": "45a321d97b434deacff1838f1e911d66af18c899ee01e3709e309a61f14a5232"
+        },
+        "src/sim/movement/track_host.rs": {
+          "before": "d250375018ec3c93d8bce21351f2aec5f3b8438b47c0391dd76dba72c86ed30b",
+          "after": "b695b4e31d034a66fb850f83d38570e6e4ca5c2dd738d007f63c1aa536a79524"
+        },
+        "src/sim/movement/track_path.rs": {
+          "before": "38f9ca6e9ac87030cf8fc6195a72b25d561fab59992678199911bc28cfdc9f55",
+          "after": "450acd992abf087c8d4f305b672e22c68dce94df707b5a3bcbaa43c3ec9d60a2"
+        },
+        "src/sim/movement/locomotor.rs": {
+          "before": "3d0c79de048604c69d0cdaddf5c59cd3d3c6963ce09b838de29b9532a1b08614",
+          "after": "6bb2b30ee467ae648801c5a386b59e1825a34ee00919acdda13baafccd47a927"
+        },
+        "src/sim/occupancy.rs": {
+          "before": "51de9a4c16972eb868027716db377e02dcf36784c478a2023de9cdf4bfa8b147",
+          "after": "d414781e1252b263050bef9b1d3df2fdd5d614df6b726909008c7e62fbee3631"
+        }
+      },
+      "old_meta_sha256": "a8f764bb060e115b9cf8df71479e26afbfefb02b892ac2b843a39d7159dec35d",
+      "new_meta_sha256": "c4b611c0408727daafb825dc26016dc84f51424397abb3f23f12e700043e9e57",
+      "payload_sha256": "cb158eeab7a40739b9a340b5e1af85554d4fecc30fa181e24621648caac75eec",
+      "publication_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.building_guard_attack",
+        "--gate",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-bindings-20261003/staged-building_guard_attack_gate.json"
+      ],
+      "publication_exit_code": 0,
+      "publication_seconds": 0.09052666695788503,
+      "publication_log_sha256": "234ac24fa0f264fc54841b57aabc80131e31b9cbb34469f4ce3b272c437426e5",
+      "all_nonbinding_provenance_exact": true,
+      "fresh_native_vm_generation": false,
+      "binding_check_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.building_guard_attack",
+        "--gate",
+        "--check"
+      ],
+      "binding_check_exit_code": 0,
+      "binding_check_log_sha256": "0a7b3ac6a552ef1070478345a44f747dac19fc635913c326bf1eeaa0f27fa4b4"
+    },
+    {
+      "path": "tools/spatial_oracle/locomotor_head_coordinates.meta.json",
+      "module": "tools.spatial_oracle.locomotor_head_coordinates",
+      "modes": [],
+      "source_count": 32,
+      "stage": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-bindings-20261003/staged-locomotor_head_coordinates.json",
+      "pin_count": 3,
+      "pin_changes": {
+        "src/sim/world/techno_ai/mission_handlers.rs": {
+          "before": "004eb62347ef8f85ee014f60b3f6144c1773b17e651e284aeaae04f541229848",
+          "after": "7055467cc93c61bde80311974296f34be230e80f28fc1e6b006bc4a4e9f002b5"
+        },
+        "src/sim/miner/miner_system.rs": {
+          "before": "96d426b3d4d09c550086e95d1e291f1a9814e96355478397c1e75c9d4237f204",
+          "after": "abdbb5bbd226f1f5c18314181322f1af8b842dfd033546fcf3565e1f64800625"
+        },
+        "src/sim/transport_unload/tests.rs": {
+          "before": "a90c879dd7bb8ccda1ea1d2788ba388ee145315fc33baa48320bcf9b97fc03dd",
+          "after": "cc61a623b11e77868bd3ed9b9c645c0f0023fbf0b75d3723867a248f0aa6f0d9"
+        }
+      },
+      "old_meta_sha256": "718f2f8df896f51d27035b5590f205bc0f5e5d544e7c0b47b34d141ed42db486",
+      "new_meta_sha256": "94360ac0c3591ca46633925f0008ffc5c7301806b2d8ed6a3d522a125c89d742",
+      "payload_sha256": "388f3e943ae7de8c4d37c840b81ebd1b9558d1074248af3f29427c3a4046c20b",
+      "publication_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.locomotor_head_coordinates",
+        "--write",
+        "--output",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-bindings-20261003/staged-locomotor_head_coordinates.json"
+      ],
+      "publication_exit_code": 0,
+      "publication_seconds": 0.0766502910410054,
+      "publication_log_sha256": "921d55ceee45ccfcfc2514756199772c9b6bf77f3ea6f5993de3bbdca2fe4858",
+      "all_nonbinding_provenance_exact": true,
+      "fresh_native_vm_generation": false,
+      "binding_check_command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+        "tools.spatial_oracle.locomotor_head_coordinates",
+        "--check"
+      ],
+      "binding_check_exit_code": 0,
+      "binding_check_log_sha256": "87a544579ac74303be9905a3c6e7ff08a29c8cb6932f8e8146887059cf433c21"
+    }
+  ],
+  "total_changed_source_pins": 31,
+  "protected_payload_count": 497,
+  "protected_other_metadata_count": 377,
+  "all_native_payloads_raw_byte_exact": true,
+  "all_nonbinding_provenance_exact": true,
+  "factorized_child": "/Users/halvor/Documents/vera20k-dev/refactor-goal/native-diagnostics-factorized-child-20261003.py",
+  "factorized_child_sha256": "0ce5e66ec8543ba88aea46300213e3aae2e0105305c2e404792d7f0b68a463fc",
+  "source_freeze_sha256": "c15104d0d0b2d9a99a68f9ef7d713505b7a7678f23aa5347e5105ff83bb5738b"
+}

@@ -1,0 +1,21 @@
+{
+  "exit_code": 0,
+  "elapsed_seconds": 60.808549667010084,
+  "args": [
+    "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+    "-m",
+    "tools.map_observation",
+    "--profile",
+    "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/tools/map_observation.cmin-instance.example.json",
+    "--contract",
+    "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/src/app/diagnostics/tactical_capture/contract.v2.json",
+    "--cwd",
+    "/Users/halvor/Documents/vera20k-worktrees/vera20k-height",
+    "--output",
+    "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-release-retail-anytown-r2-20261003"
+  ],
+  "source_unchanged": true,
+  "log": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-release-retail-anytown-r2-20261003.log",
+  "log_sha256": "c04b9cc6c407c62d6d3e1d4673b6d8216545f6ad3f288dd3b65851be5aa2d354",
+  "output": "/Users/halvor/Documents/vera20k-dev/refactor-goal/drive-instance-680-release-retail-anytown-r2-20261003"
+}

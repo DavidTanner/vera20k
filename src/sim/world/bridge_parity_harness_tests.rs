@@ -303,7 +303,11 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 //class payload owns its fold. Restoring only that old0 tag recovers the prior
 //hash exactly, with all existing pose/gameplay and absolute RNG tripwires intact.
 // See tools/spatial_oracle/infantry_teleport_destination.md. Rust hash ratchet only.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x514E_76C3_3555_46F9;
+// Snapshot288: the complete Drive/Ship payload owns its retained Option fold.
+// Same-binary old-feed control recovers514E76C3355546F9; all201 complete rows
+// match except state_hash, including all3 RNG states. Control removed.
+// Rust attribution: tools/spatial_oracle/drive_instance_replay/other/bridge/receipt.json.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x4C4F_372E_1841_05B6;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -803,15 +807,24 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
     );
     assert!(
         arrived
-            .drive_locomotion
+            .locomotor
             .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
             .unwrap()
-            .destination
+            .destination()
             .is_none(),
         "arrival must clear the class destination"
     );
     assert!(
-        arrived.drive_locomotion.as_ref().unwrap().head_to.is_none(),
+        arrived
+            .locomotor
+            .as_ref()
+            .and_then(|l| l.selected_drive_runtime())
+            .and_then(|r| r.retained())
+            .unwrap()
+            .head_to()
+            .is_none(),
         "arrival must retire the paid track head"
     );
     assert!(

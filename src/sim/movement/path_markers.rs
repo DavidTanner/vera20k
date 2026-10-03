@@ -794,11 +794,15 @@ mod tests {
             family,
         ));
         if family == LocomotorKind::Drive {
-            let mut drive = crate::sim::components::DriveLocomotionRuntime::default();
-            drive.head_to = Some(head);
-            drive.track.turn_index = input["turn_index"].as_i64().unwrap_or(-1) as i32;
-            drive.track.cursor = input["cursor"].as_i64().unwrap_or(0) as i32;
-            entity.drive_locomotion = Some(drive);
+            let loco = entity.locomotor.as_mut().unwrap();
+            loco.ensure_installed_track_state();
+            let mut track = loco
+                .track_progress(super::super::track_process::TrackFamily::Drive)
+                .unwrap();
+            track.turn_index = input["turn_index"].as_i64().unwrap_or(-1) as i32;
+            track.cursor = input["cursor"].as_i64().unwrap_or(0) as i32;
+            loco.store_track_progress(super::super::track_process::TrackFamily::Drive, track);
+            loco.store_track_head(super::super::track_process::TrackFamily::Drive, Some(head));
         } else {
             entity
                 .locomotor
@@ -1004,14 +1008,21 @@ mod tests {
         );
         peer.position.z = 4;
         peer.on_bridge = true;
-        let mut drive = crate::sim::components::DriveLocomotionRuntime::default();
-        drive.head_to = Some(crate::sim::components::DriveCoord::cell(6, 3, 4));
-        drive.track_valid = true;
-        drive.track.turn_index = 1;
-        drive.track.cursor = 12;
+        let loco = peer.locomotor.as_mut().unwrap();
+        loco.ensure_installed_track_state();
+        loco.store_track_head(
+            super::super::track_process::TrackFamily::Drive,
+            Some(crate::sim::components::DriveCoord::cell(6, 3, 4)),
+        );
+        loco.store_track_valid(super::super::track_process::TrackFamily::Drive, true);
+        let mut track = loco
+            .track_progress(super::super::track_process::TrackFamily::Drive)
+            .unwrap();
+        track.turn_index = 1;
+        track.cursor = 12;
+        loco.store_track_progress(super::super::track_process::TrackFamily::Drive, track);
         peer.navigation.path_replay.reference_cell = Some((5, 4));
         peer.navigation.path_replay.directions = vec![2, 2];
-        peer.drive_locomotion = Some(drive);
         // RawTrack 3 handoff point 22, transformed around head cell (6,3),
         // lies in probe cell (5,4).  A deck track deliberately owns no ground
         // occupation_head_to reservation, so that field cannot answer slot 40.

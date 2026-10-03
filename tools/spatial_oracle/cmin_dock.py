@@ -25,14 +25,21 @@ CoCreateInstance wrapper 0x41C250 (it runs the original Drive constructor and
 AddRef, then returns S_OK with that ILocomotion), operator new/delete, the
 AnimClass constructor, VocClass::PlayAt, crate pickup, Unit Per_Cell_Process,
 Search_For_Tiberium and the MapClass zone lookup.
+
+Three additive instance histories retain the complete raw Drive/Foot/Teleport,
+mapped-cell and RNG state around fresh/reused/repeated Move, END refusal,
+pointer transfer and final Release. See cmin_dock.md for their receipt format
+and the same fixture seams. The legacy 50-row payload has a canonical guard.
 """
 from pathlib import Path
+import hashlib
+import json
 import struct
 
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_EBP, UC_X86_REG_EBX, UC_X86_REG_ECX,
                                UC_X86_REG_EDI, UC_X86_REG_EDX, UC_X86_REG_EIP, UC_X86_REG_ESI,
-                               UC_X86_REG_ESP)
+                               UC_X86_REG_ESP, UC_X86_REG_FPCW)
 from tools.native_oracle import RET_MAGIC, finish_vectors, provenance, run_checked
 from tools.spatial_oracle.map_queries import dwords
 from tools.spatial_oracle import refinery_dock as dock
@@ -40,6 +47,7 @@ from tools.spatial_oracle.refinery_dock import (ACTOR, LOCO, BLD, OTHER, MINER_I
                                                 RULES, PAD, cell, cell_xy)
 from tools.spatial_oracle.unit_entry import EXTRA
 from tools.spatial_oracle.unit_scatter_state import TYPE, SP
+from tools.spatial_oracle.unit_source_scatter import CELLS, SCENARIO
 
 TELE = EXTRA + 0x20000
 DRIVES = [EXTRA + 0x20400 + index * 0x100 for index in range(4)]
@@ -63,6 +71,31 @@ DISTANCE_PROBES = {0x73EE3A: 'harvest_narrow', 0x73ECD0: 'harvest_wide', 0x7194A
 DRIVE_CLSID = 0x7E9A30
 ENTER, HARVEST, UNLOAD = dock.ENTER, dock.HARVEST, dock.UNLOAD
 PER_CELL_ARM, PER_CELL_ARM_END = 0x73A31F, 0x73A5EA
+DRIVE_SIZE, TELE_SIZE, FOOT_SIZE = 0x6C, 0x4C, 0x700
+INSTANCE_GUARD = bytes.fromhex('d3c7915b')
+LEGACY_PAYLOAD_SHA256 = '0c09972becd0dbae19513665f9629a251bf443efe5cff0117aa9724541f84879'
+INSTANCE_BOUNDARIES = {
+    0x4AF540: 'drive_constructor_entry', 0x4AF5D9: 'drive_constructor_ret',
+    0x7425F8: 'unit_drive_clsid_branch', 0x7426CC: 'unit_link_return',
+    0x742772: 'unit_begin_return', 0x74277E: 'unit_before_install',
+    0x742780: 'unit_after_install', 0x4AF8E0: 'drive_begin_entry',
+    0x4AF918: 'drive_begin_ret', 0x4AF970: 'drive_end_gate_entry',
+    0x4AF9A1: 'drive_end_gate_true_ret', 0x4AF9A7: 'drive_end_gate_false_ret',
+    0x4DAE5F: 'foot_ai_end_entry', 0x4DAEAD: 'foot_ai_after_end_gate',
+    0x4DAEB9: 'foot_ai_before_active_release', 0x4DAEBC: 'foot_ai_before_clear',
+    0x4DAEBF: 'foot_ai_after_clear', 0x4DAEC3: 'foot_ai_end_call',
+    0x4AF930: 'drive_end_entry', 0x4AF94B: 'drive_end_before_output',
+    0x4AF94D: 'drive_end_after_output_before_stash_clear',
+    0x4AF956: 'drive_end_true_ret', 0x742554: 'unit_pad_end_gate_call',
+    0x742557: 'unit_pad_after_end_gate', 0x742587: 'unit_pad_end_call',
+    0x7425A0: 'unit_pad_stop_fallback',
+    DRIVE_MOVE_TO: 'drive_move_to_entry', DRIVE_STOP: 'drive_stop_entry',
+    0x4B4BE0: 'drive_disable_end_entry', 0x4B4BF0: 'drive_enable_end_entry',
+}
+INSTANCE_RNGS = {'main': 0x886B88, 'scenario': SCENARIO + 0x218, 'mapgen': 0xABE890}
+# Complete mapped region, including the 0x10000 tail after the 32x32 live cells.
+INSTANCE_CELL_BYTES = 0x90000
+INSTANCE_PADDING = ((0x12, 2), (0x28, 4), (0x66, 2))
 
 
 def make_cmin_fixture(case):
@@ -137,7 +170,7 @@ def name_of(pointer):
     return 'pad_unit' if pointer == PAD_UNIT else dock.name_of(pointer)
 
 
-def observe(u, read32, case):
+def observe(u, read32, case, *, instance_boundary=None):
     """refinery_dock's observers plus the CMIN hooks; returns (events, unused)."""
     events, unused = dock.observe_dock(u, read32, case)
     ore = list(case.get('ore', []))
@@ -171,6 +204,11 @@ def observe(u, read32, case):
             assert read32(sp + 8) == 0
             drive = drives.pop(0)
             events.append(['cocreate', loco_name(drive), read32(sp + 12)])
+            if instance_boundary is not None:
+                # Only new instance controls poison the selected allocation.
+                # Constructor padding is retained, not converted to defaults.
+                u.mem_write(drive, b'\xA5' * DRIVE_SIZE)
+                instance_boundary('allocated_before_constructor', drive)
             pending.append((this, drive))
             u.mem_write(sp - 4, dwords(STUB_CTOR))
             u.reg_write(UC_X86_REG_ESP, sp - 4)
@@ -178,12 +216,16 @@ def observe(u, read32, case):
             u.reg_write(UC_X86_REG_EIP, DRIVE_CTOR)
         elif address == STUB_CTOR:
             drive = pending[-1][1]
+            if instance_boundary is not None:
+                instance_boundary('allocator_original_constructor_return', drive)
             u.mem_write(sp - 8, dwords(STUB_ADDREF, drive + 4))
             u.reg_write(UC_X86_REG_ESP, sp - 8)
             u.reg_write(UC_X86_REG_EIP, DRIVE_ADDREF)
         elif address == STUB_ADDREF:
             smart, drive = pending.pop()
             u.mem_write(smart, dwords(drive + 4))
+            if instance_boundary is not None:
+                instance_boundary('allocator_original_addref_return', drive)
             ret(12, 0)
         elif address in (TELE_MOVE_TO, DRIVE_MOVE_TO):
             events.append(['move_to', loco_name(read32(sp + 4)), coords(sp + 8)])
@@ -248,6 +290,8 @@ def observe(u, read32, case):
             ret(4, 0)
         elif address == OP_DELETE:
             events.append(['delete', loco_name(read32(sp + 4))])
+            if instance_boundary is not None:
+                instance_boundary('operator_delete_before_no_free_seam', read32(sp + 4))
             ret(0)
         elif address == COM_ERROR:
             raise AssertionError(('_com_issue_error', hex(read32(sp + 4)), case))
@@ -311,7 +355,7 @@ def move_to(case):
     return dict(input=case, events=events, state=state(u, read32))
 
 
-def piggyback_end_step(u, call, read32):
+def piggyback_end_step(u, call, read32, *, instance_boundary=None):
     """FootClass::AI's tail 0x4DAE5F..0x4DAEC6 (Is_Ok_To_End, then END), then its
     Release of the IPiggyback reference (0x4DAEFA)."""
     frame = SP - 0x100
@@ -321,8 +365,12 @@ def piggyback_end_step(u, call, read32):
     u.reg_write(UC_X86_REG_ESP, frame)
     run_checked(u, TAIL_BEGIN, TAIL_END, count=100000)
     piggy = u.reg_read(UC_X86_REG_EDI)
+    if instance_boundary is not None:
+        instance_boundary('foot_ai_end_before_final_release', None)
     if piggy:
         call(read32(read32(piggy) + 8), 0, [piggy])
+        if instance_boundary is not None:
+            instance_boundary('foot_ai_end_final_release_return', None)
 
 
 def process(case):
@@ -371,6 +419,380 @@ def per_cell(case):
     run_checked(u, PER_CELL_ARM, PER_CELL_ARM_END, count=200000)
     assert not any(unused), (case, unused)
     return dict(input=case, events=events, state=state(u, read32))
+
+
+def instance_state(u, read32, cell_baseline, padding, lifetime):
+    """Read-only complete instance receipt, including the temporary null owner.
+
+    The mapped-cell baseline plus changed spans reconstructs every mapped byte;
+    occupation/list words are also packed independently in fixed y/x order.
+    Opaque words and constructor padding stay raw evidence, not Rust defaults.
+    """
+    raw = lambda address, size: bytes(u.mem_read(address, size))
+    signed = lambda address: struct.unpack('<i', raw(address, 4))[0]
+    coords = lambda address: list(struct.unpack('<3i', raw(address, 12)))
+    byte = lambda address: raw(address, 1)[0]
+    drives = {}
+    for base in (LOCO, *DRIVES):
+        value = raw(base, DRIVE_SIZE)
+        guard = raw(base + DRIVE_SIZE, len(INSTANCE_GUARD))
+        assert guard == INSTANCE_GUARD, ('Drive allocation guard', hex(base), guard.hex())
+        pad = [value[offset:offset + size].hex() for offset, size in INSTANCE_PADDING]
+        assert pad == padding[base], ('Drive untouched padding', hex(base), pad, padding[base])
+        drives[loco_name(base)] = dict(
+            address=hex(base), lifetime=lifetime[base], raw_hex=value.hex(), guard_hex=guard.hex(),
+            padding_hex=pad, vtables=[hex(read32(base + offset)) for offset in (0, 4, 0x18)],
+            linked_foot=hex(read32(base + 0xC)), power=list(value[0x10:0x12]),
+            # Constructor4AF54D/4AF550 zero full dwords: current +1C,
+            # previous +20. Process4B0523/4B052A/4B0533 reads/writes the
+            # same complete-object fields. Publish previous/current order.
+            refs=signed(base + 0x14), slopes=[signed(base + 0x20), signed(base + 0x1C)],
+            timer_words=list(struct.unpack('<3i', value[0x24:0x30])),
+            interpolation_total=signed(base + 0x30), destination=coords(base + 0x34),
+            head=coords(base + 0x40), residual=signed(base + 0x4C),
+            target_speed_bits=f'{struct.unpack("<Q", value[0x50:0x58])[0]:016x}',
+            selector=signed(base + 0x58), cursor=signed(base + 0x5C),
+            flags_60_67=list(value[0x60:0x68]), stash=hex(read32(base + 0x68)),
+        )
+    active = read32(ACTOR + 0x674)
+    foot = raw(ACTOR, FOOT_SIZE)
+    assert raw(ACTOR + FOOT_SIZE, len(INSTANCE_GUARD)) == INSTANCE_GUARD, 'Foot receipt guard'
+    assert raw(TELE + TELE_SIZE, len(INSTANCE_GUARD)) == INSTANCE_GUARD, 'Teleport receipt guard'
+    queue_items, queue_capacity, queue_count = (read32(ACTOR + offset) for offset in
+                                                (0x58C, 0x590, 0x598))
+    assert 0 <= queue_count <= queue_capacity <= 32, ('NavQueue bound', queue_capacity, queue_count)
+    assert queue_items or not queue_capacity, ('NavQueue null items', queue_capacity)
+    if queue_capacity:
+        # The existing fixture supplies this one mapped queue allocation.
+        assert queue_items == EXTRA + 0x2C000, ('unexpected NavQueue allocation', hex(queue_items))
+    cells = raw(CELLS, INSTANCE_CELL_BYTES)
+    changed = []
+    # Skip equal cell-sized chunks before finding contiguous changed bytes.
+    for offset in range(0, len(cells), 0x200):
+        before, after = cell_baseline[offset:offset + 0x200], cells[offset:offset + 0x200]
+        if before == after:
+            continue
+        index = 0
+        while index < len(after):
+            if before[index] == after[index]:
+                index += 1
+                continue
+            start = index
+            while index < len(after) and before[index] != after[index]:
+                index += 1
+            changed.append([offset + start, after[start:index].hex()])
+    # Validate that the independently published deltas cover all mapped bytes.
+    reconstructed = bytearray(cell_baseline)
+    for offset, value in changed:
+        reconstructed[offset:offset + len(value) // 2] = bytes.fromhex(value)
+    assert bytes(reconstructed) == cells
+    occupation_lists = b''.join(cells[index * 0x200 + offset:index * 0x200 + offset + 4]
+                               for index in range(32 * 32) for offset in (0x124, 0x128, 0xE4, 0xE8))
+    return dict(
+        drives=drives,
+        foot=dict(raw_hex=foot.hex(), active_pointer=hex(active), active=loco_name(active),
+                  physical=coords(ACTOR + 0x9C), on_bridge=byte(ACTOR + 0x8C),
+                  applied_speed_bits=f'{struct.unpack("<Q", foot[0x578:0x580])[0]:016x}',
+                  reference_cell=list(struct.unpack('<hh', foot[0x558:0x55C])),
+                  path=list(struct.unpack('<24i', foot[0x5E0:0x640])),
+                  movement_timer=list(struct.unpack('<3i', foot[0x640:0x64C])),
+                  blocked_timer=list(struct.unpack('<3i', foot[0x668:0x674])),
+                  retries=signed(ACTOR + 0x64C), nav=hex(read32(ACTOR + 0x5A4)),
+                  aux=hex(read32(ACTOR + 0x5A0)), path_blocked=byte(ACTOR + 0x6B7),
+                  skip_move_to=byte(ACTOR + 0x6AC), force_reassign=byte(ACTOR + 0x1F8),
+                  swap_6ad=byte(ACTOR + 0x6AD), mission=signed(ACTOR + 0xAC),
+                  queued=signed(ACTOR + 0xB4), status=signed(ACTOR + 0xBC),
+                  dispatch_timer=list(struct.unpack('<3i', foot[0xC8:0xD4])),
+                  facing_raw_hex=foot[0x388:0x39C].hex(),
+                  nav_queue=dict(header_hex=foot[0x588:0x5A0].hex(), items=hex(queue_items),
+                                 capacity=queue_capacity, count=queue_count,
+                                 allocation_hex=raw(queue_items, queue_capacity * 4).hex()
+                                 if queue_capacity else '')),
+        teleport=dict(address=hex(TELE), raw_hex=raw(TELE, TELE_SIZE).hex(),
+                      refs=signed(TELE + 0x14), destination=coords(TELE + 0x1C),
+                      resolved=coords(TELE + 0x28), moving=byte(TELE + 0x34),
+                      timer_words=list(struct.unpack('<3i', raw(TELE + 0x3C, 12))),
+                      stash=hex(read32(TELE + 0x48))),
+        mapped_cells=dict(sha256=hashlib.sha256(cells).hexdigest(), changed_spans=changed,
+                          occupation_and_lists_hex=occupation_lists.hex(),
+                          object_next={name_of(pointer): hex(read32(pointer + 0x30))
+                                       for pointer in (ACTOR, BLD, OTHER, PAD_UNIT)}),
+        contacts=dict(miner=hex(read32(MINER_ITEMS)), refinery=hex(read32(BLD_ITEMS)),
+                      miner_tether=byte(ACTOR + 0x418), refinery_tether=byte(BLD + 0x418),
+                      refinery_queued=signed(BLD + 0xB4)),
+        rng={name: dict(address=hex(pointer), raw_hex=raw(pointer, 1012).hex())
+             for name, pointer in INSTANCE_RNGS.items()},
+    )
+
+
+def instance_cases():
+    common = dict(miner_coord=[2688, 2688, 123], frame=200, seed=31,
+                  foot_speed_bits='3fec000000000000')
+    return [dict(common, name='far_fresh_reuse_end_repeat', history='far', linked=False),
+            dict(common, name='pad_stopped_end', history='pad_stopped', loco='drive_piggy',
+                 dest=list(PAD)),
+            dict(common, name='pad_moving_refused_stop_end', history='pad_moving',
+                 loco='drive_piggy', dest=list(PAD), moving=True, nav=[12, 12])]
+
+
+def instance_control(case):
+    """Three additive histories through the existing fixture, observer and call.
+
+    All new helpers below measure state; only the existing call and FootAI-tail
+    owners execute original instructions. Return values are sampled at actual
+    return PCs and matching ESP, including the runner's non-executed stop PCs.
+    """
+    u, call, read32 = make_cmin_fixture(case)
+    for base, size in ((ACTOR, FOOT_SIZE), (TELE, TELE_SIZE),
+                       *((base, DRIVE_SIZE) for base in (LOCO, *DRIVES))):
+        u.mem_write(base + size, INSTANCE_GUARD)
+    u.mem_write(ACTOR + 0x578, struct.pack('<Q', int(case['foot_speed_bits'], 16)))
+    for pointer in INSTANCE_RNGS.values():
+        call(0x65C6D0, pointer, [31])
+        assert u.reg_read(UC_X86_REG_EIP) == RET_MAGIC and u.reg_read(UC_X86_REG_ESP) == SP + 8
+    cell_baseline = bytes(u.mem_read(CELLS, INSTANCE_CELL_BYTES))
+    padding = {base: [bytes(u.mem_read(base + offset, size)).hex()
+                      for offset, size in INSTANCE_PADDING] for base in (LOCO, *DRIVES)}
+    lifetime = {base: 'fixture_constructed' if base == LOCO else 'unallocated'
+                for base in (LOCO, *DRIVES)}
+    text_before = hashlib.sha256(bytes(u.mem_read(0x401000, 0x3E0000))).hexdigest()
+    vtable_spans = {'unit': (0x7F5C70, 0x600), 'building': (read32(BLD), 0x600),
+                    'drive_locomotion': (0x7E7EB0, 0xC0), 'drive_piggyback': (0x7E7E8C, 0x20),
+                    'drive_object': (0x7E7F7C, 0x20), 'teleport_locomotion': (0x7F5000, 0xC0)}
+    vtables_before = {name: hashlib.sha256(bytes(u.mem_read(pointer, size))).hexdigest()
+                      for name, (pointer, size) in vtable_spans.items()}
+    boundaries, native_calls, steps, pending = [], [], [], {}
+    current_drive = LOCO if case.get('loco') == 'drive_piggy' else None
+
+    def returned(pc, sp):
+        for index in pending.pop((pc, sp), []):
+            native_calls[index].update(return_eax=u.reg_read(UC_X86_REG_EAX),
+                                       return_pc=hex(pc), return_sp=hex(sp),
+                                       return_fpcw=u.reg_read(UC_X86_REG_FPCW))
+
+    def snapshot(label, drive=None):
+        nonlocal current_drive
+        pc, sp = u.reg_read(UC_X86_REG_EIP), u.reg_read(UC_X86_REG_ESP)
+        returned(pc, sp)
+        if label == 'allocated_before_constructor':
+            assert drive in DRIVES and lifetime[drive] == 'unallocated'
+            padding[drive] = ['a5' * size for _offset, size in INSTANCE_PADDING]
+            lifetime[drive] = 'allocated_before_constructor'
+        elif label == 'allocator_original_constructor_return':
+            lifetime[drive] = 'constructed'
+        elif label == 'operator_delete_before_no_free_seam':
+            assert drive in (LOCO, *DRIVES), hex(drive)
+            lifetime[drive] = 'delete_entry_no_free_seam'
+        if drive is not None:
+            current_drive = drive
+        fpcw = u.reg_read(UC_X86_REG_FPCW)
+        assert fpcw == 0x0E7F, ('ambient FPCW changed', label, hex(fpcw))
+        boundaries.append(dict(label=label, drive=loco_name(current_drive or 0),
+                               pc=hex(pc), esp=hex(sp), eax=u.reg_read(UC_X86_REG_EAX),
+                               frame=read32(0xA8ED84), fpcw=fpcw,
+                               state=instance_state(u, read32, cell_baseline, padding, lifetime)))
+        return len(boundaries) - 1
+
+    events, unused = observe(u, read32, case, instance_boundary=snapshot)
+    # (name, argument count, callee cleanup). Receiver adjustment remains native.
+    call_specs = {dock.ASSIGN: ('unit_set_destination', 2, 8),
+                  0x4D94B0: ('foot_set_destination', 2, 8),
+                  DRIVE_CTOR: ('drive_constructor', 0, 0),
+                  0x55A6C0: ('locomotor_base_constructor', 0, 0),
+                  LINK: ('link_to_object', 2, 8), DRIVE_BEGIN: ('drive_begin', 2, 8),
+                  DRIVE_END: ('drive_end', 2, 8), 0x4AF970: ('drive_end_gate', 1, 4),
+                  0x4AFB80: ('drive_is_moving', 1, 4),
+                  DRIVE_MOVE_TO: ('drive_move_to', 4, 16), DRIVE_STOP: ('drive_stop', 1, 4),
+                  0x4B4BE0: ('drive_disable_end', 1, 4), 0x4B4BF0: ('drive_enable_end', 1, 4),
+                  0x65C780: ('rng_raw', 0, 0), 0x65C7E0: ('rng_ranged', 2, 8)}
+    for vtable, interface in ((0x7E7EB0, 'drive_ilocomotion'),
+                              (0x7E7E8C, 'drive_ipiggyback'), (0x7F5000, 'teleport_ilocomotion')):
+        for slot, name, count in ((0, 'query_interface', 3), (4, 'addref', 1), (8, 'release', 1)):
+            entry = read32(vtable + slot)
+            call_specs.setdefault(entry, (interface + '_' + name, count, count * 4))
+
+    def trace(_u, pc, _size, _data):
+        nonlocal current_drive
+        sp = u.reg_read(UC_X86_REG_ESP)
+        returned(pc, sp)
+        if pc in (DRIVE_BEGIN, DRIVE_END, 0x4AF970):
+            current_drive = read32(sp + 4) - 0x18
+        elif pc in (DRIVE_MOVE_TO, DRIVE_STOP, 0x4AFB80, 0x4B4BE0, 0x4B4BF0):
+            current_drive = read32(sp + 4) - 4
+        elif pc == DRIVE_CTOR:
+            current_drive = u.reg_read(UC_X86_REG_ECX)
+        if pc in call_specs:
+            name, count, cleanup = call_specs[pc]
+            caller = read32(sp)
+            index = len(native_calls)
+            native_calls.append(dict(name=name, entry=hex(pc), ecx=hex(u.reg_read(UC_X86_REG_ECX)),
+                                     entry_sp=hex(sp), caller=hex(caller),
+                                     args=[read32(sp + 4 + i * 4) for i in range(count)],
+                                     cleanup=cleanup, entry_fpcw=u.reg_read(UC_X86_REG_FPCW)))
+            pending.setdefault((caller, sp + 4 + cleanup), []).append(index)
+        if pc in INSTANCE_BOUNDARIES:
+            snapshot(INSTANCE_BOUNDARIES[pc])
+
+    u.hook_add(UC_HOOK_CODE, trace)
+
+    def start_step(label, supplied=None):
+        return dict(label=label, supplied=supplied or [], before=snapshot(label + '_before'),
+                    event_start=len(events), call_start=len(native_calls))
+
+    def finish_step(step, cleanup):
+        assert u.reg_read(UC_X86_REG_EIP) == RET_MAGIC, (step['label'], 'non-return stop')
+        assert u.reg_read(UC_X86_REG_ESP) == SP + 4 + cleanup, (step['label'], 'stack cleanup')
+        step.update(after=snapshot(step['label'] + '_after'), event_end=len(events),
+                    call_end=len(native_calls), terminal_esp=hex(u.reg_read(UC_X86_REG_ESP)),
+                    raw_eax=u.reg_read(UC_X86_REG_EAX), cleanup=cleanup)
+        steps.append(step)
+
+    def retained_input(base, head=None):
+        writes = [(0x1C, dwords(7, 9)), (0x24, dwords(197)), (0x2C, dwords(3, 3)),
+                  (0x4C, dwords(37)), (0x50, struct.pack('<Q', 0x3FE4000000000000)),
+                  (0x58, dwords(10, 3)), (0x60, b'\x01'), (0x62, b'\x01\x01')]
+        if head is not None:
+            writes.append((0x40, dwords(*head)))
+        for offset, value in writes:
+            u.mem_write(base + offset, value)
+        return [dict(address=hex(base + offset), raw_hex=value.hex()) for offset, value in writes]
+
+    def refused(step, base):
+        before, after = (boundaries[step[key]]['state'] for key in ('before', 'after'))
+        assert before['drives'][loco_name(base)]['raw_hex'] == after['drives'][loco_name(base)]['raw_hex']
+        assert before['foot']['raw_hex'] == after['foot']['raw_hex']
+        assert before['teleport']['raw_hex'] == after['teleport']['raw_hex']
+        assert before['rng'] == after['rng'] and before['mapped_cells'] == after['mapped_cells']
+        calls = native_calls[step['call_start']:step['call_end']]
+        gates = [row for row in calls if row['name'] == 'drive_end_gate']
+        assert len(gates) == 1 and gates[0]['return_eax'] & 0xFF == 0
+        assert not any(row['name'] == 'drive_end' for row in calls)
+        assert not any(row[0] == 'delete' for row in events[step['event_start']:step['event_end']])
+
+    def ended(step, base):
+        before = boundaries[step['before']]['state']
+        live = [row['state'] for row in boundaries[step['before'] + 1:step['after']]
+                if row['label'] == 'drive_end_true_ret']
+        assert len(live) == 1, ('END did not reach its native successful ret', step['label'])
+        old_drive = bytes.fromhex(before['drives'][loco_name(base)]['raw_hex'])
+        live_drive = bytes.fromhex(live[0]['drives'][loco_name(base)]['raw_hex'])
+        assert old_drive[0x1C:0x68] == live_drive[0x1C:0x68], 'END changed retained Drive fields'
+        assert live[0]['drives'][loco_name(base)]['stash'] == '0x0'
+        assert live[0]['foot']['active_pointer'] == hex(TELE + 4)
+        assert before['foot']['physical'] == live[0]['foot']['physical']
+        assert before['foot']['applied_speed_bits'] == live[0]['foot']['applied_speed_bits']
+        assert any(row[0] == 'delete' and row[1] == loco_name(base)
+                   for row in events[step['event_start']:step['event_end']])
+
+    if case['history'] == 'far':
+        step = start_step('fresh_move')
+        call(dock.ASSIGN, ACTOR, [cell(14, 12), 1])
+        finish_step(step, 8)
+        base = DRIVES[0]
+        assert read32(ACTOR + 0x674) == base + 4 and read32(base + 0x68) == TELE + 4
+        assert sum(row[0] == 'cocreate' for row in events) == 1
+        supplied = retained_input(base, [3013, 2979, -347])
+        step = start_step('reuse_move', supplied)
+        call(dock.ASSIGN, ACTOR, [cell(15, 13), 1])
+        finish_step(step, 8)
+        assert read32(ACTOR + 0x674) == base + 4 and read32(base + 0x68) == TELE + 4
+        assert sum(row[0] == 'cocreate' for row in events) == 1
+        step = start_step('moving_end_refusal')
+        piggyback_end_step(u, call, read32, instance_boundary=snapshot)
+        finish_step(step, 4)
+        refused(step, base)
+        step = start_step('original_stop')
+        call(DRIVE_STOP, 0, [base + 4])
+        finish_step(step, 4)
+        physical = list(struct.unpack('<3i', u.mem_read(ACTOR + 0x9C, 12)))
+        settled_head = dwords(physical[0], physical[1], physical[2] + 104)
+        u.mem_write(base + 0x40, settled_head)
+        step = start_step('disable_end', [dict(address=hex(base + 0x40), raw_hex=settled_head.hex())])
+        call(0x4B4BE0, 0, [base + 4])
+        finish_step(step, 4)
+        step = start_step('permission_end_refusal')
+        piggyback_end_step(u, call, read32, instance_boundary=snapshot)
+        finish_step(step, 4)
+        refused(step, base)
+        step = start_step('enable_end')
+        call(0x4B4BF0, 0, [base + 4])
+        finish_step(step, 4)
+        u.mem_write(ACTOR + 0x6AD, b'\x01')
+        step = start_step('swap_end_refusal', [dict(address=hex(ACTOR + 0x6AD), raw_hex='01')])
+        piggyback_end_step(u, call, read32, instance_boundary=snapshot)
+        finish_step(step, 4)
+        refused(step, base)
+        u.mem_write(ACTOR + 0x6AD, b'\x00')
+        step = start_step('successful_end', [dict(address=hex(ACTOR + 0x6AD), raw_hex='00')])
+        piggyback_end_step(u, call, read32, instance_boundary=snapshot)
+        finish_step(step, 4)
+        ended(step, base)
+        assert read32(ACTOR + 0x674) == TELE + 4
+        u.mem_write(0xA8ED84, dwords(201))
+        step = start_step('repeat_fresh_move', [dict(address='0xa8ed84', raw_hex=dwords(201).hex())])
+        call(dock.ASSIGN, ACTOR, [cell(14, 12), 1])
+        finish_step(step, 8)
+        assert read32(ACTOR + 0x674) == DRIVES[1] + 4 and read32(DRIVES[1] + 0x68) == TELE + 4
+        assert sum(row[0] == 'cocreate' for row in events) == 2
+    else:
+        base = LOCO
+        supplied = retained_input(base)
+        step = start_step('pad_setter', supplied)
+        call(dock.ASSIGN, ACTOR, [cell(*PAD), 1])
+        finish_step(step, 8)
+        if case['history'] == 'pad_stopped':
+            ended(step, base)
+            assert read32(ACTOR + 0x674) == TELE + 4
+        else:
+            assert case['history'] == 'pad_moving'
+            calls = native_calls[step['call_start']:step['call_end']]
+            gates = [row for row in calls if row['name'] == 'drive_end_gate']
+            assert len(gates) == 1 and gates[0]['return_eax'] & 0xFF == 0
+            assert not any(row['name'] == 'drive_end' for row in calls)
+            assert any(row['name'] == 'drive_stop' for row in calls)
+            assert read32(ACTOR + 0x674) == base + 4
+            step = start_step('post_stop_end')
+            piggyback_end_step(u, call, read32, instance_boundary=snapshot)
+            finish_step(step, 4)
+            ended(step, base)
+            assert read32(ACTOR + 0x674) == TELE + 4
+        assert not any(row[0] == 'cocreate' for row in events), 'pad caller allocated a replacement Drive'
+    assert not any(unused), (case, unused)
+    assert not pending, ('unmatched original returns', pending, case)
+    assert all('return_eax' in row for row in native_calls), 'missing executed return receipt'
+    labels = {row['label'] for row in boundaries}
+    required = {'drive_end_gate_entry', 'drive_end_gate_true_ret', 'drive_end_entry',
+                'drive_end_before_output', 'drive_end_after_output_before_stash_clear',
+                'drive_end_true_ret', 'operator_delete_before_no_free_seam'}
+    if case['history'] == 'far':
+        required.update({'allocated_before_constructor', 'drive_constructor_entry',
+                         'drive_constructor_ret', 'allocator_original_constructor_return',
+                         'allocator_original_addref_return', 'unit_link_return',
+                         'drive_begin_entry', 'drive_begin_ret', 'unit_begin_return',
+                         'unit_before_install', 'unit_after_install', 'unit_drive_clsid_branch',
+                         'drive_move_to_entry', 'drive_end_gate_false_ret',
+                         'foot_ai_before_active_release', 'foot_ai_before_clear',
+                         'foot_ai_after_clear', 'foot_ai_end_before_final_release',
+                         'foot_ai_end_final_release_return'})
+    else:
+        required.update({'unit_pad_end_gate_call', 'unit_pad_after_end_gate'})
+        required.add('unit_pad_end_call' if case['history'] == 'pad_stopped'
+                     else 'unit_pad_stop_fallback')
+    assert required <= labels, ('missing original boundaries', sorted(required - labels), case)
+    text_after = hashlib.sha256(bytes(u.mem_read(0x401000, 0x3E0000))).hexdigest()
+    vtables_after = {name: hashlib.sha256(bytes(u.mem_read(pointer, size))).hexdigest()
+                     for name, (pointer, size) in vtable_spans.items()}
+    assert text_before == text_after and vtables_before == vtables_after
+    return dict(input=case, steps=steps, boundaries=boundaries, events=events,
+                native_calls=native_calls,
+                rng_calls=[row for row in native_calls if row['name'] in ('rng_raw', 'rng_ranged')],
+                cell_baseline=dict(address=hex(CELLS), bytes=INSTANCE_CELL_BYTES,
+                                   raw_hex=cell_baseline.hex(),
+                                   sha256=hashlib.sha256(cell_baseline).hexdigest(),
+                                   occupation_and_lists_order=['ground_124', 'deck_128',
+                                                               'ground_head_e4', 'deck_head_e8']),
+                guards=dict(text_before_sha256=text_before, text_after_sha256=text_after,
+                            vtables_before_sha256=vtables_before, vtables_after_sha256=vtables_after))
 
 
 def assign_cases():
@@ -481,25 +903,33 @@ def per_cell_cases():
 
 
 def generate():
-    return {'source': 'unicorn/gamemd.exe',
-            'assign_destination': [assign(case) for case in assign_cases()],
-            'teleport_move_to': [move_to(case) for case in move_to_cases()],
-            'teleport_process': [process(case) for case in process_cases()],
-            'mission_harvest': [mission(case, HARVEST) for case in harvest_cases()],
-            'mission_enter': [mission(case, ENTER) for case in enter_cases()],
-            'mission_unload': [mission(case, UNLOAD) for case in unload_cases()],
-            'per_cell': [per_cell(case) for case in per_cell_cases()]}
+    legacy = {'source': 'unicorn/gamemd.exe',
+              'assign_destination': [assign(case) for case in assign_cases()],
+              'teleport_move_to': [move_to(case) for case in move_to_cases()],
+              'teleport_process': [process(case) for case in process_cases()],
+              'mission_harvest': [mission(case, HARVEST) for case in harvest_cases()],
+              'mission_enter': [mission(case, ENTER) for case in enter_cases()],
+              'mission_unload': [mission(case, UNLOAD) for case in unload_cases()],
+              'per_cell': [per_cell(case) for case in per_cell_cases()]}
+    canonical = json.dumps(legacy, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+    assert hashlib.sha256(canonical).hexdigest() == LEGACY_PAYLOAD_SHA256, 'legacy 50 CMIN rows changed'
+    return dict(legacy, instance_controls=[instance_control(case) for case in instance_cases()])
 
 
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
-        scope='50 original executions of the Chrono Miner (CMIN) refinery chain: 17 Unit setter '
+        scope='50 unchanged original rows of the Chrono Miner (CMIN) refinery chain: 17 Unit setter '
               '(vt+0x480) calls through its Teleporter arm; 4 Teleport Move_To guard refusals; 6 Teleport '
               'Move_To arming runs followed by 12 Teleport Process frames (warp, chrono delay, delay-expiry '
               'tick), each with the FootClass::AI piggyback END step; 15 UnitClass::Mission_Harvest '
               '(states 0/2/3), 5 FootClass::Mission_Enter and 1 UnitClass::Mission_Unload dispatches with '
               'their return value; 2 Per_Cell_Process(2) Enter-arm snippets. Every nested receiver, COM '
-              'call, occupy-bit write, transmit reply and Scenario draw is recorded in order.',
+              'call, occupy-bit write, transmit reply and Scenario draw is recorded in order. Three '
+              'additive complete Drive instance histories measure ordinary fresh/reused/repeated Move, '
+              'moving/permission/swap END refusals and successful END/final Release, plus the stopped '
+              'and moving refinery-pad setter callers. They retain full raw Drive (108 bytes), Foot '
+              '(0x700), Teleport (0x4C), all mapped-cell bytes and all three full RNG objects at the '
+              'declared boundaries; actual call returns match return PC and ESP.',
         entry_points={'assign_destination': dock.ASSIGN, 'foot_assign_destination': 0x4D94B0,
                       'teleport_constructor': TELE_CTOR, 'drive_constructor': DRIVE_CTOR,
                       'link_to_object': LINK, 'bridge_height': BRIDGE_HEIGHT,
@@ -508,7 +938,10 @@ if __name__ == '__main__':
                       'teleport_do_turn': TELE_DO_TURN, 'teleport_delay_tick': TELE_DELAY_TICK,
                       'teleport_is_ok_to_end': 0x719F30, 'drive_begin_piggyback': DRIVE_BEGIN,
                       'drive_end_piggyback': DRIVE_END, 'drive_is_ok_to_end': 0x4AF970,
-                      'drive_move_to': DRIVE_MOVE_TO, 'can_enter_cell': CAN_ENTER,
+                      'drive_move_to': DRIVE_MOVE_TO, 'drive_stop_moving': DRIVE_STOP,
+                      'drive_is_moving': 0x4AFB80, 'drive_disable_end': 0x4B4BE0,
+                      'drive_enable_end': 0x4B4BF0, 'random_seed': 0x65C6D0,
+                      'random_raw': 0x65C780, 'can_enter_cell': CAN_ENTER,
                       'set_occupy_bit': RESERVE, 'clear_occupy_bit': UNRESERVE, 'mark': MARK,
                       'mission_harvest': HARVEST, 'mission_enter': ENTER, 'mission_unload': UNLOAD,
                       'per_cell_enter_arm': PER_CELL_ARM, 'foot_ai_piggyback_end': TAIL_BEGIN,
@@ -532,7 +965,22 @@ if __name__ == '__main__':
             'Process rows arm the Teleport with a direct Move_To to the cell centre (NavCom supplied), then '
             'per listed frame run Process and the FootClass::AI tail 0x4DAE5F..0x4DAEC6 plus its '
             'IPiggyback Release, not the rest of FootClass::AI. Per_Cell arm rows supply the prologue '
-            'locals as refinery_dock does.'],
+            'locals as refinery_dock does.',
+            'Only the three instance histories initialize main 0x886B88, Scenario+0x218 and mapgen '
+            '0xABE890 with original 0x65C6D0(seed=31), preserving all 1012 bytes per RNG. They supply '
+            'physical Z 123 and independent Foot+0x578 binary64 speed bits 0x3FEC000000000000. '
+            'Distinctive retained Drive inputs are declared raw writes, not claims of a paid Process '
+            'history: previous/current slope dwords +0x20/+0x1C=9/7 (constructor4AF54D/4AF550; '
+            'Process4B0523/4B052A/4B0533), timer start 197 and duration/total 3/3, residual 37, target bits '
+            '0x3FE4000000000000, selector/cursor 10/3 and bytes +0x60/+0x62/+0x63=1; the far history '
+            'also supplies head [3013,2979,-347], then a settled physical XY/different-Z head and '
+            'Foot+0x6AD refusal input. Constructor padding +0x12..0x14/+0x28..0x2C/+0x66..0x68 is '
+            'guarded raw evidence; only selected new allocations are A5-poisoned. Fixture LOCO is '
+            'constructed at inherited frame 100; Teleport and fresh Drives see 200, then repeated '
+            'Move sees 201. Original text/vtables, allocation guards, stack cleanup and FPCW 0x0E7F '
+            'are checked. Full mapped-cell baseline plus exact changed spans reconstructs all '
+            '0x90000 bytes; fixed y/x occupation/list words and touched object next pointers are '
+            'retained independently. See tools/spatial_oracle/cmin_dock.md for receipt fields and limits.'],
         substitutions=[
             'CoCreateInstance wrapper 0x41C250 is recorded; it runs the original Drive constructor and '
             'ILocomotion AddRef on fixture memory, stores that ILocomotion and returns S_OK.',
@@ -543,4 +991,11 @@ if __name__ == '__main__':
             'MapClass zone lookup 0x56D230 answers zone 7 (no map zone tables); Search_For_Tiberium '
             '0x4DCFE0 answers the row value (the original also answers 0 while NavCom is set); '
             'refinery_dock keeps its supplied Find_Docking_Bay, Find_Nearby_Passable_Cell and '
-            'Ready_To_Commence answers and its Scatter, Enter_Idle_Mode and refinery animation observers.']))
+            'Ready_To_Commence answers and its Scatter, Enter_Idle_Mode and refinery animation observers.',
+            'Instance histories use the same existing call/fixture/observer owners. The FootAI tail '
+            'ends at 0x4DAEC6 and the helper runs its original IPiggyback Release corresponding to '
+            '0x4DAEFA..0x4DAEFD; intervening FootAI callbacks and the remaining AI continuation are '
+            'outside coverage. Deleted Drive bytes remain readable fixture memory, not a live '
+            'instance or evidence of CRT address reuse. These histories do not certify complete '
+            'paid-track Process, native save/load, generic nested-BEGIN policy, Ship permission '
+            'semantics or whole-game allocation. Unit setter raw EAX is not a return contract.']))
