@@ -1,8 +1,9 @@
 //! Deterministic fixed-point math for the simulation layer.
 //!
-//! All sim-critical arithmetic uses `SimFixed` (`I16F16`) instead of `f32`.
-//! This guarantees identical results across CPU architectures, compilers,
-//! and optimization levels — required for lockstep multiplayer and replays.
+//! `SimFixed` (`I16F16`) is the default for fractional simulation quantities.
+//! Integers and wider intermediates serve other ranges; selected mechanisms
+//! preserve native rounding through the shared numeric owners. Determinism also
+//! requires explicit conversion/overflow semantics, RNG and update ordering.
 //!
 //! ## Type
 //! - `SimFixed` = `FixedI32<U16>` — 16 integer bits, 16 fractional bits
@@ -18,8 +19,8 @@ use fixed::types::I16F16;
 /// Backed by `FixedI32<U16>` (aliased as `I16F16` in the `fixed` crate).
 ///
 /// Range: −32768.0 to +32767.99998. Precision: ~0.000015 (1/65536).
-/// Sufficient for cell coordinates (0–511), speeds (0–60), altitudes (0–1200),
-/// damage multipliers (0.0–2.0), and timer durations (0–30s).
+/// Choose units and bound intermediate values for each mechanism. Absolute
+/// world leptons on large maps do not fit; Location stores cell plus sub-cell.
 pub type SimFixed = I16F16;
 
 // ---------------------------------------------------------------------------
@@ -68,12 +69,6 @@ pub const SIM_TICK_HZ: u32 = 45;
 // Conversion helpers
 // ---------------------------------------------------------------------------
 
-/// Truncate `SimFixed` to `i32` (rounds toward zero).
-#[inline]
-pub fn sim_to_i32(val: SimFixed) -> i32 {
-    val.to_num::<i32>()
-}
-
 /// Convert `SimFixed` to `f32` for render-layer output.
 /// Only use at the sim→render boundary, never within sim logic.
 #[inline]
@@ -103,9 +98,10 @@ pub fn sim_from_f64(val: f64) -> SimFixed {
 /// Euclidean distance for SimFixed values: `sqrt(dx² + dy²)`.
 ///
 /// Widens to `I48F16` (i64-backed) for the intermediate `dx*dx + dy*dy` to
-/// avoid I16F16 overflow when dx or dy exceed ~181. The result (a distance)
-/// always fits back in SimFixed — e.g., max subcell delta 256 gives
-/// `sqrt(256² + 256²) ≈ 362`, well within I16F16 range.
+/// avoid I16F16 overflow when dx or dy exceed ~181. The caller must still
+/// bound the final distance to SimFixed's range: widening the intermediate
+/// does not widen the result. A subcell delta of 256 on each axis gives
+/// `sqrt(256² + 256²) ≈ 362`, within that range.
 pub fn fixed_distance(dx: SimFixed, dy: SimFixed) -> SimFixed {
     use fixed::types::I48F16;
     let dx_w = I48F16::from(dx);
@@ -127,14 +123,14 @@ pub fn fixed_distance(dx: SimFixed, dy: SimFixed) -> SimFixed {
     SimFixed::from_bits(guess.to_bits() as i32)
 }
 
-/// Integer-based Euclidean distance: `sqrt(dx*dx + dy*dy)` returned as SimFixed.
+/// Legacy whole-cell distance estimate used by Rocket movement.
 ///
-/// Uses `i32` arithmetic for squaring to avoid I16F16 overflow on large maps.
-/// SimFixed (I16F16) max integer is 32,767, so `dx * dx` overflows when `dx > 181`.
-/// By computing in i32 (max ~2 billion), this handles maps up to ~46,000 cells.
-///
-/// The *result* (the distance itself, not the squared distance) always fits in
-/// SimFixed — e.g., a 500x500 diagonal is ~707 cells, well within 32,767.
+/// The caller must bound the squared sum to i32 and the result to SimFixed.
+/// The fixed-count integer Newton iteration can end on either member of a
+/// two-cycle (for example, sqrt(8) returns 3); this is not a floor-square-root
+/// contract or native Rocket parity. Fractional distance is not retained.
+/// Rocket's movement mechanism needs native validation before changing this
+/// estimate, because its result controls flight progress and phase timing.
 pub fn int_distance_to_sim(dx: i32, dy: i32) -> SimFixed {
     let sum: i32 = dx * dx + dy * dy;
     if sum <= 0 {

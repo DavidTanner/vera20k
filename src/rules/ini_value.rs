@@ -508,8 +508,8 @@ impl IniSection {
     /// `FMUL double ptr [0x007E1710]` at `0x0047464C`, where that address holds
     /// `0x4070000000000000` = `256.0`, then `Math__ftol @ 0x007C5F00`, whose
     /// control word `0x0E7F` selects chop. `f64 as i32` truncates toward zero
-    /// like it does, and NOT `util::sim_to_i32`, which floors toward −∞ (DRIFT
-    /// on negatives, ledger #18).
+    /// like it does. Fixed-point `to_num::<i32>()` instead floors toward −∞;
+    /// it is not interchangeable with this reader's chop conversion.
     ///
     /// Two residuals at the extremes, both out of reach of retail data:
     ///
