@@ -9,6 +9,13 @@ It checks the original executable identity and maps file-backed PE ranges throug
 the oracle owner. Its linear sweeps do not establish instruction boundaries,
 reachability or exhaustive aliases; preserve those limits in findings.
 
+Loaded PE images can contain zero-filled virtual tails with no original file bytes.
+Do not record an empty string or zero read there as an executable literal. For
+example, retail `0x889F64` is not file-backed: the inspection tool rejects a one-byte
+read. Keep that address as a pointer lead until its producer or runtime contents
+are established. Validate literal ranges with `native_oracle.file_span`; reading
+zeroes from a loaded image does not establish the current contents of mutable data.
+
 For read-only before/rehearsal comparisons of decompilation artifacts, known
 callers and native-versus-p-code stack frames, use
 [`python -m tools.ghidra_compare`](../../tools/ghidra_compare.md). Supply explicit
@@ -43,6 +50,12 @@ all operations and varnode widths. This equivalence is specific to the unchanged
 decoded graph: a generally edited `PcodeSyntaxTree` may also contain dead operations
 outside its blocks. The comparison tool uses the block export and still requires
 complete reads and native frame checks.
+
+In installed GhidraMCP 5.14.2 with Ghidra 12.1.2, `clone_data_type` can rename a
+stored function definition instead of creating an independent copy. The handler
+calls `source.clone(current_manager)` and then `setName`; both
+`FunctionDefinitionDB` and `FunctionDefinitionDataType` return the original object
+when cloned into their own manager. Do not use this route to fork a callback type.
 
 ## Interpret evidence
 
