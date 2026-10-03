@@ -207,6 +207,24 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(report['capture']['camera']['requested_cell'], [87, 53])
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
 
+    def test_pending_entry_projection_round_trips_null_and_stable_target(self):
+        self.scripted_profile()
+        for step, actors in self.actor_frames.items():
+            actors[0]['foot']['pending_entry_500'] = 9 if step < 2 else None
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        frames = report['capture']['observations']['frames']
+        self.assertEqual([row['actors'][0]['foot']['pending_entry_500'] for row in frames],
+                         [9, 9, None, None])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_pending_entry_projection_rejects_nonidentity_values(self):
+        for value in (True, 0, -1, '9', 1 << 64):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                actor = self.actor()
+                actor['foot']['pending_entry_500'] = value
+                observation._actor(actor, 'actor')
+
     def test_type_filter_binds_discovery_and_retains_identity_after_type_and_owner_change(self):
         self.scripted_profile()
         self.profile['observe_types'] = ['E1']

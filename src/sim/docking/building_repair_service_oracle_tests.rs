@@ -30,6 +30,9 @@ use crate::sim::timer::CdTimer;
 use crate::sim::world::{ObjectAiCtx, Simulation};
 use crate::util::fixed_math::SimFixed;
 
+#[path = "building_repair_waiter_oracle_tests.rs"]
+mod waiter_oracle_tests;
+
 fn corpus() -> Value {
     serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/building_repair.depot_service.json"
@@ -307,13 +310,24 @@ fn scene(golden: &Value, row: &Value) -> Scene {
     // The shared native source fixture supplies Map+F4/F8=16 and final
     // LocalSize [-16,-16,64,64] over its 32x32 allocated CellClass grid.
     // Unit's production Unlimbo requires this mode-one playfield authority.
-    let bounds =
-        crate::map::playfield::PlayfieldBounds::from_normalized_local_size(16, -16, -16, 64, 64);
+    let local = case["map_local_size"]
+        .as_array()
+        .map_or([-16, -16, 64, 64], |v| std::array::from_fn(|i| int(&v[i])));
+    let bounds = crate::map::playfield::PlayfieldBounds::from_normalized_local_size(
+        16, local[0], local[1], local[2], local[3],
+    );
     sim.playfield_bounds = Some(bounds);
     sim.playfield_size_height = Some(16);
     sim.session.map_width = 16;
     sim.session.map_height = 16;
     let mut terrain = test_flat_ground_grid(32);
+    if let Some(level) = case["terrain_level"].as_u64() {
+        for y in 0..32 {
+            for x in 0..32 {
+                terrain.cell_mut(x, y).unwrap().level = level as u8;
+            }
+        }
+    }
     if let Some(cell) = row["raw_current_cell"].as_array() {
         terrain
             .cell_mut(int(&cell[0]) as u16, int(&cell[1]) as u16)
@@ -362,6 +376,11 @@ fn scene(golden: &Value, row: &Value) -> Scene {
             .as_array()
             .unwrap()
             .iter()
+            .any(|value| value == "other")
+        || before["building_contacts"]
+            .as_array()
+            .unwrap()
+            .iter()
             .any(|value| value == "other"))
     .then(|| {
         sim.spawn_object(
@@ -374,6 +393,22 @@ fn scene(golden: &Value, row: &Value) -> Scene {
         )
         .expect("native auxiliary target has an admitted supplied cell")
     });
+    if case["spatial_startup"] == true {
+        // The native waiter scene has admitted fields but only the depot
+        // is CellPUT-marked. Remove constructor-added tank/placeholder lists
+        // through Mark's existing owner before supplying their exact poses.
+        sim.remove_entity_occupancy(tank);
+        if let Some(other) = other {
+            sim.remove_entity_occupancy(other);
+            if before["building_contacts"][0] == "other" {
+                sim.substrate
+                    .entities
+                    .get_mut(other)
+                    .unwrap()
+                    .mark_live_contact_with(depot);
+            }
+        }
+    }
     for (id, current, queued, status) in [
         (tank, "unit_mission", "unit_queued", 0),
         (
@@ -392,7 +427,14 @@ fn scene(golden: &Value, row: &Value) -> Scene {
             handler_state: status as u32,
             mission_start_frame: int(&before["frame"]) as u32,
             ai_counter: 0,
-            dispatch_timer: MissionDispatchTimer::from_raw(-1, 0),
+            dispatch_timer: if id == tank && row["unit_dispatch_before"].is_array() {
+                MissionDispatchTimer::from_raw(
+                    int(&row["unit_dispatch_before"][0]),
+                    int(&row["unit_dispatch_before"][1]),
+                )
+            } else {
+                MissionDispatchTimer::from_raw(-1, 0)
+            },
         });
     }
     for (id, peer, contacts, tether) in [
@@ -420,6 +462,35 @@ fn scene(golden: &Value, row: &Value) -> Scene {
     }
     {
         let unit = sim.substrate.entities.get_mut(tank).unwrap();
+        if let Some(in_playfield) = case["unit_in_playfield"].as_bool() {
+            assert_eq!(
+                unit.in_playfield, in_playfield,
+                "admitted native membership"
+            );
+        }
+        if row["foot_before"].is_object() {
+            let foot = &row["foot_before"];
+            let path = &mut unit.navigation.path_runtime;
+            path.movement_timer = CdTimer::from_raw(
+                int(&foot["movement_timer"][0]),
+                int(&foot["movement_timer"][1]),
+            );
+            path.blocked_timer = CdTimer::from_raw(
+                int(&foot["blocked_timer"][0]),
+                int(&foot["blocked_timer"][1]),
+            );
+            path.retries_left = foot["retries_left"].as_u64().unwrap() as u32;
+            path.path_blocked = foot["path_blocked"].as_bool().unwrap();
+            assert_eq!(unit.in_playfield, foot["in_playfield"].as_bool().unwrap());
+            assert_eq!(
+                unit.is_mission_only(),
+                foot["mission_only"].as_bool().unwrap()
+            );
+            assert_eq!(
+                unit.navigation.nav_queue.len(),
+                int(&foot["nav_queue_count"]) as usize
+            );
+        }
         unit.health.current = int(&before["health"]);
         unit.estimated_health = EstimatedHealth::from_raw(int(&before["estimate"]));
         let at = &before["unit_coordinate"];
@@ -428,9 +499,16 @@ fn scene(golden: &Value, row: &Value) -> Scene {
         unit.position.sub_x = SimFixed::from_num(int(&at[0]) % 256);
         unit.position.sub_y = SimFixed::from_num(int(&at[1]) % 256);
         unit.position.exact_z_leptons = Some(int(&at[2]));
-        unit.navigation.nav_com = before["unit_nav"]
-            .is_string()
-            .then_some(NavTargetRef::Building { id: depot });
+        unit.navigation.nav_com = if let Some(cell) = before["unit_nav"].as_array() {
+            Some(NavTargetRef::cell(
+                int(&cell[0]) as u16,
+                int(&cell[1]) as u16,
+            ))
+        } else {
+            before["unit_nav"]
+                .is_string()
+                .then_some(NavTargetRef::Building { id: depot })
+        };
         unit.navigation.nav_com_aux = (before["unit_nav_aux"] == "other")
             .then(|| NavTargetRef::Building { id: other.unwrap() });
         unit.set_pending_entry(match before["pending_entry"].as_str() {
@@ -485,7 +563,11 @@ fn scene(golden: &Value, row: &Value) -> Scene {
     let house = sim.houses.get_mut(&owner).unwrap();
     house.economy.credits = int(&before["balance"]);
     house.economy.spent_credits = int(&before["spent"]);
-    sim.scenario_rng = SimRng::new(case["seed"].as_u64().unwrap_or(1));
+    sim.scenario_rng = if let Some(hex) = row["rng_before"]["scenario"].as_str() {
+        SimRng::from_native_state_hex_for_test(hex)
+    } else {
+        SimRng::new(case["seed"].as_u64().unwrap_or(1))
+    };
     Scene {
         sim,
         rules,

@@ -765,6 +765,7 @@ impl TacticalCaptureSession {
                             Err(cause) => (None, Some(cause)),
                         };
                     Some(json!({
+                        "pending_entry_500": entity.pending_entry(),
                         "retarget_after_stop_688": entity.foot_retarget_after_stop(),
                         "firing_sequence_latch_68d": entity.mission_leaf.foot_firing_sequence_latch(),
                         "infantry_doing": entity.mission_leaf.as_infantry().map(|leaf| leaf.doing()),

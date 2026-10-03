@@ -59,6 +59,7 @@ struct Seam {
     records: Vec<FreshCallRecord>,
     core_null: bool,
     live_effects: bool,
+    live_can_enter: bool,
 }
 
 thread_local! {
@@ -74,6 +75,7 @@ pub(crate) fn install(codes: Vec<u8>, paths: Vec<SuppliedPath>) {
             records: Vec::new(),
             core_null: false,
             live_effects: false,
+            live_can_enter: false,
         })
     });
 }
@@ -83,6 +85,18 @@ pub(crate) fn install(codes: Vec<u8>, paths: Vec<SuppliedPath>) {
 pub(crate) fn install_with_live_effects(codes: Vec<u8>, paths: Vec<SuppliedPath>) {
     install(codes, paths);
     SEAM.with(|seam| seam.borrow_mut().as_mut().unwrap().live_effects = true);
+}
+
+/// A composed native comparison supplies only Find_Path's route, allowing
+/// the real Unit admission owner to classify the marked world and occupants.
+pub(crate) fn install_path_only(paths: Vec<SuppliedPath>) {
+    install(Vec::new(), paths);
+    SEAM.with(|seam| {
+        let mut seam = seam.borrow_mut();
+        let seam = seam.as_mut().unwrap();
+        seam.live_can_enter = true;
+        seam.live_effects = true;
+    });
 }
 
 /// Remove the seam, returning the records and any unused answers.
@@ -119,6 +133,9 @@ pub(crate) fn supplied_can_enter(cell: (i16, i16), direction: i32, height: i32) 
     SEAM.with(|seam| {
         let mut seam = seam.borrow_mut();
         let seam = seam.as_mut()?;
+        if seam.live_can_enter {
+            return None;
+        }
         let code = seam.codes.pop_front().expect("unsupplied Can_Enter_Cell");
         seam.records.push(FreshCallRecord::CanEnter {
             cell,
