@@ -174,6 +174,18 @@ selector. Both successful receipts are pinned by the existing publication
 metadata, and the public saved check compares them afresh. Raw failed wrappers
 and their as-run sources remain separately indexed under this owner.
 
+Main2135df0e3 extracted `walk_move_admission.prepare_fixture` for its shared
+rally caller. The48 preparation statements, query observer/native-call suffix
+and `live_cell_input` body remain AST-equal. Original29 admission controls and
+legacy7setter/3head checks passed on the merged source. A fresh strict Shift
+replay also matched every selected field and the complete raw r13 history and
+bootstrap. `compatibility/main-2135df0e3-prepare-fixture.json` binds these actual
+checks; `as-run-main-2135df0e3` retains the changed source. The old21 histories,
+old sources and old manifest/metadata are preserved, with the latter pinned
+under `compatibility/sealed-gi21-pre-main-2135df0e3-*`. The59-file factory and
+18-file Gate profiles stayed byte-exact and were not rebound. This establishes
+compatibility within the existing authored controls and bounds.
+
 Original4C6860 leaves byte+0x0D untouched between mission+0x0C and TargetClass
 starting+0x0E. Selected MegaMission4C7225..74CA does not read+0x0D. This explains
 the plain/Shift raw-prefix difference; NULL target ID and kind are both zero.

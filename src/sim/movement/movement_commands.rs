@@ -283,7 +283,13 @@ pub(crate) fn issue_move_command_with_destination(
         let destination = object_destination.unwrap_or_else(|| {
             (
                 crate::sim::components::NavTargetRef::cell(target.0, target.1),
-                super::navcom::target_cell_coord(target.0, target.1, resolved_terrain),
+                super::navcom::target_cell_coord(
+                    target.0,
+                    target.1,
+                    resolved_terrain
+                        .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                        .as_ref(),
+                ),
             )
         });
         entities

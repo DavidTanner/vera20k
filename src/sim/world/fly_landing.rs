@@ -811,7 +811,10 @@ mod tests {
             let target = crate::sim::movement::target_cell_coord(
                 (request.x / 256) as i16 as u16,
                 (request.y / 256) as i16 as u16,
-                sim.resolved_terrain.as_ref(),
+                sim.resolved_terrain
+                    .as_ref()
+                    .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                    .as_ref(),
             );
             assert_eq!(
                 serde_json::json!([target.x, target.y, target.z]),

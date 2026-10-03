@@ -1,0 +1,81 @@
+{
+  "scratch": "/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/vera20k-rally-production-crop-4c34v7vi",
+  "before": {
+    "rally.py": "e4f1dfe4f60ac6e07c07afb0e3753baa9d6ecdb63b6b2379fb2097ff89c29b1c",
+    "rally.json": "0aa4379b5996f0d43a473e8fda4478a154aa193b4a9dbecb3df65c59dd6899d4",
+    "rally.meta.json": "30d4cd061af012dff6cdb10fd74314ada564dae8e396c910f0cf66b0904e2801",
+    "shroud.json": "073a8d284e93e48fac78f116d2423c7ad9f5022935c758edf28c097a3522a878",
+    "shroud.meta.json": "409ac7a1501ce72840e8a347beba405472d3b83606cc1f4e1f816b162c93cb19"
+  },
+  "preserved_rally_subtrees": {
+    "background": "a1c6cdec44005a21bccc78fbde016fce12545525e547e58f1edb9a3627e72544",
+    "clipping_rounding_controls": "560f5ee5855e324e29f46d61de764dab4a00149e2909f507f0101038ed2a480f",
+    "leaf_cases": "70091ccb234a449b003f951eef7196f41313013114df3077925ec9a66108e6a4",
+    "multi_producer_cases": "427274dbbba4a2f3d2167897d3498e917e2b1d3cf669d6d64d97394239d4101d",
+    "pattern": "7d133f56bc77f416ef3b52034f5b55092c4be6e4c9c08e12e0098c7de4c8ef1c",
+    "producer_cases": "e03b4d9217f00a516f1ec7a06e2fa5702f1cb82a55531d610b65575342a91778",
+    "size": "1897f008295169f5aced5ef98d4298d895383b3435dab190fd83fd4070a8eaed",
+    "source": "8f79572b90c430f6c8eb87f3b2c64d941a7e76b37cd7b05acb7a4a291b3d3733",
+    "stock_type_inputs": "a6a9f520a38c600d23cc216b28a203f969541a57d5cc0e61ed52d86cbae9067f"
+  },
+  "generation": [
+    {
+      "corpus": "rally",
+      "command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.procedural_drawing_oracle.rally",
+        "--write",
+        "--output",
+        "/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/vera20k-rally-production-crop-4c34v7vi/rally.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 3.435
+    },
+    {
+      "corpus": "shroud",
+      "command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.procedural_drawing_oracle.shroud",
+        "--write",
+        "--output",
+        "/var/folders/xw/29d3jvrd4hs87b8lfgwnllrc0000gn/T/vera20k-rally-production-crop-4c34v7vi/shroud.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 26.632
+    }
+  ],
+  "all_prior_rally_subtrees_unchanged": true,
+  "shroud_payload_sha256_after": "073a8d284e93e48fac78f116d2423c7ad9f5022935c758edf28c097a3522a878",
+  "shroud_metadata_change": {
+    "path": "source_normalized_lf_sha256.surface_fixture",
+    "before": "e4f1dfe4f60ac6e07c07afb0e3753baa9d6ecdb63b6b2379fb2097ff89c29b1c",
+    "after": "76c3588203fa5e29e088234d60041bd8f952a699640cb0be38013401b19c8e24"
+  },
+  "capture_artifact_identities_match": true,
+  "installed": {
+    "rally.py": "76c3588203fa5e29e088234d60041bd8f952a699640cb0be38013401b19c8e24",
+    "rally.json": "31820ffa392c4f23a0ef8fa6e97246ae1eb8f485145a9bae1e5c0a66310f67fb",
+    "rally.meta.json": "2d4bae40736f2cde7d2a5ad9f03229102447467315389965c8b18697e8837340",
+    "shroud.meta.json": "4c99f21d2daefb97aa0369060352dc8d3568ccb006b0b05689fd0396dac8089b"
+  },
+  "source_frozen": true,
+  "independent_checks": [
+    {
+      "corpus": "rally",
+      "exit_code": 0,
+      "elapsed_seconds": 3.339,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/rally.json: native outputs match; no files written"
+    },
+    {
+      "corpus": "shroud",
+      "exit_code": 0,
+      "elapsed_seconds": 27.057,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/shroud.json: native outputs match; no files written"
+    }
+  ],
+  "final_guards_pass": true,
+  "scoped_diff_check_pass": true,
+  "all_checks_pass": true
+}

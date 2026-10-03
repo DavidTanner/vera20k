@@ -98,6 +98,12 @@ pub(crate) struct MapCaptureProfile {
         deserialize_with = "deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
+    cursor_position: Option<[u32; 2]>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
     terrain_cells: Option<Vec<[u16; 2]>>,
 }
 
@@ -126,6 +132,7 @@ impl MapCaptureProfile {
                     && self.observe_owners.is_none()
                     && self.observe_types.is_none()
                     && self.camera_cell.is_none()
+                    && self.cursor_position.is_none()
                     && self.terrain_cells.is_none(),
                 "map observation profile v1 cannot declare v2 extension fields"
             );
@@ -134,6 +141,12 @@ impl MapCaptureProfile {
             (640..=4096).contains(&self.width) && (480..=4096).contains(&self.height),
             "capture extent must be 640..4096 by 480..4096"
         );
+        if let Some([x, y]) = self.cursor_position {
+            ensure!(
+                x > 0 && x < self.width - 1 && y > 0 && y < self.height - 1,
+                "cursor_position must be inside the outermost capture pixels"
+            );
+        }
         ensure!(self.ticks <= 100_000, "capture tick budget exceeds 100000");
         ensure!(
             (1..=900).contains(&self.timeout_seconds),
@@ -153,7 +166,8 @@ impl MapCaptureProfile {
             ensure!(
                 matches!(
                     command.payload,
-                    Command::Move { .. }
+                    Command::Select { .. }
+                        | Command::Move { .. }
                         | Command::Stop { .. }
                         | Command::Attack { .. }
                         | Command::ForceAttack { .. }
@@ -627,6 +641,7 @@ impl TacticalCaptureSession {
                 );
             }
             let camera_cell = profile.camera_cell;
+            let cursor_position = profile.cursor_position;
             let source = state
                 .match_state
                 .loaded_map_source
@@ -641,6 +656,13 @@ impl TacticalCaptureSession {
                 "map observation requires consumed loose or MIX map bytes"
             );
             self.map_source_evidence = Some(serde_json::to_value(source)?);
+            // The production load transition has now installed its tactical
+            // center. Apply an explicit diagnostic position once, before the
+            // initial observation/commands; absent profiles keep that center.
+            if let Some([x, y]) = cursor_position {
+                state.match_state.input.cursor_x = x as f32;
+                state.match_state.input.cursor_y = y as f32;
+            }
             self.map_state_mut()?.initial = Some(self.map_fingerprint(state)?);
             self.map_state_mut()?.loaded_session = Some(loaded_session);
             self.map_state_mut()?.rule_types = rule_types;
@@ -1040,25 +1062,51 @@ impl TacticalCaptureSession {
         let static_default_cursor =
             crate::app::presentation::ui_overlays::static_default_cursor(state);
         let camera_input_idle = crate::app::input::camera::camera_input_idle(state);
+        let cursor_position = [
+            state.match_state.input.cursor_x,
+            state.match_state.input.cursor_y,
+        ];
         ensure!(
             ready && static_default_cursor && camera_input_idle,
-            "map observation requires every draw ready with a static cursor and idle camera input"
+            "map observation requires every draw ready with a static cursor and idle camera input: ready={ready}, static_cursor={static_default_cursor}, camera_idle={camera_input_idle}, cursor_feedback={:?}, cursor_position={cursor_position:?}",
+            crate::app::input::cursor::current_cursor_feedback_kind(state)
         );
-        Ok((
-            ready,
-            json!({"ready": ready, "sidebar_view_present": output.sidebar_view.is_some(),
-                "instance_counts": super::super::evidence::RenderInstanceCountEvidence::from_counts(output.instance_counts)?,
-                "internal_extent": [state.render_width(), state.render_height()],
-                "surface_extent": [state.renderer.gpu.config.width, state.renderer.gpu.config.height],
-                "ui_scale": state.match_state.match_presentation.ui_scale,
-                "gpu": super::super::evidence::GpuAdapterEvidence::from_observation(state.renderer.gpu.capture_adapter_observation()),
-                "unit_atlas": unit_atlas,
-                "neutral_input": {"static_default_cursor": static_default_cursor, "camera_input_idle": camera_input_idle},
-                "camera": {"requested_cell": self.request.map_profile().context("map profile missing")?.value.camera_cell,
-                    "top_left": [state.match_state.input.camera_x, state.match_state.input.camera_y],
-                    "zoom": state.match_state.input.zoom_level},
-            }),
-        ))
+        let profile = &self
+            .request
+            .map_profile()
+            .context("map profile missing")?
+            .value;
+        if let Some(requested) = profile.cursor_position {
+            ensure!(
+                cursor_position == requested.map(|value| value as f32),
+                "map observation cursor moved: requested={requested:?}, actual={cursor_position:?}"
+            );
+        }
+        // Existing frame-boundary timer: up to 60 wall intervals, including
+        // simulation, diagnostic observation and presentation/vsync work.
+        // This is capture cadence metadata, not GPU time or ordinary play FPS.
+        let frame_wall_mean_ms = state.diag.frame_timer.frame_ms_mean();
+        ensure!(
+            frame_wall_mean_ms.is_finite() && frame_wall_mean_ms >= 0.0,
+            "map observation frame wall mean is invalid"
+        );
+        let mut render = json!({"ready": ready, "sidebar_view_present": output.sidebar_view.is_some(),
+            "instance_counts": super::super::evidence::RenderInstanceCountEvidence::from_counts(output.instance_counts)?,
+            "internal_extent": [state.render_width(), state.render_height()],
+            "surface_extent": [state.renderer.gpu.config.width, state.renderer.gpu.config.height],
+            "ui_scale": state.match_state.match_presentation.ui_scale,
+            "gpu": super::super::evidence::GpuAdapterEvidence::from_observation(state.renderer.gpu.capture_adapter_observation()),
+            "unit_atlas": unit_atlas,
+            "frame_wall_mean_ms": frame_wall_mean_ms,
+            "neutral_input": {"static_default_cursor": static_default_cursor, "camera_input_idle": camera_input_idle},
+            "camera": {"requested_cell": profile.camera_cell,
+                "top_left": [state.match_state.input.camera_x, state.match_state.input.camera_y],
+                "zoom": state.match_state.input.zoom_level},
+        });
+        if profile.cursor_position.is_some() {
+            render["cursor_position"] = json!(cursor_position);
+        }
+        Ok((ready, render))
     }
 
     pub(super) fn publish_map_observation(
@@ -1284,12 +1332,16 @@ mod tests {
         let mut legacy = example();
         legacy.observe_types = Some(vec!["CLEG".to_owned()]);
         assert!(legacy.validate().is_err());
+        let mut legacy = example();
+        legacy.cursor_position = Some([720, 556]);
+        assert!(legacy.validate().is_err());
         let mut modern = original;
         modern["schema_version"] = json!(PROFILE_V2);
         modern["commands"] = json!([{"issue_after_step": 0, "owner": "Computer1",
             "payload": {"DeployMcv": {"entity_id": 1}}}]);
         modern["observe_owners"] = json!(["Computer1"]);
         modern["observe_types"] = json!(["CLEG"]);
+        modern["cursor_position"] = json!([720, 556]);
         let profile: MapCaptureProfile = serde_json::from_value(modern.clone()).unwrap();
         profile.validate().unwrap();
         assert_eq!(serde_json::to_value(profile).unwrap(), modern);
@@ -1298,6 +1350,7 @@ mod tests {
             "observe_owners",
             "observe_types",
             "camera_cell",
+            "cursor_position",
             "terrain_cells",
         ] {
             let mut invalid = modern.clone();
@@ -1314,6 +1367,42 @@ mod tests {
                 serde_json::from_value::<MapCaptureProfile>(invalid).is_err(),
                 "{key}"
             );
+        }
+    }
+
+    #[test]
+    fn cursor_position_requires_integer_screen_coordinates_away_from_the_outermost_pixel() {
+        let mut profile = example();
+        profile.schema_version = PROFILE_V2.to_owned();
+        for position in [[1, 1], [798, 598], [720, 556]] {
+            profile.cursor_position = Some(position);
+            profile.validate().unwrap();
+        }
+        for position in [
+            [0, 1],
+            [1, 0],
+            [799, 1],
+            [1, 599],
+            [800, 1],
+            [1, 600],
+            [u32::MAX, 1],
+        ] {
+            profile.cursor_position = Some(position);
+            assert!(profile.validate().is_err(), "{position:?}");
+        }
+        let original = serde_json::to_value(profile).unwrap();
+        for position in [
+            json!([]),
+            json!([1]),
+            json!([1, 1, 1]),
+            json!([true, 1]),
+            json!([1.0, 1]),
+            json!([-1, 1]),
+            json!([u64::from(u32::MAX) + 1, 1]),
+        ] {
+            let mut invalid = original.clone();
+            invalid["cursor_position"] = position;
+            assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
         }
     }
 

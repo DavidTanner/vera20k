@@ -717,7 +717,9 @@ impl Simulation {
                 // human infantryman's refuses during a deploy action, and Walk
                 // Stop `0x0075ADA0` consumes a pending Deploy through owner
                 // +0x54C and keeps a paid head. An attacking Aircraft with a
-                // TarCom skips the Stop (`0x004D9672`).
+                // TarCom skips the Stop (`0x004D9672`). Building455D50 clears
+                // an eligible rally ArchiveTarget without touching Foot NavCom;
+                // its native matrix is factory_destination.json.
                 self.assign_null_destination(*entity_id, rules, overlay_registry);
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     e.order_intent = None;
@@ -2130,26 +2132,9 @@ impl Simulation {
     /// `EventClass::Execute @ 0x004C6DAA` runs `Set_ArchiveTarget @
     /// 0x0070C610`, so the factory archives the cell (its only store).
     ///
-    /// Residuals (instruction reading; not ported):
-    /// - SetRallyPoint first moves the clicked cell to
-    ///   `Find_Nearby_Passable_Cell` (the building type's speed and movement
-    ///   zone, the zone of the building's cell); when that finds no cell, a
-    ///   building other than a Construction Yard sends no event
-    ///   (`0x0044395E..0x00443977`, `0x00443A7B`) and keeps its old rally.
-    ///   VERA archives the clicked cell. Trigger: a rally click on a cell the
-    ///   factory's units cannot enter. Effect: the rally line and the
-    ///   produced units' move end at the clicked cell. Frequency:
-    ///   occasional. Downstream: the unit stops where its path search gives
-    ///   up.
-    /// - Stop clears a factory's rally: StopCommandClass sends event 6 for a
-    ///   selected HasRallyPoint building not under EMP
-    ///   (`0x00730EC3..0x00730EEB`, vt+0xA0 = `0x0044F5C0`); the IDLE arm's
-    ///   `Assign_Destination(0, 1)` (`0x004C75ED`) reaches `BuildingClass`
-    ///   vt+0x480 (`0x00455D50`), which archives the destination on a
-    ///   HasRallyPoint or ConstructionYard building unless it is Selling.
-    ///   VERA's Stop leaves the archive. Trigger: Stop with a factory
-    ///   selected. Effect: the rally line stays and new units keep taking
-    ///   it. Frequency: occasional. Downstream: none beyond the rally.
+    /// The input owner `factory_rally_cell_input` has already run native
+    /// Map56DC20's nearby-passable search separately for each producer. This
+    /// synchronized event stores that prepared target without searching again.
     fn set_rally_point_for_producers(
         &mut self,
         command_owner: &str,

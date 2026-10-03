@@ -351,8 +351,14 @@ impl crate::sim::world::Simulation {
         {
             return Err("Teleport Infantry resolution requires available class inputs".into());
         }
-        let input =
-            super::navcom::target_cell_coord(target.0, target.1, self.resolved_terrain.as_ref());
+        let input = super::navcom::target_cell_coord(
+            target.0,
+            target.1,
+            self.resolved_terrain
+                .as_ref()
+                .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                .as_ref(),
+        );
         let destination = if infantry {
             // Dependency availability belongs to the destination transaction.
             // A direct call also refuses missing map inputs before its first write.

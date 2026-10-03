@@ -265,7 +265,12 @@ where
     }
 
     let chosen = match q.target_cell {
-        // No target: deterministic frame-counter modulo over the preferred pool.
+        // Native56E6A8..56E6DE uses signed CDQ/IDIV. Nonnegative Frame has
+        // this exact selection. After signed overflow a negative remainder
+        // reads before the native stack array (even uninitialized bytes), so
+        // VERA deliberately keeps a deterministic unsigned modulo extension.
+        // The Building443860 corpus preserves these boundary controls but does
+        // not certify their stack-dependent output as gameplay parity.
         None => pool[(frame_counter as usize) % pool.len()],
         // Target given: nearest by integer squared Euclidean distance; ties resolve
         // to the earlier ring-order candidate (stable, no frame/RNG input).

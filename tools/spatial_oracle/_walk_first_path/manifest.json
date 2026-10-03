@@ -2155,6 +2155,85 @@
         "uncompressed_bytes": 151935,
         "uncompressed_sha256": "ec015837a8ed64129165aa6b1c750e833e3d82bd506c1fb2d2e0038e2213e028"
       }
+    },
+    "as-run-main-2135df0e3": {
+      "tools/spatial_oracle/walk_first_path.py": {
+        "path": "as-run-r13/tools/spatial_oracle/walk_first_path.py.gz",
+        "bytes": 14417,
+        "sha256": "61a0a7a9d20c75df8b7f1c76cf1b7ef12328e3732d9308ebbc0c475e61a2cab6",
+        "uncompressed_bytes": 46163,
+        "uncompressed_sha256": "3b62e897fc9288ac0d9f2482b2245a608e6ef4502a311804fcbae730f6c2c4c0"
+      },
+      "tools/spatial_oracle/walk_move_admission.py": {
+        "path": "as-run-main-2135df0e3/tools/spatial_oracle/walk_move_admission.py.gz",
+        "bytes": 5189,
+        "sha256": "3bd27fb12069e8230e917f72c9bdc0a3d3dff841f4755f215970d26d81cc1e1a",
+        "uncompressed_bytes": 12840,
+        "uncompressed_sha256": "5c5d746be01e74e75a899ec408afc816f0a4e3a42068eee7c4909e43325c2c51"
+      },
+      "tools/spatial_oracle/_factory_infantry_output/initialized.py": {
+        "path": "as-run-r13/tools/spatial_oracle/_factory_infantry_output/initialized.py.gz",
+        "bytes": 6151,
+        "sha256": "e51fab09c109058e96812d91c47aa8ec6a6ab8f25e7ab261e95354798d800a19",
+        "uncompressed_bytes": 19316,
+        "uncompressed_sha256": "644e3cbac5d04deed870001f1c25d4b63e762dadf3545a209743dd3049627531"
+      },
+      "tools/spatial_oracle/_factory_infantry_output/runtime.py": {
+        "path": "as-run-r13/tools/spatial_oracle/_factory_infantry_output/runtime.py.gz",
+        "bytes": 3373,
+        "sha256": "9e58af333f4d11d573400e84a2ceceafc04bf758ff2555d61be954e048beda69",
+        "uncompressed_bytes": 9687,
+        "uncompressed_sha256": "58ce7fcff7722d1de0be6949eefaf980835b8283dfa2dedbf021d1d0239ea7a5"
+      },
+      "tools/spatial_oracle/_factory_infantry_output/meta.json": {
+        "path": "as-run-r13/tools/spatial_oracle/_factory_infantry_output/meta.json.gz",
+        "bytes": 26057,
+        "sha256": "826049a3854fe1daf95d28a4226726457e124c9f6fbc298e4accc886eaa58273",
+        "uncompressed_bytes": 97033,
+        "uncompressed_sha256": "9cef1c2068eb4dcbcc093e2540004d8ebfb74c945105613726c9d01c2d21c85b"
+      },
+      "tools/spatial_oracle/engineer_repair_admission.py": {
+        "path": "as-run-r13/tools/spatial_oracle/engineer_repair_admission.py.gz",
+        "bytes": 21734,
+        "sha256": "954e1df932c3049af9bf4b1b94ca84919a513ab37c8b759a436b317c725eb5ca",
+        "uncompressed_bytes": 77135,
+        "uncompressed_sha256": "626e404d7ae92ed14520c87cef9b0157838120aff109ada925e5acc9e7f49777"
+      },
+      "tools/spatial_oracle/anytown_damage/mission.py": {
+        "path": "as-run-r13/tools/spatial_oracle/anytown_damage/mission.py.gz",
+        "bytes": 9461,
+        "sha256": "ac063886662cd1cd83353cf90331a26b55727de7471e3d1560acfd9eead427d8",
+        "uncompressed_bytes": 27180,
+        "uncompressed_sha256": "e04f940e6cf00369303c763ecc4f2c7500c99dabef149a90d2adb7c37283694a"
+      },
+      "tools/spatial_oracle/_factory_infantry_output/saved.py": {
+        "path": "as-run-r13/tools/spatial_oracle/_factory_infantry_output/saved.py.gz",
+        "bytes": 5978,
+        "sha256": "95f1b28f583f941ba8b30660dad6550be007e95025829f4f073fc00033e8fba1",
+        "uncompressed_bytes": 23490,
+        "uncompressed_sha256": "5e90686cb9f71dfebcffe0c1c4d387077847f388e1db39aab26c69b3a1a815a4"
+      },
+      "tools/spatial_oracle/factory_infantry_output.py": {
+        "path": "as-run-r13/tools/spatial_oracle/factory_infantry_output.py.gz",
+        "bytes": 3606,
+        "sha256": "7c71bcf777823bfb8b5409ff8468a3b85d421bff836170b373eca2a9414c6986",
+        "uncompressed_bytes": 15406,
+        "uncompressed_sha256": "82e65c76aaa452492d95efd05197d2c02877279c2d1239139b5698dda217c397"
+      },
+      "tools/spatial_oracle/_factory_infantry_output/gate-meta.json": {
+        "path": "as-run-r13/tools/spatial_oracle/_factory_infantry_output/gate-meta.json.gz",
+        "bytes": 7863,
+        "sha256": "99c996d6536f226ca9d5d1a7013c673982fecdc1908eeccede43800c06bb88fb",
+        "uncompressed_bytes": 28057,
+        "uncompressed_sha256": "b09ea24b30268f99618428e604be2b4a70bba657f0d95001204fb5de432d5c2f"
+      },
+      "tools/spatial_oracle/_factory_infantry_output/consumer-meta.json": {
+        "path": "as-run-r13/tools/spatial_oracle/_factory_infantry_output/consumer-meta.json.gz",
+        "bytes": 28418,
+        "sha256": "c68274d619962dbd945b680b3d1314226821c89f5521332cbde7ffe4ba0b8b26",
+        "uncompressed_bytes": 151935,
+        "uncompressed_sha256": "ec015837a8ed64129165aa6b1c750e833e3d82bd506c1fb2d2e0038e2213e028"
+      }
     }
   },
   "compatibility_receipts": {
@@ -2226,6 +2305,35 @@
       "name": "shift_A_B",
       "source_boundary": "as-run-r13",
       "projected_sha256": "23e19e4a82f1cbe3503bfbc922aca9295f195d72cb4e55f0a41a99d5958b1995"
+    },
+    "sealed_pre_main2135_manifest": {
+      "path": "compatibility/sealed-gi21-pre-main-2135df0e3-manifest.json.gz",
+      "bytes": 27119,
+      "sha256": "0d8b9bc749e7a0e16473c02eb52e93ace63e4186c566ac64e4ad96f971f06eae",
+      "uncompressed_bytes": 140737,
+      "uncompressed_sha256": "e566e72839ca40dc2438c6070b49255281b9ce079d280b1fb3064e0e078c6ef1"
+    },
+    "sealed_pre_main2135_corpus_metadata": {
+      "path": "compatibility/sealed-gi21-pre-main-2135df0e3-corpus-meta.json.gz",
+      "bytes": 2738,
+      "sha256": "8a4a770755dd2a20e67e03fb91915eb04598cbbe92c57c6ff3fbc009a3a7ac7b",
+      "uncompressed_bytes": 5729,
+      "uncompressed_sha256": "d9b32bd3ef939823b11bea67f10790b4715513b9d79eb49f06b7c92c7b7d0410"
+    },
+    "strict_shift_replay_main2135": {
+      "path": "compatibility/shift_A_B-strict-check-main-2135df0e3.json.gz",
+      "bytes": 568874,
+      "sha256": "7c8399cec1de39661f72297b209ff778eee0c35ccb181355bd1953f1cfafe5ec",
+      "uncompressed_bytes": 11316464,
+      "uncompressed_sha256": "05b61341d7778f79ab46efeeb32d33f724174cb8a5dcf83dafc746601255193b",
+      "name": "shift_A_B",
+      "source_boundary": "as-run-main-2135df0e3",
+      "projected_sha256": "23e19e4a82f1cbe3503bfbc922aca9295f195d72cb4e55f0a41a99d5958b1995"
+    },
+    "prepare_fixture_main2135": {
+      "path": "compatibility/main-2135df0e3-prepare-fixture.json",
+      "bytes": 10403,
+      "sha256": "127949e60d302c78fa14cb008b871b56ba2e8785f7fad29040fe3b4a4787ae34"
     }
   },
   "original_instruction_receipts": [

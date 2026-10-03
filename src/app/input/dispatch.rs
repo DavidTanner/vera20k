@@ -7,6 +7,8 @@
 //! ## Dependency rules
 //! - Part of the app layer — may depend on everything.
 
+use std::collections::{HashSet, VecDeque};
+
 use winit::event::{ElementState, MouseButton};
 use winit::keyboard::KeyCode;
 
@@ -312,7 +314,16 @@ pub(crate) fn tactical_mouse(state: &mut AppState, button: MouseButton, btn_stat
                         crate::app::presentation::instances::tactical_screen_entity_encounter_order(
                             state,
                         );
-                    let current_selection = selected_stable_ids_in_order(state);
+                    let current_selection = selected_stable_ids_in_order(
+                        state
+                            .match_state
+                            .sim_runtime
+                            .as_ref()
+                            .map(|rt| &rt.simulation),
+                        state.rules(),
+                        &state.match_state.input.selection_order,
+                        state.match_state.input.selection_order_pending,
+                    );
                     let map_order = map_entity_creation_order(sim.entities());
                     let held_type_select = type_select_held;
                     let scope_order = if state.match_state.input.type_select.across_map {
@@ -1377,7 +1388,16 @@ fn execute_type_select_tap(state: &mut AppState) {
         let screen_order =
             crate::app::presentation::instances::tactical_screen_entity_encounter_order(state);
         let map_order = map_entity_creation_order(sim.entities());
-        let current = selected_stable_ids_in_order(state);
+        let current = selected_stable_ids_in_order(
+            state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .map(|rt| &rt.simulation),
+            state.rules(),
+            &state.match_state.input.selection_order,
+            state.match_state.input.selection_order_pending,
+        );
         let fog = (!state.match_state.sandbox_full_visibility).then_some(&sim.fog);
         compute_type_select_tap_with_playfield(
             sim.entities(),
@@ -1942,31 +1962,60 @@ pub(crate) fn is_alt_held(state: &AppState) -> bool {
 /// command is queued the ledger is already the newest local state; after the
 /// sim tick, reconciliation trusts the committed selected bits and admits any
 /// lifecycle-transferred selection that was not issued by input.
-pub(crate) fn selected_stable_ids_in_order(state: &AppState) -> Vec<u64> {
-    let Some(sim) = state
-        .match_state
-        .sim_runtime
-        .as_ref()
-        .map(|rt| &rt.simulation)
-    else {
+pub(crate) fn selected_stable_ids_in_order(
+    sim: Option<&crate::sim::world::Simulation>,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    selection_order: &[u64],
+    selection_order_pending: bool,
+) -> Vec<u64> {
+    let Some(sim) = sim else {
         return Vec::new();
     };
     let mut ordered = Vec::new();
-    for &id in &state.match_state.input.selection_order {
+    for &id in selection_order {
         if let Some(entity) = sim.entities().get(id) {
-            if state.match_state.input.selection_order_pending || entity.selected {
+            if selection_order_pending || entity.selected {
                 ordered.push(id);
             }
         }
     }
-    if !state.match_state.input.selection_order_pending {
-        for entity in sim.entities().values() {
-            if entity.selected && !ordered.contains(&entity.stable_id()) {
-                insert_selected_id(&mut ordered, entity.stable_id(), sim, state.rules());
-            }
+    if selection_order_pending {
+        ordered
+    } else {
+        admit_missing_selected_ids(ordered, sim, rules)
+    }
+}
+
+/// Selection membership is a transient index, never an iteration authority.
+/// The ledger keeps prior order; lifecycle transfers still enter in entity-store
+/// order, with the same native front/back insertion as input selection. A deque
+/// avoids shifting the whole list for each missing armed object.
+fn admit_missing_selected_ids(
+    ordered: Vec<u64>,
+    sim: &crate::sim::world::Simulation,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+) -> Vec<u64> {
+    let mut members: HashSet<_> = ordered.iter().copied().collect();
+    let mut ordered = VecDeque::from(ordered);
+    for entity in sim.entities().values() {
+        if entity.selected && members.insert(entity.stable_id()) {
+            insert_selected_id(&mut ordered, entity.stable_id(), sim, rules);
         }
     }
-    ordered
+    ordered.into()
+}
+
+fn selection_membership_committed(sim: &crate::sim::world::Simulation, ordered: &[u64]) -> bool {
+    let members: HashSet<_> = ordered.iter().copied().collect();
+    let mut committed_count = 0;
+    sim.entities()
+        .values()
+        .filter(|entity| entity.selected)
+        .all(|entity| {
+            committed_count += 1;
+            members.contains(&entity.stable_id())
+        })
+        && committed_count == ordered.len()
 }
 
 /// Synchronize the app ledger after the due selection commands and lifecycle
@@ -2000,24 +2049,14 @@ pub(crate) fn reconcile_selection_order_after_sim(state: &mut AppState) {
         if state.match_state.input.selection_order.len() != before_retain {
             state.match_state.input.type_select.reset_scope();
         }
-        let committed: Vec<u64> = sim
-            .entities()
-            .values()
-            .filter(|entity| entity.selected)
-            .map(|entity| entity.stable_id())
-            .collect();
-        let same_membership = committed.len() == state.match_state.input.selection_order.len()
-            && committed
-                .iter()
-                .all(|id| state.match_state.input.selection_order.contains(id));
-        if !same_membership {
+        if !selection_membership_committed(sim, &state.match_state.input.selection_order) {
             return;
         }
         state.match_state.input.selection_order_pending = false;
         return;
     }
     let prior_len = state.match_state.input.selection_order.len();
-    let mut reconciled: Vec<u64> = state
+    let reconciled: Vec<u64> = state
         .match_state
         .input
         .selection_order
@@ -2030,11 +2069,7 @@ pub(crate) fn reconcile_selection_order_after_sim(state: &mut AppState) {
         })
         .collect();
     let lifecycle_removed = reconciled.len() < prior_len;
-    for entity in sim.entities().values() {
-        if entity.selected && !reconciled.contains(&entity.stable_id()) {
-            insert_selected_id(&mut reconciled, entity.stable_id(), sim, state.rules());
-        }
-    }
+    let reconciled = admit_missing_selected_ids(reconciled, sim, state.rules());
     if lifecycle_removed {
         state.match_state.input.type_select.reset_scope();
     }
@@ -2059,14 +2094,23 @@ fn apply_selection_mutation(
     else {
         return false;
     };
-    let mut ordered = selected_stable_ids_in_order(state);
+    let mut ordered = if mutation.clear {
+        Vec::new()
+    } else {
+        selected_stable_ids_in_order(
+            Some(sim),
+            state.rules(),
+            &state.match_state.input.selection_order,
+            state.match_state.input.selection_order_pending,
+        )
+    };
     let mut native_selection_mode_reset = mutation.clear;
-    if mutation.clear {
-        ordered.clear();
-    }
     let before_deselect = ordered.len();
-    ordered.retain(|id| !mutation.deselect.contains(id));
+    let deselected: HashSet<_> = mutation.deselect.into_iter().collect();
+    ordered.retain(|id| !deselected.contains(id));
     native_selection_mode_reset |= ordered.len() != before_deselect;
+    let mut members: HashSet<_> = ordered.iter().copied().collect();
+    let mut ordered = VecDeque::from(ordered);
 
     let mut successful_adds = Vec::new();
     for id in mutation.select {
@@ -2080,13 +2124,15 @@ fn apply_selection_mutation(
             && state
                 .rules()
                 .is_none_or(|rules| rules.object(type_id).is_none_or(|object| object.selectable));
-        if !admitted || ordered.contains(&id) {
+        if !admitted || !members.insert(id) {
             continue;
         }
         successful_adds.push(id);
         native_selection_mode_reset = true;
         insert_selected_id(&mut ordered, id, sim, state.rules());
     }
+
+    let ordered: Vec<_> = ordered.into();
 
     if reset_type_select_scope {
         state.match_state.input.type_select.reset_scope();
@@ -2119,7 +2165,7 @@ fn apply_selection_mutation(
 }
 
 fn insert_selected_id(
-    ordered: &mut Vec<u64>,
+    ordered: &mut VecDeque<u64>,
     id: u64,
     sim: &crate::sim::world::Simulation,
     rules: Option<&crate::rules::ruleset::RuleSet>,
@@ -2135,11 +2181,15 @@ fn insert_selected_id(
     insert_selected_id_by_role(ordered, id, positive_damage_primary);
 }
 
-fn insert_selected_id_by_role(ordered: &mut Vec<u64>, id: u64, positive_damage_primary: bool) {
+// Active-retail ObjectClass::Select5F4520 reads type+C9C at5F461F,
+// prepends at5F468C/5F469A, otherwise appends at5F470E. ReadINI715793..7157AE
+// derives that byte from Primary(+898)->Damage(+A4)>0. No RNG/timer here;
+// successful-add voices remain in candidate order outside this ordering helper.
+fn insert_selected_id_by_role(ordered: &mut VecDeque<u64>, id: u64, positive_damage_primary: bool) {
     if positive_damage_primary {
-        ordered.insert(0, id);
+        ordered.push_front(id);
     } else {
-        ordered.push(id);
+        ordered.push_back(id);
     }
 }
 
@@ -2164,7 +2214,8 @@ mod item83_selection_order_tests {
         HELD_TYPE_SELECT_VOICE_POLICY, ORDINARY_SELECTION_ACTION_LINE_POLICY,
         ORDINARY_SELECTION_VOICE_POLICY, TYPE_SELECT_TAP_ACTION_LINE_POLICY,
         TYPE_SELECT_TAP_VOICE_POLICY, apply_selection_action_line_policy_at_tick,
-        insert_selected_id_by_role, selection_voice_event, selection_voice_recipients,
+        insert_selected_id_by_role, selected_stable_ids_in_order, selection_membership_committed,
+        selection_voice_event, selection_voice_recipients,
     };
     use crate::app::presentation::target_lines::TargetLineState;
     use crate::audio::events::GameSoundEvent;
@@ -2174,14 +2225,66 @@ mod item83_selection_order_tests {
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::world::Simulation;
+    use std::collections::VecDeque;
 
     #[test]
     fn item83_positive_damage_technos_prepend_and_noncombat_technos_append() {
-        let mut order = vec![10];
+        let mut order = VecDeque::from([10]);
         insert_selected_id_by_role(&mut order, 20, true);
         insert_selected_id_by_role(&mut order, 30, true);
         insert_selected_id_by_role(&mut order, 40, false);
         assert_eq!(order, [30, 20, 10, 40]);
+    }
+
+    fn mixed_selection_fixture() -> (Simulation, RuleSet) {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[VehicleTypes]\n0=ARMED\n1=PLAIN\n[ARMED]\nPrimary=GUN\n[GUN]\nDamage=10\n[PLAIN]\n",
+        ))
+        .unwrap();
+        let mut sim = Simulation::new();
+        for (id, type_name, selected) in [
+            (10, "ARMED", true),
+            (20, "PLAIN", true),
+            (30, "ARMED", true),
+            (40, "ARMED", false),
+            (50, "PLAIN", true),
+        ] {
+            let mut entity = GameEntity::test_default(id, type_name, "Americans", 10, 20);
+            entity.type_ref = sim.interner.intern(type_name);
+            entity.owner = sim.interner.intern("Americans");
+            entity.selected = selected;
+            sim.entities_mut().insert(entity);
+        }
+        (sim, rules)
+    }
+
+    #[test]
+    fn selection_read_keeps_pending_authority_and_native_recovery_order() {
+        let (sim, rules) = mixed_selection_fixture();
+        let read = |prior: &[u64], pending| {
+            selected_stable_ids_in_order(Some(&sim), Some(&rules), prior, pending)
+        };
+        // Missing armed entries prepend in original scan order; missing plain
+        // entries append. Removed IDs disappear, as do committed deselections.
+        assert_eq!(read(&[20, 999, 40], false), [30, 10, 20, 50]);
+        assert_eq!(read(&[], false), [30, 10, 20, 50]);
+        // A complete ledger keeps its existing order regardless of role.
+        assert_eq!(read(&[50, 10, 30, 20], false), [50, 10, 30, 20]);
+        // Before the command commits, old selected bits cannot revive actors
+        // omitted by input, or remove the newly selected actor40.
+        assert_eq!(read(&[20, 999, 40], true), [20, 40]);
+        assert!(read(&[], true).is_empty());
+        assert!(selected_stable_ids_in_order(None, Some(&rules), &[10], false).is_empty());
+    }
+
+    #[test]
+    fn selection_pending_clears_only_when_committed_membership_matches() {
+        let (sim, _) = mixed_selection_fixture();
+        assert!(selection_membership_committed(&sim, &[50, 10, 30, 20]));
+        assert!(!selection_membership_committed(&sim, &[50, 10, 40, 20]));
+        assert!(!selection_membership_committed(&sim, &[50, 10, 20]));
+        assert!(!selection_membership_committed(&sim, &[50, 10, 30, 20, 40]));
+        assert!(!selection_membership_committed(&sim, &[50, 10, 30, 30]));
     }
 
     #[test]
@@ -2291,7 +2394,16 @@ fn queue_selection_snapshot_command(state: &mut AppState, selected_ids: Vec<u64>
 }
 
 fn queue_stop_for_selected(state: &mut AppState) {
-    let selected_ids = selected_stable_ids_in_order(state);
+    let selected_ids = selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
     if selected_ids.is_empty() {
         return;
     }
@@ -2305,7 +2417,16 @@ fn queue_stop_for_selected(state: &mut AppState) {
 /// - Selected unit with `DeploysInto` or `IsSimpleDeployer` → `Command::DeployMcv`
 /// - Selected structure with `UndeploysInto` → `Command::UndeployBuilding` (ConYard → MCV)
 fn queue_deploy_undeploy_for_selected(state: &mut AppState) {
-    let selected_ids = selected_stable_ids_in_order(state);
+    let selected_ids = selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
     let Some(sim) = state
         .match_state
         .sim_runtime
@@ -2547,7 +2668,16 @@ fn handle_control_group_command(
         return;
     }
     let group = state.match_state.input.control_groups[group_idx].clone();
-    let selected = selected_stable_ids_in_order(state);
+    let selected = selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
     // Only live members count towards "the selection is exactly the group" —
     // membership is derived by scanning live objects, so a dead unit has
     // already left its group.

@@ -11,7 +11,12 @@ CELLS=SCRATCH+0x10000
 ACTION=SCRATCH+0xF000
 MAP,TABLE,DUMMY=0x87F7E8,0xC00000,0xABDC50
 
-def query(row):
+def prepare_fixture(row):
+ """Prepare the shared native 16x16 Cell/zone fixture and original locomotor.
+
+ Returns the emulator and its read/return/call helpers before caller hooks or
+ the Foot resolver run. Procedural rally input uses these same map owners.
+ """
  u=Uc(UC_ARCH_X86,UC_MODE_32);load_image(u);u.mem_map(STACK_BASE,STACK_SIZE);u.mem_map(SCRATCH,0x40000);u.mem_map(RET_MAGIC,0x1000);u.reg_write(UC_X86_REG_FPCW,0x0E7F)
  def r32(p):return struct.unpack('<I',u.mem_read(p,4))[0]
  def ret(cleanup,result):
@@ -36,6 +41,10 @@ def query(row):
  for i,(a,b,active,kind) in enumerate(row.get('records',[])):u.mem_write(RECORDS+i*16,packed(*a)+packed(*b)+dwords(active,kind))
  u.mem_write(MAP+0x60,dwords(len(row.get('records',[]))))
  for c in row.get('shrouded',[]):u.mem_write(CELLS+(c[1]*16+c[0])*0x200+0x12C,b'\0')
+ return u,r32,ret,call
+
+def query(row):
+ u,r32,ret,call=prepare_fixture(row)
  events=[];last=[]
  def observe(_u,a,_s,_d):
   sp=u.reg_read(UC_X86_REG_ESP);last.append(hex(a))

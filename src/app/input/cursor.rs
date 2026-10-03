@@ -111,7 +111,16 @@ pub(crate) fn current_cursor_feedback_kind(state: &AppState) -> Option<CursorFee
             CursorFeedbackKind::SellMode(valid)
         });
     }
-    let selected = crate::app::input::dispatch::selected_stable_ids_in_order(state);
+    let selected = crate::app::input::dispatch::selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
     if selected.is_empty() {
         return None;
     }

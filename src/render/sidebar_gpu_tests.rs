@@ -81,7 +81,7 @@ impl Gpu {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: None,
                 source: wgpu::ShaderSource::Wgsl(
-                    super::tactical_shader::source(include_str!("batch_shader.wgsl")).into(),
+                    super::tactical_shader::world_source(include_str!("batch_shader.wgsl")).into(),
                 ),
             });
         let pipeline = self
@@ -115,13 +115,25 @@ impl Gpu {
                 multiview: None,
                 cache: None,
             });
+        let (neutral_a, neutral_a_uniform) =
+            super::shroud_buffer::neutral_gpu_source(&self.device, &self.queue);
         let camera_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &pipeline.get_bind_group_layout(0),
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&neutral_a),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: neutral_a_uniform.as_entire_binding(),
+                },
+            ],
         });
         let output = self.device.create_texture(&wgpu::TextureDescriptor {
             label: None,
@@ -404,7 +416,9 @@ fn retail_command_bar_atlas_and_production_append_match_native_capture() {
             | u16::from(actual[p + 2] >> 3);
         differences += usize::from(actual_word != word);
     }
-    eprintln!("Native command bar: 20224 GPU pixels through PCX RGB565 extraction, {differences} differences");
+    eprintln!(
+        "Native command bar: 20224 GPU pixels through PCX RGB565 extraction, {differences} differences"
+    );
     assert_eq!(differences, 0);
 }
 

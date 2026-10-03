@@ -556,8 +556,14 @@ impl Simulation {
             }
         };
         let speed = self.jumpjet_order_speed(id, rules);
-        let request =
-            crate::sim::movement::target_cell_coord(goal.0, goal.1, self.resolved_terrain.as_ref());
+        let request = crate::sim::movement::target_cell_coord(
+            goal.0,
+            goal.1,
+            self.resolved_terrain
+                .as_ref()
+                .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
+                .as_ref(),
+        );
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.navigation.nav_com =
                 Some(crate::sim::components::NavTargetRef::cell(goal.0, goal.1));

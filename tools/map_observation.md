@@ -18,6 +18,20 @@ chosen retail map. Keep explicit countries, colors and distinct start slots, and
 keep `pre_fill_house_roster` consistent with the opponents. Rust validates launch
 admission; Python does not maintain a second launch parser or synthesize defaults.
 
+The [factory rally profile](map_observation.rally-drawing.example.json) adds the
+ordinary `Select` command to a produced barracks. Its optional v2
+`cursor_position: [720, 556]` is applied once after loading, before exact steps,
+and retained in the render receipt. An explicit cursor must be inside the
+outermost screen pixels; normal static-arrow and idle-camera checks still apply
+to every draw. Place it over a neutral sidebar area when selecting actors would
+otherwise produce an animated order cursor. Profiles without this field retain
+the ordinary post-load center position.
+
+`render.frame_wall_mean_ms`, when present, reads the existing frame timer's last
+up-to-60 intervals. It includes simulation, diagnostic observation, rendering and
+presentation pacing. It is cadence metadata, not GPU duration or ordinary play
+FPS, and does not participate in deterministic comparisons.
+
 Build through the shared Cargo owner, then run from the checkout with an existing
 `config.toml` pointing at retail assets. Set `graphics.upscale = false` for the
 native-resolution capture. All supplied paths must be absolute without symlink

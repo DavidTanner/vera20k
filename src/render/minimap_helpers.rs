@@ -323,8 +323,9 @@ pub(super) fn set_pixel(rgba: &mut [u8], width: u32, x: u32, y: u32, color: [u8;
 /// Map an owner name to a minimap dot color using house color data.
 ///
 /// Looks up the owner's `[Colors]` entry index from the HouseColorMap, then uses
-/// shade 0 of that scheme's ramp — the brightest band (palette index 16), which
-/// is gamemd's radar color. Falls back to the default scheme for unknown owners.
+/// House+56F9's converted palette entry16. Radar655C50 reads this RGB at
+/// 655F86/655F96/655FB8; active updates reach it at657D77/6574C3/657520.
+/// Falls back to the default scheme for unknown owners.
 pub(super) fn owner_dot_color(
     owner: &str,
     house_colors: &HouseColorMap,
@@ -333,8 +334,8 @@ pub(super) fn owner_dot_color(
     // Unknown owner → NO_REMAP, which ramp() resolves to the default scheme
     // (matching the producers' DEFAULT_SCHEME_ENTRY fallback), not entry 0.
     let index: HouseColorIndex = house_colors.get(owner).copied().unwrap_or(NO_REMAP);
-    let c = ramps.ramp(index)[0];
-    [c.r, c.g, c.b, 255]
+    let [r, g, b] = super::palette_light::house_color_rgb(ramps, index);
+    super::native_surface_format::ACTIVE_RETAIL_RGB565_PRESENTATION.quantize_rgba8([r, g, b, 255])
 }
 
 /// Get the terrain color for a pixel based on fog-of-war visibility.

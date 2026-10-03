@@ -1,0 +1,224 @@
+{
+  "schema_version": 1,
+  "head": "0dc1a154cf2a8a43c3d8ff374b2b52a9ad631f7c",
+  "native_executable_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "python": "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+  "corpora": {
+    "rally": {
+      "payload_sha256_before": "0aa4379b5996f0d43a473e8fda4478a154aa193b4a9dbecb3df65c59dd6899d4",
+      "metadata_sha256_before": "3cc390fbddfaa48ca59f23a20787fe6d09d4bcddf2828a09a151d8ee4a060666",
+      "payload_sha256_after": "0aa4379b5996f0d43a473e8fda4478a154aa193b4a9dbecb3df65c59dd6899d4",
+      "payload_sha256_final": "0aa4379b5996f0d43a473e8fda4478a154aa193b4a9dbecb3df65c59dd6899d4",
+      "metadata_sha256_final": "30d4cd061af012dff6cdb10fd74314ada564dae8e396c910f0cf66b0904e2801"
+    },
+    "rally_input": {
+      "payload_sha256_before": "7f32dfed641211a28ccab578ed55d7509970748206de27c2a754f19b07ee5a60",
+      "metadata_sha256_before": "7d60e186385d11a90cf43f3a05f7c6841b2608632b2ff34221c31c4e5601ca57",
+      "payload_sha256_after": "7f32dfed641211a28ccab578ed55d7509970748206de27c2a754f19b07ee5a60",
+      "payload_sha256_final": "7f32dfed641211a28ccab578ed55d7509970748206de27c2a754f19b07ee5a60",
+      "metadata_sha256_final": "e1f283d103a073e2678ce07cb8c549872da107d8c7389ec90efdcdc62f57183d"
+    },
+    "factory_destination": {
+      "payload_sha256_before": "2e726accb3d8d25f202f9f6b5554d0d6285aaec4f1b0ea021c89c22f320a3ab1",
+      "metadata_sha256_before": "62346250918a848246875fccca2cb2711fa16c3620fcfd05d31884030b675819",
+      "payload_sha256_after": "2e726accb3d8d25f202f9f6b5554d0d6285aaec4f1b0ea021c89c22f320a3ab1",
+      "payload_sha256_final": "2e726accb3d8d25f202f9f6b5554d0d6285aaec4f1b0ea021c89c22f320a3ab1",
+      "metadata_sha256_final": "62346250918a848246875fccca2cb2711fa16c3620fcfd05d31884030b675819"
+    },
+    "house_color": {
+      "payload_sha256_before": "8546f62e280f113ba93a69f69879ebe23d3911cec33978edfa997aa27128434e",
+      "metadata_sha256_before": "4d460c28de0410a77ccec1154c0bae9e6fcaeb80f514d6d3cca4048b73c6c8c8",
+      "payload_sha256_after": "8546f62e280f113ba93a69f69879ebe23d3911cec33978edfa997aa27128434e",
+      "payload_sha256_final": "8546f62e280f113ba93a69f69879ebe23d3911cec33978edfa997aa27128434e",
+      "metadata_sha256_final": "4d460c28de0410a77ccec1154c0bae9e6fcaeb80f514d6d3cca4048b73c6c8c8"
+    },
+    "shroud": {
+      "payload_sha256_before": "073a8d284e93e48fac78f116d2423c7ad9f5022935c758edf28c097a3522a878",
+      "metadata_sha256_before": "409ac7a1501ce72840e8a347beba405472d3b83606cc1f4e1f816b162c93cb19",
+      "payload_sha256_after": "073a8d284e93e48fac78f116d2423c7ad9f5022935c758edf28c097a3522a878",
+      "payload_sha256_final": "073a8d284e93e48fac78f116d2423c7ad9f5022935c758edf28c097a3522a878",
+      "metadata_sha256_final": "409ac7a1501ce72840e8a347beba405472d3b83606cc1f4e1f816b162c93cb19"
+    },
+    "blitter_a": {
+      "payload_sha256_before": "ce4fc10c00c15d2d5c6bc73defd70755354cc4eeb8eff7898ef678f8444c2018",
+      "metadata_sha256_before": "c8c9f8fb95a3a047a3fdef076dd4c2e37778a226e31e63ef2608d4ce7370ca1b",
+      "payload_sha256_after": "ce4fc10c00c15d2d5c6bc73defd70755354cc4eeb8eff7898ef678f8444c2018",
+      "payload_sha256_final": "ce4fc10c00c15d2d5c6bc73defd70755354cc4eeb8eff7898ef678f8444c2018",
+      "metadata_sha256_final": "1f7fb2f91565f88d641f37e7a660edb14489b8cce6540b580bd1e6ba2758ee82"
+    }
+  },
+  "initial_checks": [
+    {
+      "corpus": "rally",
+      "exit_code": 1,
+      "elapsed_seconds": 3.608,
+      "last_line": "tools.native_oracle.OracleError: Provenance mismatch in /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/rally.meta.json: $.source_normalized_lf_sha256.ini_registry_fixture: expected 'd9b25e536250aab83bd42b9ff8a5a7f2417e603023389db4c70d72db2d443a4e', got 'fc0d267d9c8453ba3090bfacd056af5207f47cb1170651cce5b0c41c80e90a2e'"
+    },
+    {
+      "corpus": "rally_input",
+      "exit_code": 1,
+      "elapsed_seconds": 5.838,
+      "last_line": "tools.native_oracle.OracleError: Provenance mismatch in /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/rally_input.meta.json: $.source_normalized_lf_sha256.shared_map_fixture: expected 'b1d5efe6d8ca6a93fd9232cb73ec300addbb75be3bdc72fae10ab5fa1c3b9043', got '6ab481647a1d69676cb3931f3e196abd654790e8097016d2f12baa9e40d74ffb'"
+    },
+    {
+      "corpus": "factory_destination",
+      "exit_code": 0,
+      "elapsed_seconds": 0.239,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/factory_destination.json: native outputs match; no files written"
+    },
+    {
+      "corpus": "house_color",
+      "exit_code": 0,
+      "elapsed_seconds": 8.258,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/house_color.json: native outputs match; no files written"
+    },
+    {
+      "corpus": "shroud",
+      "exit_code": 0,
+      "elapsed_seconds": 27.139,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/shroud.json: native outputs match; no files written"
+    },
+    {
+      "corpus": "blitter_a",
+      "exit_code": 1,
+      "elapsed_seconds": 2.422,
+      "last_line": "tools.native_oracle.OracleError: Provenance mismatch in /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/blitter_a.meta.json: $.source_normalized_lf_sha256.native_owner: expected '484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c', got '141fc5f3981b40d41869643c0350e3988e40be2e470cba8a0b4a77bb7df39b27'"
+    }
+  ],
+  "metadata_refreshes": [
+    {
+      "corpus": "rally",
+      "exit_code": 0,
+      "elapsed_seconds": 3.421,
+      "old_metadata_backup": "logs/procedural-drawing/native-post-1036-metadata/rally.meta.json",
+      "metadata_sha256_before": "3cc390fbddfaa48ca59f23a20787fe6d09d4bcddf2828a09a151d8ee4a060666",
+      "metadata_sha256_after": "30d4cd061af012dff6cdb10fd74314ada564dae8e396c910f0cf66b0904e2801",
+      "payload_sha256_after": "0aa4379b5996f0d43a473e8fda4478a154aa193b4a9dbecb3df65c59dd6899d4",
+      "changes": [
+        {
+          "path": "$.source_normalized_lf_sha256.ini_registry_fixture",
+          "before": "d9b25e536250aab83bd42b9ff8a5a7f2417e603023389db4c70d72db2d443a4e",
+          "after": "fc0d267d9c8453ba3090bfacd056af5207f47cb1170651cce5b0c41c80e90a2e"
+        },
+        {
+          "path": "$.source_normalized_lf_sha256.native_oracle",
+          "before": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
+          "after": "141fc5f3981b40d41869643c0350e3988e40be2e470cba8a0b4a77bb7df39b27"
+        }
+      ]
+    },
+    {
+      "corpus": "rally_input",
+      "exit_code": 0,
+      "elapsed_seconds": 5.844,
+      "old_metadata_backup": "logs/procedural-drawing/native-post-1036-metadata/rally_input.meta.json",
+      "metadata_sha256_before": "7d60e186385d11a90cf43f3a05f7c6841b2608632b2ff34221c31c4e5601ca57",
+      "metadata_sha256_after": "e1f283d103a073e2678ce07cb8c549872da107d8c7389ec90efdcdc62f57183d",
+      "payload_sha256_after": "7f32dfed641211a28ccab578ed55d7509970748206de27c2a754f19b07ee5a60",
+      "changes": [
+        {
+          "path": "$.source_normalized_lf_sha256.shared_map_fixture",
+          "before": "b1d5efe6d8ca6a93fd9232cb73ec300addbb75be3bdc72fae10ab5fa1c3b9043",
+          "after": "6ab481647a1d69676cb3931f3e196abd654790e8097016d2f12baa9e40d74ffb"
+        }
+      ]
+    },
+    {
+      "corpus": "blitter_a",
+      "exit_code": 0,
+      "elapsed_seconds": 2.352,
+      "old_metadata_backup": "logs/procedural-drawing/native-post-1036-metadata/blitter_a.meta.json",
+      "metadata_sha256_before": "c8c9f8fb95a3a047a3fdef076dd4c2e37778a226e31e63ef2608d4ce7370ca1b",
+      "metadata_sha256_after": "1f7fb2f91565f88d641f37e7a660edb14489b8cce6540b580bd1e6ba2758ee82",
+      "payload_sha256_after": "ce4fc10c00c15d2d5c6bc73defd70755354cc4eeb8eff7898ef678f8444c2018",
+      "changes": [
+        {
+          "path": "$.source_normalized_lf_sha256.native_owner",
+          "before": "484e528d6d4c9bc6539126985897e60bc4f38ac7283a46b78e3264de81e4b21c",
+          "after": "141fc5f3981b40d41869643c0350e3988e40be2e470cba8a0b4a77bb7df39b27"
+        }
+      ]
+    }
+  ],
+  "final_checks": [
+    {
+      "corpus": "rally",
+      "exit_code": 0,
+      "elapsed_seconds": 9.685,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/rally.json: native outputs match; no files written"
+    },
+    {
+      "corpus": "rally_input",
+      "exit_code": 0,
+      "elapsed_seconds": 11.127,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/rally_input.json: native outputs match; no files written"
+    },
+    {
+      "corpus": "blitter_a",
+      "exit_code": 0,
+      "elapsed_seconds": 5.158,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/blitter_a.json: native outputs match; no files written"
+    }
+  ],
+  "generator_file_sha256_before": {
+    "rally": "e4f1dfe4f60ac6e07c07afb0e3753baa9d6ecdb63b6b2379fb2097ff89c29b1c",
+    "rally_input": "61b573a26b93f144fc9a9d1ad9eeacc52f011b14f9eedc044f68b662b30b4cc4",
+    "factory_destination": "5b52864006e32af59906882743180390c77064afae5eb189a17f63ea53feb501",
+    "house_color": "7c1a1bcb56f471a16fe87bb67778d373836bb8c210c63119caadfc35eb3b9cb3",
+    "shroud": "ae8fe81831594ff5b02f19a935d5cd2d0670de5b2bbbc11e35fc22700a4e7d21",
+    "blitter_a": "6e727e35db0cc16725ab1d75d3bd8b157542ed83886566b4d935f0888d73cbff"
+  },
+  "generator_file_sha256_after": {
+    "rally": "e4f1dfe4f60ac6e07c07afb0e3753baa9d6ecdb63b6b2379fb2097ff89c29b1c",
+    "rally_input": "61b573a26b93f144fc9a9d1ad9eeacc52f011b14f9eedc044f68b662b30b4cc4",
+    "factory_destination": "5b52864006e32af59906882743180390c77064afae5eb189a17f63ea53feb501",
+    "house_color": "7c1a1bcb56f471a16fe87bb67778d373836bb8c210c63119caadfc35eb3b9cb3",
+    "shroud": "ae8fe81831594ff5b02f19a935d5cd2d0670de5b2bbbc11e35fc22700a4e7d21",
+    "blitter_a": "6e727e35db0cc16725ab1d75d3bd8b157542ed83886566b4d935f0888d73cbff"
+  },
+  "all_payload_bytes_unchanged": true,
+  "source_frozen": true,
+  "all_six_checks_pass": true,
+  "latest_check_by_corpus": {
+    "rally": {
+      "corpus": "rally",
+      "exit_code": 0,
+      "elapsed_seconds": 9.685,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/rally.json: native outputs match; no files written"
+    },
+    "rally_input": {
+      "corpus": "rally_input",
+      "exit_code": 0,
+      "elapsed_seconds": 11.127,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/rally_input.json: native outputs match; no files written"
+    },
+    "factory_destination": {
+      "corpus": "factory_destination",
+      "exit_code": 0,
+      "elapsed_seconds": 0.239,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/factory_destination.json: native outputs match; no files written"
+    },
+    "house_color": {
+      "corpus": "house_color",
+      "exit_code": 0,
+      "elapsed_seconds": 8.258,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/house_color.json: native outputs match; no files written"
+    },
+    "shroud": {
+      "corpus": "shroud",
+      "exit_code": 0,
+      "elapsed_seconds": 27.139,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/shroud.json: native outputs match; no files written"
+    },
+    "blitter_a": {
+      "corpus": "blitter_a",
+      "exit_code": 0,
+      "elapsed_seconds": 5.158,
+      "last_line": "PASS /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/procedural_drawing_oracle/blitter_a.json: native outputs match; no files written"
+    }
+  },
+  "scoped_diff_check": {
+    "exit_code": 0,
+    "output": ""
+  }
+}

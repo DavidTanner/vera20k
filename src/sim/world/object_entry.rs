@@ -1094,7 +1094,7 @@ impl Simulation {
         let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
         let coord = terrain.native_cell_coord(cell);
         let centre =
-            crate::sim::movement::target_cell_coord(coord.0 as u16, coord.1 as u16, Some(terrain));
+            crate::sim::movement::target_cell_coord(coord.0 as u16, coord.1 as u16, Some(&cells));
         let open = |cell: Cell| {
             Ok(match cell {
                 Cell::Real(index) => {
