@@ -151,7 +151,13 @@ pub enum SellOrder {
 /// uninitialised (`vt+0xF8`) at once, with no click or refund (the branch
 /// computes Cost_Of `Type vt+0x84` and asks `0x0050B730`, and discards
 /// both). Returns whether the order was taken.
-pub fn sell_back(sim: &mut Simulation, rules: &RuleSet, id: u64, order: SellOrder) -> bool {
+pub fn sell_back(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    order: SellOrder,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> bool {
     let Some((owner, buildup, firestorm_wall, selling, c4)) =
         sim.substrate.entities.get(id).and_then(|entity| {
             if entity.category != EntityCategory::Structure {
@@ -175,8 +181,9 @@ pub fn sell_back(sim: &mut Simulation, rules: &RuleSet, id: u64, order: SellOrde
     };
     if !buildup {
         if firestorm_wall {
-            let _ = sim.techno_limbo_with_rules(id, rules);
-            sim.uninit_with_rules(id, rules);
+            let context = UninitContext::new(Some(rules), registry);
+            let _ = sim.techno_limbo_with_rules(id, rules, registry);
+            sim.uninit_with_context(id, context);
         }
         return firestorm_wall;
     }
@@ -525,7 +532,7 @@ pub(crate) fn sell_complete(
         // Add_Credits (`0x0044A222`).
         crate::sim::credit_income::add_credits(sim, owner, refund);
     }
-    sim.uninit_with_context(id, UninitContext::with_rules(rules));
+    sim.uninit_with_context(id, UninitContext::new(Some(rules), registry));
     if sim.session.game_options.super_weapons {
         crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
     }
@@ -685,7 +692,7 @@ fn place_garrison_passenger_at_cell(
     // then take the mutable borrow for the remaining field writes. change_owner is a no-op if the id is absent —
     // the get_mut below still guards absence.
     if let Some(owner) = owner_override {
-        sim.change_owner_with_rules(passenger_id, owner, rules);
+        sim.change_owner_with_rules(passenger_id, owner, rules, context.registry());
     }
     let Some(pax_sub_cell) = sim
         .substrate
@@ -853,7 +860,7 @@ fn eject_garrison_occupants(
         &passenger_ids,
         None,
         GarrisonEjectMode::PlayerSell,
-        UninitContext::default().with_registry(registry),
+        UninitContext::new(Some(rules), registry),
     );
 
     // Clear player-sell cargo only. Native SellBuilding is an ejection helper;
@@ -898,7 +905,7 @@ pub(crate) fn eject_destruction_garrison(
 /// completed.
 #[cfg(test)]
 pub(crate) fn sell_building_now_for_test(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
-    if !sell_back(sim, rules, id, SellOrder::Player)
+    if !sell_back(sim, rules, id, SellOrder::Player, None)
         || sim
             .substrate
             .entities
@@ -907,7 +914,8 @@ pub(crate) fn sell_building_now_for_test(sim: &mut Simulation, rules: &RuleSet, 
     {
         return false;
     }
-    sim.visit_building_operational(id, rules);
+    // This test-only immediate sale fixture has no resident overlay table.
+    sim.visit_building_operational(id, rules, None);
     sell_stage_zero(sim, Some(rules), id);
     sell_stage_one(sim, Some(rules), None, id);
     if sim
@@ -1007,7 +1015,7 @@ pub(crate) fn sell_building_occupants(
         &passenger_ids,
         Some(owner),
         GarrisonEjectMode::DestructionNoExitRemove,
-        UninitContext::default().with_registry(registry),
+        UninitContext::new(Some(rules), registry),
     );
 
     if let Some(building) = sim.substrate.entities.get_mut(building_id) {
@@ -1101,9 +1109,12 @@ mod tests {
         owner: &str,
         sub_cell: Option<u8>,
     ) -> u64 {
-        let mut pax = GameEntity::test_default(stable_id, "E1", owner, 0, 0);
-        pax.category = EntityCategory::Infantry;
-        pax.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
+        let mut pax = GameEntity::test_default_of_category(
+            stable_id,
+            "E1",
+            owner,
+            0,
+            0,
             EntityCategory::Infantry,
         );
         pax.sub_cell = sub_cell;

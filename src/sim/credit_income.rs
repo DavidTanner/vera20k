@@ -527,7 +527,7 @@ mod tests {
         run_ticks(&mut sim, &rules, 120);
         assert_eq!(credits(&sim, neutral), 0);
 
-        sim.change_owner_with_rules(oil, americans, &rules);
+        sim.change_owner_with_rules(oil, americans, &rules, None);
         assert_eq!(
             credits(&sim, americans),
             6_000,
@@ -573,7 +573,7 @@ mod tests {
         // Re-capture from a non-passive owner grants no startup cash.
         // Grand_Opening(captured) re-arms the delay for the new owner.
         let before = credits(&sim, soviets);
-        sim.change_owner_with_rules(oil, soviets, &rules);
+        sim.change_owner_with_rules(oil, soviets, &rules, None);
         assert_eq!(credits(&sim, soviets), before);
         run_ticks(&mut sim, &rules, 99 * 2);
         assert!(
@@ -645,7 +645,7 @@ mod tests {
         let oil = sim
             .spawn_object("CAOILDP", "Neutral", 10, 10, 0, &rules)
             .expect("powered derrick spawns");
-        sim.change_owner_with_rules(oil, americans, &rules);
+        sim.change_owner_with_rules(oil, americans, &rules, None);
         assert_eq!(credits(&sim, americans), 1_000);
         // No power plant: output 0 < drain 10 → low power → not operational.
         run_ticks(&mut sim, &rules, 300);

@@ -304,7 +304,7 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
                         sim.houses
                             .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
                     }
-                    sim.change_owner_with_rules(1, new_owner, rules);
+                    sim.change_owner_with_rules(1, new_owner, rules, None);
                     assert_eq!(
                         sim.substrate.entities.get(1).unwrap().owner(),
                         new_owner,

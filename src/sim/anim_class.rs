@@ -2626,7 +2626,7 @@ mod tests {
                 .unwrap()
                 .damage_fire_anim_ids[slot] = Some(id);
             sim.anim_mut_by_id(id).unwrap().damage_fire_slot = Some((building_id, slot as u8));
-            sim.detach_all_pointer_expired(building_id, &rules);
+            sim.detach_all_pointer_expired(building_id, &rules, None);
             for phase in ["owner_expiry", "anim_expiry"] {
                 if phase == "anim_expiry" {
                     sim.destroy_anim(id, &rules);

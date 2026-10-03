@@ -196,7 +196,7 @@ impl Simulation {
                     .cell(entity.position.rx, entity.position.ry)
                     .is_some_and(|cell| cell.yr_cell_land_type == LandType::Water.as_index())
             })
-            && entity.teleport_state.is_none()
+            && entity.teleport_state().is_none()
     }
 
     /// `UnitClass::Death_Explosion @ 0x00738680`: one `Explosion=` anim and

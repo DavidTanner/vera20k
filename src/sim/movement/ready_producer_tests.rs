@@ -161,16 +161,17 @@ fn ship_mirrors_drive_but_keeps_its_own_variant() {
     assert!(state.is_moving_now());
 }
 
-/// Existing adapter regression; native request-byte lifetime remains unported.
+/// Existing Process-adapter regression; native Cell setter/Stop request-byte
+/// controls live in teleport_cell_destination_tests, rather than this fixture.
 #[test]
 fn teleport_chrono_delay_reports_not_moving() {
     let mut entity = entity_with(LocomotorKind::Teleport);
-    entity.teleport_state = Some(TeleportState {
-        phase: TeleportPhase::ChronoDelay,
-        target_rx: 20,
-        target_ry: 20,
-        being_warped_ticks: 10,
-    });
+    entity.install_teleport_state_for_test(Some(TeleportState::for_test(
+        TeleportPhase::ChronoDelay,
+        20,
+        20,
+        10,
+    )));
 
     let state = ready_state_for(&entity, None, 100).expect("Teleport has a producer");
     assert!(
@@ -179,16 +180,17 @@ fn teleport_chrono_delay_reports_not_moving() {
     );
 }
 
-/// Existing adapter regression, not proof of when the native request byte is set.
+/// Supplied-state query regression; native request publication is compared
+/// separately through the actual Cell setter in teleport_cell_destination_tests.
 #[test]
 fn teleport_relocate_reports_moving() {
     let mut entity = entity_with(LocomotorKind::Teleport);
-    entity.teleport_state = Some(TeleportState {
-        phase: TeleportPhase::Relocate,
-        target_rx: 20,
-        target_ry: 20,
-        being_warped_ticks: 16,
-    });
+    entity.install_teleport_state_for_test(Some(TeleportState::for_test(
+        TeleportPhase::Relocate,
+        20,
+        20,
+        16,
+    )));
 
     let state = ready_state_for(&entity, None, 100).expect("Teleport has a producer");
     assert!(state.is_moving_now());

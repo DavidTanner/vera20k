@@ -151,12 +151,12 @@ fn a_warping_in_unit_holds_fire_until_it_lands() {
         );
         let tank = store.get_mut(1).unwrap();
         tank.attack_target = Some(AttackTarget::new(2));
-        tank.teleport_state = Some(TeleportState {
-            phase: TeleportPhase::ChronoDelay,
-            target_rx: 10,
-            target_ry: 10,
-            being_warped_ticks: warp_ticks,
-        });
+        tank.install_teleport_state_for_test(Some(TeleportState::for_test(
+            TeleportPhase::ChronoDelay,
+            10,
+            10,
+            warp_ticks,
+        )));
         let mut interner = test_interner();
         let mut occupancy = OccupancyGrid::rebuild(&store);
         let mut rng = SimRng::new(7);
@@ -380,12 +380,12 @@ fn a_relocating_unit_holds_fire_and_its_target() {
     );
     let tank = store.get_mut(1).unwrap();
     tank.attack_target = Some(AttackTarget::new(2));
-    tank.teleport_state = Some(TeleportState {
-        phase: TeleportPhase::Relocate,
-        target_rx: 10,
-        target_ry: 10,
-        being_warped_ticks: 0,
-    });
+    tank.install_teleport_state_for_test(Some(TeleportState::for_test(
+        TeleportPhase::Relocate,
+        10,
+        10,
+        0,
+    )));
     combat_frame(&mut store, &rules, &Default::default());
     assert_eq!(store.get(2).unwrap().health.current, 300);
     assert!(store.get(1).unwrap().attack_target.is_some());

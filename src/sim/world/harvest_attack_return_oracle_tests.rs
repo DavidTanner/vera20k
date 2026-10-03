@@ -405,6 +405,7 @@ impl Replay {
                         PointerExpiryControl::Uninit
                     },
                     Some(&s.rules),
+                    None,
                 );
             }
             "deadline" => {

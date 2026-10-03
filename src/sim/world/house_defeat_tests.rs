@@ -272,7 +272,7 @@ fn native_blowup_all_corpus() {
                 let cleg = sim
                     .spawn_object_at_height("CLEG", "house1", 2, 2 + n as u16, 0, 0, &rules)
                     .unwrap();
-                sim.temporal_initiate_warp(cleg, Some(ids[n]), &rules);
+                sim.temporal_initiate_warp(cleg, Some(ids[n]), &rules, None);
                 assert!(sim.substrate.entities.get(ids[n]).unwrap().is_warped_out());
                 warpers.push((ids[n], cleg));
             }

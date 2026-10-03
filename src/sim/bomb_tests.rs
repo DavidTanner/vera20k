@@ -787,17 +787,17 @@ fn removal_and_capture_defuse_silently() {
 
     sim.uninit_with_rules(sold, &rules);
     assert!(bomb(&sim, sold).is_none());
-    sim.change_owner_with_rules(captured, russians, &rules);
+    sim.change_owner_with_rules(captured, russians, &rules, None);
     assert!(
         bomb(&sim, captured).is_none(),
         "an engineer's capture defuses"
     );
-    sim.change_owner_with_rules(garrison, russians, &rules);
+    sim.change_owner_with_rules(garrison, russians, &rules, None);
     assert!(
         bomb(&sim, garrison).is_some(),
         "an occupied building keeps it"
     );
-    sim.change_owner_with_rules(tank, russians, &rules);
+    sim.change_owner_with_rules(tank, russians, &rules, None);
     assert!(bomb(&sim, tank).is_some(), "a unit changing hands keeps it");
     assert_eq!(
         sim.bomb_carriers().iter().copied().collect::<Vec<_>>(),

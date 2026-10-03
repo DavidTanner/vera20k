@@ -46,7 +46,7 @@ ORDER_VARIANTS = frozenset(('Move', 'Stop', 'Attack', 'ForceAttack', 'Guard',
                             'DeployMcv', 'ForceAttackCell', 'CaptureBuilding', 'ToggleRepair',
                             'EnterTransport', 'UnloadPassengers', 'RepairAtDepot', 'SellBuilding'))
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
-EXTENSION_FIELDS = frozenset(('commands', 'observe_owners', 'camera_cell', 'terrain_cells'))
+EXTENSION_FIELDS = frozenset(('commands', 'observe_owners', 'observe_types', 'camera_cell', 'terrain_cells'))
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
 
 
@@ -242,6 +242,16 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
         if not owner or owner in selected:
             raise ValidationError('profile.observe_owners has an empty or duplicate House')
         selected.add(owner)
+    if 'observe_types' in profile:
+        types = require_array(profile['observe_types'], 'profile.observe_types')
+        if not 1 <= len(types) <= 256:
+            raise ValidationError('profile.observe_types must contain 1..256 types')
+        selected_types = set()
+        for index, value in enumerate(types):
+            name = require_string(value, f'profile.observe_types[{index}]')
+            if not name or name in selected_types:
+                raise ValidationError('profile.observe_types has an empty or duplicate type')
+            selected_types.add(name)
     if 'camera_cell' in profile:
         _coordinate(profile['camera_cell'], 'profile.camera_cell')
     cells = require_array(profile.get('terrain_cells', []), 'profile.terrain_cells')
@@ -578,12 +588,21 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
     label = 'observations'
     observations = require_object(value, label)
     require_exact_keys(observations, ('policy', 'owners', 'commands', 'frames',
+                                     *(('type_filter',) if 'observe_types' in profile else ()),
                                      *(('rule_types',) if building_state else ())), label)
     policy = (OBSERVATION_POLICY if docking_state else
               BUILDING_OBSERVATION_POLICY if building_state else TRAJECTORY_OBSERVATION_POLICY)
     require_value(observations['policy'], policy, f'{label}.policy')
     if building_state:
         _rule_types(observations['rule_types'])
+    type_filter = profile.get('observe_types')
+    if type_filter is not None:
+        if not (building_state and docking_state):
+            raise ValidationError('type-filtered observations require the current observation policy')
+        _require_equal(observations['type_filter'], type_filter, f'{label}.type_filter')
+        known_types = {row['type_id'] for row in observations['rule_types']}
+        if any(name not in known_types for name in type_filter):
+            raise ValidationError('profile.observe_types contains a type absent from rule_types')
     owners = profile.get('observe_owners', [])
     _require_equal(observations['owners'], owners, f'{label}.owners')
     commands = require_array(observations['commands'], f'{label}.commands')
@@ -633,6 +652,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
                 raise ValidationError(f'{actor_label}.stable_id is repeated or out of order')
             if identity not in seen and owner not in owners:
                 raise ValidationError(f'{actor_label}.owner is outside the requested Houses')
+            if identity not in seen and type_filter is not None and value['type_id'] not in type_filter:
+                raise ValidationError(f'{actor_label}.type_id is outside the requested type filter')
             previous_id = identity
             present.add(identity)
         seen.update(present)

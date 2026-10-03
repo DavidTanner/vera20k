@@ -27,7 +27,8 @@ fn request_move(
             owner_blocks: true,
             object_destination: None,
         },
-        Some(rules)
+        Some(rules),
+        Some(registry),
     ));
     let destination = cell_centre((goal.0 as i16, goal.1 as i16));
     let request = FootPathRequest::track(

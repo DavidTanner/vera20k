@@ -281,7 +281,14 @@ mod gsi_04_03b_tests {
         }
 
         let shared_head = (2, 2);
-        issue_move_if_idle(&mut sim, None, 1, shared_head, SimFixed::from_num(128));
+        issue_move_if_idle(
+            &mut sim,
+            None,
+            1,
+            shared_head,
+            SimFixed::from_num(128),
+            None,
+        );
         assert!(
             sim.substrate
                 .entities
@@ -313,7 +320,14 @@ mod gsi_04_03b_tests {
             2,
         ));
 
-        issue_move_if_idle(&mut sim, None, 2, shared_head, SimFixed::from_num(128));
+        issue_move_if_idle(
+            &mut sim,
+            None,
+            2,
+            shared_head,
+            SimFixed::from_num(128),
+            None,
+        );
         sim.process_ground_locomotor_for_test(2, Some(&rules), Some(&grid), None)
             .expect("the second miner Process observes the existing reservation");
 
@@ -650,7 +664,7 @@ fn harvest_looking(
         .get(id)
         .and_then(|entity| entity.archive_target());
     if let Some(archive) = archive {
-        assign_archive_destination(sim, rules, id, archive);
+        assign_archive_destination(sim, rules, id, archive, overlay_registry);
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.set_archive_target(None);
         }
@@ -701,7 +715,7 @@ fn harvest_looking(
             snap.dispatch_delay = NO_ORE_DELAY;
             return;
         };
-        assign_archive_destination(sim, rules, id, archive);
+        assign_archive_destination(sim, rules, id, archive, overlay_registry);
     }
     arm_rate_epilogue(sim, rules, snap);
 }
@@ -716,9 +730,10 @@ fn assign_archive_destination(
     rules: &RuleSet,
     id: u64,
     archive: crate::sim::combat::TargetKind,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) {
     if let crate::sim::combat::TargetKind::Cell(x, y) = archive {
-        let _ = issue_stock_miner_drive_move(sim, rules, id, (x, y));
+        let _ = issue_stock_miner_drive_move(sim, rules, id, (x, y), overlay_registry);
     }
 }
 
@@ -1155,7 +1170,14 @@ fn handle_going_to_idle(
             .techno_nearby_location(snap.entity_id, Some(refinery_sid), rules)
             .and_then(|(x, y)| Some((u16::try_from(x).ok()?, u16::try_from(y).ok()?)))
     {
-        issue_move_if_idle(sim, Some(rules), snap.entity_id, exit, snap.speed);
+        issue_move_if_idle(
+            sim,
+            Some(rules),
+            snap.entity_id,
+            exit,
+            snap.speed,
+            overlay_registry,
+        );
     }
     queue_guard_from_harvest(sim, snap);
     true
@@ -1506,6 +1528,7 @@ pub(crate) fn issue_stock_miner_drive_move(
     rules: &RuleSet,
     entity_id: u64,
     target: (u16, u16),
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let Some(grid) = sim.path_grid() else {
         return false;
@@ -1538,6 +1561,7 @@ pub(crate) fn issue_stock_miner_drive_move(
             object_destination: None,
         },
         Some(rules),
+        overlay_registry,
     );
     if !issued {
         return false;
@@ -1562,6 +1586,7 @@ pub(crate) fn issue_move_if_idle(
     entity_id: u64,
     target: (u16, u16),
     speed: SimFixed,
+    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(grid) = sim.path_grid() else {
         return;
@@ -1599,6 +1624,7 @@ pub(crate) fn issue_move_if_idle(
                 object_destination: None,
             },
             rules,
+            overlay_registry,
         );
     }
 }

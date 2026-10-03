@@ -653,6 +653,7 @@ impl Simulation {
                             object_destination: None,
                         },
                         rules,
+                        overlay_registry,
                     )
                 };
                 result
@@ -967,6 +968,7 @@ impl Simulation {
                             object_destination: None,
                         },
                         rules,
+                        overlay_registry,
                     )
                 };
                 if issued {
@@ -1009,7 +1011,7 @@ impl Simulation {
                 if !self.entity_owned_by_id(command_owner, *entity_id) {
                     return false;
                 }
-                self.undeploy_building(*entity_id, rules)
+                self.undeploy_building(*entity_id, rules, overlay_registry)
             }
             // The synchronized self-deploy order queues Unload; the concrete
             // Infantry51F6E0 handler selects Doing27/31 on the object's visit.
@@ -1096,7 +1098,13 @@ impl Simulation {
                 if !self.entity_owned_by_id(command_owner, *entity_id) {
                     return false;
                 }
-                production::sell_back(self, rules, *entity_id, production::SellOrder::Player)
+                production::sell_back(
+                    self,
+                    rules,
+                    *entity_id,
+                    production::SellOrder::Player,
+                    overlay_registry,
+                )
             }
             Command::SellWallAtCell { x, y } => {
                 let (Some(rules), Some(overlays)) = (rules, overlay_registry) else {
@@ -1414,6 +1422,7 @@ impl Simulation {
                         object_destination: None,
                     },
                     Some(rules),
+                    overlay_registry,
                 );
                 true
             }
@@ -1576,6 +1585,7 @@ impl Simulation {
                         rules,
                         *entity_id,
                         (*target_rx, *target_ry),
+                        overlay_registry,
                     );
                 }
                 true
@@ -1705,6 +1715,7 @@ impl Simulation {
                         )),
                     },
                     Some(rules),
+                    overlay_registry,
                 );
                 true
             }
@@ -1809,6 +1820,7 @@ impl Simulation {
                         )),
                     },
                     Some(rules),
+                    overlay_registry,
                 );
                 true
             }
@@ -2045,6 +2057,7 @@ impl Simulation {
                             object_destination: None,
                         },
                         Some(rules),
+                        overlay_registry,
                     );
                 }
                 true

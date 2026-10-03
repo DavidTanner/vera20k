@@ -148,7 +148,7 @@ fn the_strategy_timer_and_its_gates_match_native() {
             expected.next_range_i32_inclusive(1, 7);
         }
 
-        update_strategy(&mut sim, &rules, owner);
+        update_strategy(&mut sim, &rules, owner, None);
 
         let timer = sim.houses[&owner].strategy_timer;
         assert_eq!(
@@ -245,7 +245,7 @@ fn the_strategy_matches_native() {
         let mut expected = sim.scenario_rng.clone();
         expected.next_range_i32_inclusive(1, 7);
 
-        let delay = building_strategy(&mut sim, &rules, owner);
+        let delay = building_strategy(&mut sim, &rules, owner, None);
 
         let house = &sim.houses[&owner];
         assert_eq!(delay, int(&row["delay"]), "{label}");
@@ -316,7 +316,7 @@ fn the_fire_sale_matches_native() {
         let house = sim.houses.get_mut(&owner).unwrap();
         house.tracking.set_buildings_for_test(int(&row["current"]));
 
-        fire_sale(&mut sim, &rules, owner);
+        fire_sale(&mut sim, &rules, owner, None);
 
         let sold: Vec<i32> = (0..slots.len())
             .filter(|&slot| slots[slot].is_some_and(|id| selling(&sim, id)))

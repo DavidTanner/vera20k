@@ -10,35 +10,6 @@ use crate::sim::{
 };
 use crate::util::fixed_math::SimFixed;
 
-/// The observable 481180 selection corridor. Priority skips even blockers
-/// and RNG. Ground object occupation is checked regardless of selected plane;
-/// its sole exception is a live, stable-open Gate (481298..481313).
-pub(crate) fn select_slot(
-    input: DriveCoord,
-    priority: bool,
-    selected_raw: u8,
-    ground_raw: u8,
-    ground_gate_open: bool,
-    rng: &mut crate::sim::rng::SimRng,
-) -> Option<u8> {
-    use crate::sim::cell_kernel::{
-        CellQueryPoint, infantry_preferred_spot, select_infantry_subcell,
-    };
-    let preferred = infantry_preferred_spot(CellQueryPoint {
-        x: input.x,
-        y: input.y,
-    });
-    if priority {
-        return Some(preferred);
-    }
-    if selected_raw & 0x20 != 0 || (ground_raw & 0x40 != 0 && !ground_gate_open) {
-        return None;
-    }
-    // The center path draws even when all three functional slots are full.
-    let random_row = (preferred == 0).then(|| rng.next_range_u32(4) as u8);
-    select_infantry_subcell(preferred, selected_raw, false, random_row)
-}
-
 pub(crate) fn selected_head(
     input: DriveCoord,
     slot: u8,
@@ -380,6 +351,7 @@ mod tests {
         let c = terrain.cell_mut(10, 10).unwrap();
         c.level = 2;
         c.slope_type = 1;
+        let mut ordinary_cell_rows = 0;
         for row in selections {
             let i = &row["input"];
             let out = &row["output"];
@@ -387,12 +359,21 @@ mod tests {
             let bridge = i["bridge"].as_bool().unwrap();
             let ground = i["ground"].as_u64().unwrap() as u8;
             let deck = i["deck"].as_u64().unwrap() as u8;
+            let mut raw = RawCellOccupationGrid::default();
+            raw.mark_ground(10, 10, ground);
+            raw.mark_deck(10, 10, deck);
             let mut rng = crate::sim::rng::SimRng::new(i["seed"].as_u64().unwrap());
-            let slot = select_slot(
+            let layer = if bridge {
+                super::super::locomotor::MovementLayer::Bridge
+            } else {
+                super::super::locomotor::MovementLayer::Ground
+            };
+            let slot = super::super::bump_crush::place_infantry_in_native_cell(
+                &raw,
+                RawCellKey::Real(10, 10),
+                layer,
                 input,
                 i["priority"].as_bool().unwrap(),
-                if bridge { deck } else { ground },
-                ground,
                 i["gate"] == 2,
                 &mut rng,
             );
@@ -405,11 +386,8 @@ mod tests {
             .unwrap();
             let actual = slot.map(|s| selected_head(input, s, z, bridge));
             let expected = coord(&out["head"]);
-            assert_eq!(
-                actual,
-                (expected != DriveCoord { x: 0, y: 0, z: 0 }).then_some(expected),
-                "{i}"
-            );
+            let expected = (expected != DriveCoord { x: 0, y: 0, z: 0 }).then_some(expected);
+            assert_eq!(actual, expected, "{i}");
             assert_eq!(
                 rng.logical_view().index_a,
                 out["random_indices"][0].as_i64().unwrap() as i32,
@@ -420,7 +398,39 @@ mod tests {
                 out["random_indices"][1].as_i64().unwrap() as i32,
                 "{i}"
             );
+            if !i["priority"].as_bool().unwrap() && i["gate"] != 2 {
+                // Existing crew/slave/unload callers supply no priority or
+                // Gate exception. Compare their cell/subcell entry to these
+                // same original results, including the selected plane/draw.
+                let mut rng = crate::sim::rng::SimRng::new(i["seed"].as_u64().unwrap());
+                let slot = super::super::bump_crush::place_infantry_in_cell(
+                    &raw,
+                    10,
+                    10,
+                    layer,
+                    SimFixed::from_num(input.x & 255),
+                    SimFixed::from_num(input.y & 255),
+                    &mut rng,
+                );
+                assert_eq!(
+                    slot.map(|s| selected_head(input, s, z, bridge)),
+                    expected,
+                    "ordinary cell entry {i}"
+                );
+                assert_eq!(
+                    rng.logical_view().index_a,
+                    out["random_indices"][0].as_i64().unwrap() as i32,
+                    "ordinary cell entry {i}"
+                );
+                assert_eq!(
+                    rng.logical_view().index_b,
+                    out["random_indices"][1].as_i64().unwrap() as i32,
+                    "ordinary cell entry {i}"
+                );
+                ordinary_cell_rows += 1;
+            }
         }
+        assert_eq!(ordinary_cell_rows, 72);
         let rows = data["raw"].as_array().unwrap();
         assert_eq!(rows.len(), 160);
         for row in rows {
@@ -856,20 +866,18 @@ pub(super) fn prepare_step_head_at(
             ground_raw
         };
         let gate_open = if !priority && selected_raw & 0x20 == 0 && ground_raw & 0x40 != 0 {
-            occupancy
-                .first_building_on_layer(cell.0, cell.1, MovementLayer::Ground)
-                .and_then(|id| entities.get(id))
-                .is_some_and(|b| {
-                    rules
-                        .and_then(|r| r.object(interner.resolve(b.type_ref())))
-                        .is_some_and(|t| t.gate)
-                        && b.is_open_gate()
-                })
+            super::bump_crush::ground_gate_is_open(occupancy, entities, rules, interner, cell)
         } else {
             false
         };
-        let Some(slot) = select_slot(input, priority, selected_raw, ground_raw, gate_open, rng)
-        else {
+        let layer = if bridge {
+            MovementLayer::Bridge
+        } else {
+            MovementLayer::Ground
+        };
+        let Some(slot) = super::bump_crush::place_infantry_in_native_cell(
+            raw, raw_key, layer, input, priority, gate_open, rng,
+        ) else {
             raw_at(raw, owner, current, true, terrain, grid);
             return false;
         };

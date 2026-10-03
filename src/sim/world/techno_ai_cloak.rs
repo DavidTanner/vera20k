@@ -376,8 +376,13 @@ pub(crate) fn sensor_reevaluate_stock_cloak(
 /// Running this after `CloakRuntime::tick` has written the new state instead of
 /// before it is output-equivalent: the admission test reads only the cloaker's
 /// cell, its owner and each receiver's house — never the cloak state.
-fn detach_targeters_on_cloak(sim: &mut Simulation, cloaker_id: u64, rules: &RuleSet) {
-    sim.detach_all_pointer_expired(cloaker_id, rules);
+fn detach_targeters_on_cloak(
+    sim: &mut Simulation,
+    cloaker_id: u64,
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
+    sim.detach_all_pointer_expired(cloaker_id, rules, registry);
 }
 
 /// `FootClass::PerCellProcess @ 0x004D85D0`, the cell-enter (`param_2 == 2`)
@@ -552,7 +557,12 @@ fn original_health_ratio_corpus_populates_cloak_tick_facts() {
 /// `TechnoClass::CloakingTick @ 0x006FB740`. Stock cloakable objects are Units;
 /// the caller keeps this at the Unit Techno bracket head to preserve Scenario
 /// RNG ordering relative to the rest of that object's AI visit.
-pub(super) fn tick_stock_cloak_producer(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+pub(super) fn tick_stock_cloak_producer(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     let Some((category, type_ref, veterancy)) = sim
         .substrate
         .entities
@@ -597,7 +607,7 @@ pub(super) fn tick_stock_cloak_producer(sim: &mut Simulation, id: u64, rules: &R
         .map(|cloak| cloak.tick(facts, &mut sim.scenario_rng));
     if result.is_some_and(|result| result.began_cloaking) {
         // `StartCloaking @ 0x00703770` opens with `Detach_All(false)`.
-        detach_targeters_on_cloak(sim, id, rules);
+        detach_targeters_on_cloak(sim, id, rules, registry);
     }
     if result.is_some_and(|result| result.completed_cloak) {
         // The 1 → 2 completion at `0x006FBA98` snapshots the still-admitted
@@ -608,7 +618,7 @@ pub(super) fn tick_stock_cloak_producer(sim: &mut Simulation, id: u64, rules: &R
         // each receiver's passive-acquire provenance byte `+0x50C` first, which
         // `represented_assign_target_admitted` reproduces.
         let retained = sensor_targeters_in_native_dispatch_order(sim, id);
-        detach_targeters_on_cloak(sim, id, rules);
+        detach_targeters_on_cloak(sim, id, rules, registry);
         let commits = assign_target_commits(&sim.substrate.entities, Some(TargetKind::Entity(id)));
         for targeter_id in retained {
             if let Some(targeter) = sim.substrate.entities.get_mut(targeter_id) {

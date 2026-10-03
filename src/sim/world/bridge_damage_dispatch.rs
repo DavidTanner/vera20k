@@ -209,9 +209,12 @@ impl DamageHost for LiveDamage<'_> {
         };
         let (rx, ry) = self.cells().terrain().native_cell_coord(cell);
         let rules = self.drivers.rules;
-        self.drivers
-            .sim
-            .stop_all_targeting_cell(rx as u16, ry as u16, Some(rules));
+        self.drivers.sim.stop_all_targeting_cell(
+            rx as u16,
+            ry as u16,
+            Some(rules),
+            self.drivers.registry,
+        );
     }
 
     fn dirty(&mut self, _path: DispatchPath) {

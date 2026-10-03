@@ -90,7 +90,12 @@ const ENEMY_SEARCH_TIMER: CdTimer = CdTimer::started(0, 0);
 /// `HouseClass::Update @ 0x004F8FBE..0x004F9032`: a computer house whose
 /// Strategy timer has expired runs [`building_strategy`], and the timer
 /// restarts at this frame with the delay it returns.
-pub(crate) fn update_strategy(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
+pub(crate) fn update_strategy(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     let frame = sim.session.binary_frame as i32;
     let Some(house) = sim.houses.get(&owner) else {
         return;
@@ -101,7 +106,7 @@ pub(crate) fn update_strategy(sim: &mut Simulation, rules: &RuleSet, owner: Inte
     {
         return;
     }
-    let delay = building_strategy(sim, rules, owner);
+    let delay = building_strategy(sim, rules, owner, registry);
     if let Some(house) = sim.houses.get_mut(&owner) {
         house.strategy_timer.start(frame, delay);
     }
@@ -109,7 +114,12 @@ pub(crate) fn update_strategy(sim: &mut Simulation, rules: &RuleSet, owner: Inte
 
 /// `HouseClass::AI_Building_Strategy @ 0x004FD500` for an existing house:
 /// the module doc's steps; returns the timer's next delay.
-fn building_strategy(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) -> i32 {
+fn building_strategy(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> i32 {
     pick_enemy(sim, owner);
     forget_defeated_enemy(sim, owner);
     // `0x004FD77C..0x004FD79B`: AI_TryFireSW is a residual.
@@ -122,7 +132,7 @@ fn building_strategy(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) -
         advance_emergency_state(&mut house.strategy_emergency, frame, || money)
     });
     if emergency {
-        sell_off_and_hunt(sim, rules, owner, "state four");
+        sell_off_and_hunt(sim, rules, owner, "state four", registry);
     }
 
     // `0x004FD848..0x004FD911`: urgency slot 0 is the missing factory; slot
@@ -133,7 +143,7 @@ fn building_strategy(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) -
             .get(&owner)
             .is_none_or(|house| house.strategy_emergency.mode == 3);
         if !suppressed && !has_live_factory(sim, rules, owner) {
-            sell_off_and_hunt(sim, rules, owner, "no factory");
+            sell_off_and_hunt(sim, rules, owner, "no factory", registry);
         }
     }
 
@@ -143,12 +153,18 @@ fn building_strategy(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) -
 }
 
 /// IHouse Fire_Sale (vt+0x34) then All_To_Hunt (vt+0x38).
-fn sell_off_and_hunt(sim: &mut Simulation, rules: &RuleSet, owner: InternedId, why: &str) {
+fn sell_off_and_hunt(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    why: &str,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     log::debug!(
         "{} sells off and hunts ({why})",
         sim.interner.resolve(owner)
     );
-    fire_sale(sim, rules, owner);
+    fire_sale(sim, rules, owner, registry);
     all_to_hunt(sim, rules, owner);
 }
 
@@ -239,7 +255,12 @@ fn has_live_factory(sim: &Simulation, rules: &RuleSet, owner: InternedId) -> boo
 /// house's list that is not in limbo and has Health above zero, in list
 /// order. The list's length is read once; only a `FirestormWall=` sale
 /// leaves it at once, and no retail type sets that key.
-pub(crate) fn fire_sale(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
+pub(crate) fn fire_sale(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     let Some(house) = sim.houses.get(&owner) else {
         return;
     };
@@ -259,7 +280,7 @@ pub(crate) fn fire_sale(sim: &mut Simulation, rules: &RuleSet, owner: InternedId
                 !building.lifecycle.in_limbo && building.health.current > 0
             });
         if sells {
-            sell_back(sim, rules, id, SellOrder::Computer);
+            sell_back(sim, rules, id, SellOrder::Computer, registry);
         }
     }
 }

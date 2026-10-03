@@ -2543,8 +2543,9 @@ impl Simulation {
         &mut self,
         stable_id: u64,
         rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> ConcealOutcome {
-        self.techno_limbo_with_context(stable_id, UninitContext::with_rules(rules))
+        self.techno_limbo_with_context(stable_id, UninitContext::new(Some(rules), registry))
     }
 
     fn techno_limbo_with_context(
@@ -2606,7 +2607,7 @@ impl Simulation {
                 .is_some_and(|entity| {
                     entity.category == EntityCategory::Infantry && !entity.lifecycle.in_limbo
                 })
-            && let Err(cause) = self.infantry_stop_driver(stable_id, rules, None)
+            && let Err(cause) = self.infantry_stop_driver(stable_id, rules, context.registry())
         {
             log::debug!("infantry {stable_id} Limbo Stop_Driver: {cause}");
         }
@@ -3037,12 +3038,13 @@ impl Simulation {
         &mut self,
         request: LifecycleRequest,
         rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
         match request {
             LifecycleRequest::Uninit {
                 stable_id,
                 reason: _,
-            } => self.uninit_with_rules(stable_id, rules),
+            } => self.uninit_with_context(stable_id, UninitContext::new(Some(rules), registry)),
         }
     }
 
@@ -3288,18 +3290,34 @@ impl Simulation {
     ///   matching pointers at +0x3C/+0x40. The represented Team owner does not
     ///   yet retain both native pointers. Bridge damage needs that lifecycle
     ///   when those Team states are implemented.
-    pub(crate) fn stop_all_targeting_on_detach(&mut self, detach_id: u64, rules: Option<&RuleSet>) {
-        self.stop_all_targeting_target(TargetKind::Entity(detach_id), rules);
+    pub(crate) fn stop_all_targeting_on_detach(
+        &mut self,
+        detach_id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
+        self.stop_all_targeting_target(TargetKind::Entity(detach_id), rules, registry);
     }
 
     /// Apply_area_damage bridge success calls the same 0x0070D4A0 sweep with a
     /// CellClass pointer. This is not CellClass PointerExpired: Restore must
     /// precede the conditional target clear, in descending Techno order.
-    pub(crate) fn stop_all_targeting_cell(&mut self, rx: u16, ry: u16, rules: Option<&RuleSet>) {
-        self.stop_all_targeting_target(TargetKind::Cell(rx, ry), rules);
+    pub(crate) fn stop_all_targeting_cell(
+        &mut self,
+        rx: u16,
+        ry: u16,
+        rules: Option<&RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
+        self.stop_all_targeting_target(TargetKind::Cell(rx, ry), rules, registry);
     }
 
-    fn stop_all_targeting_target(&mut self, target: TargetKind, rules: Option<&RuleSet>) {
+    fn stop_all_targeting_target(
+        &mut self,
+        target: TargetKind,
+        rules: Option<&RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
         let mut listeners = self.substrate.entities.keys_sorted();
         listeners.reverse();
 
@@ -3309,7 +3327,7 @@ impl Simulation {
             }
 
             let restored = self
-                .mission_restore_on_target_detach(listener_id, rules)
+                .mission_restore_on_target_detach(listener_id, rules, registry)
                 .expect("detach sweep listener was resolved immediately before the Restore");
 
             let target_cleared = self.listener_targets(listener_id, target);
@@ -3350,7 +3368,12 @@ impl Simulation {
     /// this is not the global ObjectClass removal broadcast. Actual Infantry
     /// +28 is51AA10 -> Foot4D9960 -> Techno7077C0. Its extra +6C0 clear
     /// compares an InfantryType pointer with the hut and cannot match.
-    pub(crate) fn expire_infantry_bridge_hut_targets(&mut self, hut_id: u64) {
+    pub(crate) fn expire_infantry_bridge_hut_targets(
+        &mut self,
+        hut_id: u64,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
         // Infantry ctor517B34 appends to its type registry. Represented
         // PointerExpired receivers do not construct/delete registry entries;
         // stable construction IDs therefore preserve its descending cursor.
@@ -3384,8 +3407,8 @@ impl Simulation {
                 facts.3,
                 Some(facts.4),
                 PointerExpiryControl::DetachAll,
-                // Infantry listeners: no Unit class setter.
-                None,
+                Some(rules),
+                registry,
             );
             // Techno707B24 forwards this manager independently of control.
             crate::sim::spawn_manager::notify_pointer_expired(self, listener_id, hut_id);
@@ -3435,6 +3458,7 @@ impl Simulation {
         expired_owner: Option<InternedId>,
         control: PointerExpiryControl,
         rules: Option<&RuleSet>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(listener) = self.substrate.entities.get(listener_id) else {
             return;
@@ -3523,7 +3547,7 @@ impl Simulation {
             self.assign_target_represented(listener_id, None, rules)
                 .expect("expiry listener remains present");
             if mission_is_suspended {
-                self.mission_restore_after_target_expiry(listener_id, rules)
+                self.mission_restore_after_target_expiry(listener_id, rules, registry)
                     .expect("represented expiry restore remains available");
             }
         }
@@ -3753,14 +3777,19 @@ impl Simulation {
     ///
     /// The victim's FootClass parasite forward is control-insensitive too, so a
     /// cloaking host releases its parasite; the rules place the released owner.
-    pub(crate) fn detach_all_pointer_expired(&mut self, expired_id: u64, rules: &RuleSet) {
+    pub(crate) fn detach_all_pointer_expired(
+        &mut self,
+        expired_id: u64,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
         if !self.substrate.entities.contains(expired_id) {
             return;
         }
         self.broadcast_pointer_expired(
             expired_id,
             PointerExpiryControl::DetachAll,
-            UninitContext::with_rules(rules),
+            UninitContext::new(Some(rules), registry),
         );
     }
 
@@ -3943,6 +3972,7 @@ impl Simulation {
                     expired_owner,
                     control,
                     context.rules(),
+                    context.registry(),
                 );
                 // `TechnoClass::PointerExpired` forwards to the listener's
                 // SpawnManager: `0x00707B24 CALL 0x006B7C60`, gated only on
@@ -4114,7 +4144,7 @@ impl Simulation {
             && entity.capture_manager.is_some()
             && let Some(rules) = context.rules()
         {
-            self.free_all_captures(stable_id, rules);
+            self.free_all_captures(stable_id, rules, context.registry());
         }
         // `0x004DE604`: then the object leaves its team.
         if foot {
@@ -4255,7 +4285,7 @@ impl Simulation {
             // UnInit/drain control: building_death_anims joined evidence,
             // gamemd SHA1cdd1180e49024fbda8ad568caac2e86e.
             self.clear_all_building_anim_slots(stable_id);
-            self.clear_building_damage_fire_slots(stable_id, None);
+            self.clear_building_damage_fire_slots(stable_id, context.rules());
             // Active-frame Building43BEF5..43BF11 compares Health+6C with
             // the retained AI sample+544 after its slot/fire destructors.
             // A mismatch dirties power only, without publishing a sample or
@@ -4289,7 +4319,7 @@ impl Simulation {
             .get_mut(stable_id)
             .and_then(|entity| entity.take_deploy_anim())
         {
-            self.destroy_anim_with_context(anim, None);
+            self.destroy_anim_with_context(anim, context.rules());
         }
         self.destroy_building_light(stable_id);
         if self.substrate.anims.contains_key(stable_id) {

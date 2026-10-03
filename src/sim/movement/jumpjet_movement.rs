@@ -327,27 +327,25 @@ pub(crate) fn infantry_destination_coordinate(
         input.z,
     );
     let key = RawCellKey::from_native(terrain, cell);
+    let layer = if bridge {
+        MovementLayer::Bridge
+    } else {
+        MovementLayer::Ground
+    };
     let ground = raw.bits_at(key, MovementLayer::Ground);
-    let selected = raw.bits_at(
-        key,
-        if bridge {
-            MovementLayer::Bridge
-        } else {
-            MovementLayer::Ground
-        },
-    );
+    let selected = raw.bits_at(key, layer);
     let gate_open = selected & 0x20 == 0
         && ground & 0x40 != 0
-        && occupancy
-            .first_building_on_layer(xy.0 as u16, xy.1 as u16, MovementLayer::Ground)
-            .and_then(|id| entities.get(id))
-            .is_some_and(|building| {
-                rules
-                    .and_then(|rules| rules.object(interner.resolve(building.type_ref())))
-                    .is_some_and(|object| object.gate)
-                    && building.is_open_gate()
-            });
-    let slot = super::walk_head::select_slot(input, false, selected, ground, gate_open, rng)?;
+        && super::bump_crush::ground_gate_is_open(
+            occupancy,
+            entities,
+            rules,
+            interner,
+            (xy.0 as u16, xy.1 as u16),
+        );
+    let slot = super::bump_crush::place_infantry_in_native_cell(
+        raw, key, layer, input, false, gate_open, rng,
+    )?;
     let first_ground =
         super::ground_pose::ground_surface_z_at([input.x, input.y], false, Some(terrain), None)?;
     let mut adjusted = super::walk_head::selected_head(input, slot, first_ground, bridge);

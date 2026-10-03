@@ -509,6 +509,7 @@ fn retail_wood_occupants_match_native_list_lifetime_detach_and_rng() {
                     115,
                     59,
                     Some(&runtime.resources.rules),
+                    Some(&runtime.resources.overlay_registry),
                 );
             }
             assert_eq!(

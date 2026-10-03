@@ -471,12 +471,12 @@ mod tests {
     #[test]
     fn teleport_adapter_uses_distinct_producer_flags() {
         let mut entity = entity();
-        entity.teleport_state = Some(TeleportState {
-            phase: TeleportPhase::ChronoDelay,
-            target_rx: 1,
-            target_ry: 2,
-            being_warped_ticks: 4,
-        });
+        entity.install_teleport_state_for_test(Some(TeleportState::for_test(
+            TeleportPhase::ChronoDelay,
+            1,
+            2,
+            4,
+        )));
         let state = DrawState::for_entity(&entity, 45, 3, ObserverDrawContext::default()).state;
         assert_eq!(state.fx_flags, FX_WARP);
         assert_eq!(state.fx_params[0], 0.5);

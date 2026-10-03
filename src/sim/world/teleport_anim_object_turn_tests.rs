@@ -3,19 +3,21 @@
 
 use super::*;
 use crate::map::entities::EntityCategory;
+use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
+use crate::sim::world::common_raw_test_terrain_cell;
 
 fn rules(bind_warp_art: bool) -> RuleSet {
     let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[General]\nWarpOut=WARPOUT\n\n[InfantryTypes]\n0=CLEG\n\n\
          [VehicleTypes]\n0=CMON\n\n\
-         [CLEG]\nStrength=100\nSpeed=4\nSensorsSight=1\n\n\
-         [CMON]\nStrength=100\nSpeed=4\nSensorsSight=1\n",
+         [CLEG]\nStrength=100\nSpeed=4\nSensorsSight=1\nSpeedType=Foot\nMovementZone=Infantry\n\n\
+         [CMON]\nStrength=100\nSpeed=4\nSensorsSight=1\n\n[Clear]\nFoot=100%\n",
     ))
     .unwrap();
     let mut art = ArtRegistry::from_ini(&IniFile::from_str(
@@ -26,6 +28,37 @@ fn rules(bind_warp_art: bool) -> RuleSet {
     }
     rules.replace_art_registry_for_test(art);
     rules
+}
+
+/// Supply the already-revealed fixture's map-dependent Unlimbo producers
+///before invoking its first native Cell destination. Keep the physical Z2.
+fn install_destination_cells(sim: &mut Simulation, rules: &RuleSet) {
+    let speed_costs = rules
+        .terrain_rules
+        .semantics_by_name("Clear")
+        .unwrap()
+        .speed_costs;
+    sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(
+        32,
+        32,
+        (0..32)
+            .flat_map(|y| {
+                (0..32).map(move |x| crate::map::resolved_terrain::ResolvedTerrainCell {
+                    speed_costs,
+                    base_speed_costs: speed_costs,
+                    ..common_raw_test_terrain_cell(x, y, 2, false)
+                })
+            })
+            .collect(),
+    ));
+    sim.playfield_bounds = Some(
+        crate::map::playfield::PlayfieldBounds::from_normalized_local_size(32, -32, -32, 64, 64),
+    );
+    sim.playfield_size_height = Some(32);
+    // Reveal preceded map installation in relocating_owner. Finish the same
+    // Techno threat/Foot neighbor producers as the existing object-turn fixture.
+    sim.spatial_threat_after_unlimbo(1, rules, None);
+    sim.foot_neighbors_after_unlimbo(1, Some(rules));
 }
 
 /// An infantryman on Teleport with a warp armed from cell 5,5.
@@ -68,12 +101,12 @@ fn relocating_owner(category: EntityCategory, type_name: &str, target: (u16, u16
         entity.sub_cell = Some(0);
     }
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
-    entity.teleport_state = Some(TeleportState {
-        phase: TeleportPhase::Relocate,
-        target_rx: target.0,
-        target_ry: target.1,
-        being_warped_ticks: 0,
-    });
+    entity.install_teleport_state_for_test(Some(TeleportState::for_test(
+        TeleportPhase::Relocate,
+        target.0,
+        target.1,
+        0,
+    )));
     sim.substrate.entities.insert(entity);
     sim.substrate.next_stable_object_id = 2;
     assert!(matches!(
@@ -259,10 +292,9 @@ fn a_chrono_delay_turn_builds_no_warp_anim() {
         .entities
         .get_mut(1)
         .unwrap()
-        .teleport_state
-        .as_mut()
+        .teleport_state_for_test_mut()
         .unwrap()
-        .being_warped_ticks = 5;
+        .set_ticks_for_test(5);
 
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .unwrap();
@@ -272,9 +304,8 @@ fn a_chrono_delay_turn_builds_no_warp_anim() {
             .entities
             .get(1)
             .unwrap()
-            .teleport_state
-            .as_ref()
-            .map(|state| state.phase),
+            .teleport_state()
+            .map(|state| state.phase()),
         Some(TeleportPhase::ChronoDelay)
     );
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
@@ -323,8 +354,9 @@ fn a_restored_destination_warps_at_the_teleport_process_entry() {
     use crate::sim::mission::concrete_effects::represented_assign_destination_mode_one;
     let rules = rules(false);
     let mut sim = relocating_legionnaire((8, 9));
+    install_destination_cells(&mut sim, &rules);
     let mover = sim.substrate.entities.get_mut(1).unwrap();
-    mover.teleport_state = None;
+    mover.install_teleport_state_for_test(None);
     represented_assign_destination_mode_one(mover, Some(NavTargetRef::cell(8, 9)));
     mover.navigation.pending_arrival_clear = true;
 
@@ -337,6 +369,96 @@ fn a_restored_destination_warps_at_the_teleport_process_entry() {
     assert!(mover.movement_target.is_none());
 }
 
+/// Supplied Clear-overlay inputs exercise the production callback context,
+/// not a native overlay-admission golden. Restore must validate its borrowed
+/// registry before changing Mission, NavCom, reservations or any RNG stream.
+#[test]
+fn restoration_callbacks_forward_overlay_inputs_before_any_destination_write() {
+    use crate::map::overlay_types::OverlayTypeRegistry;
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::mission::authority::MissionAuthorityError;
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
+
+    let rules = rules(false);
+    let registry = OverlayTypeRegistry::from_ini(
+        &IniFile::from_str(
+            "[OverlayTypes]\n0=RESTORE_OVERLAY\n[RESTORE_OVERLAY]\nLand=Clear\n\
+             [Clear]\nFoot=100%\n",
+        ),
+        None,
+    );
+    let overlay = registry.id_for_name("RESTORE_OVERLAY").unwrap();
+    let unregistered = OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
+    let destination = NavTargetRef::cell(12, 7);
+
+    for expiry in [true, false] {
+        let mut sim = relocating_legionnaire((8, 9));
+        install_destination_cells(&mut sim, &rules);
+        let mover = sim.substrate.entities.get_mut(1).unwrap();
+        mover.install_teleport_state_for_test(None);
+        mover.mission.apply_test_fixture(MissionTestFixture {
+            current: MissionId::from_known(MissionType::Attack),
+            suspended: MissionId::from_known(MissionType::Move),
+            queued: MissionId::NONE,
+            movement_bypass_latch: 0,
+            handler_state: 0,
+            mission_start_frame: 0,
+            ai_counter: 0,
+            dispatch_timer: MissionDispatchTimer::at_frame(0),
+        });
+        mover.navigation.nav_com = Some(NavTargetRef::cell(8, 9));
+        mover.navigation.suspended_nav_com = Some(destination);
+        let terrain = sim.resolved_terrain.as_mut().unwrap();
+        let cell = terrain.native_cell_identity((12, 7));
+        terrain.write_native_cell_overlay(cell, Some(overlay));
+        let before = (
+            bincode::serialize(sim.substrate.entities.get(1).unwrap()).unwrap(),
+            bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap(),
+            sim.rng_state(),
+        );
+
+        for missing in [None, Some(&unregistered)] {
+            let result = if expiry {
+                sim.mission_restore_after_target_expiry(1, Some(&rules), missing)
+            } else {
+                sim.mission_restore_on_target_detach(1, Some(&rules), missing)
+            };
+            assert!(matches!(
+                result,
+                Err(MissionAuthorityError::AuthorityUnavailable(_))
+            ));
+            assert_eq!(
+                (
+                    bincode::serialize(sim.substrate.entities.get(1).unwrap()).unwrap(),
+                    bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap(),
+                    sim.rng_state(),
+                ),
+                before,
+                "expiry={expiry}: unavailable inputs refuse before the Restore transaction"
+            );
+        }
+
+        let result = if expiry {
+            sim.mission_restore_after_target_expiry(1, Some(&rules), Some(&registry))
+        } else {
+            sim.mission_restore_on_target_detach(1, Some(&rules), Some(&registry))
+        };
+        assert!(result.unwrap());
+        let mover = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(mover.mission.current().known(), Some(MissionType::Move));
+        assert_eq!(mover.mission.suspended(), MissionId::NONE);
+        assert_eq!(mover.navigation.nav_com, Some(destination));
+        assert_eq!(
+            crate::sim::movement::motion_query::is_moving(mover),
+            Some(true)
+        );
+        assert_eq!(mover.teleport_state().unwrap().target_cell(), Some((12, 7)));
+        assert_eq!((mover.position.rx, mover.position.ry), (5, 5));
+        assert_ne!(raw_bits(&sim, (12, 7)), 0, "the restored Cell is reserved");
+    }
+}
+
 /// A ground order to an infantryman on Teleport reaches the Infantry setter,
 /// which arms the warp, not a route no Process follows.
 #[test]
@@ -344,7 +466,12 @@ fn a_ground_order_arms_the_warp() {
     use crate::sim::world::GroundMove;
     let rules = rules(false);
     let mut sim = relocating_legionnaire((8, 9));
-    sim.substrate.entities.get_mut(1).unwrap().teleport_state = None;
+    install_destination_cells(&mut sim, &rules);
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .install_teleport_state_for_test(None);
 
     let accepted = sim.issue_ground_move(
         GroundMove {
@@ -357,13 +484,14 @@ fn a_ground_order_arms_the_warp() {
             object_destination: None,
         },
         Some(&rules),
+        None,
     );
 
     assert!(accepted);
     let mover = sim.substrate.entities.get(1).unwrap();
     assert!(mover.movement_target.is_none());
-    let warp = mover.teleport_state.as_ref().expect("armed warp");
-    assert_eq!((warp.target_rx, warp.target_ry), (12, 7));
+    let warp = mover.teleport_state().expect("armed warp");
+    assert_eq!(warp.target_cell().unwrap(), (12, 7));
 }
 
 /// A warp the Teleport armed waits while a Drive piggybacks over it: the
@@ -388,7 +516,7 @@ fn an_armed_warp_waits_while_a_drive_piggyback_is_active() {
     let mover = sim.substrate.entities.get_mut(1).unwrap();
     assert_eq!((mover.position.rx, mover.position.ry), (5, 5));
     assert_eq!(
-        mover.teleport_state.as_ref().map(|state| state.phase),
+        mover.teleport_state().map(|state| state.phase()),
         Some(TeleportPhase::Relocate)
     );
 

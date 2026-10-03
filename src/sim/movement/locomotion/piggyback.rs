@@ -54,15 +54,13 @@ pub struct WalkRuntime {
 /// Class-local state that travels with the locomotor object.
 ///
 /// Special process state is carried here rather than reconstructed from a phase
-/// byte when a complete locomotor is suspended or loaded. Teleport and Rocket
-/// are the exceptions: their process state has one owner on the entity
-/// (`GameEntity::teleport_state`, `rocket_state`), and their variants only
-/// mark the class.
+/// byte when a complete locomotor is suspended or loaded. Rocket's process
+/// state remains entity-owned; its variant only marks that class.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LocomotorRuntimePayload {
     Drive(SlopeTransitionState),
     Walk(WalkRuntime),
-    Teleport,
+    Teleport(super::super::teleport_movement::TeleportRuntime),
     Rocket,
     Hover(super::super::hover::HoverRuntime),
     Ship(SlopeTransitionState),
@@ -77,7 +75,7 @@ impl LocomotorRuntimePayload {
                 Self::Drive(SlopeTransitionState::at_binary_frame(binary_frame))
             }
             LocomotorKind::Walk => Self::Walk(WalkRuntime::default()),
-            LocomotorKind::Teleport => Self::Teleport,
+            LocomotorKind::Teleport => Self::Teleport(Default::default()),
             LocomotorKind::Rocket => Self::Rocket,
             LocomotorKind::Hover => Self::Hover(Default::default()),
             LocomotorKind::Ship => Self::Ship(SlopeTransitionState::at_binary_frame(binary_frame)),
@@ -143,6 +141,21 @@ fn begin_with(state: &mut LocomotorState, incoming: Option<LocomotorState>) -> B
     let displaced = std::mem::replace(state, incoming);
     state.piggyback = Some(StashedLocomotor(Box::new(displaced)));
     BeginOutcome::Installed
+}
+
+/// Supply an effect instance beneath a fixture's existing active class without
+/// reconstructing the active class or dropping its retained state.
+#[cfg(test)]
+pub(crate) fn suspend_effect_for_test(
+    active: LocomotorState,
+    mut effect: LocomotorState,
+) -> LocomotorState {
+    assert!(active.piggyback.is_none(), "fixture already has a stash");
+    assert_eq!(
+        begin_with(&mut effect, Some(active)),
+        BeginOutcome::Installed
+    );
+    effect
 }
 
 /// BEGIN with a freshly constructed `kind` object

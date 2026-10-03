@@ -735,8 +735,9 @@ impl Simulation {
         &mut self,
         receiver: u64,
         rules: Option<&RuleSet>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<bool, MissionAuthorityError> {
-        let mut effects = RepresentedConcreteMissionEffects::new(rules, None);
+        let mut effects = RepresentedConcreteMissionEffects::new(rules, overlay_registry);
         self.mission_restore_exact_with_effects(receiver, &mut effects)
     }
 
@@ -756,8 +757,9 @@ impl Simulation {
         &mut self,
         receiver: u64,
         rules: Option<&RuleSet>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<bool, MissionAuthorityError> {
-        let mut effects = RepresentedConcreteMissionEffects::new(rules, None);
+        let mut effects = RepresentedConcreteMissionEffects::new(rules, overlay_registry);
         self.mission_restore_exact_with_effects(receiver, &mut effects)
     }
 

@@ -234,7 +234,12 @@ pub(crate) fn repair_step_cost(rules: &RuleSet, object: &ObjectType) -> i32 {
 /// owner's available money is below `[AI] CreditReserve=` (`0x00450781`),
 /// else the computer's auto-repair start (`0x004506B2`). Every building then
 /// takes the repair step (`0x00450813`).
-pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id: u64) {
+pub(crate) fn update_repair_and_power(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
@@ -247,7 +252,7 @@ pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id:
         && can_repair_building(sim, rules, id);
     if admitted {
         if available_money(sim, owner) < rules.general.credit_reserve {
-            low_credit_sale(sim, rules, id);
+            low_credit_sale(sim, rules, id, registry);
         } else {
             auto_repair_start(sim, rules, id);
         }
@@ -266,7 +271,12 @@ pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id:
 /// (`Factory=BuildingType`, `Type+0xEB8 == 7`, `0x004507DE`) and one at or
 /// above ConditionRed (`0x004507ED`) stay. The rest take [`sell_back`]'s
 /// computer order (`0x0045080D`).
-fn low_credit_sale(sim: &mut Simulation, rules: &RuleSet, id: u64) {
+fn low_credit_sale(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
@@ -295,7 +305,7 @@ fn low_credit_sale(sim: &mut Simulation, rules: &RuleSet, id: u64) {
     if roll >= tech_level as u32 || yard || !below_red {
         return;
     }
-    let _ = sell_back(sim, rules, id, SellOrder::Computer);
+    let _ = sell_back(sim, rules, id, SellOrder::Computer, registry);
 }
 
 /// The computer's auto-repair start (`0x004506B2..0x0045077C`). The owner's

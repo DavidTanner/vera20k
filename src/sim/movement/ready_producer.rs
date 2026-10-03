@@ -157,17 +157,11 @@ fn drive_family(
 }
 
 /// Teleport's readiness input: its `Is_Moving_Now` is the base thunk over
-/// `Is_Moving` ([`super::teleport_movement::TeleportState::is_moving`], a
-/// legacy phase adapter). Process `0x00719B0D` can also reach Stop through
-/// the owner destination setter.
+/// `Is_Moving` ([`super::motion_query::is_moving`]). Process `0x00719B0D`
+/// can also reach Stop through the owner destination setter.
 fn teleport(entity: &GameEntity) -> LocomotorReadyState {
     LocomotorReadyState::Teleport {
-        state: u8::from(
-            entity
-                .teleport_state
-                .as_ref()
-                .is_some_and(super::teleport_movement::TeleportState::is_moving),
-        ),
+        state: u8::from(super::motion_query::is_moving(entity).unwrap_or(false)),
     }
 }
 

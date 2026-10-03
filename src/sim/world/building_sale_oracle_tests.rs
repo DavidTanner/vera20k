@@ -468,7 +468,8 @@ fn sales_through_the_frame_visit_on_the_original_frames() {
                     &mut s.sim,
                     &s.rules,
                     building,
-                    production::SellOrder::Player
+                    production::SellOrder::Player,
+                    Some(overlay)
                 ));
             }
             let grid = s.sim.path_grid_snapshot();
@@ -631,7 +632,7 @@ fn the_computers_low_credit_sale_matches_the_original_admission() {
             row["random_indices"]["before"],
             "{name}: seeded"
         );
-        production::update_repair_and_power(&mut sim, &rules, 1);
+        production::update_repair_and_power(&mut sim, &rules, 1, None);
         assert_eq!(
             cursors(&sim),
             row["random_indices"]["after"],

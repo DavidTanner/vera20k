@@ -135,7 +135,8 @@ pub fn tick_aircraft_missions(
     let order = sim.substrate.logic.as_slice().to_vec();
     order
         .into_iter()
-        .filter(|&id| dispatch_aircraft_mission(sim, rules, id))
+        // This batch fixture has no resident overlay table.
+        .filter(|&id| dispatch_aircraft_mission(sim, rules, id, None))
         .collect()
 }
 
@@ -149,7 +150,12 @@ pub fn tick_aircraft_missions(
 /// run a Mission_Attack strike visit (states 4..9) for this aircraft this
 /// frame. RESIDUAL: that visit runs in VERA's combat phase after the live
 /// pass, like every other attacker's FireAt, so its draws do not interleave.
-pub(crate) fn dispatch_aircraft_mission(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
+pub(crate) fn dispatch_aircraft_mission(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> bool {
     let Some(e) = sim.substrate.entities.get(id) else {
         return false;
     };
@@ -171,7 +177,7 @@ pub(crate) fn dispatch_aircraft_mission(sim: &mut Simulation, rules: &RuleSet, i
         return false;
     }
     match mission_step(sim, rules, id, &mission) {
-        Some(m) => apply_mission_mutation(sim, rules, m),
+        Some(m) => apply_mission_mutation(sim, rules, m, registry),
         None => false,
     }
 }
@@ -623,7 +629,12 @@ fn enter_idle_mode(
 }
 
 /// Apply one handler decision. Returns the Mission_Attack fire request.
-fn apply_mission_mutation(sim: &mut Simulation, rules: &RuleSet, m: MissionMutation) -> bool {
+fn apply_mission_mutation(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    m: MissionMutation,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) -> bool {
     // No "Unit lost" here: `AircraftClass::Enter_Idle_Mode @ 0x004176F0`
     // handles the AirportBound-without-airfield case by calling the
     // `Crash` slot `+0x3DC` directly with no attacker (`0x004179FD`,
@@ -644,7 +655,7 @@ fn apply_mission_mutation(sim: &mut Simulation, rules: &RuleSet, m: MissionMutat
             .get(m.id)
             .is_some_and(|entity| entity.category == EntityCategory::Aircraft);
         if aircraft {
-            sim.foot_crash(m.id, None, rules);
+            sim.foot_crash(m.id, None, rules, registry);
         } else {
             let infantry_terminal = sim.begin_raw_infantry_death(m.id);
             if !infantry_terminal && let Some(entity) = sim.substrate.entities.get_mut(m.id) {
@@ -705,7 +716,13 @@ fn apply_mission_mutation(sim: &mut Simulation, rules: &RuleSet, m: MissionMutat
     if m.paradrop_try_drop {
         let aircraft_id = m.id;
         let drop_interval = drop_payload::PARADROP_DROP_INTERVAL_FRAMES;
-        let result = drop_payload::try_drop(sim, rules, aircraft_id, m.paradrop_payload_count_pre);
+        let result = drop_payload::try_drop(
+            sim,
+            rules,
+            aircraft_id,
+            m.paradrop_payload_count_pre,
+            registry,
+        );
         let frame = sim.session.binary_frame as i32;
         if let Some(entity) = sim.substrate.entities.get_mut(aircraft_id) {
             if let Some(AircraftMission::ParaDropOverfly {

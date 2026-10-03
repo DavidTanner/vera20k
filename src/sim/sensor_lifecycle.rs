@@ -510,7 +510,7 @@ mod tests {
         assert!(sim.fog.has_sensor_for_house(americans, 33, 30));
         assert!(!sim.fog.has_sensor_for_house(americans, 48, 30));
 
-        sim.techno_limbo_with_rules(first, &rules);
+        sim.techno_limbo_with_rules(first, &rules, None);
         assert!(
             sim.fog.has_sensor_for_house(americans, 33, 30),
             "the overlapping second deposit remains positive"
@@ -539,7 +539,7 @@ mod tests {
             entity.position.rx = 5;
             entity.position.ry = 5;
         }
-        sim.techno_limbo_with_rules(second, &rules);
+        sim.techno_limbo_with_rules(second, &rules, None);
         assert!(
             sim.fog.has_sensor_for_house(soviet, 57, 30),
             "the removal debits the live owner, not the deposit's recorded house"
@@ -590,7 +590,7 @@ mod tests {
         assert!(!sim.substrate.entities.get(id).unwrap().building_up());
         assert!(sim.fog.has_sensor_for_house(owner, 54, 40));
         assert!(!sim.fog.has_sensor_for_house(owner, 55, 40));
-        sim.techno_limbo_with_rules(id, &rules);
+        sim.techno_limbo_with_rules(id, &rules, None);
         let index = 40 * usize::from(sim.fog.width) + 55;
         assert_eq!(sim.fog.sensors_by_house[&owner][index], -1);
     }
@@ -657,7 +657,7 @@ mod tests {
         // `this->Owner->ArrayIndex` at removal time, and `ChangeOwner` has
         // already overwritten that pointer (`0x007014A0 param_1[0x87] =
         // param_2`). The builder's credit is therefore never returned.
-        sim.techno_limbo_with_rules(id, &rules);
+        sim.techno_limbo_with_rules(id, &rules, None);
         let index = 40 * usize::from(sim.fog.width) + 54;
         assert_eq!(
             sim.fog.disguise_detect_by_house[&soviet][index], 1,
@@ -700,7 +700,7 @@ mod tests {
 
         let americans = sim.interner.intern("Americans");
         sim.change_owner(id, americans);
-        sim.techno_limbo_with_rules(id, &rules);
+        sim.techno_limbo_with_rules(id, &rules, None);
 
         let row = 40 * usize::from(sim.fog.width);
         let inside = row + 54; // inside both the 15-cell add and the 20-cell remove

@@ -328,13 +328,15 @@ impl Simulation {
     /// yet (Slice-8 follow-up); only the busy-signalling role moved off it.
     #[cfg(test)]
     pub(crate) fn tick_order_intents_post_combat(&mut self, rules: Option<&RuleSet>) {
-        self.tick_order_intents_post_combat_except(rules, &BTreeSet::new());
+        // This compatibility fixture has no live overlay registry.
+        self.tick_order_intents_post_combat_except(rules, &BTreeSet::new(), None);
     }
 
     pub(crate) fn tick_order_intents_post_combat_except(
         &mut self,
         rules: Option<&RuleSet>,
         turn_suppressed: &BTreeSet<u64>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
         // Without a published grid no order resumes (air resumes included).
         if self.path_grid().is_none() {
@@ -410,6 +412,7 @@ impl Simulation {
                         object_destination: None,
                     },
                     rules,
+                    overlay_registry,
                 );
             }
         }
@@ -646,7 +649,7 @@ impl Simulation {
                     old_house.notify_building_capture(); //519F4F, Trigger event3 latch
                 }
                 self.announce_engineer_capture(building_id, owner, rules);
-                self.change_owner_with_rules(building_id, owner, rules);
+                self.change_owner_with_rules(building_id, owner, rules, registry);
                 if let Some(building) = self.substrate.entities.get_mut(building_id) {
                     building.record_infantry_capture_type(native_type_index);
                 }
@@ -654,7 +657,10 @@ impl Simulation {
             }
             //519EAACapturable=false consumes too.519FF0 repair and519F9A
             //capture join Tag event48 then virtualUnInit, with no Foot tail.
-            self.uninit_with_rules(engineer_id, rules);
+            self.uninit_with_context(
+                engineer_id,
+                super::UninitContext::new(Some(rules), registry),
+            );
             return Ok(EngineerEntryResult {
                 bridge_state_changed: changed,
                 return_before_foot: true,
@@ -680,10 +686,13 @@ impl Simulation {
         })?;
         //519D17..519D36 descends Infantry's registry with +28(hut,false).
         //Clearing NavCom does not stop a retained Walk head/destination.
-        self.expire_infantry_bridge_hut_targets(building_id);
+        self.expire_infantry_bridge_hut_targets(building_id, rules, registry);
         changed |= self.scatter_building_infantry(building_id, rules, registry)?;
         // Attached Tag6E53A0 remains a separate synchronous receiver boundary.
-        self.uninit_with_rules(engineer_id, rules);
+        self.uninit_with_context(
+            engineer_id,
+            super::UninitContext::new(Some(rules), registry),
+        );
         Ok(EngineerEntryResult {
             bridge_state_changed: changed,
             return_before_foot: true,
@@ -1391,6 +1400,7 @@ impl Simulation {
                             object_destination: None,
                         },
                         Some(rules),
+                        overlay_registry,
                     );
                     // No-op if A* fails — pursuit retries next tick.
                 }

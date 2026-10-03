@@ -566,6 +566,7 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
                 Some(owner),
                 PointerExpiryControl::Uninit,
                 Some(&s.rules),
+                None,
             );
         }
         other => panic!("{context}: operation {other}"),

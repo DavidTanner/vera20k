@@ -16,6 +16,7 @@ use crate::sim::pathfinding::BlockerNeighborCounts;
 
 use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::sim::components::DriveCoord;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::MovementLayer;
@@ -219,8 +220,14 @@ pub fn cell_passable_for_infantry(occ: Option<&CellOccupancy>, layer: MovementLa
 /// The selected byte (deck on a bridge, else ground) refuses the whole cell on
 /// its vehicle bit (`0x0048126B..0x0048128A`); the ground byte's object bit
 /// refuses either plane (`0x00481298`) unless the 0x40 occupier is a passable
-/// Gate (`Gate=`, `+0x16B7`, `0x004525F0`). VERA marks 0x40 only for landed
-/// aircraft and crates, never a Gate. The building bit (0x80) is not read, so
+/// Gate (`Gate=`, `+0x16B7`, `0x004525F0`).
+///
+/// RESIDUAL: the slave, crew, drop, unload and parasite cell-coordinate callers
+/// lack the live Gate context and still supply `false`. A ground object bit
+/// belonging to an open Gate therefore refuses before RNG where native may
+/// admit; their native comparisons do not cover that exception. Callers with
+/// the context use the native-cell owner.
+/// The building bit (0x80) is not read, so
 /// a dying building's own cells admit its crew. Those refusals return before
 /// any draw. A request within 60 leptons of the centre, or in the north-west
 /// quadrant (preference 0, `0x004811F5..0x00481212`), then draws its
@@ -240,22 +247,66 @@ pub(crate) fn place_infantry_in_cell(
         raw,
         crate::sim::occupancy::RawCellKey::Real(rx, ry),
         layer,
-        sub_x,
-        sub_y,
+        DriveCoord {
+            x: (i32::from(rx) << 8).wrapping_add(sub_x.to_num::<i32>()),
+            y: (i32::from(ry) << 8).wrapping_add(sub_y.to_num::<i32>()),
+            z: 0,
+        },
+        false,
+        false,
         rng,
     )
 }
 
-/// [`place_infantry_in_cell`] on the CellClass a Map lookup returned, which
-/// is MapClass's off-map cell for a coordinate outside the map.
+/// The ground Gate input to `CellClass::PlaceInfantryInCell @ 0x00481180`:
+/// `0x00481298..0x00481313` reads the first ground building (`0x0047C4D0`),
+/// `Gate=` and its canonical `BuildingClass::IsOpenGate @ 0x004525F0` answer.
+/// The caller keeps the priority, selected-plane vehicle and ground-object
+/// gates before this live read; no occupation byte or RNG is changed here.
+pub(crate) fn ground_gate_is_open(
+    occupancy: &OccupancyGrid,
+    entities: &EntityStore,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    interner: &crate::sim::intern::StringInterner,
+    cell: (u16, u16),
+) -> bool {
+    occupancy
+        .first_building_on_layer(cell.0, cell.1, MovementLayer::Ground)
+        .and_then(|id| entities.get(id))
+        .is_some_and(|building| {
+            rules
+                .and_then(|rules| rules.object(interner.resolve(building.type_ref())))
+                .is_some_and(|object| object.gate)
+                && building.is_open_gate()
+        })
+}
+
+/// `CellClass::PlaceInfantryInCell @ 0x00481180` selection on the CellClass
+/// a Map lookup returned, including the shared off-map cell. The caller owns
+/// the input XYZ, selected plane and the ground Gate's passability. Preference
+/// reads incoming XY low bytes; priority skips raw blockers and RNG. Ordinary
+/// placement checks selected-plane vehicles and ground objects before the
+/// centre-row Scenario draw, including when the selected plane is full.
+///
+/// `walk_head_occupation` compares all 176 original selection controls. Packed
+/// output XYZ remains with `walk_head::selected_head`; its caller samples ground
+/// at the original input independently of the selected subcell offset.
 pub(crate) fn place_infantry_in_native_cell(
     raw: &crate::sim::occupancy::RawCellOccupationGrid,
     cell: crate::sim::occupancy::RawCellKey,
     layer: MovementLayer,
-    sub_x: SimFixed,
-    sub_y: SimFixed,
+    input: DriveCoord,
+    priority: bool,
+    ground_gate_open: bool,
     rng: &mut SimRng,
 ) -> Option<u8> {
+    let preferred = cell_kernel::infantry_preferred_spot(CellQueryPoint {
+        x: input.x,
+        y: input.y,
+    });
+    if priority {
+        return Some(preferred);
+    }
     let ground = raw.bits_at(cell, MovementLayer::Ground);
     let mask = if layer == MovementLayer::Bridge {
         raw.bits_at(cell, MovementLayer::Bridge)
@@ -264,12 +315,11 @@ pub(crate) fn place_infantry_in_native_cell(
     };
     let refusal_bits = (mask & cell_kernel::INFANTRY_OCCUPATION_VEHICLE_BIT)
         | (ground & cell_kernel::INFANTRY_OCCUPATION_OBJECT_BIT);
-    if !cell_kernel::infantry_occupation_allows(refusal_bits, true, false) {
+    if !cell_kernel::infantry_occupation_allows(refusal_bits, true, ground_gate_open) {
         return None;
     }
-    let quadrant: u8 = get_subcell_quadrant(sub_x, sub_y);
-    let random_row = (quadrant == 0).then(|| rng.next_range_u32(4) as u8);
-    cell_kernel::select_infantry_subcell(quadrant, mask, false, random_row)
+    let random_row = (preferred == 0).then(|| rng.next_range_u32(4) as u8);
+    cell_kernel::select_infantry_subcell(preferred, mask, false, random_row)
 }
 
 /// The older cell-list approximation of [`place_infantry_in_cell`], still

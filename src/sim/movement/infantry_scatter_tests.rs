@@ -36,6 +36,50 @@ fn sim_with(entity: GameEntity) -> Simulation {
     sim
 }
 
+/// Original51AA40 asks active718080, then the physical Cell4834A0 before
+/// its current-Attack/same-reference exception. An armed CLEG transaction
+/// cannot approve that prefix without map inputs. No admission is executed
+/// by this preview and the complete owned state/RNG must remain unchanged.
+#[test]
+fn armed_teleport_destination_requires_the_current_cell_inputs() {
+    use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n0=CLEG\n[CLEG]\nSpeed=5\nMovementZone=Infantry\n\
+         Locomotor={4A582747-9839-11d1-B709-00A024DDAFD1}\n",
+    ))
+    .unwrap();
+    let mut sim = Simulation::with_seed(31);
+    let id = sim
+        .construct_object_limbo_at_height("CLEG", "Americans", 10, 10, 0, 0, &rules)
+        .unwrap();
+    let actor = sim.substrate.entities.get_mut(id).unwrap();
+    actor.lifecycle.in_limbo = false;
+    set_mission(actor, MissionType::Guard);
+    assert!(
+        actor.infantry.is_some(),
+        "fixture must reach the Infantry setter"
+    );
+    actor.install_teleport_state_for_test(Some(TeleportState::for_test(
+        TeleportPhase::Relocate,
+        12,
+        10,
+        16,
+    )));
+    assert_eq!(super::super::motion_query::is_moving(actor), Some(true));
+    let before = serde_json::to_value(&*actor).unwrap();
+    let rng = sim.rng_state();
+    assert!(sim.resolved_terrain.is_none());
+    assert!(
+        !sim.infantry_destination_inputs_available(id, NavTargetRef::cell(13, 10), &rules, None,),
+        "armed Teleport must require its physical current Cell"
+    );
+    assert_eq!(
+        serde_json::to_value(sim.substrate.entities.get(id).unwrap()).unwrap(),
+        before
+    );
+    assert_eq!(sim.rng_state(), rng);
+}
+
 /// The hut caller's `Scatter(NULL, 1, 1)` rows (tools/spatial_oracle/hut_scatter)
 /// through the production receiver: its gates on the man each row describes,
 /// then its one `RandomRanged(0, 4)` from the corpus seed. This fixture has

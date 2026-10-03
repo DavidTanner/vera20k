@@ -323,6 +323,52 @@ impl LocomotorState {
         }
     }
 
+    pub(crate) fn teleport_runtime(&self) -> Option<&super::teleport_movement::TeleportRuntime> {
+        match (self.kind, &self.runtime_payload) {
+            (LocomotorKind::Teleport, LocomotorRuntimePayload::Teleport(runtime)) => Some(runtime),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn teleport_runtime_mut(
+        &mut self,
+    ) -> Option<&mut super::teleport_movement::TeleportRuntime> {
+        match (self.kind, &mut self.runtime_payload) {
+            (LocomotorKind::Teleport, LocomotorRuntimePayload::Teleport(runtime)) => Some(runtime),
+            _ => None,
+        }
+    }
+
+    /// Foot warp-effect readers see an effect held by the complete suspended
+    /// instance too. This view stores nothing and does not dispatch Process.
+    pub(crate) fn teleport_effect_state(&self) -> Option<&super::teleport_movement::TeleportState> {
+        self.teleport_runtime()
+            .and_then(super::teleport_movement::TeleportRuntime::warp)
+            .or_else(|| self.piggyback.as_ref()?.teleport_effect_state())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_teleport_instance(&self) -> bool {
+        self.teleport_runtime().is_some()
+            || self
+                .piggyback
+                .as_ref()
+                .is_some_and(|l| l.has_teleport_instance())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn teleport_instance_for_test_mut(
+        &mut self,
+    ) -> Option<&mut super::teleport_movement::TeleportRuntime> {
+        if self.kind == LocomotorKind::Teleport {
+            return self.teleport_runtime_mut();
+        }
+        self.piggyback
+            .as_mut()?
+            .suspended_mut_for_test()
+            .teleport_instance_for_test_mut()
+    }
+
     /// The cell of Walk's destination coordinate.
     #[cfg(test)]
     pub(crate) fn walk_destination_cell(&self) -> Option<(u16, u16)> {

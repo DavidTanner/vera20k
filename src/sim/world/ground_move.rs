@@ -26,6 +26,7 @@
 
 use super::Simulation;
 use crate::map::entities::EntityCategory;
+use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::locomotor_type::{LocomotorKind, SpeedType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, NavTargetRef};
@@ -55,8 +56,15 @@ impl Simulation {
     /// Teleport takes its class setter ([`Self::teleport_destination`]), and
     /// a Jumpjet's cell order takes Foot's
     /// ([`Self::jumpjet_cell_destination`]), which ignores `queue`.
-    pub(crate) fn issue_ground_move(&mut self, order: GroundMove, rules: Option<&RuleSet>) -> bool {
-        if let Some(accepted) = self.teleport_destination(order.entity_id, order.target, rules) {
+    pub(crate) fn issue_ground_move(
+        &mut self,
+        order: GroundMove,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
+        if let Some(accepted) =
+            self.teleport_destination(order.entity_id, order.target, rules, registry)
+        {
             return accepted;
         }
         if order.object_destination.is_none()
@@ -143,6 +151,7 @@ impl Simulation {
         id: u64,
         cell: (u16, u16),
         rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> Option<bool> {
         let entity = self.substrate.entities.get(id)?;
         if entity.locomotor.as_ref()?.active_kind() != LocomotorKind::Teleport {
@@ -154,7 +163,7 @@ impl Simulation {
         };
         Some(match category {
             EntityCategory::Infantry => self
-                .set_infantry_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, None)
+                .set_infantry_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, registry)
                 .unwrap_or_else(|error| {
                     log::debug!("Teleport infantry order {id} refused: {error}");
                     false
@@ -166,16 +175,11 @@ impl Simulation {
                 let harvester = self
                     .object_type(entity.type_ref(), rules)
                     .is_some_and(|object| object.harvester);
-                let frame = self.session.binary_frame;
-                self.substrate.entities.get_mut(id).is_some_and(|entity| {
-                    movement::teleport_movement::teleport_move_to(
-                        entity,
-                        cell,
-                        &rules.general,
-                        harvester,
-                        frame,
-                    )
-                })
+                self.teleport_move_to(id, cell, rules, harvester, registry)
+                    .unwrap_or_else(|error| {
+                        log::debug!("Unit Teleport order {id}: {error}");
+                        false
+                    })
             }
             EntityCategory::Aircraft | EntityCategory::Structure => return None,
         })

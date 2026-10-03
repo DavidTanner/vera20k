@@ -111,6 +111,7 @@ fn unload_at_clear_exit(sim: &mut Simulation, rules: &RuleSet, ifv: u64, passeng
         depart_cargo_head(
             sim,
             rules,
+            None,
             ifv,
             DepartureRoute::Vehicle,
             |sim, departing| {
@@ -166,6 +167,7 @@ fn retail_ifv_boarding_and_departure_retry_keep_one_selection_owner() {
             depart_cargo_head(
                 &mut sim,
                 rules,
+                None,
                 ifv,
                 DepartureRoute::Vehicle,
                 |sim, departing| {
@@ -212,9 +214,14 @@ fn retail_empty_ifv_departure_resets_selection_without_a_passenger() {
             .set_gunner_weapon(initial.0, rules.object("FV").unwrap());
         assert_selection(&sim, ifv, initial);
         assert_eq!(
-            depart_cargo_head(&mut sim, rules, ifv, DepartureRoute::Vehicle, |_, _| {
-                panic!("an empty hold must never attempt passenger placement")
-            }),
+            depart_cargo_head(
+                &mut sim,
+                rules,
+                None,
+                ifv,
+                DepartureRoute::Vehicle,
+                |_, _| { panic!("an empty hold must never attempt passenger placement") }
+            ),
             Err(DepartureFailure::NoCargo)
         );
         assert_selection(&sim, ifv, (0, 0));

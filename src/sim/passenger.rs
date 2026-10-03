@@ -502,7 +502,7 @@ fn tick_boarding_and_garrison_reconciliation_in_order(
                 .get(entity_id)
                 .is_some_and(|e| matches!(e.passenger_role, PassengerRole::Boarding { .. }))
         {
-            process_boarding_passenger(sim, rules, entity_id);
+            process_boarding_passenger(sim, rules, entity_id, registry);
         }
 
         ownership_changed |=
@@ -511,7 +511,12 @@ fn tick_boarding_and_garrison_reconciliation_in_order(
     ownership_changed
 }
 
-fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64) {
+fn process_boarding_passenger(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    pax_id: u64,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     let transport_id = match sim
         .substrate
         .entities
@@ -600,7 +605,7 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
             .get(pax_id)
             .and_then(|pax| pax.mind_control.controller())
         {
-            sim.free_unit(controller, pax_id, rules);
+            sim.free_unit(controller, pax_id, rules, registry);
         }
         //Infantry51A37C/Unit73A30E invalidates positive ExtraPower
         //absorbers before AddPassenger. Ordinary mobile transports do not
@@ -625,7 +630,7 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
         // CargoClass::AddPassenger conceals the passenger before splicing it
         // into the cargo chain. Techno Limbo owns BREAK, Mark removal, and
         // LogicVector removal in that order.
-        if sim.techno_limbo_with_rules(pax_id, rules) != ConcealOutcome::Concealed {
+        if sim.techno_limbo_with_rules(pax_id, rules, registry) != ConcealOutcome::Concealed {
             return;
         }
         let boarded = sim
@@ -968,7 +973,7 @@ fn reconcile_civilian_garrison_owner_for_building(
         if new_owner == current_owner {
             return false;
         }
-        sim.change_owner_with_rules(building_id, new_owner, rules);
+        sim.change_owner_with_rules(building_id, new_owner, rules, registry);
         return true;
     }
 
@@ -977,7 +982,7 @@ fn reconcile_civilian_garrison_owner_for_building(
         sim.sound_events.push(SimSoundEvent::StructureAbandoned {
             owner: current_owner,
         });
-        sim.change_owner_with_rules(building_id, civilian_owner, rules);
+        sim.change_owner_with_rules(building_id, civilian_owner, rules, registry);
         return current_owner != civilian_owner;
     }
 
@@ -1000,7 +1005,8 @@ fn tick_boarding(sim: &mut Simulation, rules: &RuleSet) -> bool {
         })
         .collect();
     for id in boarding_ids {
-        process_boarding_passenger(sim, rules, id);
+        // This direct boarding fixture declares no overlay context.
+        process_boarding_passenger(sim, rules, id, None);
     }
     false
 }
@@ -2528,6 +2534,7 @@ ConditionYellow=50%
         let result = departure::depart_cargo_head(
             &mut sim,
             &rules,
+            None,
             transport_id,
             departure::DepartureRoute::Vehicle,
             |sim, id| {

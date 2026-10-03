@@ -92,6 +92,7 @@ fn native_foot_archive_expiry_matches_all_22_original_class_rows() {
                 PointerExpiryControl::Uninit
             },
             None,
+            None,
         );
         let listener = sim.substrate.entities.get(1).unwrap();
         let archive = if row["archive"] == 0 {

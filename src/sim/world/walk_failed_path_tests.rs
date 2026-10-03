@@ -437,7 +437,7 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
 /// byte, which the Lock that follows leaves alone.
 #[test]
 fn first_limbo_runs_the_infantry_stop_driver() {
-    let (mut sim, rules, _) = fixture();
+    let (mut sim, rules, registry) = fixture();
     human_house(&mut sim);
     let id = engineer_at(&mut sim, &rules, (10, 10));
     {
@@ -452,7 +452,7 @@ fn first_limbo_runs_the_infantry_stop_driver() {
         cell.base_speed_costs.foot = Some(0);
     }
     order_walk(&mut sim, &rules, id, (11, 10));
-    let _ = sim.techno_limbo_with_rules(id, &rules);
+    let _ = sim.techno_limbo_with_rules(id, &rules, Some(&registry));
     let e = sim.substrate.entities.get(id).unwrap();
     assert!(e.infantry.as_ref().unwrap().cell_entry_blocked);
     let loco = e.locomotor.as_ref().unwrap();

@@ -363,7 +363,7 @@ fn tick_one_manager(
         .map(|m| m.slots.len())
         .unwrap_or(0);
     for slot_index in 0..slot_count {
-        step_slot(sim, rules, owner_id, slot_index, frame);
+        step_slot(sim, rules, owner_id, slot_index, frame, overlay_registry);
     }
 
     step_manager_mode(sim, rules, owner_id, frame, overlay_registry);
@@ -414,7 +414,14 @@ fn reap_expired_spawns(sim: &mut Simulation, owner_id: u64, frame: u32) {
     }
 }
 
-fn step_slot(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, slot_index: usize, frame: u32) {
+fn step_slot(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner_id: u64,
+    slot_index: usize,
+    frame: u32,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     let Some(slot) = sim
         .substrate
         .entities
@@ -441,7 +448,9 @@ fn step_slot(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, slot_index: u
         }
         SpawnSlotState::InFlight => step_in_flight(sim, rules, owner_id, slot_index),
         SpawnSlotState::ReturningToDock => step_returning(sim, rules, owner_id, slot_index),
-        SpawnSlotState::LandingAtDock => step_landing(sim, rules, owner_id, slot_index, frame),
+        SpawnSlotState::LandingAtDock => {
+            step_landing(sim, rules, owner_id, slot_index, frame, registry)
+        }
         SpawnSlotState::Reloading => {
             if slot.timer.expired(frame as i32) {
                 restore_docked_child(sim, rules, owner_id, slot_index);
@@ -746,6 +755,7 @@ fn step_landing(
     owner_id: u64,
     slot_index: usize,
     frame: u32,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(child_id) = manager_field(sim, owner_id, |m| m.slots[slot_index].spawn).flatten()
     else {
@@ -785,7 +795,7 @@ fn step_landing(
         _ => false,
     };
     if docked {
-        sim.techno_limbo_with_rules(child_id, rules);
+        sim.techno_limbo_with_rules(child_id, rules, registry);
         let reload_rate = manager_field(sim, owner_id, |m| m.reload_rate).unwrap_or(0);
         with_slot(sim, owner_id, slot_index, |slot| {
             slot.state = SpawnSlotState::Reloading;
@@ -1682,7 +1692,7 @@ pub(crate) fn kill_all_spawns_with_context(
                             .and_then(|child| sim.object_type(child.type_ref(), rules))
                             .is_some_and(|child_type| !child_type.missile_spawn)
                     {
-                        sim.foot_crash(child_id, None, rules);
+                        sim.foot_crash(child_id, None, rules, context.registry());
                     }
                 }
                 SpawnSlotState::Regenerating => unreachable!("skipped above"),

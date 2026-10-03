@@ -241,8 +241,7 @@ impl GameEntity {
     pub fn is_warped_out(&self) -> bool {
         self.temporal.is_warped()
             || self
-                .teleport_state
-                .as_ref()
+                .teleport_state()
                 .is_some_and(|teleport| teleport.warp_out_active())
     }
 
@@ -260,8 +259,7 @@ impl GameEntity {
     /// `TechnoClass+0x271` (vtable `+0x1D8`, `0x0070C5C0`): the teleport's
     /// warp-in.
     pub fn is_warping_in(&self) -> bool {
-        self.teleport_state
-            .as_ref()
+        self.teleport_state()
             .is_some_and(|teleport| teleport.warp_in_active())
     }
 
@@ -346,6 +344,7 @@ impl Simulation {
         firer: u64,
         target: TemporalShotTarget,
         rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
         if !self.substrate.entities.contains(firer) {
             return;
@@ -394,7 +393,7 @@ impl Simulation {
         if self.temporal_link(firer).is_none() {
             return;
         }
-        self.temporal_initiate_warp(firer, victim, rules);
+        self.temporal_initiate_warp(firer, victim, rules, registry);
     }
 
     /// `TemporalClass::InitiateWarp @ 0x0071AF20`.
@@ -403,6 +402,7 @@ impl Simulation {
         attacker: u64,
         target: Option<u64>,
         rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
         if let Some(target) = target {
             // 0x0071AF2F..0x0071AF48: the target's spawns die and its captives
@@ -416,7 +416,7 @@ impl Simulation {
                 crate::sim::spawn_manager::kill_all_spawns_with_context(
                     self,
                     target,
-                    UninitContext::with_rules(rules),
+                    UninitContext::new(Some(rules), registry),
                 );
             }
             if self
@@ -425,7 +425,7 @@ impl Simulation {
                 .get(target)
                 .is_some_and(|entity| entity.capture_manager.is_some())
             {
-                self.free_all_captures(target, rules);
+                self.free_all_captures(target, rules, registry);
             }
         }
         // 0x0071AF4D..0x0071AF61: the attacker drops its previous victim.
@@ -589,7 +589,12 @@ impl Simulation {
     }
 
     /// `TemporalClass::Update @ 0x0071A760`, run for `head` by its target.
-    fn temporal_update_head(&mut self, head: u64, rules: &RuleSet) {
+    fn temporal_update_head(
+        &mut self,
+        head: u64,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
         let Some(link) = self.temporal_link(head).cloned() else {
             return;
         };
@@ -640,7 +645,7 @@ impl Simulation {
         if remaining > 0 {
             return;
         }
-        self.temporal_erase(head, link.target, rules);
+        self.temporal_erase(head, link.target, rules, registry);
     }
 
     /// `SumChainDamage @ 0x0071AB10`: this attacker's damage plus the chain
@@ -685,7 +690,13 @@ impl Simulation {
     }
 
     /// The erase (`0x0071A895..0x0071AB02`).
-    fn temporal_erase(&mut self, head: u64, target: Option<u64>, rules: &RuleSet) {
+    fn temporal_erase(
+        &mut self,
+        head: u64,
+        target: Option<u64>,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) {
         let Some(target) = target.filter(|&target| self.substrate.entities.contains(target)) else {
             // 0x0071A895..0x0071A8B5: no target — clear and idle; then the
             // `0x0071A90E` retest jumps to the common tail, which clears and
@@ -721,9 +732,9 @@ impl Simulation {
             crate::sim::docking::bunker_link::release_sell_destroy(self, target);
         }
         // 0x0071AA95..0x0071AAA7: an erased master's slaves pass to the
-        // attacker's house (FreeSlaves, no house). The C4 arm needs a house
-        // to be missing too, so no registry is lent.
-        self.free_slaves(target, Some(head), None, rules, None);
+        // attacker's house (FreeSlaves, no supplied house). Its UnInit and
+        // owner-change callbacks share this object turn's map inputs.
+        self.free_slaves(target, Some(head), None, rules, registry);
         if category != EntityCategory::Structure
             && let Some(entity) = self.substrate.entities.get(target)
             && let Some(object) = self.object_type(entity.type_ref(), rules)
@@ -749,7 +760,7 @@ impl Simulation {
             rules,
         );
         // vtable +0xF8 UnInit: no death effects, no survivors.
-        self.uninit_with_context(target, UninitContext::with_rules(rules));
+        self.uninit_with_context(target, UninitContext::new(Some(rules), registry));
         // 0x0071AAD5..0x0071AB02: idle, clear, idle again (the UnInit's
         // pointer expiry already cleared the link and idled once).
         self.temporal_owner_idle(head, rules);
@@ -1075,7 +1086,12 @@ impl Simulation {
     /// when the rest of the object's AI must not run this frame. An erase
     /// leaves the dead target's head in place, so it still sparkles and
     /// returns frozen, as native does.
-    pub(crate) fn temporal_ai_prologue(&mut self, id: u64, rules: &RuleSet) -> bool {
+    pub(crate) fn temporal_ai_prologue(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> bool {
         let Some(category) = self
             .substrate
             .entities
@@ -1094,7 +1110,7 @@ impl Simulation {
             .get(id)
             .and_then(|entity| entity.temporal.head)
         {
-            self.temporal_update_head(head, rules);
+            self.temporal_update_head(head, rules, registry);
         }
         if matches!(category, EntityCategory::Unit | EntityCategory::Aircraft) {
             self.temporal_foot_sparkle(id, rules);
@@ -1129,7 +1145,7 @@ impl Simulation {
                 && (entity.navigation.nav_com.is_some() || entity.movement_target.is_some());
         }
         if clears_destination {
-            self.assign_null_destination(id, Some(rules), None);
+            self.assign_null_destination(id, Some(rules), registry);
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 entity.movement_target = None;
             }

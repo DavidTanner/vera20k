@@ -87,7 +87,13 @@ impl Simulation {
     /// airfield left). Effect: the map's trigger never hears it. Frequency:
     /// campaign maps only. The shared A8E7AC caller scope also covers native
     /// runtime placement/destruction; a raised scope suppresses spin draws.
-    pub(crate) fn foot_crash(&mut self, id: u64, attacker: Option<u64>, rules: &RuleSet) -> bool {
+    pub(crate) fn foot_crash(
+        &mut self,
+        id: u64,
+        attacker: Option<u64>,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
@@ -121,8 +127,8 @@ impl Simulation {
             crate::sim::radio::RadioMessage::Break,
             Some(rules),
         );
-        self.techno_death_stun(id, UninitContext::with_rules(rules));
-        self.kill_passengers(id, attacker, rules);
+        self.techno_death_stun(id, UninitContext::new(Some(rules), registry));
+        self.kill_passengers(id, attacker, rules, registry);
         if category != EntityCategory::Infantry && !self.object_placement_scope_active() {
             let sideways = self.scenario_rng.next_range_i32_inclusive(0, 0x7FFF_FFFE);
             let sign = self.scenario_rng.next_range_i32_inclusive(0, 1);
@@ -138,7 +144,7 @@ impl Simulation {
                 rocking.vel_forwards = vel_forwards;
             }
         }
-        self.detach_all_pointer_expired(id, rules);
+        self.detach_all_pointer_expired(id, rules, registry);
         true
     }
 
@@ -249,7 +255,7 @@ impl Simulation {
         self.sound_events
             .push(super::SimSoundEvent::ObjectSoundReleased { owner: id });
         self.release_move_sound(id);
-        self.uninit_with_rules(id, rules);
+        self.uninit_with_context(id, UninitContext::new(Some(rules), overlay_registry));
     }
 
     /// A crashed Jumpjet's impact: State 5's owner work (`AircraftTracker::
@@ -294,7 +300,7 @@ impl Simulation {
         self.sound_events
             .push(super::SimSoundEvent::ObjectSoundReleased { owner: id });
         self.release_move_sound(id);
-        self.uninit_with_rules(id, rules);
+        self.uninit_with_context(id, UninitContext::new(Some(rules), overlay_registry));
     }
 
     /// `TechnoClass::Fire_Death_Weapon @ 0x0070D690` with no extra damage: a
@@ -476,6 +482,7 @@ impl Simulation {
         transport: u64,
         attacker: Option<u64>,
         rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
         loop {
             let Some(passenger) = self
@@ -500,8 +507,8 @@ impl Simulation {
             {
                 entity.passenger_role = crate::sim::passenger::PassengerRole::None;
             }
-            self.kill_passengers(passenger, Some(passenger), rules);
-            self.record_kill_and_uninit(passenger, attacker, rules);
+            self.kill_passengers(passenger, Some(passenger), rules, registry);
+            self.record_kill_and_uninit(passenger, attacker, rules, registry);
         }
     }
 
@@ -514,6 +521,7 @@ impl Simulation {
         victim: u64,
         attacker: Option<u64>,
         rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) {
         let killer = attacker.and_then(|a| self.substrate.entities.get(a).map(|k| k.owner()));
         if let Some(entity) = self.substrate.entities.get_mut(victim) {
@@ -526,7 +534,7 @@ impl Simulation {
             crate::sim::combat::KillCallback::Terminal,
             rules,
         );
-        self.uninit_with_rules(victim, rules);
+        self.uninit_with_context(victim, UninitContext::new(Some(rules), registry));
     }
 }
 

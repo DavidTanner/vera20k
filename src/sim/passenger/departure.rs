@@ -43,6 +43,7 @@ pub(crate) enum DepartureFailure {
 pub(crate) fn depart_cargo_head(
     sim: &mut Simulation,
     rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     transport_id: u64,
     route: DepartureRoute,
     attempt: impl FnOnce(&mut Simulation, u64) -> Result<(), DepartureFailure>,
@@ -81,6 +82,7 @@ pub(crate) fn depart_cargo_head(
         restore_departure(
             sim,
             rules,
+            registry,
             transport_id,
             open_topped,
             passenger_id,
@@ -95,6 +97,7 @@ pub(crate) fn depart_cargo_head(
 fn restore_departure(
     sim: &mut Simulation,
     rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     transport_id: u64,
     open_topped: bool,
     passenger_id: u64,
@@ -110,7 +113,7 @@ fn restore_departure(
     };
     if reveal_outcome == Some(RevealOutcome::AlreadyRevealed) {
         // Defensive legacy repair of an already-broken cargo/limbo invariant.
-        let _ = sim.techno_limbo_with_rules(passenger_id, rules);
+        let _ = sim.techno_limbo_with_rules(passenger_id, rules, registry);
     }
     match route {
         DepartureRoute::Paradrop => match failure {

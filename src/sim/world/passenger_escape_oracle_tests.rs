@@ -242,7 +242,7 @@ fn scene(input: &Value) -> Scene {
     }
     for &id in passengers.iter().rev() {
         assert_eq!(
-            sim.techno_limbo_with_rules(id, &rules),
+            sim.techno_limbo_with_rules(id, &rules, None),
             crate::sim::world::ConcealOutcome::Concealed
         );
         sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Inside {

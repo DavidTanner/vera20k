@@ -3553,16 +3553,16 @@ mod tests {
                 }
                 if case["warp_in"] == true || case["warp_out"] == true {
                     use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
-                    victim.teleport_state = Some(TeleportState {
-                        phase: if case["warp_out"] == true {
+                    victim.install_teleport_state_for_test(Some(TeleportState::for_test(
+                        if case["warp_out"] == true {
                             TeleportPhase::Relocate
                         } else {
                             TeleportPhase::ChronoDelay
                         },
-                        target_rx: 8,
-                        target_ry: 8,
-                        being_warped_ticks: 3,
-                    });
+                        8,
+                        8,
+                        3,
+                    )));
                 }
                 if case["open_transport"] == true {
                     victim.passenger_role = crate::sim::passenger::PassengerRole::Inside {

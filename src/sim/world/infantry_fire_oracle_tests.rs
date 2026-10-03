@@ -910,6 +910,7 @@ fn original_single_listener_expiry_clears_pending_shot_and_shortens_passive_time
                     Some(owner),
                     PointerExpiryControl::Uninit,
                     Some(&rules),
+                    None,
                 );
                 assert_source(&fixture, &expiry["after"], name);
                 assert_rng(&fixture.sim, &expiry["rng_after"], name);
