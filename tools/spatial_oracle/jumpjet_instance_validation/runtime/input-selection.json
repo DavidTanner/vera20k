@@ -1,0 +1,520 @@
+{
+  "classification": "discovery production witness and replay input selection, not native parity",
+  "source_identity": {
+    "head": "cff0947c329f25947c7eeba1056ff5d94d31375e",
+    "branch": "feature/jumpjet-synchronous-scatter",
+    "status": "",
+    "source_sha256": "6f5f93652d29068043cd8020969d48af8c34d40c0a2ffc7bc191c9b8a569ea66"
+  },
+  "capture_sha256": "05479aec8aef8cfe5d77a431bcefd3060506697d7c5110a21ea72489ef543572",
+  "profile_sha256": "c783d9670c107a42d4ddfc122c456ef83322b719d32f32d076b39baae9987bf0",
+  "stable_id": 1528,
+  "first_limbo_step": 4601,
+  "first_unlimbo_step": 5195,
+  "selected_boundaries": [
+    {
+      "step": 5195,
+      "cell": [
+        27,
+        92
+      ],
+      "xyz": [
+        7040,
+        23680,
+        416
+      ],
+      "phase": 0,
+      "moving": false,
+      "destination": [
+        0,
+        0,
+        0
+      ],
+      "tether": 1456,
+      "mission": 5,
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": null,
+        "spatial_enter_order": 1528,
+        "tracker_cell_560": [
+          0,
+          0
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5243,
+      "cell": [
+        27,
+        92
+      ],
+      "xyz": [
+        7040,
+        23680,
+        416
+      ],
+      "phase": 1,
+      "moving": true,
+      "destination": [
+        7808,
+        23936,
+        416
+      ],
+      "tether": 1456,
+      "mission": 2,
+      "nav": {
+        "Cell": {
+          "rx": 30,
+          "ry": 93
+        }
+      },
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 1,
+        "tracker_cell_560": [
+          27,
+          92
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5293,
+      "cell": [
+        27,
+        92
+      ],
+      "xyz": [
+        7040,
+        23680,
+        916
+      ],
+      "phase": 2,
+      "moving": true,
+      "destination": [
+        7808,
+        23936,
+        416
+      ],
+      "tether": 1456,
+      "mission": 2,
+      "nav": {
+        "Cell": {
+          "rx": 30,
+          "ry": 93
+        }
+      },
+      "air": {
+        "current_cell_slot_holder": 1528,
+        "slot_cell_564": [
+          27,
+          92
+        ],
+        "slot_cell_slot_holder": 1528,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 1,
+        "tracker_cell_560": [
+          27,
+          92
+        ],
+        "tracker_cell_slot_holder": 1528
+      }
+    },
+    {
+      "step": 5294,
+      "cell": [
+        27,
+        92
+      ],
+      "xyz": [
+        7040,
+        23680,
+        926
+      ],
+      "phase": 3,
+      "moving": true,
+      "destination": [
+        7808,
+        23936,
+        416
+      ],
+      "tether": 1456,
+      "mission": 2,
+      "nav": {
+        "Cell": {
+          "rx": 30,
+          "ry": 93
+        }
+      },
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 1,
+        "tracker_cell_560": [
+          27,
+          92
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5358,
+      "cell": [
+        30,
+        93
+      ],
+      "xyz": [
+        7808,
+        23936,
+        1026
+      ],
+      "phase": 4,
+      "moving": true,
+      "destination": [
+        7808,
+        23936,
+        416
+      ],
+      "tether": 1456,
+      "mission": 2,
+      "nav": {
+        "Cell": {
+          "rx": 30,
+          "ry": 93
+        }
+      },
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 1,
+        "tracker_cell_560": [
+          30,
+          93
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5419,
+      "cell": [
+        30,
+        93
+      ],
+      "xyz": [
+        7808,
+        23936,
+        416
+      ],
+      "phase": 0,
+      "moving": true,
+      "destination": [
+        8064,
+        24192,
+        416
+      ],
+      "tether": null,
+      "mission": 2,
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": null,
+        "spatial_enter_order": 0,
+        "tracker_cell_560": [
+          0,
+          0
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5420,
+      "cell": [
+        30,
+        93
+      ],
+      "xyz": [
+        7808,
+        23936,
+        426
+      ],
+      "phase": 1,
+      "moving": true,
+      "destination": [
+        8064,
+        24192,
+        416
+      ],
+      "tether": null,
+      "mission": 2,
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 2,
+        "tracker_cell_560": [
+          30,
+          93
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5458,
+      "cell": [
+        31,
+        94
+      ],
+      "xyz": [
+        7949,
+        24076,
+        806
+      ],
+      "phase": 3,
+      "moving": true,
+      "destination": [
+        8064,
+        24192,
+        416
+      ],
+      "tether": null,
+      "mission": 2,
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 2,
+        "tracker_cell_560": [
+          31,
+          94
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5466,
+      "cell": [
+        31,
+        94
+      ],
+      "xyz": [
+        8064,
+        24192,
+        761
+      ],
+      "phase": 4,
+      "moving": true,
+      "destination": [
+        8064,
+        24192,
+        416
+      ],
+      "tether": null,
+      "mission": 2,
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": 223,
+        "spatial_enter_order": 2,
+        "tracker_cell_560": [
+          31,
+          94
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5501,
+      "cell": [
+        31,
+        94
+      ],
+      "xyz": [
+        8064,
+        24192,
+        416
+      ],
+      "phase": 0,
+      "moving": false,
+      "destination": [
+        0,
+        0,
+        0
+      ],
+      "tether": null,
+      "mission": 2,
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": null,
+        "spatial_enter_order": 0,
+        "tracker_cell_560": [
+          0,
+          0
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 5600,
+      "cell": [
+        31,
+        94
+      ],
+      "xyz": [
+        8064,
+        24192,
+        416
+      ],
+      "phase": 0,
+      "moving": false,
+      "destination": [
+        0,
+        0,
+        0
+      ],
+      "tether": null,
+      "mission": 5,
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": null,
+        "spatial_enter_order": 0,
+        "tracker_cell_560": [
+          0,
+          0
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    },
+    {
+      "step": 6000,
+      "cell": [
+        31,
+        94
+      ],
+      "xyz": [
+        8064,
+        24192,
+        416
+      ],
+      "phase": 0,
+      "moving": false,
+      "destination": [
+        0,
+        0,
+        0
+      ],
+      "tether": null,
+      "mission": 5,
+      "nav": null,
+      "air": {
+        "current_cell_slot_holder": null,
+        "slot_cell_564": [
+          0,
+          0
+        ],
+        "slot_cell_slot_holder": null,
+        "spatial_bucket": null,
+        "spatial_enter_order": 0,
+        "tracker_cell_560": [
+          0,
+          0
+        ],
+        "tracker_cell_slot_holder": null
+      }
+    }
+  ],
+  "selected_rule_types": [
+    {
+      "category": "Unit",
+      "interned_id": 210,
+      "type_id": "SHAD"
+    },
+    {
+      "category": "Unit",
+      "interned_id": 220,
+      "type_id": "CMIN"
+    },
+    {
+      "category": "Structure",
+      "interned_id": 272,
+      "type_id": "GAPOWR"
+    },
+    {
+      "category": "Structure",
+      "interned_id": 273,
+      "type_id": "GAREFN"
+    },
+    {
+      "category": "Structure",
+      "interned_id": 274,
+      "type_id": "GACNST"
+    },
+    {
+      "category": "Structure",
+      "interned_id": 275,
+      "type_id": "GAPILE"
+    },
+    {
+      "category": "Structure",
+      "interned_id": 279,
+      "type_id": "GAWEAP"
+    }
+  ],
+  "target_reason": "Actual first landing at step5419 in cell30,93 outside factory foundation; replay terrain probes will bound its clear/flat admission.",
+  "stop_requirement": "Observe actual live moving and untethered state at step5620; issued payload alone does not prove admission.",
+  "replay_profile": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-profile-20261003.json"
+}

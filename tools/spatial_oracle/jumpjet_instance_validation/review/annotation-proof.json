@@ -1,0 +1,15 @@
+{
+  "classification": "comment-only post-review coverage annotation; no new behavior or execution",
+  "validated_head": "cff0947c329f25947c7eeba1056ff5d94d31375e",
+  "validated_source_sha256": "6f5f93652d29068043cd8020969d48af8c34d40c0a2ffc7bc191c9b8a569ea66",
+  "file": "src/sim/world/jumpjet_cruise.rs",
+  "before_sha256": "6ae1139261bff39b719d0e77204cc55c32b607343c62fb331de47f6dacaf229d",
+  "after_sha256": "1586614a99bbb4b6778c80b98040675202157b49601376ed5ed5f4ceef8834b8",
+  "inserted_comment": "//! Native Unit touchdown calls Cell PickupCrate481A00 at54C9F6 after phase0.\n//! Shared movement crate selection/effect/RNG dispatch remains unfinished;\n//! landing on a crate can change its outcome and subsequent Scenario RNG.\n//! The no-crate native controls do not establish that separate mechanism.\n",
+  "rust_body_after_use_super_simulation_exact": true,
+  "body_sha256": "1b8642610cdc184846624d8bb435de05b841b8b71bd8e52ad41f718dd79a914f",
+  "other_rust_python_sources_exact": 1938,
+  "rust_python_source_set_exact": true,
+  "compiler_test_rerun": false,
+  "reason": "Only module documentation changed after one completed read-only review."
+}

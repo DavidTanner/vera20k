@@ -9,6 +9,10 @@
 //! Native composed controls and coverage: tools/spatial_oracle/jumpjet_states.md.
 //! Other large mechanisms remain bounded: Magnetron arms, target-facing hold,
 //! radio/tag arrival side effects and Infantry touchdown's full class chain.
+//! Native Unit touchdown calls Cell PickupCrate481A00 at54C9F6 after phase0.
+//! Shared movement crate selection/effect/RNG dispatch remains unfinished;
+//! landing on a crate can change its outcome and subsequent Scenario RNG.
+//! The no-crate native controls do not establish that separate mechanism.
 
 use super::Simulation;
 use crate::map::cell_index::NativeCellIdentity;

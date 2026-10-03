@@ -1,0 +1,407 @@
+{
+  "classification": "bounded native comparisons and Rust regression/production validation",
+  "validated_head": "cff0947c329f25947c7eeba1056ff5d94d31375e",
+  "incoming_main": "cf4317b334",
+  "runs": [
+    {
+      "mode": "focused",
+      "argv": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--",
+        "test",
+        "-p",
+        "vera20k",
+        "--lib",
+        "--",
+        "--nocapture",
+        "jumpjet",
+        "foot_air",
+        "air_slot_snapshot",
+        "jumpjet_discovery_profile"
+      ],
+      "cargo_run_exit": 0,
+      "wall_seconds": 203.10116004943848,
+      "source_identity": {
+        "head": "7e932b968e9b901142d80944095af68fe178ebdc",
+        "branch": "feature/jumpjet-synchronous-scatter",
+        "status": "M src/app/diagnostics/tactical_capture/map_observation.rs\n M src/asset_tools/args.rs\n M src/asset_tools/verb_ini.rs\n M src/bin/asset.rs\n M src/map/resolved_terrain.rs\n M src/map/terrain_recalc_native_tests.rs\n M src/sim/aircraft/dock_cycle_tests.rs\n M src/sim/combat/combat_aoe.rs\n M src/sim/combat/combat_tests.rs\n M src/sim/combat/greatest_threat.rs\n M src/sim/combat/infantry_fire_facing_tests.rs\n M src/sim/game_entity.rs\n M src/sim/movement/air_movement.rs\n M src/sim/movement/foot_mark.rs\n M src/sim/movement/ground_pose.rs\n M src/sim/movement/infantry_action_tests.rs\n M src/sim/movement/infantry_scatter_tests.rs\n M src/sim/movement/jumpjet_flight.rs\n M src/sim/movement/jumpjet_movement.rs\n M src/sim/movement/locomotor_tests.rs\n M src/sim/movement/mod.rs\n M src/sim/movement/motion_query.rs\n M src/sim/movement/motion_query_tests.rs\n M src/sim/movement/ready_producer.rs\n M src/sim/movement/ready_producer_tests.rs\n M src/sim/movement/tube_movement.rs\n M src/sim/occupancy.rs\n M src/sim/rng.rs\n M src/sim/snapshot.rs\n M src/sim/transport_unload/tests.rs\n M src/sim/unit_simple_deploy_tests.rs\n M src/sim/world/bridge_repair_publication_tests.rs\n M src/sim/world/crash.rs\n M src/sim/world/crash_tests.rs\n M src/sim/world/display_registry.rs\n M src/sim/world/fly_landing.rs\n M src/sim/world/gap_generator_tests.rs\n M src/sim/world/gsi_04_18_tests.rs\n M src/sim/world/jumpjet_cruise.rs\n M src/sim/world/jumpjet_infantry_tests.rs\n M src/sim/world/lifecycle.rs\n M src/sim/world/lifecycle_tests.rs\n M src/sim/world/object_turn.rs\n M src/sim/world/per_cell_object_turn_tests.rs\n M src/sim/world/techno_ai/mission_handlers.rs\n M src/sim/world/walk_failed_path_tests.rs\n M src/sim/world/world_hash.rs\n M src/sim/world/world_tests.rs\n M tools/map_observation.md\n M tools/map_observation.py\n M tools/native_oracle.py\n M tools/projectile_oracle/ifv_impact.py\n M tools/rules_oracle/bridge_anim_inputs.py\n M tools/spatial_oracle/anytown_damage/mission.py\n M tools/spatial_oracle/cmin_dock.py\n M tools/spatial_oracle/fly_landing_phase.py\n M tools/spatial_oracle/house_base_projection.py\n M tools/spatial_oracle/jumpjet_coordinates.py\n M tools/spatial_oracle/jumpjet_entry_discovery.py\n M tools/spatial_oracle/jumpjet_states.json\n M tools/spatial_oracle/jumpjet_states.meta.json\n M tools/spatial_oracle/jumpjet_states.py\n M tools/spatial_oracle/nearby_raw_occupation.py\n M tools/spatial_oracle/object_flight_height.py\n M tools/spatial_oracle/track_destination.py\n M tools/spatial_oracle/unit_scatter_state.py\n M tools/spatial_oracle/unit_source_scatter.py\n M tools/spatial_oracle/walk_move_admission.py\n M tools/test_native_oracle.py\n?? src/sim/movement/foot_air.rs\n?? src/sim/world/jumpjet_cruise_native_tests.rs\n?? tools/map_observation.jumpjet-instance.example.json\n?? tools/spatial_oracle/jumpjet_states.md\n?? tools/spatial_oracle/jumpjet_states.raw.json.gz\n?? tools/spatial_oracle/jumpjet_states.raw.meta.json",
+        "source_sha256": "43212a575deff6570dadb14aa02b4956a2f596805157af15ecbd977884c43d01"
+      },
+      "test_summaries": [
+        [
+          "83",
+          "0",
+          "4",
+          "0",
+          "9731"
+        ]
+      ],
+      "fixture_skip_marker": false,
+      "log_sha256": "518f36036f5a24fea9e8ffacdb374f093fbb6aa32b2a8b90be398be74364617c",
+      "label": "focused-g5"
+    },
+    {
+      "mode": "primary63",
+      "argv": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--",
+        "test",
+        "-p",
+        "vera20k",
+        "--lib",
+        "--",
+        "--ignored",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1",
+        "app::input::bridge_click_tests::retail_hills_clicks_drive_tank_and_gi_to_both_deck_sides_and_approaches",
+        "app::input::bridge_click_tests::retail_hills_ground_click_keeps_gi_beneath_bridge",
+        "app::input::context_order::retail_bridge_tests::retail_concrete_hut_input_reaches_engineer_entry_and_publication",
+        "app::input::context_order::retail_bridge_tests::retail_wood_hut_input_reaches_engineer_entry_and_publication",
+        "app::input::context_order::retail_engineer_tests::retail_building_repair_input_walk_art_sound_house_and_retirement",
+        "headless_scenario::retail_construction_tests::retail_headless_funnel_construction_is_deterministic_and_populated",
+        "map::resolved_terrain::pavement_catalog_tests::retail_pavement_resident_gate_survives_normal_loader_asset_drop",
+        "map::resolved_terrain::tests::retail_bridge_catalog_after_normal_map_loading",
+        "map::resolved_terrain::tests::retail_bridge_recalc_and_presentation_match_original_execution",
+        "map::rmg::phases::bridge_deck::tests::active_retail_low_end_tmp_blocks_stamp_native_fields",
+        "rules::native_processing::approach_rules_tests::retail_fv_approach_flags_match_original_root_mode_and_map_readers",
+        "sim::combat::open_topped_fire_tests::retail_dustbowl_battle_fortress_rider_walks_in_and_stays_put",
+        "sim::crew_survival::tests::retail_dustbowl_crews_scatter_off_their_wrecks",
+        "sim::crew_survival::tests::retail_dustbowl_passengers_leave_their_destroyed_transports",
+        "sim::movement::movement_bridge_retail_tests::bridge_tile_retail_probe::retail_middle_bridge_resident_recalc_admits_both_families",
+        "sim::movement::movement_bridge_retail_tests::deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes",
+        "sim::movement::movement_bridge_retail_tests::ground_entry_under_a_high_span_is_admitted_on_every_lane",
+        "sim::movement::movement_bridge_retail_tests::hills_native_integration_tests::hills_ground_underpass_keeps_the_ground_route_and_pose",
+        "sim::movement::movement_bridge_retail_tests::hills_native_integration_tests::hills_native_fields_and_mtnk_admission_feed_an_ordinary_ramp_move",
+        "sim::movement::movement_bridge_retail_tests::hills_native_integration_tests::hills_opposing_ordinary_moves_repath_on_the_deck",
+        "sim::movement::movement_bridge_retail_tests::hills_native_integration_tests::hills_same_type_marker_downgrade_reaches_live_foot_search_and_cleanup",
+        "sim::movement::movement_bridge_retail_tests::hills_native_integration_tests::hills_stationary_friendly_deck_blocker_matches_original_repath",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_attack_moved_across_bay_of_pigs_high_bridge_crosses",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_crosses_bay_of_pigs_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_crosses_hills_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_crosses_killer_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_crosses_lostlake_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::hover_tank_ordered_under_bay_of_pigs_high_bridge_crosses_all_four_ground_lanes",
+        "sim::movement::movement_bridge_retail_tests::infantry_attack_moved_across_hills_high_bridge_crosses",
+        "sim::movement::movement_bridge_retail_tests::infantry_crosses_bay_of_pigs_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::infantry_crosses_hills_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::infantry_crosses_killer_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::infantry_crosses_lostlake_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::infantry_ordered_under_hills_high_bridge_crosses_all_four_ground_lanes",
+        "sim::movement::movement_bridge_retail_tests::tank_attack_moved_across_bay_of_pigs_high_bridge_crosses",
+        "sim::movement::movement_bridge_retail_tests::tank_attack_moved_across_hills_high_bridge_crosses",
+        "sim::movement::movement_bridge_retail_tests::tank_cannot_cross_a_destroyed_shrapnel_low_bridge",
+        "sim::movement::movement_bridge_retail_tests::tank_cannot_reach_the_riverbed_beside_bay_of_pigs_high_bridge",
+        "sim::movement::movement_bridge_retail_tests::tank_crosses_bay_of_pigs_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::tank_crosses_hills_high_bridge_at_deck_height",
+        "sim::movement::movement_bridge_retail_tests::tank_crosses_killer_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::tank_crosses_lostlake_low_bridge_at_ground_height",
+        "sim::movement::movement_bridge_retail_tests::tank_ordered_across_the_deadman_collapse_gap_never_drives_into_it",
+        "sim::movement::movement_bridge_retail_tests::tank_ordered_under_hills_high_bridge_crosses_all_four_ground_lanes",
+        "sim::movement::movement_bridge_retail_tests::tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer",
+        "sim::world::bridge_orchestrator::live_publication::ordinary_publication::concrete_tests::retail_concrete_collapse_rechecks_an_incoming_drive_head",
+        "sim::world::bridge_orchestrator::live_publication::ordinary_publication::concrete_tests::retail_concrete_damage_repair_and_restore_publish_navigation",
+        "sim::world::bridge_orchestrator::live_publication::ordinary_publication::fv_pursuit_tests::retail_fv_approach_matches_native_candidates_admission_and_queue",
+        "sim::world::bridge_orchestrator::live_publication::ordinary_publication::fv_pursuit_tests::retail_fv_approaches_a_firing_cell_before_its_first_paid_step",
+        "sim::world::bridge_orchestrator::live_publication::ordinary_publication::wood_tests::retail_wood_damage_repair_and_restore_publish_navigation",
+        "sim::world::bridge_orchestrator::live_publication::pavement_tests::retail_plain_pavement_native_entry_draw_selection_and_snapshot",
+        "sim::world::bridge_orchestrator::live_publication::tests::middle::retail_middle_perpendicular_live_tiles_match_original_sequences",
+        "sim::world::crash_tests::retail_dustbowl_flak_shoots_a_harrier_down",
+        "sim::world::crash_tests::retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov",
+        "sim::world::jumpjet_cruise::tests::retail_dustbowl_night_hawk_hovers_over_a_tank_on_its_cell",
+        "sim::world::jumpjet_infantry_tests::retail_dustbowl_parked_rocketeer_engages_nearby_enemies",
+        "sim::world::jumpjet_infantry_tests::retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses",
+        "sim::world::jumpjet_infantry_tests::retail_dustbowl_shot_down_rocketeer_falls_and_leaves_no_body",
+        "sim::world::techno_ai::bridge_engineer_entry_tests::retail_hills_engineer_cliff_start_is_rejected",
+        "sim::world::techno_ai::bridge_engineer_entry_tests::retail_hills_engineer_enters_hut_and_repairs",
+        "sim::world::techno_ai::bridge_low_repair_tests::retail_shrapnel_engineer_repairs_authored_water_gap",
+        "sim::world::techno_ai::bridge_low_repair_tests::retail_shrapnel_repair_reaches_moving_water_neighbor",
+        "sim::world::techno_ai::bridge_target_layer_tests::retail_hills_passive_bridge_layers_survive_movement_and_restore"
+      ],
+      "cargo_run_exit": 0,
+      "wall_seconds": 719.3468458652496,
+      "source_identity": {
+        "head": "cff0947c329f25947c7eeba1056ff5d94d31375e",
+        "branch": "feature/jumpjet-synchronous-scatter",
+        "status": "",
+        "source_sha256": "6f5f93652d29068043cd8020969d48af8c34d40c0a2ffc7bc191c9b8a569ea66"
+      },
+      "test_summaries": [
+        [
+          "63",
+          "0",
+          "0",
+          "0",
+          "9757"
+        ]
+      ],
+      "fixture_skip_marker": false,
+      "log_sha256": "8ae93c45a267c7ec2fbd7e55a27ab54eea64df13e9512a3a31f23e5c0ab18bfd",
+      "label": "primary63"
+    },
+    {
+      "mode": "full_lib",
+      "argv": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--",
+        "test",
+        "-p",
+        "vera20k",
+        "--lib"
+      ],
+      "cargo_run_exit": 0,
+      "wall_seconds": 171.167133808136,
+      "source_identity": {
+        "head": "cff0947c329f25947c7eeba1056ff5d94d31375e",
+        "branch": "feature/jumpjet-synchronous-scatter",
+        "status": "",
+        "source_sha256": "6f5f93652d29068043cd8020969d48af8c34d40c0a2ffc7bc191c9b8a569ea66"
+      },
+      "test_summaries": [
+        [
+          "9590",
+          "0",
+          "230",
+          "0",
+          "0"
+        ]
+      ],
+      "fixture_skip_marker": false,
+      "log_sha256": "3f141736883575b90d39d6d5a4519dafe8823ad07df5d5529640b1b048f57e7f",
+      "label": "full"
+    },
+    {
+      "mode": "clippy_lib",
+      "argv": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--",
+        "clippy",
+        "-p",
+        "vera20k",
+        "--lib"
+      ],
+      "cargo_run_exit": 0,
+      "wall_seconds": 374.6108229160309,
+      "source_identity": {
+        "head": "cff0947c329f25947c7eeba1056ff5d94d31375e",
+        "branch": "feature/jumpjet-synchronous-scatter",
+        "status": "",
+        "source_sha256": "6f5f93652d29068043cd8020969d48af8c34d40c0a2ffc7bc191c9b8a569ea66"
+      },
+      "test_summaries": [],
+      "fixture_skip_marker": false,
+      "log_sha256": "f56444cd1ea604ec367516fd3d6a42ecc4c67883930140dcef42ae1f5e29722e",
+      "label": "clippy"
+    },
+    {
+      "mode": "release_game",
+      "argv": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--",
+        "build",
+        "-p",
+        "vera20k",
+        "--release",
+        "--bin",
+        "vera20k"
+      ],
+      "cargo_run_exit": 0,
+      "wall_seconds": 202.454035282135,
+      "source_identity": {
+        "head": "cff0947c329f25947c7eeba1056ff5d94d31375e",
+        "branch": "feature/jumpjet-synchronous-scatter",
+        "status": "",
+        "source_sha256": "6f5f93652d29068043cd8020969d48af8c34d40c0a2ffc7bc191c9b8a569ea66"
+      },
+      "test_summaries": [],
+      "fixture_skip_marker": false,
+      "log_sha256": "48e1ba1a906a67f0007e0d037c35bcfb3fb2a621ff09ecd8bc6ce6316bad805d",
+      "label": "release"
+    },
+    {
+      "mode": "python_suite",
+      "argv": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.run_tests"
+      ],
+      "cargo_run_exit": 0,
+      "wall_seconds": 26.443495273590088,
+      "source_identity": {
+        "head": "cff0947c329f25947c7eeba1056ff5d94d31375e",
+        "branch": "feature/jumpjet-synchronous-scatter",
+        "status": "",
+        "source_sha256": "6f5f93652d29068043cd8020969d48af8c34d40c0a2ffc7bc191c9b8a569ea66"
+      },
+      "test_summaries": [],
+      "fixture_skip_marker": false,
+      "log_sha256": "755a3dd33522cdd1aa99ff33bcda3850b5bbd6d57b3df5dff24c688ba20afeb6",
+      "label": "python"
+    }
+  ],
+  "native": {
+    "counts": {
+      "legacy": 10,
+      "controls": 16,
+      "steps": 487,
+      "compact_boundaries": 974,
+      "raw_boundaries": 3703,
+      "matched_native_calls": 3865,
+      "raw_draws": 11
+    },
+    "old15_projected_exact": true,
+    "old15_raw_exact": true,
+    "legacy10_exact": true,
+    "raw_uncompressed": {
+      "bytes": 116664109,
+      "sha256": "352f5ed2e6f039e7cdc6b9f21a22dd98c7dd20a56b279b4eba06b25a92a57c07",
+      "canonical_sha256": "7bfc7d5438949f0ed9686ad40fc239cf5fc940b2c3ffedcf1b2e4de72383dacf"
+    },
+    "scenario_seed0_control": {
+      "name": "stock_taken_state1_arrival_scenario_seed0",
+      "step_index": 52,
+      "step": {
+        "after": 105,
+        "args": [
+          0
+        ],
+        "before": 104,
+        "call_end": 549,
+        "call_start": 548,
+        "draw_end": 1,
+        "draw_start": 1,
+        "eax": 536908312,
+        "ecx": "0x20009218",
+        "entry": "0x65c6d0",
+        "label": "scenario_load_seed0"
+      },
+      "frame": 151,
+      "call": {
+        "args": [
+          0
+        ],
+        "caller": "0x30000000",
+        "cleanup": 4,
+        "ecx": "0x20009218",
+        "entry": "0x65c6d0",
+        "entry_fpcw": 3711,
+        "entry_sp": "0x100ff000",
+        "name": "rng_seed",
+        "return_eax": 536908312,
+        "return_fpcw": 3711,
+        "return_pc": "0x30000000",
+        "return_sp": "0x100ff008",
+        "stage": "scenario_load_seed0",
+        "stream": "scenario"
+      },
+      "native_seed0_fixture_match": true,
+      "non_rng_projection_unchanged": true,
+      "full_foot_jumpjet_unchanged": true,
+      "main_mapgen_unchanged": true,
+      "following_visits": 59,
+      "suffix_draws": 0,
+      "suffix_non_rng_state_matches_uninterrupted_control": true,
+      "rng_sha256_before": {
+        "main": "8604aec210a8ef4bb6754457651648dac72b66e2785b6aba5a007f6a0fa9eeb6",
+        "mapgen": "8604aec210a8ef4bb6754457651648dac72b66e2785b6aba5a007f6a0fa9eeb6",
+        "scenario": "43e065a41f10e9bdd6e501fe207f1fa527ee3dbfef26ddfe1e9170ce32ecf603"
+      },
+      "rng_sha256_after": {
+        "main": "8604aec210a8ef4bb6754457651648dac72b66e2785b6aba5a007f6a0fa9eeb6",
+        "mapgen": "8604aec210a8ef4bb6754457651648dac72b66e2785b6aba5a007f6a0fa9eeb6",
+        "scenario": "bb47a3aaad942e89d8b7113f7b0d582763081b72a7ea45a1a93ac88715821a49"
+      },
+      "scenario_indices_before": [
+        1,
+        104
+      ],
+      "scenario_indices_after": [
+        0,
+        103
+      ],
+      "final_phase": 0,
+      "pre_handoff_step_count": 52,
+      "pre_handoff_projection_byte_exact": true,
+      "pre_handoff_full_raw_byte_exact": true,
+      "pre_handoff_call_trace_exact": true
+    },
+    "limits": [
+      "Declared post-process50 original Scenario Random Seed(0) handoff, not whole native Scenario Save/Load.",
+      "No direct scalar RNG injection or supplied Seed result; existing original SEED_FN and observer/publisher reused.",
+      "Rust snapshot continuation validation remains with root and scope owner."
+    ]
+  },
+  "runtime": {
+    "status": "PASS",
+    "classification": "bounded Rust release production witness",
+    "native_comparator": "NONE",
+    "parity_certification": "NONE",
+    "source_identity": {
+      "head": "cff0947c329f25947c7eeba1056ff5d94d31375e",
+      "branch": "feature/jumpjet-synchronous-scatter",
+      "status": "",
+      "source_sha256": "6f5f93652d29068043cd8020969d48af8c34d40c0a2ffc7bc191c9b8a569ea66"
+    },
+    "exact_rust_python_sources": 1939,
+    "binary": {
+      "byte_length": 31626320,
+      "path": "/Users/halvor/Documents/vera20k-worktrees/vera20k-height/target/owned-worktrees/375217c7cf7b0cd5/release/vera20k",
+      "sha256": "dc819fd4ad01fc4b6735b11ee0ba4e9f9a68f6b8fba4c62ee1defa1d8c00a021"
+    },
+    "map_source": {
+      "entry_id": -854728974,
+      "kind": "mix",
+      "logical_name": "XMP03T4.MAP",
+      "payload_len": 156269,
+      "source_archive": "multimd.mix",
+      "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+    },
+    "profile": {
+      "byte_length": 5226,
+      "path": "/Users/halvor/Documents/vera20k-dev/refactor-goal/movement-target-689-jumpjet-instance-move-stop-profile-r2-20261003.json",
+      "sha256": "fe0c41db422c520d07d3c384fe2ac1774f15d95d4aeda7b286c44b521d0a0a3f"
+    },
+    "exact_steps": 6000,
+    "observations": 6001,
+    "stable_id": 1528,
+    "first_limbo_step": 4601,
+    "first_unlimbo_step": 5195,
+    "move_issue_step": 5600,
+    "move_admitted_step": 5601,
+    "stop_issue_step": 5620,
+    "stop_retained_destination_changed_step": 5621,
+    "grounded_step": 5725,
+    "distinct_xy_after_move": 73,
+    "maximum_physical_z_after_move": 866,
+    "sample_cost": 70053,
+    "discovery_prefix_exact_frames": 5601,
+    "partial_retry_exact_frames": 5998,
+    "gpu_frame": {
+      "byte_length": 1920000,
+      "file_name": "frame.bgra",
+      "height": 600,
+      "pixel_layout": "BGRA8",
+      "row_stride": 3200,
+      "sha256": "b3159b3643fce18725c10623605bf05a6a2b5368afdafb13e273d6fe52b722ca",
+      "surface_format": "Bgra8UnormSrgb",
+      "width": 800
+    },
+    "limits": [
+      "End-frame observations do not prove internal callback PCs/order or individual RNG draws.",
+      "Single SHAD does not exercise a foreign occupied air-slot callback; composed native controls and Rust tests cover that branch.",
+      "Terrain probes report slope0/level4/no bridge and walkable=false; no Clear land-type or native terrain admission equivalence is inferred.",
+      "Failed r0/r1 diagnostic bundles hit the existing sample budget; they are not VALID/GPU evidence.",
+      "Prefix equality is limited to the declared observed actors/houses/clocks, not full-world per-frame hashes."
+    ]
+  }
+}
