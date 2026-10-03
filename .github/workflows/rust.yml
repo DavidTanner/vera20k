@@ -5,21 +5,11 @@ name: Clippy
 # `cargo check`, and no integration test or example can stop compiling
 # unnoticed). The library's unit tests compile in the local full
 # `cargo test --lib` run each change gets before it merges.
-# Tests run in the per-platform workflows (windows.yml, linux.yml, ...), which
-# are manual only. This lint takes about two minutes, so it runs on every pull
-# request and every push to main.
+# Like the per-platform library tests, this is manual only. Run it from the
+# Actions tab or with `gh workflow run rust.yml --ref <branch>`.
+# Cross-platform checks are maintainer-run and do not block pull-request merges.
 on:
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
-
-concurrency:
-  # Pull requests: one group per branch, superseded runs are cancelled.
-  # main: one group per commit, so no run is ever cancelled or replaced
-  # (GitHub keeps only one pending run per group).
-  group: clippy-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld
