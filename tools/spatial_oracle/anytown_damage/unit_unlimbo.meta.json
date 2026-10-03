@@ -986,7 +986,7 @@
     "src/sim/world/unit_unlimbo_tests.rs": "2f56da4185fc36502c950e7022a9027ca29159a98f4d02548b4275f66063e857",
     "src/rules/ini_parser.rs": "d97cf575e41bf8f443033d69d40b8b8dbbdfa23bc526694b2a69070293e27b8f",
     "src/rules/ini_parser_tests.rs": "95002a316f2678d338c76b32109d5229c51f5c7e37a450a44e626508a2ede5fd",
-    "src/rules/ini_value.rs": "67cb6083050a53271f1cd961480e4f0e0a505ab5c87a995a90bc00f6bbcf4f14",
+    "src/rules/ini_value.rs": "c3f218c1288aa65524cbf3bfea3bcbfec4d7ef5b4dba88d2c52286cbdb18f8a4",
     "src/rules/retail_ini_fixture.rs": "15bd1177331af3f0394029f303682cddf672f2e2ad88f67fd5d0b7f438e1ac8f",
     "src/rules/ruleset.rs": "6e316a4e493759659679700a0c7ac436bab2635e3d21088b04ff69af6dc8c8bb"
   },

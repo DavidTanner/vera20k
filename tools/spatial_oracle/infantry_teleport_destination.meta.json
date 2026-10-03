@@ -117,7 +117,7 @@
     "src/rules/object_type.rs": "d239fa0a7f27a421d6c9f001052e8990fc5e26dfd5d61831777eb9c8cb134392",
     "src/rules/native_processing.rs": "6cfef9aec2854af57fa6ee363ad0e3c217917f0dfe4810928de2cb7e4621e211",
     "src/rules/ruleset.rs": "6e316a4e493759659679700a0c7ac436bab2635e3d21088b04ff69af6dc8c8bb",
-    "src/rules/ini_value.rs": "67cb6083050a53271f1cd961480e4f0e0a505ab5c87a995a90bc00f6bbcf4f14",
+    "src/rules/ini_value.rs": "c3f218c1288aa65524cbf3bfea3bcbfec4d7ef5b4dba88d2c52286cbdb18f8a4",
     "src/rules/overlay_types.rs": "8c6734de05534a0b4114c6914f2b74595a7853a460b341dfe7a36e3c71951aa5",
     "src/sim/world/object_entry.rs": "937a607c421e81b3c24aeae3d720bb8c1f837cbf583a0a3c58264d542afaace9",
     "src/sim/world/world_orders.rs": "c81a440239b805188441f53b5dccd140421a7fc10f17cbb4577b1bdaa64faaec",

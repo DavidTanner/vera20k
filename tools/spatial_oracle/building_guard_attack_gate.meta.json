@@ -122,7 +122,7 @@
     "src/rules/object_type.rs": "d239fa0a7f27a421d6c9f001052e8990fc5e26dfd5d61831777eb9c8cb134392",
     "src/rules/art_data.rs": "eb9e693966cc9100a83c3d332e94f43f44b4686fbe1627a960f2ba84d7b0d5b5",
     "src/rules/ini_parser.rs": "d97cf575e41bf8f443033d69d40b8b8dbbdfa23bc526694b2a69070293e27b8f",
-    "src/rules/ini_value.rs": "67cb6083050a53271f1cd961480e4f0e0a505ab5c87a995a90bc00f6bbcf4f14",
+    "src/rules/ini_value.rs": "c3f218c1288aa65524cbf3bfea3bcbfec4d7ef5b4dba88d2c52286cbdb18f8a4",
     "src/rules/mission_data.rs": "a69512e28fb8901a2127ba4e97683129d02778d05d9e76a766efee61e373af10",
     "src/util/native_x87.rs": "9303f828eeb4a5b7d682a1750f3c90cd476e47ffc9ce18e955b0634d6a158e03",
     "src/util/native_x87/masked.rs": "5c6b9ec4ef6ebe2ceabd9770866a2ab5ab1b4d65e6c9917e329c69c752814266",
