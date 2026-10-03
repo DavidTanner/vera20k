@@ -46,3 +46,8 @@ behavior. #687 and #689 remain open for those callers, Unit command preprocessin
 Jumpjet object orders and living Fly authority. Raw AreaGuard11 has its separate
 native Archive arm; deferred AttackMove29 still uses the recorded OrderIntent
 adapter (#852/#1023), whose migration remains separate from raw event29 behavior.
+
+The [single fresh read-only review](review.md) found no scoped implementation defect.
+It confirmed the separate retained Boarding target after cancellation; [#1045](https://github.com/YuriPlanet/vera20k/issues/1045)
+tracks the native PerCell arrival/retask/lifecycle migration and its player-visible
+risk. Boarding arrival branches remain outside this class-setter comparison.
