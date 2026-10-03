@@ -408,7 +408,7 @@ impl Simulation {
         //443141 raises A8E7AC after the constructor and before the caller's
         //ordinary481180. It remains raised through Scatter/Walk and the
         //mission queue, and is decremented at443288, including failed exits.
-        self.with_scenario_init_priority(|sim| {
+        self.with_object_placement_scope(|sim| {
             if !sim.unlimbo_crew(rules, id, unlimbo, None) {
                 sim.discard_constructed_limbo(id, Some(rules));
                 return false;
@@ -527,7 +527,7 @@ impl Simulation {
         };
         //SpawnSurvivors442EDE..442FFC/Selling44A47A..44A589: the bracket includes
         //the caller's placement, Unlimbo, Scatter/Walk and failed deletion.
-        self.with_scenario_init_priority(|sim| {
+        self.with_object_placement_scope(|sim| {
             if infantry {
                 let cell = cell.map_or(RawCellKey::Dummy, |(x, y)| RawCellKey::Real(x, y));
                 let _overwritten = bump_crush::place_infantry_in_native_cell(
@@ -548,7 +548,7 @@ impl Simulation {
             // rounded DirType is the Unlimbo direction.
             let frame = sim.session.binary_frame;
             let facing = building.body_facing_dir(frame);
-            let position = building.position.clone();
+            let position = building.position;
             let sub_cell =
                 infantry.then(|| bump_crush::priority_sub_cell(position.sub_x, position.sub_y));
             // The dying building's expiry broadcast already cleared the
@@ -565,6 +565,7 @@ impl Simulation {
                         passenger,
                         RevealRequest {
                             position: RevealPosition {
+                                exact_z_leptons: None,
                                 rx: position.rx,
                                 ry: position.ry,
                                 z: position.z,
@@ -625,7 +626,7 @@ impl Simulation {
         let owner = entity.owner();
         let armed = crate::sim::combat::combat_weapon::is_armed(entity, object);
         let on_bridge = entity.on_bridge;
-        let position = entity.position.clone();
+        let position = entity.position;
         let Some(side) = self.houses.get(&owner).map(|house| house.side_index) else {
             return;
         };
@@ -822,7 +823,7 @@ impl Simulation {
 
         //738030..7381A8: preserve the counter through every successful or
         //failed Unlimbo exit, including Scatter's immediate Walk Process.
-        self.with_scenario_init_priority(|sim| {
+        self.with_object_placement_scope(|sim| {
             // `0x00738047..0x0073809F`: the unit's XY at the Z of its cell's
             // CellClass::GetCoords (`0x00486840`, the floor at the cell centre),
             // or on a bridge the unit's own coordinate.
@@ -986,7 +987,7 @@ impl Simulation {
                             terrain,
                         )
                     });
-                let spot = if self.scenario_init_priority_active() || outside_usable_area {
+                let spot = if self.object_placement_scope_active() || outside_usable_area {
                     bump_crush::priority_sub_cell(request.0, request.1)
                 } else {
                     let Some(spot) = bump_crush::place_infantry_in_cell(
@@ -1025,6 +1026,7 @@ impl Simulation {
             id,
             RevealRequest {
                 position: RevealPosition {
+                    exact_z_leptons: None,
                     rx,
                     ry,
                     z,
@@ -1122,7 +1124,7 @@ impl Simulation {
             //44A65E..44A74E: the cell pick, ordinary caller placement and
             //priority Unlimbo run raised. Sale crew Scatter44A768 is outside
             //that bracket; only QueueMove is rebracketed44A76E..44A794.
-            let escaped = self.with_scenario_init_priority(|sim| {
+            let escaped = self.with_object_placement_scope(|sim| {
                 let pick = sim.scenario_rng.next_range_i32_inclusive(0, last);
                 let cell = cells[pick as usize];
                 if !sim.unlimbo_crew(rules, id, sim.survivor_unlimbo(cell), None) {
@@ -1133,7 +1135,7 @@ impl Simulation {
             });
             if escaped {
                 self.scatter_crew(rules, registry, id);
-                self.with_scenario_init_priority(|sim| {
+                self.with_object_placement_scope(|sim| {
                     sim.queue_crew_mission(id, MissionType::Move)
                 });
                 spawned = true;

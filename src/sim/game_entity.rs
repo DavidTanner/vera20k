@@ -148,26 +148,6 @@ fn default_armor_multiplier() -> NativeF64Bits {
     NativeF64Bits::ONE
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub enum BuildingGatePhase {
-    #[default]
-    ClosedStable,
-    Opening,
-    OpenStable,
-    Closing,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub enum BuildingGateMissionState {
-    #[default]
-    Setup,
-    OpeningWait,
-    OpenHold,
-    BeginClose,
-    ClosingWait,
-    PostClose,
-}
-
 /// The unit side of the tank-bunker reciprocal link (the pre-install approach
 /// state plus the installed link, folded into one hashed field). Distinct from
 /// `PassengerRole` cargo: a bunker is a single reciprocal link, never cargo.
@@ -203,25 +183,7 @@ impl BunkerLink {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct BuildingGateRuntime {
-    pub mission_18_active: bool,
-    pub phase: BuildingGatePhase,
-    #[serde(default)]
-    pub mission_state: BuildingGateMissionState,
-    /// Open/close transition deferral. `duration` is the active remaining ticks;
-    /// `start_frame` is the native helper baseline that direction reversal
-    /// preserves while it rewrites the duration.
-    #[serde(default)]
-    pub transition_timer: MissionTimer,
-    /// Nominal transition length (not a live timer) — direction reversal reads it
-    /// to recompute the reversed remaining.
-    #[serde(default)]
-    pub transition_total_ticks: u32,
-    /// Stable-open hold countdown (reseeds while occupants remain in the footprint).
-    #[serde(default)]
-    pub hold_timer: MissionTimer,
-}
+pub(crate) use crate::sim::gate_runtime::BuildingGateRuntime;
 
 /// Parent-owned `BuildingLightClass` runtime. It exists only for a successfully
 /// placed `HasSpotlight=yes` building and is removed with that parent.
@@ -229,28 +191,6 @@ pub struct BuildingGateRuntime {
 pub struct BuildingLightRuntime {
     pub behavior: u8,
     pub target_id: Option<u64>,
-}
-
-impl Default for BuildingGateRuntime {
-    fn default() -> Self {
-        Self {
-            mission_18_active: false,
-            phase: BuildingGatePhase::ClosedStable,
-            mission_state: BuildingGateMissionState::Setup,
-            // armed(0, 0) — NOT the sentinel — preserves the exact numeric values
-            // the old (last_frame, ticks_remaining) u32 pairs held at default,
-            // keeping the gate's wrapping_sub arithmetic and the state hash identical.
-            transition_timer: MissionTimer::armed(0, 0),
-            transition_total_ticks: 0,
-            hold_timer: MissionTimer::armed(0, 0),
-        }
-    }
-}
-
-impl BuildingGateRuntime {
-    pub fn can_garrison_passable(self) -> bool {
-        self.mission_18_active && self.phase == BuildingGatePhase::OpenStable
-    }
 }
 
 /// Independent ObjectClass lifecycle facts.
@@ -1102,7 +1042,11 @@ pub struct GameEntity {
     /// Native gate passability4525F0 accepts only mission `0x18` plus stable-open helper
     /// state. Opening and closing gates are still blockers for the same check.
     #[serde(default)]
-    pub building_gate: Option<BuildingGateRuntime>,
+    pub(crate) building_gate: Option<BuildingGateRuntime>,
+    /// Shared Techno+350 door. Gate/factory/Unit consumers mutate it only
+    /// through this entity's DoorClass operations.
+    #[serde(default)]
+    door: crate::sim::door::DoorClass,
     /// Tank-bunker install state machine. `Some` on `Bunker=yes` buildings from
     /// spawn (state `Idle` when empty); its presence marks the entity as a tank
     /// bunker. Drives entry admission → install.
@@ -1248,6 +1192,42 @@ mod simple_deploy;
 mod voxel_recoil;
 
 impl GameEntity {
+    pub(crate) fn door_phase(&self) -> crate::sim::door::DoorPhase {
+        self.door.phase()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn door_timer_fields(&self) -> (i32, i32, i32) {
+        self.door.timer_fields()
+    }
+
+    pub(crate) fn open_door(&mut self, ticks: u32, frame: u32) {
+        self.door.open(ticks, frame);
+    }
+
+    pub(crate) fn close_door(&mut self, ticks: u32, frame: u32) {
+        self.door.close(ticks, frame);
+    }
+
+    pub(crate) fn reverse_door(&mut self, frame: u32) {
+        self.door.reverse(frame);
+    }
+
+    pub(crate) fn advance_door(&mut self, frame: u32) {
+        self.door.advance(frame);
+    }
+
+    pub(crate) fn hash_door_state(&self, hasher: &mut impl std::hash::Hasher) {
+        use std::hash::Hash;
+        self.door.hash(hasher);
+    }
+
+    ///Building4525F0: MissionClass owns Open24, DoorClass owns stable-open.
+    pub(crate) fn is_open_gate(&self) -> bool {
+        self.mission.effective().known() == Some(crate::sim::mission::MissionType::Open)
+            && self.door_phase() == crate::sim::door::DoorPhase::OpenStable
+    }
+
     pub(crate) const fn cached_spatial_threat(&self) -> Option<i32> {
         self.cached_spatial_threat
     }
@@ -1761,6 +1741,7 @@ impl GameEntity {
             bunker_occupant: None,
             bunker_link: BunkerLink::None,
             building_gate: None,
+            door: crate::sim::door::DoorClass::at_frame(construction_frame),
             bunker_runtime: None,
             deploy_anim: None,
             landing_for_deploy: false,

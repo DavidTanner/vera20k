@@ -229,10 +229,11 @@ pub(super) fn dispatch(
             Some(delay) => delay,
             None => return,
         },
+        Some(MissionType::Open) => crate::sim::gate_runtime::mission_open(sim, id, rules),
         // BuildingClass's own Repair (`0x0044B780`), Missile (`0x0044C980`)
-        // and Open (`0x0044E440`) keep
+        // keep
         // their existing owners.
-        Some(MissionType::Repair | MissionType::Missile | MissionType::Open) => return,
+        Some(MissionType::Repair | MissionType::Missile) => return,
         // Every other slot of the building's table, and no mission (above
         // `0x1F`, `0x005B30BB`), is a MissionClass stub.
         _ => DEFAULT_MISSION_DELAY,
@@ -320,8 +321,10 @@ fn mission_construction(
 /// occupants (`vt+0x408`) first hands every one to `SellBuilding(0, 0)`
 /// (`0x0044D89C`). An absorber holding passengers (`InfantryAbsorb=` /
 /// `UnitAbsorb=`, Type `+0x16AE`/`+0x16AF`, Passengers `+0x114`) and a
-/// `WeaponsFactory=` (`+0x16BD`) then take their own arms, which keep their
-/// existing owners (None). Every other building queues Guard
+/// `WeaponsFactory=` (`+0x16BD`) then take their own arms. The absorber's
+/// passenger mechanism remains with its existing owner; the factory arm
+/// below uses the shared Techno Door, Drive track and Unit PerCell owners.
+/// Every other building queues Guard
 /// (`vt+0x1E8(5, 0)` at `0x0044E379`) and returns 1.
 ///
 /// Residual: a gap generator (`+0xCD1` and `+0xCD3`) first re-toggles its
@@ -341,10 +344,11 @@ fn mission_unload(
         .passenger_role
         .cargo()
         .is_some_and(|cargo| !cargo.is_empty());
-    if ((object.infantry_absorb || object.unit_absorb) && holds_passengers)
-        || object.weapons_factory
-    {
+    if (object.infantry_absorb || object.unit_absorb) && holds_passengers {
         return None;
+    }
+    if object.weapons_factory {
+        return Some(mission_factory_unload(sim, id, rules, ctx));
     }
     let now = sim.session.binary_frame;
     let readiness = LiveReadyInputProvider { rules };
@@ -356,6 +360,167 @@ fn mission_unload(
         &readiness,
     );
     Some(1)
+}
+
+///WeaponsFactory arm44DCB9..44E293 of the sole Building44D880 receiver.
+///The common Drive product crosses the actual foundation on ForceTrack66;
+///Unit PerCell owns clearance8/Scatter, and the producer's tether controls
+///closing. Native frame/timer/track/RNG controls: unit_unlimbo continuation.
+fn mission_factory_unload(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    ctx: ObjectAiCtx<'_>,
+) -> i32 {
+    use crate::sim::door::DoorPhase;
+    let Some(entity) = sim.substrate.entities.get(id) else {
+        return 0;
+    };
+    let Some(object) = sim.object_type(entity.type_ref(), rules) else {
+        return 0;
+    };
+    let status = entity.mission.handler_state();
+    let now = sim.session.binary_frame;
+    let ticks = object.deploy_time_ticks;
+    let naval = object.naval;
+    let phase = entity.door_phase();
+    let contact = entity.radio_contacts.slot(0);
+    let tethered = entity.dock_entered_with.is_some();
+    let location = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
+    let track = crate::sim::movement::factory_exit_track_coordinate(location, object);
+    let damaged = requested_damage_state(
+        entity.health,
+        object.strength,
+        rules.general.condition_yellow,
+    );
+    match status {
+        0 => {
+            //44DD56..44DD75: contact0 queues Guard and Commences before
+            //the producer opens its own Door and publishes state1 (4 naval).
+            if let Some(product) = contact {
+                queue_and_commence(sim, product, MissionType::Guard, rules);
+            }
+            let entity = sim.substrate.entities.get_mut(id).unwrap();
+            entity.open_door(ticks, now);
+            entity.mission.set_handler_state(if naval { 4 } else { 1 });
+            //44DDBF/44DE16: use the existing animation lifetime owner. The
+            //original ART readers leave both names empty for stock GAWEAP.
+            sim.clear_building_anim_slot(id, 18);
+            let _ = sim.set_building_anim_slot(id, 8, damaged, false, 0, rules);
+            //Draw-dirty and activation sound remain presentation dependencies.
+        }
+        1 => {
+            if !clear_factory_exit_bib(sim, id, track, rules, ctx) {
+                //44DE3C: no synchronous early fallthrough into state2.
+                sim.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .mission
+                    .set_handler_state(2);
+            }
+        }
+        2 if phase == DoorPhase::OpenStable => {
+            if let Some(product) = contact {
+                let _ = sim.mission_queue_exact(
+                    product,
+                    MissionId::from_known(MissionType::Move),
+                    0,
+                    now,
+                    &LiveReadyInputProvider { rules },
+                );
+                let drive = sim
+                    .substrate
+                    .entities
+                    .get(product)
+                    .and_then(|unit| unit.locomotor.as_ref())
+                    .is_some_and(|loco| {
+                        loco.kind == crate::rules::locomotor_type::LocomotorKind::Drive
+                    });
+                if drive {
+                    sim.force_drive_track(product, 0x42, track);
+                } else {
+                    //44DF1C's normal non-Drive cell setter is represented.
+                    //Hover/Teleport44DFAD require original piggyback swap and
+                    //lifetime cleanup, a separate retained locomotor mechanism.
+                    let cell = (
+                        ((location.x / 256) as i16).wrapping_add(4) as u16,
+                        ((location.y / 256) as i16).wrapping_add(1) as u16,
+                    );
+                    sim.set_unit_destination(
+                        product,
+                        crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
+                        rules,
+                        true,
+                    );
+                }
+                if let Some(product) = sim.substrate.entities.get_mut(product) {
+                    //44E1B8 dispatches the existing Foot4D3710 owner.
+                    product
+                        .foot_speed
+                        .set_speed_fraction(crate::util::fixed_math::SIM_HALF);
+                }
+                sim.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .mission
+                    .set_handler_state(3);
+            } else {
+                let entity = sim.substrate.entities.get_mut(id).unwrap();
+                entity.close_door(ticks, now);
+                entity.mission.set_handler_state(4);
+            }
+        }
+        3 if !tethered => {
+            let entity = sim.substrate.entities.get_mut(id).unwrap();
+            entity.close_door(ticks, now);
+            entity.mission.set_handler_state(4);
+        }
+        4 if phase == DoorPhase::ClosedStable || naval => {
+            sim.building_enter_idle_mode(id, false, Some(rules));
+        }
+        _ => {}
+    }
+    sim.mission_rate_epilogue_for(rules, id, MissionType::Unload)
+}
+
+///Building449540: ask the head Cell's nearest object excluding the producer.
+///A busy head is scattered synchronously and the handler remains at state1.
+///The empty-head path executes no Scatter and advances on its next dispatch.
+fn clear_factory_exit_bib(
+    sim: &mut Simulation,
+    producer: u64,
+    track: crate::sim::components::DriveCoord,
+    rules: &RuleSet,
+    ctx: ObjectAiCtx<'_>,
+) -> bool {
+    let cell = ((track.x / 256) as i16 as u16, (track.y / 256) as i16 as u16);
+    if sim
+        .nearest_cell_object(
+            cell,
+            crate::sim::movement::locomotor::MovementLayer::Ground,
+            Some(producer),
+        )
+        .is_none()
+    {
+        return false;
+    }
+    if let Err(error) = sim.scatter_cell_objects(
+        cell,
+        crate::sim::movement::locomotor::MovementLayer::Ground,
+        crate::sim::movement::ScatterFlags::new(true, true),
+        rules,
+        ctx.overlay_registry,
+    ) {
+        log::warn!("factory {producer} bib Scatter failed: {error}");
+    }
+    //44962B..44968F's eight adjacent Cell requests pass a non-null head
+    //coordinate. Unit743A50's non-null directional Scatter arm is not yet
+    //ported; it cannot be replaced with null Scatter. Trigger: a busy exit
+    //whose neighbours also contain objects; effect: neighbours are not
+    //pushed away, so clearance may take longer. Head's own Scatter is real.
+    true
 }
 
 /// `Queue_Mission(mission, false)` then Commence, as both handlers switch
@@ -1148,3 +1313,7 @@ mod construction_tests;
 #[cfg(test)]
 #[path = "building_opening_oracle_tests.rs"]
 mod opening_oracle_tests;
+
+#[cfg(test)]
+#[path = "factory_unload_tests.rs"]
+mod factory_unload_tests;

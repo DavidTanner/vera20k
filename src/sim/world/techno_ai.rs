@@ -1020,6 +1020,12 @@ fn techno_common_steps(
         return false;
     }
     self_heal_step(sim, id, rules);
+    //Techno6FA5BE..6FA5D6, before Mission AI: every Techno finishes its own
+    //due Door transition here. Gate/Factory mission work observes this change
+    //inside the same LogicVector visit; no global phase advances Door clocks.
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.advance_door(sim.session.binary_frame);
+    }
     true
 }
 

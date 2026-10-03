@@ -786,8 +786,9 @@ pub struct ObjectType {
     /// gate state. `GateStages=` is visual timing data and is not part of the
     /// `CanGarrison` passability predicate.
     pub gate: bool,
-    /// Native helper transition duration from `DeployTime=` converted as
-    /// `trunc(value * 900)`. Used by building gates for opening/closing.
+    ///Raw signed-low-dword result of native `DeployTime=` x900/ftol.
+    ///The u32 retains its bits; DoorClass reads it as i32. Shared by factory,
+    ///Gate and Unit doors, including zero and negative transitions.
     pub deploy_time_ticks: u32,
     /// Native open-hold delay from `GateCloseDelay=` converted as
     /// `trunc(value * 900)`.
@@ -955,6 +956,12 @@ pub struct ObjectType {
     /// The Jumpjet cruise reads it on a Unit owner at arrival
     /// (`State3_Translate 0x0054C1FE`).
     pub is_simple_deployer: bool,
+    /// UnitType+E18/E19, original747862..747896: the Unit section's
+    /// ReadBool SmallVisceroid/LargeVisceroid, distinct from General's type
+    /// references with the same keys. Unit Unlimbo737BF5 reads these bytes.
+    /// Constructor defaults and executed reads: anytown_damage/unit_unlimbo.
+    pub(crate) small_visceroid: bool,
+    pub(crate) large_visceroid: bool,
     /// `DeployToLand=` (`TechnoTypeClass+0x6AD`, `TechnoTypeClass::ReadINI`
     /// `0x00714809..0x00714816`, key string `0x00843A90`). Stock sets it on the
     /// Siege Chopper (`[SCHP]`, `[SCHD]`). A Jumpjet Unit with it keeps full
@@ -1725,12 +1732,15 @@ pub struct ObjectType {
     pub cloak_generator: bool,
 }
 
-fn native_minutes_to_ticks(value: f32) -> u32 {
-    if !value.is_finite() || value <= 0.0 {
-        0
-    } else {
-        (f64::from(value) * 900.0).trunc().min(u32::MAX as f64) as u32
-    }
+fn native_minutes_to_ticks(value: f64) -> u32 {
+    //ReadDouble widens its scanned f32; multiplication by900 fits binary64
+    //precision. Reuse the existing ftol owner for signed64-to-low32 and
+    //invalid semantics, exactly as MissionControl rates do. Native executed
+    //Door controls include -39, low-dword overflow and invalid input.
+    use crate::util::native_x87::{MaskedX87Chop53, NativeF64Bits};
+    MaskedX87Chop53::ftol_i32_low_masked(MaskedX87Chop53::load_f64(NativeF64Bits::from_bits(
+        (value * 900.0).to_bits(),
+    ))) as u32
 }
 
 impl ObjectType {
@@ -2228,11 +2238,9 @@ impl ObjectType {
             bib: section.read_bool("Bib", false),
             gate: section.read_bool("Gate", false),
             // Double fields (`0x00714B94`, `0x00460DE0`).
-            deploy_time_ticks: native_minutes_to_ticks(
-                section.read_double("DeployTime", 0.0) as f32
-            ),
+            deploy_time_ticks: native_minutes_to_ticks(section.read_double("DeployTime", 0.0)),
             gate_close_delay_ticks: native_minutes_to_ticks(
-                section.read_double("GateCloseDelay", 0.0) as f32,
+                section.read_double("GateCloseDelay", 0.0),
             ),
             storage: section.read_int("Storage", 0),
             free_unit: section.read_name("FreeUnit", 0x80).map(str::to_owned),
@@ -2337,6 +2345,10 @@ impl ObjectType {
             hover_attack: section.read_bool("HoverAttack", false),
             balloon_hover: section.read_bool("BalloonHover", false),
             is_simple_deployer: section.read_bool("IsSimpleDeployer", false),
+            small_visceroid: category == ObjectCategory::Vehicle
+                && section.read_bool("SmallVisceroid", false),
+            large_visceroid: category == ObjectCategory::Vehicle
+                && section.read_bool("LargeVisceroid", false),
             deploy_to_land: section.read_bool("DeployToLand", false),
             airport_bound: section.read_bool("AirportBound", false),
             fighter: section.read_bool("Fighter", false),

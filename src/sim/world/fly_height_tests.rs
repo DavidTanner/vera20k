@@ -69,6 +69,7 @@ fn fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
             1,
             RevealRequest {
                 position: RevealPosition {
+                    exact_z_leptons: None,
                     rx: 10,
                     ry: 10,
                     z: integer("level", 0) as u8,
@@ -830,11 +831,8 @@ fn fly_takeoff_phase_matches_native_display_reordering_and_gates() {
         let peer = sim.allocate_stable_id();
         insert_entity(&mut sim, peer, EntityCategory::Aircraft);
         let owner = sim.substrate.entities.get(1).unwrap();
-        let (position, on_bridge, loco) = (
-            owner.position.clone(),
-            owner.on_bridge,
-            owner.locomotor.clone(),
-        );
+        let (position, on_bridge, loco) =
+            (owner.position, owner.on_bridge, owner.locomotor.clone());
         let other = sim.substrate.entities.get_mut(peer).unwrap();
         other.position = position;
         other.on_bridge = on_bridge;
@@ -893,11 +891,8 @@ fn fly_nonlandable_phase_matches_native_without_display_resubmission() {
         let peer = sim.allocate_stable_id();
         insert_entity(&mut sim, peer, EntityCategory::Aircraft);
         let owner = sim.substrate.entities.get(1).unwrap();
-        let (position, on_bridge, loco) = (
-            owner.position.clone(),
-            owner.on_bridge,
-            owner.locomotor.clone(),
-        );
+        let (position, on_bridge, loco) =
+            (owner.position, owner.on_bridge, owner.locomotor.clone());
         let other = sim.substrate.entities.get_mut(peer).unwrap();
         other.position = position;
         other.on_bridge = on_bridge;

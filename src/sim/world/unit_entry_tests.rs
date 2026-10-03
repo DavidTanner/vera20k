@@ -167,7 +167,8 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                 .overlay_id = Some(overlay as u8);
         }
         sim.session.binary_frame = 100;
-        sim.session.game_mode_nonzero = flag("game_mode_nonzero");
+        // The legacy corpus name seeds A8E7AC, not A8B238.
+        sim.session.game_mode_nonzero = flag("actual_game_mode");
         if let Some(bounds) = input["bounds"].as_array() {
             sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
                 base: bounds[0].as_i64().unwrap() as i32,
@@ -332,15 +333,18 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                 }
                 if node["gate"].as_bool().unwrap_or(false) {
                     let opened = node["open"].as_bool().unwrap_or(false);
-                    blocker.building_gate = Some(crate::sim::game_entity::BuildingGateRuntime {
-                        mission_18_active: opened,
-                        phase: if opened {
-                            crate::sim::game_entity::BuildingGatePhase::OpenStable
-                        } else {
-                            crate::sim::game_entity::BuildingGatePhase::ClosedStable
-                        },
-                        ..Default::default()
-                    });
+                    blocker.building_gate = Some(Default::default());
+                    if opened {
+                        crate::sim::mission::authority::queue_entity_mission_deferred(
+                            &mut blocker,
+                            crate::sim::mission::MissionId::from_known(
+                                crate::sim::mission::MissionType::Open,
+                            ),
+                        );
+                        crate::sim::mission::authority::commence_entity_mission(&mut blocker, 100);
+                        blocker.open_door(0, 100);
+                        blocker.advance_door(100);
+                    }
                 }
                 if node["cloaked"].as_bool().unwrap_or(false) {
                     let mut cloak = crate::sim::cloak_disguise::CloakRuntime::new(100, 9);
@@ -444,22 +448,30 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                     .native_cell_identity((x as i16, y as i16))
             }),
         };
-        let live = EntryReadContext {
-            sim: &sim,
-            rules: &rules,
-            registry: Some(&registry),
-        };
         let expected = row["result"].as_u64().unwrap() as u8;
-        let actual = classify_entry(&live, CellObjectMember::Entity(90), cell, args);
-        let repair = repair_projection.then(|| {
-            classify_entry(
-                &live,
-                CellObjectMember::Entity(90),
-                cell,
-                crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
-            )
-            .map(|code| code == 7)
-        });
+        let query = |sim: &mut Simulation| {
+            let live = EntryReadContext {
+                sim,
+                rules: &rules,
+                registry: Some(&registry),
+            };
+            let actual = classify_entry(&live, CellObjectMember::Entity(90), cell, args);
+            let repair = repair_projection.then(|| {
+                classify_entry(
+                    &live,
+                    CellObjectMember::Entity(90),
+                    cell,
+                    crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+                )
+                .map(|code| code == 7)
+            });
+            (actual, repair)
+        };
+        let (actual, repair) = if flag("game_mode_nonzero") {
+            sim.with_object_placement_scope(query)
+        } else {
+            query(&mut sim)
+        };
         if actual != Ok(expected) || repair.is_some_and(|answer| answer != Ok(expected == 7)) {
             mismatches.push(format!("{input}: expected {expected}, actual {actual:?}"));
         }

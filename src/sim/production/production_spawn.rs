@@ -231,18 +231,23 @@ pub(super) fn spawn_selection_at_producer(
                 });
             }
             if !require_water && exact_land_vehicle_exit_factory(rules, structure_id) {
-                return find_exact_exitcoord_spawn_cell(
-                    bx,
-                    by,
-                    structure_id,
-                    produced_category,
-                    rules,
-                    path_grid,
-                    &sim.substrate.occupancy,
-                    resolved_terrain,
-                    require_water,
-                )
-                .map(standard);
+                let producer = sim.substrate.entities.get(producer_id)?;
+                let coord = crate::sim::movement::building_exit_coordinate(
+                    crate::sim::movement::ground_pose::position_world_coord(&producer.position),
+                    rules.object(structure_id)?,
+                    || {
+                        crate::sim::movement::ground_pose::object_get_coords(
+                            producer,
+                            resolved_terrain,
+                        )
+                    },
+                );
+                // 444565's caller owns admission. PathGrid/owner claims cannot
+                // preempt its scoped Unlimbo or choose another exit coordinate.
+                return Some(standard((
+                    crate::util::lepton::lepton_to_cell_packed(coord.x) as u16,
+                    crate::util::lepton::lepton_to_cell_packed(coord.y) as u16,
+                )));
             }
             // Unverified/modded produced-Unit branches retain the legacy
             // adapter.
@@ -260,52 +265,51 @@ pub(super) fn spawn_selection_at_producer(
     }
 }
 
-/// Mark the produced unit as having the reciprocal RadioClass contact created
-/// by successful stock land war-factory unlimbo.
-///
-/// The caller must invoke this immediately after `spawn_object` returns the
-/// produced unit stable ID. `find_spawn_selection_for_owner` supplies the
-/// `producer_id` without changing the older cell-only API.
+/// ExitObject4445D6/4445E3 calls the shared radio owners for HELLO and
+/// TETHER. Their reciprocal contacts and flags also use radio-owned cleanup.
 pub fn mark_war_factory_spawn_contact(
     sim: &mut Simulation,
     rules: &RuleSet,
     producer_id: u64,
     produced_id: u64,
 ) -> bool {
-    let Some((producer_type, produced_is_vehicle)) =
-        sim.substrate.entities.get(producer_id).and_then(|p| {
-            let producer_type = sim.interner.resolve(p.type_ref()).to_string();
-            let produced = sim.substrate.entities.get(produced_id)?;
-            Some((
-                producer_type,
-                produced.category == crate::map::entities::EntityCategory::Unit,
-            ))
-        })
-    else {
-        return false;
-    };
-
-    if !produced_is_vehicle || !exact_land_vehicle_exit_factory(rules, &producer_type) {
+    let valid = sim
+        .substrate
+        .entities
+        .get(producer_id)
+        .is_some_and(|producer| {
+            exact_land_vehicle_exit_factory(rules, sim.interner.resolve(producer.type_ref()))
+                && sim
+                    .substrate
+                    .entities
+                    .get(produced_id)
+                    .is_some_and(|product| {
+                        product.category == crate::map::entities::EntityCategory::Unit
+                    })
+        });
+    if !valid {
         return false;
     }
-
-    let Some(produced) = sim.substrate.entities.get_mut(produced_id) else {
-        return false;
-    };
-    produced.mark_live_contact_with(producer_id);
-    // gamemd ExitObject_Main also sends 0x18 (sets +0x418) beside the HELLO contact;
-    // the footprint-clear break (tick_war_factory_exit_contacts) gates on this flag.
-    produced.dock_entered_with = Some(producer_id);
+    for message in [
+        crate::sim::radio::RadioMessage::Hello,
+        crate::sim::radio::RadioMessage::Tether,
+    ] {
+        crate::sim::radio::transmit(
+            sim,
+            producer_id,
+            produced_id,
+            message,
+            crate::sim::radio::RadioPayload::default(),
+            Some(rules),
+        );
+    }
     true
 }
 
 pub(super) fn exact_land_vehicle_exit_factory(rules: &RuleSet, structure_id: &str) -> bool {
     rules.object(structure_id).is_some_and(|obj| {
-        !obj.refinery
-            && !obj.weeder
-            && obj.weapons_factory
-            && !obj.naval
-            && obj.exit_coord.is_some()
+        // Original ExitObject44413D..44416F has no ExitCoord presence gate.
+        !obj.refinery && !obj.weeder && obj.weapons_factory && !obj.naval
     })
 }
 
@@ -512,69 +516,6 @@ fn nearby_query_for_naval_unit_delivery<'a>(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::sim) enum ProductionUnitAdmission {
-    /// Exact UnitClass::Can_Enter_Cell result zero. Crush victims are retained
-    /// only as evidence for the selected occupation-plane tail; production
-    /// Unlimbo does not execute the later movement-time crush here.
-    ExactZero {
-        layer: MovementLayer,
-        crush_victims: Vec<u64>,
-    },
-    NonZero {
-        code: u8,
-        layer: MovementLayer,
-    },
-}
-
-impl ProductionUnitAdmission {
-    #[cfg(test)]
-    fn exact_zero(&self) -> bool {
-        matches!(self, Self::ExactZero { .. })
-    }
-
-    pub(in crate::sim) fn exact_zero_layer(&self) -> Option<MovementLayer> {
-        match self {
-            Self::ExactZero { layer, .. } => Some(*layer),
-            Self::NonZero { .. } => None,
-        }
-    }
-
-    fn nonzero(code: u8, layer: MovementLayer) -> Self {
-        Self::NonZero { code, layer }
-    }
-}
-
-/// Production specialization of `UnitClass::Can_Enter_Cell @ 0x0073F0A0` for
-/// the exact native tuple `(cell,-1,-1,0,0)`. This result deliberately does not
-/// consume PathGrid or the general movement classifier: live CellClass terrain,
-/// overlay, selected object list, and selected raw occupation plane own it.
-fn produced_unit_unlimbo_entry(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    produced_type_id: &str,
-    produced_id: u64,
-    producer_id: u64,
-    cell: (u16, u16),
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-) -> Option<(ProductionUnitAdmission, (u16, u16))> {
-    let resolved_cell = resolve_produced_unit_cell_coords(sim, cell)?;
-    Some((
-        produced_unit_unlimbo_entry_at_resolved_cell(
-            sim,
-            rules,
-            owner,
-            produced_type_id,
-            produced_id,
-            producer_id,
-            resolved_cell,
-            overlay_registry,
-        ),
-        resolved_cell,
-    ))
-}
-
 /// Resolve the caller's `CellStruct` through the never-null MapClass lookup and
 /// `CellClass::GetCoords @ 0x00486840` before ObjectClass evaluates its normal
 /// zero-cell sentinel. A miss therefore updates and observes the one retained
@@ -582,7 +523,20 @@ fn produced_unit_unlimbo_entry(
 fn resolve_produced_unit_cell_coords(
     sim: &Simulation,
     requested: (u16, u16),
-) -> Option<(u16, u16)> {
+) -> Option<crate::sim::components::DriveCoord> {
+    if let Some(terrain) = sim.resolved_terrain.as_ref() {
+        let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+        let selected = cells.lookup((requested.0 as i16, requested.1 as i16));
+        let (x, y, z) = crate::sim::cell_kernel::native_cell_own_coords(selected, &cells)?;
+        return Some(crate::sim::components::DriveCoord {
+            x: x as i32,
+            y: y as i32,
+            z: z as i32,
+        });
+    }
+    // Terrain-less diagnostics keep their existing singleton-dummy adapter.
+    // An ordinary native match always has MapClass; this is not another
+    // CellClass port and performs no real/native map admission.
     let selected = crate::sim::cell_rect::get_cellclass_fallback(
         sim.resolved_terrain.as_ref(),
         i32::from(requested.0),
@@ -599,402 +553,39 @@ fn resolve_produced_unit_cell_coords(
             (snapshot.coord, snapshot.level as u8, snapshot.slope_type)
         }
     };
-    let center_x = coord
-        .0
-        .wrapping_mul(crate::sim::cell_kernel::LEPTONS_PER_CELL)
-        .wrapping_add(crate::sim::cell_kernel::CELL_CENTER_LEPTONS);
-    let center_y = coord
-        .1
-        .wrapping_mul(crate::sim::cell_kernel::LEPTONS_PER_CELL)
-        .wrapping_add(crate::sim::cell_kernel::CELL_CENTER_LEPTONS);
-    let ground_z =
-        crate::util::lepton::ground_height_leptons(level, slope, center_x, center_y).ok()?;
-    let coords = crate::sim::cell_kernel::cell_center(
+    let mut coords = crate::sim::cell_kernel::cell_center(
         crate::sim::cell_kernel::CellCoordinate {
             x: coord.0,
             y: coord.1,
         },
-        ground_z,
+        0,
     );
-    Some((
-        crate::util::lepton::lepton_to_cell_packed(coords.x) as u16,
-        crate::util::lepton::lepton_to_cell_packed(coords.y) as u16,
-    ))
+    coords.z = crate::sim::cell_kernel::cell_floor_height(level, slope, coords.x, coords.y).ok()?;
+    Some(crate::sim::components::DriveCoord {
+        x: coords.x,
+        y: coords.y,
+        z: coords.z,
+    })
 }
 
-pub(in crate::sim) fn produced_unit_unlimbo_entry_at_resolved_cell(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    produced_type_id: &str,
-    produced_id: u64,
-    producer_id: u64,
-    cell: (u16, u16),
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-) -> ProductionUnitAdmission {
-    use crate::map::entities::EntityCategory;
-    use crate::rules::terrain_rules::LandType;
-    use crate::sim::pathfinding::cell_entry::{
-        BuildingOccupantEntryDecision, LiveVehicleBuildingEntry, VehicleBuildingEntryBranch,
-        decide_live_vehicle_building_entry,
-    };
-
-    let Some(object) = rules.object(produced_type_id) else {
-        return ProductionUnitAdmission::nonzero(7, MovementLayer::Ground);
-    };
-    let Some(resolved_terrain) = sim.resolved_terrain.as_ref() else {
-        return ProductionUnitAdmission::nonzero(7, MovementLayer::Ground);
-    };
-
-    // The FNPC zero sentinel is a CellStruct, not a CoordStruct. It has already
-    // resolved through CellClass/GetCoords to (128,128,z), so ordinary Unit
-    // admission reaches this mandatory mode-one playfield predicate.
-    if !crate::sim::cell_rect::cell_is_in_playfield_height_aware(
-        (i32::from(cell.0), i32::from(cell.1)),
-        sim.playfield_bounds,
-        Some(resolved_terrain),
-    ) {
-        return ProductionUnitAdmission::nonzero(7, MovementLayer::Ground);
-    }
-
-    let Some(terrain_cell) = resolved_terrain.cell(cell.0, cell.1) else {
-        return ProductionUnitAdmission::nonzero(7, MovementLayer::Ground);
-    };
-    let structural_bridge = terrain_cell.bridge_facts.has_structural_bridge();
-    let layer = if structural_bridge {
-        MovementLayer::Bridge
-    } else {
-        MovementLayer::Ground
-    };
-    let overlay_cell = sim
-        .overlay_grid
-        .as_ref()
-        .map(|grid| grid.cell(cell.0, cell.1));
-    let overlay_id = overlay_cell
-        .and_then(|overlay| overlay.overlay_id)
-        .or(terrain_cell.bridge_facts.overlay_id);
-
-    // UnitType+0xDFC. Tunnel is allowed to reach its later sub-tile/land-speed
-    // result; for stock HYD/SQD that terminal Float row is exactly zero. The
-    // 0xED/0xEE exception samples the caller's initial height (-1) before bridge
-    // traversal seeds Level+4, so only the literal signed-level comparison is
-    // needed for the production zero predicate.
-    let land_type = LandType::from_index(terrain_cell.yr_cell_land_type);
-    if let Some(required) = object.movement_restricted_to
-        && land_type != Some(required)
-    {
-        let tunnel_continues = land_type == Some(LandType::Tunnel);
-        let low_bridge_height_exception =
-            matches!(overlay_id, Some(0xED | 0xEE)) && -1i8 != terrain_cell.level as i8;
-        if !tunnel_continues && !low_bridge_height_exception {
-            return ProductionUnitAdmission::nonzero(7, layer);
-        }
-    }
-
-    let produced_veterancy = sim
-        .substrate
-        .entities
-        .get(produced_id)
-        .map_or(0, |entity| entity.veterancy());
-    let regular_crusher = object.crusher
-        || (produced_veterancy >= 100 && object.veteran_crusher)
-        || (produced_veterancy >= 200 && object.elite_crusher);
-    let crush_capability = bump_crush::CrushCapability::new(regular_crusher, object.omni_crusher);
-
-    // Wall=yes is an ordered overlay branch. Enemy/unowned Crushable walls keep
-    // the running result at zero for static/rank CRUSHER and bypass the later
-    // zero Float/Hover Wall row; allied or non-crushable/noncrusher walls do not.
-    let mut wall_crush_admitted = false;
-    if let Some(overlay_id) = overlay_cell.and_then(|overlay| overlay.overlay_id) {
-        let Some(flags) = overlay_registry.and_then(|registry| registry.flags(overlay_id)) else {
-            return ProductionUnitAdmission::nonzero(7, layer);
-        };
-        if flags.wall {
-            let allied_wall = overlay_cell
-                .and_then(|overlay| overlay.wall_owner)
-                .is_some_and(|wall_owner| {
-                    crate::map::houses::are_houses_friendly(
-                        &sim.house_alliances,
-                        owner,
-                        sim.interner.resolve(wall_owner),
-                    )
-                });
-            if flags.crushable && regular_crusher && !allied_wall {
-                wall_crush_admitted = true;
-            } else {
-                return ProductionUnitAdmission::nonzero(if allied_wall { 4 } else { 7 }, layer);
-            }
-        }
-    }
-
-    let first_building = sim
-        .substrate
-        .occupancy
-        .first_building_on_layer(cell.0, cell.1, layer);
-    let mut crush_victims = Vec::new();
-    if let Some(occupancy) = sim.substrate.occupancy.get(cell.0, cell.1) {
-        for occupant in occupancy.iter_layer(layer) {
-            if occupant.entity_id == produced_id {
-                continue;
-            }
-            let Some(blocker) = sim.substrate.entities.get(occupant.entity_id) else {
-                return ProductionUnitAdmission::nonzero(7, layer);
-            };
-            let blocker_owner = sim.interner.resolve(blocker.owner());
-            let allied =
-                crate::map::houses::are_houses_friendly(&sim.house_alliances, owner, blocker_owner);
-
-            if blocker.category == EntityCategory::Structure {
-                let Some(blocker_type) = rules.object(sim.interner.resolve(blocker.type_ref()))
-                else {
-                    return ProductionUnitAdmission::nonzero(7, layer);
-                };
-                if blocker_type.invisible_in_game {
-                    continue;
-                }
-                if matches!(
-                    decide_live_vehicle_building_entry(LiveVehicleBuildingEntry {
-                        mover_category: EntityCategory::Unit,
-                        branch: VehicleBuildingEntryBranch::UnitRepairOrBunker,
-                        checked_building_id: blocker.stable_id(),
-                        candidate_building_id: first_building,
-                        candidate_x: cell.0,
-                        building_origin_x: blocker.position.rx,
-                        number_impassable_rows: blocker_type.number_impassable_rows,
-                        is_unit_repair: blocker_type.unit_repair,
-                        is_bunker: blocker_type.bunker,
-                        bunker_occupied: blocker.bunker_occupant.is_some(),
-                    }),
-                    BuildingOccupantEntryDecision::SkipBlocker
-                ) {
-                    continue;
-                }
-                if blocker_type.bib
-                    && sim.substrate.occupancy.first_building_on_layer(
-                        cell.0.wrapping_add(1),
-                        cell.1,
-                        layer,
-                    ) != Some(blocker.stable_id())
-                {
-                    continue;
-                }
-                if blocker_type.gate {
-                    if blocker
-                        .building_gate
-                        .is_some_and(|runtime| runtime.can_garrison_passable())
-                    {
-                        continue;
-                    }
-                    // RESIDUAL (DRIFT, deferred): native's enemy-gate arm in
-                    // `UnitClass::Can_Enter_Cell @ 0x0073F0A0` is
-                    // `if (!IsAllied) { if (!this->vt+0x2AC()) return 7; max(5) }`
-                    // — `TechnoClass::Is_Armed`, which resolves the ONE slot
-                    // `GetCurrentWeapon` picks (the gunner slot for a
-                    // `TurretCount>0` type), where VERA tests slots 0 and 1.
-                    // `[SREF]`/`[YAGGUN]` now read correctly either way, since
-                    // `primary` is native weapon-array slot 0 (`+0x898`, filled
-                    // by `Weapon1=` — see `ObjectType::read_weapon_arrays`), so
-                    // what is left is the slot-selection difference. Trigger: a
-                    // `TurretCount>0` unit whose current gunner slot is empty
-                    // while slot 0 or 1 is not, leaving a war factory onto a
-                    // cell held by an enemy gate. Player effect: 5 (EnemyBlock)
-                    // where gamemd answers 7 (Impassable) — an A*
-                    // edge-cost/admission difference on the exit cell only.
-                    // Frequency: zero on retail data (no stock section is
-                    // shaped that way) and it also needs an enemy gate inside
-                    // the producer's exit footprint. Downstream: none. Left
-                    // with the other armed-predicate readers outside this
-                    // mechanism rather than changed from the weapon-selection
-                    // branch.
-                    return ProductionUnitAdmission::nonzero(
-                        if allied {
-                            3
-                        } else if object.primary.is_some() || object.secondary.is_some() {
-                            5
-                        } else {
-                            7
-                        },
-                        layer,
-                    );
-                }
-                // Ordinary buildings, including CABHUT, are blockers. The
-                // selected producer id is threaded explicitly; only the live
-                // helper above can skip that same yard occupant.
-                let _selected_producer = blocker.stable_id() == producer_id;
-                return ProductionUnitAdmission::nonzero(if allied { 7 } else { 5 }, layer);
-            }
-
-            if allied {
-                return ProductionUnitAdmission::nonzero(6, layer);
-            }
-            if matches!(
-                blocker.category,
-                EntityCategory::Unit
-                    | EntityCategory::Aircraft
-                    | EntityCategory::Structure
-                    | EntityCategory::Infantry
-            ) && blocker.cloak.as_ref().is_some_and(|cloak| cloak.state == 2)
-            {
-                return ProductionUnitAdmission::nonzero(1, layer);
-            }
-            if bump_crush::can_crush(
-                crush_capability,
-                bump_crush::CrushTarget::from_entity(blocker, sim.session.binary_frame),
-            ) {
-                crush_victims.push(blocker.stable_id());
-                continue;
-            }
-            return ProductionUnitAdmission::nonzero(5, layer);
-        }
-    }
-
-    // TerrainClass objects participate in the ground object list and are never
-    // crushable in active retail data. Early rejection is result-equivalent for
-    // this zero-only caller because no later arm can lower a nonzero result.
-    if layer == MovementLayer::Ground && sim.production.terrain_object_cells.contains_key(&cell) {
-        return ProductionUnitAdmission::nonzero(7, layer);
-    }
-
-    // Only the ground-list exhaustion path reads the dynamic SpeedType row.
-    // A successful wall crush is the proven escape from the zero Wall row.
-    if layer == MovementLayer::Ground
-        && !wall_crush_admitted
-        && !terrain_cell
-            .speed_costs
-            .cost_for_speed_type(object.speed_type)
-            .is_some_and(|speed| speed != 0)
-    {
-        return ProductionUnitAdmission::nonzero(7, layer);
-    }
-
-    let raw_bits =
-        match layer {
-            MovementLayer::Ground => sim
-                .substrate
-                .raw_cell_occupation
-                .ground_bits(cell.0, cell.1),
-            MovementLayer::Bridge => sim.substrate.raw_cell_occupation.deck_bits(cell.0, cell.1),
-            MovementLayer::Air | MovementLayer::Underground => 0,
-        } | sim
-            .substrate
-            .cell_occupation
-            .vehicle_bits_ignoring(cell.0, cell.1, layer, produced_id);
-    let unit_bit = raw_bits & crate::sim::occupancy::VEHICLE_OCCUPATION_BIT != 0;
-    if !crush_victims.is_empty() {
-        if unit_bit {
-            let first_unit = sim.substrate.occupancy.first_category_on_layer(
-                cell.0,
-                cell.1,
-                layer,
-                EntityCategory::Unit,
-                &sim.substrate.entities,
-            );
-            if !first_unit.is_some_and(|unit| crush_victims.contains(&unit)) {
-                return ProductionUnitAdmission::nonzero(2, layer);
-            }
-        }
-    } else {
-        if unit_bit {
-            return ProductionUnitAdmission::nonzero(2, layer);
-        }
-        if raw_bits & 0x1F != 0 {
-            if !regular_crusher {
-                // RESIDUAL (DRIFT, deferred): native's matching arm in
-                // `UnitClass::Can_Enter_Cell @ 0x0073F0A0` is richer than an
-                // armed test — `Type+0xC94 == 0 && (GetWeapon()->WeaponType ==
-                // NULL || GetWeapon(0)->Projectile->AG (+0x2A5) == 0)` returns
-                // 7, else 5. VERA models only the "names a weapon" half. The
-                // slots it reads are now the native weapon-array fields
-                // (`primary` = `+0x898`, filled by `Weapon1=` for a
-                // `TurretCount>0` type — see `ObjectType::read_weapon_arrays`),
-                // so `[SREF]`/`[YAGGUN]` answer 5 here as gamemd does; the
-                // omitted terms are `Type+0xC94` and the projectile `AG` flag.
-                // Trigger: an armed unit whose slot-0 projectile has `AG=no`
-                // (`AEGIS`, `NASAM`, `NAFLAK` shapes), or any type authoring
-                // `+0xC94`, exiting onto an occupied non-crushable cell. Player
-                // effect: 5 (EnemyBlock) where gamemd answers 7 (Impassable).
-                // Frequency: rare — needs a blocked exit cell under a producer,
-                // and the AA-only types above are buildings that never exit
-                // one. Downstream: none.
-                return ProductionUnitAdmission::nonzero(
-                    if object.primary.is_some() || object.secondary.is_some() {
-                        5
-                    } else {
-                        7
-                    },
-                    layer,
-                );
-            }
-            if let Some(infantry_owner) = sim
-                .substrate
-                .raw_cell_occupation
-                .infantry_owner(cell.0, cell.1, layer)
-                && crate::map::houses::are_houses_friendly(
-                    &sim.house_alliances,
-                    owner,
-                    sim.interner.resolve(infantry_owner),
-                )
-            {
-                return ProductionUnitAdmission::nonzero(2, layer);
-            }
-            // Enemy/unowned Infantry masks and stale residual low-bit shapes
-            // preserve zero for CRUSHER. No TemporaryOccupation is fabricated.
-        }
-    }
-
-    ProductionUnitAdmission::ExactZero {
-        layer,
-        crush_victims,
-    }
-}
-
-/// One `UnitClass::Unlimbo`-shaped transaction for the queue-held naval Unit:
-/// exact-zero CanEnter proceeds to modeled Mark(PUT), while every nonzero code
-/// rejects before Mark. Either refusal leaves the same stored identity in limbo.
-#[allow(clippy::too_many_arguments)]
+/// Naval ExitObject's selected Cell goes through the same concrete Unlimbo
+/// boundary as every Unit constructor; there is no production +1AC port.
 pub(super) fn unlimbo_held_naval_unit(
     sim: &mut Simulation,
     rules: &RuleSet,
-    owner: &str,
-    produced_type_id: &str,
     stable_id: u64,
-    producer_id: u64,
     cell: (u16, u16),
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> Option<u64> {
-    let (entry, resolved_cell) = produced_unit_unlimbo_entry(
-        sim,
-        rules,
-        owner,
-        produced_type_id,
+    let coord = resolve_produced_unit_cell_coords(sim, cell)?;
+    sim.reveal_constructed_object_at_coord_with_overlay_context(
         stable_id,
-        producer_id,
-        cell,
-        overlay_registry,
-    )?;
-    let admitted_layer = entry.exact_zero_layer();
-    let placement = admitted_layer.map_or(
-        crate::sim::world::PlacementEvidence::RejectedEarly,
-        |layer| crate::sim::world::PlacementEvidence::UnitCanEnterExactZero { layer },
-    );
-    // Reveal commits the admitted plane: OnBridge and, on a bridge, the deck.
-    let z = sim
-        .terrain_cell_level(resolved_cell.0, resolved_cell.1)
-        .unwrap_or(0);
-    let result = sim.reveal_constructed_object_at_height(
-        stable_id,
-        resolved_cell.0,
-        resolved_cell.1,
+        coord,
         0x40,
-        z,
-        placement,
+        crate::sim::world::PlacementEvidence::EvaluateMark,
         rules,
-    );
-    assert!(
-        admitted_layer.is_none() || result.is_some(),
-        "production Unit exact-zero admission established infallible mode-one Mark preconditions"
-    );
-    result
+        overlay_registry,
+    )
 }
 
 fn producer_queue_category_for_object(
@@ -1165,42 +756,6 @@ fn nearby_query_for_spawn<'a>(
         zone_grid,
         playfield_bounds,
     })
-}
-
-fn find_exact_exitcoord_spawn_cell(
-    base_rx: u16,
-    base_ry: u16,
-    structure_id: &str,
-    produced_category: ObjectCategory,
-    rules: &RuleSet,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-    occupancy: &OccupancyGrid,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    require_water: bool,
-) -> Option<(u16, u16)> {
-    let (lx, ly, _lz) = rules.object(structure_id)?.exit_coord?;
-    let cand = add_cell_offset(
-        base_rx,
-        base_ry,
-        lepton_to_cell_round_nearest(lx),
-        lepton_to_cell_round_nearest(ly),
-    )?;
-    if let Some(grid) = path_grid {
-        if cand.0 >= grid.width()
-            || cand.1 >= grid.height()
-            || !spawn_cell_passable(grid, cand, resolved_terrain, require_water)
-        {
-            return None;
-        }
-    }
-    cell_available_for_spawn(
-        cand,
-        produced_category,
-        occupancy,
-        resolved_terrain,
-        require_water,
-    )
-    .then_some(cand)
 }
 
 /// Retired ad-hoc box-ring nearest-cell search. The authoritative spawn/exit
@@ -1758,37 +1313,6 @@ mod tests {
         water.base_speed_costs.float = Some(100);
     }
 
-    fn add_admission_occupant(
-        sim: &mut Simulation,
-        stable_id: u64,
-        type_id: &str,
-        owner: &str,
-        category: crate::map::entities::EntityCategory,
-        origin: (u16, u16),
-        occupied_cell: (u16, u16),
-        layer: MovementLayer,
-    ) {
-        let mut entity = crate::sim::game_entity::GameEntity::test_default(
-            stable_id, type_id, owner, origin.0, origin.1,
-        );
-        entity.type_ref = sim.interner.intern(type_id);
-        entity.owner = sim.interner.intern(owner);
-        entity.category = category;
-        sim.substrate.entities.insert(entity);
-        sim.substrate.occupancy.add(
-            occupied_cell.0,
-            occupied_cell.1,
-            stable_id,
-            layer,
-            None,
-            if category == crate::map::entities::EntityCategory::Structure {
-                crate::sim::occupancy::CellListInsertion::AppendBuilding
-            } else {
-                crate::sim::occupancy::CellListInsertion::PrependNonBuilding
-            },
-        );
-    }
-
     fn water_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
         let mut terrain = flat_terrain(width, height);
         for cell in &mut terrain.cells {
@@ -1861,60 +1385,18 @@ mod tests {
     }
 
     #[test]
-    fn production_zero_cell_reaches_height_aware_playfield_rejection() {
-        let rules = production_admission_rules();
-        let mut sim = production_admission_sim();
-        // Flat-terrain native diamond: 12 < x+y <= 26, x-y < 14, y-x < 6.
-        // Cell (0,0) remains a valid allocated terrain-grid coordinate, which
-        // makes this distinguish the mandatory MapClass predicate from a mere
-        // rectangular lookup or a special zero/passability bypass.
-        sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
-            base: 10,
-            off_fc: 2,
-            off_100: 1,
-            off_104: 10,
-            off_108: 6,
-        });
-
-        assert_eq!(
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                &sim,
-                &rules,
-                "Americans",
-                "SAPC",
-                900,
-                1,
-                (0, 0),
-                None,
-            ),
-            ProductionUnitAdmission::NonZero {
-                code: 7,
-                layer: MovementLayer::Ground,
-            },
-            "the zero CellStruct value must reach the ordinary height-aware playfield gate"
-        );
-        assert!(
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                &sim,
-                &rules,
-                "Americans",
-                "SAPC",
-                900,
-                1,
-                (8, 8),
-                None,
-            )
-            .exact_zero(),
-            "an otherwise-identical in-diamond control remains admissible"
-        );
-    }
-
-    #[test]
     fn production_cell_center_uses_104_for_real_and_dummy_without_changing_xy() {
         let mut sim = production_admission_sim();
         let requested = (8, 8);
         let flat = resolve_produced_unit_cell_coords(&sim, requested);
-        assert_eq!(flat, Some(requested));
+        assert_eq!(
+            flat,
+            Some(crate::sim::components::DriveCoord {
+                x: 8 * 256 + 128,
+                y: 8 * 256 + 128,
+                z: 0
+            })
+        );
 
         let cell = sim
             .resolved_terrain
@@ -1935,8 +1417,8 @@ mod tests {
         );
         assert_eq!(
             resolve_produced_unit_cell_coords(&sim, requested),
-            flat,
-            "GetCoords evaluates raised Z but the current production helper returns only X/Y",
+            flat.map(|coord| crate::sim::components::DriveCoord { z: 208, ..coord }),
+            "GetCoords retains raised Z without changing X/Y",
         );
 
         sim.resolved_terrain
@@ -1959,8 +1441,8 @@ mod tests {
             .test_set_dummy_cell_level_slope(2, 0);
         assert_eq!(
             resolve_produced_unit_cell_coords(&dummy_sim, dummy_request),
-            flat_dummy,
-            "shared-dummy GetCoords evaluates Level 2 as 208 but retains the same signed-center X/Y output",
+            flat_dummy.map(|coord| crate::sim::components::DriveCoord { z: 208, ..coord }),
+            "shared-dummy GetCoords retains Level 2 Z and the same signed-center X/Y",
         );
         dummy_sim
             .resolved_terrain
@@ -1975,711 +1457,73 @@ mod tests {
     }
 
     #[test]
-    fn production_admission_ignores_contradictory_path_grid() {
+    fn unit_unlimbo_native_empty_raw_byte_is_not_resurrected_by_owner_claims() {
         let rules = production_admission_rules();
-        let sim = production_admission_sim();
-        let contradictory = PathGrid::test_all_blocked(20, 20);
-        assert!(!contradictory.is_walkable(8, 8));
-
-        assert!(
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                &sim,
-                &rules,
-                "Americans",
-                "SAPC",
-                900,
-                1,
-                (8, 8),
-                None,
-            )
-            .exact_zero(),
-            "the exact production tuple has no PathGrid input, so a contradictory grid cannot veto it"
-        );
-    }
-
-    #[test]
-    fn production_ground_speed_requires_row_authority_and_uses_retail_clear_values() {
-        let rules = production_admission_rules();
-        let cell = (8, 8);
-        let admission = |sim: &Simulation, type_id: &str| {
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                sim,
-                &rules,
-                "Americans",
-                type_id,
-                900,
-                1,
-                cell,
-                None,
-            )
-        };
-
-        let retail_rows = production_admission_sim();
-        assert!(
-            admission(&retail_rows, "SAPC").exact_zero(),
-            "retail Hover/Clear=50 admits an otherwise-empty Clear cell"
-        );
-        assert_eq!(
-            admission(&retail_rows, "DEST"),
-            ProductionUnitAdmission::NonZero {
-                code: 7,
-                layer: MovementLayer::Ground,
-            },
-            "retail Float/Clear=0 rejects the same Clear cell"
-        );
-
-        let mut missing = Simulation::default();
-        missing.resolved_terrain = Some(flat_terrain(20, 20));
-        missing.playfield_bounds = Some(test_playfield_bounds());
-        assert_eq!(
-            admission(&missing, "SAPC"),
-            ProductionUnitAdmission::NonZero {
-                code: 7,
-                layer: MovementLayer::Ground,
-            },
-            "missing the required SpeedType/LandType row is rejected rather than treated as nonzero"
-        );
-    }
-
-    #[test]
-    fn production_structural_low_bridge_selects_deck_plane_and_restriction_exception() {
-        let rules = RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-            "[InfantryTypes]\n\
-             [VehicleTypes]\n\
-             0=HYD\n\
-             [AircraftTypes]\n\
-             [BuildingTypes]\n\
-             [HYD]\n\
-             SpeedType=Float\n\
-             MovementRestrictedTo=Water\n",
-        ))
-        .expect("restricted naval unit rules");
         let mut sim = production_admission_sim();
-        let cell = (8, 8);
-        let admission = |sim: &Simulation| {
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                sim,
-                &rules,
-                "Americans",
-                "HYD",
-                900,
-                1,
-                cell,
-                None,
-            )
-        };
-
-        assert_eq!(
-            admission(&sim),
-            ProductionUnitAdmission::NonZero {
-                code: 7,
-                layer: MovementLayer::Ground,
-            },
-            "ordinary Clear ground fails MovementRestrictedTo=Water"
-        );
-
-        {
-            let tunnel = sim
-                .resolved_terrain
-                .as_mut()
-                .unwrap()
-                .cell_mut(cell.0, cell.1)
-                .unwrap();
-            tunnel.yr_cell_land_type = crate::rules::terrain_rules::LandType::Tunnel.as_index();
-            tunnel.speed_costs.float = Some(0);
+        set_admission_water_cell(&mut sim, (8, 8));
+        let stable_id = sim
+            .create_production_object_limbo_at_height("DEST", "Americans", 8, 8, 0x40, 0, &rules)
+            .unwrap();
+        // Unit7441B0 ORs 0x20; Unit744210 destructively clears it. The
+        // derived owner index can retain another claim after that clear.
+        for owner in [101, 102] {
+            sim.substrate
+                .cell_occupation
+                .mark_vehicle_on_layer(8, 8, owner, MovementLayer::Ground);
+            sim.substrate.raw_cell_occupation.mark_ground(8, 8, 0x20);
         }
+        sim.substrate
+            .cell_occupation
+            .clear_vehicle_on_layer(8, 8, 101, MovementLayer::Ground);
+        sim.substrate.raw_cell_occupation.clear_ground(8, 8, 0x20);
+        assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(8, 8), 0);
         assert_eq!(
-            admission(&sim),
-            ProductionUnitAdmission::NonZero {
-                code: 7,
-                layer: MovementLayer::Ground,
-            },
-            "Tunnel reaches but fails the stock zero Float speed row"
+            sim.substrate
+                .cell_occupation
+                .vehicle_bits(8, 8, MovementLayer::Ground),
+            0x20
         );
-
-        {
-            let bridge = sim
-                .resolved_terrain
-                .as_mut()
-                .unwrap()
-                .cell_mut(cell.0, cell.1)
-                .unwrap();
-            bridge.yr_cell_land_type = crate::rules::terrain_rules::LandType::Clear.as_index();
-            bridge.bridge_facts.raw_flags = crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
-            bridge.bridge_facts.overlay_id = Some(0xED);
-        }
-        sim.substrate.raw_cell_occupation.mark_ground(
-            cell.0,
-            cell.1,
-            crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
-        );
+        // Original Unit Unlimbo's empty-list/raw-zero control admits. Claims
+        // are not another input of the native +1AC receiver.
         assert_eq!(
-            admission(&sim),
-            ProductionUnitAdmission::ExactZero {
-                layer: MovementLayer::Bridge,
-                crush_victims: Vec::new(),
-            },
-            "BRIDGEB1 bypasses the restriction and ignores the occupied ground plane"
-        );
-
-        sim.substrate.raw_cell_occupation.mark_deck(
-            cell.0,
-            cell.1,
-            crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
-        );
-        assert_eq!(
-            admission(&sim),
-            ProductionUnitAdmission::NonZero {
-                code: 2,
-                layer: MovementLayer::Bridge,
-            },
-            "the same structural anchor reads the bridge/deck occupation byte"
+            unlimbo_held_naval_unit(&mut sim, &rules, stable_id, (8, 8), None),
+            Some(stable_id)
         );
     }
 
     #[test]
-    fn production_wall_admission_uses_registry_owner_and_rank_crusher() {
+    fn unit_unlimbo_native_deck_query_keeps_the_callers_ground_pose() {
         let rules = production_admission_rules();
-        let overlay_ini = crate::rules::ini_parser::IniFile::from_str(
-            "[OverlayTypes]\n0=TESTWALL\n[TESTWALL]\nWall=yes\nCrushable=yes\nLand=Wall\n",
-        );
-        let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&overlay_ini, None);
-        let cell = (8, 8);
-        let admission = |sim: &Simulation, type_id: &str| {
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                sim,
-                &rules,
-                "Americans",
-                type_id,
-                900,
-                1,
-                cell,
-                Some(&registry),
-            )
-        };
-
-        let mut unowned = production_admission_sim();
-        let mut overlay = crate::sim::overlay_grid::OverlayGrid::new(20, 20);
-        overlay.place_overlay(cell.0, cell.1, 0, 0);
-        unowned.overlay_grid = Some(overlay);
-        assert!(admission(&unowned, "SAPC").exact_zero());
-        assert_eq!(
-            admission(&unowned, "DEST"),
-            ProductionUnitAdmission::NonZero {
-                code: 7,
-                layer: MovementLayer::Ground,
-            },
-            "a noncrusher naval type cannot pass a crushable wall"
-        );
-
-        let mut allied = production_admission_sim();
-        let allied_owner = allied.interner.intern("Americans");
-        let mut overlay = crate::sim::overlay_grid::OverlayGrid::new(20, 20);
-        overlay.place_owned_wall(cell.0, cell.1, 0, 0, allied_owner);
-        allied.overlay_grid = Some(overlay);
-        assert_eq!(
-            admission(&allied, "SAPC"),
-            ProductionUnitAdmission::NonZero {
-                code: 4,
-                layer: MovementLayer::Ground,
-            },
-            "an allied crushable wall remains nonzero"
-        );
-
-        let mut enemy = production_admission_sim();
-        let enemy_owner = enemy.interner.intern("Russians");
-        let mut overlay = crate::sim::overlay_grid::OverlayGrid::new(20, 20);
-        overlay.place_owned_wall(cell.0, cell.1, 0, 0, enemy_owner);
-        enemy.overlay_grid = Some(overlay);
-        assert!(admission(&enemy, "SAPC").exact_zero());
-
-        let mut ranker = crate::sim::game_entity::GameEntity::test_default(
-            900,
-            "RANKER",
-            "Americans",
-            cell.0,
-            cell.1,
-        );
-        ranker.type_ref = enemy.interner.intern("RANKER");
-        ranker.owner = enemy.interner.intern("Americans");
-        ranker.set_veterancy_rank(100);
-        enemy.substrate.entities.insert(ranker);
-        assert!(
-            admission(&enemy, "RANKER").exact_zero(),
-            "VeteranAbilities=CRUSHER is selected at veteran rank"
-        );
-    }
-
-    #[test]
-    fn production_building_list_uses_yard_x_columns_invisible_and_bib_east_identity() {
-        use crate::map::entities::EntityCategory;
-
-        let rules = production_admission_rules();
-        let admission = |sim: &Simulation, cell| {
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                sim,
-                &rules,
-                "Americans",
-                "SAPC",
-                900,
-                1,
-                cell,
-                None,
-            )
-        };
-
-        let mut west = production_admission_sim();
-        add_admission_occupant(
-            &mut west,
-            10,
-            "YARD",
-            "Americans",
-            EntityCategory::Structure,
-            (10, 8),
-            (12, 8),
-            MovementLayer::Ground,
-        );
-        assert!(!admission(&west, (12, 8)).exact_zero());
-
-        let mut east = production_admission_sim();
-        add_admission_occupant(
-            &mut east,
-            10,
-            "YARD",
-            "Americans",
-            EntityCategory::Structure,
-            (10, 8),
-            (13, 8),
-            MovementLayer::Ground,
-        );
-        assert!(
-            admission(&east, (13, 8)).exact_zero(),
-            "the fourth/eastmost column skips the same yard"
-        );
-        add_admission_occupant(
-            &mut east,
-            11,
-            "NORMAL",
-            "Russians",
-            EntityCategory::Structure,
-            (13, 8),
-            (13, 8),
-            MovementLayer::Ground,
-        );
-        assert!(
-            !admission(&east, (13, 8)).exact_zero(),
-            "another building later in that eastmost cell still rejects"
-        );
-
-        let mut invisible = production_admission_sim();
-        add_admission_occupant(
-            &mut invisible,
-            20,
-            "INVISIBLE",
-            "Russians",
-            EntityCategory::Structure,
-            (8, 8),
-            (8, 8),
-            MovementLayer::Ground,
-        );
-        assert!(admission(&invisible, (8, 8)).exact_zero());
-
-        let mut bib_edge = production_admission_sim();
-        add_admission_occupant(
-            &mut bib_edge,
-            30,
-            "BIBBER",
-            "Russians",
-            EntityCategory::Structure,
-            (8, 8),
-            (8, 8),
-            MovementLayer::Ground,
-        );
-        assert!(
-            admission(&bib_edge, (8, 8)).exact_zero(),
-            "Bib skips when the first building one cell east is not the same identity"
-        );
-        bib_edge.substrate.occupancy.add(
-            9,
-            8,
-            30,
-            MovementLayer::Ground,
-            None,
-            crate::sim::occupancy::CellListInsertion::AppendBuilding,
-        );
-        assert!(
-            !admission(&bib_edge, (8, 8)).exact_zero(),
-            "Bib does not skip while the same building continues east"
-        );
-    }
-
-    #[test]
-    fn production_gate_only_skips_mission_open_stable_and_maps_failure_codes() {
-        use crate::map::entities::EntityCategory;
-        use crate::sim::game_entity::{BuildingGatePhase, BuildingGateRuntime};
-
-        let rules = production_admission_rules();
-        let cell = (8, 8);
-        let make_gate = |owner: &str, phase: BuildingGatePhase, mission_18_active: bool| {
-            let mut sim = production_admission_sim();
-            add_admission_occupant(
-                &mut sim,
-                40,
-                "GATE",
-                owner,
-                EntityCategory::Structure,
-                cell,
-                cell,
-                MovementLayer::Ground,
-            );
-            sim.substrate.entities.get_mut(40).unwrap().building_gate = Some(BuildingGateRuntime {
-                phase,
-                mission_18_active,
-                ..BuildingGateRuntime::default()
-            });
-            sim
-        };
-        let admission = |sim: &Simulation, type_id: &str| {
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                sim,
-                &rules,
-                "Americans",
-                type_id,
-                900,
-                1,
-                cell,
-                None,
-            )
-        };
-
-        let open = make_gate("Russians", BuildingGatePhase::OpenStable, true);
-        assert!(
-            admission(&open, "SAPC").exact_zero(),
-            "mission 0x18 plus stable-open skips the gate; DamagedDoor is deliberately not read"
-        );
-        let wrong_mission = make_gate("Russians", BuildingGatePhase::OpenStable, false);
-        assert_eq!(
-            admission(&wrong_mission, "ARMED"),
-            ProductionUnitAdmission::NonZero {
-                code: 5,
-                layer: MovementLayer::Ground,
-            }
-        );
-
-        for phase in [
-            BuildingGatePhase::ClosedStable,
-            BuildingGatePhase::Opening,
-            BuildingGatePhase::Closing,
-        ] {
-            let allied = make_gate("Americans", phase, true);
-            assert_eq!(
-                admission(&allied, "ARMED"),
-                ProductionUnitAdmission::NonZero {
-                    code: 3,
-                    layer: MovementLayer::Ground,
-                }
-            );
-            let hostile_armed = make_gate("Russians", phase, true);
-            assert_eq!(
-                admission(&hostile_armed, "ARMED"),
-                ProductionUnitAdmission::NonZero {
-                    code: 5,
-                    layer: MovementLayer::Ground,
-                }
-            );
-            let hostile_unarmed = make_gate("Russians", phase, true);
-            assert_eq!(
-                admission(&hostile_unarmed, "DEST"),
-                ProductionUnitAdmission::NonZero {
-                    code: 7,
-                    layer: MovementLayer::Ground,
-                }
-            );
-        }
-    }
-
-    #[test]
-    fn production_inactive_fence_defaults_cabhut_and_terrain_are_terminal_blockers() {
-        use crate::map::entities::EntityCategory;
-
-        let rules = production_admission_rules();
-        assert!(rules.object("LASERDEFAULT").unwrap().laser_fence);
-        // Active retail has no FirestormWall=yes type. The fixture therefore
-        // leaves FIREDEFAULT on the ordinary ObjectType defaults instead of
-        // guessing the retained TS arm; DamagedDoor is likewise not a field
-        // consumed by the production evaluator.
-        assert!(!rules.object("FIREDEFAULT").unwrap().laser_fence);
-        let cell = (8, 8);
-        let admission = |sim: &Simulation| {
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                sim,
-                &rules,
-                "Americans",
-                "DEST",
-                900,
-                1,
-                cell,
-                None,
-            )
-        };
-
-        for type_id in ["CABHUT", "LASERDEFAULT", "FIREDEFAULT"] {
-            let mut sim = production_admission_sim();
-            add_admission_occupant(
-                &mut sim,
-                50,
-                type_id,
-                "Russians",
-                EntityCategory::Structure,
-                cell,
-                cell,
-                MovementLayer::Ground,
-            );
-            assert!(
-                !admission(&sim).exact_zero(),
-                "{type_id} must remain an ordinary terminal blocker in the active stock slice"
-            );
-        }
-        assert!(rules.object("CABHUT").unwrap().bridge_repair_hut);
-
-        let mut terrain = production_admission_sim();
-        terrain.production.terrain_object_cells.insert(cell, 60);
-        assert!(
-            !admission(&terrain).exact_zero(),
-            "a live TerrainClass cell rejects even without a PathGrid bit or fabricated object"
-        );
-    }
-
-    #[test]
-    fn production_fully_cloaked_techno_rejects_before_successful_crush() {
-        use crate::map::entities::EntityCategory;
-
-        let rules = production_admission_rules();
-        let cell = (8, 8);
-        let admission = |sim: &Simulation, type_id: &str| {
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                sim,
-                &rules,
-                "Americans",
-                type_id,
-                900,
-                1,
-                cell,
-                None,
-            )
-        };
-
-        let mut enemy = production_admission_sim();
-        add_admission_occupant(
-            &mut enemy,
-            60,
-            "E1",
-            "Russians",
-            EntityCategory::Infantry,
-            cell,
-            cell,
-            MovementLayer::Ground,
-        );
-        enemy.substrate.entities.get_mut(60).unwrap().crushable = true;
-        assert_eq!(
-            admission(&enemy, "SAPC"),
-            ProductionUnitAdmission::ExactZero {
-                layer: MovementLayer::Ground,
-                crush_victims: vec![60],
-            },
-            "non-cloaked enemy crushable infantry preserves exact zero"
-        );
-        assert_eq!(
-            admission(&enemy, "DEST"),
-            ProductionUnitAdmission::NonZero {
-                code: 5,
-                layer: MovementLayer::Ground,
-            },
-            "an unarmed noncrusher cannot use the crush escape"
-        );
-
-        let mut cloak = crate::sim::cloak_disguise::CloakRuntime::new(0, 1);
-        cloak.state = 2;
-        enemy.substrate.entities.get_mut(60).unwrap().cloak = Some(cloak);
-        assert_eq!(
-            admission(&enemy, "SAPC"),
-            ProductionUnitAdmission::NonZero {
-                code: 1,
-                layer: MovementLayer::Ground,
-            },
-            "fully-cloaked Techno code 1 is evaluated before crushability"
-        );
-
-        let mut allied = production_admission_sim();
-        add_admission_occupant(
-            &mut allied,
-            61,
-            "E1",
-            "Americans",
-            EntityCategory::Infantry,
-            cell,
-            cell,
-            MovementLayer::Ground,
-        );
-        allied.substrate.entities.get_mut(61).unwrap().crushable = true;
-        assert_eq!(
-            admission(&allied, "SAPC"),
-            ProductionUnitAdmission::NonZero {
-                code: 6,
-                layer: MovementLayer::Ground,
-            },
-            "alliance rejection precedes enemy crush handling"
-        );
-
-        let mut mixed = production_admission_sim();
-        add_admission_occupant(
-            &mut mixed,
-            62,
-            "E1",
-            "Russians",
-            EntityCategory::Infantry,
-            cell,
-            cell,
-            MovementLayer::Ground,
-        );
-        mixed.substrate.entities.get_mut(62).unwrap().crushable = true;
-        add_admission_occupant(
-            &mut mixed,
-            63,
-            "HEAVY",
-            "Russians",
-            EntityCategory::Infantry,
-            cell,
-            cell,
-            MovementLayer::Ground,
-        );
-        assert!(
-            !admission(&mixed, "SAPC").exact_zero(),
-            "a later noncrushable object keeps the mixed cell nonzero"
-        );
-    }
-
-    #[test]
-    fn production_raw_selected_plane_tail_preserves_verified_zero_shapes() {
-        use crate::map::entities::EntityCategory;
-
-        let rules = production_admission_rules();
-        let cell = (8, 8);
-        let admission = |sim: &Simulation, type_id: &str| {
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                sim,
-                &rules,
-                "Americans",
-                type_id,
-                900,
-                1,
-                cell,
-                None,
-            )
-        };
-
-        let mut unit_only = production_admission_sim();
-        unit_only.substrate.raw_cell_occupation.mark_ground(
-            cell.0,
-            cell.1,
-            crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
-        );
-        assert_eq!(
-            admission(&unit_only, "SAPC"),
-            ProductionUnitAdmission::NonZero {
-                code: 2,
-                layer: MovementLayer::Ground,
-            }
-        );
-
-        let mut enemy_infantry = production_admission_sim();
-        let mut infantry =
-            crate::sim::game_entity::GameEntity::test_default(70, "E1", "Russians", cell.0, cell.1);
-        infantry.category = EntityCategory::Infantry;
-        infantry.owner = enemy_infantry.interner.intern("Russians");
-        enemy_infantry.substrate.entities.insert(infantry);
-        enemy_infantry
-            .substrate
-            .raw_cell_occupation
-            .mark_ground_infantry(
-                cell.0,
-                cell.1,
-                0x04,
-                enemy_infantry.interner.get("Russians").unwrap(),
-            );
-        assert!(admission(&enemy_infantry, "SAPC").exact_zero());
-        assert!(
-            !admission(&enemy_infantry, "DEST").exact_zero(),
-            "noncrusher low-bit occupation remains nonzero"
-        );
-
-        let mut residual = production_admission_sim();
-        residual
-            .substrate
-            .raw_cell_occupation
-            .mark_ground(cell.0, cell.1, 0x01);
-        assert!(
-            admission(&residual, "SAPC").exact_zero(),
-            "verified list-empty residual low bit remains zero without TemporaryOccupation"
-        );
-
-        let mut ordered_unit = production_admission_sim();
-        add_admission_occupant(
-            &mut ordered_unit,
-            71,
-            "CRUSHABLEUNIT",
-            "Russians",
-            EntityCategory::Unit,
-            cell,
-            cell,
-            MovementLayer::Ground,
-        );
-        ordered_unit
-            .substrate
-            .entities
-            .get_mut(71)
-            .unwrap()
-            .crushable = true;
-        ordered_unit.substrate.raw_cell_occupation.mark_ground(
-            cell.0,
-            cell.1,
-            crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
-        );
-        assert_eq!(
-            admission(&ordered_unit, "OMNI"),
-            ProductionUnitAdmission::ExactZero {
-                layer: MovementLayer::Ground,
-                crush_victims: vec![71],
-            },
-            "Unit bit stays zero only when the first Unit-list identity is the crush victim"
-        );
-
-        let mut structural = production_admission_sim();
-        let bridge = structural
+        let mut sim = production_admission_sim();
+        set_admission_water_cell(&mut sim, (8, 8));
+        let cell = sim
             .resolved_terrain
             .as_mut()
             .unwrap()
-            .cell_mut(cell.0, cell.1)
+            .cell_mut(8, 8)
             .unwrap();
-        bridge.bridge_facts.raw_flags = crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
-        structural.substrate.raw_cell_occupation.mark_ground(
-            cell.0,
-            cell.1,
-            crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
-        );
-        assert!(admission(&structural, "SAPC").exact_zero());
-        structural.substrate.raw_cell_occupation.mark_deck(
-            cell.0,
-            cell.1,
-            crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
-        );
+        cell.level = 3;
+        cell.bridge_deck_level = 7;
+        cell.has_bridge_deck = true;
+        cell.bridge_walkable = true;
+        cell.bridge_facts.raw_flags = 0x100;
+        let stable_id = sim
+            .create_production_object_limbo_at_height("DEST", "Americans", 8, 8, 0x40, 3, &rules)
+            .unwrap();
         assert_eq!(
-            admission(&structural, "SAPC"),
-            ProductionUnitAdmission::NonZero {
-                code: 2,
-                layer: MovementLayer::Bridge,
-            }
+            unlimbo_held_naval_unit(&mut sim, &rules, stable_id, (8, 8), None),
+            Some(stable_id)
         );
+        let entity = sim.substrate.entities.get(stable_id).unwrap();
+        // Original Foot4D9C60 changes only caller-local query outputs;
+        // initialized native bridge_clear_ground_input retains OnBridge0.
+        assert!(!entity.on_bridge);
+        assert_eq!(entity.position.exact_z_leptons, Some(312));
+        assert_eq!(
+            sim.substrate.raw_cell_occupation.ground_bits(8, 8) & 0x20,
+            0x20
+        );
+        assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(8, 8) & 0x20, 0);
     }
 
     #[test]
@@ -2691,193 +1535,12 @@ mod tests {
             .create_production_object_limbo_at_height("DEST", "Americans", 8, 8, 0x40, 0, &rules)
             .expect("held production Unit");
         assert_eq!(
-            unlimbo_held_naval_unit(
-                &mut sim,
-                &rules,
-                "Americans",
-                "DEST",
-                stable_id,
-                1,
-                (8, 8),
-                None,
-            ),
+            unlimbo_held_naval_unit(&mut sim, &rules, stable_id, (8, 8), None,),
             Some(stable_id),
             "the production API exposes no caller-forced Mark outcome"
         );
         let entity = sim.substrate.entities.get(stable_id).unwrap();
         assert!(!entity.lifecycle.in_limbo && entity.lifecycle.cell_marked);
-    }
-
-    #[test]
-    fn production_structural_bridge_unlimbo_marks_e8_deck_at_native_height() {
-        let rules = production_admission_rules();
-        let cell = (8, 8);
-        let make_structural_sim = || {
-            let mut sim = production_admission_sim();
-            {
-                let bridge = sim
-                    .resolved_terrain
-                    .as_mut()
-                    .unwrap()
-                    .cell_mut(cell.0, cell.1)
-                    .unwrap();
-                bridge.level = 3;
-                bridge.bridge_deck_level = 7;
-                bridge.has_bridge_deck = true;
-                bridge.bridge_walkable = true;
-                bridge.bridge_facts.raw_flags = crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
-            }
-            sim.bridge_state = Some(
-                crate::sim::bridge_state::BridgeRuntimeState::from_resolved_terrain(
-                    sim.resolved_terrain.as_ref().unwrap(),
-                    true,
-                    300,
-                ),
-            );
-            sim
-        };
-
-        let mut sim = make_structural_sim();
-        let stable_id = sim
-            .create_production_object_limbo_at_height(
-                "DEST",
-                "Americans",
-                cell.0,
-                cell.1,
-                0x40,
-                3,
-                &rules,
-            )
-            .expect("held production Unit");
-        assert_eq!(
-            unlimbo_held_naval_unit(
-                &mut sim,
-                &rules,
-                "Americans",
-                "DEST",
-                stable_id,
-                1,
-                cell,
-                None,
-            ),
-            Some(stable_id)
-        );
-
-        let entity = sim.substrate.entities.get(stable_id).unwrap();
-        assert!(
-            entity.on_bridge,
-            "selected bridge admission establishes OnBridge"
-        );
-        assert_eq!(entity.position.z, 7, "native deck Z is CellClass Level+4");
-        let occupancy = sim.substrate.occupancy.get(cell.0, cell.1).unwrap();
-        assert_eq!(
-            occupancy
-                .iter_layer(MovementLayer::Bridge)
-                .map(|entry| entry.entity_id)
-                .collect::<Vec<_>>(),
-            vec![stable_id],
-            "mode-one Mark links the Unit into CellClass+0xE8"
-        );
-        assert!(
-            occupancy.iter_layer(MovementLayer::Ground).next().is_none(),
-            "mode-one Mark must not link the Unit into CellClass+0xE4"
-        );
-        assert_eq!(
-            sim.substrate.raw_cell_occupation.deck_bits(cell.0, cell.1)
-                & crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
-            crate::sim::occupancy::VEHICLE_OCCUPATION_BIT
-        );
-        assert_eq!(
-            sim.substrate
-                .raw_cell_occupation
-                .ground_bits(cell.0, cell.1)
-                & crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
-            0
-        );
-        assert_eq!(
-            sim.substrate
-                .cell_occupation
-                .vehicle_bits(cell.0, cell.1, MovementLayer::Bridge,),
-            crate::sim::occupancy::VEHICLE_OCCUPATION_BIT
-        );
-        assert_eq!(
-            sim.substrate
-                .cell_occupation
-                .vehicle_bits(cell.0, cell.1, MovementLayer::Ground,),
-            0
-        );
-
-        let mut selected_plane = make_structural_sim();
-        selected_plane.substrate.raw_cell_occupation.mark_ground(
-            cell.0,
-            cell.1,
-            crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
-        );
-        assert!(
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                &selected_plane,
-                &rules,
-                "Americans",
-                "DEST",
-                900,
-                1,
-                cell,
-                None,
-            )
-            .exact_zero(),
-            "ground-plane occupation does not block structural bridge admission"
-        );
-        selected_plane.substrate.raw_cell_occupation.mark_deck(
-            cell.0,
-            cell.1,
-            crate::sim::occupancy::VEHICLE_OCCUPATION_BIT,
-        );
-        assert_eq!(
-            produced_unit_unlimbo_entry_at_resolved_cell(
-                &selected_plane,
-                &rules,
-                "Americans",
-                "DEST",
-                900,
-                1,
-                cell,
-                None,
-            ),
-            ProductionUnitAdmission::NonZero {
-                code: 2,
-                layer: MovementLayer::Bridge,
-            },
-            "deck-plane occupation rejects the same structural bridge admission"
-        );
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "production Unit exact-zero admission established infallible mode-one Mark preconditions"
-    )]
-    fn production_exact_zero_internal_mark_inconsistency_is_invariant_failure() {
-        let rules = production_admission_rules();
-        let mut sim = production_admission_sim();
-        set_admission_water_cell(&mut sim, (8, 8));
-        let stable_id = sim
-            .create_production_object_limbo_at_height("DEST", "Americans", 8, 8, 0x40, 0, &rules)
-            .expect("held production Unit");
-        sim.substrate
-            .entities
-            .get_mut(stable_id)
-            .unwrap()
-            .lifecycle
-            .cell_marked = true;
-        let _ = unlimbo_held_naval_unit(
-            &mut sim,
-            &rules,
-            "Americans",
-            "DEST",
-            stable_id,
-            1,
-            (8, 8),
-            None,
-        );
     }
 
     #[test]

@@ -270,11 +270,20 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // 1AD1402910CE62D8; all 17 off/on boundaries differ only in tick hash. Receipt:
 // tools/spatial_oracle/unit_simple_deploy_replay/receipt.json. This is Rust
 // attribution; unit_simple_deploy separately pins native body cadence.
+// Shared Techno Door hash composition after main339b57d18 integration:
+// one diagnostic binary restores incoming B20E11E0579BC4E4 when only the Door
+// hash feed is omitted. Behavior and RNG assertions reach the final pin in
+// both modes. The temporary control is removed; native expected values stay
+// unchanged. Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
 // 2026-10-02 IFV owner migration: u8 last-shot hashing becomes signed i32
 // current-weapon hashing and the redundant None override feed is removed.
 // All 17 recorded boundaries retain gameplay/RNG after guarded field migration;
 // tools/spatial_oracle/ifv_turret_replay/receipt.json records this Rust attribution.
-const SLICE6_BASELINE_HASH: u64 = 0x5605_0F10_EACE_5E86;
+// Shared Door composition after main1009: same test binary, 17 complete
+// off/on boundaries equal except tick_result.state_hash. Omitting only Door
+// restores incoming main; the temporary control is removed. Bounded Rust
+// attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+const SLICE6_BASELINE_HASH: u64 = 0x657A_4E48_7E8A_C526;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

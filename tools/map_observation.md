@@ -54,6 +54,89 @@ wrapper reports denied variables and does not silently change the environment.
 After sourcing the native development environment, explicitly remove `RA2_DIR`
 for this command as above; asset loading uses the working directory's config.
 
+The [factory tank exit profile](map_observation.factory-tank-exit.example.json)
+exercises the ordinary human GAWEAP → MTNK production path on retail AnyTown
+(`XMP03T4.MAP`). It deploys the starting MCV, builds power, barracks and refinery,
+places the 5×3 factory at `(25,91)`, then queues one tank without a rally order.
+Its numeric type/entity handles belong to the recorded retail roster and seed;
+inspect a zero-step observation before reusing it with different rules or assets.
+Use `RUST_LOG=info` with the command above to retain placement foundations in
+`logs/ra2.log`. The profile requires 5600 steps to observe the complete exit.
+
+The 2026-10-02 release observation loaded MIX entry `-854728974` with map payload
+SHA-256 `7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e`.
+Factory1456 placed at step4501, became operational4551, and delivered tank1528
+at5249. Unload states1/2/3/4 occurred at5250/5265/5293/5325. The tank reached the
+forced track head at5321, cleared the factory footprint at5333, and returned to
+Guard at5340 in Cell `(30,93)` / XYZ `[7808,23936,416]`; the factory returned to
+Guard at5370. The inspected 800×600 BGRA readback has SHA-256
+`adceea6c241b3e4eb16eb7039d6c1159dfdb376f4d9191bfcc4b3634127c80cb`.
+The integrated release binary SHA-256 is
+`ec8dfce838c10c8eb86e5107d5643c2e907584c435303d0e5e6f0995cfccd823`
+(31,504,832 bytes). Its retained `capture.json` and `run.json` SHA-256 values are
+`f51df731f516a72f28ab2a1bb3ec2687a9f2e95a54edc5455e1cd0e1ea270394`
+and `aab418567732c72350abebc572bfd898a0bab4b27c9725dbeb2a1b5986a05bf1`.
+The factory and tank pose, lifecycle, mission and NavCom trajectories match
+the pre-integration release
+`079f26fb33e3f97ab5571c9350bcdc619384c03116a98ebfee1be8aab07a15d2`
+at every recorded step; both releases produce the final readback above.
+After integrating main `03750cc7` (shared refinery/depot docking), the final
+release binary SHA-256 is
+`30511790b949abba1b62dd596d9cf505d8e90b0e6be5d8888f34056ea114a6b1`
+(31,541,264 bytes). Its v6 bundle is valid at step5600; `capture.json` and
+`run.json` have SHA-256 values
+`cf0c3c24a1fc485160d3906f0a4f4b67fbca55eb2ce15891f9356560f6cf3262`
+and `8fbe3b95517d3a4beedab78f65add32d0867e270f61df33a82ce2a2b18dcd405`.
+All 5,601 frame boundaries match the earlier integrated release for the
+factory/tank's recorded pose, lifecycle, health, mission, NavCom, archive,
+target, Foot, Building and original Unit fields (11,202 actor comparisons),
+and the final BGRA bytes are identical. The new v6 radio/miner observations
+and incoming IFV weapon/turret fields were absent from that earlier schema;
+they are excluded from this comparison. The final deterministic state hash is
+`4786212690033122157`. The external
+`unit-unlimbo-main1010-runtime-summary.json` retains the declared field lists,
+input/artifact identities, comparison counts and endpoints.
+The final zero/default ExitCoord candidate was observed on 2026-10-03 with
+release binary SHA-256
+`e88f7537f4b0aef9dcf4ebddb3cf8c94c56f460127116938bcb6cd641f365b43`
+(31,512,752 bytes). The stock R6 bundle passes the ordinary v6 validator and
+matches R5's retained initial/final state, map identity and complete observation
+transcript; the final BGRA bytes remain identical. R5's executable path was
+superseded by the shared release build, so the strict cross-run wrapper cannot
+revalidate that historical binary. This comparison uses the retained capture
+bytes and does not weaken that wrapper.
+
+R7 uses the same release and production loader with a loose copy of the original
+map bytes plus only `[GAWEAP] ExitCoord=0,0,0`. The existing asset reader confirms
+that the scenario layer overrides stock `[512,256,0]` with `[0,0,0]`; the loader
+reports the derived map SHA-256
+`0dfbeaf28550ed9213e54ad4cca70b698488065e26e021770b263091cb7f4199`.
+R7 also passes the ordinary v6 validator. Every factory1456 and product1528
+actor field, including radio, miner and IFV fields, matches R6 at all 5,601
+boundaries (11,202 presence/actor comparisons; 3,700 present actors), and the
+final BGRA bytes are identical. The different map/rule inputs produce different
+whole-state hashes; those hashes are not an equivalence assertion. The external
+`unit-unlimbo-zero-final-runtime-summary-20261003.json` records these identities,
+declared fields and comparison limits (SHA-256
+`9d9e235d7f56d9948ffa1292fb11dc9390827115eca9a7faa007981a0feb649f`).
+After incoming Grand Cannon/recoil integration and snapshot284 composition,
+final R8 stock and R9 zero-map bundles both pass the ordinary v6 validator.
+Release binary SHA-256 is
+`d894cf0b771716e60d394c692c419b62e125920c1d0a3c12ab1c13e67c2a2f0f`
+(31,640,672 bytes). Their complete factory/tank actor dictionaries match at
+all 5,601 boundaries (11,202 presence/actor checks, 3,700 present), and their
+final BGRA bytes retain the same `adceea6c…` identity above. The factory/tank
+fields also match retained R6 after removing only incoming optional
+`building.voxel_gun` from that historical schema comparison. R8/R9 retain
+the stock/zero map identities and complete exit/Guard endpoints above; their
+whole-state hashes remain distinct with different rule inputs. Final summary
+SHA-256 is
+`e503a82b7e63b1cb4c654f644a6359e41d606ed0c4708870efecea5039b1b43d`.
+These are Rust production observations. Bounded original Door, Unload and Unit
+comparisons are documented by the existing
+[Unit Unlimbo evidence owner](spatial_oracle/anytown_damage/unit_unlimbo.md);
+this profile does not establish native whole-object clock or pixel equivalence.
+
 A new wrapper v6 bundle contains sealed `profile.json`, `config.toml` and
 `contract.json` copies, plus `stdout.log`, `stderr.log`, `run.json` and the child's
 atomically published `child-output/{capture.json,frame.bgra}`. Runtime still reads
@@ -853,3 +936,28 @@ The [atlas observation validation](atlas_observation.validation.json) records
 before/after production captures and the explicit retail GPU atlas refresh test.
 The older `map_observation.validation.json` remains historical v1 evidence; it
 has not been retroactively given statistics or new source identities.
+
+Final PR1018 integration includes main2e05101f and snapshot285. Stock R10 and
+scenario-zero R11 ordinary v6 wrappers both finish5,600 ticks/exit0 using the
+same release binary `9a3cbe2f2e1df8ea8763088bbfffbf694a30efc45193b1b0a4c33ce599e6104c`
+(31,667,312 bytes). All11,202 complete factory/tank actor and presence comparisons
+match across5,601 boundaries, with3,700 present samples and both objects ending
+in Guard at the retained cleared-footprint poses. Final800x600 BGRA bytes remain
+`adceea6c241b3e4eb16eb7039d6c1159dfdb376f4d9191bfcc4b3634127c80cb`;
+the lossless preview was visually inspected outside the sealed bundles.
+`unit-unlimbo-pr1018-final-runtime-summary-20261003.json` retains current wrapper
+validation and complete comparisons, SHA-256
+`92a0266bebb2298fd35d3821c06e23718c49cdd13b083608162c9c0e3222e8d0`.
+The earlier R8 actor data also matches; its overwritten executable basename is
+historical evidence and is not newly strict-validated. Stock/zero rule inputs
+differ, so this actor/pixel comparison is not whole-run equality or native parity.
+
+After main2909aba80 failure-diagnostic integration, candidate08005785's release
+build retains exactly the recorded R10/R11 executable SHA-256
+`9a3cbe2f2e1df8ea8763088bbfffbf694a30efc45193b1b0a4c33ce599e6104c`.
+Both existing runs revalidate with ordinary v6 against those same current
+bytes. This is same-executable evidence continuity, not a new execution.
+External `pr1018-diagnostics-release-continuity-20261003.json` records the
+identity and validations (SHA-256
+`d6413cf7fc50e5e763aeacec6f34ef53e9994ad1dd03a4050b8d88854af07cfd`).
+The previous bounded actor/GPU comparisons and native-parity limits remain.

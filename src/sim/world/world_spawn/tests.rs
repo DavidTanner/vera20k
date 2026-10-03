@@ -437,6 +437,7 @@ fn outside_reentry_clears_current_discovery_only_after_successful_alive_mark() {
         let id = sim
             .spawn_object_at_height("E1", "Americans", 6, 5, 0, 0, &rules)
             .unwrap();
+        assert!(sim.substrate.entities.get(id).unwrap().in_playfield);
         assert!(
             sim.substrate
                 .entities
@@ -463,11 +464,16 @@ fn outside_reentry_clears_current_discovery_only_after_successful_alive_mark() {
             .lifecycle
             .object_alive = alive;
         // Caller-supplied successful Mark admits an outside cell, as existing
-        // release callers can. The mode-one query is owned by shared Unlimbo.
+        // release callers can. Techno6F6CB8 returns after failed Object Mark
+        // before the membership writer6F6CFE, retaining the prior true byte.
+        // Only successful Mark reaches that writer and the mode-one query.
         let result = sim.reveal_constructed_object_at_height(id, 5, 5, 0, 0, placement, &rules);
         assert_eq!(result.is_some(), placement != PlacementEvidence::MarkFailed);
         let entity = sim.substrate.entities.get(id).unwrap();
-        assert!(!entity.in_playfield);
+        assert_eq!(
+            entity.in_playfield,
+            placement == PlacementEvidence::MarkFailed
+        );
         assert!(!entity.discovery.owned_by_current_house);
         assert_eq!(entity.discovery.discovered_by_current_house, expected_b);
         assert_eq!(entity.discovery.discovered_by_other_house, expected_c);
@@ -911,6 +917,13 @@ fn techno_constructor_live_overlay_context_admits_ore_and_structural_bridge() {
     let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(10, 10);
     for cell in [ore_authored, ore_runtime, bridge_cell] {
         overlays.place_overlay(cell.0, cell.1, 0, 0);
+        sim.resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(cell.0, cell.1)
+            .unwrap()
+            .bridge_facts
+            .overlay_id = Some(0);
     }
     sim.overlay_grid = Some(overlays);
 
@@ -918,7 +931,10 @@ fn techno_constructor_live_overlay_context_admits_ore_and_structural_bridge() {
         sim.spawn_from_map_with_resolved_and_overlay_registry(
             &[
                 map_entity("MTNK", EntityCategory::Unit, ore_authored),
-                map_entity("MTNK", EntityCategory::Unit, bridge_cell),
+                MapEntity {
+                    high: true,
+                    ..map_entity("MTNK", EntityCategory::Unit, bridge_cell)
+                },
             ],
             Some(&rules),
             None,
@@ -979,6 +995,15 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
     let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(10, 10);
     overlays.place_overlay(wall_cell.0, wall_cell.1, 1, 0);
     sim.overlay_grid = Some(overlays);
+    // Unit73F0A0 reads the native Cell's overlay identity. OverlayGrid's
+    // presentation record alone does not supply that class-admission input.
+    sim.resolved_terrain
+        .as_mut()
+        .unwrap()
+        .cell_mut(wall_cell.0, wall_cell.1)
+        .unwrap()
+        .bridge_facts
+        .overlay_id = Some(1);
 
     let parent_id = sim
         .construct_object_limbo_at_height("CARRIER", "Americans", 2, 2, 9, 0, &rules)
@@ -997,7 +1022,7 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
         .collect::<Vec<_>>();
     assert_eq!(child_ids.len(), 3);
     assert!(
-        sim.reveal_constructed_object_at_height_with_unit_context(
+        sim.reveal_constructed_object_at_height_with_overlay_context(
             parent_id,
             wall_cell.0,
             wall_cell.1,
@@ -1006,7 +1031,6 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
             PlacementEvidence::EvaluateMark,
             &rules,
             Some(&registry),
-            parent_id,
         )
         .is_none()
     );
@@ -1017,7 +1041,7 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
             rejected.position.ry,
             rejected.position.z
         ),
-        (2, 2, 0)
+        (0, 0, 0)
     );
     assert_eq!(rejected.body_facing.destination(), 9 << 8);
     assert!(rejected.lifecycle.in_limbo && !rejected.lifecycle.cell_marked);
@@ -1112,8 +1136,17 @@ fn techno_constructor_routes_preserve_components_and_authored_overrides() {
                             crate::sim::movement::bump_crush::FUNCTIONAL_SUB_CELLS[1]
                         );
                     }
-                    let (x, y) = crate::util::lepton::subcell_lepton_offset(Some(sub_cell));
-                    assert_eq!((entity.position.sub_x, entity.position.sub_y), (x, y));
+                    if route == 2 {
+                        // Held Object constructor retains Location(0,0,0).
+                        // The subcell descriptor is not a placement write.
+                        let coord = crate::sim::movement::ground_pose::position_world_coord(
+                            &entity.position,
+                        );
+                        assert_eq!((coord.x, coord.y, coord.z), (0, 0, 0));
+                    } else {
+                        let (x, y) = crate::util::lepton::subcell_lepton_offset(Some(sub_cell));
+                        assert_eq!((entity.position.sub_x, entity.position.sub_y), (x, y));
+                    }
                 }
                 "SHIP" => {
                     assert!(entity.barrel_facing.is_some());
@@ -1480,21 +1513,24 @@ fn techno_constructor_unit_can_enter_rejection_discards_eager_pool_without_refun
     let mut expected = SimRng::new(seed);
 
     let blocker_word = (expected.next_u32() & 0xFFFF) as u16;
-    // Parent construction and its three SpawnManager children all happen
-    // before ObjectClass::Unlimbo asks UnitClass::Can_Enter_Cell. The first
-    // authored Unit is already linked when the CARRIER row reaches that gate.
-    for _ in 0..4 {
-        let _ = expected.next_u32();
-    }
     assert_eq!(
         sim.spawn_from_map(
-            &[
-                map_entity("MTNK", EntityCategory::Unit, (6, 5)),
-                map_entity("CARRIER", EntityCategory::Unit, (6, 5)),
-            ],
+            &[map_entity("MTNK", EntityCategory::Unit, (6, 5))],
             Some(&rules),
         ),
         1
+    );
+    // Authored placement retains nonzero A8E7AC and skips Object5F4F1B's
+    // class gate (saved unit_unlimbo.json authored_rows). Runtime placement
+    // outside that scope still asks UnitClass::Can_Enter_Cell. Its parent and
+    // three SpawnManager children are constructed before that refusal.
+    assert!(!sim.object_placement_scope_active());
+    for _ in 0..4 {
+        let _ = expected.next_u32();
+    }
+    assert!(
+        sim.spawn_object("CARRIER", "Americans", 6, 5, 0, &rules)
+            .is_none()
     );
     let blocker_id = 1;
     assert_eq!(
@@ -1543,15 +1579,22 @@ fn techno_constructor_fixed_map_uses_native_category_order_after_prior_mark_draw
         .map(|_| (expected.next_u32() & 0xFFFF) as u16)
         .collect();
 
-    assert_eq!(sim.spawn_from_map(&entities, Some(&rules)), 4);
+    // Authored scope skips ordinary admission at Object5F4F1B, so the fifth
+    // outside BASE remains a live marked object. Techno6F6CFE still publishes
+    // its actual outside membership; scope does not make that byte true.
+    assert_eq!(sim.spawn_from_map(&entities, Some(&rules)), 5);
     let actual_words: Vec<u16> = sim
         .substrate
         .entities
         .values()
         .map(|entity| entity.techno_ctor_random_word)
         .collect();
-    assert_eq!(actual_words.as_slice(), &expected_words[..4]);
-    assert!(sim.substrate.entities.get(5).is_none());
+    assert_eq!(actual_words, expected_words);
+    let outside = sim.substrate.entities.get(5).unwrap();
+    assert_eq!((outside.position.rx, outside.position.ry), (1, 1));
+    assert!(!outside.in_playfield);
+    assert!(outside.lifecycle.object_alive);
+    assert!(outside.lifecycle.cell_marked && !outside.lifecycle.in_limbo);
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 }
 

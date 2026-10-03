@@ -884,11 +884,10 @@ fn per_cell_dock_now_matches_the_original_track_end_arm() {
     }
 }
 
-/// Per_Cell_Process(2)'s Ready/Commence and Refinery=/Weeder= contact
-/// release (`0x0073ACB3..0x0073ADCA`) through the production track-end
-/// owner. The rows stand at the queueing cell, off the pad, so the Enter arm
-/// before the snippet (the `per_cell` rows) sends nothing, and the crush and
-/// Foot tail after it find nothing to act on.
+/// The bounded Ready/Commence and Refinery=/Weeder= contact-release slice
+/// (`0x0073ACB3..0x0073ADCA`) through its existing production owners.
+/// The native oracle starts after primary clearance8; running all of
+/// Per_Cell_Process(2) would also measure that earlier arm for tethered rows.
 #[test]
 fn per_cell_release_matches_the_original_track_end_arm() {
     let corpus = corpus();
@@ -897,14 +896,20 @@ fn per_cell_release_matches_the_original_track_end_arm() {
         let context = input["name"].as_str().unwrap().to_string();
         let mut s = scene(input);
         radio::take_transmit_log();
-        s.sim
-            .per_cell_process(
-                s.miner,
-                crate::sim::movement::PerCellReason::Arrival,
-                Some(&s.rules),
-                None,
-            )
-            .unwrap();
+        if !s
+            .sim
+            .substrate
+            .entities
+            .get(s.miner)
+            .unwrap()
+            .miner
+            .as_ref()
+            .is_some_and(|miner| miner.unload_active)
+        {
+            s.sim
+                .mission_host_promote(s.miner, s.sim.session.binary_frame, &s.rules);
+        }
+        crate::sim::miner::per_cell_release_dock_contact(&mut s.sim, &s.rules, s.miner);
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_state(&s, row, &context);
         let miner = s.sim.substrate.entities.get(s.miner).unwrap();

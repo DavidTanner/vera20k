@@ -348,6 +348,8 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         hover_attack: false,
         balloon_hover: false,
         is_simple_deployer: false,
+        small_visceroid: false,
+        large_visceroid: false,
         deploy_to_land: false,
         airport_bound: false,
         fighter: false,

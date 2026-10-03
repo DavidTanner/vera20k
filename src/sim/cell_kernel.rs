@@ -3,7 +3,10 @@
 //! These helpers intentionally keep floor, deck, coordinate lookup, and object-list
 //! selection separate: YR composes them at their individual call sites.
 
+use crate::map::cell_index::NativeCellIdentity;
+use crate::map::resolved_terrain::NativeCellQuery;
 use crate::util::fixed_math::isqrt_i64;
+
 #[cfg(test)]
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
 use crate::util::lepton::{
@@ -55,6 +58,37 @@ pub struct CellQueryPoint {
     pub y: i32,
 }
 
+impl crate::sim::world::Simulation {
+    /// `CellClass::Find_Nearest_Object 0x47C3D0` with the (0,0) sub-point over
+    /// `layer`'s list of `cell`: ranked by each object's vt+0x48 coordinate (a
+    /// building's centre), the first in list order on a tie.
+    pub(crate) fn nearest_cell_object(
+        &self,
+        cell: (u16, u16),
+        layer: crate::sim::movement::locomotor::MovementLayer,
+        exclude: Option<u64>,
+    ) -> Option<u64> {
+        crate::sim::cell_kernel::nearest_eligible_in_order(
+            crate::sim::cell_kernel::CellQueryPoint { x: 0, y: 0 },
+            self.substrate
+                .occupancy
+                .get(cell.0, cell.1)
+                .into_iter()
+                .flat_map(|list| list.iter_layer(layer))
+                .filter_map(|entry| self.substrate.entities.get(entry.entity_id))
+                .filter(|entity| Some(entity.stable_id()) != exclude)
+                .map(|entity| {
+                    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
+                    (
+                        entity.stable_id(),
+                        true,
+                        crate::sim::cell_kernel::CellQueryPoint { x, y },
+                    )
+                }),
+        )
+    }
+}
+
 /// YR `CellClass::GetCellCoords`: center the cell and keep its terrain floor.
 pub fn cell_center(cell: CellCoordinate, floor_z: i32) -> WorldCoordinate {
     WorldCoordinate {
@@ -68,6 +102,29 @@ pub fn cell_center(cell: CellCoordinate, floor_z: i32) -> WorldCoordinate {
             .wrapping_add(CELL_CENTER_LEPTONS),
         z: floor_z,
     }
+}
+
+/// `CellClass::GetCoords` 0x00486840 — a cell's own world point is its centre
+/// (`MapCoord * 0x100 + 0x80` on both axes) with Z from
+/// `CellClass::ComputeGroundHeightAtCoord` 0x0047B3A0. **No bridge-deck term:**
+/// the deck offset belongs to whoever is standing on the deck, and
+/// `TechnoClass::CanFireAt` adds it separately from the object's own OnBridge
+/// byte at 0x006F7887.
+pub(crate) fn native_cell_own_coords(
+    cell: NativeCellIdentity,
+    cells: &NativeCellQuery<'_>,
+) -> Option<(i64, i64, i64)> {
+    let (x, y) = cells.coord(cell);
+    let point = cell_center(
+        CellCoordinate {
+            x: i32::from(x),
+            y: i32::from(y),
+        },
+        0,
+    );
+    let (level, slope) = cells.ground_fields(cell);
+    let z = cell_floor_height(level, slope, point.x, point.y).ok()?;
+    Some((i64::from(point.x), i64::from(point.y), i64::from(z)))
 }
 
 /// Native invalid-cell coordinates are process-global sentinels. At the Rust map
@@ -157,15 +214,16 @@ fn native_distance(components: impl IntoIterator<Item = i32>) -> i32 {
     X87Chop53::ftol_i64(root).map_or(i32::MAX, |distance| distance as i32)
 }
 
-/// `FindTechnoNearestTo` scoring after the caller has applied linked-list order,
-/// active bit, and excluded-object gates. Equal distances retain the first entry.
+/// Cell47C3D0 scoring after the caller supplies linked-list order, Techno
+/// identity (+14 bit0) and excluded-object gates. The native identity byte
+/// does not test health or limbo. Equal distances retain the first entry.
 pub fn nearest_eligible_in_order<T>(
     input: CellQueryPoint,
     candidates: impl IntoIterator<Item = (T, bool, CellQueryPoint)>,
 ) -> Option<T> {
     let mut winner: Option<(i32, T)> = None;
-    for (candidate, active, coordinate) in candidates {
-        if !active {
+    for (candidate, eligible, coordinate) in candidates {
+        if !eligible {
             continue;
         }
         let candidate_x = coordinate.x & 0xff;

@@ -810,7 +810,9 @@ use crate::sim::world::Simulation;
 // 282 -> 283: optional entity-owned turret/barrel recoil survives save/load.
 // 283 -> 284: SmudgeGrid retains runtime Smudge identities through the shared
 // deferred destructor, separately from its persistent cell marks.
-const SNAPSHOT_VERSION: u32 = 284;
+// 284 -> 285: every Techno saves one shared DoorClass; Gate Open/handler
+// status come from MissionCom rather than a second gate mission/transition.
+const SNAPSHOT_VERSION: u32 = 285;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3816,8 +3818,8 @@ mod tests {
         // 280 -> 281: authoritative weapon/turret pair and saved charge duration.
         // 281 -> 282: independent depot pending entry and sole MissionCom cadence.
         // 282 -> 283: private optional turret/barrel recoil components.
-        // 283 -> 284: retained runtime Smudge identities/pending deletion.
-        assert_eq!(super::SNAPSHOT_VERSION, 284);
+        // 284 -> 285: shared Techno Door/Gate plus retained Smudge identities.
+        assert_eq!(super::SNAPSHOT_VERSION, 285);
     }
 
     #[test]

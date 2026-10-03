@@ -125,6 +125,56 @@ Key3=New
 }
 
 #[test]
+fn omitted_fixture_key_preserves_source_order_case_and_reader_defaults() {
+    let mut ini = IniFile::from_str(
+        "[Before]\nKeep=before\n\
+         [GAWEAP]\nKeep=first\nWeaponsFactory=yes\nweaponsfactory=no\n\
+         [GAWEAP]\nWeaponsFactory=no\n\
+         [GAWEAP]\nKeep=last\nWeaponsFactory=yes\n\
+         [Gaweap]\nWeaponsFactory=yes\n\
+         [After]\nKeep=after\n",
+    );
+    ini.merge_rules_projection(&IniFile::from_str("[GAWEAP]\nWeaponsFactory=yes\n"));
+    ini.merge_rules_projection(&IniFile::from_str("[GAWEAP]\nWeaponsFactory=invalid\n"));
+    assert!(
+        ini.section("GAWEAP")
+            .unwrap()
+            .read_bool("WeaponsFactory", false)
+    );
+    let original_sections = ini.sections.clone();
+    let original_lookup = ini.first_section.clone();
+
+    let omitted = ini.without_entry_for_test("GAWEAP", "WeaponsFactory");
+
+    assert_eq!(ini.sections, original_sections);
+    assert_eq!(ini.first_section, original_lookup);
+    assert_eq!(
+        omitted.section_names(),
+        vec!["Before", "GAWEAP", "GAWEAP", "Gaweap", "After"]
+    );
+    let first = omitted.section("GAWEAP").unwrap();
+    assert_eq!(
+        first.keys().collect::<Vec<_>>(),
+        vec!["Keep", "weaponsfactory"]
+    );
+    assert_eq!(first.get("Keep"), Some("first"));
+    assert!(!first.read_bool("WeaponsFactory", false));
+    assert_eq!(first.get("weaponsfactory"), Some("no"));
+    let last = &omitted.sections[2];
+    assert_eq!(
+        last.raw_entries().collect::<Vec<_>>(),
+        vec![("Keep", "last")]
+    );
+    assert!(
+        omitted
+            .section("Gaweap")
+            .unwrap()
+            .read_bool("WeaponsFactory", false)
+    );
+    assert_eq!(omitted.section("After").unwrap().get("Keep"), Some("after"));
+}
+
+#[test]
 fn duplicate_key_compatibility_lookup_keeps_first_definition() {
     let ini = IniFile::from_str("[General]\nBuildSpeed=.7\nBuildSpeed=.58\n");
     assert_eq!(

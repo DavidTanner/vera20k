@@ -427,9 +427,9 @@ mod tests {
             sim.mapgen_rng.logical_state(),
         ];
         assert_eq!(probe(&sim), Ok(7));
-        sim.with_scenario_init_priority(|sim| {
+        sim.with_object_placement_scope(|sim| {
             assert_eq!(probe(sim), Ok(0));
-            sim.with_scenario_init_priority(|sim| assert_eq!(probe(sim), Ok(0)));
+            sim.with_object_placement_scope(|sim| assert_eq!(probe(sim), Ok(0)));
             assert_eq!(probe(sim), Ok(0), "nested return retains the outer bracket");
         });
         assert_eq!(
@@ -988,51 +988,6 @@ fn head_on(mover: &GameEntity, blocker: &GameEntity, frame: u32) -> bool {
         && crate::util::native_x87::distance_3d_leptons([a.x, a.y, a.z], [b.x, b.y, b.z]) <= 511
 }
 
-/// ILocomotion+A4 is a chain-cursor predicate, not IsMoving. Original Drive
-///4B4B00 and Ship6A4130; Walk/Hover share false leaf4B6640.
-fn chain_cursor(e: &GameEntity) -> bool {
-    use crate::sim::movement::drive_track::{raw_track_meta, turn_track_at};
-    let progress = match e.locomotor.as_ref().map(|l| l.kind) {
-        Some(LocomotorKind::Drive) => e.drive_locomotion.as_ref().map(|s| s.track),
-        Some(LocomotorKind::Ship) => e.ship_locomotion.as_ref().map(|s| s.track),
-        _ => return false,
-    };
-    let Some(progress) = progress else {
-        return false;
-    };
-    let Some(&direction) = e
-        .navigation
-        .path_replay
-        .remaining_directions()
-        .first()
-        .filter(|d| **d < 8)
-    else {
-        return false;
-    };
-    let Some(turn) = usize::try_from(progress.turn_index)
-        .ok()
-        .and_then(turn_track_at)
-    else {
-        return false;
-    };
-    let target = crate::util::direction_tables::dir_from_facing8(turn.target_facing);
-    if direction == target || progress.cursor == 0 {
-        return false;
-    }
-    let raw = if progress.reversed {
-        turn.short_track
-    } else {
-        turn.normal_track
-    };
-    if raw_track_meta(raw).is_none_or(|r| i32::from(r.chain_index) != progress.cursor) {
-        return false;
-    }
-    turn_track_at(usize::from(target) * 8 + usize::from(direction))
-        .filter(|t| t.normal_track != 0)
-        .and_then(|t| raw_track_meta(t.normal_track))
-        .is_some_and(|r| r.entry_index != 0)
-}
-
 impl Simulation {
     /// Actual Infantry+1AC. The returned quotient preserves the distinct
     /// consumers in Foot4D3920, Infantry51DAF0 and the repair receiver487A10.
@@ -1340,24 +1295,6 @@ impl FootEntryReceiver<'_> {
 }
 
 impl Simulation {
-    /// Native A8E7AC INC/DEC bracket, including nested escape callbacks.
-    /// SpawnSurvivors443141..443288 and passenger escape738030..7381A1
-    /// keep this raised through Scatter's immediate Walk/cell queries.
-    pub(crate) fn with_scenario_init_priority<T>(
-        &mut self,
-        action: impl FnOnce(&mut Self) -> T,
-    ) -> T {
-        let prior = self.scenario_init_priority_depth;
-        self.scenario_init_priority_depth = prior.wrapping_add(1);
-        let result = action(self);
-        self.scenario_init_priority_depth = prior;
-        result
-    }
-
-    pub(crate) fn scenario_init_priority_active(&self) -> bool {
-        self.scenario_init_priority_depth != 0
-    }
-
     /// The live Infantry or Unit receiver `id`, for repeated +1AC queries
     /// against one unchanged world (a Find_Path search).
     pub(crate) fn foot_entry_receiver<'a>(
@@ -1503,16 +1440,11 @@ fn classify_foot_entry<'a>(
             MovementLayer::Ground
         }
     };
-    //Unit73F34C checks only in mode0. Infantry51C13A..161 has no game-mode
-    //read: it skips when3D5 is false or the call-scoped A8E7AC is nonzero.
+    //Unit73F34C / Infantry51C13A read A8E7AC, independent of GameMode.
     //Unit still performs the read/+320 when3D5 is false; Infantry skips it.
     //578540 consumes the pointer directly, without578460's extra lookup.
-    let check_boundary = if infantry {
-        e.in_playfield && !live.sim.scenario_init_priority_active()
-    } else {
-        !live.sim.session.game_mode_nonzero
-    };
-    let boundary_refused = check_boundary
+    let boundary_refused = !live.sim.object_placement_scope_active()
+        && (!infantry || e.in_playfield)
         && !crate::sim::cell_rect::retained_cell_is_in_playfield(
             cell,
             live.sim.playfield_bounds,
@@ -1736,7 +1668,7 @@ fn classify_foot_entry<'a>(
                 continue;
             }
             if bt.gate {
-                if b.building_gate.is_some_and(|s| s.can_garrison_passable()) {
+                if b.is_open_gate() {
                     continue;
                 }
                 if !allied && !combat_weapon::is_armed(e, obj) {
@@ -1785,7 +1717,7 @@ fn classify_foot_entry<'a>(
         //Infantry51C579..58D's occupant-list alliance override is local to
         //this gate. Earlier Building/wall checks and the later raw-owner
         //query use actual House alliances, including during crew escape.
-        let allied = allied || (infantry && live.sim.scenario_init_priority_active());
+        let allied = allied || (infantry && live.sim.object_placement_scope_active());
         if !allied {
             if b.cloak.as_ref().is_some_and(|s| s.state == 2) {
                 entry_result = entry_result.max(1);
@@ -1833,7 +1765,7 @@ fn classify_foot_entry<'a>(
                     return Ok(7);
                 }
                 if (b.foot_occupation_enabled && b.category != EntityCategory::Infantry)
-                    || chain_cursor(b)
+                    || crate::sim::movement::drive_track::occupant_slot_a4_answers_true(b)
                 {
                     entry_result = entry_result.max(2);
                 }
@@ -1846,7 +1778,9 @@ fn classify_foot_entry<'a>(
                 EntityCategory::Unit => {
                     if !moving(b) && b.navigation.nav_com.is_none() {
                         entry_result = entry_result.max(6);
-                    } else if b.foot_occupation_enabled || chain_cursor(b) {
+                    } else if b.foot_occupation_enabled
+                        || crate::sim::movement::drive_track::occupant_slot_a4_answers_true(b)
+                    {
                         entry_result = entry_result.max(2);
                     }
                 }

@@ -766,7 +766,7 @@ impl Fixture {
             "{boundary}: pending retirement"
         );
         assert!(
-            !self.sim.scenario_init_priority_active(),
+            !self.sim.object_placement_scope_active(),
             "{boundary}: escape bracket cleared"
         );
         assert_eq!(

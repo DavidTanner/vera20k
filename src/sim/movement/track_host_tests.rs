@@ -873,6 +873,510 @@ fn per_cell_promotes_queued_mission_before_tail_without_dispatching_handler() {
     }
 }
 
+fn factory_per_cell_fixture(
+    tethered: bool,
+    producer_on_bridge: bool,
+    unit_reader_lines: &str,
+) -> (Simulation, RuleSet) {
+    use crate::rules::ini_parser::IniFile;
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
+    use crate::sim::radio::{RadioMessage, RadioPayload, RadioResponse, transmit};
+
+    let (mut sim, _, _) = fixture(TrackFamily::Drive, 0);
+    sim.session.binary_frame = 57;
+    let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+        "[VehicleTypes]\n0=MTNK\n[MTNK]\nStrength=300\nSpeed=6\n{unit_reader_lines}\n\
+         [BuildingTypes]\n0=GAWEAP\n[GAWEAP]\nWeaponsFactory=yes\n",
+    )))
+    .unwrap();
+    let type_ref = sim.intern("MTNK");
+    let owner = sim.intern("Americans");
+    let guard = MissionTestFixture {
+        current: MissionId::from_known(MissionType::Guard),
+        suspended: MissionId::NONE,
+        queued: MissionId::NONE,
+        movement_bypass_latch: 0,
+        handler_state: 4,
+        mission_start_frame: 3,
+        ai_counter: 11,
+        dispatch_timer: MissionDispatchTimer::from_raw(3, 90),
+    };
+    let unit = sim.substrate.entities.get_mut(1).unwrap();
+    unit.type_ref = type_ref;
+    unit.owner = owner;
+    unit.mission.apply_test_fixture(guard);
+    unit.drive_locomotion.as_mut().unwrap().head_to = None;
+    unit.drive_locomotion.as_mut().unwrap().track_valid = false;
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+    );
+    let mut producer = GameEntity::test_default_of_category(
+        2,
+        "GAWEAP",
+        "Americans",
+        10,
+        10,
+        EntityCategory::Structure,
+    );
+    producer.type_ref = sim.intern("GAWEAP");
+    producer.owner = owner;
+    producer.foundation = "1x1".into();
+    producer.on_bridge = producer_on_bridge;
+    producer.lifecycle.object_alive = true;
+    producer.lifecycle.in_limbo = false;
+    producer.lifecycle.cell_marked = true;
+    producer.mission.apply_test_fixture(guard);
+    sim.substrate.entities.insert(producer);
+    sim.substrate.occupancy =
+        crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
+    assert_eq!(
+        transmit(
+            &mut sim,
+            1,
+            2,
+            RadioMessage::Hello,
+            RadioPayload::default(),
+            Some(&rules)
+        ),
+        RadioResponse::Roger
+    );
+    if tethered {
+        assert_eq!(
+            transmit(
+                &mut sim,
+                1,
+                2,
+                RadioMessage::Tether,
+                RadioPayload::default(),
+                Some(&rules)
+            ),
+            RadioResponse::Roger
+        );
+    }
+    crate::sim::radio::take_transmit_log();
+    // No native Map Size is installed: these are gate/ordering regressions,
+    // so null Scatter runs its existing missing-map boundary. The composed
+    // native factory control separately supplies the whole Scatter/search.
+    (sim, rules)
+}
+
+///73A93D precedes73ACC2: promoting queued Unload first would suppress the
+/// clearance. The nested radio receipt comes from the original saved8 calls;
+/// this fixture adds the existing PerCell/Ready production integration.
+#[test]
+fn per_cell_factory_clearance_precedes_ready_and_preserves_foot_stop_scope() {
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
+
+    let (mut sim, rules) = factory_per_cell_fixture(true, false, "");
+    let unit = sim.substrate.entities.get_mut(1).unwrap();
+    unit.navigation.nav_com_aux = Some(NavTargetRef::cell(11, 10));
+    unit.navigation.suspended_nav_com = Some(NavTargetRef::cell(12, 10));
+    unit.mission.apply_test_fixture(MissionTestFixture {
+        current: MissionId::from_known(MissionType::Guard),
+        suspended: MissionId::NONE,
+        queued: MissionId::from_known(MissionType::Unload),
+        movement_bypass_latch: 0,
+        handler_state: 4,
+        mission_start_frame: 3,
+        ai_counter: 11,
+        dispatch_timer: MissionDispatchTimer::from_raw(3, 90),
+    });
+    let position = unit.position;
+    let drive = serde_json::to_value(&unit.drive_locomotion).unwrap();
+    let path_runtime = unit.navigation.path_runtime;
+    let producer_mission = sim.substrate.entities.get(2).unwrap().mission;
+    let rng = sim.rng_state();
+    assert_eq!(
+        sim.substrate
+            .occupancy
+            .first_building_on_layer(10, 10, MovementLayer::Ground),
+        Some(2)
+    );
+    sim.per_cell_process(1, super::super::PerCellReason::Arrival, Some(&rules), None)
+        .unwrap();
+
+    let sends: Vec<_> = crate::sim::radio::take_transmit_log()
+        .into_iter()
+        .map(|send| (send.sender_sid, send.msg, send.target_sid, send.reply))
+        .collect();
+    assert_eq!(
+        sends,
+        vec![
+            (1, 8, 2, Some(23)),
+            (2, 25, 1, Some(1)),
+            (1, 25, 2, Some(1)),
+            (2, 25, 1, Some(0)),
+            (2, 3, 1, Some(1)),
+        ]
+    );
+    for id in [1, 2] {
+        let entity = sim.substrate.entities.get(id).unwrap();
+        assert_eq!(entity.radio_contacts.slot(0), None);
+        assert_eq!(entity.dock_entered_with, None);
+    }
+    let unit = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(unit.mission.current().known(), Some(MissionType::Unload));
+    assert_eq!(unit.mission.queued(), MissionId::NONE);
+    assert_eq!(unit.mission.handler_state(), 0);
+    assert_eq!(unit.mission.ai_counter(), 0);
+    assert_eq!(
+        serde_json::to_value(unit.position).unwrap(),
+        serde_json::to_value(position).unwrap()
+    );
+    assert_eq!(serde_json::to_value(&unit.drive_locomotion).unwrap(), drive);
+    assert_eq!(unit.navigation.path_runtime, path_runtime);
+    assert_eq!(unit.navigation.nav_com, None);
+    assert_eq!(unit.navigation.nav_com_aux, None);
+    assert_eq!(
+        unit.navigation.suspended_nav_com,
+        Some(NavTargetRef::cell(12, 10))
+    );
+    assert_eq!(
+        sim.substrate.entities.get(2).unwrap().mission,
+        producer_mission
+    );
+    assert_eq!(sim.rng_state(), rng);
+}
+
+/// Instruction-level gate coverage for73A7D2..73A943, through the production
+/// Unit virtual dispatcher. These are Rust regressions; the original composed
+/// controls establish bounded native execution parity separately.
+#[test]
+fn per_cell_factory_clearance_keeps_reason_mission_rtti_and_ground_building_gates() {
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::mission::{MissionDispatchTimer, MissionId};
+    use crate::sim::movement::PerCellReason;
+
+    let cases = [
+        (
+            "turn",
+            PerCellReason::TurnComplete,
+            true,
+            false,
+            5,
+            -1,
+            None,
+            false,
+        ),
+        (
+            "untethered",
+            PerCellReason::Arrival,
+            false,
+            false,
+            5,
+            -1,
+            None,
+            false,
+        ),
+        (
+            "effective_unload",
+            PerCellReason::Arrival,
+            true,
+            false,
+            -1,
+            16,
+            None,
+            false,
+        ),
+        (
+            "enter_null",
+            PerCellReason::Arrival,
+            true,
+            false,
+            -1,
+            7,
+            None,
+            false,
+        ),
+        (
+            "enter_cell",
+            PerCellReason::Arrival,
+            true,
+            false,
+            7,
+            -1,
+            Some(NavTargetRef::cell(10, 10)),
+            false,
+        ),
+        (
+            "enter_contact",
+            PerCellReason::Arrival,
+            true,
+            true,
+            7,
+            -1,
+            Some(NavTargetRef::object(2)),
+            false,
+        ),
+        (
+            "current_cell",
+            PerCellReason::Arrival,
+            true,
+            false,
+            5,
+            -1,
+            Some(NavTargetRef::cell(10, 10)),
+            true,
+        ),
+        (
+            "ground_building",
+            PerCellReason::Arrival,
+            true,
+            false,
+            5,
+            -1,
+            Some(NavTargetRef::cell(11, 10)),
+            false,
+        ),
+        (
+            "deck_building",
+            PerCellReason::Arrival,
+            true,
+            true,
+            5,
+            -1,
+            Some(NavTargetRef::cell(11, 10)),
+            true,
+        ),
+        (
+            "current_over_queued_enter",
+            PerCellReason::Arrival,
+            true,
+            false,
+            5,
+            7,
+            None,
+            true,
+        ),
+    ];
+    for (name, reason, tethered, deck, current, queued, nav_com, sends_clearance) in cases {
+        let (mut sim, rules) = factory_per_cell_fixture(tethered, deck, "");
+        let unit = sim.substrate.entities.get_mut(1).unwrap();
+        unit.navigation.nav_com = nav_com;
+        unit.mission.apply_test_fixture(MissionTestFixture {
+            current: MissionId::from_raw(current),
+            suspended: MissionId::NONE,
+            queued: MissionId::from_raw(queued),
+            movement_bypass_latch: 0,
+            handler_state: 0,
+            mission_start_frame: 0,
+            ai_counter: 0,
+            dispatch_timer: MissionDispatchTimer::at_frame(0),
+        });
+        let rng = sim.rng_state();
+        sim.per_cell_process(1, reason, Some(&rules), None).unwrap();
+        let sends = crate::sim::radio::take_transmit_log();
+        // Object-destination arrival73A31F..A547 runs DockNow21 and returns
+        // before the later factory-clearance gate. The shared original
+        // per-cell controls in refinery_dock.json cover that earlier arm.
+        let object_dock = name == "enter_contact";
+        assert_eq!(
+            sends.first().map(|send| send.msg),
+            if object_dock {
+                Some(21)
+            } else {
+                sends_clearance.then_some(8)
+            },
+            "{name}"
+        );
+        if object_dock {
+            assert!(sends.iter().all(|send| send.msg != 8));
+            assert!(
+                !sim.substrate
+                    .entities
+                    .get(1)
+                    .unwrap()
+                    .locomotor
+                    .as_ref()
+                    .unwrap()
+                    .is_powered()
+            );
+        }
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .radio_contacts
+                .slot(0),
+            (!sends_clearance).then_some(2),
+            "{name}"
+        );
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(2)
+                .unwrap()
+                .radio_contacts
+                .slot(0),
+            (!sends_clearance).then_some(1),
+            "{name}"
+        );
+        assert_eq!(sim.rng_state(), rng, "{name}");
+    }
+    // As_Techno40DD70 admits all four Techno RTTIs, not only Building. Each
+    // Enter destination differs from Contact0; the producer is on deck so
+    // the independent first-ground-Building gate does not hide this check.
+    for category in [
+        EntityCategory::Unit,
+        EntityCategory::Aircraft,
+        EntityCategory::Structure,
+        EntityCategory::Infantry,
+    ] {
+        let (mut sim, rules) = factory_per_cell_fixture(true, true, "");
+        let target = GameEntity::test_default_of_category(3, "MTNK", "Americans", 12, 10, category);
+        sim.substrate.entities.insert(target);
+        let unit = sim.substrate.entities.get_mut(1).unwrap();
+        unit.navigation.nav_com = Some(NavTargetRef::Entity { id: 3 });
+        unit.mission.apply_test_fixture(MissionTestFixture {
+            current: MissionId::from_raw(7),
+            suspended: MissionId::NONE,
+            queued: MissionId::NONE,
+            movement_bypass_latch: 0,
+            handler_state: 0,
+            mission_start_frame: 0,
+            ai_counter: 0,
+            dispatch_timer: MissionDispatchTimer::at_frame(0),
+        });
+        sim.per_cell_process(1, PerCellReason::Arrival, Some(&rules), None)
+            .unwrap();
+        let sends = crate::sim::radio::take_transmit_log();
+        assert_eq!(sends.first().map(|send| send.msg), Some(8), "{category:?}");
+    }
+}
+
+#[test]
+fn per_cell_factory_clearance_reads_unit_archive_through_the_shared_setter() {
+    use crate::sim::combat::TargetKind;
+    use crate::sim::components::NavTargetRef;
+
+    let (mut sim, rules) = factory_per_cell_fixture(true, false, "");
+    let unit = sim.substrate.entities.get_mut(1).unwrap();
+    unit.set_archive_target(Some(TargetKind::Cell(12, 10)));
+    let mission = unit.mission;
+    let position = unit.position;
+    let rng = sim.rng_state();
+    sim.per_cell_process(1, super::super::PerCellReason::Arrival, Some(&rules), None)
+        .unwrap();
+    assert_eq!(
+        crate::sim::radio::take_transmit_log()
+            .first()
+            .map(|send| send.msg),
+        Some(8)
+    );
+    let unit = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(unit.navigation.nav_com, Some(NavTargetRef::cell(12, 10)));
+    assert_eq!(
+        unit.drive_locomotion.as_ref().unwrap().destination,
+        Some(DriveCoord::cell(12, 10, 0))
+    );
+    assert_eq!(unit.archive_target(), Some(TargetKind::Cell(12, 10)));
+    assert_eq!(
+        unit.mission, mission,
+        "this native arm does not queue or enter idle"
+    );
+    assert_eq!(
+        serde_json::to_value(unit.position).unwrap(),
+        serde_json::to_value(position).unwrap(),
+        "SetDestination does not execute a movement turn"
+    );
+    assert_eq!(sim.rng_state(), rng);
+}
+
+/// Type+E0E/E0F ->73AAE6 queues Harvest with commence=1. This consumer must
+/// replace the factory's queued Move through the shared Mission authority;
+/// live Unit744270 readiness can defer it while the factory's middle row
+/// remains underneath. No harvest handler or miner lifecycle runs here.
+#[test]
+fn per_cell_factory_harvester_queue_uses_live_readiness_and_preserves_miner_state() {
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::miner::{Miner, MinerConfig, MinerKind};
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
+
+    for (key, reader_line) in [("Harvester", "Harvester=yes"), ("Weeder", "Weeder=true")] {
+        for middle_row_underneath in [false, true] {
+            let (mut sim, rules) = factory_per_cell_fixture(true, false, reader_line);
+            let object = rules.object("MTNK").unwrap();
+            assert_eq!(
+                (object.harvester, object.weeder),
+                (key == "Harvester", key == "Weeder")
+            );
+            if middle_row_underneath {
+                let producer = sim.substrate.entities.get_mut(2).unwrap();
+                producer.foundation = "1x2".into();
+                super::super::ground_pose::put_location(
+                    &mut producer.position,
+                    DriveCoord::cell(10, 9, 0),
+                );
+                sim.substrate.occupancy =
+                    crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
+            }
+            let unit = sim.substrate.entities.get_mut(1).unwrap();
+            unit.miner = Some(Miner::new(MinerKind::War, &MinerConfig::default(), 0));
+            unit.navigation.nav_com_aux = Some(NavTargetRef::cell(13, 10));
+            unit.mission.apply_test_fixture(MissionTestFixture {
+                current: MissionId::from_known(MissionType::Guard),
+                suspended: MissionId::NONE,
+                queued: MissionId::from_known(MissionType::Move),
+                movement_bypass_latch: 0,
+                handler_state: 4,
+                mission_start_frame: 3,
+                ai_counter: 11,
+                dispatch_timer: MissionDispatchTimer::from_raw(3, 90),
+            });
+            let miner = serde_json::to_value(&unit.miner).unwrap();
+            let lifecycle = unit.lifecycle;
+            let position = unit.position;
+            let rng = sim.rng_state();
+            sim.per_cell_process(1, super::super::PerCellReason::Arrival, Some(&rules), None)
+                .unwrap();
+            let sends = crate::sim::radio::take_transmit_log();
+            assert_eq!(
+                sends.first().map(|send| (send.msg, send.reply)),
+                Some((8, Some(23)))
+            );
+            let unit = sim.substrate.entities.get(1).unwrap();
+            if middle_row_underneath {
+                assert_eq!(unit.mission.current().known(), Some(MissionType::Guard));
+                assert_eq!(unit.mission.queued().known(), Some(MissionType::Harvest));
+                assert_eq!(unit.mission.handler_state(), 4);
+            } else {
+                assert_eq!(unit.mission.current().known(), Some(MissionType::Harvest));
+                assert_eq!(unit.mission.queued(), MissionId::NONE);
+                assert_eq!(unit.mission.handler_state(), 0);
+                assert_eq!(unit.mission.mission_start_frame(), 57);
+            }
+            assert_eq!(serde_json::to_value(&unit.miner).unwrap(), miner);
+            assert_eq!(unit.lifecycle, lifecycle);
+            assert_eq!(
+                serde_json::to_value(unit.position).unwrap(),
+                serde_json::to_value(position).unwrap()
+            );
+            assert_eq!(unit.navigation.nav_com, None);
+            assert_eq!(
+                unit.navigation.nav_com_aux,
+                Some(NavTargetRef::cell(13, 10))
+            );
+            for id in [1, 2] {
+                let entity = sim.substrate.entities.get(id).unwrap();
+                assert_eq!(entity.radio_contacts.slot(0), None);
+                assert_eq!(entity.dock_entered_with, None);
+            }
+            assert_eq!(
+                sim.rng_state(),
+                rng,
+                "{key}, middle_row={middle_row_underneath}"
+            );
+        }
+    }
+}
+
 #[test]
 fn idle_receiver_cancels_burst_through_the_shared_target_setter() {
     use crate::sim::combat::{AttackTarget, TargetKind};

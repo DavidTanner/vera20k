@@ -257,8 +257,8 @@ impl JumpjetRuntime {
     /// at its centre, at the floor height there and on the deck over a high
     /// bridge (`0x0054B605..0x0054B683`).
     ///
-    /// The `[0xA8E7AC]` gate at `0x0054B4D0` is raised only while a scenario
-    /// is being set up, when no order or kill runs.
+    /// Simulation's shared caller scope handles54B4D0's A8E7AC gate before
+    /// this runtime body; factory/transport/destruction brackets also raise it.
     pub(crate) fn stop_moving(&mut self, host: &mut impl JumpjetOrderHost) -> StopOutcome {
         if !self.moving {
             return StopOutcome::Idle;
@@ -345,9 +345,7 @@ pub(crate) fn infantry_destination_coordinate(
                 rules
                     .and_then(|rules| rules.object(interner.resolve(building.type_ref())))
                     .is_some_and(|object| object.gate)
-                    && building
-                        .building_gate
-                        .is_some_and(|gate| gate.can_garrison_passable())
+                    && building.is_open_gate()
             });
     let slot = super::walk_head::select_slot(input, false, selected, ground, gate_open, rng)?;
     let first_ground =
@@ -653,6 +651,9 @@ impl Simulation {
         rules: Option<&crate::rules::ruleset::RuleSet>,
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
+        if self.object_placement_scope_active() {
+            return true;
+        }
         let jumpjet = self.substrate.entities.get(id).is_some_and(|entity| {
             entity
                 .locomotor

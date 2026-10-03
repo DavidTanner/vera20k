@@ -113,6 +113,7 @@ fn insert_reservation_building(
 fn request(rx: u16, ry: u16, placement: PlacementEvidence) -> RevealRequest {
     RevealRequest {
         position: RevealPosition {
+            exact_z_leptons: None,
             rx,
             ry,
             z: 2,
@@ -445,6 +446,7 @@ fn gsi_04_16_dustbowl_bounds() -> crate::sim::cell_rect::PlayfieldBounds {
 fn common_raw_request(rx: u16, ry: u16, z: u8, sub_x: i32, sub_y: i32) -> RevealRequest {
     RevealRequest {
         position: RevealPosition {
+            exact_z_leptons: None,
             rx,
             ry,
             z,
@@ -981,6 +983,16 @@ fn techno_playfield_ctor_unlimbo_and_movement_hysteresis() {
 
     insert_entity(&mut sim, 1, EntityCategory::Unit);
     assert!(!sim.substrate.entities.get(1).unwrap().in_playfield);
+    let mut refused = common_raw_request(inside.0, inside.1, 0, 128, 128);
+    refused.placement = PlacementEvidence::MarkFailed;
+    assert_eq!(
+        sim.try_reveal_entity(1, refused),
+        RevealOutcome::Failed(RevealFailure::MarkFailed)
+    );
+    assert!(
+        !sim.substrate.entities.get(1).unwrap().in_playfield,
+        "Techno6F6CB8 returns before the +3D5 writer when Object Mark fails"
+    );
     assert!(matches!(
         sim.try_reveal_entity(1, common_raw_request(inside.0, inside.1, 0, 128, 128)),
         RevealOutcome::Revealed { .. }
@@ -2000,7 +2012,7 @@ fn lifecycle_authority_reveal_mark_failure_keeps_adjusted_coords_alive_limbo() {
 fn lifecycle_authority_reveal_early_reject_commits_nothing() {
     let mut sim = Simulation::new();
     insert_entity(&mut sim, 1, EntityCategory::Unit);
-    let before = sim.substrate.entities.get(1).unwrap().position.clone();
+    let before = sim.substrate.entities.get(1).unwrap().position;
 
     assert_eq!(
         sim.try_reveal_entity(1, request(10, 20, PlacementEvidence::RejectedEarly)),
@@ -2019,7 +2031,7 @@ fn lifecycle_authority_reveal_early_reject_commits_nothing() {
 fn lifecycle_authority_reveal_rejects_an_already_marked_limbo_object() {
     let mut sim = Simulation::new();
     insert_entity(&mut sim, 1, EntityCategory::Unit);
-    let before = sim.substrate.entities.get(1).unwrap().position.clone();
+    let before = sim.substrate.entities.get(1).unwrap().position;
     sim.substrate
         .entities
         .get_mut(1)
@@ -2198,7 +2210,7 @@ fn lifecycle_authority_second_reveal_is_idempotent() {
             logic_registered: true
         }
     );
-    let first_position = sim.substrate.entities.get(1).unwrap().position.clone();
+    let first_position = sim.substrate.entities.get(1).unwrap().position;
     sim.lifecycle_outputs.clear();
     sim.lifecycle_test_events.clear();
 

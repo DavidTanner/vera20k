@@ -114,7 +114,7 @@ pub fn toggle_repair(
         RepairControl::Start => entity.repairing = true,
     }
     let owner = entity.owner();
-    let position = entity.position.clone();
+    let position = entity.position;
     let sound = if entity.repairing && entity.health.current == strength {
         rules.general.scold_sound.clone()
     } else {
@@ -169,7 +169,7 @@ pub(crate) fn engineer_repair(sim: &mut Simulation, rules: &RuleSet, id: u64) ->
             entity,
             sim.resolved_terrain.as_ref(),
         );
-        let mut position = entity.position.clone();
+        let mut position = entity.position;
         crate::sim::movement::ground_pose::set_position_world_xy(&mut position, [coord.x, coord.y]);
         position.exact_z_leptons = Some(coord.z);
         sim.sound_events

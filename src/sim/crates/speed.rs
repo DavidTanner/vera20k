@@ -90,6 +90,7 @@ mod tests {
                     id,
                     RevealRequest {
                         position: RevealPosition {
+                            exact_z_leptons: None,
                             rx: 10,
                             ry: 10,
                             z: 0,

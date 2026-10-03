@@ -1654,13 +1654,7 @@ fn a_landing_hornet_keeps_its_slot_and_reloads() {
     );
 
     // Bring it home: no wing target, over the deck, on the landing step.
-    let deck = sim
-        .substrate
-        .entities
-        .get(carrier)
-        .unwrap()
-        .position
-        .clone();
+    let deck = sim.substrate.entities.get(carrier).unwrap().position;
     {
         let manager = sim
             .substrate

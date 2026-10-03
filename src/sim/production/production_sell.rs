@@ -451,7 +451,7 @@ fn sale_sounds(sim: &mut Simulation, rules: &RuleSet, id: u64) {
             let object = sim.object_type(entity.type_ref(), rules)?;
             Some((
                 entity.owner(),
-                entity.position.clone(),
+                entity.position,
                 undeploys(rules, object) && foundation_dimensions(&object.foundation) == (1, 1),
                 object.packup_sound.clone(),
             ))
@@ -707,6 +707,7 @@ fn place_garrison_passenger_at_cell(
         passenger_id,
         RevealRequest {
             position: RevealPosition {
+                exact_z_leptons: None,
                 rx,
                 ry,
                 z,

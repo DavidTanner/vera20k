@@ -13,11 +13,12 @@ use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::process_owner::NativeRulesProcessOwner;
 use crate::rules::sound_ini::SoundRegistry;
+use crate::sim::components::DriveCoord;
+use crate::sim::movement::ground_pose;
 use crate::sim::rng::SimRng;
 use crate::sim::stage::StageClass;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::SimSoundEvent;
-use crate::util::fixed_math::SimFixed;
 
 fn oracle() -> &'static [Value] {
     static NATIVE: OnceLock<Vec<Value>> = OnceLock::new();
@@ -186,9 +187,16 @@ fn fixture(row: &Value, rules: &RuleSet, type_name: &str) -> (Simulation, u64) {
     // Synthetic rows supply +74=false; physical rows retain the constructor
     // in limbo. Neither premise claims wet/deck Unlimbo or occupation.
     actor.lifecycle.cell_marked = false;
-    actor.position.sub_x = SimFixed::from_num(xyz[0] % 256);
-    actor.position.sub_y = SimFixed::from_num(xyz[1] % 256);
-    actor.position.exact_z_leptons = Some(xyz[2]);
+    // These action controls supply Location after construction. Constructor
+    // arguments do not place the fresh Object at this native cell/pose.
+    ground_pose::put_location(
+        &mut actor.position,
+        DriveCoord {
+            x: xyz[0],
+            y: xyz[1],
+            z: xyz[2],
+        },
+    );
     actor.on_bridge = input["bridge"].as_bool().unwrap_or(false);
     actor.health.current = row["before"]["health"]
         .as_i64()

@@ -420,23 +420,9 @@ mod tests {
             // New Walk priority shares the original ordered scalar, with
             // +48 coordinates. Reuse these executed47C3D0 vectors; no second
             // hand-authored nearest golden is needed for the repair query.
-            let shared = crate::sim::cell_kernel::nearest_eligible_in_order(
-                crate::sim::cell_kernel::CellQueryPoint { x: 0, y: 0 },
-                row["objects"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, _)| {
-                        let e = sim.substrate.entities.get(index as u64 + 1)?;
-                        let [x, y] = crate::sim::movement::ground_pose::object_center_xy(e);
-                        Some((
-                            index as u64,
-                            true,
-                            crate::sim::cell_kernel::CellQueryPoint { x, y },
-                        ))
-                    }),
-            );
+            let shared = sim
+                .nearest_cell_object((1, 0), MovementLayer::Ground, None)
+                .map(|id| id - 1);
             assert_eq!(
                 shared,
                 row["selected"].as_u64(),
@@ -1526,24 +1512,22 @@ impl ProjectileCollisionWorld<'_> {
             .into_iter()
             .flat_map(|occupants| occupants.iter_layer(MovementLayer::Ground))
             .filter_map(|occupant| self.entities.get(occupant.entity_id))
-            .map(|object| (object.stable_id(), self.raw_location(object)));
-        let mut best = None;
-        let mut best_distance = 0;
-        for object in objects {
-            let selected_location = self
-                .entities
-                .get(object.0)
-                .map_or(object.1, |entity| self.location(entity));
-            let distance = coord_distance(
-                ProjectileCoord::new(selected_location.x & 255, selected_location.y & 255, 0),
-                ProjectileCoord::new(0, 0, 0),
-            );
-            if best.is_none() || distance < best_distance {
-                best = Some(object);
-                best_distance = distance;
-            }
-        }
-        best
+            .map(|object| {
+                let location = self.location(object);
+                (
+                    object.stable_id(),
+                    true,
+                    crate::sim::cell_kernel::CellQueryPoint {
+                        x: location.x,
+                        y: location.y,
+                    },
+                )
+            });
+        let id = crate::sim::cell_kernel::nearest_eligible_in_order(
+            crate::sim::cell_kernel::CellQueryPoint { x: 0, y: 0 },
+            objects,
+        )?;
+        Some((id, self.raw_location(self.entities.get(id)?)))
     }
 
     pub fn collide(

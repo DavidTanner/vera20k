@@ -1419,7 +1419,7 @@ fn passive_scan_shortening_matches_original_signed_timer_and_rng_controls() {
         // nesting counter. Exercise its real owner rather than a second
         // Boolean decision passed to the timer leaf.
         if row["input"]["map_editor"].as_u64().unwrap() != 0 {
-            sim.with_scenario_init_priority(|sim| sim.shorten_passive_scan_timer(id));
+            sim.with_object_placement_scope(|sim| sim.shorten_passive_scan_timer(id));
         } else {
             sim.shorten_passive_scan_timer(id);
         }

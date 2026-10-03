@@ -26,6 +26,8 @@ mod crash;
 pub(crate) mod entry_test_fixture;
 mod object_entry;
 mod sinking;
+#[cfg(test)]
+mod unit_unlimbo_tests;
 pub(crate) use sinking::SinkingState;
 pub mod edge_cell;
 mod gap_generator;
@@ -949,6 +951,11 @@ pub struct Simulation {
     /// from the app-layer descriptor; serialized + hashed except for that
     /// diagnostic accumulator. See `sim::scenario_session`.
     pub session: ScenarioSession,
+    /// Native A8E7AC is a synchronous, wrapping placement/destruction scope,
+    /// independent of GameMode. Balanced at frame boundaries; not saved/hash
+    /// state. Only lifecycle's nested scope API mutates it.
+    #[serde(skip, default)]
+    object_placement_scope_depth: u32,
     /// Scenario RNG — gamemd `Scenario->Random` (Scen+0x218). Drives in-object-tick
     /// sim draws: scatter, sub-cell placement, smudge/destruction, particles,
     /// wall/overlay damage, bridge collapse/destruction presentation, ore growth/spread, TIBTRE,
@@ -978,12 +985,6 @@ pub struct Simulation {
     ///683560's post-read Scenario reinitialization. See native_id_snapshot.
     /// Runtime constructors consume this continuation before class admission.
     pub(crate) native_unique_ids: Option<crate::sim::native_identity::NativeUniqueIdCursor>,
-    /// Call-scoped DWORD A8E7AC. Crew escape raises this nesting counter
-    /// through Unlimbo, Scatter and the immediate Walk Process; cell-entry
-    /// and placement consumers read the same owner. Restored before the
-    /// caller returns, so frame-boundary saves/checksums never retain it.
-    #[serde(skip)]
-    scenario_init_priority_depth: u32,
     /// `MapClass+0x134` (`0x0087F91C`) analogue: the wrapping signed total that
     /// authored `ScenarioClass::Full_Init @ 0x00686B20` stores from
     /// `InitCellAttributes(0)`'s value-only `Get_Tiberium_Value` pass. No active
@@ -3048,11 +3049,11 @@ impl Simulation {
             rule_handles: None,
             production: ProductionState::default(),
             session,
+            object_placement_scope_depth: 0,
             scenario_rng: SimRng::new(seed),
             main_rng: SimRng::new(seed),
             mapgen_rng: SimRng::new(0),
             native_unique_ids: None,
-            scenario_init_priority_depth: 0,
             authored_tiberium_value_total: None,
             post_load_particle_system_constructed: false,
             native_map_tubes: crate::map::tubes::NativeMapTubesState::default(),
@@ -3267,7 +3268,7 @@ impl Simulation {
     ) {
         let binary_frame = self.session.binary_frame;
         let spread_enabled = self.production.ore_growth_config.spreads;
-        let priority = self.scenario_init_priority_active();
+        let priority = self.object_placement_scope_active();
         let mut construction = crate::sim::smudge_grid::SmudgeConstruction::new(
             &mut self.substrate.next_stable_object_id,
             &self.substrate.entities,
@@ -4913,7 +4914,6 @@ impl Simulation {
             && object.is_some_and(|object| object.weapons_factory);
         let in_limbo = entity.lifecycle.in_limbo;
         let now = self.session.binary_frame;
-        let readiness = crate::sim::mission::authority::LiveReadyInputProvider { rules };
         let rescue = self.substrate.entities.get(stable_id).is_some_and(|e| {
             e.mission.current().known() == Some(MissionType::Rescue)
                 || e.mission.queued().known() == Some(MissionType::Rescue)
@@ -4953,22 +4953,7 @@ impl Simulation {
                 queue_foot_enter_idle_mode(self, stable_id, rules);
             }
             EntityCategory::Structure => {
-                // Building Enter_Idle_Mode44D6E0 calls447780(1) before
-                // queuing Guard. The existing body owner retains+538 and
-                // applies it during the next Building visit.
-                if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                    entity.begin_building_body(
-                        crate::sim::building_construction::BuildingBodyMode::Idle,
-                        now as i32,
-                    );
-                }
-                let _ = self.mission_queue_exact(
-                    stable_id,
-                    MissionId::from_known(MissionType::Guard),
-                    0,
-                    now,
-                    &readiness,
-                );
+                self.building_enter_idle_mode(stable_id, false, Some(rules));
             }
             EntityCategory::Aircraft => {}
         }
@@ -6283,23 +6268,8 @@ impl Simulation {
             self.pending_rocket_detonations.clear();
             self.pending_missile_detonations.clear();
         }
-        if let Some(rules) = rules {
-            crate::sim::gate_runtime::tick_gate_runtimes(
-                &mut self.substrate.entities,
-                &self.substrate.occupancy,
-                rules,
-                &self.interner,
-                self.session.binary_frame,
-            );
-            // Slice 7d: break each war-factory exit contact whose vehicle has cleared
-            // the factory footprint this tick (gamemd's per-cell-process break).
-            crate::sim::production::tick_war_factory_exit_contacts(
-                &mut self.substrate.entities,
-                &self.substrate.occupancy,
-                rules,
-                &self.interner,
-            );
-        }
+        //Gate Open runs in Building Mission AI; factory clearance runs in
+        //the arriving Unit's Per_Cell_Process before Ready/Commence.
         // Movement-side wall crush (part of the ground-movement stage): a Crusher
         // drive vehicle that ended Phase-1 on a wall cell flattens the wall,
         // separate from the weapon-damage wall path. No-op when no crusher sits

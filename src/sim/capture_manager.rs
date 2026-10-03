@@ -817,7 +817,7 @@ impl Simulation {
             return;
         }
         let sound_played = manager.overload_sound_played;
-        let position = entity.position.clone();
+        let position = entity.position;
         let location = crate::sim::movement::ground_pose::position_world_coord(&position);
         // 0x00471B04: `ReceiveDamage(&damage, 0, C4Warhead, NULL, 0, 0, NULL)`.
         let warhead = self.interner.intern(&rules.bridge_warheads.c4_name);

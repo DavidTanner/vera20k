@@ -209,7 +209,7 @@ pub(super) fn settle_abandoned(
         // Original4CA0E3..4CA109 brackets the scalar destructor, including
         // Building43BD67 pointer expiry. Its listener timers cannot draw under
         // A8E7AC; preserve the caller's bracket through the shared destructor.
-        let discarded = sim.with_scenario_init_priority(|sim| {
+        let discarded = sim.with_object_placement_scope(|sim| {
             sim.discard_constructed_limbo(entity_id, Some(rules))
         });
         debug_assert!(
@@ -347,7 +347,7 @@ fn discard_active_factory_entity(
     category: ProductionCategory,
 ) {
     if let Some(stable_id) = active_entity_id(sim, owner_id, category) {
-        let discarded = sim.with_scenario_init_priority(|sim| {
+        let discarded = sim.with_object_placement_scope(|sim| {
             sim.discard_constructed_limbo(stable_id, Some(rules))
         });
         debug_assert!(

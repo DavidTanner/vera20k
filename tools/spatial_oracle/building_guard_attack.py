@@ -32,16 +32,23 @@
   events set or clear TarCom (the passive scan's or a pointer detach's write)
   or queue Attack as a player order (Queue_Mission(Attack, false)).
 
-Usage: python -m tools.spatial_oracle.building_guard_attack [--check|--write]
+- `--gate`: additive original Gate admission/Open true-RET controls and the
+  shared Door / building mission cadence. Its separate corpus records complete
+  RNG states, original code identity and declared caller/presentation seams.
+
+Usage: python -m tools.spatial_oracle.building_guard_attack [--gate] [--check|--write]
 """
 from pathlib import Path
+import hashlib
 import struct
+import sys
 
 from unicorn import UC_HOOK_CODE
-from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_EIP, UC_X86_REG_ESP
-from tools.native_oracle import finish_vectors, provenance
+from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_EIP, UC_X86_REG_ESP, UC_X86_REG_FPCW
+from tools.native_oracle import finish_vectors, provenance, image_bytes, file_span
 from tools.spatial_oracle import building_construction as bc
 from tools.spatial_oracle import slave_manager as sm
+from tools.spatial_oracle import building_sale as sale
 from tools.spatial_oracle.map_queries import dwords
 from tools.spatial_oracle.refinery_dock import ACTOR
 from tools.spatial_oracle.unit_source_scatter import SCENARIO
@@ -330,7 +337,366 @@ def generate():
             'cadence': [cadence(case) for case in cadence_cases()]}
 
 
+GATE_OPEN, GATE_ADMISSION = 0x44E440, 0x452540
+DOOR_CTOR, DOOR_OPEN, DOOR_CLOSE = 0x4A50F0, 0x4A51F0, 0x4A5240
+# This is the shared completion slot of Techno AI, before MissionClass::AI.
+# It is a declared caller seam, not whole Techno/Building Update execution.
+DOOR_COMPLETION = (0x6FA5BE, 0x6FA5D6)
+GATE_MISSION_HOST = (0x6FA646, 0x6FA65A)
+GATE_PHASES = {'closed': (0, 0), 'opening': (1, 1),
+               'open': (0, 1), 'closing': (1, 0)}
+GATE_RNGS = {'main': 0x886B88, 'scenario': SCENARIO + 0x218, 'mapgen': 0xABE890}
+
+
+def gate_rng(u):
+    return {name: bytes(u.mem_read(pointer, 1012)).hex()
+            for name, pointer in GATE_RNGS.items()}
+
+
+def gate_state(u, building):
+    return dict(**state(u, building),
+                phase=list(u.mem_read(building + 0x368, 2)),
+                door=[signed(u, building + offset) for offset in (0x358, 0x360, 0x364)],
+                hold=[signed(u, building + offset) for offset in (0x604, 0x60C, 0x610)],
+                gate_stage=u.mem_read(building + 0x703, 1)[0])
+
+
+def gate_fixture(case):
+    """Extend this owner's supplied Building fixture. Constructor/type/INI
+    closure is excluded; Gate fields and retained timers are declared inputs.
+    Original Door constructor and any requested Open/Close producer execute."""
+    u, read32, building, _frame, events = fixture(
+        dict(case, mission='guard', armed=False))
+    frame = case.get('frame', 100)
+    u.mem_write(bc.FRAME, dwords(frame))
+    u.mem_write(building + 0xAC, dwords(case.get('current', 24)))
+    u.mem_write(building + 0xB4, dwords(case.get('queue', -1)))
+    u.mem_write(building + 0xBC, dwords(case.get('status', 0)))
+    u.mem_write(building + 0xC0, dwords(frame, 0))
+    u.mem_write(building + 0xC8, dwords(frame, 0, 0))
+    u.mem_write(sm.YTYPE + 0x16B7, bytes([case.get('gate', True)]))
+    u.mem_write(sm.YTYPE + 0x3C8, struct.pack('<d', read_double(case.get('deploy', '.044'))))
+    u.mem_write(sm.YTYPE + 0xE28, struct.pack('<d', read_double(case.get('close_delay', '.2'))))
+    u.mem_write(sm.YTYPE + 0x16F8, dwords(9))
+    u.mem_write(0xA8E3A8 + 24 * 32 + 0x10,
+                struct.pack('<d', read_double(case.get('rate', '.016'))))
+    bc.invoke(u, DOOR_CTOR, building + 0x350)
+    phase = case.get('phase', 'closed')
+    if phase in ('opening', 'closing'):
+        # Actual duration producer, at the row's retained earlier frame.
+        u.mem_write(bc.FRAME, dwords(case.get('door_start', frame)))
+        value = read_double(case.get('door_time', case.get('deploy', '.044')))
+        # Close has an original no-op on a stable-closed Door: supply the
+        # retained open direction before invoking it when it is a producer.
+        if phase == 'closing':
+            u.mem_write(building + 0x369, b'\x01')
+        bc.invoke(u, DOOR_OPEN if phase == 'opening' else DOOR_CLOSE,
+                  building + 0x350, *struct.unpack('<2I', struct.pack('<d', value)))
+        u.mem_write(bc.FRAME, dwords(frame))
+    else:
+        # Stable controls retain a completed producer's timer unless the row
+        # uses the constructor's closed state. These are supplied byte inputs.
+        u.mem_write(building + 0x368, bytes(GATE_PHASES[phase]))
+    hold_start, hold_ticks = case.get('hold', [frame, 180])
+    u.mem_write(building + 0x604, dwords(hold_start, 0, hold_ticks, hold_ticks))
+    # The fixture's original 2x2 foundation is already self in Ground+E4.
+    # Ground and Bridge contrasts supply the actor only on their stated list.
+    blocker = case.get('blocker')
+    if blocker:
+        cell = sm.cell(*sm.YAREFN_NW)
+        u.mem_write(cell + (0xE4 if blocker == 'ground' else 0xE8), dwords(ACTOR))
+        u.mem_write(ACTOR + 0x30, dwords(building))
+        u.mem_write(ACTOR + 0x6C, dwords(case.get('blocker_health', 1000)))
+    for pointer in GATE_RNGS.values():
+        bc.invoke(u, RANDOM_SEED, pointer, case.get('seed', 1))
+    events.clear()
+
+    def observe_rectangle(_u, address, _size, _data):
+        if address == 0x455C20:
+            # Gate setup only copies this returned drawing rectangle to
+            # Tactical::DirtyScreenRect; it never feeds a gameplay decision.
+            sp = u.reg_read(UC_X86_REG_ESP)
+            rectangle = read32(sp + 4)
+            events.append(['drawing_rectangle'])
+            u.mem_write(rectangle, bytes(16))
+            u.reg_write(UC_X86_REG_EAX, rectangle)
+            u.reg_write(UC_X86_REG_EIP, read32(sp))
+            u.reg_write(UC_X86_REG_ESP, sp + 8)
+        elif address == 0x7C978A:
+            # CRT atexit registration for Object's lazy terminal CellStruct;
+            # the original lazy writes and type/foundation dispatch execute.
+            sp = u.reg_read(UC_X86_REG_ESP)
+            u.reg_write(UC_X86_REG_EAX, 0)
+            u.reg_write(UC_X86_REG_EIP, read32(sp))
+            u.reg_write(UC_X86_REG_ESP, sp + 4)
+
+    u.hook_add(UC_HOOK_CODE, observe_rectangle)
+    bc.invoke(u, sale.OCCUPY_INIT, 0)
+    # BuildingType::ReadINI461541 publishes this pointer after Foundation.
+    # Actual initializer owns its contents; no Rust/manual foundation golden.
+    u.mem_write(sm.YTYPE + 0xDFC, dwords(sale.OCCUPY_LISTS + 3 * sale.OCCUPY_STRIDE))
+    return u, read32, building, frame, events
+
+
+def gate_controls():
+    return [
+        dict(name='setup_closed', status=0),
+        dict(name='setup_zero', status=0, deploy='0'),
+        dict(name='setup_negative_duration', status=0, deploy='-.044'),
+        dict(name='setup_opening_retains', status=0, phase='opening', door_start=90),
+        dict(name='setup_closing_reverses', status=0, phase='closing', door_start=90),
+        *[dict(name=f'setup_open_seed{seed}', status=0, phase='open', seed=seed)
+          for seed in (1, 2, 8, 9)],
+        dict(name='opening_wait', status=1, phase='opening', door_start=90),
+        dict(name='opening_wait_open', status=1, phase='open'),
+        dict(name='opening_wait_closed', status=1),
+        dict(name='hold_before', status=2, phase='open', frame=279, hold=[100, 180]),
+        *[dict(name=f'hold_expired_seed{seed}', status=2, phase='open', frame=280,
+               hold=[100, 180], seed=seed) for seed in (1, 2, 8, 9)],
+        dict(name='hold_ground_reseed', status=2, phase='open', frame=280,
+             hold=[100, 180], blocker='ground'),
+        dict(name='hold_dead_ground_reseed', status=2, phase='open', frame=280,
+             hold=[100, 180], blocker='ground', blocker_health=0),
+        dict(name='hold_bridge_does_not_reseed', status=2, phase='open', frame=280,
+             hold=[100, 180], blocker='bridge'),
+        dict(name='hold_negative_duration', status=2, phase='open', hold=[100, -180], close_delay='-.2'),
+        dict(name='hold_zero_duration', status=2, phase='open', hold=[100, 0], close_delay='0'),
+        dict(name='hold_negative_rate', status=2, phase='open', rate='-.016'),
+        dict(name='begin_close', status=3, phase='open'),
+        dict(name='begin_close_zero', status=3, phase='open', deploy='0'),
+        dict(name='closing_wait', status=4, phase='closing', door_start=90),
+        dict(name='closing_wait_open_retains', status=4, phase='open'),
+        dict(name='closing_wait_closed', status=4),
+        dict(name='post_close', status=5),
+        dict(name='unknown_status', status=0xFFFFFFFF),
+        dict(name='non_gate', status=0, gate=False),
+        *[dict(name=f'admission_{name}', operation='admission', current=current,
+               queue=queue, phase=phase, status=4)
+          for name, current, queue, phase in (
+              ('guard_closed', 5, -1, 'closed'), ('guard_open', 5, -1, 'open'),
+              ('open_closing', 24, -1, 'closing'), ('open_opening', 24, -1, 'opening'),
+              ('open_open', 24, -1, 'open'), ('none_queued_open', -1, 24, 'open'))],
+    ]
+
+
+def gate_one_call(case):
+    u, _read32, building, frame, events = gate_fixture(case)
+    initial = gate_state(u, building)
+    rng_before = gate_rng(u)
+    text = bytes(u.mem_read(0x401000, 0x3E0000))
+    original = file_span(image_bytes(), 0x401000, 0x3E0000)[1]
+    assert text == original, 'supplied fixture patched original .text'
+    entry = GATE_ADMISSION if case.get('operation') == 'admission' else GATE_OPEN
+    value = bc.invoke(u, entry, building)
+    assert u.reg_read(UC_X86_REG_ESP) == bc.SP + 4, 'Gate did not reach its true RET'
+    assert bytes(u.mem_read(0x401000, 0x3E0000)) == original
+    return dict(input=case, frame=frame, initial=initial, returns=value & (255 if entry == GATE_ADMISSION else 0xFFFFFFFF),
+                after=gate_state(u, building), events=events, draws=draws(events),
+                rng_before=rng_before, rng_after=gate_rng(u),
+                fpcw=u.reg_read(UC_X86_REG_FPCW),
+                text_sha256=hashlib.sha256(original).hexdigest())
+
+
+def gate_cadence():
+    case = dict(name='gate_open_hold_close_guard', status=0, seed=9, ready=1, frame=100)
+    u, _read32, building, frame, events = gate_fixture(case)
+    # Actual normal idle body prerequisite, not a supplied BeginMode reply.
+    bc.invoke(u, ENTER_CONSTRUCTION, building, 0, 1)
+    # A movement request synchronously commences Open before the first turn.
+    u.mem_write(building + 0xAC, dwords(5))
+    admission = bc.invoke(u, GATE_ADMISSION, building) & 255
+    rng_before = gate_rng(u)
+    frames = []
+    for k in range(1, 351):
+        u.mem_write(bc.FRAME, dwords(frame + k))
+        before = len(events)
+        bc.invoke(u, bc.UPDATE_ANIMATION, building)
+        bc.run_block(u, building, bc.READY_COMMENCE_UNLESS_BUILDING)
+        bc.run_block(u, building, DOOR_COMPLETION)
+        bc.run_block(u, building, GATE_MISSION_HOST)
+        bc.run_block(u, building, bc.READY_COMMENCE)
+        bc.run_block(u, building, bc.QUEUED_BSTATE, ebp=-1)
+        frames.append(dict(frame=frame + k, events=events[before:], **gate_state(u, building)))
+    original = file_span(image_bytes(), 0x401000, 0x3E0000)[1]
+    assert bytes(u.mem_read(0x401000, 0x3E0000)) == original
+    return dict(input=case, admission=admission, frames=frames,
+                rng_before=rng_before, rng_after=gate_rng(u),
+                fpcw=u.reg_read(UC_X86_REG_FPCW), text_sha256=hashlib.sha256(original).hexdigest())
+
+
+def generate_gate():
+    return dict(source='unicorn/gamemd.exe', controls=[gate_one_call(case) for case in gate_controls()],
+                cadence=gate_cadence())
+
+
+def gate_provenance():
+    return provenance(
+        scope='Original Building Gate MissionOpen44E440/admission452540 true RETs and a declared '
+              'Building per-turn mission/Door-completion cadence using this existing fixture owner',
+        entry_points={'mission_open': GATE_OPEN, 'admission': GATE_ADMISSION, 'door_ctor': DOOR_CTOR,
+                      'door_open': DOOR_OPEN, 'door_close': DOOR_CLOSE, 'door_completion_start': DOOR_COMPLETION[0],
+                      'door_completion_endpoint': DOOR_COMPLETION[1], 'mission_ai': bc.MISSION_AI,
+                      'mission_counter_start': GATE_MISSION_HOST[0],
+                      'mission_counter_endpoint': GATE_MISSION_HOST[1],
+                      'update_animation': bc.UPDATE_ANIMATION,
+                      'building_idle': ENTER_CONSTRUCTION, 'scenario_random': RANDOM_RANGED},
+        assumptions=[
+            'Existing building_construction/slave_manager supplied 2x2 Building at12,12, original '
+            'Building and BuildingType vtables. Complete class constructors, physical retail INI '
+            'readers and Gate map placement are excluded. Gate/type booleans, current/queued mission, '
+            'handler cursor and hold clock are explicit retained boundary inputs.',
+            'Original foundation initializer45B1C0 executes; BuildingTypeDFC is supplied to its '
+            '2x2 list as the original461541 publisher does. Actual Object5F5B90 lazy terminal '
+            'initialization, BuildingType45EC20, Foundation/GetCell/Map lookups and Ground list '
+            'walk execute; no obstruction answer is supplied.',
+            'DeployTime=.044, GateCloseDelay=.2 and Open Rate=.016 are supplied ReadDouble-shaped '
+            'float-widened controls, not a claim of complete retail Gate rules closure. Original '
+            'Door constructor/producers, ftol7C5F00, reversal4A5290 and stable completion execute; '
+            'stable phase bytes and previous hold clock are supplied retained states.',
+            'Full1012-byte Main/Scenario/MapGen originally seeded per row through65C6D0. Scenario '
+            'rejection draws execute without supplied values; before/after state and calls retained. '
+            'FPCW0E7F is fixture ambient state, not an established WinMain producer.',
+            'Single controls reach original RETs44E794/4525E0 or early true RETs. Cadence starts '
+            'with actual normal BuildingIdle44D6A0(0,1), then composes original UpdateAnimation4509D0, '
+            'pre-Ready43FE27..43FE54, Door completion6FA5BE..6FA5D6, counter and full MissionAI '
+            '6FA646..6FA65A, post-Ready43FF91..43FFB4 and queued-body43FFB4..440042 in order. '
+            'All other Building/Techno AI steps, object-to-object '
+            'Logic scheduling, damage, freeze, drawing and entire active-game reachability are excluded.',
+            'Ground and Bridge blockers are supplied pointers only on the stated cell list. Dead '
+            'Ground pointer control establishes no Health test; it does not execute object death/Mark.'
+        ],
+        substitutions=[
+            'Reuse existing fixture boundaries: sound7509E0, repaint6D2790 and ClearBib449540 '
+            'are observers; unrelated existing FireError/FireAt/target/facing predicates remain '
+            'outside the measured Gate call path. The added Gate-only GetBoundsRect455C20 observer '
+            'returns an empty supplied rectangle copied solely to repaint; native Tactical camera/'
+            'SHP closure and Gate drawing parity are excluded. CRT atexit7C978A registration is a '
+            'no-op; original lazy terminal writes execute. No Gate, Door, foundation query, mission verb, '
+            'dispatch timer or RNG return/state is replaced. Original .text checked byte-for-byte.'
+        ])
+
+
+def gate_source_paths():
+    """Conservative imported-module inventory plus the selected Rust owners.
+
+    Import membership binds source identity; it does not claim that every
+    imported body executes in the bounded Gate controls. The central
+    finish_vectors owner hashes normalized source before and after generation.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    paths = (
+        # Conservative repository Python import closure, including this owner.
+        'tools/native_oracle.py',
+        'tools/projectile_oracle/bridge_render_inputs.py',
+        'tools/projectile_oracle/bridge_render_inputs_selection.py',
+        'tools/projectile_oracle/flat_art.py',
+        'tools/projectile_oracle/guided_step.py',
+        'tools/rmg_oracle/gen_rng_vectors.py',
+        'tools/rules_oracle/bridge_anim_inputs.py',
+        'tools/rules_oracle/bridge_anim_lists.py',
+        'tools/rules_oracle/bridge_child_sound.py',
+        'tools/rules_oracle/bridge_landing_inputs.py',
+        'tools/spatial_oracle/__init__.py',
+        'tools/spatial_oracle/air_locomotor_moving.py',
+        'tools/spatial_oracle/anim_bouncer_launch.py',
+        'tools/spatial_oracle/bridge_rim.py',
+        'tools/spatial_oracle/building_art_transition.py',
+        'tools/spatial_oracle/building_body_rules.py',
+        'tools/spatial_oracle/building_construction.py',
+        'tools/spatial_oracle/building_guard_attack.py',
+        'tools/spatial_oracle/building_sale.py',
+        'tools/spatial_oracle/building_slot_replacement.py',
+        'tools/spatial_oracle/cmin_dock.py',
+        'tools/spatial_oracle/estimated_damage.py',
+        'tools/spatial_oracle/harvest_attack_return.py',
+        'tools/spatial_oracle/harvest_field.py',
+        'tools/spatial_oracle/infantry_entry_raw.py',
+        'tools/spatial_oracle/jumpjet_coordinates.py',
+        'tools/spatial_oracle/jumpjet_entry_discovery.py',
+        'tools/spatial_oracle/locomotor_at_coord.py',
+        'tools/spatial_oracle/map_queries.py',
+        'tools/spatial_oracle/mapgen_range.py',
+        'tools/spatial_oracle/object_health.py',
+        'tools/spatial_oracle/refinery_dock.py',
+        'tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py',
+        'tools/spatial_oracle/slave_manager.py',
+        'tools/spatial_oracle/track_destination.py',
+        'tools/spatial_oracle/unit_entry.py',
+        'tools/spatial_oracle/unit_scatter_state.py',
+        'tools/spatial_oracle/unit_source_scatter.py',
+        'tools/spatial_oracle/walk_head_occupation.py',
+        # Gate, Door and constructor/body state owners.
+        'src/sim/gate_runtime.rs',
+        'src/sim/door.rs',
+        'src/sim/timer.rs',
+        'src/sim/game_entity.rs',
+        'src/sim/game_entity/construction_stage.rs',
+        'src/sim/building_construction.rs',
+        'src/sim/stage.rs',
+        'src/sim/game_options.rs',
+        'src/sim/components.rs',
+        'src/sim/movement/facing_class.rs',
+        # Live scheduling, canonical idle, publication and persistence consumers.
+        'src/sim/world/mod.rs',
+        'src/sim/world/world_spawn.rs',
+        'src/sim/world/world_spawn/construction.rs',
+        'src/sim/world/techno_ai.rs',
+        'src/sim/world/techno_ai/building_missions.rs',
+        'src/sim/world/object_turn.rs',
+        'src/sim/world/logic_vector.rs',
+        'src/sim/world/world_hash.rs',
+        'src/sim/snapshot.rs',
+        # Mission cursor, verbs, readiness and frame clocks.
+        'src/sim/mission/mod.rs',
+        'src/sim/mission/authority.rs',
+        'src/sim/mission/state.rs',
+        'src/sim/mission/verb.rs',
+        'src/sim/mission/readiness.rs',
+        'src/sim/mission/leaf.rs',
+        'src/sim/mission/timer.rs',
+        'src/sim/mission/control.rs',
+        # Admission/passability callers and ordered footprint/list owners.
+        'src/sim/movement/track_fresh.rs',
+        'src/sim/movement/track_host.rs',
+        'src/sim/movement/track_path.rs',
+        'src/sim/movement/hover_process.rs',
+        'src/sim/movement/walk_admission.rs',
+        'src/sim/movement/walk_head.rs',
+        'src/sim/movement/jumpjet_movement.rs',
+        'src/sim/world/object_entry.rs',
+        'src/sim/movement/locomotor.rs',
+        'src/sim/occupancy.rs',
+        'src/sim/production/production_tech.rs',
+        'src/sim/entity_store.rs',
+        'src/sim/intern.rs',
+        'src/sim/rng.rs',
+        'src/map/entities.rs',
+        'src/map/houses.rs',
+        'src/sim/production/mod.rs',
+        # Typed rule inputs, canonical rates and their numeric owner.
+        'src/rules/ruleset.rs',
+        'src/rules/object_type.rs',
+        'src/rules/art_data.rs',
+        'src/rules/ini_parser.rs',
+        'src/rules/ini_value.rs',
+        'src/rules/mission_data.rs',
+        'src/util/native_x87.rs',
+        'src/util/native_x87/masked.rs',
+        'src/rules/foundation.rs',
+        # Incoming recoil constructor reached by component installation.
+        'src/sim/game_entity/voxel_recoil.rs',
+        'src/rules/recoil.rs',
+    )
+    return {name: repo / name for name in paths}
+
+
 def main(argv=None):
+    args = list(sys.argv[1:] if argv is None else argv)
+    if '--gate' in args:
+        args.remove('--gate')
+        finish_vectors(generate_gate, Path(__file__).with_name('building_guard_attack_gate.json'),
+                       provenance=gate_provenance, source_paths=gate_source_paths(), argv=args)
+        return
     finish_vectors(
         generate, Path(__file__).with_suffix('.json'),
         provenance=lambda: provenance(

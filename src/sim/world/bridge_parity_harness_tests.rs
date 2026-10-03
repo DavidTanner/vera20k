@@ -286,11 +286,20 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // incoming E3FD9DD363C98F82; all 201 off/on boundaries differ only in tick hash.
 // Receipt: tools/spatial_oracle/unit_simple_deploy_replay/receipt.json.
 // This is Rust attribution; unit_simple_deploy separately pins native cadence.
+// Shared Techno Door hash composition after main339b57d18 integration:
+// one diagnostic binary restores incoming F6E02080D0BE29C1 when only the Door
+// hash feed is omitted. Behavior and RNG assertions reach the final pin in
+// both modes. The temporary control is removed; native expected values stay
+// unchanged. Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
 // 2026-10-02 IFV owner migration: u8 last-shot hashing becomes signed i32
 // current-weapon hashing and the redundant None override feed is removed.
 // All 201 recorded boundaries retain gameplay/RNG after guarded field migration;
 // tools/spatial_oracle/ifv_turret_replay/receipt.json records this Rust attribution.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xC40E_68BD_B392_AF79;
+// Shared Door composition after main1009: same test binary, 201 complete
+// off/on boundaries equal except tick_result.state_hash. Omitting only Door
+// restores incoming main; the temporary control is removed. Bounded Rust
+// attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xE535_E954_E40A_0B11;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -523,23 +532,6 @@ fn seed_bridge_scenario(sim: &mut Simulation, rules: &RuleSet) {
             "fixture actor/route cell ({rx},{ry}) must be in the native playfield"
         );
     }
-    // Exercise the complete same admission used by normal Unit construction:
-    // configured bounds/terrain, authored speed row, occupants and raw masks.
-    assert!(
-        crate::sim::production::produced_unit_unlimbo_entry_at_resolved_cell(
-            sim,
-            rules,
-            "Americans",
-            "MTNK",
-            TANK_ID,
-            0,
-            (APPROACH_A_X, SPAN_Y),
-            None,
-        )
-        .exact_zero_layer()
-        .is_some(),
-        "fixture must satisfy normal Unit admission"
-    );
     sim.spawn_from_map(
         &[
             unit(

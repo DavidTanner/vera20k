@@ -931,21 +931,11 @@ impl Simulation {
             }
             //4B1E6D..4B1EBB: the gate question, answer discarded.
             3 => {
-                let owner = self
-                    .substrate
-                    .entities
-                    .get(id)
-                    .map(|actor| self.interner.resolve(actor.owner()).to_owned())
-                    .unwrap_or_default();
                 let _ = crate::sim::gate_runtime::request_gate_open_for_cell(
-                    &mut self.substrate.entities,
-                    &self.substrate.occupancy,
+                    self,
                     (target.0 as u16, target.1 as u16),
                     id,
-                    &owner,
                     rules,
-                    &self.house_alliances,
-                    &self.interner,
                 );
                 return Ok(false);
             }

@@ -18,7 +18,6 @@ use crate::sim::occupancy::{
 };
 use crate::sim::passenger::PassengerRole;
 use crate::sim::projectile::ProjectileTarget;
-use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
 use crate::util::lepton::LEPTONS_PER_LEVEL;
 
@@ -145,15 +144,31 @@ pub(crate) enum PlacementEvidence {
     /// class-specific exact-zero CanEnter admission; fixed/runtime constructors
     /// use it so a later placement rejection can retain the spent constructor.
     EvaluateMark,
-    /// The concrete `UnitClass::Can_Enter_Cell @ 0x0073F0A0` call made by
-    /// `ObjectClass::Unlimbo @ 0x005F4EC0` returned exact zero for the named
-    /// CellClass occupation plane. Carrying the selected plane prevents a
-    /// caller that already proved the native predicate (notably naval factory
-    /// delivery) from evaluating it twice while still letting the common
-    /// reveal boundary establish OnBridge and the deck Z before Mark(PUT).
-    UnitCanEnterExactZero {
-        layer: crate::sim::movement::locomotor::MovementLayer,
-    },
+    /// Object5F4F1B accepted Unit admission: either the one class +1AC
+    /// receiver returned zero or the caller's A8E7AC scope skipped it.
+    /// Query-local height/list outputs never establish the object's pose.
+    UnitEntryAdmitted,
+}
+
+impl Simulation {
+    /// A8E7AC's caller-owned bracket. Native factory444575..444979/444EE6
+    /// retains it through Unlimbo, Mark and radio callbacks; nested scopes
+    /// increment/decrement the same dword. SpawnSurvivors443141..443288
+    /// and passenger escape738030..7381A1 retain it through Scatter and
+    /// immediate Walk/cell callbacks. Session GameMode is A8B238.
+    pub(crate) fn with_object_placement_scope<R>(
+        &mut self,
+        operation: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.object_placement_scope_depth = self.object_placement_scope_depth.wrapping_add(1);
+        let result = operation(self);
+        self.object_placement_scope_depth = self.object_placement_scope_depth.wrapping_sub(1);
+        result
+    }
+
+    pub(crate) fn object_placement_scope_active(&self) -> bool {
+        self.object_placement_scope_depth != 0
+    }
 }
 
 pub(super) fn building_base_reservation_rect(
@@ -232,19 +247,9 @@ pub(super) fn building_base_reservation_repair_rect(
     )
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct RevealPosition {
-    /// Isometric map-cell coordinate, not a screen axis.
-    pub rx: u16,
-    /// Isometric map-cell coordinate, not a screen axis.
-    pub ry: u16,
-    /// Current Rust height level, not pixels or leptons.
-    pub z: u8,
-    /// Lepton offset inside the cell (256 leptons per cell).
-    pub sub_x: SimFixed,
-    /// Lepton offset inside the cell (256 leptons per cell).
-    pub sub_y: SimFixed,
-}
+/// A caller's placement coordinate. Reuse the Location representation so a
+/// native CoordStruct can retain its exact Z independently of height levels.
+pub(crate) type RevealPosition = crate::sim::components::Position;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RevealRequest {
@@ -494,8 +499,8 @@ impl Simulation {
     ///
     /// A falling paradrop keeps its drop's Z, and a `MissileSpawn=` aircraft
     /// the Z its caller staged on its limbo Location (the spawn launch's
-    /// coordinate, `spawn_manager::launch_coordinate`): this level-based API
-    /// carries no input Z of its own. `None` keeps no exact Z, for:
+    /// coordinate, `spawn_manager::launch_coordinate`). Exact-coordinate input
+    /// is retained independently of the legacy coarse level. `None` keeps no exact Z, for:
     /// - a tube owner, whose own state carries the height;
     /// - a `MissileSpawn=` aircraft whose caller staged no exact Z (no
     ///   production caller does);
@@ -561,7 +566,9 @@ impl Simulation {
                 || terrain.shared_cell_dummy().snapshot().level,
                 |index| terrain.cells()[index].level as i8,
             );
-        let input_z = if entity.on_bridge && i32::from(position.z as i8) == i32::from(level) + 4 {
+        let input_z = if let Some(input_z) = position.exact_z_leptons {
+            input_z
+        } else if entity.on_bridge && i32::from(position.z as i8) == i32::from(level) + 4 {
             // VERA input adapter: retain the ramp remainder that the existing
             // coarse bridge-level API cannot carry. Native clamp remains max.
             ground_z.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS)
@@ -575,13 +582,7 @@ impl Simulation {
         self.substrate
             .entities
             .get(stable_id)
-            .map(|entity| RevealPosition {
-                rx: entity.position.rx,
-                ry: entity.position.ry,
-                z: entity.position.z,
-                sub_x: entity.position.sub_x,
-                sub_y: entity.position.sub_y,
-            })
+            .map(|entity| entity.position)
     }
 
     /// Compatibility convenience for already-admitted current-position callers.
@@ -691,6 +692,7 @@ impl Simulation {
             return RevealOutcome::Failed(RevealFailure::RejectedEarly);
         }
         if request.placement == PlacementEvidence::EvaluateMark
+            && !self.object_placement_scope_active()
             && !self.reveal_position_is_in_playfield(request.position, context)
         {
             return RevealOutcome::Failed(RevealFailure::RejectedEarly);
@@ -702,25 +704,9 @@ impl Simulation {
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::RevealLimboCleared);
 
-        // `CheckBridgeTraversal @ 0x004D9C60`: the plane a Unit's exact-zero
-        // Can_Enter_Cell admitted sets OnBridge and, on a bridge, the Level+4
-        // deck height before mode-one Mark. Mark then reads OnBridge for its
-        // E4/E8 list and the committed Z for the +0x124/+0x128 raw plane.
-        let mut position = request.position;
-        if let PlacementEvidence::UnitCanEnterExactZero { layer } = request.placement {
-            let on_bridge = layer == crate::sim::movement::locomotor::MovementLayer::Bridge;
-            if on_bridge
-                && let Some(cell) = context
-                    .terrain()
-                    .or(self.resolved_terrain.as_ref())
-                    .and_then(|terrain| terrain.cell(position.rx, position.ry))
-            {
-                position.z = cell.bridge_deck_level;
-            }
-            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                entity.on_bridge = on_bridge;
-            }
-        }
+        // Foot4D9C60 adjusts query-local height/list pointers. OnBridge and
+        // the caller's requested XYZ remain independent through Unlimbo.
+        let position = request.position;
         let exact_z = self.unlimbo_z(stable_id, position, context);
         // RESIDUAL: `ObjectClass::Unlimbo` sets this Location through
         // SetLocation (vt+0x1B4 at 0x005F4FA8, before its Mark(1) at
@@ -749,11 +735,6 @@ impl Simulation {
         if let Some(rules) = context.rules {
             self.reposition_building_anim_slots(stable_id, rules);
         }
-        // `TechnoClass::Unlimbo @ 0x006F6CFE` establishes the canonical
-        // TechnoClass+0x3D5 byte from mode-one MapClass membership. Headless
-        // fixtures have no MapClass authority, so they retain the constructor
-        // default and their consumers explicitly leave the byte unenforced.
-        self.establish_entity_playfield_membership_on_unlimbo(stable_id, context);
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::RevealCoordinatesCommitted);
 
@@ -786,6 +767,11 @@ impl Simulation {
                 });
             }
         }
+        // Techno6F6CB1 calls Object Unlimbo, and its failed return6F6CB8
+        // precedes the +3D5 establishment at6F6CFE. Failed Mark retains the
+        // prior byte. Headless fixtures have no MapClass authority and retain
+        // the constructor default through this existing writer.
+        self.establish_entity_playfield_membership_on_unlimbo(stable_id, context);
         // `TechnoClass::Unlimbo` calls Added_To_Game once placement succeeded
         // (`0x006F6D8F`), behind its alive gate (`0x006F6D04`: a dead Techno
         // returns success before it).
@@ -902,26 +888,45 @@ impl Simulation {
                 .navigation
                 .retain_threat_avoidance_after_unlimbo(object.threat_avoidance_coefficient);
         }
+        // Unit737BF5..737C75 resets the SAME +F8 StageClass after Foot
+        // success. E18/E19 are Unit-section booleans, not General references.
+        // The existing owner preserves FC/110; +104 is native stack padding.
+        // Original execution/RNG: anytown_damage/unit_unlimbo stage controls.
+        if self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category == EntityCategory::Unit)
+        {
+            let visceroid = context
+                .rules
+                .and_then(|rules| {
+                    self.substrate
+                        .entities
+                        .get(stable_id)
+                        .and_then(|entity| rules.object(self.interner.resolve(entity.type_ref())))
+                })
+                .is_some_and(|object| object.small_visceroid || object.large_visceroid);
+            let value = if visceroid {
+                self.scenario_rng.next_range_i32_inclusive(0, 29)
+            } else {
+                0
+            };
+            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                entity.restart_native_stage(
+                    value,
+                    self.session.binary_frame as i32,
+                    i32::from(visceroid),
+                );
+            }
+        }
         // Aircraft4143A8 follows successful Foot Unlimbo, including the dead
         // Techno success arm. Failed placement above must not promote +3D4.
         // RESIDUAL: the class Unlimbo tails also write what VERA does not
         // write here.
-        // - Both snap the Secondary (`+0x3A0`, a unit's turret) to the
-        //   Unlimbo direction (Aircraft `0x00414403..0x00414417`, Unit
-        //   `0x00737BBE..0x00737BD2`, FacingClass `0x004C9300`). Trigger: an
-        //   object revealed facing other than its constructor facing: factory
-        //   aircraft and vehicles (constructed facing 0), spawn launches,
-        //   transport unloads. Effect: its Secondary keeps its old facing and
-        //   turns from there. Risk: a facing-gated fire check.
-        // - The Unit resets its Stage (`0x00737BF5..0x00737C75`): value 0 and
-        //   rate 0, timer started for 0; a `SmallVisceroid=`/`LargeVisceroid=`
-        //   type instead takes a Scenario `RandomRanged(0, 29)` (`0x00737C47`)
-        //   as the value, with rate 1. Trigger: every Unit reveal. Effect: the
-        //   Stage keeps its earlier state; a miner revealed with its harvest
-        //   stage armed skips the re-arm at HarvesterLoadRate. The draw is
-        //   dormant: no retail type sets either key (RULESMD.INI by grep), and
-        //   VERA reads neither. Risk: hash-visible; a mod visceroid would
-        //   shift the Scenario stream.
+        // - Concrete coordinate/height Unlimbo snaps both facings through
+        //   its shared caller funnel. Low-level diagnostic Reveal has no
+        //   direction argument and retains the existing facing seam.
         // - The Aircraft +0x6C9 latch (`0x004143F2..0x004143FC`), set when a
         //   first passenger rides at Unlimbo. Dormant: carriers take their
         //   passengers after Unlimbo, and the paradrop writes the latch itself
@@ -2588,11 +2593,12 @@ impl Simulation {
         }
         self.foot_neighbors_before_limbo(stable_id);
         // Foot4DB260 dispatches vt+0x500 on the first Limbo (0x004DB2FB,
-        // outside the map editor) before +9C(0): Infantry 0x0051DAF0, whose
+        // while A8E7AC is zero) before +9C(0): Infantry 0x0051DAF0, whose
         // Walk Stop clears the moving bytes Lock leaves.
         // RESIDUAL: a Unit's or Aircraft's +0x500 (Foot 0x004D55C0, the
         // locomotor's Stop_Moving) is not run here.
         if let Some(rules) = context.rules()
+            && !self.object_placement_scope_active()
             && self
                 .substrate
                 .entities
@@ -3395,7 +3401,7 @@ impl Simulation {
     /// Original controls: infantry_deploy_action.json's reload rows.
     pub(crate) fn shorten_passive_scan_timer(&mut self, id: u64) -> bool {
         let now = self.session.binary_frame;
-        if self.scenario_init_priority_active()
+        if self.object_placement_scope_active()
             || self
                 .substrate
                 .entities
@@ -4561,6 +4567,7 @@ mod base_plan_lifecycle_tests {
             1,
             RevealRequest {
                 position: RevealPosition {
+                    exact_z_leptons: None,
                     rx: 10,
                     ry: 11,
                     z: 0,

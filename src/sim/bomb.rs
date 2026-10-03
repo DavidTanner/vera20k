@@ -351,7 +351,7 @@ impl Simulation {
         if carrier.bomb.is_some() {
             return;
         }
-        let position = carrier.position.clone();
+        let position = carrier.position;
         let world_z_leptons = crate::sim::movement::ground_pose::object_world_z_leptons(
             carrier,
             self.resolved_terrain.as_ref(),
@@ -483,7 +483,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(blast.carrier) else {
             return;
         };
-        let position = entity.position.clone();
+        let position = entity.position;
         let air_impact = crate::sim::combat::combat_aoe::air_impact_from_entity(
             entity,
             self.resolved_terrain.as_ref(),

@@ -721,6 +721,23 @@ impl FactoryRegistry {
         self.factories.get(&FactoryHolder::Building(building))
     }
 
+    /// Move the existing Building+524 attachment to an empty building slot.
+    /// ExitObject44451F..444552 temporarily lends the selected factory to its
+    /// alternate receiver, then restores it after that receiver's ExitObject.
+    /// The Factory itself, its insertion order, held object and accounting do
+    /// not change. An absent source or occupied destination leaves both intact.
+    pub(super) fn transfer_building_factory_attachment(&mut self, from: u64, to: u64) -> bool {
+        let destination = FactoryHolder::Building(to);
+        if self.factories.contains_key(&destination) {
+            return false;
+        }
+        let Some(factory) = self.factories.remove(&FactoryHolder::Building(from)) else {
+            return false;
+        };
+        self.factories.insert(destination, factory);
+        true
+    }
+
     /// `new FactoryClass` for building `building` (`0x0045036C..0x00450387`,
     /// ctor `0x004C98B0` appending it to the factory vector) and the create
     /// path of `FactoryClass::StartProduction @ 0x004C9C70` for `type_id`

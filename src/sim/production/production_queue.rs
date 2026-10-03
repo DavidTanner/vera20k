@@ -360,33 +360,184 @@ pub(super) fn deliver_produced_object(
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> Option<u64> {
     let (rx, ry) = selection.cell;
-    let spawned = match selection.delivery {
-        ProductionDeliveryKind::NavalUnit => unlimbo_held_naval_unit(
-            sim,
-            rules,
-            sim.interner.resolve(owner_id).to_string().as_str(),
-            type_name,
-            stable_id,
-            selection.producer_id,
-            (rx, ry),
-            overlay_registry,
-        ),
-        ProductionDeliveryKind::Standard => {
-            let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
-            sim.reveal_constructed_object_at_height_with_unit_context(
+    // ExitObject443C81 writes this byte before class dispatch, even if a later
+    // Unlimbo fails. It is the existing Techno+3D5 owner, not a new flag.
+    let is_unit = sim.substrate.entities.get_mut(stable_id).map(|product| {
+        product.in_playfield = true;
+        product.category == crate::map::entities::EntityCategory::Unit
+    })?;
+    let land_factory = is_unit
+        && sim
+            .substrate
+            .entities
+            .get(selection.producer_id)
+            .is_some_and(|producer| {
+                super::production_spawn::exact_land_vehicle_exit_factory(
+                    rules,
+                    sim.interner.resolve(producer.type_ref()),
+                )
+            });
+    if land_factory {
+        let producer = sim.substrate.entities.get(selection.producer_id)?;
+        let producer_type = producer.type_ref();
+        let producer_owner = producer.owner();
+        let archive = producer.archive_target();
+        //444492/70C610 publishes Techno+218 before the busy test and Unlimbo.
+        //A refused alternate also publishes its own archive through this same
+        //entry. Unit PerCell consumes the retained value after clearance.
+        sim.substrate
+            .entities
+            .get_mut(stable_id)?
+            .set_archive_target(archive);
+        let busy = sim
+            .substrate
+            .entities
+            .get(selection.producer_id)?
+            .mission
+            .effective()
+            .known()
+            == Some(crate::sim::mission::MissionType::Unload);
+        if busy {
+            //4444B3..44451F walks the selected producer's House+68 in order:
+            //identical BuildingType, another receiver, effective Guard5 and
+            //Building+524 NULL. It calls the first eligible receiver once;
+            //its return does not trigger a search for another receiver.
+            let alternate_id = sim
+                .houses
+                .get(&producer_owner)?
+                .base_projection
+                .buildings()
+                .iter()
+                .copied()
+                .find(|&id| {
+                    sim.substrate.entities.get(id).is_some_and(|candidate| {
+                        candidate.type_ref() == producer_type
+                            && id != selection.producer_id
+                            && candidate.mission.effective().known()
+                                == Some(crate::sim::mission::MissionType::Guard)
+                            && sim.production.factory_shadow.building_factory(id).is_none()
+                    })
+                })?;
+            let alternate = sim.substrate.entities.get(alternate_id)?;
+            let alternate_selection = super::production_spawn::spawn_selection_at_producer(
+                sim,
+                rules,
+                (
+                    alternate_id,
+                    alternate.position.rx,
+                    alternate.position.ry,
+                    sim.interner.resolve(alternate.type_ref()),
+                ),
+                Some(type_name),
+                crate::rules::object_type::ObjectCategory::Vehicle,
+                false,
+            )?;
+            //44451F..444552 lends and restores the existing +524 attachment.
+            //A player's held object lives in the House slot, so its producer's
+            //+524 can be NULL. Do not move that House factory to a building.
+            let attached = sim
+                .production
+                .factory_shadow
+                .building_factory(selection.producer_id)
+                .is_some();
+            if attached
+                && !sim
+                    .production
+                    .factory_shadow
+                    .transfer_building_factory_attachment(selection.producer_id, alternate_id)
+            {
+                return None;
+            }
+            let result = deliver_produced_object(
+                sim,
+                rules,
+                owner_id,
+                type_name,
                 stable_id,
-                rx,
-                ry,
+                alternate_selection,
+                airfield,
+                overlay_registry,
+            );
+            if attached {
+                assert!(
+                    sim.production
+                        .factory_shadow
+                        .transfer_building_factory_attachment(alternate_id, selection.producer_id),
+                    "ExitObject must restore its lent factory attachment"
+                );
+            }
+            return result;
+        }
+    }
+    let spawned = if land_factory {
+        let producer = sim.substrate.entities.get(selection.producer_id)?;
+        let coord = crate::sim::movement::building_exit_coordinate(
+            crate::sim::movement::ground_pose::position_world_coord(&producer.position),
+            rules.object(sim.interner.resolve(producer.type_ref()))?,
+            || {
+                crate::sim::movement::ground_pose::object_get_coords(
+                    producer,
+                    sim.resolved_terrain.as_ref(),
+                )
+            },
+        );
+        sim.with_object_placement_scope(|sim| {
+            let spawned = sim.reveal_constructed_object_at_coord_with_overlay_context(
+                stable_id,
+                coord,
                 64,
-                z,
                 crate::sim::world::PlacementEvidence::EvaluateMark,
                 rules,
                 overlay_registry,
+            )?;
+            // The native successful suffix44459F..4445C9 re-marks around the
+            // second coordinate write. Use the shared Mark/SetLocation owners.
+            let context = crate::sim::world::UninitContext::new(Some(rules), overlay_registry);
+            sim.unmark_entity_remove(spawned, context);
+            crate::sim::movement::ground_pose::foot_set_location(
+                &mut sim.substrate.entities,
+                spawned,
+                coord,
+                Some(rules),
+                &sim.interner,
+            );
+            sim.mark_entity_put(spawned, context);
+            mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
+            //4445F0 queues producer Unload16. Its existing Building mission
+            //owner opens the shared Door and forces the native exit track.
+            let _ = sim.mission_queue_exact(
                 selection.producer_id,
-            )
-        }
+                crate::sim::mission::MissionId::from_known(
+                    crate::sim::mission::MissionType::Unload,
+                ),
+                0,
+                sim.session.binary_frame,
+                &crate::sim::mission::authority::LiveReadyInputProvider { rules },
+            );
+            Some(spawned)
+        })
+    } else {
+        let spawned = match selection.delivery {
+            ProductionDeliveryKind::NavalUnit => {
+                unlimbo_held_naval_unit(sim, rules, stable_id, (rx, ry), overlay_registry)
+            }
+            ProductionDeliveryKind::Standard => {
+                let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
+                sim.reveal_constructed_object_at_height_with_overlay_context(
+                    stable_id,
+                    rx,
+                    ry,
+                    64,
+                    z,
+                    crate::sim::world::PlacementEvidence::EvaluateMark,
+                    rules,
+                    overlay_registry,
+                )
+            }
+        }?;
+        mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
+        Some(spawned)
     }?;
-    mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
     // Aircraft spawned on helipad: reserve dock slot then set
     // DockedIdle carrying the assigned pad index.
     if let Some(af_id) = airfield {
@@ -439,30 +590,20 @@ pub(super) fn deliver_produced_object(
         && sim.slave_master_leaves_factory(stable_id, rules);
     // Auto-move newly produced unit to rally point (if set).
     // Skip for aircraft docked on helipad — they wait for orders.
-    if airfield.is_none() && !hunting {
+    if airfield.is_none() && !hunting && !land_factory {
         // `ExitObject_Main @ 0x00443C60` reads the factory's own
         // ArchiveTarget (`+0x218`, the rally point) for the object
         // leaving it; the naval arm reads it after Unlimbo
         // (`0x0044441A`).
         //
-        // Residual (instruction reading; not ported): the non-naval
-        // arms also copy it into the leaving object's own archive
-        // (`0x0044498E`, `0x00444492`), which the Unit's exit arms
-        // consume: a human house's unit drives to it
-        // (`0x0073AAA1..0x0073AABB`), a computer house's
-        // WeaponsFactory unit instead takes the cell of HouseClass
-        // `0x00500200`, archives it and queues AreaGuard
-        // (`0x0073A9DE..0x0073AA9C`); `0x00500200` draws Scenario
-        // `RandomRanged(1, 4)` (`0x0050023B`) when the unit's vt+0x2D4,
-        // +0x2D8 and +0x2DC sum is nonzero. VERA gives the rally move
-        // here and writes no unit archive. Trigger: every produced
-        // unit. Effect: a computer house's units stay at the factory
-        // instead of spreading to posts; a unit's archive reads None
-        // where native holds the rally cell (a harvester may also
-        // take the Harvest exit arm, `0x0073AAE6`, unchecked); one
-        // Scenario draw per armed computer war-factory unit is
-        // missing. Frequency: every build. Downstream: the Scenario
-        // RNG stream after computer unit production.
+        // The land WeaponsFactory's archive copy444492 and human/Harvest
+        // continuation use the shared owners above and Unit PerCell. Residual
+        // (instruction reading): the other non-naval arms' archive copy44498E
+        // and their downstream exit mission remain on this eager rally
+        // adapter. Trigger: those produced objects with a rally; effect: no
+        // retained archive and earlier movement; frequency: each such build.
+        // The separate computer Unit House500200 post selection and its
+        // Scenario RandomRanged(1,4) draw remain a Unit PerCell residual.
         let rally = sim
             .substrate
             .entities

@@ -91,7 +91,7 @@ class Mission:
    name=m.string(m.read32(m.read32(m.read32(0xB1D37C)+index*4))+0x6C) if index<m.read32(0xB1D388) else str(index)
    self.events.append(dict(kind='sound_boundary',frame=self.frame,name=name,position=base.xyz(u,u.reg_read(UC_X86_REG_EDX))));m.ret(0,4);return
   if a>=0x7E1000 and a!=RET_MAGIC:raise AssertionError(('non-image-code',hex(a)))
- def setup(self,*,context=None):
+ def setup(self,*,placement_observer=None,context=None):
   if context is not None and not isinstance(context,dict):
    raise TypeError('Mission setup diagnostic context must be a JSON object')
   fixture=type(self).__module__+'.'+type(self).__qualname__
@@ -122,7 +122,9 @@ class Mission:
    if not path.exists():continue
    raw=path.read_bytes();sections,lines=base.lexical(raw,{'General','Radiation'});m.rules_cache(sections)
    layer_context={**diagnostic_context,'rules_layer':dict(name=name,path=str(path),sha256=hashlib.sha256(raw).hexdigest())}
-   general=m.invoke(0x66D530,self.rules,(RULES,),context=layer_context)
+   # Full retail GeneralRules retains its measured30s wall-time override and
+   # unchanged shared two-million instruction cap; diagnostics add no VM writes.
+   general=m.invoke(0x66D530,self.rules,(RULES,),timeout_us=30_000_000,context=layer_context)
    radiation=m.invoke(0x66CF70,self.rules,(RULES,),context=layer_context)
    self.inputs['ai_rules_layers'].append(dict(file=name,general_al=general&255,radiation_al=radiation&255,rad_application_delay=m.read32(self.rules+0x1808)))
   # Country and side registry construction from physical ordered names. Their
@@ -172,7 +174,11 @@ class Mission:
   u.mem_write(template,dwords(0x7ED540));u.mem_write(template+16,dwords(0,20));u.mem_write(buckets,bytes(u.mem_read(template,24))*256);u.mem_write(root,dwords(buckets,0x56CB80,256,20));u.mem_write(map_ptr+0x14,dwords(root))
   m.invoke(0x56C510,map_ptr);self.initial_zone_count=m.read32(map_ptr+0x4C)
   self.coord=m.alloc(12);m.invoke(0x486840,self.resident.ptrs[87,50],(self.coord,))
-  self.phase='placement';self.placement_result=m.invoke(0x737BA0,self.src,(self.coord,0x80));self.after_placement=self.state();assert self.placement_result&255==1
+  self.phase='placement';self.placement_result=m.invoke(0x737BA0,self.src,(self.coord,0x80));self.after_placement=self.state()
+  # A read-only observer can record the original return before this fixture's
+  # later command. The ordinary mission setup and its refusal assertion stay here.
+  if placement_observer is not None:placement_observer()
+  assert self.placement_result&255==1
   self.before_continuation=dict(actor=self.state(),rng={k:base.sr.rng_state(u,p) for k,p in self.resident.rngs.items()})
   self.frame=1
   if self.continuation is not None:
@@ -248,11 +254,16 @@ def metadata():
  ])
 
 if __name__=='__main__':
- parser=argparse.ArgumentParser(add_help=False);parser.add_argument('--continuation',type=Path);parser.add_argument('--foot-missions',action='store_true');args,remaining=parser.parse_known_args()
+ parser=argparse.ArgumentParser(add_help=False);parser.add_argument('--continuation',type=Path);mode=parser.add_mutually_exclusive_group();mode.add_argument('--foot-missions',action='store_true');mode.add_argument('--unit-unlimbo',action='store_true');args,remaining=parser.parse_known_args()
  supplied=json.loads(args.continuation.read_text()) if args.continuation else None
  if args.foot_missions:
   assert args.continuation is None,'--foot-missions has explicit per-row state inputs'
   from .foot_missions import publish
+  publish(remaining)
+  raise SystemExit(0)
+ if args.unit_unlimbo:
+  assert args.continuation is None,'--unit-unlimbo has explicit per-row state inputs'
+  from .unit_unlimbo import publish
   publish(remaining)
   raise SystemExit(0)
  if args.continuation:assert '--output' in remaining,'A continuation requires an explicit output; preserve the seed0 reference'

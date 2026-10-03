@@ -46,7 +46,8 @@ impl StageClass {
         stepped
     }
 
-    /// DoAction51D9D2..51DA96 and the existing harvesting/building receivers
+    /// DoAction51D9D2..51DA96, Unit Unlimbo737BF5..737C75, and the
+    /// existing harvesting/building receivers
     /// restart value/rate/timer while retaining the independent FC/110 fields.
     pub(crate) fn restart(&mut self, value: i32, now: i32, rate: i32) {
         self.value = value;

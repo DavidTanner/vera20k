@@ -308,6 +308,7 @@ pub fn try_drop(
                 passenger_id,
                 RevealRequest {
                     position: RevealPosition {
+                        exact_z_leptons: None,
                         rx: drop_rx,
                         ry: drop_ry,
                         z: landing_z,

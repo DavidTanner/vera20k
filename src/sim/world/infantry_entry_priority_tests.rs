@@ -175,8 +175,8 @@ fn escape_counter_matches_native_cell_list_and_raw_owner_gates() {
         }
         let result = match input["priority"].as_u64().unwrap() {
             0 => probe(&mut sim),
-            1 => sim.with_scenario_init_priority(probe),
-            2 => sim.with_scenario_init_priority(|sim| sim.with_scenario_init_priority(probe)),
+            1 => sim.with_object_placement_scope(probe),
+            2 => sim.with_object_placement_scope(|sim| sim.with_object_placement_scope(probe)),
             _ => unreachable!(),
         };
         assert_eq!(
@@ -185,7 +185,7 @@ fn escape_counter_matches_native_cell_list_and_raw_owner_gates() {
             "{input}"
         );
         assert!(
-            !sim.scenario_init_priority_active(),
+            !sim.object_placement_scope_active(),
             "{input}: bracket cleanup"
         );
         for (name, rng) in [

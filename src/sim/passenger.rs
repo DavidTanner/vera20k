@@ -722,7 +722,7 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
                 .substrate
                 .entities
                 .get(transport_id)
-                .map(|transport| transport.position.clone())
+                .map(|transport| transport.position)
                 && let Some(pax) = sim.substrate.entities.get_mut(pax_id)
             {
                 pax.position = position;
@@ -821,10 +821,10 @@ pub(crate) fn open_topped_riders_follow(
     {
         return;
     }
-    let (riders, position) = (cargo.passengers.clone(), transport.position.clone());
+    let (riders, position) = (cargo.passengers.clone(), transport.position);
     for rider in riders {
         if let Some(entity) = entities.get_mut(rider) {
-            entity.position = position.clone();
+            entity.position = position;
         }
     }
 }

@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::resolved_terrain::test_flat_cell;
 use crate::rules::ini_parser::IniFile;
+use crate::sim::{components::DriveCoord, movement::ground_pose};
 use serde_json::{Value, json};
 
 #[test]
@@ -51,6 +52,20 @@ fn engineer_family_selector_matches_original_boundary_and_dummy() {
         let engineer = sim
             .construct_object_limbo_at_height("ENGINEER", "Americans", 10, 10, 0, 10, &rules)
             .unwrap();
+        {
+            let actor = sim.substrate.entities.get_mut(engineer).unwrap();
+            // Original engineer_family_selector.py supplies this complete
+            // Location before519C07; constructor/Unlimbo are not its boundary.
+            ground_pose::put_location(
+                &mut actor.position,
+                DriveCoord {
+                    x: 2688,
+                    y: 2688,
+                    z: 1040,
+                },
+            );
+            actor.position.z = 10;
+        }
         sim.resolved_terrain
             .as_ref()
             .unwrap()

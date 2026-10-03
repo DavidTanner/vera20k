@@ -518,12 +518,21 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // control reproduces incoming 851C57C576CA991A; all 601 off/on boundaries differ
 // only in tick hash. tools/spatial_oracle/unit_simple_deploy_replay/receipt.json
 // records this Rust attribution; unit_simple_deploy separately pins native cadence.
+// Shared Techno Door hash composition after main339b57d18 integration:
+// one diagnostic binary restores incoming C86F736CE95687B3 when only the Door
+// hash feed is omitted. Behavior and RNG assertions reach the final pin in
+// both modes. The temporary control is removed; native expected values stay
+// unchanged. Receipt: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
 // 2026-10-02 IFV owner migration: u8 last-shot hashing becomes signed i32
 // current-weapon hashing and the redundant None override feed is removed.
 // All 601 boundaries retain gameplay/RNG; each new saved charge delay is the
 // last of the 13 unchanged FireAt rearm writes. Bounded Rust attribution:
 // tools/spatial_oracle/ifv_turret_replay/receipt.json (not native replay evidence).
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x11C7_DD74_4E2A_1928;
+// Shared Door composition after main1009: same test binary, 601 complete
+// off/on boundaries equal except tick_result.state_hash. Omitting only Door
+// restores incoming main; the temporary control is removed. Bounded Rust
+// attribution: tools/spatial_oracle/anytown_damage/unit_unlimbo.md.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x3388_4CED_CDBD_70FD;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

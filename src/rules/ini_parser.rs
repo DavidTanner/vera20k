@@ -290,6 +290,22 @@ impl IniFile {
         self.sections.len()
     }
 
+    /// Clone a fixture with an exact key omitted from every matching section
+    /// occurrence, including its retained typed-reader history.
+    #[cfg(test)]
+    pub(crate) fn without_entry_for_test(&self, section: &str, key: &str) -> Self {
+        let mut ini = self.clone();
+        for body in &mut ini.sections {
+            if body.name == section {
+                body.entries.remove(key);
+                body.key_order.retain(|stored| stored.as_str() != key);
+                body.projected_values.remove(key);
+            }
+        }
+        ini.discard_entryless_sections();
+        ini
+    }
+
     /// Load another INI into an already populated INI object. This models the
     /// native PutString path: later nonempty exact keys replace earlier ones.
     pub fn merge(&mut self, patch: &IniFile) {

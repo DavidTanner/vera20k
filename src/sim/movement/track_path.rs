@@ -484,58 +484,17 @@ impl Simulation {
         match code {
             3 => {
                 //4B2B38 / 4B301A: the result of 0x578AD0 is discarded.
-                let owner = self
-                    .interner
-                    .resolve(
-                        self.substrate
-                            .entities
-                            .get(id)
-                            .ok_or("retired Drive/Ship path owner")?
-                            .owner(),
-                    )
-                    .to_owned();
                 let _ = crate::sim::gate_runtime::request_gate_open_for_cell(
-                    &mut self.substrate.entities,
-                    &self.substrate.occupancy,
+                    self,
                     (cell.0 as u16, cell.1 as u16),
                     id,
-                    &owner,
                     rules,
-                    &self.house_alliances,
-                    &self.interner,
                 );
                 Ok(false)
             }
             6 => self.answer_track_ally_cell(id, cell, rules, registry),
             _ => Ok(false),
         }
-    }
-
-    /// `CellClass::Find_Nearest_Object 0x47C3D0` with the (0,0) sub-point over
-    /// `layer`'s list of `cell`: ranked by each object's vt+0x48 coordinate (a
-    /// building's centre), the first in list order on a tie.
-    pub(crate) fn nearest_cell_object(
-        &self,
-        cell: (u16, u16),
-        layer: MovementLayer,
-    ) -> Option<u64> {
-        crate::sim::cell_kernel::nearest_eligible_in_order(
-            crate::sim::cell_kernel::CellQueryPoint { x: 0, y: 0 },
-            self.substrate
-                .occupancy
-                .get(cell.0, cell.1)
-                .into_iter()
-                .flat_map(|list| list.iter_layer(layer))
-                .filter_map(|entry| self.substrate.entities.get(entry.entity_id))
-                .map(|entity| {
-                    let [x, y] = ground_pose::object_center_xy(entity);
-                    (
-                        entity.stable_id(),
-                        true,
-                        crate::sim::cell_kernel::CellQueryPoint { x, y },
-                    )
-                }),
-        )
     }
 
     /// The code-6 arm (0x4B2B4B..0x4B2DC0 / 0x4B302D..0x4B327D and the Ship
@@ -576,7 +535,7 @@ impl Simulation {
             MovementLayer::Ground
         };
         let key = (cell.0 as u16, cell.1 as u16);
-        let Some(blocker) = self.nearest_cell_object(key, layer) else {
+        let Some(blocker) = self.nearest_cell_object(key, layer, None) else {
             return Ok(false);
         };
         let allied = self.substrate.entities.get(blocker).is_some_and(|b| {

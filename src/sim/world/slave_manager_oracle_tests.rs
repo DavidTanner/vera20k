@@ -44,7 +44,7 @@ use super::harvest_field_oracle_tests::{registry, row_scene_with};
 use super::refinery_dock_oracle_tests::{Scene, cell};
 use crate::rules::ini_parser::IniFile;
 use crate::sim::combat::TargetKind;
-use crate::sim::components::NavTargetRef;
+use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::miner::{CargoBale, ResourceType};
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
@@ -331,17 +331,25 @@ fn place_slave(
     let id = sim
         .construct_object_limbo_at_height("SLAV", "Americans", x, y, 0, 0, rules)
         .expect("slave");
-    // The oracle supplies the cell's centre as every slave's coordinate.
+    // make_slave supplies Object+9C's full XYZ after construction, including
+    // held slaves. The constructor's zero Location is a separate input.
     {
         let entity = sim.substrate.entities.get_mut(id).unwrap();
-        entity.position.sub_x = SimFixed::from_num(128);
-        entity.position.sub_y = SimFixed::from_num(128);
+        crate::sim::movement::ground_pose::put_location(
+            &mut entity.position,
+            DriveCoord {
+                x: i32::from(x) * 256 + 128,
+                y: i32::from(y) * 256 + 128,
+                z: 0,
+            },
+        );
     }
     if node["limbo"] != true {
         let outcome = sim.try_reveal_entity_with_context(
             id,
             RevealRequest {
                 position: RevealPosition {
+                    exact_z_leptons: None,
                     rx: x,
                     ry: y,
                     z: 0,

@@ -239,9 +239,7 @@ fn spawn_supplied_ground_mtnk(
         cell.1,
         0,
         height,
-        crate::sim::world::PlacementEvidence::UnitCanEnterExactZero {
-            layer: MovementLayer::Ground,
-        },
+        crate::sim::world::PlacementEvidence::UnitEntryAdmitted,
         &resources.rules,
     )
     .unwrap()

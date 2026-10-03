@@ -27,7 +27,6 @@ mod production_spawn;
 mod production_tech;
 mod production_types;
 mod wall_placement;
-mod war_factory_exit;
 
 // Re-export everything so external code can still use `production::X`.
 pub use self::factory::{
@@ -70,7 +69,6 @@ pub use self::production_tech::{
     structure_satisfies_prerequisite,
 };
 pub use self::production_types::*;
-pub use self::war_factory_exit::tick_war_factory_exit_contacts;
 
 // Re-exports for external consumers (files outside production/ that previously
 // imported private submodules directly).
@@ -82,7 +80,6 @@ pub(in crate::sim) use self::factory_lifecycle::{
     refresh_factory_rates_for_house, revalidate_and_step_factories,
 };
 pub(in crate::sim) use self::production_queue::credits_entry_for_owner;
-pub(in crate::sim) use self::production_spawn::produced_unit_unlimbo_entry_at_resolved_cell;
 pub(crate) use self::wall_placement::stamp_wall_with_autofill;
 
 #[cfg(test)]

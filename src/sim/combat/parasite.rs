@@ -949,6 +949,7 @@ impl Simulation {
                 owner,
                 crate::sim::world::RevealRequest {
                     position: crate::sim::world::RevealPosition {
+                        exact_z_leptons: None,
                         rx,
                         ry,
                         z,

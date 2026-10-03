@@ -376,7 +376,7 @@ fn walk_path_timer_waits_without_double_aging_or_losing_owner_state() {
         retained.retries_left = u32::MAX;
         let actor = sim.substrate.entities.get_mut(1).unwrap();
         actor.navigation.path_runtime = retained;
-        let position = actor.position.clone();
+        let position = actor.position;
         let rng = sim.scenario_rng.logical_state();
         // A hut Scatter Process and an ordinary Process can share a frame.
         // Native75AF3C..55 tests a nonzero signed remainder, not a decrement.
@@ -2008,7 +2008,7 @@ fn group_gis_do_not_jump_or_lose_their_goal() {
         for tick in 0..1000 {
             let previous: Vec<_> = ids
                 .iter()
-                .map(|&id| sim.substrate.entities.get(id).unwrap().position.clone())
+                .map(|&id| sim.substrate.entities.get(id).unwrap().position)
                 .collect();
             walk_frame(&mut sim, &rules);
             for (n, &id) in ids.iter().enumerate() {

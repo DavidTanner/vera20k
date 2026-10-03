@@ -214,6 +214,15 @@ fn bridge_rim_middle_section_fallout_and_restored_navigation() {
     let victim = sim
         .construct_object_limbo_at_height("MTNK", "Americans", 111, 142, 0, 0, &rules)
         .unwrap();
+    // Supply the intended ground victim before the existing Reveal clamps Z.
+    crate::sim::movement::ground_pose::put_location(
+        &mut sim.substrate.entities.get_mut(victim).unwrap().position,
+        crate::sim::components::DriveCoord {
+            x: 111 * 256 + 128,
+            y: 142 * 256 + 128,
+            z: 0,
+        },
+    );
     sim.reveal(victim);
     for (index, coord) in [(112, 140), (112, 140), (112, 144), (112, 144)]
         .into_iter()

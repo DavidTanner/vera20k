@@ -20,12 +20,6 @@
 //! `tools/spatial_oracle/track_blocked_timers`.
 //!
 //! Residuals:
-//! - Unit door (`vt+0x29C` = `0x744180`, Unit+350 DoorClass), asked on every
-//!   pass (`0x4B3398..0x4B33A5`): VERA has no Unit door, so the gate always
-//!   passes. Trigger: a transport whose door is opening, open or closing
-//!   (unload). Effect: a new track starts while native waits for the door to
-//!   close. Frequency: the frames after an unload. Risk: none beyond that
-//!   timing.
 //! - `vt+0x37C` (Unit `0x746C90`: the EMP lock Techno+504 or the Unit
 //!   death-frame counter +6D8): neither has a Rust producer (VERA has no EMP
 //!   mechanism; see `techno_ai_cloak`), so the prologue gate reads false.
@@ -363,22 +357,21 @@ impl Simulation {
         let height = ground_pose::query_object_cell_height(&cells, location, actor.on_bridge);
         //4B3376..4B3391: the candidate Cell's bridge bit against OnBridge.
         let bridge_mismatch = (cells.flags(cells.lookup(cell)) & 0x100 != 0) != actor.on_bridge;
-        let owner = self.interner.resolve(actor.owner()).to_owned();
+        let door_closed = actor.door_phase() == crate::sim::door::DoorPhase::ClosedStable;
         if bridge_mismatch {
             self.latch_foot_68b(id);
         }
-        //4B3398..4B33A5: Unit+29C (door closed) is always true; see the
-        //residual.
+        //4B3398..4B33A5: Unit744180 admits only the shared Techno door's
+        //closed-stable predicate. Unit Move closes that same door.
+        if !door_closed {
+            return Ok(false);
+        }
         //4B33B3..4B33FA: an allied gate that is not open yet holds the Foot.
         if !crate::sim::gate_runtime::request_gate_open_for_cell(
-            &mut self.substrate.entities,
-            &self.substrate.occupancy,
+            self,
             (cell.0 as u16, cell.1 as u16),
             id,
-            &owner,
             rules,
-            &self.house_alliances,
-            &self.interner,
         ) {
             return Ok(false);
         }
@@ -445,14 +438,10 @@ impl Simulation {
             FreshDispatch::Gate { .. } => {
                 //4B35EC..4B3602: the gate question, answer discarded.
                 let _ = crate::sim::gate_runtime::request_gate_open_for_cell(
-                    &mut self.substrate.entities,
-                    &self.substrate.occupancy,
+                    self,
                     (cell.0 as u16, cell.1 as u16),
                     id,
-                    &owner,
                     rules,
-                    &self.house_alliances,
-                    &self.interner,
                 );
                 self.track_first_rejected_tail(id);
                 Ok(false)
@@ -742,16 +731,11 @@ impl Simulation {
             }
             FreshDispatch::Gate { .. } => {
                 //4B419B..4B41AE: the gate question, answer discarded.
-                let owner = self.track_owner_name(id);
                 let _ = crate::sim::gate_runtime::request_gate_open_for_cell(
-                    &mut self.substrate.entities,
-                    &self.substrate.occupancy,
+                    self,
                     (second_cell.0 as u16, second_cell.1 as u16),
                     id,
-                    &owner,
                     rules,
-                    &self.house_alliances,
-                    &self.interner,
                 );
                 self.track_second_refused(call)
             }
@@ -951,15 +935,6 @@ impl Simulation {
         rules
             .object(self.interner.resolve(actor.type_ref()))
             .ok_or_else(|| "Drive/Ship owner without ObjectType".into())
-    }
-
-    fn track_owner_name(&self, id: u64) -> String {
-        self.substrate
-            .entities
-            .get(id)
-            .map_or_else(String::new, |actor| {
-                self.interner.resolve(actor.owner()).to_owned()
-            })
     }
 
     /// Cell+44, the overlay index of a Cell (the shared dummy has its own).
@@ -1354,7 +1329,7 @@ impl Simulation {
         {
             return Some(BlockingObject::Entity(aircraft.entity_id));
         }
-        let nearest = self.nearest_cell_object(cell, MovementLayer::Ground);
+        let nearest = self.nearest_cell_object(cell, MovementLayer::Ground, None);
         if let Some(object) = nearest {
             return Some(BlockingObject::Entity(object));
         }

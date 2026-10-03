@@ -484,11 +484,7 @@ fn advance_ordinary_mover(
             .locomotor
             .as_ref()
             .filter(|loco| loco.kind == crate::rules::locomotor_type::LocomotorKind::Walk)
-            .and_then(|_| {
-                entities
-                    .get(entity_id)
-                    .map(|entity| entity.position.clone())
-            });
+            .and_then(|_| entities.get(entity_id).map(|entity| entity.position));
         let prone_crawls = entities.get(entity_id).and_then(|entity| {
             if !infantry::is_prone_for_damage(entity) {
                 return None;

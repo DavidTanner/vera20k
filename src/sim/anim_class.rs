@@ -1648,7 +1648,7 @@ impl Simulation {
                 (
                     entity.health.current,
                     entity.type_ref(),
-                    entity.position.clone(),
+                    entity.position,
                     entity.damage_fire_state_active,
                     entity.category,
                 )

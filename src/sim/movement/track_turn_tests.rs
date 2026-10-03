@@ -812,7 +812,7 @@ fn actual_turn_and_arrival_crush_use_binary_frame_for_both_shield_kinds() {
                     let crusher = sim.substrate.entities.get_mut(1).unwrap();
                     crusher.regular_crusher = true;
                     crusher.drive_accelerates = false;
-                    let position = crusher.position.clone();
+                    let position = crusher.position;
                     let current = super::super::ground_pose::position_world_coord(&position);
                     let arrival = reason == PerCellReason::Arrival;
                     set_retained(
@@ -856,7 +856,7 @@ fn actual_turn_and_arrival_crush_use_binary_frame_for_both_shield_kinds() {
                             );
                         victim.is_voxel = false;
                         victim.sub_cell = Some(0);
-                        victim.position = position.clone();
+                        victim.position = position;
                         victim.crushable = true;
                         victim.lifecycle.object_alive = true;
                         victim.lifecycle.in_limbo = false;
