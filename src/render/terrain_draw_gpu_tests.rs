@@ -27,7 +27,7 @@ impl Gpu {
     pub(crate) fn new() -> Self {
         Self::with_features(wgpu::Features::empty())
     }
-    fn with_features(features: wgpu::Features) -> Self {
+    pub(crate) fn with_features(features: wgpu::Features) -> Self {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()

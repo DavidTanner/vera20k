@@ -153,20 +153,26 @@ pub(super) fn load_shrapnel() -> HeadlessScenario {
 }
 
 pub(super) fn damage_anytown_concrete(scene: &mut HeadlessScenario) -> bool {
-    damage_ordinary_bridge(scene, (87, 54), 416)
+    damage_bridge(scene, (87, 54), 416, 1501, "AP")
 }
 
 pub(super) fn damage_shrapnel_wood(scene: &mut HeadlessScenario) -> bool {
-    damage_ordinary_bridge(scene, (115, 59), 208)
+    damage_bridge(scene, (115, 59), 208, 1501, "AP")
 }
 
-fn damage_ordinary_bridge(scene: &mut HeadlessScenario, point: (u16, u16), z: i32) -> bool {
+fn damage_bridge(
+    scene: &mut HeadlessScenario,
+    point: (u16, u16),
+    z: i32,
+    damage: i32,
+    warhead: &str,
+) -> bool {
     let runtime = &mut scene.runtime;
     let event = crate::sim::bridge_state::BridgeDamageEvent {
         rx: point.0,
         ry: point.1,
-        damage: 1501,
-        warhead_ref: runtime.simulation.intern("AP"),
+        damage,
+        warhead_ref: runtime.simulation.intern(warhead),
         impact_z_leptons: z,
         is_ion_cannon: false,
     };
@@ -176,6 +182,104 @@ fn damage_ordinary_bridge(scene: &mut HeadlessScenario, point: (u16, u16), z: i3
         &[event],
         Some(&runtime.resources.overlay_registry),
     )
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum RetailHighBridgeScene {
+    HillsWood,
+    PacificConcrete,
+}
+
+/// Real high-bridge receiver publication and ordinary Engineer repair.
+/// Hills uses physical BRIDGEB2; Pacific uses physical BRIDGE1. The Hills
+/// receiver/approach continue the existing techno_ai bridge witnesses. Pacific
+/// uses its actual CABHUT and an empty level-six bank; production spawn/path
+/// admission and hut entry must succeed. No bridge facts are assigned here.
+/// Native body publication: tools/spatial_oracle/bridge_body_publication.
+/// Damage enters at the receiver; an ordinary projectile launch is not claimed.
+pub(crate) fn visit_retail_high_bridge_stages(
+    kind: RetailHighBridgeScene,
+    mut visit: impl FnMut(&str, &HeadlessScenario),
+) {
+    let (map, target, expected_anchor, impact_z, overlay, hut, start) = match kind {
+        RetailHighBridgeScene::HillsWood => (
+            "Hills.mmx",
+            (64, 69),
+            (65, 69),
+            1040,
+            238,
+            (68, 74),
+            (66, 76),
+        ),
+        RetailHighBridgeScene::PacificConcrete => (
+            "Pacific.mmx",
+            (81, 95),
+            (81, 95),
+            624,
+            24,
+            (72, 93),
+            (70, 95),
+        ),
+    };
+    let retail = std::path::PathBuf::from(std::env::var_os("RA2_DIR").unwrap());
+    let mut scene = crate::headless_scenario::load(&retail, map, 0x0B21_D6E5).unwrap();
+    let facts = |scene: &HeadlessScenario, point: (u16, u16)| {
+        scene
+            .sim()
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .cell(point.0, point.1)
+            .unwrap()
+            .bridge_facts
+    };
+    let loaded_target = facts(&scene, target);
+    assert!(loaded_target.has_structural_bridge());
+    let anchor = loaded_target.anchor.expect("loaded bridge anchor").anchor;
+    assert_eq!(
+        anchor, expected_anchor,
+        "{kind:?}: physical anchor relation"
+    );
+    let loaded_anchor = facts(&scene, anchor);
+    assert_eq!(loaded_anchor.overlay_id, Some(overlay), "{kind:?}");
+    assert!(matches!(loaded_anchor.state_byte, 0..=5 | 9..=14));
+    visit("loaded", &scene);
+
+    // Keep the real RNG/admission/publication callbacks. Observe transitions
+    // after each event instead of assuming a fixed number of hits per stage.
+    let damage = scene.runtime.resources.rules.bridge_rules.strength + 1;
+    let mut saw_damage = false;
+    let mut published_collapse = false;
+    for _ in 0..8 {
+        published_collapse |= damage_bridge(&mut scene, target, impact_z, damage, "HE");
+        if !facts(&scene, target).has_structural_bridge() {
+            break;
+        }
+        let damaged_anchor = facts(&scene, anchor);
+        if !saw_damage && matches!(damaged_anchor.state_byte, 6 | 15) {
+            assert_ne!(
+                damaged_anchor, loaded_anchor,
+                "receiver must publish damage"
+            );
+            visit("damaged", &scene);
+            saw_damage = true;
+        }
+    }
+    assert!(
+        saw_damage,
+        "{kind:?}: no published damaged state before collapse"
+    );
+    assert!(
+        published_collapse,
+        "{kind:?}: receiver must publish collapse"
+    );
+    assert!(!facts(&scene, target).has_structural_bridge());
+    visit("collapsed", &scene);
+
+    repair_ordinary_bridge(&mut scene, hut, start, &mut ordinary_repair_orders);
+    assert!(facts(&scene, target).has_structural_bridge());
+    assert_eq!(facts(&scene, anchor).overlay_id, Some(overlay), "{kind:?}");
+    visit("repaired", &scene);
 }
 
 /// The physical map's one concrete chain, shared by simulation and GPU witnesses.
