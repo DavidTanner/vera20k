@@ -32,7 +32,7 @@ const BRIDGE_REPAIR_TEST_INI: &str = "[InfantryTypes]\n0=ENGI\n1=GHOST\n\n\
          [VehicleTypes]\n\n\
          [AircraftTypes]\n\n\
          [BuildingTypes]\n0=CABHUT\n\n\
-         [ENGI]\nStrength=75\nArmor=none\nSpeed=4\nPrimary=none\nEngineer=yes\n\n\
+         [ENGI]\nStrength=75\nArmor=none\nSpeed=4\nPrimary=none\nEngineer=yes\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n\n\
          [GHOST]\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=none\nC4=yes\n\n\
          [CABHUT]\nStrength=200\nArmor=concrete\nFoundation=1x1\nBridgeRepairHut=yes\n\n\
          [AudioVisual]\nRepairBridgeSound=BridgeRepaired\n\n\
@@ -105,28 +105,11 @@ fn build_ordinary_c4_sim(
     (sim, rules, registry)
 }
 
-fn spawn_engineer(sim: &mut Simulation, rx: u16, ry: u16) -> u64 {
-    let owner = sim.interner.intern("Americans");
-    let ty = sim.interner.intern("ENGI");
-    let id = sim.substrate.next_stable_object_id;
-    sim.substrate.next_stable_object_id += 1;
-    let e = GameEntity::new_at_frame_zero_for_test(
-        id,
-        rx,
-        ry,
-        0,
-        0,
-        owner,
-        Health { current: 75 },
-        ty,
-        EntityCategory::Infantry,
-        0,
-        5,
-        false,
-    );
-    sim.substrate.entities.insert(e);
-    assert!(matches!(sim.reveal(id), RevealOutcome::Revealed { .. }));
-    id
+fn spawn_engineer(sim: &mut Simulation, rules: &RuleSet, rx: u16, ry: u16) -> u64 {
+    // The command reaches Infantry51AA40; its receiver must have the actual
+    // constructor/Unlimbo Walk and mission leaf, not only an Infantry tag.
+    sim.spawn_object_at_height("ENGI", "Americans", rx, ry, 0, 0, rules)
+        .expect("constructed Engineer is admitted on the resident clear terrain")
 }
 
 fn spawn_seal(sim: &mut Simulation, rx: u16, ry: u16) -> u64 {
@@ -381,7 +364,8 @@ fn c4_order_from_a_distance_reaches_the_building_while_moving_or_idle() {
 #[test]
 fn capture_building_command_accepts_collapsed_noncapturable_hut_for_every_relation() {
     for relation in ["hostile", "allied", "self"] {
-        let (mut sim, rules) = build_sim();
+        let (mut sim, rules, registry) =
+            super::entry_test_fixture::fixture_with_rules(BRIDGE_REPAIR_TEST_INI);
         let owner = if relation == "self" {
             "Americans"
         } else {
@@ -390,7 +374,7 @@ fn capture_building_command_accepts_collapsed_noncapturable_hut_for_every_relati
         let cabhut = sim
             .spawn_object_at_height("CABHUT", owner, 9, 10, 0, 0, &rules)
             .unwrap();
-        let engineer = spawn_engineer(&mut sim, 8, 10);
+        let engineer = spawn_engineer(&mut sim, &rules, 8, 10);
         if relation == "allied" {
             sim.house_alliances
                 .entry("AMERICANS".into())
@@ -410,13 +394,14 @@ fn capture_building_command_accepts_collapsed_noncapturable_hut_for_every_relati
             sim.mapgen_rng.logical_state(),
         );
         assert!(
-            sim.apply_command(
+            sim.apply_command_with_overlays(
                 "Americans",
                 &Command::CaptureBuilding {
                     engineer_id: engineer,
                     target_building_id: cabhut,
                 },
                 Some(&rules),
+                Some(&registry),
             ),
             "relation={relation}"
         );
@@ -457,16 +442,11 @@ fn ordinary_friendly_repair_uses_capture_event_without_hut_exception() {
         .unwrap()["strength"]
         .as_i64()
         .unwrap();
-    let rules = RuleSet::from_ini(&IniFile::from_str(
-        &BRIDGE_REPAIR_TEST_INI
-            .replace("Strength=200", &format!("Strength={strength}"))
-            .replace("BridgeRepairHut=yes", "BridgeRepairHut=no\nCapturable=yes"),
-    ))
-    .unwrap();
+    let ini = BRIDGE_REPAIR_TEST_INI
+        .replace("Strength=200", &format!("Strength={strength}"))
+        .replace("BridgeRepairHut=yes", "BridgeRepairHut=no\nCapturable=yes");
     for target_owner in ["Americans", "Soviets"] {
-        let mut sim = Simulation::with_seed(0x51E49E);
-        sim.resolve_type_handles(&rules);
-        sim.install_resolved_terrain_for_new_map(dummy_resolved_terrain());
+        let (mut sim, rules, registry) = super::entry_test_fixture::fixture_with_rules(&ini);
         let owner = sim.interner.intern("Americans");
         sim.houses.insert(
             owner,
@@ -475,7 +455,7 @@ fn ordinary_friendly_repair_uses_capture_event_without_hut_exception() {
         let target = sim
             .spawn_object_at_height("CABHUT", target_owner, 9, 10, 0, 0, &rules)
             .unwrap();
-        let engineer = spawn_engineer(&mut sim, 8, 10);
+        let engineer = spawn_engineer(&mut sim, &rules, 8, 10);
         sim.house_alliances
             .entry("AMERICANS".into())
             .or_default()
@@ -518,13 +498,14 @@ fn ordinary_friendly_repair_uses_capture_event_without_hut_exception() {
         );
         assert_eq!(sim.state_hash(), before, "object-action query is read-only");
         assert!(
-            sim.apply_command(
+            sim.apply_command_with_overlays(
                 "Americans",
                 &Command::CaptureBuilding {
                     engineer_id: engineer,
                     target_building_id: target,
                 },
-                Some(&rules)
+                Some(&rules),
+                Some(&registry),
             ),
             "target_owner={target_owner}"
         );
@@ -556,7 +537,8 @@ fn ordinary_friendly_repair_uses_capture_event_without_hut_exception() {
 #[test]
 fn queued_hut_capture_survives_repair_before_event_execution() {
     for relation in ["hostile", "allied", "self"] {
-        let (mut sim, rules) = build_sim();
+        let (mut sim, rules, registry) =
+            super::entry_test_fixture::fixture_with_rules(BRIDGE_REPAIR_TEST_INI);
         let owner = if relation == "self" {
             "Americans"
         } else {
@@ -565,7 +547,7 @@ fn queued_hut_capture_survives_repair_before_event_execution() {
         let hut = sim
             .spawn_object_at_height("CABHUT", owner, 9, 10, 0, 0, &rules)
             .unwrap();
-        let engineer = spawn_engineer(&mut sim, 8, 10);
+        let engineer = spawn_engineer(&mut sim, &rules, 8, 10);
         if relation == "allied" {
             sim.house_alliances
                 .entry("AMERICANS".into())
@@ -611,7 +593,12 @@ fn queued_hut_capture_survives_repair_before_event_execution() {
             sim.mapgen_rng.logical_state(),
         );
         assert!(
-            sim.apply_command("Americans", &due[0].payload, Some(&rules)),
+            sim.apply_command_with_overlays(
+                "Americans",
+                &due[0].payload,
+                Some(&rules),
+                Some(&registry),
+            ),
             "relation={relation}"
         );
         let actor = sim.substrate.entities.get(engineer).unwrap();

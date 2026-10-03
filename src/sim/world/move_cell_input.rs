@@ -67,6 +67,28 @@ impl Simulation {
         if entity.lifecycle.cell_marked && height >= 2 * GROUND_LEVEL_HEIGHT_LEPTONS {
             return None;
         }
+        // The selected ordinary Move action first passes the Infantry input
+        // wrappers, not the later51AA40 destination setter. Original51F800
+        // returns action0 for a non-player House50B6F0; for a local Deployer
+        // in Doing27..30 it maps Foot action1 to2 (51F8ED..51F94E). Only that
+        // live query2 refuses the Doing-family click at51F277..51F28C.
+        // Berserk independently refuses at51F28F..51F29E. Deployer is the
+        // existing layered ReadBool owner (524606..524620), defaultfalse.
+        // Actual initialized plain/Shift controls: walk_first_path.json
+        // gi_reissue input controls; these checks precede MegaMission entirely.
+        // Other class/action/high/Teleport input remains on its existing
+        // adapter; decoded or internal commands never run this input owner.
+        if entity.category == crate::map::entities::EntityCategory::Infantry
+            && (!self.house_is_human_player(entity.owner())
+                || entity.berserk.active
+                || (object.deployer
+                    && entity
+                        .mission_leaf
+                        .as_infantry()
+                        .is_some_and(|leaf| (27..=30).contains(&leaf.doing()))))
+        {
+            return Some(Ok(None));
+        }
         let coordinate = match self.foot_navigation_coordinate(id) {
             Ok(coordinate) => coordinate,
             Err(error) => return Some(Err(error)),

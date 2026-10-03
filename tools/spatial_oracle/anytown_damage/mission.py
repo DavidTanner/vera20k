@@ -16,6 +16,7 @@ from . import mtnk_attack as base
 from .mission_publication import finish_vectors
 from tools.native_oracle import NATIVE_SHA256,RET_MAGIC,run_checked,finish_vectors as finish_unpublished_vectors,provenance,initialize_empty_windows_seh
 from tools.spatial_oracle.building_body_rules import SP,RULES,dwords
+from tools.rules_oracle.bridge_anim_inputs import Reader
 
 class Mission:
  def __init__(self,continuation=None):
@@ -59,7 +60,9 @@ class Mission:
   if a==0x7413D3:
    b=u.reg_read(UC_X86_REG_EAX);assert b==self.bullets[-1]
    self.shots.append(dict(frame=self.frame,bullet=hex(b),rearm=[base.i32(u,self.src+0x2EC),base.i32(u,self.src+0x2F4)],position=base.xyz(u,b+0x9C),velocity=base.vec(u,b+0xE8),damage=base.i32(u,b+0x6C),rng_after=base.sr.rng_state(u,self.resident.rngs['scenario'])))
-  if m.guid_transport(u,a,sp,self.events):return
+  # Composed worlds retain the existing generic read32/string/ret receiver;
+  # call the single Reader transport owner without requiring Reader inheritance.
+  if Reader.guid_transport(m,u,a,sp,self.events):return
   if a in (0x41C27D,0x41C2CB):
    clsid,outer,context,iid,ppv=struct.unpack('<5I',u.mem_read(sp,20));assert bytes(u.mem_read(clsid,16))==bytes(u.mem_read(0x7E9A30,16));assert outer==0 and context==7
    u.mem_write(sp,dwords(a+6,0,outer,iid,ppv));u.reg_write(UC_X86_REG_EIP,0x6C4010);self.events.append(dict(kind='COM_Drive_original_factory'));return

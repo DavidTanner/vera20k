@@ -353,7 +353,7 @@ impl Simulation {
                     .path_runtime
                     .start_movement(frame, rules.general.path_delay_ticks());
                 self.run_find_path_failed_receiver(id, rules, registry)?;
-                self.finish_find_path_failure(id, goal, rules)?;
+                self.finish_find_path_failure(id, goal, rules, registry)?;
                 Ok(FindPathResult::Failed)
             }
         }
@@ -603,6 +603,7 @@ impl Simulation {
         id: u64,
         goal: DriveCoord,
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -659,7 +660,7 @@ impl Simulation {
         //0x4D413A: the class SetDestination(NULL, true): Infantry 0x51AA40 ->
         //Foot 0x4D94B0 -> Walk 0x75ADA0, or Unit 0x741970 -> Foot 0x4D94B0 ->
         //Drive 0x4AFE00 / Ship 0x69F510.
-        self.assign_null_destination(id, Some(rules), None);
+        self.assign_null_destination(id, Some(rules), registry);
         let actor = self
             .substrate
             .entities
@@ -724,7 +725,7 @@ impl Simulation {
         let target = ((destination.x / 256) as i16, (destination.y / 256) as i16);
         let cell = terrain.native_cell_identity(target);
         let answer = self.foot_can_enter(id, cell, InfantryEntryArgs::REPAIR, rules, registry)?;
-        self.find_path_goal_for_answer(id, destination, answer, rules)
+        self.find_path_goal_for_answer(id, destination, answer, rules, registry)
     }
 
     /// The redirect selection of 0x4D3A92..0x4D3E0A for an already computed
@@ -736,6 +737,7 @@ impl Simulation {
         destination: DriveCoord,
         answer: u8,
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> Result<DriveCoord, String> {
         let target = ((destination.x / 256) as i16, (destination.y / 256) as i16);
         let cell = self
@@ -793,7 +795,7 @@ impl Simulation {
                 if cost > direct + 6 {
                     return Ok(destination);
                 }
-                self.redirect_find_path_destination(id, near, rules)?;
+                self.redirect_find_path_destination(id, near, rules, registry)?;
                 Ok(cell_centre(near))
             }
             7 => {
@@ -823,7 +825,7 @@ impl Simulation {
                 let near = self.find_path_nearby_cell(id, target, rules)?.ok_or(
                     "Find_Path code-7 redirect found no passable cell near the Building target",
                 )?;
-                self.redirect_find_path_destination(id, near, rules)?;
+                self.redirect_find_path_destination(id, near, rules, registry)?;
                 Ok(cell_centre(near))
             }
             _ => Ok(destination),
@@ -1090,11 +1092,34 @@ impl Simulation {
         id: u64,
         cell: (i16, i16),
         rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> Result<(), String> {
         let move_info = self
             .resolve_move_info(id, Some(rules))
             .ok_or("Find_Path redirect requires the actor's move info")?;
         let target = (cell.0 as u16, cell.1 as u16);
+        let requested = crate::sim::components::NavTargetRef::cell(target.0, target.1);
+        if self.infantry_setter_receiver(id, requested, rules) {
+            // Original4D3CC7/4D3DF9 call the same class+480 as an order.
+            // Carry the already-borrowed registry through its current-cell
+            // and Stop_Driver decisions instead of composing a second tail.
+            let _ = self.assign_infantry_walk_destination(
+                id,
+                requested,
+                move_info.speed,
+                rules,
+                registry,
+            )?;
+            return Ok(());
+        }
+        if self.unit_setter_receiver(id, Some(rules)) {
+            // These same virtual calls reach Unit741970(target,1), including
+            // its same-NavCom guard and queue ownership. Reuse that owner;
+            // composing only its Foot/Drive tail bypassed those decisions.
+            // Native class controls: track_destination.json.
+            let _ = self.set_unit_destination(id, requested, rules, true);
+            return Ok(());
+        }
         let timing = super::DestinationTiming::new(
             self.session.binary_frame,
             rules.general.blockage_path_delay_ticks,
@@ -1104,21 +1129,6 @@ impl Simulation {
             .entities
             .get_mut(id)
             .ok_or("retired Find_Path redirect actor")?;
-        let track = actor
-            .locomotor
-            .as_ref()
-            .is_some_and(|loco| matches!(loco.kind, LocomotorKind::Drive | LocomotorKind::Ship));
-        if actor.category == EntityCategory::Unit && track {
-            super::movement_commands::prepare_track_destination(
-                actor,
-                target,
-                None,
-                move_info.speed,
-                self.resolved_terrain.as_ref(),
-                timing,
-            );
-            return Ok(());
-        }
         super::movement_commands::clear_destination_path_head(actor);
         let coord =
             super::navcom::target_cell_coord(target.0, target.1, self.resolved_terrain.as_ref());

@@ -540,6 +540,47 @@ fn bfrt_unloads_one_per_dispatch_in_reverse_boarding_order_after_turning() {
     assert!(fx.cargo_ids(bfrt).is_empty());
 }
 
+/// Unit73DBDB and Aircraft415C05 queue a passenger Move directly. A retained
+/// Archive on an already-boarded passenger is a component prior, not a claim
+/// that normal boarding creates it; these internal queues must preserve it.
+#[test]
+fn internal_ejection_preserves_passenger_archive() {
+    use crate::sim::combat::TargetKind;
+
+    for transport_type in ["BFRT", "SHAD"] {
+        let mut fx = Fixture::new(|_, _| false);
+        let transport = fx.spawn(transport_type, 20, 20, 0);
+        let passenger = fx.board(transport, 1)[0];
+        let retained = Some(TargetKind::Cell(9, 9));
+        fx.sim
+            .substrate
+            .entities
+            .get_mut(passenger)
+            .unwrap()
+            .set_archive_target(retained);
+        assert!(fx.apply(Command::UnloadPassengers {
+            transport_id: transport,
+        }));
+        for _ in 0..120 {
+            fx.tick();
+            if fx.revealed(passenger) {
+                break;
+            }
+        }
+        assert!(fx.revealed(passenger), "{transport_type}: passenger leaves");
+        assert_eq!(
+            fx.sim
+                .substrate
+                .entities
+                .get(passenger)
+                .unwrap()
+                .archive_target(),
+            retained,
+            "{transport_type}: internal queue preserves passenger Archive"
+        );
+    }
+}
+
 /// `TurretCount > 0`: `+0x6E4 = (cargo == 1 ? 0 : 1)` — the IFV keeps its
 /// last passenger (the first boarded, at the cargo tail).
 #[test]

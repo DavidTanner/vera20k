@@ -27,25 +27,13 @@ def check(assets=None):
 
 
 def _verify_loaded_helpers(checked):
-    """Keep every transitive shared native owner inside the pinned profile."""
-    extra = []
-    meta = rt.metadata()
-    pinned = set(meta['helper_profiles'][checked['shared_helpers']['profile']]['files']) | \
-        set(meta['inspection_owner_files'])
-    for module in tuple(sys.modules.values()):
-        file = getattr(module, '__file__', None)
-        if not file:
-            continue
-        path = Path(file).resolve()
-        if path.is_relative_to(rt.REPO_ROOT / 'tools'):
-            relative = str(path.relative_to(rt.REPO_ROOT))
-            if relative == 'tools/spatial_oracle/factory_infantry_output.py' or \
-               relative.startswith('tools/spatial_oracle/_factory_infantry_output/'):
-                continue
-            if relative not in pinned:
-                extra.append(relative)
-    rt.require(not extra, 'Unregistered transitive helper imports: ' + str(sorted(set(extra))))
-    rt.verify_helpers()
+    """Reuse the Gate census over its independently checked shared profiles."""
+    from tools.spatial_oracle._factory_infantry_output import gate_runtime as gate
+    profile = gate.verify_source()
+    rt.require(profile == checked['infantry_unlimbo_gate']['gate_helpers'] and
+               profile['shared_factory_profile'] == checked['shared_helpers'],
+               'Loaded Gate/factory helper identities changed during replay')
+    gate.census(profile)
 
 
 def _replay_historical(control, assets=None):

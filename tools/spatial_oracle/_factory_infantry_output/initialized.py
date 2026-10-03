@@ -30,7 +30,7 @@ class ContinueCaller(ast.NodeTransformer):
             self.budgets += 1
         return self.generic_visit(node)
 
-def generate(control):
+def generate(control, live_continuation=None):
     require(sys.flags.optimize == 0, 'Original emulation requires normal Python')
     require(control in ('no_rally', 'rally'), 'Unknown initialized native control')
     from tools.spatial_oracle._factory_infantry_output import runtime as rt, idle
@@ -184,7 +184,14 @@ def generate(control):
                 node.body = [n for n in node.body if not (isinstance(n, ast.If) and ast.unparse(n.test) == "control == 'rally'")]
             return node
     continuation = CorrectedCaller()
+    retained_vm = {}
+
+    def retain_native_vm(f, final):
+        require(not retained_vm, 'Expected one terminal native continuation boundary')
+        retained_vm.update(f=f, final=copy.deepcopy(final))
+
     changed = {'observer': 0, 'capture': 0, 'failure_boundary': 0}
+    live_captures = []
     fn = next((n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == 'generate'))
 
     class Adapter(ast.NodeTransformer):
@@ -197,6 +204,9 @@ def generate(control):
             if text == 'primary_boundary = []':
                 changed['failure_boundary'] += 1
                 return ast.parse("primary_boundary = [vm['snapshot'](p) for p in registry] if 'snapshot' in vm else []").body[0]
+            if live_continuation is not None and text == 'code_unchanged = f.code_unchanged()':
+                live_captures.append(text)
+                return [node, ast.parse("retain_native_vm(vm['f'], final)").body[0]]
             return self.generic_visit(node)
 
         def visit_Try(self, node):
@@ -213,10 +223,11 @@ def generate(control):
             return self.generic_visit(node)
     fn = Adapter().visit(fn)
     require(changed == dict(observer=1, capture=1, failure_boundary=1), 'Caller AST shape changed')
+    require(len(live_captures) == int(live_continuation is not None), 'Live continuation AST boundary changed')
     module = ast.fix_missing_locations(ast.Module(body=[fn], type_ignores=[]))
     derived = rt.HERE / '<registered-startup-idle-caller>'
     ns = dict(vars(idle))
-    ns.update(corrected=continuation, compare_primary=lambda c, a: dict(scope='Corrected original startup; comparison with historical zero-threshold control is reported after execution'))
+    ns.update(corrected=continuation, retain_native_vm=retain_native_vm, compare_primary=lambda c, a: dict(scope='Corrected original startup; comparison with historical zero-threshold control is reported after execution'))
     exec(compile(module, str(derived), 'exec'), ns)
     primaries = []
     observer = None
@@ -246,4 +257,18 @@ def generate(control):
     result = dict(schema=1, status='PASS' if failure is None else 'FAIL', selected_control=control, native_sha256=native.NATIVE_SHA256, shared_helpers=profile, driver_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), original_idle_caller_sha256=hashlib.sha256(source.encode()).hexdigest(), derived_caller_ast_sha256=hashlib.sha256(ast.dump(module, include_attributes=False).encode()).hexdigest(), original_registered_walk_startup=startup, startup_calls=calls, startup_writes=writes, actual_house_place_notification_coordinates=notifications, walk_completion_gate_observations=gate_rows, gate_complete_rng_states=gate_rng, selected_loop_global_reads=list(consumer_reads.values()), selected_loop_global_writes=list(consumer_writes.values()), original_global_consumer_instructions=list(consumer_instructions.values()), full_original_primary=primaries[0] if primaries else None, full_original_gi_observer=observer, failure=failure, bounds=['Actual registered14-entry Walk group is executed through original7CBED3 after inherited unrelated prior actors and before selected GAPILE/E1 object constructors.', 'No scalar104, EMPTY, x87 result, object lifecycle, movement or RNG answer is supplied.', 'Original caller uses inherited PC53/chop FPCW; exact before/after bits and original x87/libm calls are retained.', 'No-rally uses the existing same exit/construction caller but suppresses the external authored SetRally click; the real default Archive remains native0. Foundation exit CRT executes for both controls.', 'Only stopping predicate and100M/500s wholeInfAI observer budgets differ from historical515/522 controls.', 'Restricted native Strip→deliveredInfAI→Factory→local event schedule, explicit physical map/House/prior actors and full-startup exclusions remain.', 'Historical zero-threshold515/522/707 receipts remain immutable and do not establish stock Walk completion timing.'])
     rt.verify_callers()
     rt.verify_helpers()
+    if live_continuation is not None:
+        # Seal both existing complete controls and remove observation hooks
+        # before the optional caller executes. Only the live VM is retained;
+        # no constructor, Map, type, lifecycle or RNG state is reconstructed.
+        if result['status'] != 'PASS':
+            return result  # Keep the complete failed original receipt; no continuation runs.
+        identity = rt.metadata()['initialized_controls'][control]
+        require(rt.canonical_sha(rt.normalize(result['full_original_primary'])) == identity['complete_primary_sha256'],
+                'Complete original primary changed before live continuation')
+        require(rt.canonical_sha(rt.normalize(result['full_original_gi_observer'])) == identity['complete_private_sha256'],
+                'Complete original private observation changed before live continuation')
+        require(set(retained_vm) == {'f', 'final'}, 'Live terminal native VM missing')
+        result = copy.deepcopy(result)
+        result['live_continuation'] = live_continuation(retained_vm['f'], retained_vm['final'])
     return result

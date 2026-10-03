@@ -598,14 +598,16 @@ impl Simulation {
     /// Walk or Teleport infantryman: Infantry51AA40 -> Foot4D94B0 -> the
     /// active locomotor's Move_To (Walk75ACB0 or Teleport `0x00718100`; the
     /// setter never reads `Teleporter=`). Reached from Scatter (`0x0051D6E0`),
-    /// the slave manager's sends, team scripts and a Teleport infantryman's
-    /// Move and AttackMove orders. The human same-reference prone DoAction7
+    /// the slave manager's sends, team scripts, ordinary represented Walk
+    /// and Teleport orders, and FindPath's redirect callbacks. The human
+    /// same-reference prone DoAction7
     /// arm (`0x0051ABD7..0x0051AC1F`) uses the existing action owner.
     /// Non-cell targets retain their reference and read the receiver's +4C
     /// navigation coordinate, including a Foot's committed head. No Process
     /// runs until the ordinary object turn.
     /// Native comparisons: infantry_scatter_destination.{py,json,meta.json}
-    /// and anytown_damage/foot_missions.{py,json,meta.json}.
+    /// and anytown_damage/foot_missions.{py,json,meta.json}; ordinary original
+    /// input/event/class reissues are in walk_first_path.json `gi_reissue`.
     ///
     /// Returns false for the still-unmigrated Jumpjet and other class setters.
     /// DirectRocker reciprocal links, lifted-unit release, retained fire particles
@@ -623,10 +625,10 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .ok_or("scatter destination lost actor")?;
+            .ok_or("Infantry destination lost actor")?;
         let object = self
             .object_type(actor.type_ref(), rules)
-            .ok_or("scatter destination requires type")?;
+            .ok_or("Infantry destination requires type")?;
         let teleport = actor
             .locomotor
             .as_ref()

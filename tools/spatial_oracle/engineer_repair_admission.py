@@ -412,16 +412,13 @@ class EngineerInputs(bridge_child_sound.Sound):
         if getattr(self, 'platform_audio', None) and self.platform_audio.hook(u, pc, size):
             return
         if pc in (0x527AF9, 0x527B0C):
-            # Reuse the existing physical-mission GUID transport owner without
-            # constructing its independent gameplay/map fixture.
-            from tools.spatial_oracle.anytown_damage.mission import Mission
-            if not hasattr(self, 'guid_transport'):
-                self.guid_transport = Mission.__new__(Mission)
-                transport = self.guid_transport
-                transport.m, transport.u = self, self.u
-                transport.trace, transport.events, transport.pending = deque(maxlen=32), [], {}
-                transport.frame, transport.phase = 0, 'setup'
-            self.guid_transport.observe(u, pc, size, data)
+            # Reader owns these two Windows GUID import transports. Do not
+            # shadow its method with the superseded fake Mission observer.
+            if not hasattr(self, 'guid_transport_events'):
+                self.guid_transport_events = []
+            handled = self.guid_transport(u, pc, u.reg_read(UC_X86_REG_ESP),
+                                          self.guid_transport_events)
+            assert handled
             return
         probe = getattr(self, 'reference_probe', None)
         if probe is not None:
@@ -810,13 +807,31 @@ class EngineerJoinedFixture(construction.JoinedFixture):
             self.ret()
             return
         if pc == 0x53EC9A:
-            self.trace.append(dict(kind='platform_no_modifier_key', phase=self.phase, pc=f'0x{pc:08X}'))
-            u.reg_write(UC_X86_REG_EAX, 0)
+            # The shared VM owns this import and its stdcall cleanup. Input
+            # continuations supply SHORT words here; observers never pop the
+            # same argument a second time. Unconfigured controls keep their
+            # original literal-zero result and exact trace payload.
+            input_transport = getattr(self, 'os_input_transport', None)
+            key, value = self.read32(sp), 0
+            if input_transport is None:
+                self.trace.append(dict(kind='platform_no_modifier_key', phase=self.phase, pc=f'0x{pc:08X}'))
+            else:
+                value = input_transport['key_words'].get(key, 0)
+                input_transport['observe'](dict(kind='OS_GetKeyState', pc=f'0x{pc:08X}',
+                    key=key, supplied_short=value, sp=sp, returned_sp=sp+4,
+                    import_slot=0x7E13E0))
+                self.trace.append(dict(kind='platform_key_state', phase=self.phase,
+                    pc=f'0x{pc:08X}', key=key, supplied_short=value))
+            u.reg_write(UC_X86_REG_EAX, value)
             u.reg_write(UC_X86_REG_ESP, sp + 4)
             u.reg_write(UC_X86_REG_EIP, pc + 6)
             return
         if pc == 0x646F20:
             self.trace.append(dict(kind='platform_event_clock', phase=self.phase, pc=f'0x{pc:08X}'))
+            input_transport = getattr(self, 'os_input_transport', None)
+            if input_transport is not None:
+                input_transport['observe'](dict(kind='OS_timeGetTime', pc=f'0x{pc:08X}',
+                    supplied_wall_ms=0, sp=sp, returned_sp=sp, import_slot=0x7E1530))
             u.reg_write(UC_X86_REG_EAX, 0)
             u.reg_write(UC_X86_REG_EIP, pc + 6)
             return

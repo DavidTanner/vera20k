@@ -823,8 +823,18 @@ fn schedule_command_in_sim(
     Some(execute_tick)
 }
 
+/// A Cell-click destination and the Move semantics chosen by its producer.
+pub(crate) struct CellMoveGoal {
+    pub(crate) cell: (u16, u16),
+    pub(crate) queue: bool,
+}
+
 /// Cell-click producer only. The native4DE1D0 resolver precedes event
 /// encoding; synchronized/replay/internal Move payloads are already resolved.
+/// Original initialized GI Shift0x10 still executes that resolver and emits
+/// ordinary MegaMission (111-byte Event)/Move2 ->51AA40(Cell,1); it never
+/// appends a queued waypoint.
+/// Native input/event/true-RET controls: walk_first_path.json `gi_reissue`.
 pub(crate) fn ordinary_cell_move_goal(
     sim: &crate::sim::world::Simulation,
     rules: &crate::rules::ruleset::RuleSet,
@@ -832,12 +842,19 @@ pub(crate) fn ordinary_cell_move_goal(
     entity_id: u64,
     clicked: (u16, u16),
     native_ground_receiver: bool,
-) -> Option<(u16, u16)> {
+    queued_input: bool,
+) -> Option<CellMoveGoal> {
     if native_ground_receiver
+        && (!queued_input
+            || sim.infantry_setter_receiver(
+                entity_id,
+                crate::sim::components::NavTargetRef::cell(clicked.0, clicked.1),
+                rules,
+            ))
         && let Some(result) = sim.ordinary_ground_foot_cell_input(viewer, entity_id, clicked, rules)
     {
         return match result {
-            Ok(cell) => cell,
+            Ok(cell) => cell.map(|cell| CellMoveGoal { cell, queue: false }),
             Err(cause) => {
                 log::warn!("ordinary Foot cell input: {cause}");
                 None
@@ -846,7 +863,9 @@ pub(crate) fn ordinary_cell_move_goal(
     }
     //Existing compatibility adapter for other locomotors (Hover, Teleport,
     //Jumpjet, Fly), high movers and attack-move/queued input. Their native
-    //caller contracts remain separate.
+    //caller contracts remain separate. A queued Teleport/high receiver may
+    //share Infantry setter coverage but returns None from the ordinary Foot
+    //input owner above, so it retains this compatibility queue flag.
     let mut goal = clicked;
     if let Some(grid) = sim.path_grid()
         && !crate::app::match_runtime::sim_tick::is_any_layer_walkable(grid, goal.0, goal.1)
@@ -855,7 +874,10 @@ pub(crate) fn ordinary_cell_move_goal(
     {
         goal = nearest;
     }
-    Some(goal)
+    Some(CellMoveGoal {
+        cell: goal,
+        queue: queued_input,
+    })
 }
 
 /// Make the verified ordinary local Move bytes authoritative at issue time.

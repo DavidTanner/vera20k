@@ -85,8 +85,6 @@ pub(crate) mod locomotor_ready;
 pub(crate) mod motion_query;
 pub(crate) mod movement_bridge;
 mod movement_commands;
-#[cfg(test)]
-pub(crate) use movement_commands::clear_destination_path_head;
 mod movement_path;
 mod movement_step;
 pub(crate) mod movement_tick;

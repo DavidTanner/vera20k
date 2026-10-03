@@ -73,6 +73,50 @@ def inputs():
   yield dict({'receiver':'unit'},**row)
 def generate():return [query(row) for row in inputs()]
 
+def live_cell_input(f, actor, clicked, *, keys=(), invoke, snapshot, sequence, record=None):
+ """Original GI WhatAction/CellClick on an existing constructed native actor.
+
+ This does not select a Cell, manufacture an Event or interpret Shift as a
+ queue flag. The caller supplies the authored coordinate and OS key words;
+ Options defaults, every gameplay receiver and local Event construction run
+ original instructions. Caller auxiliary arguments are literal zero.
+ """
+ from tools.spatial_oracle import building_construction as bc
+ from tools.spatial_oracle._factory_infantry_output.runtime import require
+ u, r = f.u, f.read32
+ require(r(actor) == 0x7EB058, 'Live input requires original Infantry vtable')
+ require(r(r(actor)+0x70) == 0x51F800 and r(r(actor)+0x140) == 0x51F250,
+         'Original Infantry input slots differ')
+ require(r(0xAA0444) == 0, 'Selected OS key-state route requires native cache flag0')
+ words = {int(key): 0x8000 for key in keys}
+ os_calls = []
+ require(not hasattr(f,'os_input_transport'),'Nested OS input transport')
+ for pc,raw in ((0x53EC9A,'ff15e0137e00'),(0x646F20,'ff1530157e00')):
+  require(bytes(u.mem_read(pc,6)) == bytes.fromhex(raw),'Original OS import call changed')
+ def observe_transport(row):
+  os_calls.append(dict(sequence=sequence(),frame=r(bc.FRAME),**row))
+ coord = f.allocate(4)
+ u.mem_write(coord,packed(*clicked))
+ out = dict(clicked=list(clicked), coordinate_pointer=coord,
+     keys=[dict(key=k,short=v) for k,v in sorted(words.items())],
+     what_action_args=[coord,0,0], cell_click_args=None,
+     before=snapshot(), os_transport=os_calls)
+ if record is not None:record(out)
+ # Existing Engineer Fixture.hook is the one OS import/stack owner. This
+ # input helper supplies words and observes it, with no register mutation.
+ f.os_input_transport=dict(key_words=words,observe=observe_transport)
+ try:
+  action = invoke('actual_GI_WhatAction',0x51F800,actor,coord,0,0)
+  out['queried_action'] = action
+  out['after_query'] = snapshot()
+  out['cell_click_args'] = [action,coord,0,0]
+  out['click_return_eax'] = invoke('actual_GI_CellClick',0x51F250,actor,action,coord,0,0)
+  out['after_click'] = snapshot()
+ finally:
+  del f.os_input_transport
+ return out
+
+
 if __name__=='__main__':
  finish_vectors(generate,Path(__file__).with_suffix('.json'),provenance=lambda:provenance(
   scope='Original Foot4DE1D0 ordinary Cell-click destination resolver behind 20 Infantry/Walk, 7 Unit/Drive (MovementZone 4, 0 and 1) and 2 Unit/Ship (MovementZone 10) receivers, including original coordinate/ShouldBeOnBridge, shroud, CanReachZone, full FNPC and its projection. Input action selection is supplied; synchronized executor and AStar are outside this comparison.',

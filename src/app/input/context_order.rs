@@ -40,13 +40,13 @@ use crate::sim::intern::InternedId;
 ///   raw key state, so the chord still fires when Alt is also held — and because
 ///   the cancel has already cleared Ctrl, the Ctrl+Alt guard-area gate cannot.
 /// * **Ctrl+Alt → guard area** (patrol when the cell carries a waypoint).
-/// * **Shift alone → no order at all in retail.** On an object it returns the
+/// * **Shift alone.** On an object it returns the
 ///   add-to-selection action, which the object click handler has no case for and
 ///   therefore sends no mission; on a cell it returns the plain Move action, an
-///   ordinary immediate move. Retail's *deferred*-order verb is Planning Mode —
-///   a separate bindable command class with its own event opcodes — not a
-///   modifier. VERA has no Planning Mode, so Shift keeps VERA's order-queue
-///   verb: VERA-internal, gamemd equivalent (Planning Mode) UNIMPLEMENTED.
+///   ordinary immediate move. The represented Walk Infantry Cell producer
+///   resolves and encodes that Move through its shared owner. Other receiver
+///   and object contexts retain VERA's queue adapter. Retail Planning Mode has
+///   its own event opcodes and remains unimplemented.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OrderModifier {
     /// No modifier held — the object/cell context action stands.
@@ -59,7 +59,8 @@ pub(crate) enum OrderModifier {
     AttackMove,
     /// Ctrl+Alt — guard area.
     GuardArea,
-    /// Shift — VERA's order queue. No retail equivalent on this modifier.
+    /// Shift — the producer normalizes represented Infantry Cell Moves;
+    /// other contexts retain VERA's queue adapter.
     Queue,
 }
 
@@ -694,7 +695,8 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                         owner_id,
                         stable_id,
                         (target_rx, target_ry),
-                        !queue_mode,
+                        true,
+                        queue_mode,
                     ) else {
                         continue;
                     };
@@ -703,9 +705,9 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                         execute_tick,
                         Command::Move {
                             entity_id: stable_id,
-                            target_rx: goal.0,
-                            target_ry: goal.1,
-                            queue: queue_mode,
+                            target_rx: goal.cell.0,
+                            target_ry: goal.cell.1,
+                            queue: goal.queue,
                         },
                     ));
                 }
@@ -787,7 +789,8 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             owner_id,
                             stable_id,
                             (target_rx, target_ry),
-                            !queue_mode,
+                            true,
+                            queue_mode,
                         ) else {
                             continue;
                         };
@@ -796,9 +799,9 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             execute_tick,
                             Command::Move {
                                 entity_id: stable_id,
-                                target_rx: goal.0,
-                                target_ry: goal.1,
-                                queue: queue_mode,
+                                target_rx: goal.cell.0,
+                                target_ry: goal.cell.1,
+                                queue: goal.queue,
                             },
                         ));
                     }
@@ -1215,15 +1218,16 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             owner_id,
                             stable_id,
                             (target_rx, target_ry),
-                            !queue_mode && ordinary_cell_receiver,
+                            ordinary_cell_receiver,
+                            queue_mode,
                         ) else {
                             continue;
                         };
                         Command::Move {
                             entity_id: stable_id,
-                            target_rx: goal.0,
-                            target_ry: goal.1,
-                            queue: queue_mode,
+                            target_rx: goal.cell.0,
+                            target_ry: goal.cell.1,
+                            queue: goal.queue,
                         }
                     }
                 } else {
@@ -1235,9 +1239,8 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                                 owner_id,
                                 stable_id,
                                 (target_rx, target_ry),
-                                order_mode == OrderMode::Move
-                                    && !queue_mode
-                                    && ordinary_cell_receiver,
+                                order_mode == OrderMode::Move && ordinary_cell_receiver,
+                                queue_mode,
                             ) else {
                                 continue;
                             };
@@ -1250,16 +1253,16 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             {
                                 Command::AttackMove {
                                     entity_id: stable_id,
-                                    target_rx: goal.0,
-                                    target_ry: goal.1,
-                                    queue: queue_mode,
+                                    target_rx: goal.cell.0,
+                                    target_ry: goal.cell.1,
+                                    queue: goal.queue,
                                 }
                             } else {
                                 Command::Move {
                                     entity_id: stable_id,
-                                    target_rx: goal.0,
-                                    target_ry: goal.1,
-                                    queue: queue_mode,
+                                    target_rx: goal.cell.0,
+                                    target_ry: goal.cell.1,
+                                    queue: goal.queue,
                                 }
                             }
                         }
