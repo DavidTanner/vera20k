@@ -468,7 +468,7 @@ fn a_grounded_rocketeer_fidgets_and_turns_to_the_fidgets_facing() {
     // The crash fixture's rules-free Reveal intentionally skips Techno
     // Unlimbo's idle selection (0x006F6E2A..0x006F6E4F). This live idle test
     // needs the committed Guard that the ordinary rules-bearing owner sets.
-    super::techno_ai::foot_unlimbo_idle_mode(&mut sim, 1, &rules);
+    super::techno_ai::foot_unlimbo_idle_mode(&mut sim, 1, &rules, None);
     assert_eq!(
         sim.substrate
             .entities

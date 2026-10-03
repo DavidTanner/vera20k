@@ -180,7 +180,7 @@ fn jumpjet_infantry_actions_match_the_native_bodies() {
                 let accepted = sim.infantry_do_action(id, request, force, &rules).unwrap();
                 assert_eq!(accepted, output["accepted"].as_bool().unwrap(), "{name}");
             }
-            "movement" => sim.infantry_movement_actions(id, &rules),
+            "movement" => sim.infantry_movement_actions(id, &rules, None),
             "sequencer" => {
                 // The object turn (`infantry_action_turn`) follows the
                 // sequencer with the locomotion actions, which this row does
@@ -361,7 +361,7 @@ fn walk_locomotion_actions_match_original_consumer_rows() {
     for row in corpus.iter().filter(|row| row["input"]["consumer"] == true) {
         let name = row["input"].to_string();
         let (mut sim, rules, id) = walk_consumer(&row["input"]);
-        sim.infantry_movement_actions(id, &rules);
+        sim.infantry_movement_actions(id, &rules, None);
         let entity = sim.substrate.entities.get(id).unwrap();
         assert_eq!(
             entity.mission_leaf.as_infantry().unwrap().doing(),

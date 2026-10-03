@@ -8088,17 +8088,10 @@ fn deployed_desolator_self_irradiates_and_refires_below_third() {
     let mut sim = crate::sim::world::Simulation::new();
     // Infantry AreaFire compares actual Cell identities. Supply the map that
     // owns both the firer's ObjectGetCell result and its self-target Cell.
-    sim.install_resolved_terrain_for_new_map(
-        crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
-            16,
-            16,
-            (0..16)
-                .flat_map(|y| {
-                    (0..16).map(move |x| crate::map::resolved_terrain::test_flat_cell(x, y))
-                })
-                .collect(),
-        ),
-    );
+    // The firer's ordinary Infantry Unlimbo also reads Clear/Foot admission.
+    sim.install_resolved_terrain_for_new_map(crate::map::resolved_terrain::test_flat_ground_grid(
+        16,
+    ));
     let deso = sim
         .spawn_object("DESO", "Americans", 10, 10, 0, &rules)
         .expect("desolator spawns");

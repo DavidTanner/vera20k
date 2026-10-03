@@ -581,6 +581,7 @@ fn place_selects_the_original_house_order_and_primary_factory() {
                 owner,
                 rules.object("GAPOWR").unwrap(),
                 false,
+                false,
                 false
             ),
             expected,

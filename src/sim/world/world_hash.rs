@@ -419,6 +419,10 @@ fn hash_mission_leaf(leaf: &crate::sim::mission::MissionLeafState, hasher: &mut 
         b"foot-firing-sequence-v1".hash(hasher);
         leaf.foot_firing_sequence_latch().hash(hasher);
     }
+    if leaf.foot_idle_entry_latch() != 0 {
+        b"foot-idle-entry-6b3".hash(hasher);
+        leaf.foot_idle_entry_latch().hash(hasher);
+    }
 }
 
 impl Simulation {
@@ -1002,6 +1006,9 @@ impl Simulation {
             f.on_hold.hash(hasher);
             f.suspended.hash(hasher);
             f.manual.hash(hasher);
+            if f.has_changed() {
+                b"factory-changed-5d".hash(hasher);
+            }
             match f.special {
                 crate::sim::production::SpecialItem::NoneNeg1 => 0u8.hash(hasher),
                 crate::sim::production::SpecialItem::NoneZero => 1u8.hash(hasher),

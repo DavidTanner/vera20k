@@ -1,13 +1,10 @@
 //! Production integration tests — end-to-end tests for build completion, unit spawning,
 //! harvester auto-creation, and sell/undeploy flows through the full production pipeline.
 
-use super::production_spawn::{
-    find_spawn_selection_for_owner, find_spawn_selection_for_owner_with_type,
-    mark_war_factory_spawn_contact,
-};
+use super::production_spawn::mark_war_factory_spawn_contact;
 use super::{
-    ProductionCategory, STARTING_CREDITS, credits_for_owner, find_spawn_cell_for_owner,
-    is_matching_factory, structure_satisfies_prerequisite,
+    ProductionCategory, STARTING_CREDITS, credits_for_owner, is_matching_factory,
+    structure_satisfies_prerequisite,
 };
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
@@ -21,7 +18,7 @@ use crate::sim::world::Simulation;
 
 pub(super) fn basic_infantry_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
              0=E1\n\
              [VehicleTypes]\n\
              [AircraftTypes]\n\
@@ -38,8 +35,10 @@ pub(super) fn basic_infantry_rules() -> RuleSet {
              TechLevel=1\n\
              Owner=Americans,Soviet\n\
              [GAPILE]\n\
+             Owner=Americans,Soviet\n\
              Factory=InfantryType\n\
              [NAHAND]\n\
+             Owner=Americans,Soviet\n\
              Factory=InfantryType\n",
     );
     RuleSet::from_ini(&ini).expect("basic infantry rules should parse")
@@ -47,7 +46,7 @@ pub(super) fn basic_infantry_rules() -> RuleSet {
 
 pub(super) fn basic_multi_queue_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
              0=E1\n\
              [VehicleTypes]\n\
              0=MTNK\n\
@@ -74,8 +73,10 @@ pub(super) fn basic_multi_queue_rules() -> RuleSet {
              TechLevel=1\n\
              Owner=Americans\n\
              [GAPILE]\n\
+             Owner=Americans,Soviet\n\
              Factory=InfantryType\n\
              [GAWEAP]\n\
+             Owner=Americans,Soviet\n\
              Factory=UnitType\n",
     );
     RuleSet::from_ini(&ini).expect("basic multi queue rules should parse")
@@ -83,7 +84,7 @@ pub(super) fn basic_multi_queue_rules() -> RuleSet {
 
 pub(super) fn production_modifier_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[General]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[General]\n\
              BuildSpeed=1.0\n\
              MultipleFactory=0.8\n\
              LowPowerPenaltyModifier=1.0\n\
@@ -119,12 +120,15 @@ pub(super) fn production_modifier_rules() -> RuleSet {
              Owner=Americans,Soviet\n\
              [GAPILE]\n\
              Power=-20\n\
+             Owner=Americans,Soviet\n\
              Factory=InfantryType\n\
              [NAHAND]\n\
              Power=-20\n\
+             Owner=Americans,Soviet\n\
              Factory=InfantryType\n\
              [GAWEAP]\n\
              Power=-20\n\
+             Owner=Americans,Soviet\n\
              Factory=UnitType\n\
              [GAPOWR]\n\
              Strength=1000\nPower=200\n",
@@ -424,7 +428,7 @@ pub(super) fn sell_rules() -> RuleSet {
 /// Includes standard RA2 factories plus custom modded ones (MYBARR, XAIRFLD).
 pub(super) fn factory_rules() -> RuleSet {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
              [VehicleTypes]\n\
              0=MTNK\n\
              [AircraftTypes]\n\
@@ -437,34 +441,42 @@ pub(super) fn factory_rules() -> RuleSet {
              5=MYBARR\n\
              6=XAIRFLD\n\
              [GACNST]\n\
+             Owner=Americans,Soviet\n\
              Factory=BuildingType\n\
              [MTNK]\n\
+             Owner=Americans,Soviet\n\
              Name=Medium Tank\n\
              Strength=300\n\
              Armor=heavy\n\
              Speed=6\n\
              [GAPILE]\n\
+             Owner=Americans,Soviet\n\
              Factory=InfantryType\n\
              Foundation=3x2\n\
              [GAWEAP]\n\
+             Owner=Americans,Soviet\n\
              Factory=UnitType\n\
              WeaponsFactory=yes\n\
              Foundation=5x3\n\
              ExitCoord=512,256,0\n\
              [GAWEAT]\n\
+             Owner=Americans,Soviet\n\
              Factory=UnitType\n\
              WeaponsFactory=yes\n\
              Foundation=5x3\n\
              ExitCoord=512,256,0\n\
              [GAAIRC]\n\
+             Owner=Americans,Soviet\n\
              Factory=AircraftType\n\
              Foundation=3x2\n\
              ExitCoord=384,128,0\n\
              [MYBARR]\n\
+             Owner=Americans,Soviet\n\
              Factory=InfantryType\n\
              ExitCoord=-64,64,0\n\
              Foundation=2x2\n\
              [XAIRFLD]\n\
+             Owner=Americans,Soviet\n\
              Factory=AircraftType\n\
              ExitCoord=384,128,0\n",
     );
@@ -521,6 +533,26 @@ pub(super) fn prerequisite_group_rules() -> RuleSet {
          [NAWEAP]\n",
     );
     RuleSet::from_ini(&ini).expect("prerequisite group rules should parse")
+}
+
+/// Explicit synthetic map prior for focused Infantry delivery tests. Native
+/// GetDock44EFB0 requires physical cells and Map::InBounds568300, unlike the
+/// retired category-only foundation-centre adapter.
+pub(super) fn install_infantry_delivery_fixture_map(sim: &mut Simulation) {
+    sim.install_resolved_terrain_for_new_map(crate::map::resolved_terrain::test_flat_ground_grid(
+        64,
+    ));
+    sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
+        base: 16,
+        off_fc: -64,
+        off_100: -64,
+        off_104: 128,
+        off_108: 128,
+    });
+    sim.playfield_size_height = Some(64);
+    sim.session.map_width = 16;
+    sim.session.map_height = 64;
+    sim.session.game_mode_nonzero = true;
 }
 
 pub(super) fn spawn_structure(
@@ -721,16 +753,19 @@ fn exit_coord_parsed_and_used_for_spawn() {
     // Spawn test: GAWEAP at (20,20), ExitCoord→primary cell (22,21).
     let mut sim = Simulation::new();
     spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 20, 20);
-    let spawn = find_spawn_cell_for_owner(
-        &mut sim,
-        &rules,
-        "Americans",
-        ObjectCategory::Vehicle,
-        false,
-    )
-    .expect("should find spawn cell");
+    let producer = sim.substrate.entities.get(1).unwrap();
+    let exit = crate::sim::movement::building_exit_coordinate(
+        crate::sim::movement::ground_pose::position_world_coord(&producer.position),
+        gaweap,
+        || {
+            crate::sim::movement::ground_pose::object_get_coords(
+                producer,
+                sim.resolved_terrain.as_ref(),
+            )
+        },
+    );
     assert_eq!(
-        spawn,
+        (exit.x / 256, exit.y / 256),
         (22, 21),
         "primary exit cell from ExitCoord=512,256,0"
     );
@@ -742,36 +777,17 @@ fn war_factory_spawn_contact_is_marked_per_produced_mover() {
     let mut sim = Simulation::new();
     spawn_structure(&mut sim, 10, "Americans", "GAWEAP", 20, 20);
 
-    let selection = find_spawn_selection_for_owner(
-        &mut sim,
-        &rules,
-        "Americans",
-        ObjectCategory::Vehicle,
-        false,
-    )
-    .expect("war factory should provide a spawn selection");
-    assert_eq!(selection.producer_id, 10);
-    assert_eq!(selection.cell, (22, 21));
-
+    // Supply the ordinary ExitCoord pose. This isolates the shared contact
+    // owner; producer selection and Unlimbo have their own native comparisons.
     let produced = sim
-        .spawn_object(
-            "MTNK",
-            "Americans",
-            selection.cell.0,
-            selection.cell.1,
-            64,
-            &rules,
-        )
+        .spawn_object("MTNK", "Americans", 22, 21, 64, &rules)
         .expect("produced tank should spawn");
     let unrelated = sim
         .spawn_object("MTNK", "Americans", 30, 30, 64, &rules)
         .expect("unrelated tank should spawn");
 
     assert!(mark_war_factory_spawn_contact(
-        &mut sim,
-        &rules,
-        selection.producer_id,
-        produced,
+        &mut sim, &rules, 10, produced,
     ));
     assert!(
         sim.substrate
@@ -810,93 +826,6 @@ fn war_factory_spawn_contact_is_marked_per_produced_mover() {
 }
 
 #[test]
-fn infantry_spawn_uses_foundation_center_cell() {
-    let rules = factory_rules();
-    // GAPILE has Foundation=3x2 in the fixture, no ExitCoord.
-    // Foundation-center cell of a building at (20, 20) is (20 + 3/2, 20 + 2/2)
-    // = (21, 21) — the cell inside the foundation that gamemd's
-    // building->GetCoord() lepton lands in.
-    let mut sim = Simulation::new();
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 20, 20);
-    stamp_type_foundation(&mut sim, &rules, 1);
-    let spawn = find_spawn_cell_for_owner(
-        &mut sim,
-        &rules,
-        "Americans",
-        ObjectCategory::Infantry,
-        false,
-    )
-    .expect("infantry spawn from GAPILE should succeed");
-    assert_eq!(
-        spawn,
-        (21, 21),
-        "infantry spawns at foundation-center cell of 3x2 GAPILE at (20, 20)"
-    );
-}
-
-#[test]
-fn infantry_spawn_ignores_exit_coord() {
-    let rules = factory_rules();
-    // MYBARR has ExitCoord=-64,64,0 AND Foundation=2x2.
-    // gamemd's infantry alt path NEVER reads ExitCoord; the unit Unlimbos at
-    // building->GetCoord() = foundation center. For a 2x2 barracks at (10, 10)
-    // that's (10 + 2/2, 10 + 2/2) = (11, 11). The (-64, 64) ExitCoord must
-    // have zero effect.
-    let mut sim = Simulation::new();
-    spawn_structure(&mut sim, 1, "Americans", "MYBARR", 10, 10);
-    stamp_type_foundation(&mut sim, &rules, 1);
-    let spawn = find_spawn_cell_for_owner(
-        &mut sim,
-        &rules,
-        "Americans",
-        ObjectCategory::Infantry,
-        false,
-    )
-    .expect("infantry spawn from MYBARR should succeed");
-    assert_eq!(
-        spawn,
-        (11, 11),
-        "infantry spawn ignores ExitCoord=-64,64,0; uses foundation-center cell"
-    );
-}
-
-#[test]
-fn infantry_spawn_succeeds_when_center_cell_blocked() {
-    let rules = factory_rules();
-    // The producing GAPILE itself occupies (20, 20) via spawn_structure's
-    // single-cell registration. The new foundation-center cell (21, 21) is
-    // inside the building's footprint. gamemd's infantry alt path performs
-    // no passability check at the spawn step — only vehicles are
-    // hard-blocked by building cells. Infantry succeed.
-    let mut sim = Simulation::new();
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 20, 20);
-    stamp_type_foundation(&mut sim, &rules, 1);
-    // Also occupy the foundation-center cell explicitly to make the test
-    // robust against future changes to spawn_structure's occupancy footprint.
-    sim.substrate.occupancy.add(
-        21,
-        21,
-        1,
-        crate::sim::movement::locomotor::MovementLayer::Ground,
-        None,
-        crate::sim::occupancy::CellListInsertion::AppendBuilding,
-    );
-    let spawn = find_spawn_cell_for_owner(
-        &mut sim,
-        &rules,
-        "Americans",
-        ObjectCategory::Infantry,
-        false,
-    )
-    .expect("infantry spawn should succeed even with building bit on center cell");
-    assert_eq!(
-        spawn,
-        (21, 21),
-        "infantry spawn ignores foundation occupancy and lands at center cell"
-    );
-}
-
-#[test]
 fn naval_factory_spawn_uses_water_exit_cells() {
     let rules = naval_production_rules();
     let mut sim = Simulation::new();
@@ -915,12 +844,18 @@ fn naval_factory_spawn_uses_water_exit_cells() {
 
     spawn_structure(&mut sim, 1, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
-    let spawn =
-        find_spawn_cell_for_owner(&mut sim, &rules, "Americans", ObjectCategory::Vehicle, true)
-            .expect("naval factory should find a water exit cell");
+    let produced = sim
+        .construct_object_limbo_at_height("DEST", "Americans", 0, 0, 0, 0, &rules)
+        .expect("construct the original ExitObject receiver");
+    assert_eq!(
+        super::production_queue::exit_produced_object(&mut sim, &rules, 1, produced, None),
+        crate::sim::ai_base_building::BuildingExit::Placed,
+        "naval factory delivers its actual held Unit through shared ExitObject"
+    );
+    let produced = sim.substrate.entities.get(produced).unwrap();
 
     assert_eq!(
-        spawn,
+        (produced.position.rx, produced.position.ry),
         (22, 22),
         "4x4 yard fallback starts at BuildingClass::GetCoords foundation centre"
     );
@@ -1000,28 +935,34 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
         vec![2]
     );
 
-    let land_selection = find_spawn_selection_for_owner_with_type(
-        &mut sim,
-        &rules,
-        "Americans",
-        Some("MTNK"),
-        ObjectCategory::Vehicle,
-        false,
-    )
-    .expect("land Vehicle binds GAWEAP");
-    let ship_selection = find_spawn_selection_for_owner_with_type(
-        &mut sim,
-        &rules,
-        "Americans",
-        Some("DEST"),
-        ObjectCategory::Vehicle,
-        true,
-    )
-    .expect("naval Unit binds GAYARD");
-    assert_eq!(land_selection.producer_id, 1);
-    assert_eq!(ship_selection.producer_id, 2);
-
     let americans = sim.interner.intern("Americans");
+    assert_eq!(
+        super::find_factory(
+            &sim,
+            &rules,
+            americans,
+            rules.object("MTNK").unwrap(),
+            false,
+            true,
+            false,
+        ),
+        Some(1),
+        "native typed Vehicle FindFactory binds GAWEAP"
+    );
+    assert_eq!(
+        super::find_factory(
+            &sim,
+            &rules,
+            americans,
+            rules.object("DEST").unwrap(),
+            false,
+            true,
+            false,
+        ),
+        Some(2),
+        "native typed Naval Unit FindFactory binds GAYARD"
+    );
+
     assert_eq!(
         sim.production
             .primary_factory(americans, ProductionCategory::Vehicle)
@@ -1072,7 +1013,9 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
             .is_some()
     );
 
-    assert!(super::production_queue::tick_production(&mut sim, &rules,));
+    assert!(super::dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
     let destroyer = sim
         .substrate
         .entities
@@ -1112,7 +1055,7 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
 }
 
 #[test]
-fn naval_delivery_nonzero_canenter_keeps_pending_and_does_not_try_second_producer() {
+fn naval_delivery_nonzero_canenter_refunds_without_trying_second_producer() {
     let rules = naval_production_rules();
     let mut sim = Simulation::new();
     let mut terrain = water_terrain(40, 40);
@@ -1173,30 +1116,30 @@ fn naval_delivery_nonzero_canenter_keeps_pending_and_does_not_try_second_produce
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
 
-    let spawned = super::production_queue::tick_production(&mut sim, &rules);
+    let held = super::lifecycle_tests::held_id(&sim, americans, ProductionCategory::Ship);
+    let credits = credits_for_owner(&sim, "Americans");
     assert!(
-        !spawned,
-        "nonzero Unit CanEnter result rejects the one attempt"
+        !super::dispatch_production_changes_for_tests(&mut sim, &rules, None),
+        "nonzero Unit CanEnter rejects the selected producer's one attempt"
     );
-    let held = sim
-        .production
-        .factory_shadow
-        .view(americans, ProductionCategory::Ship)
-        .expect("completed object remains held");
-    assert!(held.object.is_some() && held.progress == super::PRODUCTION_STEPS);
-    let held_id = held
-        .object
-        .and_then(|object| object.entity_id)
-        .expect("the completed queue owns one limbo Unit identity");
+    assert!(!sim.substrate.entities.contains(held));
+    assert!(
+        sim.production
+            .factory_shadow
+            .view(americans, ProductionCategory::Ship)
+            .is_none_or(|factory| factory.object.is_none())
+    );
+    assert_eq!(credits_for_owner(&sim, "Americans"), credits + 1000);
     assert_eq!(
         sim.production
-            .primary_factory(americans, ProductionCategory::Ship)
-            .unwrap(),
-        1,
-        "the already selected producer remains authoritative"
+            .primary_factory(americans, ProductionCategory::Ship),
+        Some(1),
+        "HousePlace does not try the second eligible producer after Exit0"
     );
-    let held_entity = sim.substrate.entities.get(held_id).unwrap();
-    assert!(held_entity.lifecycle.in_limbo && !held_entity.lifecycle.cell_marked);
+    assert!(
+        sim.substrate.entities.contains(50),
+        "the cell blocker remains"
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -1208,13 +1151,14 @@ fn naval_delivery_nonzero_canenter_keeps_pending_and_does_not_try_second_produce
                     && entity.owner == americans
             })
             .count(),
-        1,
-        "failure retains one queue-held Unit and creates no alternate delivery"
+        0,
+        "refusal destroys the held Unit without alternate delivery"
     );
+    assert_eq!(sim.houses[&americans].stats.built(), 0);
 }
 
 #[test]
-fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
+fn naval_empty_fnpc_refunds_then_a_fresh_successor_records_delivery_once() {
     let rules = naval_production_rules();
     let mut sim = Simulation::new();
     let mut terrain = water_terrain(40, 40);
@@ -1280,123 +1224,86 @@ fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
             .factory_shadow
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
-    let entity_count_before = sim.substrate.entities.len();
-    let owned_units_before = sim.owned_object_counts(americans).1;
-
-    assert!(!super::production_queue::tick_production(&mut sim, &rules,));
+    let refused = super::lifecycle_tests::held_id(&sim, americans, ProductionCategory::Ship);
+    let entity_count = sim.substrate.entities.len();
+    let owned_units = sim.owned_object_counts(americans).1;
+    let credits = credits_for_owner(&sim, "Americans");
+    let mut expected = sim.scenario_rng.clone();
+    assert!(!super::dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
     assert_eq!(
         retained_dummy.snapshot().coord,
         (0, 0),
         "the caller resolves FNPC's sentinel and restamps the retained dummy"
     );
-    let held_id = sim
-        .production
-        .factory_shadow
-        .view(americans, ProductionCategory::Ship)
-        .and_then(|view| view.object.and_then(|object| object.entity_id))
-        .expect("zero-cell Unlimbo refusal retains the completed Unit");
-    let held = sim.substrate.entities.get(held_id).unwrap();
-    assert!(held.lifecycle.in_limbo && !held.lifecycle.cell_marked);
-    assert_eq!(sim.substrate.entities.len(), entity_count_before);
-    assert_eq!(sim.owned_object_counts(americans).1, owned_units_before);
-    assert_eq!(
-        sim.houses[&americans].stats.built(),
-        0,
-        "Record_Last_Built follows only a successful exit (0x004FB4B7)"
+    assert!(!sim.substrate.entities.contains(refused));
+    let successor = super::lifecycle_tests::held_id(&sim, americans, ProductionCategory::Ship);
+    assert!(
+        successor > refused,
+        "Exit0 destroys before StartNextQueued constructs"
     );
-
-    let registry_bytes = bincode::serialize(&sim.production.factory_shadow)
-        .expect("serialize refused completed factory");
-    sim.production.factory_shadow =
-        bincode::deserialize(&registry_bytes).expect("restore refused completed factory");
-
-    assert!(!super::production_queue::tick_production(&mut sim, &rules,));
-    let retried_id = sim
+    let factory = sim
         .production
         .factory_shadow
         .view(americans, ProductionCategory::Ship)
-        .and_then(|view| view.object.and_then(|object| object.entity_id))
         .unwrap();
-    assert_eq!(retried_id, held_id, "retry must reuse the held identity");
-    assert_eq!(retained_dummy.snapshot().coord, (0, 0));
-    assert_eq!(sim.substrate.entities.len(), entity_count_before);
+    assert_eq!(factory.progress, 0);
+    assert!(!factory.ready && factory.queue.is_empty());
+    let object = sim.substrate.entities.get(successor).unwrap();
+    assert!(object.lifecycle.in_limbo && !object.lifecycle.cell_marked);
+    super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);
+    assert_eq!(sim.substrate.entities.len(), entity_count);
+    assert_eq!(sim.owned_object_counts(americans).1, owned_units);
+    assert_eq!(credits_for_owner(&sim, "Americans"), credits + 1000);
+    assert_eq!(sim.houses[&americans].stats.built(), 0);
+
+    let bytes = bincode::serialize(&sim.production.factory_shadow)
+        .expect("serialize the fresh active factory");
+    sim.production.factory_shadow = bincode::deserialize(&bytes).unwrap();
+    // Publishing alone does not invent another PLACE for an unfinished successor.
+    assert!(!super::dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
     assert_eq!(
-        sim.owned_object_counts(americans).1,
-        owned_units_before,
-        "sentinel retry must not account for a second Unit"
+        super::lifecycle_tests::held_id(&sim, americans, ProductionCategory::Ship),
+        successor
     );
-    assert_eq!(
-        sim.houses[&americans].stats.built(),
-        0,
-        "a refused retry records nothing"
-    );
+    assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
     assert_eq!(
         sim.production
-            .primary_factory(americans, ProductionCategory::Ship)
-            .unwrap(),
-        1,
-        "the selected producer remains authoritative after empty FNPC"
+            .primary_factory(americans, ProductionCategory::Ship),
+        Some(1)
     );
-    assert_eq!(
-        sim.substrate
-            .entities
-            .values()
-            .filter(|entity| {
-                entity.owner == americans
-                    && sim
-                        .interner
-                        .resolve(entity.type_ref)
-                        .eq_ignore_ascii_case("DEST")
-            })
-            .count(),
-        1,
-        "no alternate candidate or producer creates another Unit"
-    );
-
+    assert_eq!(sim.houses[&americans].stats.built(), 0);
     for cell in &mut sim.resolved_terrain.as_mut().unwrap().cells {
         cell.speed_costs.float = Some(100);
         cell.base_speed_costs.float = Some(100);
     }
-    let success_grid = PathGrid::from_resolved_terrain(sim.resolved_terrain.as_ref().unwrap());
-    sim.path_grid = Some(std::sync::Arc::new(success_grid));
-    assert!(super::production_queue::tick_production(&mut sim, &rules,));
-    let delivered = sim.substrate.entities.get(held_id).unwrap();
-    assert!(delivered.lifecycle.cell_marked && !delivered.lifecycle.in_limbo);
-    assert_eq!(
-        sim.houses[&americans].stats.built(),
-        1,
-        "the successful retry records the delivered unit"
-    );
-    let promoted = sim
-        .production
-        .factory_shadow
-        .view(americans, ProductionCategory::Ship)
-        .expect("tail item is promoted after delivery");
-    assert_eq!(promoted.progress, 0);
-    let promoted_id = promoted
-        .object
-        .and_then(|object| object.entity_id)
-        .expect("StartNextQueued constructs the promoted Unit immediately");
-    assert!(
-        sim.substrate
-            .entities
-            .get(promoted_id)
-            .is_some_and(|entity| entity.lifecycle.in_limbo)
-    );
-
-    // Free the first delivered anchor so the promoted item can exercise its own
-    // completion edge without turning this test into a CanEnter blocker case.
-    sim.remove_entity_occupancy(held_id);
+    let grid = PathGrid::from_resolved_terrain(sim.resolved_terrain.as_ref().unwrap());
+    sim.path_grid = Some(std::sync::Arc::new(grid));
     assert!(
         sim.production
             .factory_shadow
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
-    assert!(super::production_queue::tick_production(&mut sim, &rules,));
+    assert!(super::dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
+    let delivered = sim.substrate.entities.get(successor).unwrap();
+    assert!(delivered.lifecycle.cell_marked && !delivered.lifecycle.in_limbo);
     assert_eq!(
         sim.houses[&americans].stats.built(),
-        2,
-        "the promoted object's delivery records it"
+        1,
+        "Record_Last_Built4FB4B7 follows only the successor's successful exit"
+    );
+    assert_eq!(sim.substrate.entities.len(), entity_count);
+    assert_eq!(sim.owned_object_counts(americans).1, owned_units);
+    assert!(
+        sim.production
+            .factory_shadow
+            .view(americans, ProductionCategory::Ship)
+            .is_none_or(|factory| factory.object.is_none())
     );
 }
 
@@ -1443,7 +1350,9 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
 
-    assert!(super::production_queue::tick_production(&mut sim, &rules));
+    assert!(super::dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
     let produced = sim
         .substrate
         .entities
@@ -1548,7 +1457,9 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
 
-    assert!(super::production_queue::tick_production(&mut sim, &rules,));
+    assert!(super::dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
     let produced = sim
         .substrate
         .entities
@@ -1622,7 +1533,9 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
             .test_arm_ready(americans, ProductionCategory::Ship)
     );
 
-    assert!(super::production_queue::tick_production(&mut sim, &rules,));
+    assert!(super::dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
     let produced = sim
         .substrate
         .entities
@@ -1662,7 +1575,7 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
 }
 
 #[test]
-fn custom_exit_coord_modded_factory() {
+fn custom_exit_coord_modded_factory_is_parsed() {
     let ini = IniFile::from_str(
         "[InfantryTypes]\n\
          [VehicleTypes]\n\
@@ -1678,21 +1591,8 @@ fn custom_exit_coord_modded_factory() {
     // 768/256=3 cells right, 512/256=2 cells down.
     assert_eq!(modfact.exit_coord, Some((768, 512, 0)));
 
-    let mut sim = Simulation::new();
-    spawn_structure(&mut sim, 1, "Americans", "MODFACT", 10, 10);
-    let spawn = find_spawn_cell_for_owner(
-        &mut sim,
-        &rules,
-        "Americans",
-        ObjectCategory::Vehicle,
-        false,
-    )
-    .expect("should find spawn cell");
-    assert_eq!(
-        spawn,
-        (13, 12),
-        "exit at (10+3, 10+2) from ExitCoord=768,512,0"
-    );
+    // This non-WeaponsFactory type reaches another native ExitObject arm.
+    // Its parser assertion does not establish a gameplay spawn coordinate.
 }
 
 #[test]

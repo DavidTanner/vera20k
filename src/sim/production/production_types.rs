@@ -83,6 +83,15 @@ pub enum BuildingPlacementError {
     OutOfBuildArea,
 }
 
+/// Arguments consumed by the one HouseClass::Place_Production4FB0E0 owner.
+/// Buildings carry the clicked type/cell; automatic mobile PLACE resolves the
+/// current complete Factory head, including a head replaced before dispatch.
+#[derive(Debug, Clone, Copy)]
+pub enum ProductionPlacement<'a> {
+    Building { type_id: &'a str, cell: (u16, u16) },
+    Mobile { category: ProductionCategory },
+}
+
 impl BuildingPlacementError {
     pub fn label(&self) -> &'static str {
         match self {

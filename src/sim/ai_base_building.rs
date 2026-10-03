@@ -265,7 +265,7 @@ pub(crate) fn update_production_choices(
                 .map_or(-1, |house| house.ai_production.building_choice);
             let buildable = rules
                 .building_type_at(choice)
-                .is_some_and(|ty| find_factory(sim, rules, owner, ty, true, true).is_some());
+                .is_some_and(|ty| find_factory(sim, rules, owner, ty, true, true, true).is_some());
             if !buildable {
                 choose_units(sim, &ALL);
             }
@@ -284,7 +284,9 @@ pub(crate) fn update_production_choices(
                 index != -1
                     && !rules
                         .type_array_at(kind.category(), index)
-                        .is_some_and(|ty| find_factory(sim, rules, owner, ty, true, true).is_some())
+                        .is_some_and(|ty| {
+                            find_factory(sim, rules, owner, ty, true, true, true).is_some()
+                        })
             });
             if none_chosen || unbuildable {
                 choose_building(sim, rules, owner, registry);

@@ -1100,6 +1100,22 @@ pub struct ObjectType {
     /// Native BuildingType `WeaponsFactory=` classification used by Unit
     /// ReadyToCommence. Independent from `Factory=` and `Naval=`.
     pub weapons_factory: bool,
+    /// BuildingType+16C2: constructor45E157 clears it. Rules45FE50 reads
+    /// exact-case Armory via ReadBool5295F0 at460B03, using the current byte
+    /// as default, then stores AL460B08 before GDIBarracks. Exit4440A6 uses it.
+    armory: bool,
+    /// BuildingType+16E4, rules `GDIBarracks=`: constructor45E1C2 clears
+    /// it; ReadBool5295F0 at460B1D uses the current byte as its default.
+    /// Source: building_construction.py and the sealed native barracks input
+    /// contract in basic-factory-output-event-admission-research (retail
+    /// gamemd.exe SHA256 1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c).
+    gdi_barracks: bool,
+    /// BuildingType+16E5, rules `NODBarracks=`: constructor45E1C8 clears
+    /// it; ReadBool5295F0 at460B37 follows GDIBarracks with a live default.
+    nod_barracks: bool,
+    /// BuildingType+16E6, rules `YuriBarracks=`: constructor45E1CE clears
+    /// it; ReadBool5295F0 at460B51 follows NODBarracks with a live default.
+    yuri_barracks: bool,
     /// Whether this building clones produced infantry (Cloning=yes in rules.ini).
     pub cloning: bool,
 
@@ -1756,6 +1772,26 @@ impl ObjectType {
     /// metadata instead of adding a configurable or per-instance copy.
     pub const BUILDING_FACING: u8 = 0;
 
+    /// Native barracks classification read by GetDockCell44EFB0 and
+    /// ExitObject443C60; independent from Factory=InfantryType.
+    pub fn gdi_barracks(&self) -> bool {
+        self.gdi_barracks
+    }
+
+    pub fn armory(&self) -> bool {
+        self.armory
+    }
+
+    /// Native BuildingType+16E5 classification, independent from Factory=.
+    pub fn nod_barracks(&self) -> bool {
+        self.nod_barracks
+    }
+
+    /// Native BuildingType+16E6 classification, independent from Factory=.
+    pub fn yuri_barracks(&self) -> bool {
+        self.yuri_barracks
+    }
+
     /// Native TechnoType virtual+BC (717800), used by Fly takeoff4CF9F2
     /// and Aircraft Unlimbo414383. Zero and other negatives are literal.
     pub fn flight_level(&self, general_flight_level: i32) -> i32 {
@@ -1901,6 +1937,21 @@ impl ObjectType {
     /// The `id` is the section name, and `category` comes from which
     /// type registry listed this object.
     pub fn from_ini_section(id: &str, section: &IniSection, category: ObjectCategory) -> Self {
+        // BuildingType45FE50: Hospital, Armory460B03, then the three
+        // barracks readers460B1D/37/51. Each starts at constructor0 and folds
+        // reached layer values with the live byte as the next pass's default.
+        let (hospital, armory, gdi_barracks, nod_barracks, yuri_barracks) =
+            if category == ObjectCategory::Building {
+                (
+                    section.read_bool("Hospital", false),
+                    section.read_bool("Armory", false),
+                    section.read_bool("GDIBarracks", false),
+                    section.read_bool("NODBarracks", false),
+                    section.read_bool("YuriBarracks", false),
+                )
+            } else {
+                (false, false, false, false, false)
+            };
         // `IsGattling=` gates the Stage loop read beside it (`0x0071407E`).
         let is_gattling = section.read_bool("IsGattling", false);
         // The targeting coefficients (`0x0071556B..0x0071570C`) read with a
@@ -2438,6 +2489,10 @@ impl ObjectType {
                 .read_name("Factory", 0x20)
                 .and_then(FactoryType::from_ini),
             weapons_factory: section.read_bool("WeaponsFactory", false),
+            armory,
+            gdi_barracks,
+            nod_barracks,
+            yuri_barracks,
             cloning: section.read_bool("Cloning", false),
             // Read3Int (`0x00460FCD`).
             exit_coord: section
@@ -2516,7 +2571,7 @@ impl ObjectType {
             infantry_absorb: section.read_bool("InfantryAbsorb", false),
             unit_absorb: section.read_bool("UnitAbsorb", false),
             grinding: section.read_bool("Grinding", false),
-            hospital: category == ObjectCategory::Building && section.read_bool("Hospital", false),
+            hospital,
             bunkerable: section.read_bool("Bunkerable", category == ObjectCategory::Vehicle),
             weapon_list,
             elite_weapon_list,
@@ -3679,6 +3734,196 @@ mod tests {
         assert!(!parse("FACTORY_ONLY").weapons_factory);
         assert_eq!(parse("WEAPONS_FACTORY_ONLY").factory, None);
         assert!(parse("WEAPONS_FACTORY_ONLY").weapons_factory);
+    }
+
+    #[test]
+    fn barracks_flags_keep_native_defaults_parser_and_class_scope() {
+        // Original ctor45E1C2/45E1C8/45E1CE and ReadBool5295F0:
+        // missing/unrecognized -> current byte; only the first byte decides.
+        for (raw, expected) in [
+            ("", false),
+            ("yes", true),
+            ("Tjunk", true),
+            ("1junk", true),
+            ("no", false),
+            ("false", false),
+            ("0junk", false),
+            ("on", false),
+            ("off", false),
+        ] {
+            let ini = IniFile::from_str(&format!(
+                "[TYPE]\nFactory=InfantryType\nGDIBarracks={raw}\nNODBarracks={raw}\nYuriBarracks={raw}\n"
+            ));
+            let section = ini.section("TYPE").unwrap();
+            for category in [
+                ObjectCategory::Building,
+                ObjectCategory::Infantry,
+                ObjectCategory::Vehicle,
+                ObjectCategory::Aircraft,
+            ] {
+                let object = ObjectType::from_ini_section("TYPE", section, category);
+                let native = category == ObjectCategory::Building && expected;
+                assert_eq!(
+                    (
+                        object.gdi_barracks(),
+                        object.nod_barracks(),
+                        object.yuri_barracks()
+                    ),
+                    (native, native, native),
+                    "{category:?} {raw:?}"
+                );
+            }
+        }
+        let ini = IniFile::from_str(
+            "[TYPE]\nFactory=InfantryType\ngdibarracks=yes\nNodBarracks=yes\nYURIBARRACKS=yes\n",
+        );
+        let object = ObjectType::from_ini_section(
+            "TYPE",
+            ini.section("TYPE").unwrap(),
+            ObjectCategory::Building,
+        );
+        assert_eq!(
+            (
+                object.gdi_barracks(),
+                object.nod_barracks(),
+                object.yuri_barracks()
+            ),
+            (false, false, false)
+        );
+    }
+
+    #[test]
+    fn armory_flag_retains_native_defaults_across_reached_rules_layers() {
+        use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
+        use crate::rules::ruleset::RuleSet;
+        //45E157 default0;460B03/460B08 use the shared ReadBool5295F0
+        //reader before the three barracks keys. Native ordinary GAPILE reads0.
+        let mut layers = RulesLayerStack::new(IniFile::from_str(
+            "[BuildingTypes]\n0=BRKS\n[BRKS]\nArmory=yes\n",
+        ));
+        assert!(
+            RuleSet::from_rules_layers(&layers)
+                .unwrap()
+                .object("BRKS")
+                .unwrap()
+                .armory()
+        );
+        layers.push(
+            RulesLayerKind::LangRule,
+            IniFile::from_str("[BRKS]\nArmory=malformed\n"),
+        );
+        assert!(
+            RuleSet::from_rules_layers(&layers)
+                .unwrap()
+                .object("BRKS")
+                .unwrap()
+                .armory()
+        );
+        layers.push(
+            RulesLayerKind::GameMode,
+            IniFile::from_str("[BRKS]\nArmory=n\n"),
+        );
+        assert!(
+            !RuleSet::from_rules_layers(&layers)
+                .unwrap()
+                .object("BRKS")
+                .unwrap()
+                .armory()
+        );
+        layers.push(
+            RulesLayerKind::Scenario,
+            IniFile::from_str("[BRKS]\narmory=yes\n"),
+        );
+        assert!(
+            !RuleSet::from_rules_layers(&layers)
+                .unwrap()
+                .object("BRKS")
+                .unwrap()
+                .armory()
+        );
+        let ini = IniFile::from_str("[TYPE]\nArmory=yes\n");
+        assert!(
+            !ObjectType::from_ini_section(
+                "TYPE",
+                ini.section("TYPE").unwrap(),
+                ObjectCategory::Infantry
+            )
+            .armory()
+        );
+        let empty = IniFile::from_str("[TYPE]\n");
+        assert!(
+            !ObjectType::from_ini_section(
+                "TYPE",
+                empty.section_or_empty("TYPE"),
+                ObjectCategory::Building
+            )
+            .armory()
+        );
+    }
+
+    #[test]
+    fn barracks_flags_keep_live_defaults_across_rules_layers() {
+        use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
+        use crate::rules::ruleset::RuleSet;
+        let mut layers = RulesLayerStack::new(IniFile::from_str(
+            "[BuildingTypes]\n0=BRKS\n[BRKS]\nFactory=InfantryType\nGDIBarracks=yes\nNODBarracks=yes\n",
+        ));
+        for (kind, patch, expected) in [
+            (
+                RulesLayerKind::LangRule,
+                "[BRKS]\nName=Fixture\nNODBarracks=malformed\n",
+                (true, true, false),
+            ),
+            (
+                RulesLayerKind::GameMode,
+                "[BRKS]\nGDIBarracks=no\nYuriBarracks=yes\n",
+                (false, true, true),
+            ),
+            (
+                RulesLayerKind::Scenario,
+                "[BRKS]\nGDIBarracks=t\nNODBarracks=off\nYuriBarracks=0\n",
+                (true, true, false),
+            ),
+        ] {
+            layers.push(kind, IniFile::from_str(patch));
+            let rules = RuleSet::from_rules_layers(&layers).unwrap();
+            let object = rules.object("BRKS").unwrap();
+            assert_eq!(
+                (
+                    object.gdi_barracks(),
+                    object.nod_barracks(),
+                    object.yuri_barracks()
+                ),
+                expected,
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn retail_barracks_flags_match_whole_original_gapile_reader() {
+        // Whole original BuildingType ctor/reader for the stock GAPILE and
+        // GAPOWR in the sealed native input contract: all defaults false,
+        // GAPILE GDIBarracks=yes; later selected mode/map have no override.
+        let Some(ini) = retail_rules_ini() else {
+            return;
+        };
+        let rules = crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap();
+        for (id, expected) in [
+            ("GAPILE", (true, false, false)),
+            ("GAPOWR", (false, false, false)),
+        ] {
+            let object = rules.object(id).unwrap();
+            assert_eq!(
+                (
+                    object.gdi_barracks(),
+                    object.nod_barracks(),
+                    object.yuri_barracks()
+                ),
+                expected,
+                "[{id}]"
+            );
+        }
     }
 
     #[test]

@@ -44,6 +44,17 @@ impl InfantryEntryArgs {
     };
 }
 
+/// Fifth argument of class `Can_Enter_Cell` (+1AC). Foot4D9C10 calls the
+/// installed locomotor's +1C only for `CheckLocomotor`; every active retail
+/// interface uses the side-effect-free constant-zero55ABF0 leaf. Both modes
+/// therefore seed the same class result without changing any simulation state.
+/// Original48-call comparison: tools/spatial_oracle/foot_locomotor_entry.*.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EntryQueryMode {
+    SkipLocomotor,
+    CheckLocomotor,
+}
+
 fn level_slope(terrain: &ResolvedTerrainGrid, cell: Cell) -> (i32, u8) {
     match cell {
         Cell::Real(index) => {

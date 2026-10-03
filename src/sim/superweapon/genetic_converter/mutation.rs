@@ -23,6 +23,9 @@ const MUTATE_AOE_DAMAGE: i32 = 10_000;
 /// Complete the selected mutation batch and all replacement attempts before returning.
 /// Current immediate BRUTE ownership, placement and corpse timing are deliberate
 /// Rust compatibility policy. Native AnimToInfantry replacement remains separate.
+/// Ordinary class Unlimbo can refuse this immediate attempt against retained
+/// enemy corpses. Completing AnimToInfantry must establish its native caller
+/// timing and placement scope, not bypass the shared admission owner here.
 pub(super) fn execute(
     sim: &mut Simulation,
     rules: &RuleSet,

@@ -65,6 +65,7 @@ pub(crate) struct UninitContext<'a> {
     terrain: Option<&'a crate::map::resolved_terrain::ResolvedTerrainGrid>,
     rules: Option<&'a RuleSet>,
     registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    requested_facing: Option<u8>,
 }
 
 impl<'a> UninitContext<'a> {
@@ -77,6 +78,7 @@ impl<'a> UninitContext<'a> {
             terrain: None,
             rules,
             registry,
+            requested_facing: None,
         }
     }
 
@@ -85,6 +87,7 @@ impl<'a> UninitContext<'a> {
             terrain: None,
             rules: Some(rules),
             registry: None,
+            requested_facing: None,
         }
     }
 
@@ -99,6 +102,17 @@ impl<'a> UninitContext<'a> {
             terrain: self.terrain,
             rules: Some(rules),
             registry: self.registry,
+            requested_facing: self.requested_facing,
+        }
+    }
+
+    /// Techno Unlimbo's direction for this synchronous reveal. The caller's
+    /// raw Z stays in RevealPosition, through the existing type clamp before
+    /// Mark; successful, alive Techno6F6DAA snaps the body before idle.
+    pub(crate) const fn with_unlimbo_facing(self, requested_facing: Option<u8>) -> Self {
+        Self {
+            requested_facing,
+            ..self
         }
     }
 
@@ -143,7 +157,7 @@ pub(crate) enum PlacementEvidence {
     /// class-specific exact-zero CanEnter admission; fixed/runtime constructors
     /// use it so a later placement rejection can retain the spent constructor.
     EvaluateMark,
-    /// Object5F4F1B accepted Unit admission: either the one class +1AC
+    /// Object5F4F1B accepted Foot admission: either the one class +1AC
     /// receiver returned zero or the caller's A8E7AC scope skipped it.
     /// Query-local height/list outputs never establish the object's pose.
     UnitEntryAdmitted,
@@ -321,6 +335,8 @@ pub(crate) enum LifecycleTestEvent {
     RevealLimboCleared,
     RevealCoordinatesCommitted,
     MarkPut,
+    UnlimboBodyFacingSnapped,
+    UnlimboIdleMode,
     RawOccupationListLinked,
     HiddenOccupationEntered,
     BaseReservationMarked,
@@ -528,7 +544,7 @@ impl Simulation {
             // Paradrop's Unlimbo coordinate is the drop coordinate, which
             // SetLocation then commits whole (`0x005F5A50`): the falling
             // object keeps the Z its drop gave it.
-            return entity.position.exact_z_leptons;
+            return position.exact_z_leptons.or(entity.position.exact_z_leptons);
         }
         if entity.low_bridge_tube_state.is_some() {
             return None;
@@ -538,7 +554,7 @@ impl Simulation {
             .filter(|_| entity.category == EntityCategory::Aircraft)
             .and_then(|rules| rules.object(self.interner.resolve(entity.type_ref())));
         if aircraft_type.is_some_and(|object| object.missile_spawn) {
-            return entity.position.exact_z_leptons;
+            return position.exact_z_leptons.or(entity.position.exact_z_leptons);
         }
         let terrain = context.terrain().or(self.resolved_terrain.as_ref())?;
         let ground_z = ground_surface_z_at(xy, false, Some(terrain), None)?;
@@ -782,9 +798,20 @@ impl Simulation {
         {
             self.update_house_presence(stable_id, true);
         }
-        // Its barrel elevation writes follow. The body snap before them
-        // (`0x006F6DAA`) takes the caller's direction, so each caller makes
-        // it once this Reveal succeeds.
+        // Techno6F6DAA: only successful placement of an alive Techno snaps
+        // the body to this call's direction, before barrel elevation and idle.
+        // Its original6F6CA0 body is retained in the shared Unlimbo evidence.
+        if let Some(facing) = context.requested_facing
+            && let Some(entity) = self.substrate.entities.get_mut(stable_id)
+            && entity.lifecycle.object_alive
+        {
+            entity
+                .body_facing
+                .snap(u16::from(facing) << 8, self.session.binary_frame);
+            #[cfg(test)]
+            self.trace_lifecycle_for_test(LifecycleTestEvent::UnlimboBodyFacingSnapped);
+        }
+        // The barrel elevation writes follow the body snap (`0x006F6DC3`).
         if let Some(rules) = context.rules {
             self.unlimbo_barrel_elevation(stable_id, rules);
         }
@@ -799,7 +826,11 @@ impl Simulation {
                 .get(stable_id)
                 .is_some_and(|entity| entity.lifecycle.object_alive)
         {
-            super::foot_unlimbo_idle_mode(self, stable_id, rules);
+            #[cfg(test)]
+            if context.requested_facing.is_some() {
+                self.trace_lifecycle_for_test(LifecycleTestEvent::UnlimboIdleMode);
+            }
+            super::foot_unlimbo_idle_mode(self, stable_id, rules, context.registry());
         }
         // TechnoUnlimbo6F6E65..AD runs this second mode-one query only
         // after successful Object Mark and the +90 alive gate. A failed Mark
@@ -887,6 +918,20 @@ impl Simulation {
                 .navigation
                 .retain_threat_avoidance_after_unlimbo(object.threat_avoidance_coefficient);
         }
+        // Unit737BBE..737BD2 / Aircraft414403..414417 snap Secondary after
+        // Foot success, including dead-Techno success. The Techno body snap
+        // above has its own alive gate and precedes idle. Diagnostic callers
+        // without a direction retain the existing facing seam.
+        if let Some(facing) = context.requested_facing
+            && let Some(entity) = self.substrate.entities.get_mut(stable_id)
+            && matches!(
+                entity.category,
+                EntityCategory::Unit | EntityCategory::Aircraft
+            )
+            && let Some(barrel) = entity.barrel_facing.as_mut()
+        {
+            barrel.snap(u16::from(facing) << 8, self.session.binary_frame);
+        }
         // Unit737BF5..737C75 resets the SAME +F8 StageClass after Foot
         // success. E18/E19 are Unit-section booleans, not General references.
         // The existing owner preserves FC/110; +104 is native stack padding.
@@ -923,8 +968,8 @@ impl Simulation {
         // Techno success arm. Failed placement above must not promote +3D4.
         // RESIDUAL: the class Unlimbo tails also write what VERA does not
         // write here.
-        // - Concrete coordinate/height Unlimbo snaps both facings through
-        //   its shared caller funnel. Low-level diagnostic Reveal has no
+        // - Concrete coordinate/height Unlimbo supplies a direction to this
+        //   shared lifecycle owner. Low-level diagnostic Reveal has no
         //   direction argument and retains the existing facing seam.
         // - The Aircraft +0x6C9 latch (`0x004143F2..0x004143FC`), set when a
         //   first passenger rides at Unlimbo. Dormant: carriers take their

@@ -11,7 +11,7 @@
 //! - A finished object (`FactoryClass::IsComplete @ 0x004CA130`) whose wait
 //!   is over leaves through `Exit_Object` (`vt+0x100`: a building through
 //!   [`ai_base_building::exit_building`], any other object through
-//!   [`exit_unit`]). Placed: `Record_Last_Built @ 0x004FB6B0` and
+//!   [`exit_produced_object`]). Placed: `Record_Last_Built @ 0x004FB6B0` and
 //!   `CompletedProduction @ 0x004CA1A0`, which lets the object go, then the
 //!   factory is deleted. Try later: the wait restarts for `[General]
 //!   PlacementDelay=`. Failed: a naval building turns the house's naval
@@ -44,16 +44,13 @@
 //!   have no `Factory=`.
 //! - The try-later branch also copies an uninitialised stack word into the
 //!   timer's middle field (`+0x554`, `0x004501F1`), which no reader uses.
-//! - A unit or infantry leaves through the player's delivery
-//!   (`production_queue::deliver_produced_object`) at this building, not
-//!   through Exit_Object's arms (`0x00444137..`: refinery, weeder, naval and
-//!   land war factory, and the other factories): a unit with no exit cell
-//!   waits (try later) and an infantry with none fails, as the player's
-//!   queue does, and the arms' own answers are not read. Before the arms,
-//!   a factory that is neither `WeaponsFactory=` nor `Hospital=`/`Armory=`
-//!   (not parsed; no retail factory sets them) waits while none of its radio
-//!   links is free (`0x0065ADC0`); VERA keeps no radio links on a barracks,
-//!   so it never waits there. Trigger: every computer unit and infantry.
+//! - Mobile products share `Exit_Object443C60` through
+//!   [`exit_produced_object`], including radio capacity and Infantry GetDockCell,
+//!   Unlimbo and reciprocal tethering. The specialized refinery/weeder/naval/
+//!   war-factory arms retain their existing adapters; computer Infantry's
+//!   `House500200` order-selection arm and specialized Archive behavior remain
+//!   residuals. Trigger: those computer/specialized products. Effect: their
+//!   later mission selection can differ despite sharing admission and placement.
 //! - An aircraft docks at this airfield's free pad as the player's does;
 //!   Exit_Object's docking (`0x00443F54..`: `0x005F6060`, the dock
 //!   coordinate `vt+0xA8`, Unlimbo and the radio messages 2 and 0x18) is
@@ -63,21 +60,16 @@
 //!   too. Trigger: a computer aircraft whose airfield's pads are full.
 
 use crate::map::overlay_types::OverlayTypeRegistry;
-use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
+use crate::rules::object_type::{FactoryType, ObjectCategory};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_base_building::{self, BuildingExit};
-use crate::sim::ai_unit_choice::UnitChoiceKind;
 use crate::sim::intern::InternedId;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
 
 use super::factory::{FactoryHolder, PRODUCTION_STEPS};
 use super::factory_lifecycle::{record_last_built, settle_abandoned, start_active_production};
-use super::production_queue::deliver_produced_object;
-use super::production_spawn::{
-    ProductionDeliveryKind, ProductionSpawnSelection, free_helipad_cell,
-    spawn_selection_at_producer,
-};
+use super::production_queue::exit_produced_object;
 use super::production_tech::production_category_for_object;
 
 /// `BuildingClass::Factory_AI @ 0x004500F0` for building `building`, whose
@@ -147,15 +139,11 @@ fn exit_finished_object(
     let exit = if product_type.category == ObjectCategory::Building {
         ai_base_building::exit_building(sim, rules, building, product, overlay_registry)
     } else {
-        exit_unit(
-            sim,
-            rules,
-            building,
-            owner,
-            product,
-            product_type,
-            overlay_registry,
-        )
+        let exit = exit_produced_object(sim, rules, building, product, overlay_registry);
+        if exit == BuildingExit::Placed {
+            sim.mission_spawned_entities = true;
+        }
+        exit
     };
     match exit {
         BuildingExit::Placed => {
@@ -184,87 +172,6 @@ fn exit_finished_object(
             }
             abandon(sim, rules, building, owner);
         }
-    }
-}
-
-/// `BuildingClass::Exit_Object @ 0x00443C60`'s aircraft, unit and infantry
-/// arms (RTTI dispatch `0x00443C98`) for building `building`'s finished
-/// `product`, owned by `owner`: the house's economy steps
-/// (`EconomyStateMachine`, not a building's exit) and forgets its choice of
-/// the product's kind (the aircraft at `0x00443CB4..0x00443CCA`; a unit or
-/// infantry at `0x004440D7..0x00444131`), then the product leaves at this
-/// building (module residuals).
-#[allow(clippy::too_many_arguments)]
-fn exit_unit(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    building: u64,
-    owner: InternedId,
-    product: u64,
-    product_type: &ObjectType,
-    overlay_registry: Option<&OverlayTypeRegistry>,
-) -> BuildingExit {
-    let Some(kind) = UnitChoiceKind::of(product_type.category) else {
-        return BuildingExit::Failed;
-    };
-    ai_base_building::economy_state_machine(sim, rules, owner, false);
-    if let Some(house) = sim.houses.get_mut(&owner) {
-        house.ai_unit_choices.clear(kind);
-    }
-    let waits = product_type.category == ObjectCategory::Vehicle;
-    let (selection, airfield) = if kind == UnitChoiceKind::Aircraft {
-        let Some(cell) = free_helipad_cell(sim, rules, building) else {
-            return BuildingExit::Failed;
-        };
-        let selection = ProductionSpawnSelection {
-            producer_id: building,
-            cell,
-            delivery: ProductionDeliveryKind::Standard,
-        };
-        (selection, Some(building))
-    } else {
-        let Some(entity) = sim.substrate.entities.get(building) else {
-            return BuildingExit::Failed;
-        };
-        let producer = (
-            building,
-            entity.position.rx,
-            entity.position.ry,
-            sim.interner.resolve(entity.type_ref()),
-        );
-        let Some(selection) = spawn_selection_at_producer(
-            sim,
-            rules,
-            producer,
-            Some(&product_type.id),
-            product_type.category,
-            product_type.naval,
-        ) else {
-            return if waits {
-                BuildingExit::TryLater
-            } else {
-                BuildingExit::Failed
-            };
-        };
-        (selection, None)
-    };
-    let delivered = deliver_produced_object(
-        sim,
-        rules,
-        owner,
-        &product_type.id,
-        product,
-        selection,
-        airfield,
-        overlay_registry,
-    );
-    match delivered {
-        Some(_) => {
-            sim.mission_spawned_entities = true;
-            BuildingExit::Placed
-        }
-        None if waits => BuildingExit::TryLater,
-        None => BuildingExit::Failed,
     }
 }
 

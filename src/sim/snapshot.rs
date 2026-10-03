@@ -820,16 +820,17 @@ use crate::sim::world::Simulation;
 // 286 -> 287: Teleport's request, armed/resolved XYZ and warp adapter live
 // in its complete locomotor payload, including suspended instances. The
 // entity mirror is removed; serialization and lockstep hash layout changed.
-
 // 287 -> 288: Drive and Ship retain slope, destination, progress, speed and
 // occupation together in installed or suspended locomotor payloads. Entity
 // copies are removed; the prior layout cannot resume these instances.
-// 288 -> 289: one private Foot air owner saves the independent native+560
+// 288 -> 289: Factory changed5D and inherited Foot idle-entry6B3 retain
+// next-frame production publication and same-frame idle admission.
+// 289 -> 290: one private Foot air owner saves the independent native+560
 // tracker Cell and+564 slot-notification Cell beside its retained bucket/order.
 // These Cells affect synchronous Jumpjet callbacks and lockstep continuation;
 // neither can be reconstructed from position, phase or Cell+E0. Prior bincode
 // records lack the Cells and cannot resume the callback chain.
-const SNAPSHOT_VERSION: u32 = 289;
+const SNAPSHOT_VERSION: u32 = 290;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3830,10 +3831,10 @@ mod tests {
         // 285 -> 286: pending entry, independent repair Stage and Anim completion.
         // 286 -> 287: the complete Teleport locomotor owns resolved XYZ,
         // request byte and warp effect, including suspended instances.
-
         // 287 -> 288: complete Drive/Ship instance-owned retained state.
-        // 288 -> 289: independent Foot air tracker/slot Cells and callbacks.
-        assert_eq!(super::SNAPSHOT_VERSION, 289);
+        // 288 -> 289: Factory publication and shared Foot idle latch.
+        // 289 -> 290: independent Foot air tracker/slot Cells and callbacks.
+        assert_eq!(super::SNAPSHOT_VERSION, 290);
     }
 
     #[test]
@@ -6176,7 +6177,7 @@ mod tests {
 
         let bytes = GameSnapshot::save(&sim, 0, 0, "foot_air_caches", 0);
         let mut restored = GameSnapshot::load(&bytes)
-            .expect("v289 Foot air snapshot")
+            .expect("v290 Foot air snapshot")
             .sim;
         restored
             .restore_after_snapshot_load()

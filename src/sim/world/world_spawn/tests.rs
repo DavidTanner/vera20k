@@ -25,6 +25,346 @@ fn constructor_rules() -> RuleSet {
     .expect("constructor fixture rules parse")
 }
 
+/// Eight original51DFF0 floor/Place controls, including full Scenario buffers.
+/// The inherited native harness stops full lifecycle at Foot4D7170; these rows
+/// therefore compare this shared class placement owner, not complete Reveal.
+#[test]
+fn infantry_unlimbo_placement_matches_original_coordinate_and_rng_controls() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/infantry_unlimbo_placement_native.json"
+    ))
+    .unwrap();
+    for row in corpus["rows"].as_array().unwrap() {
+        let (mut sim, rules, _) = crate::sim::world::entry_test_fixture::fixture();
+        sim.scenario_rng =
+            SimRng::from_native_state_hex_for_test(row["rng_class_before"].as_str().unwrap());
+        let input = &row["input"];
+        let raw_z = input["raw_z"].as_i64().unwrap() as i32;
+        let bits = input["bits"].as_u64().unwrap() as u8;
+        if bits != 0 {
+            sim.substrate.raw_cell_occupation.mark_ground(15, 15, bits);
+        }
+        let native_requested = &row["class_requested_coordinate"];
+        let x = native_requested[0].as_i64().unwrap() as i32;
+        let y = native_requested[1].as_i64().unwrap() as i32;
+        let requested = RevealPosition {
+            // The104 control proves the coarse input's raw-Z comparison too.
+            exact_z_leptons: (raw_z != 104).then_some(raw_z),
+            rx: (x / 256) as u16,
+            ry: (y / 256) as u16,
+            z: raw_z.div_euclid(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS) as u8,
+            sub_x: crate::util::fixed_math::SimFixed::from_num(x % 256),
+            sub_y: crate::util::fixed_math::SimFixed::from_num(y % 256),
+        };
+        let result = if input["priority"].as_u64() == Some(0) {
+            sim.infantry_unlimbo_position(requested, Some(&rules))
+        } else {
+            sim.with_object_placement_scope(|sim| {
+                sim.infantry_unlimbo_position(requested, Some(&rules))
+            })
+        };
+        let foot = row["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|event| event[0].as_str() == Some("foot_unlimbo"));
+        assert_eq!(
+            result.is_some(),
+            row["result"].as_u64() == Some(1),
+            "{input}"
+        );
+        if let (Some(position), Some(foot)) = (result, foot) {
+            assert_eq!(
+                serde_json::json!([
+                    i32::from(position.rx) * 256 + position.sub_x.to_num::<i32>(),
+                    i32::from(position.ry) * 256 + position.sub_y.to_num::<i32>(),
+                    raw_z,
+                ]),
+                foot[2],
+                "{input}"
+            );
+        }
+        assert_eq!(
+            sim.scenario_rng.native_state_hex(),
+            row["rng_after"].as_str().unwrap(),
+            "{input}"
+        );
+        assert!(
+            !sim.object_placement_scope_active(),
+            "{input}: priority restored"
+        );
+    }
+}
+
+/// Original51DFF0/481180/578460/4525F0 frontend controls. The native fixture
+/// supplies an admitted ground building and stable Door/Mission state; Foot
+/// success is an observation seam. Compare its incoming FootXYZ and three RNG
+/// buffers, not the later class Mark or complete Gate/Infantry lifecycle.
+#[test]
+fn infantry_unlimbo_matches_native_gate_incoming_membership_and_signed_xy() {
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::mission::{MissionDispatchTimer, MissionId};
+    use crate::sim::movement::ground_pose;
+    use crate::sim::occupancy::CellListInsertion;
+
+    let corpus: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/infantry_unlimbo_gate_native.json")).unwrap();
+    assert_eq!(corpus["schema_version"], 1);
+    assert_eq!(
+        corpus["native_sha256"],
+        "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
+    );
+    let mut compared = 0;
+    for row in corpus["rows"].as_array().unwrap() {
+        // The retained -123264 control exceeds the existing Position owner's
+        // documented -32768 lower bound. It remains native-only range evidence.
+        if row["representable_frontend_input"] == false {
+            assert!(row["requested_xyz"][0].as_i64().unwrap() < -32768);
+            continue;
+        }
+        let name = row["name"].as_str().unwrap();
+        let input = &row["input"];
+        let cell = &row["cell_before"];
+        let cx = cell["coordinate"][0].as_u64().unwrap() as u16;
+        let cy = cell["coordinate"][1].as_u64().unwrap() as u16;
+        let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+            "[BuildingTypes]\n0=GAGATE_A\n[GAGATE_A]\nGate={}\nStrength=1000\nFoundation=1x1\n",
+            if row["gate_prior"]["gate_byte"] == 1 {
+                "yes"
+            } else {
+                "no"
+            }
+        )))
+        .unwrap();
+        let mut sim = Simulation::with_seed(input["seed"].as_u64().unwrap());
+        let mut terrain = ResolvedTerrainGrid::from_cells(
+            32,
+            32,
+            (0..32)
+                .flat_map(|y| {
+                    (0..32).map(move |x| {
+                        crate::sim::world::lifecycle_tests::common_raw_terrain_cell(x, y, 0, false)
+                    })
+                })
+                .collect(),
+        );
+        let selected_cell = terrain.cell_mut(cx, cy).unwrap();
+        selected_cell.level = cell["level_slope"][0].as_u64().unwrap() as u8;
+        selected_cell.slope_type = cell["level_slope"][1].as_u64().unwrap() as u8;
+        sim.install_resolved_terrain_for_new_map(terrain);
+        let fields = row["map_fields"].as_array().unwrap();
+        sim.playfield_bounds = Some(
+            crate::map::playfield::PlayfieldBounds::from_normalized_local_size(
+                fields[0].as_i64().unwrap() as i32,
+                fields[1].as_i64().unwrap() as i32,
+                fields[2].as_i64().unwrap() as i32,
+                fields[3].as_i64().unwrap() as i32,
+                fields[4].as_i64().unwrap() as i32,
+            ),
+        );
+        sim.substrate.raw_cell_occupation.mark_ground(
+            cx,
+            cy,
+            cell["ground_bits"].as_u64().unwrap() as u8,
+        );
+        if input["gate_present"] == true {
+            let owner = sim.interner.intern("Americans");
+            let ty = sim.interner.intern("GAGATE_A");
+            let mut gate = GameEntity::new_at_frame_for_test(
+                1,
+                cx,
+                cy,
+                0,
+                0,
+                owner,
+                Health { current: 1000 },
+                ty,
+                EntityCategory::Structure,
+                0,
+                0,
+                false,
+                0,
+            );
+            if row["gate_prior"]["door_state"] == serde_json::json!([0, 1]) {
+                gate.open_door(0, 0);
+                gate.advance_door(0);
+            }
+            gate.mission.apply_test_fixture(MissionTestFixture {
+                current: MissionId::from_raw(
+                    row["gate_prior"]["current_mission"].as_i64().unwrap() as i32,
+                ),
+                suspended: MissionId::NONE,
+                queued: MissionId::from_raw(
+                    row["gate_prior"]["queued_mission"].as_i64().unwrap() as i32
+                ),
+                movement_bypass_latch: 0,
+                handler_state: 0,
+                mission_start_frame: 0,
+                ai_counter: 0,
+                dispatch_timer: MissionDispatchTimer::from_raw(0, 0),
+            });
+            gate.lifecycle.in_limbo = false;
+            gate.lifecycle.cell_marked = true;
+            gate.in_playfield = true;
+            sim.substrate.entities.insert(gate);
+            sim.substrate.occupancy.add(
+                cx,
+                cy,
+                1,
+                MovementLayer::Ground,
+                None,
+                CellListInsertion::AppendBuilding,
+            );
+        }
+        sim.main_rng =
+            SimRng::from_native_state_hex_for_test(row["rng_before"]["main"].as_str().unwrap());
+        sim.scenario_rng =
+            SimRng::from_native_state_hex_for_test(row["rng_before"]["scenario"].as_str().unwrap());
+        sim.mapgen_rng =
+            SimRng::from_native_state_hex_for_test(row["rng_before"]["mapgen"].as_str().unwrap());
+        let xyz = &row["requested_xyz"];
+        let mut requested = RevealPosition {
+            exact_z_leptons: Some(xyz[2].as_i64().unwrap() as i32),
+            rx: 0,
+            ry: 0,
+            z: 0,
+            sub_x: SimFixed::ZERO,
+            sub_y: SimFixed::ZERO,
+        };
+        ground_pose::set_position_world_xy(
+            &mut requested,
+            [
+                xyz[0].as_i64().unwrap() as i32,
+                xyz[1].as_i64().unwrap() as i32,
+            ],
+        );
+        let positioned = if input["priority"] == 0 {
+            sim.infantry_unlimbo_position(requested, Some(&rules))
+        } else {
+            sim.with_object_placement_scope(|sim| {
+                sim.infantry_unlimbo_position(requested, Some(&rules))
+            })
+        };
+        assert_eq!(positioned.is_some(), row["result"] == 1, "{name}");
+        if let Some(position) = positioned {
+            let coord = ground_pose::position_world_coord(&position);
+            assert_eq!(
+                serde_json::json!([coord.x, coord.y, coord.z]),
+                row["foot_handoff"][0]["coordinate"],
+                "{name}"
+            );
+        }
+        for (stream, rng) in [
+            ("main", &sim.main_rng),
+            ("scenario", &sim.scenario_rng),
+            ("mapgen", &sim.mapgen_rng),
+        ] {
+            assert_eq!(
+                rng.native_state_hex(),
+                row["rng_after"][stream].as_str().unwrap(),
+                "{name}: {stream}"
+            );
+        }
+        assert!(
+            !sim.object_placement_scope_active(),
+            "{name}: scope restored"
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, 17);
+}
+
+/// The original5247D0 controls preserve positive raw Z and clamp-73 to0.
+/// Body snap must occur after successful Mark and before the idle callback.
+#[test]
+fn constructed_infantry_commits_raw_z_and_facing_before_idle() {
+    use crate::sim::world::lifecycle::{LifecycleTestEvent, UninitContext};
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/infantry_unlimbo_placement_native.json"
+    ))
+    .unwrap();
+    for row in corpus["rows"].as_array().unwrap() {
+        let raw_z = row["input"]["raw_z"].as_i64().unwrap() as i32;
+        let (mut sim, rules, registry) = crate::sim::world::entry_test_fixture::fixture();
+        let id = sim
+            .construct_object_limbo_at_height("ENGINEER", "Americans", 15, 15, 0, 0, &rules)
+            .unwrap();
+        sim.clear_lifecycle_test_events_for_test();
+        let request = RevealRequest {
+            position: RevealPosition {
+                exact_z_leptons: Some(raw_z),
+                rx: 15,
+                ry: 15,
+                z: 0,
+                sub_x: crate::util::lepton::CELL_CENTER_LEPTON,
+                sub_y: crate::util::lepton::CELL_CENTER_LEPTON,
+            },
+            placement: PlacementEvidence::MarkSucceeded,
+            logic_eligible: true,
+        };
+        let outcome = sim.try_reveal_entity_with_context(
+            id,
+            request,
+            UninitContext::with_rules(&rules)
+                .with_registry(Some(&registry))
+                .with_unlimbo_facing(Some(128)),
+        );
+        assert!(matches!(outcome, RevealOutcome::Revealed { .. }));
+        let entity = sim.substrate.entities.get(id).unwrap();
+        assert_eq!(
+            entity.position.exact_z_leptons,
+            Some(row["type_clamped_coordinate"][2].as_i64().unwrap() as i32)
+        );
+        assert_eq!(entity.body_facing.current(sim.session.binary_frame), 0x8000);
+        let events = sim.lifecycle_test_events_for_test();
+        let mark = events
+            .iter()
+            .position(|event| *event == LifecycleTestEvent::MarkPut)
+            .unwrap();
+        let facing = events
+            .iter()
+            .position(|event| *event == LifecycleTestEvent::UnlimboBodyFacingSnapped)
+            .unwrap();
+        let idle = events
+            .iter()
+            .position(|event| *event == LifecycleTestEvent::UnlimboIdleMode)
+            .unwrap();
+        assert!(mark < facing && facing < idle);
+
+        let failed = sim
+            .construct_object_limbo_at_height("ENGINEER", "Americans", 16, 15, 0, 0, &rules)
+            .unwrap();
+        sim.clear_lifecycle_test_events_for_test();
+        let mut refused = request;
+        refused.placement = PlacementEvidence::MarkFailed;
+        assert!(matches!(
+            sim.try_reveal_entity_with_context(
+                failed,
+                refused,
+                UninitContext::with_rules(&rules).with_unlimbo_facing(Some(128))
+            ),
+            RevealOutcome::Failed(_)
+        ));
+        assert_eq!(
+            sim.substrate
+                .entities
+                .get(failed)
+                .unwrap()
+                .body_facing
+                .current(sim.session.binary_frame),
+            0
+        );
+        assert!(
+            !sim.lifecycle_test_events_for_test()
+                .contains(&LifecycleTestEvent::UnlimboBodyFacingSnapped)
+        );
+        assert!(
+            !sim.lifecycle_test_events_for_test()
+                .contains(&LifecycleTestEvent::UnlimboIdleMode)
+        );
+    }
+}
+
 fn map_entity(type_id: &str, category: EntityCategory, cell: (u16, u16)) -> MapEntity {
     MapEntity {
         owner: "Americans".to_string(),
@@ -1127,23 +1467,29 @@ fn techno_constructor_routes_preserve_components_and_authored_overrides() {
                     assert!(entity.infantry.is_some());
                     assert!(entity.infantry_sprite_pose().is_some());
                     assert!(entity.crushable && entity.occupier && entity.immune_to_radiation);
-                    let sub_cell = entity.sub_cell.unwrap();
-                    if route == 0 {
-                        assert_eq!(sub_cell, 3);
-                    } else {
-                        assert_eq!(
-                            sub_cell,
-                            crate::sim::movement::bump_crush::FUNCTIONAL_SUB_CELLS[1]
-                        );
-                    }
                     if route == 2 {
-                        // Held Object constructor retains Location(0,0,0).
-                        // The subcell descriptor is not a placement write.
+                        assert_eq!(entity.sub_cell, None, "a held constructor reserves no spot");
                         let coord = crate::sim::movement::ground_pose::position_world_coord(
                             &entity.position,
                         );
                         assert_eq!((coord.x, coord.y, coord.z), (0, 0, 0));
                     } else {
+                        let sub_cell = entity.sub_cell.unwrap();
+                        if route == 0 {
+                            assert_eq!(sub_cell, 3);
+                        } else {
+                            assert!(
+                                crate::sim::movement::bump_crush::FUNCTIONAL_SUB_CELLS
+                                    .contains(&sub_cell)
+                            );
+                            let resident = sim
+                                .substrate
+                                .entities
+                                .values()
+                                .find(|resident| resident.stable_id() != id)
+                                .unwrap();
+                            assert_ne!(Some(sub_cell), resident.sub_cell);
+                        }
                         let (x, y) = crate::util::lepton::subcell_lepton_offset(Some(sub_cell));
                         assert_eq!((entity.position.sub_x, entity.position.sub_y), (x, y));
                     }
@@ -2071,8 +2417,12 @@ fn map_admission_uses_class_health_and_rejects_unresolved_types() {
 }
 
 #[test]
-fn rejected_authored_unlimbo_preserves_mobile_constructor_but_building_has_authored_health() {
-    let rules = signed_health_rules(100_000);
+fn authored_unlimbo_preserves_scenario_scope_and_applies_native_class_health() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../tools/spatial_oracle/object_health.json"
+    ))
+    .unwrap();
+    let rules = signed_health_rules(65_536);
     for kind in ["unit", "aircraft", "infantry", "building"] {
         let (category, name) = native_health_class(kind);
         let mut sim = Simulation::with_seed(9);
@@ -2090,18 +2440,39 @@ fn rejected_authored_unlimbo_preserves_mobile_constructor_but_building_has_autho
             )
             .unwrap()
             .unwrap();
-        assert_eq!(entity.health.current, 100_000);
+        assert_eq!(entity.category, category);
+        assert_eq!(entity.health.current, 65_536);
+        // ScenarioFullInit686B4F keeps A8E7AC raised through all map-object
+        // readers. This terrain-less diagnostic coordinate is outside the
+        // ordinary playfield gate; that gate cannot supply a false authored
+        // Unlimbo result. Original object_health/map_health supplies the
+        // arithmetic golden independently of this Rust admission regression.
+        assert!(!sim.object_placement_scope_active());
         let (id, outcome) = sim.unlimbo_authored_techno(entity, 128, Some(&rules), None);
-        assert!(!matches!(outcome, RevealOutcome::Revealed { .. }), "{kind}");
-        let rejected = sim.substrate.entities.get(id).unwrap();
-        let expected = if category == EntityCategory::Structure {
-            50_000
-        } else {
-            100_000
-        };
-        assert_eq!(rejected.health.current, expected, "{kind}");
-        assert_eq!(rejected.estimated_health.get(), expected, "{kind}");
-        assert!(rejected.lifecycle.in_limbo);
+        assert!(matches!(outcome, RevealOutcome::Revealed { .. }), "{kind}");
+        assert!(!sim.object_placement_scope_active());
+        let native = corpus["map_health"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| {
+                row["input"]["kind"] == kind
+                    && row["input"]["strength"] == 65_536
+                    && row["input"]["authored"] == 128
+            })
+            .expect("original authored-health arithmetic control");
+        let admitted = sim.substrate.entities.get(id).unwrap();
+        assert_eq!(
+            admitted.health.current,
+            native["output"]["actual"].as_i64().unwrap() as i32,
+            "{kind}"
+        );
+        assert_eq!(
+            admitted.estimated_health.get(),
+            native["output"]["estimated"].as_i64().unwrap() as i32,
+            "{kind}"
+        );
+        assert!(!admitted.lifecycle.in_limbo);
     }
 }
 

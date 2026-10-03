@@ -184,7 +184,8 @@ fn parsed_event_records_match_native_list_and_production_predicates() {
                         rules: None,
                     }),
                 )
-                .unwrap();
+                .unwrap()
+                .into_tick();
             assert!(result.frame_committed);
             assert_eq!(
                 !sim.drain_trigger_effects().is_empty(),
@@ -263,7 +264,8 @@ fn parsed_variable_actions_match_native_reader_dispatch_and_restore() {
                         rules: None,
                     }),
                 )
-                .unwrap();
+                .unwrap()
+                .into_tick();
             assert!(frame.frame_committed);
             assert_eq!(sim.trigger_runtime.globals_set, row.globals, "{}", row.raw);
             assert_eq!(sim.trigger_runtime.locals_set, row.locals, "{}", row.raw);
@@ -335,7 +337,8 @@ fn parsed_map_trigger_flags_gate_production_frames_and_survive_restore() {
                     rules: None,
                 }),
             )
-            .expect("production frame completes");
+            .expect("production frame completes")
+            .into_tick();
         assert!(frame.frame_committed);
         assert_eq!(
             sim.drain_trigger_effects(),
@@ -479,7 +482,8 @@ fn trigger_action_40_normalizes_and_refreshes_authority_same_frame() {
                 rules: None,
             }),
         )
-        .expect("fixture frame must complete");
+        .expect("fixture frame must complete")
+        .into_tick();
 
     assert_eq!(
         sim.playfield_bounds,
@@ -843,7 +847,8 @@ fn master_frame_polls_triggers_before_logic_houses_commit_and_delete() {
                 rules: None,
             }),
         )
-        .expect("fixture frame must complete");
+        .expect("fixture frame must complete")
+        .into_tick();
 
     assert!(tick.frame_committed);
     assert_eq!(
@@ -931,7 +936,8 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
             TickLane::Ordinary,
             Some(trigger_inputs),
         )
-        .expect("fixture frame must complete");
+        .expect("fixture frame must complete")
+        .into_tick();
     assert!(original.trigger_runtime.globals_set.contains(&13));
 
     let projectile_id = original.allocate_stable_id();
@@ -991,7 +997,8 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
             TickLane::Ordinary,
             Some(trigger_inputs),
         )
-        .expect("fixture frame must complete");
+        .expect("fixture frame must complete")
+        .into_tick();
     let mut replay_log = ReplayLog::new(ReplayHeader {
         pixel_conversion_bounds: Default::default(),
         version: 1,
@@ -1010,7 +1017,8 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
             TickLane::Ordinary,
             Some(trigger_inputs),
         )
-        .expect("fixture frame must complete");
+        .expect("fixture frame must complete")
+        .into_tick();
 
     assert!(original_tick.frame_committed);
     assert!(restored_tick.frame_committed);

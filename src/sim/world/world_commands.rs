@@ -1064,13 +1064,14 @@ impl Simulation {
             Command::PlaceReadyBuilding { type_id, rx, ry } => {
                 let Some(rules) = rules else { return false };
                 let type_s = self.interner.resolve(*type_id).to_string();
-                let placed = production::place_ready_building_with_overlays(
+                let placed = production::place_production_with_overlays(
                     self,
                     rules,
                     command_owner,
-                    &type_s,
-                    *rx,
-                    *ry,
+                    production::ProductionPlacement::Building {
+                        type_id: &type_s,
+                        cell: (*rx, *ry),
+                    },
                     overlay_registry,
                 );
                 if !placed {
@@ -1084,6 +1085,20 @@ impl Simulation {
                     }
                 }
                 placed
+            }
+            Command::PlaceProducedMobile { category } => {
+                let Some(rules) = rules else {
+                    return false;
+                };
+                production::place_production_with_overlays(
+                    self,
+                    rules,
+                    command_owner,
+                    production::ProductionPlacement::Mobile {
+                        category: *category,
+                    },
+                    overlay_registry,
+                )
             }
             Command::CancelProductionByType { type_id, all } => {
                 let Some(rules) = rules else { return false };

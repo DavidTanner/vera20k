@@ -800,42 +800,110 @@ const FOUNDATION_EXIT_ROWS: [[(i32, i32); 30]; 22] = [
     ], //21: 0x89dd40
 ];
 
-/// `BuildingClass::GetDockCellForObject` 0x0044EFB0 for a depot: the first
-/// exit-list cell admitted by Map InBounds568300 followed by the unit's
-/// canonical CanEnterCell(+1AC) with (cell, -1, -1, 0, 0). This deliberately
-/// uses native entry admission rather than the path-search walkability cache.
-pub fn depot_exit_cell(
+/// `BuildingClass::GetDockCellForObject @ 0x0044EFB0`: preferred flag cells,
+/// naval dock cells, offered cell, then the saved foundation row or Hospital
+/// scan. The actual producer and mover supply class facts; exact-zero class
+/// CanEnter and native map bounds admit a result, including an owned footprint.
+/// Native execution: basic-factory-exit-geometry-research, manifest
+/// eb5727a3be64ab2a0b002e2516180432c1ef783b6fc1061a7c0101d3e81fe59f.
+/// Parsed types have a saved row; native pre-ReadINI null-table objects have
+/// no registered counterpart here. Hospital uses the original generic scan.
+pub(crate) fn building_dock_cell(
     sim: &Simulation,
-    unit: u64,
-    building_rx: u16,
-    building_ry: u16,
-    foundation: &str,
+    producer_id: u64,
+    mover_id: u64,
+    offered: (i16, i16),
     rules: &RuleSet,
     registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> Option<(u16, u16)> {
-    for (dx, dy) in foundation_exit_list(foundation) {
-        // Original44F374 adds the exit offsets in signed16 cells.
-        let x = (building_rx as i16).wrapping_add(dx as i16);
-        let y = (building_ry as i16).wrapping_add(dy as i16);
-        if !sim.map_cell_in_bounds((x, y)) {
-            continue;
+    use crate::sim::movement::infantry_entry::{EntryQueryMode, InfantryEntryArgs};
+    let producer = sim.substrate.entities.get(producer_id)?;
+    let object = sim.object_type(producer.type_ref(), rules)?;
+    let location =
+        crate::sim::movement::ground_pose::object_location(producer, sim.resolved_terrain.as_ref());
+    let nw = (
+        crate::util::lepton::lepton_to_cell_packed(location.x),
+        crate::util::lepton::lepton_to_cell_packed(location.y),
+    );
+    let relative = |dx: i16, dy: i16| (nw.0.wrapping_add(dx), nw.1.wrapping_add(dy));
+    let admits = |cell, mode| {
+        sim.map_cell_in_bounds(cell)
+            && sim
+                .mover_can_enter(
+                    mover_id,
+                    cell,
+                    InfantryEntryArgs::REPAIR,
+                    mode,
+                    rules,
+                    registry,
+                )
+                .is_ok_and(|code| code == 0)
+    };
+    let published = |cell: (i16, i16)| (cell.0 as u16, cell.1 as u16);
+
+    //44EFD8/44F051/44F0CA: flags alone choose the preferred cell; there is
+    //no Infantry RTTI condition. A refused preferred cell tries the next flag.
+    for (flag, dx, dy) in [
+        (object.gdi_barracks(), 1, 2),
+        (object.nod_barracks(), 2, 2),
+        (object.yuri_barracks(), 2, 1),
+    ] {
+        let cell = relative(dx, dy);
+        if flag && admits(cell, EntryQueryMode::CheckLocomotor) {
+            return Some(published(cell));
         }
-        let terrain = sim.resolved_terrain.as_ref()?;
-        let cell = terrain.native_cell_identity((x, y));
-        if sim
-            .foot_can_enter(
-                unit,
-                cell,
-                crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
-                rules,
-                registry,
-            )
-            .ok()?
-            != 0
-        {
-            continue;
+    }
+    //44F141..44F29F calls the existing Building447B20 coordinate owner.
+    if object.naval
+        && object.weapons_factory
+        && let Some((x, y)) = crate::sim::movement::building_dock_cell(
+            &sim.substrate.entities,
+            producer_id,
+            Some(mover_id),
+            sim.resolved_terrain.as_ref(),
+            rules,
+            &sim.interner,
+        )
+    {
+        let (x, y) = (x as i16, y as i16);
+        for cell in [
+            (x.wrapping_add(1), y.wrapping_add(1)),
+            (x.wrapping_add(1), y),
+            (x, y.wrapping_add(1)),
+        ] {
+            if admits(cell, EntryQueryMode::SkipLocomotor) {
+                return Some(published(cell));
+            }
         }
-        return Some((x as u16, y as u16));
+    }
+    if offered != (0, 0) && admits(offered, EntryQueryMode::SkipLocomotor) {
+        return Some(published(offered));
+    }
+    if !object.hospital {
+        return foundation_exit_list(&object.foundation)
+            .iter()
+            .copied()
+            .map(|(x, y)| relative(x as i16, y as i16))
+            .find(|&cell| admits(cell, EntryQueryMode::SkipLocomotor))
+            .map(published);
+    }
+    //44F3B7..44F599: south/north pairs left-to-right, then east/west
+    //pairs top-to-bottom, including the corners. Both use fifthmode1.
+    let (width, height) = crate::rules::foundation::foundation_dimensions(&object.foundation);
+    let (width, height) = (width as i16, height as i16);
+    for x in -1..=width {
+        for cell in [relative(x, height), relative(x, -1)] {
+            if admits(cell, EntryQueryMode::CheckLocomotor) {
+                return Some(published(cell));
+            }
+        }
+    }
+    for y in -1..=height {
+        for cell in [relative(width, y), relative(-1, y)] {
+            if admits(cell, EntryQueryMode::CheckLocomotor) {
+                return Some(published(cell));
+            }
+        }
     }
     None
 }
@@ -1136,19 +1204,9 @@ fn release_contact(
         let Some(building) = sim.substrate.entities.get(depot) else {
             return;
         };
-        let Some(object) = sim.object_type(building.type_ref(), rules) else {
-            return;
-        };
         // Original runs the exit search before a rally overrides its answer.
-        let exit = depot_exit_cell(
-            sim,
-            unit,
-            building.position.rx,
-            building.position.ry,
-            &object.foundation,
-            rules,
-            registry,
-        );
+        // One GetDockCell44EFB0 port supplies depot and factory callers.
+        let exit = building_dock_cell(sim, depot, unit, (0, 0), rules, registry);
         depot_rally_cell(sim, building)
             .or(exit)
             .map(|(x, y)| crate::sim::components::NavTargetRef::cell(x, y))
@@ -1463,46 +1521,279 @@ mod tests {
     use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::occupancy::CellListInsertion;
 
-    /// Exit rows decoded from the 0x0045C300 initializer (rows 0x0089D368,
-    /// 0x0089D638, 0x0089D908).
+    /// Every initialized45C300 row comes from saved original execution,
+    /// including omitted/repeated entries and the empty0x0 row.
     #[test]
     fn foundation_exit_lists_match_native_rows() {
-        assert_eq!(
-            foundation_exit_list("1x1"),
-            vec![
-                (0, 1),
-                (-1, 1),
-                (1, 1),
-                (-1, 0),
-                (1, 0),
-                (0, -1),
-                (-1, -1),
-                (1, -1)
-            ]
+        let native: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/building_exit_tables_native.json"))
+                .unwrap();
+        let rows = native["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), 22);
+        for (foundation, row) in crate::rules::foundation::FOUNDATION_TABLE.iter().zip(rows) {
+            assert_eq!(
+                row["foundation_id"].as_u64(),
+                Some(u64::from(foundation.id))
+            );
+            let expected: Vec<(i32, i32)> = row["cells"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|cell| {
+                    (
+                        cell[0].as_i64().unwrap() as i32,
+                        cell[1].as_i64().unwrap() as i32,
+                    )
+                })
+                .collect();
+            assert_eq!(
+                foundation_exit_list(foundation.name),
+                expected,
+                "{}",
+                foundation.name
+            );
+        }
+    }
+
+    fn factory_exit_fixture(extra: &str) -> (Simulation, RuleSet) {
+        let flags = if extra.is_empty() {
+            "GDIBarracks=yes\n"
+        } else {
+            extra
+        };
+        let (mut sim, rules, _) =
+            crate::sim::world::entry_test_fixture::fixture_with_rules_and_fixed_art(
+                &format!(
+                    "[InfantryTypes]\n2=E1\n\
+                     [BuildingTypes]\n1=GAPILE\n2=GAPOWR\n\
+                     [E1]\nStrength=125\nSpeed=4\nSpeedType=Foot\n\
+                     Locomotor={{4A582744-9839-11d1-B709-00A024DDAFD1}}\n\
+                     [GAPILE]\nStrength=500\n{flags}\
+                     [GAPOWR]\nStrength=750\n"
+                ),
+                &IniFile::from_str("[GAPILE]\nFoundation=3x2\n[GAPOWR]\nFoundation=2x2\n"),
+            );
+        sim.playfield_size_height = Some(16);
+        spawn_exit_query_building(&mut sim, &rules, DEPOT, "GAPILE", 14, 14);
+        spawn_entity(&mut sim, 1, "E1", EntityCategory::Infantry, 14, 14, 125);
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .lifecycle
+            .in_limbo = true;
+        (sim, rules)
+    }
+
+    fn spawn_exit_query_building(
+        sim: &mut Simulation,
+        rules: &RuleSet,
+        id: u64,
+        name: &str,
+        rx: u16,
+        ry: u16,
+    ) {
+        let object = rules.object(name).unwrap();
+        spawn_entity(
+            sim,
+            id,
+            name,
+            EntityCategory::Structure,
+            rx,
+            ry,
+            object.strength,
         );
-        let three = vec![
-            (0, 3),
-            (1, 3),
-            (2, 3),
-            (-1, 3),
-            (3, 3),
-            (-1, 2),
-            (3, 2),
-            (-1, 1),
-            (3, 1),
-            (-1, 0),
-            (3, 0),
-            (0, -1),
-            (1, -1),
-            (2, -1),
-            (-1, -1),
-            (3, -1),
-        ];
-        assert_eq!(foundation_exit_list("3x3"), three);
+        sim.substrate.entities.get_mut(id).unwrap().foundation = object.foundation.clone();
+        let (width, height) = crate::rules::foundation::foundation_dimensions(&object.foundation);
+        for y in ry..ry + height {
+            for x in rx..rx + width {
+                sim.substrate.occupancy.add(
+                    x,
+                    y,
+                    id,
+                    MovementLayer::Ground,
+                    None,
+                    CellListInsertion::AppendBuilding,
+                );
+            }
+        }
+    }
+
+    /// Original geometry corpus reaches these selections with a held E1 and
+    /// actual GAPOWR obstructions; the shared class owner decides them here.
+    #[test]
+    fn gdi_exit_preferred_fallback_and_refusal_match_native() {
+        for (obstacles, expected) in [
+            (vec![], Some((15, 16))),
+            (vec![(15, 16)], Some((14, 16))),
+            (
+                vec![
+                    (13, 16),
+                    (15, 16),
+                    (17, 16),
+                    (13, 12),
+                    (15, 12),
+                    (17, 12),
+                    (12, 14),
+                    (17, 14),
+                ],
+                None,
+            ),
+        ] {
+            let (mut sim, rules) = factory_exit_fixture("");
+            for (i, (x, y)) in obstacles.iter().copied().enumerate() {
+                spawn_exit_query_building(&mut sim, &rules, 600 + i as u64, "GAPOWR", x, y);
+            }
+            let before = (
+                sim.main_rng.logical_state(),
+                sim.scenario_rng.logical_state(),
+                sim.mapgen_rng.logical_state(),
+            );
+            assert_eq!(
+                building_dock_cell(&sim, DEPOT, 1, (0, 0), &rules, None),
+                expected
+            );
+            assert_eq!(
+                before,
+                (
+                    sim.main_rng.logical_state(),
+                    sim.scenario_rng.logical_state(),
+                    sim.mapgen_rng.logical_state(),
+                )
+            );
+        }
+    }
+
+    /// NOD/Yuri/Hospital contrasts supply flags on GAPILE, matching the
+    /// native primitive coverage; they do not certify those stock objects.
+    #[test]
+    fn shared_exit_flags_offer_and_hospital_scan_match_native() {
+        for (extra, offered, expected) in [
+            ("GDIBarracks=no\nNODBarracks=yes\n", (0, 0), Some((16, 16))),
+            ("GDIBarracks=no\nYuriBarracks=yes\n", (0, 0), Some((14, 16))),
+            ("GDIBarracks=no\n", (0, 0), Some((14, 16))),
+            ("GDIBarracks=no\n", (20, 20), Some((20, 20))),
+            ("GDIBarracks=no\nHospital=yes\n", (0, 0), Some((13, 16))),
+        ] {
+            let (sim, rules) = factory_exit_fixture(extra);
+            assert_eq!(
+                building_dock_cell(&sim, DEPOT, 1, offered, &rules, None),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn shared_exit_uses_native_size_diamond_before_class_lookup() {
+        let (mut sim, rules) = factory_exit_fixture("GDIBarracks=no\n");
+        sim.substrate.entities.get_mut(DEPOT).unwrap().position.rx = 0;
+        sim.substrate.entities.get_mut(DEPOT).unwrap().position.ry = 0;
         assert_eq!(
-            foundation_exit_list("4x3"),
-            three,
-            "the binary reuses the 3x3 row for 4x3"
+            building_dock_cell(&sim, DEPOT, 1, (0, 0), &rules, None),
+            None
+        );
+        assert_eq!(
+            building_dock_cell(&sim, DEPOT, 1, (20, 20), &rules, None),
+            Some((20, 20))
+        );
+    }
+
+    /// The original depot ingress corpus applies the initialized3x3 row
+    /// to NADEPT's4x3 foundation. Unit73F0A0 rejects five exterior raw
+    /// reservations, then admits9,11 within its linked repair building.
+    /// The former occupancy proxy rejected that native result indefinitely.
+    #[test]
+    fn linked_depot_exit_admits_native_inside_footprint_result() {
+        use crate::sim::movement::infantry_entry::{EntryQueryMode, InfantryEntryArgs};
+
+        let (mut sim, rules, registry) =
+            crate::sim::world::entry_test_fixture::fixture_with_rules_and_fixed_art(
+                "[VehicleTypes]\n0=MTNK\n\
+                 [BuildingTypes]\n1=NADEPT\n\
+                 [MTNK]\nStrength=300\nSpeed=6\nSpeedType=Track\n\
+                 Locomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\
+                 [NADEPT]\nStrength=1200\nUnitRepair=yes\n\
+                 NumberOfDocks=1\nNumberImpassableRows=1\n",
+                &IniFile::from_str("[NADEPT]\nFoundation=4x3\n"),
+            );
+        sim.playfield_size_height = Some(16);
+        spawn_exit_query_building(&mut sim, &rules, DEPOT, "NADEPT", 6, 9);
+        spawn_tank(&mut sim, 1, 8, 10);
+        sim.substrate
+            .entities
+            .get_mut(DEPOT)
+            .unwrap()
+            .mark_live_contact_with(1);
+        let unit = sim.substrate.entities.get_mut(1).unwrap();
+        unit.mark_live_contact_with(DEPOT);
+        unit.set_pending_entry(Some(DEPOT));
+
+        for (x, y) in foundation_exit_list("4x3") {
+            let cell = (6 + x, 9 + y);
+            if !(6..10).contains(&cell.0) || !(9..12).contains(&cell.1) {
+                sim.substrate
+                    .raw_cell_occupation
+                    .mark_ground(cell.0 as u16, cell.1 as u16, 0x20);
+            }
+        }
+        let before = (
+            sim.main_rng.logical_state(),
+            sim.scenario_rng.logical_state(),
+            sim.mapgen_rng.logical_state(),
+        );
+        for cell in [(6, 12), (7, 12), (8, 12), (5, 12), (9, 12)] {
+            assert_eq!(
+                sim.mover_can_enter(
+                    1,
+                    cell,
+                    InfantryEntryArgs::REPAIR,
+                    EntryQueryMode::SkipLocomotor,
+                    &rules,
+                    Some(&registry),
+                ),
+                Ok(2),
+                "native raw reservation at {cell:?}"
+            );
+        }
+        assert_eq!(
+            sim.mover_can_enter(
+                1,
+                (9, 11),
+                InfantryEntryArgs::REPAIR,
+                EntryQueryMode::SkipLocomotor,
+                &rules,
+                Some(&registry),
+            ),
+            Ok(0)
+        );
+        assert_eq!(
+            building_dock_cell(&sim, DEPOT, 1, (0, 0), &rules, Some(&registry)),
+            Some((9, 11))
+        );
+        assert_eq!(
+            before,
+            (
+                sim.main_rng.logical_state(),
+                sim.scenario_rng.logical_state(),
+                sim.mapgen_rng.logical_state(),
+            )
+        );
+
+        // Supplied completed-service boundary; execute the shared original
+        // release suffix, without resurrecting the removed depot FSM.
+        release_contact(&mut sim, &rules, DEPOT, 1, false, Some(&registry));
+
+        let unit = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(unit.navigation.nav_com, Some(NavTargetRef::cell(9, 11)));
+        assert!(unit.pending_entry().is_none());
+        assert!(!unit.has_live_contact_with(DEPOT));
+        assert!(
+            sim.substrate
+                .entities
+                .get(DEPOT)
+                .unwrap()
+                .radio_contacts
+                .is_empty()
         );
     }
 
@@ -2673,17 +2964,17 @@ mod tests {
         );
     }
 
-    /// Exit-cell selection skips foundation/vehicle-blocked cells in list order.
+    /// The class entry owner, rather than a grid proxy, decides every saved row.
     #[test]
     fn exit_cell_skips_blocked_cells_in_list_order() {
         let (mut sim, rules) = setup(1);
         assert_eq!(
-            depot_exit_cell(&sim, 1, DEPOT_RX, DEPOT_RY, "3x3", &rules, None),
+            building_dock_cell(&sim, DEPOT, 1, (0, 0), &rules, None),
             Some((DEPOT_RX, DEPOT_RY + 3))
         );
         spawn_tank(&mut sim, 7, DEPOT_RX, DEPOT_RY + 3);
         assert_eq!(
-            depot_exit_cell(&sim, 1, DEPOT_RX, DEPOT_RY, "3x3", &rules, None),
+            building_dock_cell(&sim, DEPOT, 1, (0, 0), &rules, None),
             Some((DEPOT_RX + 1, DEPOT_RY + 3))
         );
     }

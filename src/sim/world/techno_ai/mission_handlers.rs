@@ -190,29 +190,8 @@ pub(crate) fn dispatch_foot_mission(
                 sim.unit_enter_idle_mode(id, Some(rules), false);
                 MissionHandlerEvaluation::cadence(1)
             } else {
-                // The arrival branch. `FootClass::Mission_Move` calls the class
-                // arrival hook and returns one frame; the hook is the ONLY
-                // thing that takes an object back off Move. Without it a
-                // finished move order leaves the unit on Move for the rest of
-                // the match, re-dispatched every single frame instead of
-                // settling onto Guard's cadence — and never eligible for the
-                // Guard-only arm of the passive-acquire gate.
-                // The arrival hook is the class Enter_Idle_Mode, whose Foot
-                // and Techno bases let a Temporal link go first (0x004D82D9
-                // -> 0x00709A54).
-                sim.temporal_release_if_warping(id);
-                // Unit EnterIdle 0x738AB4 retains pending Deploy intent;
-                // arrival must not invent Guard after a replacement Move.
-                if sim
-                    .substrate
-                    .entities
-                    .get(id)
-                    .is_some_and(|e| e.mcv_deploy_pending)
-                {
-                    MissionHandlerEvaluation::cadence(1)
-                } else {
-                    infantry_move_arrival_evaluation(rules, input)
-                }
+                sim.infantry_enter_idle_mode(id, rules, ctx.overlay_registry);
+                MissionHandlerEvaluation::cadence(1)
             }
         }
         // Unit does not override Foot Enter4D9290. Depot and refinery
@@ -337,8 +316,8 @@ pub(crate) fn dispatch_foot_mission(
                     sim.unit_enter_idle_mode(id, Some(rules), false);
                     None
                 } else {
-                    sim.temporal_release_if_warping(id);
-                    foot_enter_idle_mode_queue(rules, input)
+                    sim.infantry_enter_idle_mode(id, rules, ctx.overlay_registry);
+                    None
                 }
             };
             let cadence = jittered_mission_cadence(sim, rules, MissionType::Attack);
@@ -879,72 +858,11 @@ fn infantry_automatic_guard_delay(
     jittered_mission_cadence(sim, rules, mission)
 }
 
-/// Infantry51CBA0's represented Move-arrival selection. Units call the
-/// existing concrete Unit idle receiver instead. AreaGuard/ability and the
-/// Infantry-specific capture/sabotage arms remain with their later chains.
-fn infantry_move_arrival_evaluation(
-    rules: &RuleSet,
-    input: MissionHandlerInput,
-) -> MissionHandlerEvaluation {
-    let frozen = rules
-        .mission_control
-        .entry(MissionType::Move)
-        .is_some_and(|entry| entry.zombie || entry.paralyzed);
-    if frozen {
-        return MissionHandlerEvaluation::cadence(1);
-    }
-    let next = if input.has_attack_target {
-        MissionType::Attack
-    } else {
-        MissionType::Guard
-    };
-    MissionHandlerEvaluation::queue(1, next)
-}
-
-/// The idle-mode selector reached from the Attack handler's no-target exit.
-///
-/// `Enter_Idle_Mode` is the shared "you have nothing to do; commit the mission
-/// that says so" virtual, and both leaf overrides on this path — the Infantry
-/// one and the Unit one — begin by running the base arrival hook and then pick
-/// a replacement selector. VERA already models the *arrival* entry into it as
-/// [`infantry_move_arrival_evaluation`]; this is the same virtual entered from the other
-/// direction, so only the arms that differ are re-derived here.
-///
-/// Infantry and legacy shared callers use this selector. Unit mission exits
-/// now call the concrete Unit receiver, including its harvester branch:
-/// - **a destination is installed** → `Move`. Both leaves take it; the Infantry
-///   one substitutes Capture or Sabotage when that is the effective selector,
-///   which cannot happen from the Attack handler.
-/// - **no destination** → `Guard`, after two early returns that suppress the
-///   assignment entirely.
-///
-/// The Unit leaf additionally nulls its (already null) target and destination
-/// on the no-destination arm, and the Infantry leaf's own already-null
-/// destination write is likewise inert.
-///
-/// The early returns, each read from the leaf bodies rather than assumed:
-/// - the effective selector is already `Guard` or `Area Guard` — the object is
-///   idle, and re-assigning would restart its mission timer for free;
-/// - the effective selector's control entry carries `Zombie=` or `Paralyzed=`.
-///   `[Attack]` carries neither in stock rules, so this cannot fire from the
-///   Attack handler; it is read anyway because the gate is on the object's own
-///   selector and the same virtual is entered from other missions.
-/// - the *committed* selector is `Patrol` or `Area Guard` (the Unit leaf also
-///   excludes `Unload` and `Eaten`) — the tail gate that skips the assign.
-///
-/// Deliberately NOT represented, recorded rather than guessed:
-/// - retained AttackMove: +4AC calls Foot4DF1C0, testing saved MegaMission
-///   +5C4 against -1. The legacy OrderIntent path lacks that native field;
-///   ordinary Attack clears the saved mission in native4DF1A0. This residual
-///   belongs to retained AttackMove rather than the ordinary Attack chain.
-/// - the `Area Guard` arm of the no-destination branch. Its inputs are now
-///   identified: the GUARD_AREA ability (`HasAbility(0x10)` at `0x0051CD4B`),
-///   Type+0xD39 `DefaultToGuardArea` (`0x0051CD5A`, Unit `0x00738B96`), team
-///   membership, and for AI houses CurrentIQ against Rules+0x1440 plus the
-///   slave links. Porting it is its own mechanism (recorded in
-///   `combat/parasite.rs`); until then this commits `Guard`, consistent with
-///   [`infantry_move_arrival_evaluation`].
-/// - the AI-only sub-arms, which need a live team and a house-threat field.
+/// Scalar native-policy fixtures use the same selector as the concrete idle
+/// receivers. Production enters through `Simulation::infantry_enter_idle_mode`
+/// or `Simulation::unit_enter_idle_mode`, including the shared Foot base and
+/// their destination, timer and radio effects.
+#[cfg(test)]
 pub(super) fn foot_enter_idle_mode_queue(
     rules: &RuleSet,
     input: MissionHandlerInput,
@@ -953,35 +871,67 @@ pub(super) fn foot_enter_idle_mode_queue(
         rules,
         input.category,
         input.mission,
+        input.has_attack_target,
         input.has_destination,
         input.effective_mission,
     )
+    .queued_mission()
 }
 
-/// The Foot Enter_Idle_Mode(0,1) selection on exactly the fields it reads,
-/// applied as a deferred Queue_Mission. Used by release paths outside the
-/// mission dispatcher (a parasite owner leaving its victim, `0x0062A7A3`).
-pub(crate) fn queue_foot_enter_idle_mode(sim: &mut Simulation, id: u64, rules: &RuleSet) {
-    // `FootClass::Enter_Idle_Mode @ 0x004D82D9` -> `TechnoClass::
-    // Enter_Idle_Mode @ 0x00709A54`: a held Temporal target goes first.
-    sim.temporal_release_if_warping(id);
-    let Some(entity) = sim.substrate.entities.get(id) else {
-        return;
-    };
-    let selection = foot_enter_idle_mode_selection(
-        rules,
-        entity.category,
-        entity.mission.current().known(),
-        entity.navigation.nav_com.is_some(),
-        entity.mission.effective().known(),
-    );
-    if let Some(mission) = selection
-        && let Some(entity) = sim.substrate.entities.get_mut(id)
-    {
-        crate::sim::mission::authority::queue_entity_mission_deferred(
-            entity,
-            MissionId::from_known(mission),
+impl Simulation {
+    /// Infantry EnterIdle51CBA0 after the sole Foot4D82B0 base.
+    /// P2/P5 actual human E1 controls execute constructor-empty planning and
+    /// destination history, and stock-false DefaultToGuardArea/GUARD_AREA.
+    /// History4DA030, retained AttackMove4DF1C0 and specialized AI/slave
+    /// AreaGuard selection remain explicit sibling mechanisms, not defaults
+    /// claimed to reproduce those branches.
+    pub(crate) fn infantry_enter_idle_mode(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> bool {
+        let saved_base_return = self.foot_enter_idle_base(id, Some(rules), registry);
+        let Some(entity) = self.substrate.entities.get(id) else {
+            return saved_base_return;
+        };
+        let selection = foot_enter_idle_mode_selection(
+            rules,
+            entity.category,
+            entity.mission.current().known(),
+            entity.attack_target.is_some(),
+            entity.navigation.nav_com.is_some(),
+            entity.mission.effective().known(),
         );
+        match selection {
+            FootIdleSelection::KeepBaseReturn => {}
+            FootIdleSelection::ReturnFalse => return false,
+            FootIdleSelection::Queue(mission) => {
+                let _ = self.mission_queue_exact(
+                    id,
+                    MissionId::from_known(mission),
+                    0,
+                    self.session.binary_frame,
+                    &EntityReadyInputProvider,
+                );
+            }
+        }
+        saved_base_return
+    }
+}
+
+/// EnterIdle(0,1) through the actual class receiver, with deferred Mission
+/// assignment. Parasite/Temporal/team release paths use the same Foot base
+/// and concrete Infantry/Unit tail as Unlimbo and locomotor callbacks.
+pub(crate) fn queue_foot_enter_idle_mode(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+    match sim.substrate.entities.get(id).map(|entity| entity.category) {
+        Some(EntityCategory::Unit) => {
+            sim.unit_enter_idle_mode(id, Some(rules), false);
+        }
+        Some(EntityCategory::Infantry) => {
+            sim.infantry_enter_idle_mode(id, rules, None);
+        }
+        _ => {}
     }
 }
 
@@ -1010,7 +960,12 @@ pub(crate) fn queue_foot_enter_idle_mode(sim: &mut Simulation, id: u64, rules: &
 /// - buildings have their own Unlimbo/mission owner. Aircraft still use a
 ///   separate legacy AircraftMission producer and omit the common passive
 ///   scan; migrating that class's mission lifecycle is a separate mechanism.
-pub(crate) fn foot_unlimbo_idle_mode(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+pub(crate) fn foot_unlimbo_idle_mode(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
@@ -1023,16 +978,26 @@ pub(crate) fn foot_unlimbo_idle_mode(sim: &mut Simulation, id: u64, rules: &Rule
         sim.mission_host_promote(id, sim.session.binary_frame, rules);
         return;
     }
-    let selection = foot_enter_idle_mode_selection(
-        rules,
-        entity.category,
-        entity.mission.current().known(),
-        entity.navigation.nav_com.is_some(),
-        entity.mission.effective().known(),
-    );
-    if let Some(mission) = selection {
-        let now = sim.session.binary_frame;
-        let _ = sim.mission_assign_exact(id, MissionId::from_known(mission), now);
+    sim.infantry_enter_idle_mode(id, rules, registry);
+    sim.mission_host_promote(id, sim.session.binary_frame, rules);
+}
+
+/// One ordered selector shared by the live class receivers and scalar
+/// Mission fixtures. Native Infantry51CBCE..51CD9D; Unit's armed Guard
+/// branch uses the same mission-control/committed-selector policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FootIdleSelection {
+    KeepBaseReturn,
+    ReturnFalse,
+    Queue(MissionType),
+}
+
+impl FootIdleSelection {
+    pub(crate) fn queued_mission(self) -> Option<MissionType> {
+        match self {
+            Self::Queue(mission) => Some(mission),
+            _ => None,
+        }
     }
 }
 
@@ -1040,66 +1005,61 @@ pub(crate) fn foot_enter_idle_mode_selection(
     rules: &RuleSet,
     category: EntityCategory,
     mission: Option<MissionType>,
+    has_attack_target: bool,
     has_destination: bool,
     effective_mission: Option<MissionType>,
-) -> Option<MissionType> {
-    // The tail gate, evaluated on the committed selector.
-    let committed_blocks_assign = matches!(
-        mission,
-        Some(MissionType::Patrol) | Some(MissionType::AreaGuard)
-    ) || (category == EntityCategory::Unit
-        && matches!(
-            mission,
-            Some(MissionType::Unload) | Some(MissionType::Eaten)
-        ));
-    if committed_blocks_assign {
-        return None;
+) -> FootIdleSelection {
+    let infantry = category == EntityCategory::Infantry;
+    if effective_mission == Some(MissionType::Deliberate) {
+        return FootIdleSelection::KeepBaseReturn;
     }
-
-    if has_destination {
-        return Some(MissionType::Move);
+    let selection = if infantry && has_attack_target || has_destination {
+        if infantry
+            && matches!(
+                effective_mission,
+                Some(MissionType::Capture | MissionType::Sabotage)
+            )
+        {
+            effective_mission.expect("matched known effective mission")
+        } else if infantry && has_attack_target {
+            MissionType::Attack
+        } else {
+            MissionType::Move
+        }
+    } else {
+        // The destination/target gates precede these early returns. The
+        // committed mission indexes native5B3A00; effective only admits it.
+        let frozen = effective_mission.is_some()
+            && mission.is_some_and(|mission| {
+                rules
+                    .mission_control
+                    .entry(mission)
+                    .is_some_and(|entry| entry.zombie || entry.paralyzed)
+            });
+        if matches!(
+            effective_mission,
+            Some(MissionType::Guard | MissionType::AreaGuard)
+        ) || frozen
+        {
+            return if infantry {
+                FootIdleSelection::ReturnFalse
+            } else {
+                FootIdleSelection::KeepBaseReturn
+            };
+        }
+        // Human E1's original stock data/constructor takes Guard. AI IQ,
+        // GUARD_AREA/DefaultToGuardArea and slave selection remain recorded
+        // sibling mechanisms; this branch does not certify those inputs.
+        MissionType::Guard
+    };
+    let committed_blocks = matches!(mission, Some(MissionType::Patrol | MissionType::AreaGuard))
+        || category == EntityCategory::Unit
+            && matches!(mission, Some(MissionType::Unload | MissionType::Eaten));
+    if committed_blocks {
+        FootIdleSelection::KeepBaseReturn
+    } else {
+        FootIdleSelection::Queue(selection)
     }
-
-    if matches!(
-        effective_mission,
-        Some(MissionType::Guard) | Some(MissionType::AreaGuard)
-    ) {
-        return None;
-    }
-    // **VERA-internal, gamemd equivalent UNCHECKED — two ordering/indexing
-    // differences, both inert today.** Native is
-    // `if (effective != -1) { entry = MissionControl[*(this+0xAC)];
-    // if (entry[+7] || entry[+5]) return; }` — the *effective* mission only
-    // gates whether to look at all, while the *committed* one at `+0xAC` indexes
-    // the table. This looks the entry up on `effective_mission`. And the
-    // infantry leaf tests the destination `[this+0x5A4]` **before** the
-    // Guard/AreaGuard and Zombie/Paralyzed gates, where this tests them first.
-    //
-    // Trigger: a caller whose committed and effective missions differ, or one
-    // that reaches here with both a destination and a frozen mission. Player
-    // effect: none today. The live entries are the Attack handler's no-target
-    // exit and the parasite releases (committed == effective == Attack, and
-    // `[Attack]` carries neither key) and ChangeOwner's Enter_Idle_Mode
-    // (capture, release, engineer and garrison transfers). ChangeOwner queues
-    // Guard first, so committed can differ from effective there, but then the
-    // Guard return above answers before this gate, and native returns too: the
-    // only stock frozen entries are `[Sleep]` (Zombie) and `[Sticky]`
-    // (Paralyzed). Without the Guard queue (Selling, a Simple Deployer's
-    // Unload) the two missions agree. Frequency: zero. Downstream risk: a new
-    // producer would inherit both. (Curiosity for whoever ports it: with a
-    // current of -1 and only a queued mission, native indexes
-    // `MissionControl[-1]` — an out-of-bounds read one entry below the array.)
-    let frozen = effective_mission.is_some_and(|mission| {
-        rules
-            .mission_control
-            .entry(mission)
-            .is_some_and(|entry| entry.zombie || entry.paralyzed)
-    });
-    if frozen {
-        return None;
-    }
-
-    Some(MissionType::Guard)
 }
 
 /// `FootClass::Mission_Hunt @ 0x004D5350` — "go find something and kill it".
@@ -2112,8 +2072,8 @@ fn infantry_deployed_attack_reacquire(
     {
         return None;
     }
-    sim.temporal_release_if_warping(id);
-    foot_enter_idle_mode_queue(rules, input)
+    sim.infantry_enter_idle_mode(id, rules, ctx.overlay_registry);
+    None
 }
 
 fn attack_target_is_stale(sim: &Simulation, id: u64) -> bool {

@@ -88,6 +88,24 @@ pub(crate) const REQUIRE_RETAIL_INI_ENV: &str = "VERA20K_REQUIRE_RETAIL_INI";
 /// Archive-backed tests have a separate requirement from extracted INI tests.
 pub(crate) const REQUIRE_RETAIL_ASSETS_ENV: &str = "VERA20K_REQUIRE_RETAIL_ASSETS";
 
+/// One mechanical export of the original registered UnitReady consumers.
+/// The factory oracle owns selection and verifies this export against its
+/// complete native receipts; component tests only read the selected state.
+pub(crate) fn factory_unit_ready_native() -> serde_json::Value {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/spatial_oracle/_factory_infantry_output/fixtures/unit-ready-consumer-rust.json"
+    ))
+    .expect("mechanically selected native UnitReady fixture");
+    assert_eq!(fixture["schema"], 1);
+    for control in fixture["controls"].as_object().unwrap().values() {
+        assert_eq!(
+            control["native_sha256"],
+            "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
+        );
+    }
+    fixture
+}
+
 fn required(value: Option<&OsStr>) -> bool {
     value.is_some_and(|value| !value.is_empty() && value != "0")
 }

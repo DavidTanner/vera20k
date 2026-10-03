@@ -3,7 +3,8 @@
 
 use super::{
     BuildQueueState, ProductionCategory, build_options_for_owner, cancel_by_type_for_owner,
-    credits_for_owner, enqueue_by_type, queue_view_for_owner, suspend_production, tick_production,
+    credits_for_owner, dispatch_production_changes_for_tests, enqueue_by_type,
+    queue_view_for_owner, suspend_production,
 };
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::SpeedType;
@@ -25,15 +26,15 @@ use super::tests::{
 
 fn factory_constructor_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n0=E1\n1=E2\n\
+        "[Countries]\n0=Americans\n1=Russians\n[InfantryTypes]\n0=E1\n1=E2\n\
          [VehicleTypes]\n0=MTNK\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n0=GAPILE\n1=GAWEAP\n\
          [E1]\nCost=200\nStrength=100\nSpeed=4\nTechLevel=1\nOwner=Americans\n\
          [E2]\nCost=300\nStrength=125\nSpeed=4\nTechLevel=1\nOwner=Americans\n\
          [MTNK]\nCost=700\nStrength=300\nSpeed=6\nTechLevel=1\nOwner=Americans\n\
-         [GAPILE]\nFactory=InfantryType\n\
-         [GAWEAP]\nFactory=UnitType\n",
+         [GAPILE]\nOwner=Americans\nFactory=InfantryType\n\
+         [GAWEAP]\nOwner=Americans\nFactory=UnitType\n",
     ))
     .expect("factory constructor rules")
 }
@@ -155,22 +156,12 @@ fn busy_factory_exit_product(
 fn busy_factory_exit_attempt(
     sim: &mut Simulation,
     rules: &RuleSet,
-    owner: InternedId,
+    _owner: InternedId,
     product: u64,
 ) -> Option<u64> {
-    let producer = sim.substrate.entities.get(1).unwrap();
-    let selection = super::production_spawn::spawn_selection_at_producer(
-        sim,
-        rules,
-        (1, producer.position.rx, producer.position.ry, "GAWEAP"),
-        Some("MTNK"),
-        crate::rules::object_type::ObjectCategory::Vehicle,
-        false,
-    )
-    .unwrap();
-    super::production_queue::deliver_produced_object(
-        sim, rules, owner, "MTNK", product, selection, None, None,
-    )
+    (super::production_queue::exit_produced_object(sim, rules, 1, product, None)
+        == crate::sim::ai_base_building::BuildingExit::Placed)
+        .then_some(product)
 }
 
 fn assert_busy_factory_exit_receiver(
@@ -221,7 +212,9 @@ fn busy_factory_exit_player_uses_house_order_without_moving_primary() {
     );
     let product = busy_factory_exit_product(&mut sim, &rules, owner, false);
     let rng = sim.scenario_rng.logical_state();
-    assert!(tick_production(&mut sim, &rules));
+    assert!(dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
     assert_busy_factory_exit_receiver(&sim, &rules, product, 3);
     assert_eq!(sim.scenario_rng.logical_state(), rng);
     assert_eq!(
@@ -270,7 +263,9 @@ fn busy_factory_exit_skips_attached_different_type_and_non_guard_buildings() {
         .base_projection
         .replace_buildings_for_test(vec![1, 2, 4, 3, 5]);
     let product = busy_factory_exit_product(&mut sim, &rules, owner, false);
-    assert!(tick_production(&mut sim, &rules));
+    assert!(dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
     assert_busy_factory_exit_receiver(&sim, &rules, product, 5);
     assert_eq!(
         sim.production.factory_shadow.building_factory(2),
@@ -415,7 +410,7 @@ fn busy_factory_exit_failed_chosen_receiver_returns_once_and_restores_attachment
 }
 
 #[test]
-fn busy_factory_exit_without_an_alternate_copies_archive_and_holds_player_queue() {
+fn busy_factory_exit_without_an_alternate_refunds_player_product_and_promotes_queue() {
     let Some((mut sim, rules, owner)) = busy_factory_exit_world() else {
         return;
     };
@@ -433,23 +428,35 @@ fn busy_factory_exit_without_an_alternate_copies_archive_and_holds_player_queue(
         ProductionCategory::Vehicle,
         71,
     );
-    let next_id = sim.substrate.next_stable_object_id;
-    assert!(!tick_production(&mut sim, &rules));
-    let held = sim.substrate.entities.get(product).unwrap();
-    assert!(held.lifecycle.in_limbo);
-    assert_eq!(
-        held.archive_target(),
-        sim.substrate.entities.get(1).unwrap().archive_target()
-    );
+    let credits = sim.houses[&owner].economy.credits;
+    let refund = sim.cost_of(owner, rules.object("MTNK").unwrap(), &rules);
+    assert!(!dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
+    // ExitObject4444B3's busy return1 still copies Archive; the direct native
+    // rows below preserve that boundary. Human HousePlace4FB57F then sees
+    // producer+524zero and abandons this paid product, not the queued tail.
+    assert!(!sim.substrate.entities.contains(product));
+    assert_eq!(sim.houses[&owner].economy.credits, credits + refund);
     let factory = sim
         .production
         .factory_shadow
         .view(owner, ProductionCategory::Vehicle)
         .unwrap();
-    assert!(factory.ready);
-    assert_eq!(factory.object.unwrap().entity_id, Some(product));
-    assert_eq!(factory.queue.len(), 1);
-    assert_eq!(sim.substrate.next_stable_object_id, next_id);
+    assert!(!factory.ready);
+    assert_eq!(factory.progress, 0);
+    assert!(factory.queue.is_empty());
+    let successor = factory.object.unwrap().entity_id.unwrap();
+    assert!(successor > product);
+    assert!(
+        sim.substrate
+            .entities
+            .get(successor)
+            .unwrap()
+            .lifecycle
+            .in_limbo
+    );
+    assert!(sim.production.factory_shadow.building_factory(1).is_none());
 }
 
 #[test]
@@ -862,6 +869,202 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
             );
         }
     }
+}
+
+/// Original Strip6A8DD3 consumes Factory4C9C60's change flag, then queues
+/// PLACE6A8EB8; Event4C710B -> House4FB0E0 reveals the held GI next frame.
+/// Joined active-retail controls observe completion267/484 and PLACE268/485.
+/// Source: basic-factory-output-prerequisites-research, construction-primary,
+/// raw SHA9ff9c219b81c93fe5671b6a153073c09aa4d14c04472baeff0a5680977c1963d.
+#[test]
+fn human_mobile_completion_retains_identity_until_next_frame_place() {
+    let rules = factory_constructor_rules();
+    let mut sim = Simulation::with_seed(0xFAC7_0002);
+    sim.intern_rule_type_ids(&rules);
+    sim.resolve_type_handles(&rules);
+    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 14, 14);
+    let owner = sim.interner.get("Americans").unwrap();
+    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
+    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E2"));
+    let held = sim
+        .production
+        .factory_shadow
+        .view(owner, ProductionCategory::Infantry)
+        .unwrap()
+        .object
+        .unwrap()
+        .entity_id
+        .unwrap();
+
+    let completed_frame = (0..10_000)
+        .find(|&frame| {
+            sim.session.binary_frame = frame;
+            sim.session.tick = u64::from(frame);
+            super::publish_production_changes(&mut sim, &rules);
+            super::revalidate_and_step_factories(&mut sim, &rules);
+            let completed = sim
+                .production
+                .factory_shadow
+                .view(owner, ProductionCategory::Infantry)
+                .is_some_and(|factory| factory.ready);
+            completed
+        })
+        .expect("the paid native step ladder completes");
+    assert!(sim.pending_commands_for_tests().is_empty());
+    sim.session.tick += 1;
+    sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
+    super::publish_production_changes(&mut sim, &rules);
+    let entity = sim.substrate.entities.get(held).unwrap();
+    assert!(
+        entity.lifecycle.in_limbo,
+        "Strip emits PLACE before Unlimbo"
+    );
+    assert!(!entity.in_logic_vector);
+    let factory = sim
+        .production
+        .factory_shadow
+        .view(owner, ProductionCategory::Infantry)
+        .unwrap();
+    assert_eq!(factory.object.unwrap().entity_id, Some(held));
+    assert_eq!(factory.queue.len(), 1, "StartNextQueued follows PLACE");
+    let pending = sim.pending_commands_for_tests();
+    assert_eq!(pending.len(), 1);
+    // The next frame's prefix appends PLACE for its own event tail, after
+    // already accepted player events and before that frame's Factory sweep.
+    assert_eq!(pending[0].execute_tick, u64::from(completed_frame) + 2);
+    super::publish_production_changes(&mut sim, &rules);
+    assert_eq!(sim.pending_commands_for_tests().len(), 1);
+}
+
+/// The live app records the Strip-augmented batch; playback regenerates the
+/// same completion and must consume its recorded PLACE exactly once. The
+/// completion itself is a supplied ready prior here, covered by the paid chain.
+#[test]
+fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
+    let rules = factory_constructor_rules();
+    let make = || {
+        let mut sim = Simulation::with_seed(0xFAC7_0003);
+        sim.intern_rule_type_ids(&rules);
+        sim.resolve_type_handles(&rules);
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+        spawn_structure(&mut sim, 1, "Americans", "GAPILE", 14, 14);
+        let owner = sim.interner.get("Americans").unwrap();
+        assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
+        assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
+        assert!(
+            sim.production
+                .factory_shadow
+                .test_arm_ready(owner, ProductionCategory::Infantry)
+        );
+        // This unrelated future event belongs to the scheduler throughout both
+        // frames; admitting the prefix must not drain or retime it.
+        let future = crate::sim::command::CommandEnvelope::new(
+            owner,
+            9,
+            crate::sim::command::Command::Stop { entity_id: 999 },
+        );
+        sim.queue_command(future.clone());
+        (sim, owner, future)
+    };
+    let (mut live, owner, future) = make();
+    let held = live
+        .production
+        .factory_shadow
+        .view(owner, ProductionCategory::Infantry)
+        .unwrap()
+        .object
+        .unwrap()
+        .entity_id
+        .unwrap();
+    let rally = crate::sim::command::CommandEnvelope::new(
+        owner,
+        1,
+        crate::sim::command::Command::SetRally {
+            rx: 20,
+            ry: 20,
+            producer_ids: vec![1],
+        },
+    );
+    let mut output = live
+        .advance_app_frame(
+            std::slice::from_ref(&rally),
+            Some(&rules),
+            None,
+            67,
+            crate::sim::world::TickLane::Ordinary,
+            None,
+        )
+        .unwrap();
+    let admitted = output.take_admitted_commands();
+    assert_eq!(
+        admitted,
+        [
+            rally,
+            crate::sim::command::CommandEnvelope::new(
+                owner,
+                1,
+                crate::sim::command::Command::PlaceProducedMobile {
+                    category: ProductionCategory::Infantry,
+                },
+            )
+        ]
+    );
+    assert!(
+        !live
+            .substrate
+            .entities
+            .get(held)
+            .unwrap()
+            .lifecycle
+            .in_limbo
+    );
+    assert_eq!(
+        live.substrate.entities.get(held).unwrap().archive_target(),
+        Some(crate::sim::combat::TargetKind::Cell(20, 20))
+    );
+    let next = live
+        .production
+        .factory_shadow
+        .view(owner, ProductionCategory::Infantry)
+        .unwrap();
+    assert!(next.queue.is_empty());
+    let successor = next.object.unwrap().entity_id.unwrap();
+    assert!(
+        live.substrate
+            .entities
+            .get(successor)
+            .unwrap()
+            .lifecycle
+            .in_limbo
+    );
+    assert_eq!(live.pending_commands_for_tests(), [future.clone()]);
+
+    let (mut replay, _, _) = make();
+    let due = replay.take_due_replay_commands(admitted.clone());
+    let mut replay_output = replay
+        .advance_app_frame(
+            &due,
+            Some(&rules),
+            None,
+            67,
+            crate::sim::world::TickLane::Ordinary,
+            None,
+        )
+        .unwrap();
+    assert_eq!(replay_output.take_admitted_commands(), admitted);
+    assert_eq!(replay_output.tick.state_hash, output.tick.state_hash);
+    assert_eq!(replay.pending_commands_for_tests(), [future]);
+    assert_eq!(
+        replay
+            .production
+            .factory_shadow
+            .view(owner, ProductionCategory::Infantry)
+            .unwrap()
+            .object
+            .unwrap()
+            .entity_id,
+        Some(successor)
+    );
 }
 
 #[test]
@@ -1296,7 +1499,7 @@ fn named_skirmish_owner_uses_country_for_build_permissions() {
 fn deployed_mcv_unlocks_building_options_for_named_skirmish_owner() {
     let mut sim = Simulation::new();
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          0=AMCV\n\
          [AircraftTypes]\n\
@@ -1443,7 +1646,7 @@ fn build_time_inputs_read_owner_power_and_matching_factories() {
 fn wall_build_time_inputs_carry_the_wall_coefficient() {
     let mut sim = Simulation::new();
     let ini = IniFile::from_str(
-        "[General]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[General]\n\
              BuildSpeed=1.0\n\
              MultipleFactory=0.8\n\
              WallBuildSpeedCoefficient=0.5\n\
@@ -1527,21 +1730,19 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
         .get_mut(1)
         .unwrap()
         .set_archive_target(Some(crate::sim::combat::TargetKind::Cell(26, 21)));
-    let americans_key = sim.interner.intern("AMERICANS");
-    let americans_display = sim.interner.intern("Americans");
-    sim.houses.insert(
-        americans_key,
-        crate::sim::house_state::HouseState::new(
-            americans_display,
-            0,
-            None,
-            true,
-            super::production_types::STARTING_CREDITS,
-            10,
-        ),
+    // spawn_structure supplied the human House and registered this yard in
+    // its native base vector. Keep that identity/membership; only supply funds.
+    let americans_display = sim.interner.get("Americans").unwrap();
+    *super::credits_entry_for_owner(&mut sim, "Americans") =
+        super::production_types::STARTING_CREDITS;
+    assert!(sim.houses[&americans_display].is_human);
+    assert_eq!(
+        sim.houses[&americans_display].base_projection.buildings(),
+        &[1],
+        "the supplied producer remains in the canonical House base vector"
     );
     // Arm the native Ship-slot factory directly in the registry, then force it
-    // ready so `tick_production` spawns the destroyer this tick.
+    // ready so publication queues the destroyer's next-frame PLACE.
     arm_build_via(
         &mut sim,
         &rules,
@@ -1563,7 +1764,7 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
             .test_arm_ready(americans_display, ProductionCategory::Ship)
     );
 
-    let spawned = tick_production(&mut sim, &rules);
+    let spawned = dispatch_production_changes_for_tests(&mut sim, &rules, None);
     assert!(spawned, "completed naval production should spawn the unit");
     assert_eq!(sim.scenario_rng.logical_state(), rng_before_delivery);
 
@@ -1601,7 +1802,7 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
 fn build_options_dedupe_house_specific_sidebar_clone() {
     let mut sim = Simulation::new();
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n\
@@ -1663,8 +1864,9 @@ fn build_options_dedupe_house_specific_sidebar_clone() {
 }
 
 #[test]
-fn tick_production_advances_each_owner_queue() {
+fn published_completions_dispatch_each_owners_next_frame_place() {
     let mut sim = Simulation::new();
+    super::tests::install_infantry_delivery_fixture_map(&mut sim);
     let rules = basic_infantry_rules();
 
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
@@ -1673,7 +1875,7 @@ fn tick_production_advances_each_owner_queue() {
     let americans_id = sim.interner.intern("Americans");
     let soviet_id = sim.interner.intern("Soviet");
     // P5d: arm both factories directly in the registry, then force both to the completed-and-
-    // held state so `tick_production` delivers/spawns from that state this tick.
+    // held state, then publish and dispatch their next-frame PLACE events.
     arm_build_via(
         &mut sim,
         &rules,
@@ -1702,7 +1904,7 @@ fn tick_production_advances_each_owner_queue() {
             .test_arm_ready(soviet_id, ProductionCategory::Infantry)
     );
 
-    let spawned = tick_production(&mut sim, &rules);
+    let spawned = dispatch_production_changes_for_tests(&mut sim, &rules, None);
     assert!(spawned, "At least one queue completion should spawn");
     assert!(
         sim.production.factory_shadow.is_empty(),
@@ -1734,8 +1936,9 @@ fn tick_production_advances_each_owner_queue() {
 }
 
 #[test]
-fn tick_production_advances_multiple_queue_categories_for_same_owner() {
+fn published_completions_dispatch_multiple_categories_for_one_owner() {
     let mut sim = Simulation::new();
+    super::tests::install_infantry_delivery_fixture_map(&mut sim);
     let rules = basic_multi_queue_rules();
 
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
@@ -1743,7 +1946,7 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
 
     let americans_id = sim.interner.intern("Americans");
     // P5d: arm both category factories directly in the registry, then force both to the
-    // completed-and-held state so `tick_production` delivers them this tick.
+    // completed-and-held state, then dispatch their next-frame PLACE events.
     arm_build_via(
         &mut sim,
         &rules,
@@ -1772,7 +1975,7 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
             .test_arm_ready(americans_id, ProductionCategory::Vehicle)
     );
 
-    let spawned = tick_production(&mut sim, &rules);
+    let spawned = dispatch_production_changes_for_tests(&mut sim, &rules, None);
     assert!(spawned);
     assert!(
         sim.production.factory_shadow.is_empty(),
@@ -1809,7 +2012,7 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
 }
 
 #[test]
-fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
+fn blocked_vehicle_delivery_refunds_disposes_and_promotes_next_item() {
     let mut sim = Simulation::new();
     let rules = super::lifecycle_tests::manager_rules();
     let terrain = water_terrain(32, 32);
@@ -1839,7 +2042,7 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
         2,
     );
 
-    // Force the active (front) vehicle to ready so `tick_production` attempts delivery
+    // Supply the active vehicle's completion before its next-frame delivery
     // (which the water grid blocks).
     assert!(
         sim.production
@@ -1847,79 +2050,60 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
             .test_arm_ready(americans_id, ProductionCategory::Vehicle)
     );
 
-    let held_id_before =
+    let held = super::lifecycle_tests::held_id(&sim, americans_id, ProductionCategory::Vehicle);
+    let children = super::lifecycle_tests::children(&sim, held);
+    assert_eq!(children.len(), 3);
+    let owned = sim.owned_object_counts(americans_id).1;
+    let mut expected = sim.scenario_rng.clone();
+    let main = sim.main_rng.logical_state();
+    let mapgen = sim.mapgen_rng.logical_state();
+    // test_arm_ready supplies paid Balance0; the wallet above is its supplied
+    // post-payment balance. HousePlace4FB0E0 refunds and abandons a present producer's refused exit,
+    // then StartNextQueued constructs the next graph (4FB587..4FB62A).
+    assert!(!dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
+    assert_eq!(credits_for_owner(&sim, "Americans"), 1700);
+    for id in std::iter::once(held).chain(children) {
+        assert!(!sim.substrate.entities.contains(id));
+    }
+    let successor =
         super::lifecycle_tests::held_id(&sim, americans_id, ProductionCategory::Vehicle);
-    let children_before = super::lifecycle_tests::children(&sim, held_id_before);
-    assert_eq!(children_before.len(), 3);
-    let owned_before = sim.owned_object_counts(americans_id).1;
-    let rng_before = sim.scenario_rng.clone();
-    let allocated_before = sim.substrate.next_stable_object_id;
-    let spawned = tick_production(&mut sim, &rules);
-    assert!(
-        !spawned,
-        "blocked completed vehicle should not spawn or advance"
-    );
-    assert_eq!(
-        credits_for_owner(&sim, "Americans"),
-        1000,
-        "blocked vehicle delivery is not a failed production refund"
-    );
-
-    // The completed-held active build + its untouched FIFO tail must both persist.
-    let view = sim
+    assert!(successor > held);
+    let factory = sim
         .production
         .factory_shadow
         .view(americans_id, ProductionCategory::Vehicle)
-        .expect("vehicle factory should remain");
-    // Active (head) is the completed-held MTNK; tail still holds the one queued MTNK
-    // (head + tail == the old queue.len() of 2).
-    assert!(
-        view.object.is_some(),
-        "completed-held active build must persist"
-    );
-    assert_eq!(view.queue.len(), 1, "one queued tail item must remain");
-    // Head state is Done; its derived remaining base frames is 0 (progress == 54).
-    let active_steps_left = super::factory::PRODUCTION_STEPS
-        .saturating_sub(view.progress.min(super::factory::PRODUCTION_STEPS));
-    assert_eq!(
-        active_steps_left, 0,
-        "head is complete -> 0 remaining base frames"
-    );
-    // The projected sidebar view shows the head as Done and the tail as Queued and
-    // not started.
+        .unwrap();
+    assert_eq!(factory.progress, 0);
+    assert!(!factory.ready && factory.queue.is_empty());
+    let object = sim.substrate.entities.get(successor).unwrap();
+    assert!(object.lifecycle.in_limbo && !object.lifecycle.cell_marked);
+    super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);
+    assert_eq!(sim.main_rng.logical_state(), main);
+    assert_eq!(sim.mapgen_rng.logical_state(), mapgen);
+    assert_eq!(sim.owned_object_counts(americans_id).1, owned);
     let projected = queue_view_for_owner(&sim, &rules, "Americans");
-    assert_eq!(projected.len(), 2);
-    assert_eq!(projected[0].state, BuildQueueState::Done);
-    assert_eq!(projected[1].state, BuildQueueState::Queued);
-    assert_eq!(
-        projected[1].progress, 0,
-        "next queued item must not start while completed vehicle is pending"
-    );
-    let held_id = view
-        .object
-        .and_then(|object| object.entity_id)
-        .expect("blocked delivery retains the StartProduction identity");
-    let held = sim.substrate.entities.get(held_id).unwrap();
-    assert!(held.lifecycle.in_limbo && !held.lifecycle.cell_marked);
-    assert_eq!(sim.interner.resolve(held.type_ref), "MTNK");
+    assert_eq!(projected.len(), 1);
+    assert_eq!(projected[0].state, BuildQueueState::Building);
+    assert_eq!(projected[0].progress, 0);
+    let allocated = sim.substrate.next_stable_object_id;
     for _ in 0..3 {
-        assert!(!tick_production(&mut sim, &rules));
+        assert!(!dispatch_production_changes_for_tests(
+            &mut sim, &rules, None
+        ));
     }
     assert_eq!(
         super::lifecycle_tests::held_id(&sim, americans_id, ProductionCategory::Vehicle),
-        held_id_before
+        successor
     );
-    assert_eq!(
-        super::lifecycle_tests::children(&sim, held_id_before),
-        children_before
-    );
-    assert_eq!(sim.scenario_rng.logical_state(), rng_before.logical_state());
-    assert_eq!(sim.substrate.next_stable_object_id, allocated_before);
-    assert_eq!(sim.owned_object_counts(americans_id).1, owned_before + 0);
+    assert_eq!(sim.substrate.next_stable_object_id, allocated);
+    assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
+    assert_eq!(credits_for_owner(&sim, "Americans"), 1700);
 }
 
 #[test]
-fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item() {
+fn failed_vehicle_exit_promotes_a_fresh_identity_that_can_deliver_after_cells_clear() {
     let mut sim = Simulation::new();
     let rules = super::lifecycle_tests::manager_rules();
     let mut terrain = water_terrain(32, 32);
@@ -1956,30 +2140,36 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
         2,
     );
 
-    // Force the front vehicle to ready once. The first (blocked-grid) delivery leaves the
-    // registry untouched, so it stays ready for the later clear-grid delivery.
     assert!(
         sim.production
             .factory_shadow
             .test_arm_ready(americans_id, ProductionCategory::Vehicle)
     );
-
-    let held_id_before =
+    // test_arm_ready supplies the paid Balance0/post-payment wallet prior.
+    let refused = super::lifecycle_tests::held_id(&sim, americans_id, ProductionCategory::Vehicle);
+    let children = super::lifecycle_tests::children(&sim, refused);
+    assert_eq!(children.len(), 3);
+    let owned = sim.owned_object_counts(americans_id).1;
+    let mut expected = sim.scenario_rng.clone();
+    assert!(!dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
+    for id in std::iter::once(refused).chain(children) {
+        assert!(!sim.substrate.entities.contains(id));
+    }
+    let successor =
         super::lifecycle_tests::held_id(&sim, americans_id, ProductionCategory::Vehicle);
-    let children_before = super::lifecycle_tests::children(&sim, held_id_before);
-    assert_eq!(children_before.len(), 3);
-    let owned_before = sim.owned_object_counts(americans_id).1;
-    let rng_before = sim.scenario_rng.clone();
-    let allocated_before = sim.substrate.next_stable_object_id;
-    let blocked = tick_production(&mut sim, &rules);
-    assert!(!blocked, "first delivery attempt should remain pending");
-
-    assert_eq!(
-        super::lifecycle_tests::children(&sim, held_id_before),
-        children_before
-    );
-    assert_eq!(sim.scenario_rng.logical_state(), rng_before.logical_state());
-    assert_eq!(sim.substrate.next_stable_object_id, allocated_before);
+    assert!(successor > refused);
+    super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);
+    assert_eq!(sim.owned_object_counts(americans_id).1, owned);
+    let factory = sim
+        .production
+        .factory_shadow
+        .view(americans_id, ProductionCategory::Vehicle)
+        .unwrap();
+    assert_eq!(factory.progress, 0);
+    assert!(factory.queue.is_empty());
+    assert_eq!(credits_for_owner(&sim, "Americans"), 50_700);
     for cell in &mut terrain.cells {
         cell.is_water = false;
         cell.land_type = crate::rules::terrain_rules::LandType::Clear.as_index();
@@ -1991,109 +2181,28 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
     let clear_grid = PathGrid::from_resolved_terrain(&terrain);
     sim.resolved_terrain = Some(terrain);
     sim.path_grid = Some(std::sync::Arc::new(clear_grid));
-
-    let spawned = tick_production(&mut sim, &rules);
+    // The failed identity cannot retry. Supply completion of its newly started
+    // successor and exercise that object's own next-frame PLACE edge.
     assert!(
-        spawned,
-        "later successful delivery should consume the pending completed vehicle"
+        sim.production
+            .factory_shadow
+            .test_arm_ready(americans_id, ProductionCategory::Vehicle)
     );
-
-    let tanks = sim
-        .substrate
-        .entities
-        .values()
-        .filter(|entity| {
-            sim.interner
-                .resolve(entity.type_ref)
-                .eq_ignore_ascii_case("MTNK")
-        })
-        .count();
-    assert_eq!(
-        tanks, 2,
-        "one delivered tank and one freshly promoted limbo tank exist"
-    );
-
-    // The delivered active build is cleared and the tail MTNK is promoted into the active
-    // slot (one item left, now the active Building head with an empty tail).
-    let view = sim
-        .production
-        .factory_shadow
-        .view(americans_id, ProductionCategory::Vehicle)
-        .expect("next queued item should have started");
-    assert!(view.object.is_some(), "promoted MTNK is the active build");
-    let promoted_id = view.object.unwrap().entity_id.unwrap();
+    assert!(dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
+    let delivered = sim.substrate.entities.get(successor).unwrap();
+    assert!(!delivered.lifecycle.in_limbo && delivered.lifecycle.cell_marked);
+    assert_eq!(super::lifecycle_tests::children(&sim, successor).len(), 3);
+    assert!(!sim.substrate.entities.contains(refused));
+    assert_eq!(sim.owned_object_counts(americans_id).1, owned);
     assert!(
-        sim.substrate
-            .entities
-            .get(promoted_id)
-            .is_some_and(|entity| entity.lifecycle.in_limbo)
+        sim.production
+            .factory_shadow
+            .view(americans_id, ProductionCategory::Vehicle)
+            .is_none_or(|factory| factory.object.is_none())
     );
-    assert_eq!(
-        sim.substrate
-            .entities
-            .values()
-            .filter(|entity| {
-                sim.interner
-                    .resolve(entity.type_ref)
-                    .eq_ignore_ascii_case("MTNK")
-                    && !entity.lifecycle.in_limbo
-            })
-            .count(),
-        1
-    );
-    assert!(view.queue.is_empty(), "the FIFO tail is now empty");
-    // StartNextQueued runs Begin_Production (0x004CA60A), whose build start arms the promoted
-    // build's rate and timer at this frame; it has not stepped yet.
-    assert_eq!(view.progress, 0);
-    let promoted = sim
-        .production
-        .factory_shadow
-        .iter_insertion_ordered()
-        .into_iter()
-        .find(|f| f.owner == americans_id && f.category == ProductionCategory::Vehicle)
-        .expect("promoted factory");
-    assert!(promoted.step_rate_frames > 0);
-    assert_eq!(
-        promoted.step_timer.start_frame(),
-        sim.session.binary_frame as i32,
-        "successful delivery starts the next item at this frame"
-    );
-    // The projected sidebar view shows the single promoted item as Building.
-    let projected = queue_view_for_owner(&sim, &rules, "Americans");
-    assert_eq!(projected.len(), 1);
-    assert_eq!(projected[0].state, BuildQueueState::Building);
-    assert!(
-        !sim.substrate
-            .entities
-            .get(held_id_before)
-            .unwrap()
-            .lifecycle
-            .in_limbo
-    );
-    assert_eq!(
-        super::lifecycle_tests::children(&sim, held_id_before),
-        children_before
-    );
-    let promoted_children = super::lifecycle_tests::children(&sim, promoted_id);
-    assert_eq!(promoted_children.len(), 3);
-    assert!(
-        promoted_children
-            .iter()
-            .all(|id| !children_before.contains(id))
-    );
-    let mut expected = rng_before;
-    for id in std::iter::once(promoted_id).chain(promoted_children) {
-        assert_eq!(
-            sim.substrate
-                .entities
-                .get(id)
-                .unwrap()
-                .techno_ctor_random_word,
-            (expected.next_u32() & 0xffff) as u16
-        );
-    }
-    assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
-    assert_eq!(sim.owned_object_counts(americans_id).1, owned_before + 4);
+    assert!(queue_view_for_owner(&sim, &rules, "Americans").is_empty());
 }
 
 #[test]
@@ -2194,7 +2303,9 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
             .factory_shadow
             .test_arm_ready(americans_id, ProductionCategory::Building)
     );
-    assert!(!tick_production(&mut sim, &rules));
+    assert!(!dispatch_production_changes_for_tests(
+        &mut sim, &rules, None
+    ));
     assert_eq!(sim.production.ready_by_owner[&americans_id].len(), 1);
 
     let before_credits = credits_for_owner(&sim, "Americans");
@@ -2254,14 +2365,14 @@ fn enqueue_starts_a_build_without_money_and_debits_nothing() {
 
 fn hold_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
-        "[General]\nMaximumQueuedObjects=2\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[General]\nMaximumQueuedObjects=2\n\
          [InfantryTypes]\n\
          [VehicleTypes]\n0=MTNK\n1=AMCV\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n0=GAWEAP\n\
          [MTNK]\nCost=700\nStrength=300\nSpeed=6\nTechLevel=1\nOwner=Americans\n\
          [AMCV]\nCost=3000\nStrength=1000\nSpeed=4\nTechLevel=1\nOwner=Americans\nBuildLimit=1\n\
-         [GAWEAP]\nFactory=UnitType\n",
+         [GAWEAP]\nOwner=Americans\nFactory=UnitType\n",
     ))
     .expect("hold rules")
 }

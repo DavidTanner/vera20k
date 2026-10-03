@@ -313,6 +313,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
                 self.stable_id,
                 cell,
                 InfantryEntryArgs::REPAIR,
+                crate::sim::movement::infantry_entry::EntryQueryMode::CheckLocomotor,
                 rules,
                 self.registry,
             ),

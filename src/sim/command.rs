@@ -616,6 +616,10 @@ pub enum Command {
     /// frame. The dialog emits only the stored range 0..=6; live network opcode
     /// 0x0D keeps its separate EventClass-tail timing when networking is added.
     SetGameSpeed { speed: u8 },
+    /// Strip6A8EB8's mobile PLACE event. House4FB0E0 resolves the category's
+    /// current completed head at execution; native carries type_index=-1,
+    /// with no product identity or nonce. Appended to preserve saved indices.
+    PlaceProducedMobile { category: ProductionCategory },
 }
 
 /// Command with deterministic execution metadata.

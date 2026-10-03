@@ -157,6 +157,7 @@ import json
 import os
 import sys
 from collections import deque
+from types import MappingProxyType
 from unicorn import UC_HOOK_MEM_INVALID, UC_HOOK_MEM_WRITE
 from unicorn.x86_const import UC_X86_REG_EBX, UC_X86_REG_EDX, UC_X86_REG_EBP, UC_X86_REG_EIP
 from tools.spatial_oracle import building_construction as construction
@@ -174,14 +175,44 @@ REPAIR_READ_BEGIN, REPAIR_READ_END = 0x669C59, 0x669CA9
 class NativeAudioPlatform:
     """Raw-file/Win32/DirectSound transport; every native audio decision runs.
 
-    Opaque device buffers are byte storage. Their prior playback cursors stay
-    zero for the initial scheduler visit; no mixer thread/device progression
-    is claimed. CRT malloc/free route to the existing owning arena hook.
+    Opaque device buffers are byte storage. Legacy controls keep zero cursors;
+    configured controls admit explicit OS frequency/counter/status/cursors and
+    immutable file bytes. Native409360 clock math, worker4095B0, codecs, queues
+    and callbacks execute. Caller visits retain the worker across the original
+    Sleep40983E seam through this owner's callsite transport; real concurrency
+    and hardware progression are excluded. CRT malloc/free use the existing
+    owning arena hook. See _factory_infantry_output/consumer-meta.json.
     """
     def __init__(self, owner, root):
         self.owner, self.root = owner, root
         self.files, self.calls, self.methods, self.buffers = {}, [], {}, {}
         self.cursor, self.hardware_mapped = 0x32010000, False
+        self.prepared_files = MappingProxyType({})
+        self.os_clock, self.os_device = None, None
+        self.critical_calls = frozenset()
+        self.clock_calls, self.file_io, self.device_io = [], [], []
+        self.device_stop_updates_status = False
+
+    def configure_transport(self, *, prepared_files=None, clock=None,
+                            device=None, critical_calls=None):
+        """Admit raw OS inputs; native readers, clocks and consumers still run.
+
+        Files are immutable bytes selected/pinned by the caller. Clock values
+        are raw QPF/QPC inputs, not converted milliseconds. Device values are
+        explicit OS status/cursors. Existing controls retain their zero-cursor
+        and unsupported-clock defaults unless these inputs are configured.
+        """
+        if prepared_files is not None:
+            values = {str(name).lower(): bytes(raw) for name, raw in prepared_files.items()}
+            if len(values) != len(prepared_files):
+                raise ValueError('Case-colliding prepared RawFile names')
+            self.prepared_files = MappingProxyType(values)
+        if clock is not None:
+            self.os_clock = clock
+        if device is not None:
+            self.os_device = device
+        if critical_calls is not None:
+            self.critical_calls = frozenset(critical_calls)
 
     def string(self, pointer):
         raw = bytearray()
@@ -219,15 +250,41 @@ class NativeAudioPlatform:
 
     def hook(self, u, pc, size):
         sp, read = u.reg_read(UC_X86_REG_ESP), self.owner.read32
+        if self.os_clock is not None and pc in (0x409368, 0x4093C8):
+            pointer = read(sp)
+            value = self.os_clock['frequency' if pc == 0x409368 else 'counter']
+            if not 0 <= value < 1 << 64:
+                raise ValueError('QPF/QPC input outside unsigned QWORD')
+            u.mem_write(pointer, struct.pack('<Q', value))
+            self.clock_calls.append(dict(phase=self.owner.phase, pc=f'0x{pc:08X}',
+                kind='QueryPerformanceFrequency' if pc == 0x409368 else 'QueryPerformanceCounter',
+                destination=pointer, value=value, os_success=1))
+            self.callsite(pc, size, [pointer], 1)
+            return True
+        if pc in self.critical_calls or (self.os_device is not None and pc in (0x4095F5, 0x409828)):
+            args = [read(sp)]
+            if pc in (0x4095F5, 0x409828):
+                self.device_io.append(dict(phase=self.owner.phase, pc=f'0x{pc:08X}',
+                    kind='EnterCriticalSection' if pc == 0x4095F5 else 'LeaveCriticalSection',
+                    args=args, single_threaded=True))
+            self.callsite(pc, size, args, 0)
+            return True
         if pc in (0x7C9430, 0x7C93E8):
             u.reg_write(UC_X86_REG_EIP, 0x7C8E17 if pc == 0x7C9430 else 0x7C8B3D)
             return True
         if pc in (0x65CC59, 0x65CBBB):
             args = list(struct.unpack('<7I', u.mem_read(sp, 28)))
-            name = self.string(args[0]).lower()
-            assert name in ('audio.idx', 'audio.bag'), name
+            requested_name = self.string(args[0])
+            name = requested_name.lower()
+            if name not in ('audio.idx', 'audio.bag') and name not in self.prepared_files:
+                raise ValueError('Unadmitted RawFile name: ' + name)
             handle = len(self.files) + 1
-            self.files[handle] = dict(name=name, raw=(self.root / name).read_bytes(), position=0)
+            raw = self.prepared_files[name] if name in self.prepared_files else (self.root / name).read_bytes()
+            self.files[handle] = dict(name=name, raw=raw, position=0)
+            if name in self.prepared_files:
+                self.file_io.append(dict(phase=self.owner.phase, pc=f'0x{pc:08X}',
+                    kind='CreateFile', name=requested_name, args=args, result=handle,
+                    bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest(), prepared_physical_winner=True))
             self.callsite(pc, 6, args, handle)
             return True
         if pc in (0x65CC31, 0x65CC6F, 0x65CA17, 0x65CCB0):
@@ -240,12 +297,18 @@ class NativeAudioPlatform:
             handle, destination, length, read_pointer, overlap = args
             assert not overlap
             entry = self.files[handle]
+            position = entry['position']
             raw = entry['raw'][entry['position']:entry['position'] + length]
             entry['position'] += len(raw)
             if raw:
                 u.mem_write(destination, raw)
             u.mem_write(read_pointer, dwords(len(raw)))
             self.callsite(pc, 6, args, 1)
+            if self.prepared_files:
+                self.file_io.append(dict(phase=self.owner.phase, pc=f'0x{pc:08X}',
+                    kind='ReadFile', name=entry['name'], args=args, offset_before=position,
+                    offset_after=entry['position'], reported_bytes=len(raw), returned_bytes_hex=raw.hex(),
+                    source_sha256=hashlib.sha256(entry['raw']).hexdigest()))
             return True
         if pc in (0x65CF8B, 0x65CFD4, 0x65D030, 0x65D0A5):
             args = list(struct.unpack('<4I', u.mem_read(sp, 16)))
@@ -282,8 +345,8 @@ class NativeAudioPlatform:
             return False
         kind, method = self.methods[pc]
         count = {('dsound', 3): 4, ('dsound', 4): 2, ('dsound', 6): 3}.get(
-            (kind, method), {2: 1, 4: 3, 11: 8, 12: 4, 13: 2, 14: 2,
-                             15: 2, 16: 2, 17: 2, 18: 2, 19: 5}.get(method))
+            (kind, method), {2: 1, 4: 3, 9: 2, 11: 8, 12: 4, 13: 2, 14: 2,
+                             15: 2, 16: 2, 17: 2, 18: 1, 19: 5}.get(method))
         assert count is not None, (kind, method)
         args = list(struct.unpack('<' + str(count) + 'I', u.mem_read(sp + 4, count * 4)))
         if kind == 'dsound' and method == 3:
@@ -293,8 +356,40 @@ class NativeAudioPlatform:
         elif kind == 'dsound' and method == 4:
             assert read(args[1]) >= 4  # zero-filled capabilities supplied by device.
         elif kind == 'buffer' and method == 4:
-            u.mem_write(args[1], dwords(0))
-            u.mem_write(args[2], dwords(0))
+            cursors = [self.os_device['play_cursor'], self.os_device['write_cursor']] if self.os_device else [0, 0]
+            u.mem_write(args[1], dwords(cursors[0]))
+            u.mem_write(args[2], dwords(cursors[1]))
+            if self.os_device is not None:
+                self.device_io.append(dict(phase=self.owner.phase, pc=f'0x{pc:08X}',
+                    caller=f'0x{read(sp):08X}', kind='IDirectSoundBuffer::GetCurrentPosition',
+                    args=args, play_cursor=cursors[0], write_cursor=cursors[1], os_success=0))
+                self.calls.append(dict(method='buffer:4', args=args, result=0, os_cursors=cursors))
+                self.owner.ret(0, count * 4)
+                return True
+        elif kind == 'buffer' and method == 9:
+            if self.os_device is None:
+                raise ValueError('GetStatus requires explicit OS device input')
+            status = self.os_device['value']
+            u.mem_write(args[1], dwords(status))
+            self.device_io.append(dict(phase=self.owner.phase, pc=f'0x{pc:08X}',
+                caller=f'0x{read(sp):08X}', kind='IDirectSoundBuffer::GetStatus', args=args,
+                status=status, os_success=0))
+            self.calls.append(dict(method='buffer:9', args=args, result=0, os_status=status))
+            self.owner.ret(0, count * 4)
+            return True
+        elif kind == 'buffer' and method == 18:
+            # Original40A62B pushes only its COM receiver before vt+48.
+            self.calls.append(dict(method='buffer:18', args=args, result=0,
+                                   abi='original40A62B_receiver_only'))
+            if self.device_stop_updates_status:
+                if self.os_device is None:
+                    raise ValueError('Stop status transition needs an OS device')
+                self.os_device['value'] = 0
+                self.device_io.append(dict(phase=self.owner.phase, pc=f'0x{pc:08X}',
+                    caller=f'0x{read(sp):08X}', kind='IDirectSoundBuffer::Stop', args=args,
+                    os_success=0, os_playing_status_after=0))
+            self.owner.ret(0, count * 4)
+            return True
         elif kind == 'buffer' and method == 11:
             this, offset, length, out1, len1, out2, len2, flags = args
             data, capacity = self.buffers[this]

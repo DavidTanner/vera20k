@@ -1178,6 +1178,68 @@ mod tests {
         }
     }
 
+    /// House4FB627..649 calls named EVA752700 only when client kind6
+    /// insertion accepts. The actual client lifecycle is compared separately
+    /// in radar_events_tests; this boundary receives those recorded returns.
+    #[test]
+    fn unit_ready_dispatch_preserves_native_client_gate_and_local_listener() {
+        use crate::sim::radar::{RadarEventRequest, RadarEventType};
+
+        let fixture = crate::rules::retail_ini_fixture::factory_unit_ready_native();
+        let suffix = fixture["controls"]["cadence"]["registered_prior"]["notification_suffix"]
+            .as_array()
+            .unwrap();
+        let native_voice_calls: Vec<bool> = suffix
+            .iter()
+            .map(|row| {
+                row["original_call_order"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|pc| pc == "0x00752700")
+            })
+            .collect();
+        let rules = dispatch_rules();
+        let mut sim = Simulation::new();
+        let local = sim.interner.intern("Local");
+        let remote = sim.interner.intern("Remote");
+        let request = RadarEventRequest::new(RadarEventType::UnitReady, 15, 15);
+        let event = |owner| SimSoundEvent::UnitComplete {
+            owner,
+            radar: request,
+        };
+        let mut admitted = Vec::new();
+        let mut gate = |actual| {
+            assert_eq!(actual, request);
+            let result = native_voice_calls[admitted.len()];
+            admitted.push(actual);
+            result
+        };
+        let mut random = ScriptedRandom::default();
+        let mut output = SoundEventQueue::new();
+        dispatch_sim_sound_events(
+            [event(remote), event(local), event(local)],
+            &sim,
+            &rules,
+            Some("LOCAL"),
+            Some(&mut random),
+            &mut gate,
+            &mut output,
+        );
+        assert_eq!(admitted.len(), suffix.len());
+        assert!(random.calls.is_empty(), "native notification spends no RNG");
+        let emitted = output.drain();
+        assert_eq!(
+            emitted.len(),
+            native_voice_calls.iter().filter(|called| **called).count()
+        );
+        let expected = suffix[0]["after"]["selected"][0]["name"].as_str().unwrap();
+        assert!(matches!(
+            &emitted[0],
+            GameSoundEvent::Eva { event, type_override: None } if event == expected
+        ));
+    }
+
     #[test]
     fn dispatcher_preserves_batch_and_multi_cue_order_and_listener_gates() {
         let rules = dispatch_rules();

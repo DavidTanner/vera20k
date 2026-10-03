@@ -12,8 +12,8 @@ use std::collections::BTreeSet;
 
 const PROFILE_V1: &str = "vera20k.map-observation-profile.v1";
 const PROFILE_V2: &str = "vera20k.map-observation-profile.v2";
-const CHILD_SCHEMA: &str = "vera20k.map-observation.v6";
-const OBSERVATION_POLICY: &str = "map-ordinary-command-observation-v3";
+const CHILD_SCHEMA: &str = "vera20k.map-observation.v7";
+const OBSERVATION_POLICY: &str = "map-ordinary-command-observation-v4";
 const MAX_COMMANDS: usize = 1024;
 const MAX_OBSERVED_OWNERS: usize = 30;
 const MAX_OBSERVED_TYPES: usize = 256;
@@ -159,6 +159,7 @@ impl MapCaptureProfile {
                         | Command::ForceAttack { .. }
                         | Command::Guard { .. }
                         | Command::DeployMcv { .. }
+                        | Command::SetRally { .. }
                         | Command::ForceAttackCell { .. }
                         | Command::QueueProduction { .. }
                         | Command::PlaceReadyBuilding { .. }
@@ -780,6 +781,20 @@ impl TacticalCaptureSession {
                         };
                     let tracker_cell = entity.air_tracker_cell();
                     let slot_cell = entity.air_slot_cell();
+                    // Read the active Walk owner's retained coordinates and
+                    // moving byte. Nav and fresh ground samples cannot stand
+                    // in for its paid head or destination; other active classes
+                    // and absent locomotors explicitly have no Walk observation.
+                    let walk = entity.locomotor.as_ref().filter(|locomotor| {
+                        locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Walk
+                    });
+                    let walk_head_leptons: Option<[i32; 3]> = walk
+                        .and_then(|walk| walk.step_head())
+                        .map(|coord| [coord.x, coord.y, coord.z]);
+                    let walk_destination_leptons: Option<[i32; 3]> = walk
+                        .and_then(|walk| walk.walk_destination())
+                        .map(|coord| [coord.x, coord.y, coord.z]);
+                    let walk_is_moving: Option<bool> = walk.and_then(|walk| walk.walk_is_moving());
                     Some(json!({
                         "pending_entry_500": entity.pending_entry(),
                         "retarget_after_stop_688": entity.foot_retarget_after_stop(),
@@ -802,6 +817,9 @@ impl TacticalCaptureSession {
                             "slot_cell_slot_holder": sim.substrate.air_slots.holder(
                                 slot_cell.0 as u16, slot_cell.1 as u16),
                         },
+                        "walk_head_leptons": walk_head_leptons,
+                        "walk_destination_leptons": walk_destination_leptons,
+                        "walk_is_moving": walk_is_moving,
                     }))
                 } else {
                     None
@@ -1590,5 +1608,66 @@ mod tests {
         );
         assert_eq!(profile.ticks, 0);
         assert_eq!(profile.observe_owners(), ["Computer1", "Computer2"]);
+    }
+
+    #[test]
+    fn barracks_output_example_preserves_opening_and_queues_two_gis_in_order() {
+        let profile: MapCaptureProfile = serde_json::from_str(include_str!(
+            "../../../../tools/map_observation.barracks-output.example.json"
+        ))
+        .unwrap();
+        let opening: MapCaptureProfile = serde_json::from_str(include_str!(
+            "../../../../tools/map_observation.building-opening.example.json"
+        ))
+        .unwrap();
+        profile.validate().unwrap();
+        assert_eq!(profile.launch, opening.launch);
+        assert_eq!(profile.seed, opening.seed);
+        assert_eq!(profile.input_delay_ticks, opening.input_delay_ticks);
+        assert_eq!(profile.observe_owners(), opening.observe_owners());
+        assert_eq!(profile.camera_cell, opening.camera_cell);
+        assert_eq!(profile.terrain_cells(), opening.terrain_cells());
+        assert!(profile.ticks > opening.ticks);
+        let previous = opening.commands();
+        let commands = profile.commands();
+        assert_eq!(commands.len(), previous.len() + 1);
+        for (observed, prior) in commands.iter().zip(previous) {
+            assert_eq!(
+                serde_json::to_value(observed).unwrap(),
+                serde_json::to_value(prior).unwrap()
+            );
+        }
+        let first_gi = previous.last().unwrap();
+        assert!(matches!(first_gi.payload, Command::QueueProduction { .. }));
+        assert_eq!(
+            serde_json::to_value(commands.last().unwrap()).unwrap(),
+            serde_json::to_value(first_gi).unwrap(),
+            "two equal-step ordinary PRODUCE commands preserve queue insertion order"
+        );
+        assert!(
+            commands
+                .iter()
+                .all(|command| !matches!(command.payload, Command::SetRally { .. })),
+            "the default route exercises the constructor-empty Archive path"
+        );
+    }
+
+    #[test]
+    fn rally_profile_reuses_literal_command_serde_and_rejects_ignored_fields() {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../../../tools/map_observation.barracks-output.example.json"
+        ))
+        .unwrap();
+        // Syntax-only supplied producer identity: the ordinary command owner
+        // still validates actual ownership/presence at runtime. No diagnostic
+        // Archive mutation or caller-specific rally setter is introduced.
+        let rally = json!({"issue_after_step": 1159, "owner": "VERA-OBSERVER",
+            "payload": {"SetRally": {"rx": 30, "ry": 86, "producer_ids": [17]}}});
+        value["commands"].as_array_mut().unwrap().insert(5, rally);
+        let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
+        profile.validate().unwrap();
+        assert_eq!(serde_json::to_value(profile).unwrap(), value);
+        value["commands"][5]["payload"]["SetRally"]["ignored"] = json!(true);
+        assert!(serde_json::from_value::<MapCaptureProfile>(value).is_err());
     }
 }
