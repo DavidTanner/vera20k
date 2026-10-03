@@ -51,6 +51,12 @@ decoded graph: a generally edited `PcodeSyntaxTree` may also contain dead operat
 outside its blocks. The comparison tool uses the block export and still requires
 complete reads and native frame checks.
 
+In installed GhidraMCP 5.14.2 with Ghidra 12.1.2, `clone_data_type` can rename a
+stored function definition instead of creating an independent copy. The handler
+calls `source.clone(current_manager)` and then `setName`; both
+`FunctionDefinitionDB` and `FunctionDefinitionDataType` return the original object
+when cloned into their own manager. Do not use this route to fork a callback type.
+
 ## Interpret evidence
 
 - Names, signatures and pseudocode are interpretations. Resolve consequential
