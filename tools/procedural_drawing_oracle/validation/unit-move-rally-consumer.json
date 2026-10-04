@@ -1,0 +1,123 @@
+{
+  "status": "PASS",
+  "control_run": "logs/procedural-drawing/rally-clear-v4",
+  "candidate_run": "logs/procedural-drawing/rally-clear-unit-move-v1",
+  "compared_pixels": 480000,
+  "state_boundaries": 1501,
+  "identical_frame_sha256": "2c0d473797443e112299954f78f165313ff2b5085eee29741b4e0419cfa800df",
+  "identical_observations_sha256": "6cadf07af9b44a4318c818e5bf56d7e1f0a2168245af229ecef6d8191850dc69",
+  "candidate_validation": {
+    "schema_version": "vera20k.map-observation-validation.v1",
+    "status": "VALID",
+    "checked_at_utc": "2026-10-04T00:29:07.033706Z",
+    "errors": [],
+    "native_comparator": "NONE",
+    "parity_certification": "NONE",
+    "run": {
+      "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-unit-move-v1/run.json",
+      "byte_length": 20096423,
+      "sha256": "7465f8f8e4599b57a829e8d4af8aa2abf5bac3b5fe5dc1b9f64377ca16608a15"
+    },
+    "inputs": {
+      "profile": {
+        "byte_length": 5621,
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/profile.json",
+        "sha256": "479a15285c4a2c4406c603cc1a5f267312329e09d2cca1876ccfea9e585a9318"
+      },
+      "config": {
+        "byte_length": 596,
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+        "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+      },
+      "contract": {
+        "byte_length": 590,
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+        "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+      },
+      "executable": {
+        "byte_length": 31869216,
+        "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+        "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+      }
+    },
+    "input_provenance": {
+      "profile": "SEALED_COPY",
+      "config": "SEALED_COPY",
+      "contract": "SEALED_COPY",
+      "executable": "EXTERNALLY_REVALIDATED"
+    },
+    "capture": {
+      "manifest": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-unit-move-v1/child-output/capture.json",
+        "byte_length": 20099718,
+        "sha256": "9c9dfdab7df2969f90071800ee15ae2862f3ca0ed28d83a33dd3f181d1542269"
+      },
+      "frame": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-unit-move-v1/child-output/frame.bgra",
+        "byte_length": 1920000,
+        "sha256": "2c0d473797443e112299954f78f165313ff2b5085eee29741b4e0419cfa800df"
+      },
+      "map_source": {
+        "entry_id": -854728974,
+        "kind": "mix",
+        "logical_name": "XMP03T4.MAP",
+        "payload_len": 156269,
+        "source_archive": "multimd.mix",
+        "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+      },
+      "initial": {
+        "binary_frame": 0,
+        "deterministic_state_hash": 3115043356402336864,
+        "simulation_tick": 0,
+        "total_simulation_ms": 0
+      },
+      "final": {
+        "binary_frame": 1500,
+        "deterministic_state_hash": 8122975871949696747,
+        "simulation_tick": 1500,
+        "total_simulation_ms": 33000
+      },
+      "exact_step_count": 1500,
+      "unit_atlas": {
+        "last_build_rasterized_sprite_count": 18432,
+        "pages": [
+          {
+            "dimension": "D2",
+            "extent": [
+              6293,
+              6366,
+              1
+            ],
+            "format": "R8Uint",
+            "mip_level_count": 1,
+            "sample_count": 1,
+            "texel_payload_bytes": 40061238
+          }
+        ],
+        "resident_sprite_count": 18432,
+        "total_texel_payload_bytes": 40061238
+      },
+      "cursor_position": [
+        720.0,
+        556.0
+      ],
+      "frame_wall_mean_ms": 8.43075180053711,
+      "neutral_input": {
+        "camera_input_idle": true,
+        "static_default_cursor": true
+      },
+      "camera": {
+        "requested_cell": [
+          28,
+          88
+        ],
+        "top_left": [
+          -2100.0,
+          1426.0
+        ],
+        "zoom": 1.0
+      }
+    }
+  },
+  "scope": "Current Move-chain release versus retained rally v4: exact complete frame and all ordinary observations. Native rally and frame bytes are already retained in production-validation. This does not establish other scenes."
+}

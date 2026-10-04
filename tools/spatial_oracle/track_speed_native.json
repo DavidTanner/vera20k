@@ -1375,6 +1375,832 @@
       }
     }
   ],
+  "order_histories": [
+    {
+      "input": {
+        "accelerates": false,
+        "applied": 1.0,
+        "crate": 1.0,
+        "elite_faster": false,
+        "family": "drive",
+        "faster": true,
+        "flag_owner": -1,
+        "frame": 100,
+        "house": 1.0,
+        "ini_speed": 7,
+        "rank": 0.0,
+        "raw": 17,
+        "residual": 0,
+        "selector": 1,
+        "target_cell": [
+          11,
+          10
+        ],
+        "target_fraction": 1.0,
+        "veteran": 1.2000000476837158
+      },
+      "steps": [
+        {
+          "current_speed": 17,
+          "forced": false,
+          "prefix_budget": 17,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 0,
+          "rank_events": [],
+          "rng_calls": [],
+          "setter_events": [
+            "unit",
+            "clear_queue",
+            "foot",
+            "drive_move"
+          ],
+          "setter_objects_unchanged": false,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "00000000"
+          }
+        },
+        {
+          "current_speed": 20,
+          "forced": false,
+          "prefix_budget": 20,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 1,
+          "rank_events": [
+            "set_veteran"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit"
+          ],
+          "setter_objects_unchanged": true,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "3f800000"
+          }
+        },
+        {
+          "current_speed": 20,
+          "forced": false,
+          "prefix_budget": 20,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 2,
+          "rank_events": [
+            "set_elite"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit"
+          ],
+          "setter_objects_unchanged": true,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "40000000"
+          }
+        },
+        {
+          "current_speed": 20,
+          "forced": true,
+          "prefix_budget": 20,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 2,
+          "rank_events": [
+            "set_elite"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit",
+            "clear_queue",
+            "foot",
+            "drive_move"
+          ],
+          "setter_objects_unchanged": false,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "40000000"
+          }
+        }
+      ]
+    },
+    {
+      "input": {
+        "accelerates": false,
+        "applied": 1.0,
+        "crate": 1.0,
+        "elite_faster": false,
+        "family": "drive",
+        "faster": false,
+        "flag_owner": -1,
+        "frame": 100,
+        "house": 1.0,
+        "ini_speed": 6,
+        "rank": 0.0,
+        "raw": 15,
+        "residual": 0,
+        "selector": 1,
+        "target_cell": [
+          11,
+          10
+        ],
+        "target_fraction": 1.0,
+        "veteran": 1.2000000476837158
+      },
+      "steps": [
+        {
+          "current_speed": 15,
+          "forced": false,
+          "prefix_budget": 15,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 0,
+          "rank_events": [],
+          "rng_calls": [],
+          "setter_events": [
+            "unit",
+            "clear_queue",
+            "foot",
+            "drive_move"
+          ],
+          "setter_objects_unchanged": false,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "00000000"
+          }
+        },
+        {
+          "current_speed": 15,
+          "forced": false,
+          "prefix_budget": 15,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 1,
+          "rank_events": [
+            "set_veteran"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit"
+          ],
+          "setter_objects_unchanged": true,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "3f800000"
+          }
+        },
+        {
+          "current_speed": 15,
+          "forced": false,
+          "prefix_budget": 15,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 2,
+          "rank_events": [
+            "set_elite"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit"
+          ],
+          "setter_objects_unchanged": true,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "40000000"
+          }
+        },
+        {
+          "current_speed": 15,
+          "forced": true,
+          "prefix_budget": 15,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 2,
+          "rank_events": [
+            "set_elite"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit",
+            "clear_queue",
+            "foot",
+            "drive_move"
+          ],
+          "setter_objects_unchanged": false,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "40000000"
+          }
+        }
+      ]
+    },
+    {
+      "input": {
+        "accelerates": false,
+        "applied": 1.0,
+        "crate": 1.0,
+        "elite_faster": false,
+        "family": "ship",
+        "faster": true,
+        "flag_owner": -1,
+        "frame": 100,
+        "house": 1.0,
+        "ini_speed": 7,
+        "rank": 0.0,
+        "raw": 17,
+        "residual": 0,
+        "selector": 1,
+        "target_cell": [
+          11,
+          10
+        ],
+        "target_fraction": 1.0,
+        "veteran": 1.2000000476837158
+      },
+      "steps": [
+        {
+          "current_speed": 17,
+          "forced": false,
+          "prefix_budget": 17,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 0,
+          "rank_events": [],
+          "rng_calls": [],
+          "setter_events": [
+            "unit",
+            "clear_queue",
+            "foot",
+            "ship_move"
+          ],
+          "setter_objects_unchanged": false,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "00000000"
+          }
+        },
+        {
+          "current_speed": 20,
+          "forced": false,
+          "prefix_budget": 20,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 1,
+          "rank_events": [
+            "set_veteran"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit"
+          ],
+          "setter_objects_unchanged": true,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "3f800000"
+          }
+        },
+        {
+          "current_speed": 20,
+          "forced": false,
+          "prefix_budget": 20,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 2,
+          "rank_events": [
+            "set_elite"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit"
+          ],
+          "setter_objects_unchanged": true,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "40000000"
+          }
+        },
+        {
+          "current_speed": 20,
+          "forced": true,
+          "prefix_budget": 20,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 2,
+          "rank_events": [
+            "set_elite"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit",
+            "clear_queue",
+            "foot",
+            "ship_move"
+          ],
+          "setter_objects_unchanged": false,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "40000000"
+          }
+        }
+      ]
+    },
+    {
+      "input": {
+        "accelerates": false,
+        "applied": 1.0,
+        "crate": 1.0,
+        "elite_faster": false,
+        "family": "ship",
+        "faster": false,
+        "flag_owner": -1,
+        "frame": 100,
+        "house": 1.0,
+        "ini_speed": 6,
+        "rank": 0.0,
+        "raw": 15,
+        "residual": 0,
+        "selector": 1,
+        "target_cell": [
+          11,
+          10
+        ],
+        "target_fraction": 1.0,
+        "veteran": 1.2000000476837158
+      },
+      "steps": [
+        {
+          "current_speed": 15,
+          "forced": false,
+          "prefix_budget": 15,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 0,
+          "rank_events": [],
+          "rng_calls": [],
+          "setter_events": [
+            "unit",
+            "clear_queue",
+            "foot",
+            "ship_move"
+          ],
+          "setter_objects_unchanged": false,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "00000000"
+          }
+        },
+        {
+          "current_speed": 15,
+          "forced": false,
+          "prefix_budget": 15,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 1,
+          "rank_events": [
+            "set_veteran"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit"
+          ],
+          "setter_objects_unchanged": true,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "3f800000"
+          }
+        },
+        {
+          "current_speed": 15,
+          "forced": false,
+          "prefix_budget": 15,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 2,
+          "rank_events": [
+            "set_elite"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit"
+          ],
+          "setter_objects_unchanged": true,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "40000000"
+          }
+        },
+        {
+          "current_speed": 15,
+          "forced": true,
+          "prefix_budget": 15,
+          "prefix_events": [
+            "get_current_speed"
+          ],
+          "rank": 2,
+          "rank_events": [
+            "set_elite"
+          ],
+          "rng_calls": [],
+          "setter_events": [
+            "unit",
+            "clear_queue",
+            "foot",
+            "ship_move"
+          ],
+          "setter_objects_unchanged": false,
+          "setter_state": {
+            "blocked_timer": [
+              100,
+              22
+            ],
+            "destination": [
+              2944,
+              2688,
+              0
+            ],
+            "force_reassign": 0,
+            "head": [
+              2816,
+              2688,
+              123
+            ],
+            "movement_timer": [
+              100,
+              0
+            ],
+            "nav": [
+              11,
+              10
+            ],
+            "nav_queue": 0,
+            "rank_bits": "40000000"
+          }
+        }
+      ]
+    }
+  ],
   "prefixes": [
     {
       "getter": {

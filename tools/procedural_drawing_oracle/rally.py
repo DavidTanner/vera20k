@@ -224,10 +224,19 @@ def ints(u, pointer, count):
 
 
 class Rally:
-    def __init__(self, case):
+    def __init__(self, case, *, size=SIZE):
         self.case = case
+        if len(size) != 2 or any(type(n) is not int or n <= 0 for n in size):
+            raise ValueError('surface size must contain two positive integer dimensions')
+        self.size = tuple(size)
+        w, h = self.size
+        self.pixel_bytes = w * h * 2
+        # Existing color/A reservations are64KiB each; retain32bytes for the
+        # action fixture's end guard. A ends before the paired-actor arena.
+        # Optional160x160 crops fit without relocating or duplicating a surface.
+        if self.pixel_bytes + 32 > 0x10000:
+            raise ValueError('surface exceeds the existing guarded64KiB plane reservation')
         self.u = u = base({'flags': 0, 'level': 0})
-        w, h = SIZE
         # Original BSurface storage/locking, replacing only the patterned slot
         # whose BSurface implementation is a no-op. No instruction is patched.
         u.mem_write(VTABLE, bytes(u.mem_read(0x7E2070, 0x84)))
@@ -278,8 +287,8 @@ class Rally:
                 pattern=list(u.mem_read(args[3], 16)), phase=args[4], pass_id=args[5]))
 
     def pixels(self):
-        raw = bytes(self.u.mem_read(PIXELS, SIZE[0] * SIZE[1] * 2))
-        return [[i % SIZE[0], i // SIZE[0], word[0]]
+        raw = bytes(self.u.mem_read(PIXELS, self.pixel_bytes))
+        return [[i % self.size[0], i // self.size[0], word[0]]
                 for i, word in enumerate(struct.iter_unpack('<H', raw))
                 if word[0] != BACKGROUND]
 
@@ -327,7 +336,7 @@ class Rally:
         source = MEM + 0x31800
         call(self.u, 0x447AC0, BUILDING, (source,))
         source_coords = ints(self.u, source, 3)
-        return dict(input=self.case, size=SIZE, clip=self.clip, camera=self.camera,
+        return dict(input=self.case, size=self.size, clip=self.clip, camera=self.camera,
                     foundation_size=[width, height], source_coords=source_coords,
                     passes=self.draw_passes())
 
@@ -375,7 +384,7 @@ class Rally:
         passes = self.draw_passes()
         u.hook_del(hook)
         assert queries == list(reversed(order)) * 2
-        return dict(input=self.case, size=SIZE, clip=self.clip, camera=self.camera,
+        return dict(input=self.case, size=self.size, clip=self.clip, camera=self.camera,
                     foundation_size=[width, height], source_coords=source_coords,
                     factory_order_by_pass=[queries[:2], queries[2:]], passes=passes)
 

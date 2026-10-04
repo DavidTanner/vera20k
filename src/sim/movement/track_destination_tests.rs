@@ -223,6 +223,10 @@ fn actor(input: &Value) -> GameEntity {
         );
     }
     e.navigation.nav_com_aux = Some(NavTargetRef::cell(0, 0));
+    e.navigation.nav_com = (input["same_nav"] == true).then(|| NavTargetRef::cell(11, 10));
+    e.setter_force_reassign = input["force_reassign"] == true;
+    e.navigation.nav_queue =
+        vec![NavTargetRef::cell(11, 10); input["nav_queue"].as_u64().unwrap_or(0) as usize];
     e.navigation.path_replay = FootPathQueue {
         directions: vec![2, 3, 4, 5],
         reference_cell: Some((9, 8)),
@@ -246,6 +250,27 @@ fn actor(input: &Value) -> GameEntity {
         )));
     }
     e
+}
+
+fn destination_fixture(
+    input: &Value,
+) -> (
+    crate::sim::world::Simulation,
+    crate::rules::ruleset::RuleSet,
+) {
+    let mut entity = actor(input);
+    entity.lifecycle.in_limbo = false;
+    let mut sim = crate::sim::world::Simulation::new();
+    sim.interner = crate::sim::intern::test_interner();
+    sim.session.binary_frame = 100;
+    sim.install_resolved_terrain_for_new_map(terrain(input["bridge"] == true));
+    sim.install_fixture_path_grid(Some(&crate::sim::pathfinding::PathGrid::new(32, 32)));
+    sim.substrate.entities.insert(entity);
+    let mut rules =
+        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(""))
+            .unwrap();
+    rules.general.blockage_path_delay_ticks = 22;
+    (sim, rules)
 }
 
 fn compare(e: &GameEntity, row: &Value) {
@@ -318,9 +343,308 @@ fn compare(e: &GameEntity, row: &Value) {
         ),
         ("blocked", json!(u8::from(p.path_blocked))),
         ("retries", json!(p.retries_left)),
+        ("force_reassign", json!(u8::from(e.setter_force_reassign))),
     ] {
         assert_eq!(actual, row[key], "{key}: {row}");
     }
+    if let Some(expected) = row.get("nav_queue") {
+        assert_eq!(json!(e.navigation.nav_queue.len()), *expected, "{row}");
+    }
+}
+
+/// Event4C746F pushes clear_queue=1 before the destination token is resolved
+/// at4C7474 and dispatched through virtual+480 at4C747C. Exercise that
+/// ordinary Command::Move boundary against the original Unit741970 rows,
+/// including its same-NavCom return and force override. Mission/target event
+/// writes precede this boundary and are not claims of this destination corpus.
+/// The synthetic Foot+6AC skip row has no standalone stored latch in Rust;
+/// the represented Teleporter owner produces and consumes it in one call.
+#[test]
+fn command_move_destinations_match_native_unit_setter() {
+    let mut checked = 0;
+    for row in corpus() {
+        let input = &row["input"];
+        if input["entry"] != "unit"
+            || input["null"] == true
+            || input["flag"] == 0
+            || input["skip_move"] == true
+        {
+            continue;
+        }
+        let (mut sim, rules) = destination_fixture(input);
+        assert!(sim.apply_command(
+            "Americans",
+            &crate::sim::command::Command::Move {
+                entity_id: 1,
+                target_rx: 11,
+                target_ry: 10,
+                queue: false,
+            },
+            Some(&rules),
+        ));
+        let entity = sim.substrate.entities.get(1).unwrap();
+        compare(entity, &row);
+        let restored: GameEntity =
+            serde_json::from_value(serde_json::to_value(entity).unwrap()).unwrap();
+        compare(&restored, &row);
+        checked += 1;
+    }
+    assert_eq!(checked, 30);
+}
+
+/// Original rank setters750090/7500B0 -> Unit741970(cell,1) -> the live
+/// Drive4B0F20/Ship6A05F0 speed prefix, from track_speed_native.order_histories.
+/// A repeated destination preserves the old VERA order-speed stamp; the
+/// production prefix reads the promoted rank anyway. The forced-repeat
+/// control reaches the Foot tail again. No paid points or promotion AI are
+/// claimed by this comparison: the native and Rust prefixes stop at budget.
+#[test]
+fn repeated_move_orders_keep_the_stamp_but_sample_live_native_speed() {
+    use crate::sim::combat::veterancy;
+    use crate::sim::movement::track_process::TrackFamily;
+    use crate::util::fixed_math::SIM_ONE;
+
+    let corpus: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/track_speed_native.json"
+    ))
+    .unwrap();
+    let mut checked = 0;
+    for history in corpus["order_histories"].as_array().unwrap() {
+        let input = &history["input"];
+        let (mut sim, _) = destination_fixture(input);
+        let mut rules = crate::rules::ruleset::RuleSet::from_ini(
+            &crate::rules::ini_parser::IniFile::from_str(&format!(
+                "[General]\nVeteranSpeed=1.2\n\
+                 [VehicleTypes]\n0=MOVER\n[MOVER]\nSpeed={}\n\
+                 VeteranAbilities={}\n",
+                input["ini_speed"].as_i64().unwrap(),
+                if input["faster"] == true {
+                    "FASTER"
+                } else {
+                    ""
+                },
+            )),
+        )
+        .unwrap();
+        rules.general.blockage_path_delay_ticks = 22;
+        assert_eq!(
+            rules.general.veteran_speed,
+            input["veteran"].as_f64().unwrap()
+        );
+        let family = if input["family"] == "drive" {
+            TrackFamily::Drive
+        } else {
+            TrackFamily::Ship
+        };
+        let entity = sim.substrate.entities.get_mut(1).unwrap();
+        entity.drive_accelerates = false;
+        entity.foot_speed.set_speed_fraction(SIM_ONE);
+        let loco = entity.locomotor.as_mut().unwrap();
+        let mut progress = loco.track_progress(family).unwrap();
+        progress.turn_index = input["selector"].as_i64().unwrap() as i32;
+        progress.residual = input["residual"].as_i64().unwrap() as i32;
+        assert_eq!(
+            progress.residual, 0,
+            "native prefix budget equals its speed"
+        );
+        loco.store_track_progress(family, progress);
+        loco.store_track_valid(family, true);
+        loco.store_track_target_fraction(family, SIM_ONE);
+        let initial_stamp = SimFixed::from_num(input["raw"].as_i64().unwrap() * 15);
+        let rng_before = [
+            sim.main_rng.state(),
+            sim.scenario_rng.state(),
+            sim.mapgen_rng.state(),
+        ];
+
+        for step in history["steps"].as_array().unwrap() {
+            let entity = sim.substrate.entities.get_mut(1).unwrap();
+            match step["rank"].as_u64().unwrap() {
+                0 => {}
+                1 => veterancy::set_veteran(entity),
+                2 => veterancy::set_elite(entity),
+                rank => panic!("unexpected native rank {rank}"),
+            }
+            entity.setter_force_reassign = step["forced"] == true;
+            let retained_before = serde_json::to_value((
+                &entity.navigation,
+                &entity.locomotor,
+                &entity.movement_target,
+            ))
+            .unwrap();
+            assert!(sim.apply_command(
+                "Americans",
+                &crate::sim::command::Command::Move {
+                    entity_id: 1,
+                    target_rx: 11,
+                    target_ry: 10,
+                    queue: false,
+                },
+                Some(&rules),
+            ));
+            let entity = sim.substrate.entities.get(1).unwrap();
+            if step["setter_objects_unchanged"] == true {
+                assert_eq!(
+                    serde_json::to_value((
+                        &entity.navigation,
+                        &entity.locomotor,
+                        &entity.movement_target,
+                    ))
+                    .unwrap(),
+                    retained_before,
+                    "the native same-NavCom setter returns before any write: {step}",
+                );
+            }
+            let loco = entity.locomotor.as_ref().unwrap();
+            let destination = loco.track_destination(family).unwrap_or(ZERO);
+            let head = loco.track_head(family).unwrap_or(ZERO);
+            let nav = entity.navigation.nav_com.map(|nav| match nav {
+                NavTargetRef::Cell { rx, ry } => [rx, ry],
+                _ => panic!("cell fixture"),
+            });
+            let path = &entity.navigation.path_runtime;
+            assert_eq!(
+                json!({
+                    "rank_bits": format!("{:08x}", entity.veterancy_raw.bits()),
+                    "destination": [destination.x, destination.y, destination.z],
+                    "head": [head.x, head.y, head.z],
+                    "nav": nav,
+                    "nav_queue": entity.navigation.nav_queue.len(),
+                    "force_reassign": u8::from(entity.setter_force_reassign),
+                    "movement_timer": [
+                        path.movement_timer.start_frame(), path.movement_timer.duration(),
+                    ],
+                    "blocked_timer": [
+                        path.blocked_timer.start_frame(), path.blocked_timer.duration(),
+                    ],
+                }),
+                step["setter_state"],
+                "{input}: {step}",
+            );
+            let native_speed = step["current_speed"].as_i64().unwrap() as i32;
+            assert_eq!(
+                sim.current_speed_for_test(1, &rules),
+                native_speed,
+                "{step}"
+            );
+            assert_eq!(
+                entity.movement_target.as_ref().unwrap().speed,
+                if step["forced"] == true {
+                    SimFixed::from_num(native_speed * 15)
+                } else {
+                    initial_stamp
+                },
+                "only an accepted new/forced destination refreshes the adapter: {step}",
+            );
+            let speed = super::super::track_speed::advance(
+                sim.substrate.entities.get_mut(1).unwrap(),
+                rules.object("MOVER"),
+                Some(&rules),
+                &sim.houses,
+                sim.resolved_terrain.as_ref(),
+                None,
+            );
+            assert_eq!(
+                speed,
+                step["prefix_budget"].as_i64().unwrap() as i32,
+                "{step}"
+            );
+            assert_eq!(step["prefix_events"], json!(["get_current_speed"]));
+            assert!(step["rng_calls"].as_array().unwrap().is_empty());
+            assert_eq!(
+                [
+                    sim.main_rng.state(),
+                    sim.scenario_rng.state(),
+                    sim.mapgen_rng.state(),
+                ],
+                rng_before,
+                "{step}",
+            );
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 16);
+}
+
+/// These native Unit741970 calls feed the actual Foot4DC060 draw in the same
+/// VM. In particular, an unchanged NavCom retains a populated waypoint queue;
+/// a forced repeat clears it. Compare the production command's drawing inputs
+/// directly with that composed boundary, including the retained moving head.
+#[test]
+fn command_move_matches_native_action_line_destination_inputs() {
+    let native: Value = serde_json::from_str(include_str!(
+        "../../../tools/procedural_drawing_oracle/action_lines.json"
+    ))
+    .unwrap();
+    let mut checked = 0;
+    for row in native["destination_cases"].as_array().unwrap() {
+        let input = &row["input"];
+        if input["null"] == true || input["flag"] == 0 || input["skip_move"] == true {
+            continue;
+        }
+        let (mut sim, rules) = destination_fixture(input);
+        let rng_before = [
+            sim.main_rng.state(),
+            sim.scenario_rng.state(),
+            sim.mapgen_rng.state(),
+        ];
+        assert!(sim.apply_command(
+            "Americans",
+            &crate::sim::command::Command::Move {
+                entity_id: 1,
+                target_rx: 11,
+                target_ry: 10,
+                queue: false,
+            },
+            Some(&rules),
+        ));
+        let entity = sim.substrate.entities.get(1).unwrap();
+        let drive = entity
+            .locomotor
+            .as_ref()
+            .and_then(|loco| loco.selected_drive_runtime())
+            .and_then(|runtime| runtime.retained())
+            .unwrap();
+        let source = super::super::ground_pose::position_world_coord(&entity.position);
+        let destination = drive.destination().unwrap_or(ZERO);
+        let head = drive.head_to().unwrap_or(ZERO);
+        let nav = entity.navigation.nav_com.map(|nav| match nav {
+            NavTargetRef::Cell { rx, ry } => [rx, ry],
+            _ => panic!("cell fixture"),
+        });
+        let path = &entity.navigation.path_runtime;
+        assert_eq!(
+            json!({
+                "source": [source.x, source.y, source.z],
+                "destination": [destination.x, destination.y, destination.z],
+                "head": [head.x, head.y, head.z],
+                "nav": nav,
+                "nav_queue": entity.navigation.nav_queue.len(),
+                "movement_timer": [
+                    path.movement_timer.start_frame(),
+                    path.movement_timer.duration(),
+                ],
+                "blocked_timer": [
+                    path.blocked_timer.start_frame(),
+                    path.blocked_timer.duration(),
+                ],
+            }),
+            row["setter_result"],
+            "{input}",
+        );
+        assert!(row["rng_entries"].as_array().unwrap().is_empty());
+        assert_eq!(
+            [
+                sim.main_rng.state(),
+                sim.scenario_rng.state(),
+                sim.mapgen_rng.state(),
+            ],
+            rng_before,
+            "{input}",
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 7);
 }
 
 #[test]
@@ -422,61 +746,31 @@ fn track_move_to_and_accepted_foot_calls_match_original_warp_and_zero_semantics(
 
 /// The Unit Cell setter clears NavQueue behind its flag (0x7422E8..0x7422F4)
 /// and the NULL setter at 0x7423BE; the NULL rows start with a NavCom, since
-/// 0x741A80 returns before any write without one. Every Rust order passes
-/// flag 1, so the flag-0 contrast rows are not replayed.
+/// 0x741A80 returns before any write without one. Ordinary Move passes1;
+/// shared class callers such as Foot Approach pass0 to retain the queue.
 #[test]
 fn unit_setters_clear_navqueue_like_the_original() {
     let mut checked = 0;
     for row in corpus() {
         let input = &row["input"];
-        if input.get("nav_queue").is_none() || input["flag"] == 0 {
+        if input.get("nav_queue").is_none() {
             continue;
         }
-        let mut e = actor(input);
-        e.navigation.nav_queue = vec![NavTargetRef::cell(11, 10); 2];
-        let expected = row["nav_queue"].as_u64().unwrap() as usize;
+        let (mut sim, rules) = destination_fixture(input);
         if input["null"] == true {
-            e.navigation.nav_com = Some(NavTargetRef::cell(11, 10));
-            let mut sim = crate::sim::world::Simulation::new();
-            sim.session.binary_frame = 100;
-            sim.substrate.entities.insert(e);
-            assert!(sim.set_unit_null_destination(1, None, None));
-            let e = sim.substrate.entities.get(1).unwrap();
-            assert_eq!(e.navigation.nav_queue.len(), expected, "{row}");
-            assert!(e.navigation.nav_com.is_none(), "{row}");
+            assert!(sim.set_unit_null_destination(1, Some(&rules), None));
         } else {
-            let mut entities = EntityStore::new();
-            entities.insert(e);
-            assert!(
-                super::super::movement_commands::issue_move_command_with_layered(
-                    &mut entities,
-                    &crate::sim::pathfinding::PathGrid::new(32, 32),
-                    1,
-                    (11, 10),
-                    SimFixed::from_num(768),
-                    false,
-                    None,
-                    None,
-                    Some(&terrain(false)),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    super::super::DestinationTiming::new(100, 22),
-                )
-            );
-            let e = entities.get(1).unwrap();
-            assert_eq!(e.navigation.nav_queue.len(), expected, "{row}");
-            assert_eq!(
-                e.navigation.nav_com,
-                Some(NavTargetRef::cell(11, 10)),
-                "{row}"
-            );
+            assert!(sim.set_unit_destination(
+                1,
+                NavTargetRef::cell(11, 10),
+                &rules,
+                input["flag"] != 0,
+            ));
         }
+        compare(sim.substrate.entities.get(1).unwrap(), &row);
         checked += 1;
     }
-    assert_eq!(checked, 4);
+    assert_eq!(checked, 6);
 }
 
 #[test]

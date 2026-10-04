@@ -1,0 +1,2200 @@
+{
+  "comparison": {
+    "status": "PASS",
+    "native_payload_sha256": "36bf5a7d66970e077d4b2301d50a7fcfa31957402889f70947225d8f309a6cad",
+    "captures": {
+      "unit-move-active-v1": {
+        "native_stores": 165,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          7296,
+          23680,
+          416
+        ],
+        "nav": {
+          "Cell": {
+            "rx": 35,
+            "ry": 94
+          }
+        },
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": true,
+          "target_line_remaining": 24
+        },
+        "frame": 6,
+        "frame_wall_mean_ms": 744.7352294921875
+      },
+      "unit-selected-only-v1": {
+        "native_stores": 0,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          7296,
+          23680,
+          416
+        ],
+        "nav": null,
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": true,
+          "target_line_remaining": 23
+        },
+        "frame": 6,
+        "frame_wall_mean_ms": 806.9804077148438
+      },
+      "unit-move-before-stop-v1": {
+        "native_stores": 165,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          7296,
+          23680,
+          416
+        ],
+        "nav": {
+          "Cell": {
+            "rx": 35,
+            "ry": 94
+          }
+        },
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": true,
+          "target_line_remaining": 23
+        },
+        "frame": 7,
+        "frame_wall_mean_ms": 625.0689086914062
+      },
+      "unit-move-stopped-v1": {
+        "native_stores": 0,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          7296,
+          23680,
+          416
+        ],
+        "nav": null,
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": true,
+          "target_line_remaining": 23
+        },
+        "frame": 7,
+        "frame_wall_mean_ms": 610.804443359375
+      },
+      "unit-move-last-active-v1": {
+        "native_stores": 156,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          7617,
+          23926,
+          416
+        ],
+        "nav": {
+          "Cell": {
+            "rx": 35,
+            "ry": 94
+          }
+        },
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": true,
+          "target_line_remaining": 1
+        },
+        "frame": 29,
+        "frame_wall_mean_ms": 184.5177459716797
+      },
+      "unit-move-expired-v1": {
+        "native_stores": 0,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          7642,
+          23931,
+          416
+        ],
+        "nav": {
+          "Cell": {
+            "rx": 35,
+            "ry": 94
+          }
+        },
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": false,
+          "target_line_remaining": 0
+        },
+        "frame": 30,
+        "frame_wall_mean_ms": 174.53260803222656
+      },
+      "unit-move-expired-next-v1": {
+        "native_stores": 0,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          7668,
+          23935,
+          416
+        ],
+        "nav": {
+          "Cell": {
+            "rx": 35,
+            "ry": 94
+          }
+        },
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": false,
+          "target_line_remaining": 0
+        },
+        "frame": 31,
+        "frame_wall_mean_ms": 170.68783569335938
+      },
+      "unit-move-reselect-v1": {
+        "native_stores": 151,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          7668,
+          23935,
+          416
+        ],
+        "nav": {
+          "Cell": {
+            "rx": 35,
+            "ry": 94
+          }
+        },
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": true,
+          "target_line_remaining": 24
+        },
+        "frame": 31,
+        "frame_wall_mean_ms": 159.8566131591797
+      },
+      "empty-band-unselected-v1": {
+        "native_stores": 0,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          7296,
+          23680,
+          416
+        ],
+        "nav": null,
+        "final_input": {
+          "selected_ids": [],
+          "selection_pending": false,
+          "target_line_active": true,
+          "target_line_remaining": 24
+        },
+        "frame": 5,
+        "frame_wall_mean_ms": 826.3109741210938
+      },
+      "unit-move-empty-band-restart-v1": {
+        "native_stores": 120,
+        "crop_origin": [
+          80,
+          336
+        ],
+        "source": [
+          7668,
+          23935,
+          416
+        ],
+        "nav": {
+          "Cell": {
+            "rx": 29,
+            "ry": 96
+          }
+        },
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": true,
+          "target_line_remaining": 24
+        },
+        "frame": 31,
+        "frame_wall_mean_ms": 163.61306762695312
+      },
+      "unit-move-arrived-control-v1": {
+        "native_stores": 0,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          9088,
+          24192,
+          416
+        ],
+        "nav": null,
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": false,
+          "target_line_remaining": 0
+        },
+        "frame": 95,
+        "frame_wall_mean_ms": 8.339006423950195
+      },
+      "unit-move-arrived-reselect-v1": {
+        "native_stores": 0,
+        "crop_origin": [
+          176,
+          336
+        ],
+        "source": [
+          9088,
+          24192,
+          416
+        ],
+        "nav": null,
+        "final_input": {
+          "selected_ids": [
+            1374
+          ],
+          "selection_pending": false,
+          "target_line_active": true,
+          "target_line_remaining": 24
+        },
+        "frame": 95,
+        "frame_wall_mean_ms": 8.364066123962402
+      }
+    },
+    "paired_controls": {
+      "move": {
+        "compared_frame_pixels": 480000,
+        "native_stores": 165,
+        "changed_pixels": 165,
+        "changed_tactical_pixels": 165,
+        "exact_tactical_pixels": null,
+        "state_boundaries": 7
+      },
+      "stop": {
+        "compared_frame_pixels": 480000,
+        "native_stores": 165,
+        "changed_pixels": 165,
+        "changed_tactical_pixels": 165,
+        "exact_tactical_pixels": null,
+        "state_boundaries": 8
+      },
+      "reselect": {
+        "compared_frame_pixels": 480000,
+        "native_stores": 151,
+        "changed_pixels": 151,
+        "changed_tactical_pixels": 151,
+        "exact_tactical_pixels": null,
+        "state_boundaries": 32
+      },
+      "arrived": {
+        "compared_frame_pixels": 480000,
+        "native_stores": 0,
+        "changed_pixels": 1423,
+        "changed_tactical_pixels": 0,
+        "exact_tactical_pixels": 358976,
+        "state_boundaries": 96
+      }
+    },
+    "limitations": [
+      "Original Tactical/Foot/primitive execution uses prepared captured inputs; this is not a native Scenario or whole native frame comparison.",
+      "Every native opaque line store matches RGB565. Three matched-time controls check all 480000 pixels; arrival/reselection matches all 358976 tactical pixels and differs only in the observed sidebar tooltip.",
+      "Captured nonshift fresh Move starts with an empty NavQueue and executes native clear_queue1; queue absence and flat-ground source equivalence use the traced production owners, not an extra diagnostic state copy.",
+      "The existing last60-frame wall mean includes simulation, observation and pacing. Short captures include startup; no GPU-duration or ordinary-play FPS claim."
+    ]
+  },
+  "family": "unit-move",
+  "final_candidate": false,
+  "final_candidate_run": null,
+  "live_run_validations": {
+    "unit-move-active-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.521225Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-active-v1/run.json",
+        "byte_length": 113626,
+        "sha256": "3e40ca338571cdaa04f59cd9e9fbbdd7d7b7d9b6354916862818d19aa9786b82"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3517,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-move-active.profile.json",
+          "sha256": "40867e4e969354b30a2c9236f80b948947f0defda39d87fda46394a3c8a9e5f1"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-active-v1/child-output/capture.json",
+          "byte_length": 115923,
+          "sha256": "eeea2c5c791ebe5ba7042b149ffb66518c40a8f75cdf068ada43bfc0228688bc"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-active-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "455b8456235da85a13ff00ccfee4201a5479fcb64114f0a2e3fb00a4149c24b6"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 6,
+          "deterministic_state_hash": 15721322421228552929,
+          "simulation_tick": 6,
+          "total_simulation_ms": 132
+        },
+        "exact_step_count": 6,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 744.7352294921875,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-selected-only-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.558636Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-selected-only-v1/run.json",
+        "byte_length": 113024,
+        "sha256": "b3cb995cc3200c613d0f3333662189442b30ee6e97927772ec409f4bb6d4e769"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3362,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-selected-only.profile.json",
+          "sha256": "48da7a40346d761afe1cde0a828f6d00c02e9729118f13ad0f8952ab1ab00567"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-selected-only-v1/child-output/capture.json",
+          "byte_length": 115240,
+          "sha256": "4e23ad1e73664a15cf376660d7c792d90e95576e9a53bd514959b396f15844c0"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-selected-only-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "02a759640488fd6bc51185b5d368b78dedc26913a040e35b31e89fb8b851a5f0"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 6,
+          "deterministic_state_hash": 16537761440620215398,
+          "simulation_tick": 6,
+          "total_simulation_ms": 132
+        },
+        "exact_step_count": 6,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 806.9804077148438,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-before-stop-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.595066Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-before-stop-v1/run.json",
+        "byte_length": 124245,
+        "sha256": "256b6ee99d2c55194b12b2ed143e4bb9f2d2e805a6eb5681b4c509fe3aa59d5a"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3517,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-move-before-stop.profile.json",
+          "sha256": "25d6bd225c3ab37e380f2d6b0e2f6417eebab31796fe3ffa4b561bc96488fe2e"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-before-stop-v1/child-output/capture.json",
+          "byte_length": 126517,
+          "sha256": "48707e591e9468e1999c6387f49857bf951ecdc427d7c7cc55477d73fa1a2226"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-before-stop-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "5746e7a050b5304124dc29f6c02f31b1c71fa03510ccffd8c7c2a8c0e3aa7a1a"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 7,
+          "deterministic_state_hash": 8582076721799337990,
+          "simulation_tick": 7,
+          "total_simulation_ms": 154
+        },
+        "exact_step_count": 7,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 625.0689086914062,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-stopped-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.632632Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-stopped-v1/run.json",
+        "byte_length": 124352,
+        "sha256": "2c9e968eff75597c8d140bb1ae2d0e6a57360481c9f82ac4f14e630241338f32"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3676,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-move-stopped.profile.json",
+          "sha256": "c6f19895938cdc6e7358b2cfd5e1f59fed97f99696293b1048b846ad1a049ff7"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-stopped-v1/child-output/capture.json",
+          "byte_length": 126728,
+          "sha256": "4c90dcdfad51b53fb496f22ce882435011bb3eb8fee4d3ae168c2799dd291bc9"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-stopped-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "d80670eaf9b1754f5c73816c3d626082ebc699da5c8f4f98c291355248aa1977"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 7,
+          "deterministic_state_hash": 10851154840207813238,
+          "simulation_tick": 7,
+          "total_simulation_ms": 154
+        },
+        "exact_step_count": 7,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 610.804443359375,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-last-active-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.678423Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-last-active-v1/run.json",
+        "byte_length": 357580,
+        "sha256": "2031e7dc317d9c352a9f6e356e6640f7cbedc6013d66fa2266ddf6d16eed143f"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3518,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-move-last-active.profile.json",
+          "sha256": "be74112bd0f7cbb5fa4a7239282a6c076fef727e942dad7755cddd85dc79db3f"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-last-active-v1/child-output/capture.json",
+          "byte_length": 359857,
+          "sha256": "9781d6094b079673915cdc564e23755211d95835a931918cddc67e0aa19f45f6"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-last-active-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "d015dd29b61bb500f83811712cf6162d0b642a7e6e51e77667c255c7f2c762ee"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 29,
+          "deterministic_state_hash": 10191880927913229555,
+          "simulation_tick": 29,
+          "total_simulation_ms": 638
+        },
+        "exact_step_count": 29,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 184.5177459716797,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-expired-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.727026Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-expired-v1/run.json",
+        "byte_length": 368177,
+        "sha256": "1cd173acf803e40fab4c1b6cc814fd3df5bc9f07e27d42ffda08953574d2fb64"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3518,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-move-expired.profile.json",
+          "sha256": "d139967b26f806cf9499b946a227b82e94d28a67c2f7b9e778b20770d579071b"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-expired-v1/child-output/capture.json",
+          "byte_length": 370474,
+          "sha256": "ef0e2b87a16dd055fcc755024220c0e9abfa47362edf5b880eed762cec25b14a"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-expired-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "91ef1e5759ed2dffc55d0dfcab83a3da55654ec4b67557398b187de8ae77e54c"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 30,
+          "deterministic_state_hash": 12761253370621307083,
+          "simulation_tick": 30,
+          "total_simulation_ms": 660
+        },
+        "exact_step_count": 30,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 174.53260803222656,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-expired-next-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.775476Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-expired-next-v1/run.json",
+        "byte_length": 378818,
+        "sha256": "281b6d35e8c57e7d917d8f74c80e11cf4391fc7accd700681d716ba948b3224c"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3518,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-move-expired-next.profile.json",
+          "sha256": "31fbc11c173fc5f13dbce593c63df2e80aac16a04a106b8622ec1e1393eeada2"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-expired-next-v1/child-output/capture.json",
+          "byte_length": 381090,
+          "sha256": "14afdd1c63a4adba9ad190084a1c02228546a965c9b2ae45995aa700b14284fc"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-expired-next-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "2772b4f632589bf81fef500170156faa0cec9765f264d48e5b1e4f36b4cf696d"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 31,
+          "deterministic_state_hash": 12119609329059706285,
+          "simulation_tick": 31,
+          "total_simulation_ms": 682
+        },
+        "exact_step_count": 31,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 170.68783569335938,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-reselect-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.825066Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-reselect-v1/run.json",
+        "byte_length": 379369,
+        "sha256": "f00629188c205741c340e5a43cb8968b6f52878a3aa9b8a18f13fa4143a34dee"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3674,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-move-reselect.profile.json",
+          "sha256": "8626b70f5a9d908d75e6586ded5e8aea047618c7a0e5aeb8bff566a8f0488141"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-reselect-v1/child-output/capture.json",
+          "byte_length": 381733,
+          "sha256": "3e74ca085d6b6d938c711c39d3b74fd2ff9b5f2a04441a3b7676d15838d7f96e"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-reselect-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "2af20da1da22fa9a9dce3c321e46180430ff75e64502e37fec692420c135bcfb"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 31,
+          "deterministic_state_hash": 12119609329059706285,
+          "simulation_tick": 31,
+          "total_simulation_ms": 682
+        },
+        "exact_step_count": 31,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 159.8566131591797,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "empty-band-unselected-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.861926Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/empty-band-unselected-v1/run.json",
+        "byte_length": 102365,
+        "sha256": "792aa204fc599c41941c06934247e7841bd809c3ce8c013ce5b475c8bd04fb1c"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3412,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/empty-band-unselected.profile.json",
+          "sha256": "3ac2aeac211bb79a06b70b70d3e54840c864a3956a3cf4a55e924d6beb4b3b65"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/empty-band-unselected-v1/child-output/capture.json",
+          "byte_length": 104575,
+          "sha256": "bbd841d1fca7828eb5b1892602c4d0513cf026ac9a146867f0ca4c69406c6678"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/empty-band-unselected-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "85c471ebcd7c0405a0681f28d01de812577f6719096318cd6593fc08bcc95e03"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 5,
+          "deterministic_state_hash": 12315133237830324807,
+          "simulation_tick": 5,
+          "total_simulation_ms": 110
+        },
+        "exact_step_count": 5,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 826.3109741210938,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-empty-band-restart-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.908130Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-empty-band-restart-v1/run.json",
+        "byte_length": 379450,
+        "sha256": "5999db00db2ea4a6b21542c95d26d0ca90f73f0bcd10c472ee20fcdd89f72922"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3724,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-move-empty-band-restart.profile.json",
+          "sha256": "80db2aca17fbaab27e99ed807349b18863830e8489bc2b70d3fd72b1f68587cc"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-empty-band-restart-v1/child-output/capture.json",
+          "byte_length": 381773,
+          "sha256": "f458a8c4f34d08e4c4ba3b89be8314ab524acfd0d5b98a9c20e261df914d3e71"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-empty-band-restart-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "1dd6906e848ff04eb94b2e0dba5995187302090645471bd22bdb03a6a5b94a8c"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 31,
+          "deterministic_state_hash": 4965295334306636632,
+          "simulation_tick": 31,
+          "total_simulation_ms": 682
+        },
+        "exact_step_count": 31,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 163.61306762695312,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-arrived-control-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:07.984484Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-arrived-control-v1/run.json",
+        "byte_length": 1058396,
+        "sha256": "7a35070db48e18c255c6ecdb108f15493aa8c8a5293856b478dbc60b0337d72e"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3518,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-move-arrived-control.profile.json",
+          "sha256": "0175a0d69739b46662405f2165f1c76674e3beb2e79f7f71f1242269f3d6e0a4"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-arrived-control-v1/child-output/capture.json",
+          "byte_length": 1060652,
+          "sha256": "9bbcc82e4146285cb234f61225b315552b9afb32206a98a60cc4b31deb676028"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-arrived-control-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "7e3978dd5a2080a5e5a0649b7bf83dcdd2fe7c1c317acd91c6c1987011a92913"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 95,
+          "deterministic_state_hash": 3874980843601270300,
+          "simulation_tick": 95,
+          "total_simulation_ms": 2090
+        },
+        "exact_step_count": 95,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 8.339006423950195,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-arrived-reselect-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T00:28:08.065451Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-arrived-reselect-v1/run.json",
+        "byte_length": 1058973,
+        "sha256": "b6b8e3f6078bf5688497b0a701d2f464bc18e7cf1bc4a61ffc94243b132dddd0"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3674,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-profile-drafts/unit-move-arrived-reselect.profile.json",
+          "sha256": "83572ac0b01abd5c75aa521600859949e0e9180d41fe2f86fc25bbee07e8c9da"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/rally-clear-v4/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31869216,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v1/0/vera20k",
+          "sha256": "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-arrived-reselect-v1/child-output/capture.json",
+          "byte_length": 1061296,
+          "sha256": "1262353de7d469ebe07474271821d61582d94756e071e66bb771b0915e7e172f"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-arrived-reselect-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "1ba8eb4e6e9dca6ee61b1467e3a34be0e399619a91af2d5b1e928ac813c30eb0"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 95,
+          "deterministic_state_hash": 3874980843601270300,
+          "simulation_tick": 95,
+          "total_simulation_ms": 2090
+        },
+        "exact_step_count": 95,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 8.364066123962402,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    }
+  },
+  "files": {
+    "unit-move-active-v1/run.json.gz": {
+      "bytes": 113626,
+      "sha256": "3e40ca338571cdaa04f59cd9e9fbbdd7d7b7d9b6354916862818d19aa9786b82",
+      "gzip_sha256": "e62c8dcb4d72ca8bd90363728dc9c9065a9379b6888e3dba6111177220b5b9a5"
+    },
+    "unit-move-active-v1/profile.json.gz": {
+      "bytes": 3517,
+      "sha256": "40867e4e969354b30a2c9236f80b948947f0defda39d87fda46394a3c8a9e5f1",
+      "gzip_sha256": "8d7fb58867ffec1717ee4d14593b9ce4dbc171e56268009b0ab40e9aaf54b496"
+    },
+    "unit-move-active-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-active-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-active-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-active-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-active-v1/child-output/capture.json.gz": {
+      "bytes": 115923,
+      "sha256": "eeea2c5c791ebe5ba7042b149ffb66518c40a8f75cdf068ada43bfc0228688bc",
+      "gzip_sha256": "87d35e45045b215451726d955d329eb8e878f889b34dc0defd42602240cb2663"
+    },
+    "unit-move-active-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "455b8456235da85a13ff00ccfee4201a5479fcb64114f0a2e3fb00a4149c24b6",
+      "gzip_sha256": "244baa1fceab9049c191c0ab49dc18c1d1f08785b22a52092bd4a79591b4436f"
+    },
+    "unit-selected-only-v1/run.json.gz": {
+      "bytes": 113024,
+      "sha256": "b3cb995cc3200c613d0f3333662189442b30ee6e97927772ec409f4bb6d4e769",
+      "gzip_sha256": "59db8bd527099895c96195380fdb27700c6fc0823fe2421093f3b8c740157698"
+    },
+    "unit-selected-only-v1/profile.json.gz": {
+      "bytes": 3362,
+      "sha256": "48da7a40346d761afe1cde0a828f6d00c02e9729118f13ad0f8952ab1ab00567",
+      "gzip_sha256": "f93632de327bc86da8de3956fedd42ddc98956a31eb622bfd992a2bd4e7bea82"
+    },
+    "unit-selected-only-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-selected-only-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-selected-only-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-selected-only-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-selected-only-v1/child-output/capture.json.gz": {
+      "bytes": 115240,
+      "sha256": "4e23ad1e73664a15cf376660d7c792d90e95576e9a53bd514959b396f15844c0",
+      "gzip_sha256": "2eaecb2953a66dc4eb5e4ffe4433225bea2910294f3c44bb4787dd6855406706"
+    },
+    "unit-selected-only-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "02a759640488fd6bc51185b5d368b78dedc26913a040e35b31e89fb8b851a5f0",
+      "gzip_sha256": "2c8039e1bdc777e94cf27c6bb5e70dd3d9347ff8975d032812a6ce78e485af7b"
+    },
+    "unit-move-before-stop-v1/run.json.gz": {
+      "bytes": 124245,
+      "sha256": "256b6ee99d2c55194b12b2ed143e4bb9f2d2e805a6eb5681b4c509fe3aa59d5a",
+      "gzip_sha256": "781be155e110d9ea09e1aa7f7060f499ec0e42478e22ff54ad01d3e58bf11126"
+    },
+    "unit-move-before-stop-v1/profile.json.gz": {
+      "bytes": 3517,
+      "sha256": "25d6bd225c3ab37e380f2d6b0e2f6417eebab31796fe3ffa4b561bc96488fe2e",
+      "gzip_sha256": "e2d0000f37d211e36c4c7bbef1be3f88d44cd5493a27458fc1f3c662bf036b5c"
+    },
+    "unit-move-before-stop-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-before-stop-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-before-stop-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-before-stop-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-before-stop-v1/child-output/capture.json.gz": {
+      "bytes": 126517,
+      "sha256": "48707e591e9468e1999c6387f49857bf951ecdc427d7c7cc55477d73fa1a2226",
+      "gzip_sha256": "5ba9d96c96d873f1d9f309f2723cbfe3558e71f595a647d2613ba81be0069687"
+    },
+    "unit-move-before-stop-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "5746e7a050b5304124dc29f6c02f31b1c71fa03510ccffd8c7c2a8c0e3aa7a1a",
+      "gzip_sha256": "996a59608ae7649cc84f68cf9effe431faaba6080cdc4e0f5426d532d80c7cb2"
+    },
+    "unit-move-stopped-v1/run.json.gz": {
+      "bytes": 124352,
+      "sha256": "2c9e968eff75597c8d140bb1ae2d0e6a57360481c9f82ac4f14e630241338f32",
+      "gzip_sha256": "ca393c9f0fc30ea9acd43fccbf7a5e377f8228ee07fe2b550783fb7598c6b87a"
+    },
+    "unit-move-stopped-v1/profile.json.gz": {
+      "bytes": 3676,
+      "sha256": "c6f19895938cdc6e7358b2cfd5e1f59fed97f99696293b1048b846ad1a049ff7",
+      "gzip_sha256": "bbe9b26dd2f2cc073cae293cc1bda97d2b7a790178b23c3c80f42f56646212ab"
+    },
+    "unit-move-stopped-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-stopped-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-stopped-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-stopped-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-stopped-v1/child-output/capture.json.gz": {
+      "bytes": 126728,
+      "sha256": "4c90dcdfad51b53fb496f22ce882435011bb3eb8fee4d3ae168c2799dd291bc9",
+      "gzip_sha256": "f0e508205340e9cc9a89f1a74713f494fc6cb15b745d56696356a716add0fbf0"
+    },
+    "unit-move-stopped-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "d80670eaf9b1754f5c73816c3d626082ebc699da5c8f4f98c291355248aa1977",
+      "gzip_sha256": "034b7e0609ba1fa9e6207e4213a41e23728974a1a5b53ebc84fc8c367a01fa5b"
+    },
+    "unit-move-last-active-v1/run.json.gz": {
+      "bytes": 357580,
+      "sha256": "2031e7dc317d9c352a9f6e356e6640f7cbedc6013d66fa2266ddf6d16eed143f",
+      "gzip_sha256": "77c1f1edc3f62fc86946223fb46693f23b04814f7b5a4b62535b6e4dec4c69a7"
+    },
+    "unit-move-last-active-v1/profile.json.gz": {
+      "bytes": 3518,
+      "sha256": "be74112bd0f7cbb5fa4a7239282a6c076fef727e942dad7755cddd85dc79db3f",
+      "gzip_sha256": "77a049ccebbeccca4f5564d0d4269bf8ec5bcd2d32fa36e631dc7fcfbfcdfcd5"
+    },
+    "unit-move-last-active-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-last-active-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-last-active-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-last-active-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-last-active-v1/child-output/capture.json.gz": {
+      "bytes": 359857,
+      "sha256": "9781d6094b079673915cdc564e23755211d95835a931918cddc67e0aa19f45f6",
+      "gzip_sha256": "5dbf9add0f9694a0079044ec4a38df19f975a04fcadee4c585ff55f2de0046f2"
+    },
+    "unit-move-last-active-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "d015dd29b61bb500f83811712cf6162d0b642a7e6e51e77667c255c7f2c762ee",
+      "gzip_sha256": "87155f5c53878a9464e0751f0f1532d7717b82b6c6c2e1e06b391d93aef57b8f"
+    },
+    "unit-move-expired-v1/run.json.gz": {
+      "bytes": 368177,
+      "sha256": "1cd173acf803e40fab4c1b6cc814fd3df5bc9f07e27d42ffda08953574d2fb64",
+      "gzip_sha256": "1f97fd1d76b5e5f4bba381f3dc766291c92ed43dc5ff129a01a51d69e6d3d978"
+    },
+    "unit-move-expired-v1/profile.json.gz": {
+      "bytes": 3518,
+      "sha256": "d139967b26f806cf9499b946a227b82e94d28a67c2f7b9e778b20770d579071b",
+      "gzip_sha256": "e9d8cf3f88c4688b2ca04a521e272e3d026598c75380f3fe5293d9be28cb3e43"
+    },
+    "unit-move-expired-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-expired-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-expired-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-expired-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-expired-v1/child-output/capture.json.gz": {
+      "bytes": 370474,
+      "sha256": "ef0e2b87a16dd055fcc755024220c0e9abfa47362edf5b880eed762cec25b14a",
+      "gzip_sha256": "cb8e82af8f109dddf013c3dc1f611dc03021dfee366f67e8cf2915dba6f2c9f8"
+    },
+    "unit-move-expired-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "91ef1e5759ed2dffc55d0dfcab83a3da55654ec4b67557398b187de8ae77e54c",
+      "gzip_sha256": "65e2265558f165038fd39e0cfdb2802b304adb83de190e9ebb540c1f007e8270"
+    },
+    "unit-move-expired-next-v1/run.json.gz": {
+      "bytes": 378818,
+      "sha256": "281b6d35e8c57e7d917d8f74c80e11cf4391fc7accd700681d716ba948b3224c",
+      "gzip_sha256": "177ab0e92bd7701fb558cfa6d7a5b51e48722b9d10e596ec5dab34426d10a084"
+    },
+    "unit-move-expired-next-v1/profile.json.gz": {
+      "bytes": 3518,
+      "sha256": "31fbc11c173fc5f13dbce593c63df2e80aac16a04a106b8622ec1e1393eeada2",
+      "gzip_sha256": "848812c7630d40a5354f3d72d1b4e79e799ae2a917ba692cb46bf832f3231d49"
+    },
+    "unit-move-expired-next-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-expired-next-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-expired-next-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-expired-next-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-expired-next-v1/child-output/capture.json.gz": {
+      "bytes": 381090,
+      "sha256": "14afdd1c63a4adba9ad190084a1c02228546a965c9b2ae45995aa700b14284fc",
+      "gzip_sha256": "ea9175da742e36f707184d18aed407b5185a3618246373feba591644fbb04e7f"
+    },
+    "unit-move-expired-next-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "2772b4f632589bf81fef500170156faa0cec9765f264d48e5b1e4f36b4cf696d",
+      "gzip_sha256": "2d8cfe7f592ad67a02b9cbeb4e150b11b92de5b810666b80f77f23f78d5c9a24"
+    },
+    "unit-move-reselect-v1/run.json.gz": {
+      "bytes": 379369,
+      "sha256": "f00629188c205741c340e5a43cb8968b6f52878a3aa9b8a18f13fa4143a34dee",
+      "gzip_sha256": "e9422dd5d66bbdf65539186c596aef07e52c546a49225e63d0bae0636649e090"
+    },
+    "unit-move-reselect-v1/profile.json.gz": {
+      "bytes": 3674,
+      "sha256": "8626b70f5a9d908d75e6586ded5e8aea047618c7a0e5aeb8bff566a8f0488141",
+      "gzip_sha256": "fba867c7239432e446f84746303230a7b4d3289a9d3575af3bc568d79d50b29c"
+    },
+    "unit-move-reselect-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-reselect-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-reselect-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-reselect-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-reselect-v1/child-output/capture.json.gz": {
+      "bytes": 381733,
+      "sha256": "3e74ca085d6b6d938c711c39d3b74fd2ff9b5f2a04441a3b7676d15838d7f96e",
+      "gzip_sha256": "01885159c250d81c26d7dc8a65fac1fd67f2b268170adad7c6786484a9559dcf"
+    },
+    "unit-move-reselect-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "2af20da1da22fa9a9dce3c321e46180430ff75e64502e37fec692420c135bcfb",
+      "gzip_sha256": "e4ba6e704aea565eda58d05bc1371f1cb54c793c201f09406b77c8fdfb461d67"
+    },
+    "empty-band-unselected-v1/run.json.gz": {
+      "bytes": 102365,
+      "sha256": "792aa204fc599c41941c06934247e7841bd809c3ce8c013ce5b475c8bd04fb1c",
+      "gzip_sha256": "977df46ea10cec2a124d34859b5f3dd45d79949e1ce91f1e35d73753a67b63cf"
+    },
+    "empty-band-unselected-v1/profile.json.gz": {
+      "bytes": 3412,
+      "sha256": "3ac2aeac211bb79a06b70b70d3e54840c864a3956a3cf4a55e924d6beb4b3b65",
+      "gzip_sha256": "5cd33e77ecc449aa366d537f27c518126a0afeeb0740c2a3ad78efe9cc12a40f"
+    },
+    "empty-band-unselected-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "empty-band-unselected-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "empty-band-unselected-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "empty-band-unselected-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "empty-band-unselected-v1/child-output/capture.json.gz": {
+      "bytes": 104575,
+      "sha256": "bbd841d1fca7828eb5b1892602c4d0513cf026ac9a146867f0ca4c69406c6678",
+      "gzip_sha256": "f867081db62951dd2fe440cdc2e3c55a2a15e2dc6cd83a6531faf3c673730852"
+    },
+    "empty-band-unselected-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "85c471ebcd7c0405a0681f28d01de812577f6719096318cd6593fc08bcc95e03",
+      "gzip_sha256": "ac4089dcb383b77039112461d0579effc1add70ff2676caff359ec48f0eb5654"
+    },
+    "unit-move-empty-band-restart-v1/run.json.gz": {
+      "bytes": 379450,
+      "sha256": "5999db00db2ea4a6b21542c95d26d0ca90f73f0bcd10c472ee20fcdd89f72922",
+      "gzip_sha256": "bd10b1e037b38e888150a7d0b11af8a4708844f74172367378e263d368ec1e65"
+    },
+    "unit-move-empty-band-restart-v1/profile.json.gz": {
+      "bytes": 3724,
+      "sha256": "80db2aca17fbaab27e99ed807349b18863830e8489bc2b70d3fd72b1f68587cc",
+      "gzip_sha256": "58bd202ecd16a7a26e84f2a632e70997eec485c87194492942f046bdf94cf9fa"
+    },
+    "unit-move-empty-band-restart-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-empty-band-restart-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-empty-band-restart-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-empty-band-restart-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-empty-band-restart-v1/child-output/capture.json.gz": {
+      "bytes": 381773,
+      "sha256": "f458a8c4f34d08e4c4ba3b89be8314ab524acfd0d5b98a9c20e261df914d3e71",
+      "gzip_sha256": "91dbf6c2b64b437cc3ca3cad0e392910da58bea901fbd5541f387f26c6697fcc"
+    },
+    "unit-move-empty-band-restart-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "1dd6906e848ff04eb94b2e0dba5995187302090645471bd22bdb03a6a5b94a8c",
+      "gzip_sha256": "290e1b69452f495b5491b5e3f35b4061d3d86eb812ef40ee5181ef14df6cadbf"
+    },
+    "unit-move-arrived-control-v1/run.json.gz": {
+      "bytes": 1058396,
+      "sha256": "7a35070db48e18c255c6ecdb108f15493aa8c8a5293856b478dbc60b0337d72e",
+      "gzip_sha256": "07c2cfbac4d55f6a100f6ca98ac37e8387f8674fb13222fde1834c4ba049832f"
+    },
+    "unit-move-arrived-control-v1/profile.json.gz": {
+      "bytes": 3518,
+      "sha256": "0175a0d69739b46662405f2165f1c76674e3beb2e79f7f71f1242269f3d6e0a4",
+      "gzip_sha256": "4871a7379c1849bcf44e50ef40d1bee31f0fc3988e97f042e6376cab9f4e3735"
+    },
+    "unit-move-arrived-control-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-arrived-control-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-arrived-control-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-arrived-control-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-arrived-control-v1/child-output/capture.json.gz": {
+      "bytes": 1060652,
+      "sha256": "9bbcc82e4146285cb234f61225b315552b9afb32206a98a60cc4b31deb676028",
+      "gzip_sha256": "c7a5e789022f9572b428f33a3a7f6e0e4ba013fd1d64b9b15f365b6f78aaafb3"
+    },
+    "unit-move-arrived-control-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "7e3978dd5a2080a5e5a0649b7bf83dcdd2fe7c1c317acd91c6c1987011a92913",
+      "gzip_sha256": "425740116157f940656ce4c6088a6317e234c67af22b53f187ac37c62cc2497c"
+    },
+    "unit-move-arrived-reselect-v1/run.json.gz": {
+      "bytes": 1058973,
+      "sha256": "b6b8e3f6078bf5688497b0a701d2f464bc18e7cf1bc4a61ffc94243b132dddd0",
+      "gzip_sha256": "12570f17f6d59e92a8075187755f47439af31f14c4e3122eea99d8cb356618a1"
+    },
+    "unit-move-arrived-reselect-v1/profile.json.gz": {
+      "bytes": 3674,
+      "sha256": "83572ac0b01abd5c75aa521600859949e0e9180d41fe2f86fc25bbee07e8c9da",
+      "gzip_sha256": "954c30b9e76c385ca3e2e8845880754bec95f790f1e759669abfb964ab6e6f0e"
+    },
+    "unit-move-arrived-reselect-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-arrived-reselect-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-arrived-reselect-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-arrived-reselect-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-arrived-reselect-v1/child-output/capture.json.gz": {
+      "bytes": 1061296,
+      "sha256": "1262353de7d469ebe07474271821d61582d94756e071e66bb771b0915e7e172f",
+      "gzip_sha256": "f90e5e1a942f8a52e0caee81cc495b0a5fd424cc0b36e37c4c4c099272632580"
+    },
+    "unit-move-arrived-reselect-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "1ba8eb4e6e9dca6ee61b1467e3a34be0e399619a91af2d5b1e928ac813c30eb0",
+      "gzip_sha256": "fa503d2af0ddc5d9e0f80c7b6122b8454c6332e8fa5d9c765d314866738e80cf"
+    }
+  }
+}

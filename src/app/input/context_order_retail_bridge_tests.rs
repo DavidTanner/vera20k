@@ -234,7 +234,7 @@ fn probe_healthy_hut(
             hut_coord
         )
     );
-    let before_pending = runtime.simulation.pending_commands_for_tests().to_vec();
+    let before_pending = runtime.simulation.pending_command_snapshot();
     let before_hash = runtime.simulation.state_hash();
     let envelopes = resolve_hut_orders(
         &runtime.simulation,
@@ -247,7 +247,7 @@ fn probe_healthy_hut(
     assert!(envelopes.is_empty());
     runtime.simulation.queue_commands(envelopes);
     assert_eq!(
-        runtime.simulation.pending_commands_for_tests(),
+        runtime.simulation.pending_command_snapshot(),
         before_pending
     );
     assert_eq!(runtime.simulation.state_hash(), before_hash);

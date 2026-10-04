@@ -593,20 +593,10 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
     let (placement_valid, placement_invalid, placement_ghost, ghost_page, wall_ghost) =
         build_placement_preview(state);
 
-    // Target/action lines from selected units to command destinations.
-    let target_line = crate::app::presentation::target_lines::build_target_line_instances(
-        &state.match_state.match_presentation.target_lines,
-        state
-            .match_state
-            .sim_runtime
-            .as_ref()
-            .map(|rt| &rt.simulation),
-        &state.height_map(),
-    );
     let input = &state.match_state.input;
     let camera = [input.camera_x.round() as i32, input.camera_y.round() as i32];
     let (x, y, width, height) = crate::app::input::camera::tactical_viewport_px(state);
-    let view = crate::app::presentation::target_lines::RallyViewport {
+    let view = crate::app::presentation::target_lines::TacticalViewport {
         camera,
         clip: [
             x as i32,
@@ -616,6 +606,22 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
         ],
         zoom: input.zoom_level,
     };
+    // Shared native logical viewport; both overlays scale the raster before
+    // the UI passthrough draw, so fractional zoom cannot pad individual pixels.
+    let target_line = crate::app::presentation::target_lines::build_target_line_instances(
+        &state.match_state.match_presentation.target_lines,
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        &state.height_map(),
+        state
+            .process_assets
+            .manager()
+            .and_then(|assets| assets.get_ref("palette.pal")),
+        view,
+    );
     let selected = crate::app::input::dispatch::selected_stable_ids_in_order(
         state
             .match_state

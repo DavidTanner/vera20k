@@ -48,6 +48,9 @@ class MapObservationTests(unittest.TestCase):
         self.rule_types = [{'type_id': name, 'interned_id': identity, 'category': 'Structure'}
                            for name, identity in [('GACNST', 40), ('GAPOWR', 41), ('GAPILE', 42)]]
         self.terrain_frames = {}
+        self.input_frames = {}
+        self.gesture_receipts = []
+        self.tactical_extent = None
         self.change = lambda manifest: None
         self.result = ChildResult(42, 0, False, b'child output\n', b'', ())
         environment = patch.dict('os.environ', {}, clear=True)
@@ -115,6 +118,8 @@ class MapObservationTests(unittest.TestCase):
                                {'owner': owner, 'economy': None}
                                for owner in self.profile.get('observe_owners', [])])),
                            'missing_actor_ids': sorted(seen - current_ids), 'terrain': deepcopy(terrain)})
+            if 'gestures' in self.profile:
+                frames[-1]['input'] = deepcopy(self.input_frames.get(step, self.input_observation()))
         manifest['observations'] = {
             'policy': observation.OBSERVATION_POLICY, 'owners': self.profile.get('observe_owners', []),
             'rule_types': deepcopy(self.rule_types),
@@ -127,6 +132,12 @@ class MapObservationTests(unittest.TestCase):
         }
         if 'observe_types' in self.profile:
             manifest['observations']['type_filter'] = deepcopy(self.profile['observe_types'])
+        if 'gestures' in self.profile:
+            manifest['observations']['gesture_input'] = {
+                'policy': observation.GESTURE_POLICY, 'equal_step_order': 'commands_then_gestures',
+                'tactical_extent': self.tactical_extent or [width, height],
+                'receipts': deepcopy(self.gesture_receipts),
+            }
         self.change(manifest)
         (directory / 'capture.json').write_text(json.dumps(manifest))
         return self.result
@@ -217,6 +228,175 @@ class MapObservationTests(unittest.TestCase):
                             width=4, height=4, cursor_position=[2, 1])
         self.frame = bytes(range(64))
         self.profile_path.write_text(json.dumps(self.profile))
+
+    @staticmethod
+    def input_observation(selected=(), remaining=0, pending=False, active=None):
+        return {'selected_ids': list(selected), 'selection_pending': pending,
+                'target_line_remaining': remaining,
+                'target_line_active': remaining > 0 if active is None else active}
+
+    def gesture_profile(self):
+        # These are synthetic wrapper receipts, not gameplay/parity goldens.
+        self.profile.update(schema_version=observation.PROFILE_V2, width=8, height=8,
+                            cursor_position=[6, 6],
+                            gestures=[{'issue_after_step': 0,
+                                       'gesture': {'kind': 'click', 'position': [1, 1]}},
+                                      {'issue_after_step': 0,
+                                       'gesture': {'kind': 'drag', 'from': [1, 1], 'to': [4, 4]}},
+                                      {'issue_after_step': 2,
+                                       'gesture': {'kind': 'click', 'position': [2, 2]}}])
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.frame = bytes(range(256))
+        self.tactical_extent = [6, 6]
+        self.gesture_receipts = [
+            {'ordinal': index, 'issue_after_step': row['issue_after_step'],
+             'issued_simulation_tick': row['issue_after_step'],
+             'issued_binary_frame': row['issue_after_step'], 'gesture': deepcopy(row['gesture']),
+             'before': self.input_observation(),
+             'after': self.input_observation([7, 3], 25, True),
+             'left_press_captured': True, 'band_box_before_release': row['gesture']['kind'] == 'drag',
+             'neutral_input_restored': True,
+             'queued_commands': [{'owner': 'VERA-OBSERVER', 'execute_tick': row['issue_after_step'],
+                                  'payload': {'Select': {'entity_ids': [7, 3], 'additive': False}}}]}
+            for index, row in enumerate(self.profile['gestures'])]
+        self.input_frames = {1: self.input_observation([7, 3], 24),
+                             2: self.input_observation([7, 3], 23),
+                             3: self.input_observation([7, 3], 24)}
+
+    def test_gestures_preserve_input_receipts_and_frame_selection_order_separately_from_commands(self):
+        self.gesture_profile()
+        self.profile['commands'] = [{'issue_after_step': 0, 'owner': 'VERA-OBSERVER',
+                                    'payload': {'Stop': {'entity_id': 7}}}]
+        self.profile_path.write_text(json.dumps(self.profile))
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        transcript = report['capture']['observations']
+        self.assertEqual(transcript['gesture_input']['receipts'], self.gesture_receipts)
+        self.assertEqual(transcript['gesture_input']['equal_step_order'], 'commands_then_gestures')
+        self.assertEqual(transcript['frames'][1]['input']['selected_ids'], [7, 3])
+        self.assertEqual(transcript['frames'][1]['input']['target_line_remaining'], 24)
+        self.assertEqual(transcript['commands'][0]['payload'], {'Stop': {'entity_id': 7}})
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_gesture_presence_is_optional_and_empty_list_still_records_input_state(self):
+        report = self.run_capture()
+        self.assertNotIn('gesture_input', report['capture']['observations'])
+        self.assertNotIn('input', report['capture']['observations']['frames'][0])
+        self.gesture_profile()
+        self.profile['gestures'] = []
+        self.gesture_receipts = []
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.output = self.root / 'empty-gesture-input'
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['observations']['gesture_input']['receipts'], [])
+        self.assertIn('input', report['capture']['observations']['frames'][0])
+
+    def test_gesture_profile_rejects_null_v1_unsealed_cursor_bad_shapes_order_and_bounds(self):
+        self.gesture_profile()
+        modern = deepcopy(self.profile)
+        valid = deepcopy(modern['gestures'][0])
+        cases = [dict(modern, gestures=None), dict(modern, schema_version=observation.PROFILE_V1),
+                 {key: value for key, value in modern.items() if key != 'cursor_position'},
+                 dict(modern, gestures=[valid] * 1025)]
+        for key, value in (('issue_after_step', True), ('issue_after_step', 3),
+                           ('issue_after_step', -1), ('issue_after_step', 0.0), ('extra', True)):
+            cases.append(dict(modern, gestures=[dict(valid, **{key: value})]))
+        cases.append(dict(modern, gestures=[dict(valid, issue_after_step=1), valid]))
+        for gesture in (None, {}, {'kind': 'move', 'position': [1, 1]},
+                        {'kind': 'click', 'position': [1, 1], 'button': 'right'},
+                        {'kind': 'drag', 'from': [1, 1]},
+                        {'kind': 'drag', 'from': [1, 1], 'to': [1, 1]}):
+            cases.append(dict(modern, gestures=[dict(valid, gesture=gesture)]))
+        for point in (None, [], [1], [1, 1, 1], [0, 1], [1, 0], [7, 1], [1, 7],
+                      [8, 1], [-1, 1], [True, 1], [1.0, 1], ['1', 1], [1 << 32, 1]):
+            cases.append(dict(modern, gestures=[dict(valid, gesture={'kind': 'click', 'position': point})]))
+        for index, candidate in enumerate(cases):
+            with self.subTest(case=index), patch.object(observation, 'run_child') as child:
+                self.profile_path.write_text(json.dumps(candidate))
+                with self.assertRaises(ValidationError):
+                    self.run_capture()
+                child.assert_not_called()
+                self.assertFalse(self.output.exists())
+
+    def test_gesture_receipts_reject_retime_reorder_missed_capture_and_wrong_tactical_extent(self):
+        self.gesture_profile()
+        changes = [lambda data: data.pop('receipts'),
+                   lambda data: data.update(equal_step_order='gestures_then_commands'),
+                   lambda data: data.update(policy='unknown'),
+                   lambda data: data.update(extra=True),
+                   lambda data: data.update(tactical_extent=[9, 6]),
+                   lambda data: data.update(tactical_extent=[5, 5]),
+                   lambda data: data.update(tactical_extent=[True, 6]),
+                   lambda data: data['receipts'].reverse(),
+                   lambda data: data['receipts'].pop(),
+                   lambda data: data['receipts'][0].update(gesture={'kind': 'click', 'position': [2, 2]})]
+        for key, value in (('ordinal', True), ('issued_simulation_tick', 1),
+                           ('issued_binary_frame', 1), ('issue_after_step', 1),
+                           ('left_press_captured', False), ('neutral_input_restored', False),
+                           ('band_box_before_release', True), ('left_press_captured', 1), ('extra', True)):
+            changes.append(lambda data, key=key, value=value: data['receipts'][0].update({key: value}))
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'bad-gesture-{index}'
+                self.change = lambda manifest, f=change: f(manifest['observations']['gesture_input'])
+                report = self.run_capture()
+                self.assertEqual(report['status'], 'INVALID', report)
+                self.assertIn('observations.gesture_input', report['errors'][0])
+
+    def test_input_state_and_observed_queue_are_bounded_typed_and_do_not_invent_admission(self):
+        self.gesture_profile()
+        self.gesture_receipts[1]['queued_commands'] = []  # Refused/empty input still has a receipt.
+        self.gesture_receipts[2]['after']['target_line_active'] = False  # Option gate may be off.
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        input_changes = [lambda data: data.update(selected_ids=[7, 7]),
+                         lambda data: data.update(selected_ids=[0]),
+                         lambda data: data.update(selected_ids=[True]),
+                         lambda data: data.update(selection_pending=1),
+                         lambda data: data.update(target_line_remaining=True),
+                         lambda data: data.update(target_line_remaining=1 << 31),
+                         lambda data: data.update(target_line_active=True, target_line_remaining=0),
+                         lambda data: data.update(extra=True)]
+        for index, change in enumerate(input_changes):
+            for location in ('frame', 'gesture'):
+                with self.subTest(case=index, location=location):
+                    self.output = self.root / f'bad-input-{location}-{index}'
+                    self.change = lambda manifest, f=change, where=location: f(
+                        manifest['observations']['frames'][1]['input'] if where == 'frame' else
+                        manifest['observations']['gesture_input']['receipts'][0]['after'])
+                    self.assertEqual(self.run_capture()['status'], 'INVALID')
+        for index, change in enumerate((lambda data: data.update(execute_tick=1),
+                                         lambda data: data.update(owner=''),
+                                         lambda data: data.update(payload={}),
+                                         lambda data: data.update(payload={'Select': None}),
+                                         lambda data: data.update(extra=True))):
+            self.output = self.root / f'bad-observed-command-{index}'
+            self.change = lambda manifest, f=change: f(
+                manifest['observations']['gesture_input']['receipts'][0]['queued_commands'][0])
+            self.assertEqual(self.run_capture()['status'], 'INVALID')
+        self.output = self.root / 'input-budget'
+        self.change = lambda manifest: None
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 1):
+            report = self.run_capture()
+            self.assertEqual(report['status'], 'INVALID', report)
+            self.assertIn('sample budget', report['errors'][0])
+
+    def test_gesture_extension_requires_matching_presence_and_current_child_policy(self):
+        self.gesture_profile()
+        changes = [lambda manifest: manifest['observations'].pop('gesture_input'),
+                   lambda manifest: manifest['observations']['frames'][0].pop('input')]
+        for index, change in enumerate(changes):
+            self.output = self.root / f'missing-gesture-extension-{index}'
+            self.change = change
+            self.assertEqual(self.run_capture()['status'], 'INVALID')
+        with self.assertRaises(ValidationError):
+            observation._observations({}, self.profile, {}, walk_state=False)
+        self.profile.pop('gestures')
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.output = self.root / 'unrequested-gesture-extension'
+        self.change = lambda manifest: manifest['observations'].update(gesture_input={})
+        self.assertEqual(self.run_capture()['status'], 'INVALID')
 
     def test_cursor_position_preserves_profile_presence_and_binds_actual_render_position(self):
         report = self.run_capture()

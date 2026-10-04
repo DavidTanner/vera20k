@@ -15,6 +15,8 @@ const PROFILE_V2: &str = "vera20k.map-observation-profile.v2";
 const CHILD_SCHEMA: &str = "vera20k.map-observation.v7";
 const OBSERVATION_POLICY: &str = "map-ordinary-command-observation-v4";
 const MAX_COMMANDS: usize = 1024;
+const MAX_GESTURES: usize = 1024;
+const GESTURE_POLICY: &str = "map-tactical-left-gesture-v1";
 const MAX_OBSERVED_OWNERS: usize = 30;
 const MAX_OBSERVED_TYPES: usize = 256;
 const MAX_TERRAIN_CELLS: usize = 256;
@@ -28,6 +30,31 @@ struct MapScheduledCommand {
     owner: String,
     #[serde(deserialize_with = "deserialize_command")]
     payload: Command,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MapScheduledGesture {
+    issue_after_step: u32,
+    gesture: MapGesture,
+}
+
+/// Render-target pixels, fed to ordinary local left-button input. A complete
+/// gesture occurs between exact steps; no render sees a synthetic held button.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum MapGesture {
+    Click { position: [u32; 2] },
+    Drag { from: [u32; 2], to: [u32; 2] },
+}
+
+impl MapGesture {
+    fn points(&self) -> ([u32; 2], [u32; 2]) {
+        match *self {
+            Self::Click { position } => (position, position),
+            Self::Drag { from, to } => (from, to),
+        }
+    }
 }
 
 // Reuse Command's one serde schema, but reject fields that its permissive
@@ -75,6 +102,12 @@ pub(crate) struct MapCaptureProfile {
         skip_serializing_if = "Option::is_none"
     )]
     commands: Option<Vec<MapScheduledCommand>>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    gestures: Option<Vec<MapScheduledGesture>>,
     #[serde(
         default,
         deserialize_with = "deserialize_present",
@@ -129,6 +162,7 @@ impl MapCaptureProfile {
         if self.schema_version == PROFILE_V1 {
             ensure!(
                 self.commands.is_none()
+                    && self.gestures.is_none()
                     && self.observe_owners.is_none()
                     && self.observe_types.is_none()
                     && self.camera_cell.is_none()
@@ -187,6 +221,37 @@ impl MapCaptureProfile {
                 "command is outside the map observation's ordinary order coverage"
             );
             previous = command.issue_after_step;
+        }
+        ensure!(
+            self.gestures().len() <= MAX_GESTURES,
+            "too many scheduled gestures"
+        );
+        if self.gestures.is_some() {
+            ensure!(
+                self.cursor_position.is_some(),
+                "gestures require a sealed cursor_position"
+            );
+        }
+        let (tactical_width, tactical_height) =
+            crate::app::input::camera::tactical_viewport_size_px(self.width, self.height);
+        let mut previous = 0;
+        for gesture in self.gestures() {
+            ensure!(
+                gesture.issue_after_step >= previous && gesture.issue_after_step < self.ticks,
+                "gestures must be ordered by issue_after_step before the final step"
+            );
+            let (from, to) = gesture.gesture.points();
+            for [x, y] in [from, to] {
+                ensure!(
+                    x > 0 && x < tactical_width - 1 && y > 0 && y < tactical_height - 1,
+                    "gesture points must be inside the tactical viewport's outermost pixels"
+                );
+            }
+            ensure!(
+                !matches!(gesture.gesture, MapGesture::Drag { .. }) || from != to,
+                "drag endpoints must differ"
+            );
+            previous = gesture.issue_after_step;
         }
         let owners = self.observe_owners();
         ensure!(
@@ -265,6 +330,10 @@ impl MapCaptureProfile {
         self.commands.as_deref().unwrap_or_default()
     }
 
+    fn gestures(&self) -> &[MapScheduledGesture] {
+        self.gestures.as_deref().unwrap_or_default()
+    }
+
     fn observe_owners(&self) -> &[String] {
         self.observe_owners.as_deref().unwrap_or_default()
     }
@@ -296,6 +365,7 @@ pub(super) struct MapObservation {
     rule_types: Vec<Value>,
     draws: Vec<MapDrawTime>,
     commands: Vec<MapCommandReceipt>,
+    gestures: Vec<MapGestureReceipt>,
     frames: Vec<MapFrameObservation>,
     observed_ids: BTreeSet<u64>,
     sample_count: usize,
@@ -312,6 +382,61 @@ struct MapCommandReceipt {
 }
 
 #[derive(Debug, Serialize)]
+struct MapGestureCommandReceipt {
+    owner: String,
+    execute_tick: u64,
+    payload: Command,
+}
+
+#[derive(Debug, Serialize)]
+struct MapInputObservation {
+    /// The existing ordered input ledger, including an optimistic selection
+    /// that the next ordinary command drain has not committed yet.
+    selected_ids: Vec<u64>,
+    selection_pending: bool,
+    target_line_remaining: i32,
+    target_line_active: bool,
+}
+
+impl MapInputObservation {
+    fn capture(state: &AppState) -> Result<Self> {
+        let sim = &state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .context("gesture observation requires a simulation")?
+            .simulation;
+        let lines = &state.match_state.match_presentation.target_lines;
+        Ok(Self {
+            selected_ids: crate::app::input::dispatch::selected_stable_ids_in_order(
+                Some(sim),
+                state.rules(),
+                &state.match_state.input.selection_order,
+                state.match_state.input.selection_order_pending,
+            ),
+            selection_pending: state.match_state.input.selection_order_pending,
+            target_line_remaining: lines.remaining_frames(sim.session.binary_frame),
+            target_line_active: lines.is_selected_action_active(sim.session.binary_frame),
+        })
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MapGestureReceipt {
+    ordinal: usize,
+    issue_after_step: u32,
+    issued_simulation_tick: u64,
+    issued_binary_frame: u32,
+    gesture: MapGesture,
+    before: MapInputObservation,
+    after: MapInputObservation,
+    left_press_captured: bool,
+    band_box_before_release: bool,
+    neutral_input_restored: bool,
+    queued_commands: Vec<MapGestureCommandReceipt>,
+}
+
+#[derive(Debug, Serialize)]
 struct MapFrameObservation {
     completed_steps: u64,
     simulation_tick: u64,
@@ -321,6 +446,8 @@ struct MapFrameObservation {
     houses: Vec<Value>,
     missing_actor_ids: Vec<u64>,
     terrain: Vec<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input: Option<MapInputObservation>,
 }
 
 #[derive(Debug, Serialize)]
@@ -358,6 +485,16 @@ impl MapObservation {
         if let Some(types) = &profile.observe_types {
             observations["type_filter"] = json!(types);
         }
+        if profile.gestures.is_some() {
+            let (width, height) =
+                crate::app::input::camera::tactical_viewport_size_px(profile.width, profile.height);
+            observations["gesture_input"] = json!({
+                "policy": GESTURE_POLICY,
+                "equal_step_order": "commands_then_gestures",
+                "tactical_extent": [width, height],
+                "receipts": self.gestures,
+            });
+        }
         observations
     }
 
@@ -374,6 +511,21 @@ impl MapObservation {
             "scheduled command missed its issue step"
         );
         Ok((u64::from(command.issue_after_step) == completed_steps).then_some(command))
+    }
+
+    fn pending_gesture<'a>(
+        &self,
+        profile: &'a MapCaptureProfile,
+        completed_steps: u64,
+    ) -> Result<Option<&'a MapScheduledGesture>> {
+        let Some(gesture) = profile.gestures().get(self.gestures.len()) else {
+            return Ok(None);
+        };
+        ensure!(
+            u64::from(gesture.issue_after_step) >= completed_steps,
+            "scheduled gesture missed its issue step"
+        );
+        Ok((u64::from(gesture.issue_after_step) == completed_steps).then_some(gesture))
     }
 
     fn observe_frame(&mut self, frame: MapFrameObservation, ids: BTreeSet<u64>) -> Result<()> {
@@ -398,6 +550,14 @@ impl MapObservation {
             .and_then(|count| count.checked_add(frame.houses.len()))
             .and_then(|count| count.checked_add(frame.missing_actor_ids.len()))
             .and_then(|count| count.checked_add(frame.terrain.len()))
+            .and_then(|count| {
+                count.checked_add(
+                    frame
+                        .input
+                        .as_ref()
+                        .map_or(0, |input| input.selected_ids.len()),
+                )
+            })
             .context("actor observation sample count overflow")?;
         ensure!(
             count <= MAX_OBSERVATION_SAMPLES,
@@ -688,7 +848,11 @@ impl TacticalCaptureSession {
             "previous map step has no completed draw"
         );
         if self.exact_step_receipts.len() < requested {
+            // A sealed profile has two distinct producers: already prepared
+            // typed commands first, then ordinary local input gestures. Ties
+            // retain order within each list; neither producer runs simulation.
             self.issue_map_commands(state)?;
+            self.issue_map_gestures(state)?;
             self.advance_exact_step(state)?;
             self.record_map_frame(state)?;
         }
@@ -747,6 +911,164 @@ impl TacticalCaptureSession {
                 envelope_execute_tick: execute_tick,
                 owner: command.owner,
                 payload: command.payload,
+            });
+        }
+    }
+
+    fn issue_map_gestures(&mut self, state: &mut AppState) -> Result<()> {
+        use winit::event::{ElementState, MouseButton};
+        let completed_steps = self.exact_step_receipts.len() as u64;
+        loop {
+            let profile = &self
+                .request
+                .map_profile()
+                .context("map profile missing")?
+                .value;
+            let Some(scheduled) = self
+                .map_state()?
+                .pending_gesture(profile, completed_steps)?
+                .cloned()
+            else {
+                return Ok(());
+            };
+            let neutral = profile
+                .cursor_position
+                .context("gesture neutral cursor missing")?;
+            ensure!(
+                crate::app::input::camera::camera_input_idle(state)
+                    && state.match_state.input.hotkey_modifiers.is_empty()
+                    && !state.match_state.input.selection_state.is_band_box_active(),
+                "gesture requires idle ordinary input without modifiers or an active band box"
+            );
+            ensure!(
+                [
+                    state.match_state.input.cursor_x,
+                    state.match_state.input.cursor_y
+                ] == neutral.map(|v| v as f32),
+                "gesture did not start at the sealed neutral cursor"
+            );
+            let sim = &state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .context("gesture simulation absent")?
+                .simulation;
+            let issued_simulation_tick = sim.session.tick;
+            let issued_binary_frame = sim.session.binary_frame;
+            ensure!(
+                issued_simulation_tick == completed_steps
+                    && u64::from(issued_binary_frame) == completed_steps,
+                "gesture issue is outside exact-step boundary"
+            );
+            let pending_before = sim.pending_command_snapshot();
+            let before = MapInputObservation::capture(state)?;
+            let move_cursor = |state: &mut AppState, [x, y]: [u32; 2]| {
+                // Profile coordinates are render-target pixels already. The
+                // OS window/upscale conversion is not a second input source.
+                state.match_state.input.cursor_x = x as f32;
+                state.match_state.input.cursor_y = y as f32;
+                crate::app::input::tooltips::on_mouse_move(state);
+                crate::app::input::dispatch::handle_cursor_moved_in_game(state);
+            };
+            let button = |state: &mut AppState, edge| {
+                crate::app::input::tooltips::on_button_event(state);
+                crate::app::input::dispatch::handle_mouse_input(state, MouseButton::Left, edge);
+            };
+            let (from, to) = scheduled.gesture.points();
+            move_cursor(state, from);
+            button(state, ElementState::Pressed);
+            let mouse = &state.match_state.input.tactical_mouse;
+            let gadgets = &state.match_state.match_presentation.in_game_gadgets;
+            let left_press_captured = mouse.left_held
+                && mouse.captured
+                && !mouse.right_held
+                && gadgets.left_held
+                && !gadgets.right_held;
+            if matches!(scheduled.gesture, MapGesture::Drag { .. }) {
+                move_cursor(state, to);
+            }
+            let band_box_before_release =
+                state.match_state.input.selection_state.is_band_box_active();
+            button(state, ElementState::Released);
+            move_cursor(state, neutral);
+            let neutral_input_restored = crate::app::input::camera::camera_input_idle(state)
+                && !state.match_state.input.selection_state.is_band_box_active()
+                && !state
+                    .match_state
+                    .match_presentation
+                    .in_game_gadgets
+                    .left_held
+                && !state
+                    .match_state
+                    .match_presentation
+                    .in_game_gadgets
+                    .right_held
+                && [
+                    state.match_state.input.cursor_x,
+                    state.match_state.input.cursor_y,
+                ] == neutral.map(|value| value as f32);
+            ensure!(
+                left_press_captured,
+                "gesture left press did not reach the retained tactical capture"
+            );
+            ensure!(
+                band_box_before_release == matches!(scheduled.gesture, MapGesture::Drag { .. }),
+                "gesture did not produce its requested click/band-drag input state"
+            );
+            ensure!(
+                neutral_input_restored,
+                "gesture left retained input active after release"
+            );
+            let after = MapInputObservation::capture(state)?;
+            let sim = &state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .context("gesture simulation disappeared")?
+                .simulation;
+            ensure!(
+                sim.session.tick == issued_simulation_tick
+                    && sim.session.binary_frame == issued_binary_frame,
+                "gesture advanced simulation outside the exact-step owner"
+            );
+            let pending_after = sim.pending_command_snapshot();
+            ensure!(
+                pending_after.starts_with(&pending_before),
+                "gesture changed previously queued commands"
+            );
+            let queued_commands: Vec<_> = pending_after
+                .into_iter()
+                .skip(pending_before.len())
+                .map(|envelope| MapGestureCommandReceipt {
+                    owner: sim.interner.resolve(envelope.owner).to_owned(),
+                    execute_tick: envelope.execute_tick,
+                    payload: envelope.payload,
+                })
+                .collect();
+            let map = self.map_state_mut()?;
+            let sample_count = map
+                .sample_count
+                .checked_add(before.selected_ids.len())
+                .and_then(|count| count.checked_add(after.selected_ids.len()))
+                .and_then(|count| count.checked_add(queued_commands.len()))
+                .context("gesture observation sample count overflow")?;
+            ensure!(
+                sample_count <= MAX_OBSERVATION_SAMPLES,
+                "gesture observation exceeds sample budget"
+            );
+            map.sample_count = sample_count;
+            map.gestures.push(MapGestureReceipt {
+                ordinal: map.gestures.len(),
+                issue_after_step: scheduled.issue_after_step,
+                issued_simulation_tick,
+                issued_binary_frame,
+                gesture: scheduled.gesture,
+                before,
+                after,
+                left_press_captured,
+                band_box_before_release,
+                neutral_input_restored,
+                queued_commands,
             });
         }
     }
@@ -986,6 +1308,11 @@ impl TacticalCaptureSession {
             houses,
             missing_actor_ids,
             terrain,
+            input: profile
+                .gestures
+                .as_ref()
+                .map(|_| MapInputObservation::capture(state))
+                .transpose()?,
         };
         self.map_state_mut()?.observe_frame(frame, ids)
     }
@@ -1133,7 +1460,8 @@ impl TacticalCaptureSession {
         );
         ensure!(
             map.frames.len() == profile.value.ticks as usize + 1
-                && map.commands.len() == profile.value.commands().len(),
+                && map.commands.len() == profile.value.commands().len()
+                && map.gestures.len() == profile.value.gestures().len(),
             "incomplete actor/command observation transcript"
         );
         let mut render = self
@@ -1335,6 +1663,9 @@ mod tests {
         let mut legacy = example();
         legacy.cursor_position = Some([720, 556]);
         assert!(legacy.validate().is_err());
+        let mut legacy = example();
+        legacy.gestures = Some(Vec::new());
+        assert!(legacy.validate().is_err());
         let mut modern = original;
         modern["schema_version"] = json!(PROFILE_V2);
         modern["commands"] = json!([{"issue_after_step": 0, "owner": "Computer1",
@@ -1342,11 +1673,13 @@ mod tests {
         modern["observe_owners"] = json!(["Computer1"]);
         modern["observe_types"] = json!(["CLEG"]);
         modern["cursor_position"] = json!([720, 556]);
+        modern["gestures"] = json!([]);
         let profile: MapCaptureProfile = serde_json::from_value(modern.clone()).unwrap();
         profile.validate().unwrap();
         assert_eq!(serde_json::to_value(profile).unwrap(), modern);
         for key in [
             "commands",
+            "gestures",
             "observe_owners",
             "observe_types",
             "camera_cell",
@@ -1404,6 +1737,137 @@ mod tests {
             invalid["cursor_position"] = position;
             assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn gestures_require_sealed_neutral_cursor_and_strict_tactical_pixel_arguments() {
+        let mut profile = example();
+        profile.schema_version = PROFILE_V2.to_owned();
+        profile.gestures = Some(Vec::new());
+        assert!(profile.validate().is_err());
+        profile.cursor_position = Some([720, 556]);
+        profile.validate().unwrap();
+        let (width, height) =
+            crate::app::input::camera::tactical_viewport_size_px(profile.width, profile.height);
+        profile.gestures = Some(vec![MapScheduledGesture {
+            issue_after_step: 0,
+            gesture: MapGesture::Click {
+                position: [width - 2, height - 2],
+            },
+        }]);
+        profile.validate().unwrap();
+        for position in [[0, 1], [1, 0], [width - 1, 1], [1, height - 1], [720, 556]] {
+            profile.gestures.as_mut().unwrap()[0].gesture = MapGesture::Click { position };
+            assert!(profile.validate().is_err(), "{position:?}");
+        }
+        profile.gestures.as_mut().unwrap()[0].gesture = MapGesture::Drag {
+            from: [10, 10],
+            to: [10, 10],
+        };
+        assert!(profile.validate().is_err());
+        profile.gestures.as_mut().unwrap()[0].gesture = MapGesture::Drag {
+            from: [10, 10],
+            to: [100, 100],
+        };
+        profile.validate().unwrap();
+        let valid = serde_json::to_value(profile).unwrap();
+        for gesture in [
+            json!({"kind": "click", "position": [true, 1]}),
+            json!({"kind": "click", "position": [1.0, 1]}),
+            json!({"kind": "click", "position": [1, 1], "button": "right"}),
+            json!({"kind": "click", "position": [1, 1, 1]}),
+            json!({"kind": "drag", "from": [1, 1]}),
+            json!({"kind": "move", "position": [1, 1]}),
+            Value::Null,
+        ] {
+            let mut invalid = valid.clone();
+            invalid["gestures"][0]["gesture"] = gesture;
+            assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn gesture_schedule_retains_equal_step_order_and_conditional_receipt_presence() {
+        let mut profile = example();
+        let mut map = initialized_map();
+        assert!(map.transcript(&profile).get("gesture_input").is_none());
+        profile.schema_version = PROFILE_V2.to_owned();
+        profile.cursor_position = Some([720, 556]);
+        profile.ticks = 3;
+        profile.gestures = Some(vec![
+            MapScheduledGesture {
+                issue_after_step: 0,
+                gesture: MapGesture::Click { position: [10, 10] },
+            },
+            MapScheduledGesture {
+                issue_after_step: 0,
+                gesture: MapGesture::Drag {
+                    from: [20, 20],
+                    to: [100, 100],
+                },
+            },
+            MapScheduledGesture {
+                issue_after_step: 2,
+                gesture: MapGesture::Click { position: [30, 30] },
+            },
+        ]);
+        profile.validate().unwrap();
+        assert!(map.pending_gesture(&profile, 1).is_err());
+        let observed = || MapInputObservation {
+            selected_ids: Vec::new(),
+            selection_pending: false,
+            target_line_remaining: 0,
+            target_line_active: false,
+        };
+        for ordinal in 0..2 {
+            let scheduled = map.pending_gesture(&profile, 0).unwrap().unwrap().clone();
+            assert_eq!(
+                serde_json::to_value(&scheduled.gesture).unwrap(),
+                serde_json::to_value(&profile.gestures()[ordinal].gesture).unwrap()
+            );
+            map.gestures.push(MapGestureReceipt {
+                ordinal,
+                issue_after_step: 0,
+                issued_simulation_tick: 0,
+                issued_binary_frame: 0,
+                band_box_before_release: matches!(scheduled.gesture, MapGesture::Drag { .. }),
+                gesture: scheduled.gesture,
+                before: observed(),
+                after: observed(),
+                left_press_captured: true,
+                neutral_input_restored: true,
+                queued_commands: Vec::new(),
+            });
+        }
+        assert!(map.pending_gesture(&profile, 1).unwrap().is_none());
+        assert_eq!(
+            map.pending_gesture(&profile, 2)
+                .unwrap()
+                .unwrap()
+                .issue_after_step,
+            2
+        );
+        assert!(map.pending_gesture(&profile, 3).is_err());
+        let transcript = map.transcript(&profile);
+        assert_eq!(transcript["gesture_input"]["policy"], GESTURE_POLICY);
+        assert_eq!(
+            transcript["gesture_input"]["equal_step_order"],
+            "commands_then_gestures"
+        );
+        assert_eq!(
+            transcript["gesture_input"]["receipts"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        profile.gestures.as_mut().unwrap()[2].issue_after_step = 3;
+        assert!(profile.validate().is_err());
+        profile.gestures.as_mut().unwrap()[0].issue_after_step = 1;
+        assert!(profile.validate().is_err());
+        let row = profile.gestures()[1].clone();
+        profile.gestures = Some(vec![row; MAX_GESTURES + 1]);
+        assert!(profile.validate().is_err());
     }
 
     #[test]
@@ -1466,6 +1930,7 @@ mod tests {
                 houses: Vec::new(),
                 missing_actor_ids: Vec::new(),
                 terrain: Vec::new(),
+                input: None,
             },
             BTreeSet::from([7]),
         )
@@ -1481,6 +1946,7 @@ mod tests {
                 houses: Vec::new(),
                 missing_actor_ids: vec![7],
                 terrain: Vec::new(),
+                input: None,
             },
             BTreeSet::from([7]),
         )
@@ -1664,6 +2130,7 @@ mod tests {
             houses: Vec::new(),
             missing_actor_ids: Vec::new(),
             terrain: Vec::new(),
+            input: None,
         };
         let mut map = initialized_map();
         assert!(map.observe_frame(frame(1, 1), BTreeSet::new()).is_err());
@@ -1673,6 +2140,14 @@ mod tests {
         map.observe_frame(frame(1, 1), BTreeSet::new()).unwrap();
         let mut large = frame(2, 2);
         large.terrain = vec![Value::Null; MAX_OBSERVATION_SAMPLES + 1];
+        assert!(map.observe_frame(large, BTreeSet::new()).is_err());
+        let mut large = frame(2, 2);
+        large.input = Some(MapInputObservation {
+            selected_ids: (1..=MAX_OBSERVATION_SAMPLES as u64 + 1).collect(),
+            selection_pending: false,
+            target_line_remaining: 0,
+            target_line_active: false,
+        });
         assert!(map.observe_frame(large, BTreeSet::new()).is_err());
         assert_eq!(map.frames.len(), 2);
         assert_eq!(map.sample_count, 0);

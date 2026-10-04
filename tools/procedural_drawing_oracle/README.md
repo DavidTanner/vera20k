@@ -1,9 +1,84 @@
 # Procedural gameplay drawing evidence
 
-The current chain is **selected local factory rally drawing**, not the entire
-procedural drawing goal. The whole-scope native/Rust censuses are in
+The current chain is **selected local ground Unit ordinary Move lines**. Factory
+rally drawing is integrated. The whole-scope native/Rust censuses are in
 [the checkpoint](../../docs/plans/procedural-drawing.md). No unresolved census
 entry is completed by documenting it.
+
+## Selected ground Unit Move
+
+[`action_lines.md`](action_lines.md) records the native route, initialized state,
+retail palette, input/load timer boundaries, destination setter and draw ordering.
+`action_lines.json` preserves 277 native prepared-input controls plus 12 production
+inputs. Its metadata pins the image, physical data and reused fixture owners.
+The optional 160×160 production crop reuses the Rally surface fixture; the Rally
+and shroud payload files remain byte-identical after independent native replay.
+
+The production owner is `app::presentation::target_lines`, using the existing
+coordinate/terrain owners, `CdTimer`, `PaletteLight` and shared `surface_line`.
+The sole rectangle intersection is now `util::rect::clip_rect`; radar viewport
+edges call the shared solid raster. The ordinary Move event reaches the existing
+Unit destination setter with native clear-queue1. The input dispatcher owns the
+restart, including consumed empty dispatch and empty band release; successful
+load reanchors the retained process timer. No new simulation state or RNG stream
+was introduced. Native stores do not read/write A or Z or detach objects.
+
+`action_line_tests` compares 120 production-builder inputs, 6 opaque overlap
+orders, 77 solid leaves, 45 intersections, timer controls and the complete palette
+row. GPU comparisons use the actual batch renderer in two sRGB formats at four
+zooms, with poisoned depth and an unchanged-depth assertion: 1008 draws. Five
+existing clipping controls retain a documented 1px rounding residual; their 40
+GPU draws establish exact presentation of the bounded CPU raster. Other draws
+compare directly with original native pixels. The optimized focused run passed
+88 tests on the integrated main candidate, including downstream radar/map, input, destination and capture-schema
+checks. Full-candidate validation is recorded in the checkpoint.
+
+The [portable production archive](unit-move-production-validation/receipt.json)
+contains 12 normal release XMP03T4 captures on Apple M4/Metal. Real local mouse
+gestures exercise selection, Move, last-active/expired frames, reselection and
+empty bands. Ordinary Stop and arrival exercise NavCom cleanup. Every native
+opaque store matches the final frame. The matched-time Move, Stop and reselection
+pairs compare all 480000 pixels, changing only 165, 165 and 151 native stores.
+After arrival, reselection leaves all 358976 tactical pixels identical; its click
+resets the separate sidebar tooltip. These are prepared native inputs bound to
+captured state, not native whole-Scenario or whole-frame emulation.
+
+```sh
+python -m tools.procedural_drawing_oracle.action_lines --check
+python -m tools.procedural_drawing_oracle.rally_production check \
+  --archive tools/procedural_drawing_oracle/unit-move-production-validation
+```
+
+The [rally consumer check](validation/unit-move-rally-consumer.json) compares the
+new release with the retained rally v4: all 480000 frame pixels and 1501 state
+boundaries are identical. Original capture directories and labeled binaries remain
+with the build/capture owners; no extra executable was copied into this packet.
+
+Dense selections compose native opaque stores into a temporary logical pixel
+grid in forward Techno order, then emit disjoint row spans. Small selections keep
+the same direct raster. The existing workload test retains
+[before](validation/action-line-workload-before.json) and
+[after](validation/action-line-workload-after.json) samples: two warmups, twenty
+measurements, optimized build, 632×568 tactical pixels in an 800×600 target.
+At 20000 selected overlapping Move lines, spans fall from 979995 to 63 and upload
+bytes from 121519380 to 7812. Mean CPU construction falls from 14.422 to 8.266ms;
+CPU staging from 10.939 to 0.025ms; submission-through-completion wall time from
+27.244 to 1.538ms. One-line construction remains about 0.005ms. The synthetic
+sources overlap and repeat; this is not a dispersed 20000-unit game or FPS claim.
+The [final integrated run](validation/action-line-workload-final.json) retains
+the same63 spans/7812 bytes: CPU construction8.541ms, staging0.022ms and
+completion1.533ms. Full retail lib9671 passed/239 ignored, Clippy passed,
+Python594 passed/5 optional skips, and the field ratchet remained2505/2505.
+
+The implementation cites [WGSL pixel-center semantics](https://www.w3.org/TR/WGSL/#builtin-values-position)
+for scaling native logical pixels. The version-matched
+[wgpu queue contract](https://github.com/gfx-rs/wgpu/blob/c76dea031c688ecef0050dbf60506fff128fb23f/wgpu/src/api/queue.rs)
+distinguishes CPU staging from submission and subsequent GPU transfer.
+Timing follows the installed wgpu27.0.1
+`PollType::Wait(Some(submission))` contract: completion includes uploads, GPU work,
+query copying and map callbacks. Metal timestamp intervals were unavailable and
+remain null; no GPU-only speedup is claimed. Attack anchors, other Foot paths,
+planning, range/selection rasters and the remaining whole-scope families stay open.
 
 ## Original executable
 

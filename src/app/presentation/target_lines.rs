@@ -11,32 +11,19 @@ use std::collections::BTreeMap;
 
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseColorMap;
+use crate::map::resolved_terrain::NativeCellQuery;
 use crate::map::terrain;
 use crate::render::batch::SpriteInstance;
 use crate::rules::house_colors::{HouseColorRamps, NO_REMAP};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{AttackTarget, TargetKind};
-use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::components::NavTargetRef;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
 
 /// How long selected action lines remain visible after a command is issued.
-const DURATION_TICKS: u64 = 25;
-
-/// One 6-bit VGA palette channel expanded to the 0..255 the renderer wants.
-/// PALETTE.PAL stores `0xA8` for the full-intensity band these two lines use.
-const PALETTE_CHANNEL_A8: f32 = 0xA8 as f32 / 255.0;
-
-/// Attack (archive-target) line — PALETTE.PAL index 8, `#A80000` dark red.
-/// The draw routine picks the palette index by branch: the archive-target arm
-/// takes 8 and returns without falling through to the movement arm.
-const ATTACK_COLOR: [f32; 3] = [PALETTE_CHANNEL_A8, 0.0, 0.0];
-/// Move (navigation-target) line — PALETTE.PAL index 3, `#00A800` medium green.
-const MOVE_COLOR: [f32; 3] = [0.0, PALETTE_CHANNEL_A8, 0.0];
-/// Depth: above debug overlays (0.0004), below selection brackets (0.0006).
-const LINE_DEPTH: f32 = 0.0005;
-const ENDPOINT_BOX_RADIUS: i32 = 1;
+const DURATION_TICKS: i32 = 25;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ScreenPoint {
@@ -63,28 +50,40 @@ struct SelectedActionLine {
     kind: SelectedLineKind,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ProjectedActionLine {
+    start: [i32; 2],
+    end: [i32; 2],
+    kind: SelectedLineKind,
+}
+
 /// Global selected action line state stored on `AppState`.
 #[derive(Debug, Clone)]
 pub(crate) struct TargetLineState {
-    start_tick: Option<u64>,
+    timer: CdTimer,
     unit_action_lines_enabled: bool,
 }
 
 impl Default for TargetLineState {
     fn default() -> Self {
         Self {
-            start_tick: None,
+            timer: CdTimer::default(),
             unit_action_lines_enabled: true,
         }
     }
 }
 
 impl TargetLineState {
-    pub(crate) fn is_selected_action_active(&self, current_tick: u64) -> bool {
-        self.unit_action_lines_enabled
-            && self
-                .start_tick
-                .is_some_and(|start| current_tick.saturating_sub(start) < DURATION_TICKS)
+    /// Foot4DC089..4DC0AD uses signed wrapping elapsed and a positive
+    /// remainder, including the native paused sentinel. It is not !expired.
+    pub(crate) fn is_selected_action_active(&self, binary_frame: u32) -> bool {
+        self.unit_action_lines_enabled && self.remaining_frames(binary_frame) > 0
+    }
+
+    /// Countdown observation for sealed input/capture receipts, independent
+    /// of the option gate. Reading it cannot advance or restart the timer.
+    pub(crate) fn remaining_frames(&self, binary_frame: u32) -> i32 {
+        self.timer.remaining(binary_frame as i32)
     }
 
     pub(crate) fn set_unit_action_lines_enabled(&mut self, enabled: bool) {
@@ -103,28 +102,16 @@ impl TargetLineState {
     /// control-group recall — with order dispatch the fourth. So selecting a
     /// group flashes what it is already doing; the lines are not an order-only
     /// cue.
-    pub(crate) fn start_timer(&mut self, current_tick: u64) {
-        self.start_tick = Some(current_tick);
+    pub(crate) fn start_timer(&mut self, binary_frame: u32) {
+        // Original70D150. No RNG draw or simulation mutation.
+        self.timer.start(binary_frame as i32, DURATION_TICKS);
     }
-}
 
-/// Reset the selected action-line timer when action-producing commands are queued.
-pub(crate) fn record_command_lines(
-    state: &mut TargetLineState,
-    commands: &[CommandEnvelope],
-    current_tick: u64,
-) {
-    if commands.iter().any(|envelope| {
-        matches!(
-            envelope.payload,
-            Command::Move { .. }
-                | Command::AttackMove { .. }
-                | Command::Attack { .. }
-                | Command::ForceAttack { .. }
-                | Command::ForceAttackCell { .. }
-        )
-    }) {
-        state.start_tick = Some(current_tick);
+    /// Successful load685167..6851A1 preserves the remaining countdown at
+    /// the restored frame, then reanchors it. It never restarts25 here.
+    pub(crate) fn reanchor_after_load(&mut self, binary_frame: u32) {
+        let frame = binary_frame as i32;
+        self.timer.start(frame, self.timer.remaining(frame));
     }
 }
 
@@ -133,32 +120,157 @@ pub(crate) fn build_target_line_instances(
     line_state: &TargetLineState,
     sim: Option<&Simulation>,
     height_map: &BTreeMap<(u16, u16), u8>,
+    palette_bytes: Option<&[u8]>,
+    viewport: TacticalViewport,
 ) -> Vec<SpriteInstance> {
     let Some(sim) = sim else {
         return Vec::new();
     };
-    if !line_state.is_selected_action_active(sim.session.tick) {
+    if !line_state.is_selected_action_active(sim.session.binary_frame) {
         return Vec::new();
     }
+    let Some(palette) =
+        palette_bytes.and_then(|bytes| crate::assets::pal_file::Palette::from_bytes(bytes).ok())
+    else {
+        return Vec::new();
+    };
+    let colors = [
+        action_line_color(&palette, 3),
+        action_line_color(&palette, 8),
+    ];
 
-    let mut instances = Vec::new();
+    let cells = sim.resolved_terrain.as_ref().map(NativeCellQuery::isolated);
+    let mut lines = Vec::new();
+    let project = |p: ScreenPoint| {
+        [
+            p.x as i32 - viewport.camera[0],
+            p.y as i32 - viewport.camera[1] + viewport.clip[1],
+        ]
+    };
+    // Tactical6D4750 walks the construction-ordered Techno array, not the
+    // CurrentObjects selection vector or the Logic active-object order.
+    // EntityStore's monotonic stable IDs retain that represented order.
     for entity in sim.entities().values() {
-        let Some(line) = selected_action_line_for_entity(entity, sim, height_map) else {
+        let Some(line) = selected_action_line_for_entity(entity, sim, height_map, cells.as_ref())
+        else {
             continue;
         };
-        let tint = match line.kind {
-            SelectedLineKind::Attack => ATTACK_COLOR,
-            SelectedLineKind::Move => MOVE_COLOR,
-        };
-        emit_selected_action_line(&mut instances, line.start, line.end, tint);
+        lines.push(ProjectedActionLine {
+            start: project(line.start),
+            end: project(line.end),
+            kind: line.kind,
+        });
+    }
+    build_selected_action_line_instances(&lines, colors, viewport)
+}
+
+/// Compose this call's already projected lines in Tactical6D4750 Techno order.
+/// Native7049C0 writes a constant opaque color without reading A or Z, so after
+/// resolving overlaps its disjoint final spans may be emitted in row order.
+/// The pixel grid and dirty ranges are derived only from these lines/clip and
+/// are dropped before returning; no presentation cache or simulation state is
+/// retained. Both routes pass the same logical pixels through the half-open
+/// pixel-center scaling in `push_surface_rect` after resolving opaque stores.
+/// Native primitive/overlap evidence: tools/procedural_drawing_oracle/action_lines.
+fn build_selected_action_line_instances(
+    lines: &[ProjectedActionLine],
+    colors: [[f32; 3]; 2],
+    viewport: TacticalViewport,
+) -> Vec<SpriteInstance> {
+    let [left, top, width, height] = viewport.clip;
+    let mut instances = Vec::new();
+    // Storage/index safety only; geometry clipping remains in the native raster.
+    if width <= 0
+        || height <= 0
+        || left.checked_add(width).is_none()
+        || top.checked_add(height).is_none()
+    {
+        return instances;
+    }
+    let color_index = |kind| match kind {
+        SelectedLineKind::Move => 1_u8,
+        SelectedLineKind::Attack => 2_u8,
+    };
+    let width = width as usize;
+    let height = height as usize;
+    // Small selections keep the direct route. Checked/fallible allocations
+    // preserve that same route if a dense viewport cannot be represented.
+    let dense = (lines.len() > 32)
+        .then(|| {
+            let pixel_count = width.checked_mul(height)?;
+            let mut pixels = Vec::new();
+            pixels.try_reserve_exact(pixel_count).ok()?;
+            pixels.resize(pixel_count, 0_u8); // 0 is untouched, not a black pixel.
+            let mut dirty_rows = Vec::new();
+            dirty_rows.try_reserve_exact(height).ok()?;
+            dirty_rows.resize(height, [width, 0]); // [first, end), empty initially.
+            Some((pixels, dirty_rows))
+        })
+        .flatten();
+    let Some((mut pixels, mut dirty_rows)) = dense else {
+        for line in lines {
+            let tint = colors[usize::from(color_index(line.kind) - 1)];
+            emit_selected_action_line(line.start, line.end, viewport.clip, |rect| {
+                push_surface_rect(&mut instances, rect, tint, viewport);
+            });
+        }
+        return instances;
+    };
+    for line in lines {
+        let color = color_index(line.kind);
+        emit_selected_action_line(line.start, line.end, viewport.clip, |rect| {
+            if rect[2] <= 0 || rect[3] <= 0 {
+                return;
+            }
+            // Rectangles are native-clipped. Widened/clamped offsets also
+            // keep signed extreme coordinates from escaping this allocation.
+            let x0 = (i64::from(rect[0]) - i64::from(left)).clamp(0, width as i64) as usize;
+            let x1 = (i64::from(rect[0]) + i64::from(rect[2]) - i64::from(left))
+                .clamp(0, width as i64) as usize;
+            let y0 = (i64::from(rect[1]) - i64::from(top)).clamp(0, height as i64) as usize;
+            let y1 = (i64::from(rect[1]) + i64::from(rect[3]) - i64::from(top))
+                .clamp(0, height as i64) as usize;
+            if x0 >= x1 || y0 >= y1 {
+                return;
+            }
+            for (y, dirty) in dirty_rows.iter_mut().enumerate().take(y1).skip(y0) {
+                let row = y * width;
+                pixels[row + x0..row + x1].fill(color);
+                dirty[0] = dirty[0].min(x0);
+                dirty[1] = dirty[1].max(x1);
+            }
+        });
+    }
+    for (y, [first, end]) in dirty_rows.into_iter().enumerate() {
+        let row = &pixels[y * width..(y + 1) * width];
+        let mut x = first;
+        while x < end {
+            let color = row[x];
+            if color == 0 {
+                x += 1;
+                continue;
+            }
+            let start = x;
+            x += 1;
+            while x < end && row[x] == color {
+                x += 1;
+            }
+            push_surface_rect(
+                &mut instances,
+                [left + start as i32, top + y as i32, (x - start) as i32, 1],
+                colors[usize::from(color - 1)],
+                viewport,
+            );
+        }
     }
     instances
 }
 
-/// Integer logical viewport plus VERA's presentation-only zoom. Native6DA9D0
-/// operates in unzoomed surface pixels. Scaling happens after rasterization.
+/// Integer logical viewport plus VERA's presentation-only zoom. Native rally
+/// 6DA9D0 and action7049C0 operate in unzoomed surface pixels. Scaling happens
+/// after rasterization, independently of their native clipping/projection.
 #[derive(Clone, Copy)]
-pub(crate) struct RallyViewport {
+pub(crate) struct TacticalViewport {
     pub camera: [i32; 2],
     pub clip: [i32; 4],
     pub zoom: f32,
@@ -176,7 +288,7 @@ pub(crate) fn build_factory_rally_line_instances(
     selected_ids: &[u64],
     house_color_map: &HouseColorMap,
     local_owner: Option<&str>,
-    viewport: RallyViewport,
+    viewport: TacticalViewport,
     mut alpha_at: impl FnMut([i32; 2]) -> u8,
 ) -> [Vec<SpriteInstance>; 2] {
     use crate::map::resolved_terrain::NativeCellQuery;
@@ -255,15 +367,21 @@ fn selected_action_line_for_entity(
     entity: &GameEntity,
     sim: &Simulation,
     height_map: &BTreeMap<(u16, u16), u8>,
+    cells: Option<&NativeCellQuery<'_>>,
 ) -> Option<SelectedActionLine> {
-    if !entity.selected || entity.category == EntityCategory::Structure {
+    if !entity.selected
+        || entity.category == EntityCategory::Structure
+        || !sim.house_is_human_player(entity.owner())
+    {
         return None;
     }
-    let start = selected_action_line_source(entity);
     if let Some(attack) = &entity.attack_target {
         let end = resolve_attack_target_point(attack, sim, height_map)?;
         return Some(SelectedActionLine {
-            start,
+            // RESIDUAL: the attack-only vt300 TurretOffset and70BCB0 aim
+            // inputs belong to the next attack-line chain. Retain the prior
+            // attack anchor until its existing coordinate consumers migrate.
+            start: selected_action_line_source(entity),
             end,
             kind: SelectedLineKind::Attack,
         });
@@ -276,9 +394,37 @@ fn selected_action_line_for_entity(
         .last()
         .copied()
         .or(entity.navigation.nav_com)?;
+    use crate::sim::movement::ground_pose::{
+        object_location, query_ground_height, target_get_coords,
+    };
+    let terrain = sim.resolved_terrain.as_ref();
+    let target = match nav_target {
+        NavTargetRef::Cell { rx, ry } => TargetKind::Cell(rx, ry),
+        NavTargetRef::Entity { id }
+        | NavTargetRef::Object { id }
+        | NavTargetRef::Building { id } => TargetKind::Entity(id),
+    };
+    let mut end = target_get_coords(target, sim.entities(), cells)?;
+    let end_cell = (
+        crate::util::lepton::lepton_to_cell_packed(end.x),
+        crate::util::lepton::lepton_to_cell_packed(end.y),
+    );
+    // Foot4DC205..4DC27A: retain target+48 Z except for an in-Size cell
+    // with flag100, which replaces it with ground578080 + Foot's deck height.
+    if sim.map_cell_in_bounds(end_cell)
+        && let Some(cells) = cells
+        && cells.flags(cells.lookup_world(end.x, end.y)) & 0x100 != 0
+    {
+        end.z = query_ground_height(cells, end)
+            .ok()?
+            .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
+    }
+    let project = |coord: crate::sim::components::DriveCoord| {
+        crate::util::lepton::absolute_leptons_to_screen(coord.x, coord.y, coord.z).into()
+    };
     Some(SelectedActionLine {
-        start,
-        end: resolve_navigation_target_point(nav_target, sim, height_map)?,
+        start: project(object_location(entity, terrain)),
+        end: project(end),
         kind: SelectedLineKind::Move,
     })
 }
@@ -301,24 +447,6 @@ fn resolve_attack_target_point(
         TargetKind::Cell(rx, ry) => {
             Some(project_cell_destination(rx, ry, height_map, None, Some(sim)).into())
         }
-    }
-}
-
-fn resolve_navigation_target_point(
-    target: NavTargetRef,
-    sim: &Simulation,
-    height_map: &BTreeMap<(u16, u16), u8>,
-) -> Option<ScreenPoint> {
-    match target {
-        NavTargetRef::Cell { rx, ry } => {
-            Some(project_cell_destination(rx, ry, height_map, None, Some(sim)).into())
-        }
-        NavTargetRef::Entity { id }
-        | NavTargetRef::Object { id }
-        | NavTargetRef::Building { id } => sim.entities().get(id).map(|target| ScreenPoint {
-            x: crate::render::locomotor_visual::screen_position(target).0,
-            y: crate::render::locomotor_visual::screen_position(target).1,
-        }),
     }
 }
 
@@ -366,61 +494,43 @@ fn rally_tint_for_owner(
         .map(|channel| f32::from(channel) / 255.0)
 }
 
-fn push_line_pixel(instances: &mut Vec<SpriteInstance>, x: f32, y: f32, tint: [f32; 3]) {
-    instances.push(SpriteInstance {
-        position: [x.round(), y.round()],
-        size: [1.0, 1.0],
-        uv_origin: [0.0, 0.0],
-        uv_size: [1.0, 1.0],
-        tint,
-        alpha: 1.0,
-        depth: LINE_DEPTH,
-        ..Default::default()
-    });
+/// Palette87F6C4's N53 middle row, read by4DC280 (Move index3) and
+/// 4DC0FA (attack index8), unpacked and repacked by7049C0. This is raw
+/// surface color; the action line does not sample A or use cell lighting.
+fn action_line_color(palette: &crate::assets::pal_file::Palette, index: u8) -> [f32; 3] {
+    use crate::render::native_surface_format::{ACTIVE_RETAIL_RGB565_PRESENTATION, RGB565};
+    let color = palette.colors[usize::from(index)];
+    let word = crate::render::palette_light::PaletteLight::plain(53, 1000).rgb565(
+        [color.r, color.g, color.b],
+        index,
+        127,
+    );
+    let [r, g, b] = RGB565.unpack_rgb8(word);
+    let rgba = ACTIVE_RETAIL_RGB565_PRESENTATION.quantize_rgba8([r, g, b, 255]);
+    [rgba[0], rgba[1], rgba[2]].map(|v| f32::from(v) / 255.)
 }
 
-fn emit_endpoint_box(instances: &mut Vec<SpriteInstance>, point: ScreenPoint, tint: [f32; 3]) {
-    for dy in -ENDPOINT_BOX_RADIUS..=ENDPOINT_BOX_RADIUS {
-        for dx in -ENDPOINT_BOX_RADIUS..=ENDPOINT_BOX_RADIUS {
-            push_line_pixel(instances, point.x + dx as f32, point.y + dy as f32, tint);
-        }
-    }
-}
-
-fn emit_solid_line(
-    instances: &mut Vec<SpriteInstance>,
-    start: ScreenPoint,
-    end: ScreenPoint,
-    tint: [f32; 3],
-) {
-    let dx = end.x - start.x;
-    let dy = end.y - start.y;
-    let steps = dx.abs().max(dy.abs()).ceil() as i32;
-    if steps <= 0 {
-        return;
-    }
-    let step_x = dx / steps as f32;
-    let step_y = dy / steps as f32;
-
-    for i in 0..steps {
-        push_line_pixel(
-            instances,
-            start.x + step_x * i as f32,
-            start.y + step_y * i as f32,
-            tint,
-        );
-    }
-}
-
+/// Ordinary7049C0(source,target,color,0,0): two clipped3x3 fills followed
+/// by the solid line. The native box origin is point-2 on both axes. Its
+/// bottom-right pixel is the endpoint, not the centre of a symmetric box.
+/// No A/Z reads or writes, RNG draws, timer mutations or detach calls.
 fn emit_selected_action_line(
-    instances: &mut Vec<SpriteInstance>,
-    start: ScreenPoint,
-    end: ScreenPoint,
-    tint: [f32; 3],
+    mut start: [i32; 2],
+    mut end: [i32; 2],
+    clip: [i32; 4],
+    mut emit: impl FnMut([i32; 4]),
 ) {
-    emit_endpoint_box(instances, start, tint);
-    emit_endpoint_box(instances, end, tint);
-    emit_solid_line(instances, start, end, tint);
+    use crate::render::surface_line::{clip_line, solid_line};
+    for point in [start, end] {
+        let rect = crate::util::rect::clip_rect(
+            [point[0].wrapping_sub(2), point[1].wrapping_sub(2), 3, 3],
+            clip,
+        );
+        emit(rect);
+    }
+    if clip_line(&mut start, &mut end, clip) {
+        solid_line(start, end, emit);
+    }
 }
 
 /// Original static pattern842930. The producer phase has period15 even though
@@ -433,7 +543,7 @@ fn emit_rally_line(
     mut to: [i32; 2],
     tint: [f32; 3],
     frame: u32,
-    viewport: RallyViewport,
+    viewport: TacticalViewport,
     mut alpha_at: impl FnMut([i32; 2]) -> u8,
 ) {
     use crate::render::surface_line::{clip_line, patterned_line};
@@ -450,7 +560,12 @@ fn emit_rally_line(
         if clip_line(&mut from, &mut to, viewport.clip) {
             patterned_line(from, to, &RALLY_PATTERN, phase, |point| {
                 let pass = usize::from(alpha_at(point) == 0);
-                push_rally_pixel(&mut instances[pass], point, color, viewport);
+                push_surface_rect(
+                    &mut instances[pass],
+                    [point[0], point[1], 1, 1],
+                    color,
+                    viewport,
+                );
             });
         }
         from[1] -= 1;
@@ -461,16 +576,20 @@ fn emit_rally_line(
 /// Nearest sampling of the native logical pixel grid. Use the existing UI
 /// passthrough pipeline so zoom never pads adjacent 1px quads or writes Z.
 /// Adjacent stores of the same row/color become one horizontal span.
-fn push_rally_pixel(
+/// WGSL fragment positions sample pixel centers at integer coordinates + 0.5:
+/// https://www.w3.org/TR/WGSL/#builtin-values-position
+/// Thus each half-open scaled edge maps to ceil(edge * zoom - 0.5). Resolving
+/// opaque overlaps in logical pixels before this mapping preserves coverage.
+fn push_surface_rect(
     instances: &mut Vec<SpriteInstance>,
-    point: [i32; 2],
+    [left, top, width, height]: [i32; 4],
     tint: [f32; 3],
-    view: RallyViewport,
+    view: TacticalViewport,
 ) {
     let edge = |v: i32| (v as f32 * view.zoom - 0.5).ceil();
-    let x = edge(point[0]);
-    let y = edge(point[1]);
-    let size = [edge(point[0] + 1) - x, edge(point[1] + 1) - y];
+    let x = edge(left);
+    let y = edge(top);
+    let size = [edge(left + width) - x, edge(top + height) - y];
     if size[0] <= 0. || size[1] <= 0. {
         return;
     }
@@ -507,7 +626,7 @@ mod tests {
     #[test]
     fn rally_pattern_matches_original_producer_pixels() {
         let row = &rally_native()["producer_cases"][0];
-        let view = RallyViewport {
+        let view = TacticalViewport {
             camera: [0, 0],
             clip: [0, 0, 160, 120],
             zoom: 1.,
@@ -525,9 +644,9 @@ mod tests {
         assert_native_passes(&actual, row, view);
     }
 
-    fn active_line_state_for_tick(tick: u64) -> TargetLineState {
+    fn active_line_state_for_tick(frame: u32) -> TargetLineState {
         TargetLineState {
-            start_tick: Some(tick),
+            timer: CdTimer::started(frame as i32, DURATION_TICKS),
             unit_action_lines_enabled: true,
         }
     }
@@ -550,6 +669,8 @@ mod tests {
         let mut sim = Simulation::new();
         let mut unit = GameEntity::test_default(1, "MTNK", "Americans", 10, 10);
         unit.selected = true;
+        sim.session.game_mode_nonzero = true;
+        sim.session.current_house = Some(unit.owner());
         unit.navigation.nav_com = Some(NavTargetRef::cell(25, 25));
         unit.movement_target = Some(MovementTarget {
             final_goal: Some((25, 25)),
@@ -559,17 +680,6 @@ mod tests {
         let target = GameEntity::test_default(2, "HTNK", "Soviet", 14, 10);
         sim.entities_mut().insert(unit);
         sim.entities_mut().insert(target);
-        sim
-    }
-
-    fn sim_with_selected_unit_navcom(nav_com: Option<(u16, u16)>) -> Simulation {
-        let mut sim = Simulation::new();
-        let mut unit = GameEntity::test_default(1, "MTNK", "Americans", 10, 10);
-        unit.selected = true;
-        if let Some((rx, ry)) = nav_com {
-            unit.navigation.nav_com = Some(NavTargetRef::cell(rx, ry));
-        }
-        sim.entities_mut().insert(unit);
         sim
     }
 
@@ -612,8 +722,8 @@ mod tests {
         sim
     }
 
-    fn test_viewport() -> RallyViewport {
-        RallyViewport {
+    fn test_viewport() -> TacticalViewport {
+        TacticalViewport {
             camera: [-320, 0],
             clip: [0, 0, 1000, 1000],
             zoom: 1.,
@@ -659,16 +769,6 @@ mod tests {
         assert!(!state.is_selected_action_active(101));
     }
 
-    /// The two line colours are palette entries, not eyeballed greens: the
-    /// archive-target branch selects index 8 (`#A80000`) and the navigation
-    /// branch index 3 (`#00A800`). PALETTE.PAL byte value for both is 0xA8.
-    #[test]
-    fn action_line_colors_are_palette_entries_eight_and_three() {
-        let a8 = 168.0 / 255.0;
-        assert_eq!(ATTACK_COLOR, [a8, 0.0, 0.0]);
-        assert_eq!(MOVE_COLOR, [0.0, a8, 0.0]);
-    }
-
     /// Selection alone opens the window — no command required.
     #[test]
     fn start_timer_opens_the_window_without_a_command() {
@@ -681,76 +781,11 @@ mod tests {
     }
 
     #[test]
-    fn selected_action_line_emits_endpoint_boxes() {
-        let mut instances = Vec::new();
-        emit_selected_action_line(
-            &mut instances,
-            ScreenPoint { x: 10.0, y: 10.0 },
-            ScreenPoint { x: 20.0, y: 10.0 },
-            MOVE_COLOR,
-        );
-        assert!(instances.len() >= 18);
-    }
-
-    #[test]
     fn selected_action_attack_target_wins_over_movement() {
         let sim = sim_with_selected_unit_that_has_attack_and_move();
-        let target = sim.entities().get(2).unwrap();
-        let lines = build_target_line_instances(
-            &active_line_state_for_tick(sim.session.tick),
-            Some(&sim),
-            &BTreeMap::new(),
-        );
-        assert!(!lines.is_empty());
-        assert!(lines.iter().any(|instance| {
-            instance.position
-                == [
-                    crate::render::locomotor_visual::screen_position(target)
-                        .0
-                        .round(),
-                    crate::render::locomotor_visual::screen_position(target)
-                        .1
-                        .round(),
-                ]
-        }));
-    }
-
-    #[test]
-    fn selected_action_line_uses_navcom_without_movement_target() {
-        let sim = sim_with_selected_unit_navcom(Some((21, 22)));
-        let unit = sim.entities().get(1).unwrap();
-        let line = selected_action_line_for_entity(unit, &sim, &BTreeMap::new()).unwrap();
-        assert_eq!(
-            line.end,
-            project_cell_destination(21, 22, &BTreeMap::new(), None, Some(&sim)).into()
-        );
-    }
-
-    #[test]
-    fn selected_action_line_uses_navqueue_last_when_navcom_exists() {
-        let mut sim = sim_with_selected_unit_navcom(Some((21, 22)));
-        let unit = sim.entities_mut().get_mut(1).unwrap();
-        unit.navigation.nav_queue.push(NavTargetRef::cell(30, 31));
-        unit.navigation.nav_queue.push(NavTargetRef::cell(32, 33));
-        let unit = sim.entities().get(1).unwrap();
-        let line = selected_action_line_for_entity(unit, &sim, &BTreeMap::new()).unwrap();
-        assert_eq!(
-            line.end,
-            project_cell_destination(32, 33, &BTreeMap::new(), None, Some(&sim)).into()
-        );
-    }
-
-    #[test]
-    fn selected_action_line_navqueue_without_navcom_does_not_draw() {
-        let mut sim = sim_with_selected_unit_navcom(None);
-        sim.entities_mut()
-            .get_mut(1)
-            .unwrap()
-            .navigation
-            .nav_queue
-            .push(NavTargetRef::cell(30, 31));
-        let unit = sim.entities().get(1).unwrap();
-        assert!(selected_action_line_for_entity(unit, &sim, &BTreeMap::new()).is_none());
+        let actor = sim.entities().get(1).unwrap();
+        let line = selected_action_line_for_entity(actor, &sim, &BTreeMap::new(), None).unwrap();
+        assert_eq!(line.kind, SelectedLineKind::Attack);
     }
 
     #[test]
@@ -776,7 +811,16 @@ mod tests {
         let sim = sim_with_selected_factory_and_non_factory();
         let rules = rules_with_factory_and_non_factory();
 
-        assert!(build_target_line_instances(&state, Some(&sim), &BTreeMap::new()).is_empty());
+        assert!(
+            build_target_line_instances(
+                &state,
+                Some(&sim),
+                &BTreeMap::new(),
+                None,
+                test_viewport()
+            )
+            .is_empty()
+        );
         assert!(
             !build_factory_rally_line_instances(
                 Some(&sim),
@@ -794,8 +838,14 @@ mod tests {
     #[test]
     fn line_builders_skip_when_sim_or_rules_missing() {
         assert!(
-            build_target_line_instances(&TargetLineState::default(), None, &BTreeMap::new())
-                .is_empty()
+            build_target_line_instances(
+                &TargetLineState::default(),
+                None,
+                &BTreeMap::new(),
+                None,
+                test_viewport()
+            )
+            .is_empty()
         );
         assert!(
             build_factory_rally_line_instances(
@@ -815,3 +865,7 @@ mod tests {
 #[cfg(test)]
 #[path = "rally_line_tests.rs"]
 mod rally_tests;
+
+#[cfg(test)]
+#[path = "action_line_tests.rs"]
+mod action_tests;

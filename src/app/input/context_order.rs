@@ -284,11 +284,18 @@ fn emit_entity_order_voice(state: &mut AppState, speaker_id: u64, voice_field: &
     state.match_state.match_audio.sound_events.push(event);
 }
 
-/// Commit a resolved order batch: one voice line, the action lines, the queue.
+/// Commit a resolved context dispatch: one voice line, the queue, then its timer.
 ///
 /// Every exit from order resolution goes through here so the single-speaker rule
 /// holds for the capability branches (garrison, C4, capture, depot, bunker,
 /// deploy) as well as for the move/attack tail.
+/// Display4ABFA9 calls Selection4AE750, then unconditionally starts the global
+/// action-line timer at4ABFAE, including Move1/NoMove2 with no admitted event.
+/// Both take the common4AC294 exit and RET4AC2A7, without visiting Select7.
+/// The return value means that dispatch consumed the click, not that it
+/// admitted an event; an empty batch must not fall through to selection clear.
+/// Friendly click-selection and an empty selection never enter this boundary.
+/// Evidence: tools/procedural_drawing_oracle/action_lines.
 fn finish_order(
     state: &mut AppState,
     queued: Vec<CommandEnvelope>,
@@ -309,43 +316,44 @@ fn finish_order(
     } else {
         queued
     };
-    if queued.is_empty() {
-        return false;
+    let queued_any = !queued.is_empty();
+    if queued_any {
+        restore_selection_dispatch_order(
+            &mut queued,
+            &selected_stable_ids_in_order(
+                state
+                    .match_state
+                    .sim_runtime
+                    .as_ref()
+                    .map(|rt| &rt.simulation),
+                state.rules(),
+                &state.match_state.input.selection_order,
+                state.match_state.input.selection_order_pending,
+            ),
+        );
+        if let Some(speaker_id) = speaker_id {
+            emit_resolved_order_voice(state, speaker_id, &queued);
+        }
+        if let Some(sim) = state
+            .match_state
+            .sim_runtime
+            .as_mut()
+            .map(|rt| &mut rt.simulation)
+        {
+            sim.queue_commands(queued);
+        }
     }
-    restore_selection_dispatch_order(
-        &mut queued,
-        &selected_stable_ids_in_order(
-            state
-                .match_state
-                .sim_runtime
-                .as_ref()
-                .map(|rt| &rt.simulation),
-            state.rules(),
-            &state.match_state.input.selection_order,
-            state.match_state.input.selection_order_pending,
-        ),
-    );
-    if let Some(speaker_id) = speaker_id {
-        emit_resolved_order_voice(state, speaker_id, &queued);
-    }
-    let current_tick = state
+    if let Some(frame) = state
         .match_state
         .sim_runtime
         .as_ref()
-        .map(|rt| &rt.simulation)
-        .map_or(0, |s| s.session.tick);
-    crate::app::presentation::target_lines::record_command_lines(
-        &mut state.match_state.match_presentation.target_lines,
-        &queued,
-        current_tick,
-    );
-    if let Some(sim) = state
-        .match_state
-        .sim_runtime
-        .as_mut()
-        .map(|rt| &mut rt.simulation)
+        .map(|rt| rt.simulation.session.binary_frame)
     {
-        sim.queue_commands(queued);
+        state
+            .match_state
+            .match_presentation
+            .target_lines
+            .start_timer(frame);
     }
     true
 }
@@ -516,8 +524,8 @@ pub(crate) fn object_click_payload(
 
 /// Attempt to issue a context-sensitive order at the given screen point.
 ///
-/// Returns `true` if a command was queued (consuming the click), `false` if the
-/// click should fall through to selection handling.
+/// Returns `true` when context dispatch consumed the click, including a refused
+/// event, and `false` when the click should fall through to selection handling.
 ///
 /// When `select_friendly_clicks` is true, clicks on friendly units/structures
 /// return `false` so the caller can treat them as selection clicks instead.
@@ -527,6 +535,9 @@ pub(crate) fn try_queue_context_order_at_screen_point(
     screen_y: f32,
     select_friendly_clicks: bool,
 ) -> bool {
+    if state.match_state.sim_runtime.is_none() {
+        return false;
+    }
     let (world_x, world_y) =
         crate::app::match_runtime::sim_tick::screen_point_to_world(state, screen_x, screen_y);
     let (target_rx, target_ry) =
@@ -903,11 +914,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                         .map(|command| CommandEnvelope::new(owner_id, execute_tick, command)),
                 );
                 if selected_units.is_empty() {
-                    return if queued.is_empty() {
-                        true
-                    } else {
-                        finish_order(state, queued, speaker_id)
-                    };
+                    return finish_order(state, queued, speaker_id);
                 }
             }
 
@@ -1121,11 +1128,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
             }
             if select_friendly_clicks && clicked_friendly && context_actions_enabled {
                 return if consumed_engineer_action {
-                    if queued.is_empty() {
-                        true
-                    } else {
-                        finish_order(state, queued, speaker_id)
-                    }
+                    finish_order(state, queued, speaker_id)
                 } else {
                     false
                 };
@@ -1346,10 +1349,10 @@ pub(crate) fn try_queue_context_order_at_screen_point(
         }
     }
 
-    if queued.is_empty() {
-        return false;
-    }
-    if consumed_order_mode && state.match_state.input.queued_order_mode != OrderMode::Move {
+    if !queued.is_empty()
+        && consumed_order_mode
+        && state.match_state.input.queued_order_mode != OrderMode::Move
+    {
         state.match_state.input.queued_order_mode = OrderMode::Move;
     }
     if rally_announce {

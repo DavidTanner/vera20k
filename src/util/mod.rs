@@ -33,7 +33,7 @@ pub(crate) mod retail_pointer_sort;
 pub(crate) mod sha256;
 pub mod single_instance;
 pub mod version;
-// pub mod rect;
+pub(crate) mod rect;
 // pub mod color;
 
 pub(crate) mod native_file_time;

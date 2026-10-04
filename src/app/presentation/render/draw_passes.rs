@@ -389,66 +389,10 @@ pub(super) fn dispatch_draw_passes(
     // Native surface stores and destination shadows must not be multiplied
     // again after object drawing (493DF0/4990E0 versus4C0750/497390).
 
-    // Original6D4664 -> Spotlight5FFFA0 edits the destination after the first
-    // rally pass. Preserve this overlap, including the rally's black shadow.
-    drop(pass);
-    state
-        .renderer
-        .combat_light_renderer
-        .draw(encoder, [tac_x, tac_y, tac_w, tac_h]);
-
-    // Tactical LineTrail556D40 edits the completed tactical destination and
-    // samples the same native Z authority as bridge/object rendering. End the
-    // attachment pass while the ordered RGB565 stores execute, then load it.
-    state
-        .renderer
-        .terrain_draw_renderer
-        .draw_line_trails(encoder, view);
-    let mut pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
-    pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
-
-    // BandBox6DA180 is between the two rally passes (native6D46BD).
-    // Drag rectangle — screen-fixed, use UI camera (zoom=1.0).
-    let drag_tex = state
-        .match_state
-        .match_presentation
-        .selection_overlay
-        .as_ref()
-        .map(|o| o.drag_texture());
-    draw_pooled_ui_passthrough(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        drag_tex,
-        "drag",
-    );
-    // Tactical6D46CF redraws rally pixels whose ABuffer sample is zero.
-    draw_pooled_ui_passthrough(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        bracket_tex,
-        "factory_rally_second",
-    );
-    // Original6D4750 calls the selected Techno's vt+438 (Foot4DC060)
-    // AFTER rally pass1 at6D46CF. Its solid surface stores do not read/write Z.
-    // See tools/procedural_drawing_oracle/rally-caller.instructions.json.
-    draw_pooled_passthrough_texture(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        bracket_tex,
-        "target_lines",
-    );
-    // --- Step 10: UI elements ---
-    // Isometric selection brackets for buildings: white 1px stub lines at 3 roof corners.
-    draw_pooled_no_depth(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        bracket_tex,
-        "building_radius_rings",
-    );
+    // Native6D8DB0 completes its visible-Techno DrawExtras sweep before
+    // returning to Tactical. Unit6F5190 submits rank, health, brackets and
+    // pips here, before effects6D4664, BandBox6D46BD and action6D4750.
+    // Evidence: tools/procedural_drawing_oracle/action_lines instruction packet.
     // Final selected-building front bracket redraw: gamemd line pixels test Z
     // but do not write it — the store back into Z sits behind a caller flag
     // this path leaves clear. Each pixel carries its ground-footprint corner's
@@ -570,6 +514,67 @@ pub(super) fn dispatch_draw_passes(
         pool,
         cargo_pip_tex,
         "cargo_pips",
+    );
+
+    // Original6D4664 -> Spotlight5FFFA0 edits the destination after the first
+    // rally pass. Preserve this overlap, including the rally's black shadow.
+    drop(pass);
+    state
+        .renderer
+        .combat_light_renderer
+        .draw(encoder, [tac_x, tac_y, tac_w, tac_h]);
+
+    // Tactical LineTrail556D40 edits the completed tactical destination and
+    // samples the same native Z authority as bridge/object rendering. End the
+    // attachment pass while the ordered RGB565 stores execute, then load it.
+    state
+        .renderer
+        .terrain_draw_renderer
+        .draw_line_trails(encoder, view);
+    let mut pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
+    pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
+
+    // BandBox6DA180 is between the two rally passes (native6D46BD).
+    // Drag rectangle — screen-fixed, use UI camera (zoom=1.0).
+    let drag_tex = state
+        .match_state
+        .match_presentation
+        .selection_overlay
+        .as_ref()
+        .map(|o| o.drag_texture());
+    draw_pooled_ui_passthrough(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        drag_tex,
+        "drag",
+    );
+    // Tactical6D46CF redraws rally pixels whose ABuffer sample is zero.
+    draw_pooled_ui_passthrough(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        bracket_tex,
+        "factory_rally_second",
+    );
+    // Original6D4750 calls the selected Techno's vt+438 (Foot4DC060)
+    // AFTER rally pass1 at6D46CF. Its solid surface stores do not read/write Z.
+    // See tools/procedural_drawing_oracle/rally-caller.instructions.json.
+    draw_pooled_ui_passthrough(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        bracket_tex,
+        "target_lines",
+    );
+    // Selected sensor/gap radius rings retain their action-visual pass;
+    // their native producer/raster belongs to the subsequent range chain.
+    draw_pooled_no_depth(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        bracket_tex,
+        "building_radius_rings",
     );
     // Placement preview — world-space, uses world camera (zoom).
     let ghost_tex = state
@@ -1084,7 +1089,8 @@ mod tests {
         assert!(first_rally < combat_lights);
         assert!(combat_lights < second_rally);
         assert!(second_rally < target_lines);
-        assert!(target_lines < status);
+        // Unit vt110 DrawExtras completes inside6D8DB0, before6D4664.
+        assert!(status < combat_lights);
         assert!(status < placement);
         assert!(placement < sparkle);
         assert!(sparkle < screen_fixed);

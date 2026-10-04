@@ -34,6 +34,17 @@ pub(crate) fn commit_prepared_load(
     // The close above reads the outgoing tick and its pre-recorded replay only;
     // it never observes the shared CellClass dummy reconstructed by this commit.
     let committed = prepared.commit_into(runtime);
+    // Successful-load685167..6851A1 reduces the retained action-line timer
+    // against the restored binary frame, then reanchors that remainder.
+    // This does not introduce timer serialization or a new 25-frame flash.
+    // The ordinary globals streams67F7E0/67F9C0 exclude this process timer.
+    // Their restored frame precedes the685120 tail. Original stream layouts
+    // and executed reanchor controls: tools/procedural_drawing_oracle/action_lines.
+    state
+        .match_state
+        .match_presentation
+        .target_lines
+        .reanchor_after_load(runtime.simulation.session.binary_frame);
     state
         .match_state
         .match_presentation

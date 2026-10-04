@@ -39,10 +39,12 @@ impl Simulation {
         self.pending_commands.extend(commands);
     }
 
-    /// Read-only queue evidence for module tests outside the owning module.
-    #[cfg(test)]
-    pub(crate) fn pending_commands_for_tests(&self) -> &[CommandEnvelope] {
-        &self.pending_commands
+    /// Defensive queue snapshot for sealed input diagnostics and tests.
+    /// Insertion order, stamps and payloads are copied without admitting,
+    /// draining or exposing writable queue state. Ordinary rendering does not
+    /// call this diagnostic boundary.
+    pub(crate) fn pending_command_snapshot(&self) -> Vec<CommandEnvelope> {
+        self.pending_commands.clone()
     }
 
     /// Speed the next ordinary frame will observe after all due offline

@@ -93,7 +93,7 @@ fn saved_current_house_drives_app_fog_and_command_owner_after_load() {
     assert!(sim.fog.is_cell_revealed(viewer, 3, 4));
     assert!(!sim.fog.is_cell_revealed(outgoing, 3, 4));
     assert!(schedule_command_in_sim(sim, &owner, Command::SetGameSpeed { speed: 4 }).is_some());
-    assert_eq!(sim.pending_commands_for_tests()[0].owner, player);
+    assert_eq!(sim.pending_command_snapshot()[0].owner, player);
 }
 
 #[test]

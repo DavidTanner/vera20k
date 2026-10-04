@@ -108,8 +108,8 @@ fn gsi_08_12_promotion_step_announces_each_crossing_once() {
     );
 }
 
-/// Issue the ordinary player `Command::Move` and read back the speed the
-/// resulting path actually runs at.
+/// Issue the ordinary player `Command::Move` and read its order-speed stamp.
+/// Native keeps no such stamp: Drive queries the live getter each Process.
 fn move_order_speed(sim: &mut Simulation, rules: &RuleSet, id: u64) -> SimFixed {
     let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
     sim.install_fixture_path_grid(Some(&grid));
@@ -136,9 +136,11 @@ fn move_order_speed(sim: &mut Simulation, rules: &RuleSet, id: u64) -> SimFixed 
         .speed
 }
 
-/// `FootClass::GetCurrentSpeed @ 0x004DB1A0` reached through the PRODUCTION
-/// move-order path (`Command::Move` → `Simulation::resolve_move_info` →
-/// `issue_move_command_with_layered`), not through the deferred repath.
+/// Fresh ordinary `Command::Move` orders stamp the adjusted type speed via
+/// `Simulation::resolve_move_info` and the canonical Unit destination setter.
+/// Each rank starts without a NavCom: Unit741970 returns without any write
+/// for a repeated destination unless forced. That separate case is replayed
+/// by `repeated_move_orders_keep_the_stamp_but_sample_live_native_speed`.
 ///
 /// gamemd asks the getter for the speed on every frame a ground mover steps
 /// (vtable slot `+0x538` from `DriveLocomotionClass::Process_Drive_Track
@@ -146,6 +148,7 @@ fn move_order_speed(sim: &mut Simulation, rules: &RuleSet, id: u64) -> SimFixed 
 /// stock `VeteranSpeed=1.2`. Stock Grizzly `Speed=7` → per-frame 17 →
 /// `ftol(17 * 1.2)` = 20; stock Rhino-shaped control `Speed=6` → 15, unchanged
 /// because its ability list omits `FASTER`.
+/// Native getter and retained order/prefix evidence: track_speed_native.json.
 #[test]
 fn gsi_08_12_faster_reaches_the_ordinary_move_order() {
     const FRAMES_PER_SECOND: i32 = 15;
@@ -158,6 +161,7 @@ fn gsi_08_12_faster_reaches_the_ordinary_move_order() {
         "a rookie Grizzly moves at its plain Speed=7"
     );
 
+    let (mut sim, rules, id) = spawned_grizzly();
     veterancy::set_veteran(sim.substrate.entities.get_mut(id).unwrap());
     let veteran = move_order_speed(&mut sim, &rules, id);
     assert_eq!(
@@ -166,6 +170,7 @@ fn gsi_08_12_faster_reaches_the_ordinary_move_order() {
         "the veteran list carries FASTER, so the ordered move takes ftol(17 * 1.2) = 20"
     );
 
+    let (mut sim, rules, id) = spawned_grizzly();
     veterancy::set_elite(sim.substrate.entities.get_mut(id).unwrap());
     let elite = move_order_speed(&mut sim, &rules, id);
     assert_eq!(
@@ -184,11 +189,11 @@ fn gsi_08_12_faster_reaches_the_ordinary_move_order() {
     );
 }
 
-/// The rank is the one `GetCurrentSpeed` input that can change while a path is
-/// live, and gamemd re-queries the getter every frame — so a unit promoted
-/// mid-move speeds up immediately rather than at its next order.
+/// The promotion detector also refreshes VERA's scheduling adapter stamp.
+/// Drive and Ship query their speed independently every Process; the native
+/// repeated-order history tests that live getter without this AI refresh.
 #[test]
-fn gsi_08_12_promotion_mid_move_speeds_the_live_path_up() {
+fn gsi_08_12_promotion_mid_move_refreshes_the_order_speed_stamp() {
     const FRAMES_PER_SECOND: i32 = 15;
     let (mut sim, rules, id) = spawned_grizzly();
     assert_eq!(
@@ -209,7 +214,7 @@ fn gsi_08_12_promotion_mid_move_speeds_the_live_path_up() {
             .expect("still moving")
             .speed,
         SimFixed::from_num(20 * FRAMES_PER_SECOND),
-        "the live path picked up FASTER without waiting for a new order"
+        "the promotion detector refreshed the adapter without a new order"
     );
 }
 

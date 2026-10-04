@@ -968,7 +968,7 @@ mod tests {
         );
         assert_eq!(sim.session.game_options.game_speed, 1);
         assert_eq!(sim.state_hash(), before_hash);
-        assert_eq!(sim.pending_commands_for_tests().len(), 1);
+        assert_eq!(sim.pending_command_snapshot().len(), 1);
 
         assert_eq!(
             schedule_command_in_sim(&mut sim, "Local", Command::SetGameSpeed { speed: 4 }),
@@ -976,7 +976,7 @@ mod tests {
             "reopening Options before admission accepts the existing request"
         );
         assert_eq!(
-            sim.pending_commands_for_tests().len(),
+            sim.pending_command_snapshot().len(),
             1,
             "duplicate request is elided"
         );
@@ -1008,9 +1008,9 @@ mod tests {
             schedule_command_in_sim(&mut sim, "Local", Command::ExitMatch),
             Some(41)
         );
-        assert_eq!(sim.pending_commands_for_tests().len(), 1);
+        assert_eq!(sim.pending_command_snapshot().len(), 1);
         assert_eq!(
-            sim.pending_commands_for_tests()[0].payload,
+            sim.pending_command_snapshot()[0].payload,
             Command::ExitMatch
         );
         assert!(!sim.quit_requested, "confirmation only queues EXIT");
@@ -1131,11 +1131,11 @@ mod tests {
         batches.queue_commands(commands[2..].iter().cloned());
 
         assert_eq!(
-            singles.pending_commands_for_tests(),
-            batches.pending_commands_for_tests(),
+            singles.pending_command_snapshot(),
+            batches.pending_command_snapshot(),
             "single and context/minimap-shaped batches append identically"
         );
-        assert_eq!(batches.pending_commands_for_tests(), commands.as_slice());
+        assert_eq!(batches.pending_command_snapshot(), commands.as_slice());
         assert_eq!(singles.state_hash(), single_hash_before);
         assert_eq!(batches.state_hash(), batch_hash_before);
         assert_eq!(singles.rng_state(), single_rng_before);
@@ -1151,12 +1151,12 @@ mod tests {
         assert_eq!(due_from_singles, expected_due);
         assert_eq!(due_from_batches, due_from_singles);
         assert_eq!(
-            singles.pending_commands_for_tests(),
+            singles.pending_command_snapshot(),
             std::slice::from_ref(&commands[1])
         );
         assert_eq!(
-            batches.pending_commands_for_tests(),
-            singles.pending_commands_for_tests()
+            batches.pending_command_snapshot(),
+            singles.pending_command_snapshot()
         );
     }
 
@@ -1202,7 +1202,7 @@ mod tests {
             ),
             None
         );
-        assert!(sim.pending_commands_for_tests().is_empty());
+        assert!(sim.pending_command_snapshot().is_empty());
 
         assert_eq!(
             schedule_command_in_sim(
@@ -1218,7 +1218,7 @@ mod tests {
             Some(123)
         );
         assert_eq!(
-            sim.pending_commands_for_tests()[0],
+            sim.pending_command_snapshot()[0],
             CommandEnvelope::new(
                 local,
                 123,
@@ -1244,7 +1244,7 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(
-            sim.pending_commands_for_tests()[1].payload,
+            sim.pending_command_snapshot()[1].payload,
             Command::Move { queue: true, .. }
         ));
     }
@@ -1260,18 +1260,15 @@ mod tests {
                 .unwrap();
 
         assert_eq!(execute_tick, 41);
-        assert_eq!(sim.pending_commands_for_tests().len(), 1);
-        assert_eq!(
-            sim.pending_commands_for_tests()[0].execute_tick,
-            execute_tick
-        );
+        assert_eq!(sim.pending_command_snapshot().len(), 1);
+        assert_eq!(sim.pending_command_snapshot()[0].execute_tick, execute_tick);
         assert_eq!(
             sim.interner
-                .resolve(sim.pending_commands_for_tests()[0].owner),
+                .resolve(sim.pending_command_snapshot()[0].owner),
             "Russians"
         );
         assert_eq!(
-            sim.pending_commands_for_tests()[0].payload,
+            sim.pending_command_snapshot()[0].payload,
             Command::DeployMcv { entity_id: 99 }
         );
     }
@@ -1287,10 +1284,7 @@ mod tests {
                 .unwrap();
 
         assert_eq!(execute_tick, u64::MAX - 1);
-        assert_eq!(
-            sim.pending_commands_for_tests()[0].execute_tick,
-            u64::MAX - 1
-        );
+        assert_eq!(sim.pending_command_snapshot()[0].execute_tick, u64::MAX - 1);
     }
 
     #[test]
@@ -1390,10 +1384,10 @@ mod tests {
             .unwrap()
             .place_owned_wall(0, 1, 0, 0, remote);
         assert_eq!(attempt(&mut sim, &overlays, (0, 1), false), Some(23));
-        assert_eq!(sim.pending_commands_for_tests().len(), 1);
-        assert_eq!(sim.pending_commands_for_tests()[0].execute_tick, 23);
+        assert_eq!(sim.pending_command_snapshot().len(), 1);
+        assert_eq!(sim.pending_command_snapshot()[0].execute_tick, 23);
         assert_eq!(
-            sim.pending_commands_for_tests()[0].payload,
+            sim.pending_command_snapshot()[0].payload,
             Command::SellWallAtCell { x: 0, y: 1 }
         );
         assert_eq!(sim.take_due_commands().len(), 1);
@@ -1409,17 +1403,17 @@ mod tests {
             .unwrap()
             .place_owned_wall(1, 1, 0, 0, local);
         assert_eq!(attempt(&mut sim, &overlays, (1, 1), true), None);
-        assert!(sim.pending_commands_for_tests().is_empty());
+        assert!(sim.pending_command_snapshot().is_empty());
 
         sim.overlay_grid
             .as_mut()
             .unwrap()
             .place_owned_wall(0, 1, 0, 0, local);
         assert_eq!(attempt(&mut sim, &overlays, (0, 1), false), Some(23));
-        assert_eq!(sim.pending_commands_for_tests().len(), 1);
-        assert_eq!(sim.pending_commands_for_tests()[0].execute_tick, 23);
+        assert_eq!(sim.pending_command_snapshot().len(), 1);
+        assert_eq!(sim.pending_command_snapshot()[0].execute_tick, 23);
         assert_eq!(
-            sim.pending_commands_for_tests()[0].payload,
+            sim.pending_command_snapshot()[0].payload,
             Command::SellWallAtCell { x: 0, y: 1 }
         );
     }

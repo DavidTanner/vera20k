@@ -38,6 +38,7 @@ PRIOR_CHILD_SCHEMA = 'vera20k.map-observation.v3'
 LEGACY_CHILD_SCHEMA = 'vera20k.map-observation.v2'
 CLOCK_POLICY = 'map-exact-step-presentation-v1'
 OBSERVATION_POLICY = 'map-ordinary-command-observation-v4'
+GESTURE_POLICY = 'map-tactical-left-gesture-v1'
 DOCKING_OBSERVATION_POLICY = 'map-ordinary-command-observation-v3'
 BUILDING_OBSERVATION_POLICY = 'map-ordinary-command-observation-v2'
 TRAJECTORY_OBSERVATION_POLICY = 'map-ordinary-command-observation-v1'
@@ -49,7 +50,7 @@ ORDER_VARIANTS = frozenset(('Select', 'Move', 'Stop', 'Attack', 'ForceAttack', '
                             'DeployMcv', 'ForceAttackCell', 'CaptureBuilding', 'ToggleRepair',
                             'EnterTransport', 'UnloadPassengers', 'RepairAtDepot', 'SellBuilding', 'SetRally'))
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
-EXTENSION_FIELDS = frozenset(('commands', 'observe_owners', 'observe_types', 'camera_cell',
+EXTENSION_FIELDS = frozenset(('commands', 'gestures', 'observe_owners', 'observe_types', 'camera_cell',
                               'cursor_position', 'terrain_cells'))
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
 
@@ -208,6 +209,30 @@ def _coordinate(value: Any, label: str, *, leptons: bool = False,
             for index, item in enumerate(coordinate)]
 
 
+def _screen_point(value: Any, label: str, extent: tuple[int, int]) -> list[int]:
+    point = require_array(value, label)
+    if len(point) != 2:
+        raise ValidationError(f'{label} must contain exactly two coordinates')
+    for axis, dimension in enumerate(extent):
+        _bounded_int(point[axis], f'{label}[{axis}]', 1, dimension - 2)
+    return point
+
+
+def _gesture(value: Any, label: str, extent: tuple[int, int]) -> None:
+    gesture = require_object(value, label)
+    if gesture.get('kind') == 'click':
+        require_exact_keys(gesture, ('kind', 'position'), label)
+        _screen_point(gesture['position'], f'{label}.position', extent)
+    elif gesture.get('kind') == 'drag':
+        require_exact_keys(gesture, ('kind', 'from', 'to'), label)
+        start = _screen_point(gesture['from'], f'{label}.from', extent)
+        end = _screen_point(gesture['to'], f'{label}.to', extent)
+        if start == end:
+            raise ValidationError(f'{label} drag endpoints must differ')
+    else:
+        raise ValidationError(f'{label}.kind must be click or drag')
+
+
 def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool = True) -> None:
     """Check diagnostic syntax/budgets; Rust still owns Command/launch admission."""
     schema = profile.get('schema_version')
@@ -239,6 +264,28 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
         variants = ORDER_VARIANTS | (PRODUCTION_VARIANTS if production_commands else frozenset())
         if len(payload) != 1 or next(iter(payload)) not in variants:
             raise ValidationError(f'{label}.payload is outside ordinary order coverage')
+    if 'gestures' in profile:
+        gestures = require_array(profile['gestures'], 'profile.gestures')
+        if len(gestures) > 1024:
+            raise ValidationError('profile.gestures exceeds 1024 rows')
+        if 'cursor_position' not in profile:
+            raise ValidationError('profile.gestures requires a sealed cursor_position')
+        # Rust's shared tactical viewport owner applies the stricter sidebar /
+        # bottom-strip bounds. The wrapper checks render coordinates here and
+        # the actual tactical extent in the child receipt, without copying that
+        # presentation geometry into a second owner.
+        extent = tuple(_bounded_int(profile.get(key), f'profile.{key}', 1, (1 << 32) - 1)
+                       for key in ('width', 'height'))
+        previous = 0
+        for index, value in enumerate(gestures):
+            label = f'profile.gestures[{index}]'
+            row = require_object(value, label)
+            require_exact_keys(row, ('issue_after_step', 'gesture'), label)
+            step = _bounded_int(row['issue_after_step'], f'{label}.issue_after_step', 0, 100_000)
+            if step < previous or step >= ticks:
+                raise ValidationError(f'{label}.issue_after_step must be ordered before the final step')
+            previous = step
+            _gesture(row['gesture'], f'{label}.gesture', extent)
     owners = require_array(profile.get('observe_owners', []), 'profile.observe_owners')
     if len(owners) > 30:
         raise ValidationError('profile.observe_owners exceeds 30 Houses')
@@ -676,12 +723,90 @@ def _terrain(value: Any, expected_cell: Any, label: str) -> None:
             raise ValidationError(f'{label}.{key} must be a boolean')
 
 
+def _input_observation(value: Any, label: str) -> int:
+    row = require_object(value, label)
+    require_exact_keys(row, ('selected_ids', 'selection_pending', 'target_line_remaining',
+                             'target_line_active'), label)
+    selected = require_array(row['selected_ids'], f'{label}.selected_ids')
+    for index, identity in enumerate(selected):
+        _bounded_int(identity, f'{label}.selected_ids[{index}]', 1, (1 << 64) - 1)
+    if len(set(selected)) != len(selected):
+        raise ValidationError(f'{label}.selected_ids contains duplicate identities')
+    for key in ('selection_pending', 'target_line_active'):
+        if type(row[key]) is not bool:
+            raise ValidationError(f'{label}.{key} must be boolean')
+    remaining = _bounded_int(row['target_line_remaining'], f'{label}.target_line_remaining',
+                             -(1 << 31), (1 << 31) - 1)
+    if row['target_line_active'] and remaining <= 0:
+        raise ValidationError(f'{label}.target_line_active requires positive remaining frames')
+    return len(selected)
+
+
+def _gesture_observations(value: Any, profile: Mapping[str, Any]) -> int:
+    label = 'observations.gesture_input'
+    observation = require_object(value, label)
+    require_exact_keys(observation, ('policy', 'equal_step_order', 'tactical_extent', 'receipts'), label)
+    require_value(observation['policy'], GESTURE_POLICY, f'{label}.policy')
+    require_value(observation['equal_step_order'], 'commands_then_gestures', f'{label}.equal_step_order')
+    dimensions = require_array(observation['tactical_extent'], f'{label}.tactical_extent')
+    if len(dimensions) != 2:
+        raise ValidationError(f'{label}.tactical_extent must contain exactly two dimensions')
+    extent = tuple(_bounded_int(value, f'{label}.tactical_extent[{axis}]', 1, profile[key])
+                   for axis, (value, key) in enumerate(zip(dimensions, ('width', 'height'))))
+    receipts = require_array(observation['receipts'], f'{label}.receipts')
+    requested = profile['gestures']
+    if len(receipts) != len(requested):
+        raise ValidationError(f'{label}.receipts differs from requested gesture count')
+    sample_count = 0
+    for index, (value, request) in enumerate(zip(receipts, requested)):
+        row_label = f'{label}.receipts[{index}]'
+        row = require_object(value, row_label)
+        require_exact_keys(row, ('ordinal', 'issue_after_step', 'issued_simulation_tick',
+                                 'issued_binary_frame', 'gesture', 'before', 'after',
+                                 'left_press_captured', 'band_box_before_release',
+                                 'neutral_input_restored', 'queued_commands'), row_label)
+        for key, expected in (('ordinal', index), ('issue_after_step', request['issue_after_step']),
+                              ('issued_simulation_tick', request['issue_after_step']),
+                              ('issued_binary_frame', request['issue_after_step'])):
+            require_value(row[key], expected, f'{row_label}.{key}')
+        _require_equal(row['gesture'], request['gesture'], f'{row_label}.gesture')
+        _gesture(row['gesture'], f'{row_label}.gesture', extent)
+        for key, expected in (('left_press_captured', True), ('neutral_input_restored', True),
+                              ('band_box_before_release', request['gesture']['kind'] == 'drag')):
+            require_value(row[key], expected, f'{row_label}.{key}')
+        for key in ('before', 'after'):
+            sample_count += _input_observation(row[key], f'{row_label}.{key}')
+        commands = require_array(row['queued_commands'], f'{row_label}.queued_commands')
+        sample_count += len(commands)
+        for number, value in enumerate(commands):
+            command_label = f'{row_label}.queued_commands[{number}]'
+            command = require_object(value, command_label)
+            require_exact_keys(command, ('owner', 'execute_tick', 'payload'), command_label)
+            if not require_string(command['owner'], f'{command_label}.owner'):
+                raise ValidationError(f'{command_label}.owner is empty')
+            require_value(command['execute_tick'], request['issue_after_step'], f'{command_label}.execute_tick')
+            # These are observations of actual Command values, not profile
+            # orders. Preserve their serde payload without translating input
+            # actions or maintaining a second gameplay-command whitelist.
+            payload = require_object(command['payload'], f'{command_label}.payload')
+            if len(payload) != 1 or not next(iter(payload)):
+                raise ValidationError(f'{command_label}.payload must be one tagged Command')
+            require_object(next(iter(payload.values())), f'{command_label}.payload arguments')
+    if sample_count > MAX_OBSERVATION_SAMPLES:
+        raise ValidationError(f'{label} exceeds its retained sample budget')
+    return sample_count
+
+
 def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, Any], *,
                   building_state: bool = True, docking_state: bool = True,
                   walk_state: bool = True) -> dict[str, Any]:
     label = 'observations'
     observations = require_object(value, label)
+    gesture_input = 'gestures' in profile
+    if gesture_input and not walk_state:
+        raise ValidationError('gesture observations require the current observation policy')
     require_exact_keys(observations, ('policy', 'owners', 'commands', 'frames',
+                                     *(('gesture_input',) if gesture_input else ()),
                                      *(('type_filter',) if 'observe_types' in profile else ()),
                                      *(('rule_types',) if building_state else ())), label)
     policy = (OBSERVATION_POLICY if walk_state else DOCKING_OBSERVATION_POLICY if docking_state else
@@ -718,7 +843,7 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
     if len(frames) != ticks + 1:
         raise ValidationError(f'observations.frames must contain exactly {ticks + 1} rows including L0')
     seen = set()
-    sample_count = 0
+    sample_count = _gesture_observations(observations['gesture_input'], profile) if gesture_input else 0
     previous_ms = -1
     expected_cells = profile.get('terrain_cells', [])
     for step, value in enumerate(frames):
@@ -726,6 +851,7 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
         row = require_object(value, row_label)
         require_exact_keys(row, ('completed_steps', 'simulation_tick', 'binary_frame',
                                  'total_simulation_ms', 'actors', 'missing_actor_ids', 'terrain',
+                                 *(('input',) if gesture_input else ()),
                                  *(('houses',) if docking_state else ())), row_label)
         for key in ('completed_steps', 'simulation_tick', 'binary_frame'):
             require_value(row[key], step, f'{row_label}.{key}')
@@ -764,6 +890,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
         for index, (value, expected) in enumerate(zip(terrain, expected_cells)):
             _terrain(value, expected, f'{row_label}.terrain[{index}]')
         sample_count += len(actors) + len(missing) + len(terrain)
+        if gesture_input:
+            sample_count += _input_observation(row['input'], f'{row_label}.input')
         if docking_state:
             sample_count += _houses(row['houses'], owners, f'{row_label}.houses')
         if building_state:

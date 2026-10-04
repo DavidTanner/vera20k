@@ -9282,14 +9282,24 @@ fn drive_path_requests_inside_a_pass_bring_the_held_owner_sets_current() {
         },
     );
     let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
-    let builds = sim.movement_pass_cache.block_index_view_builds();
+    // Ordinary Move now enters Unit741970 instead of eagerly finding a path
+    // in the command adapter. The command is admitted in the frame tail; the
+    // next movement visit creates the first owner view. Count that initial
+    // construction separately from rebuilding sets already held by a pass.
+    assert_eq!(sim.movement_pass_cache.block_index_view_builds(), 0);
+    let mut moved_steps = 0;
     for _ in 0..60 {
-        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
+        let tick = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
+        moved_steps += tick.movement.moved_steps;
+        assert_eq!(
+            sim.movement_pass_cache.block_index_view_builds(),
+            1,
+            "a request inside a pass rebuilt the owner's sets"
+        );
     }
-    assert_eq!(
-        sim.movement_pass_cache.block_index_view_builds(),
-        builds,
-        "a request inside a pass rebuilt the owner's sets"
+    assert!(
+        moved_steps > 0,
+        "the fixture must exercise a searched route"
     );
 }
 
