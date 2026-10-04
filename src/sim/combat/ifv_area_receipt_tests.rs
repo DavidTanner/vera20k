@@ -23,8 +23,8 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
     let Some((base, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
         return;
     };
-    let native: Value = serde_json::from_str(include_str!(
-        "../../../tools/projectile_oracle/ifv_isolated_tail.json"
+    let native: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/ifv_isolated_tail.json",
     ))
     .unwrap();
     assert_eq!(native["rows"].as_array().unwrap().len(), 6);
@@ -214,8 +214,8 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
     let Some((base, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
         return;
     };
-    let native: Value = serde_json::from_str(include_str!(
-        "../../../tools/projectile_oracle/ifv_area_receipt.json"
+    let native: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/ifv_area_receipt.json",
     ))
     .unwrap();
     assert_eq!(native["rows"].as_array().unwrap().len(), 22);

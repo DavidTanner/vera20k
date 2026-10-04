@@ -403,8 +403,8 @@ fn native_name(value: Option<u64>, target: u64, attackers: &[u64]) -> String {
 /// (presentation) are module residuals.
 #[test]
 fn native_update_corpus() {
-    let cases: Vec<NativeCase> = serde_json::from_str(include_str!(
-        "../../tools/spatial_oracle/temporal_update.json"
+    let cases: Vec<NativeCase> = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/temporal_update.json",
     ))
     .unwrap();
     assert_eq!(cases.len(), 29);
@@ -641,8 +641,8 @@ fn native_update_corpus() {
 /// go from 1794.
 #[test]
 fn native_open_topped_boundary_is_distance_3d() {
-    let cases: Vec<NativeCase> = serde_json::from_str(include_str!(
-        "../../tools/spatial_oracle/temporal_update.json"
+    let cases: Vec<NativeCase> = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/temporal_update.json",
     ))
     .unwrap();
     let limit = 7 * 256;
@@ -1613,8 +1613,8 @@ struct NativeWarpCase {
 /// CanWarpTarget) and Mark are not compared.
 #[test]
 fn native_initiate_warp_corpus() {
-    let cases: Vec<NativeWarpCase> = serde_json::from_str(include_str!(
-        "../../tools/spatial_oracle/temporal_initiate_warp.json"
+    let cases: Vec<NativeWarpCase> = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/temporal_initiate_warp.json",
     ))
     .unwrap();
     assert_eq!(cases.len(), 30);

@@ -524,8 +524,8 @@ GuardRange=9\n\n\
         use crate::sim::game_entity::GameEntity;
         use crate::sim::passenger::{PassengerCargo, PassengerRole};
 
-        let payload: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/threat_range_cargo.json"
+        let payload: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/threat_range_cargo.json",
         ))
         .unwrap();
         assert_eq!(payload["modes"], serde_json::json!([-1, 0, 1, 2]));

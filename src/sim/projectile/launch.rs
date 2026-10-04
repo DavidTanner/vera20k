@@ -588,23 +588,23 @@ mod tests {
         for (name, data) in [
             (
                 "ordinary",
-                include_str!("../../../tools/projectile_oracle/fireat_launch.json"),
+                crate::test_fixture::text("tools/projectile_oracle/fireat_launch.json"),
             ),
             (
                 "voxel",
-                include_str!("../../../tools/projectile_oracle/voxel_launch.json"),
+                crate::test_fixture::text("tools/projectile_oracle/voxel_launch.json"),
             ),
             (
                 "second probe",
-                include_str!("../../../tools/projectile_oracle/arc_second_probe.json"),
+                crate::test_fixture::text("tools/projectile_oracle/arc_second_probe.json"),
             ),
             (
                 "building",
-                include_str!("../../../tools/projectile_oracle/building_pitch.json"),
+                crate::test_fixture::text("tools/projectile_oracle/building_pitch.json"),
             ),
             (
                 "directed",
-                include_str!("../../../tools/projectile_oracle/directed_launch.json"),
+                crate::test_fixture::text("tools/projectile_oracle/directed_launch.json"),
             ),
         ] {
             let rows: Vec<Value> = serde_json::from_str(data).unwrap();
@@ -681,8 +681,8 @@ mod tests {
     }
 
     fn fireat_speed_corpus() -> Value {
-        serde_json::from_str(include_str!(
-            "../../../tools/projectile_oracle/fireat_speed.json"
+        serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/fireat_speed.json",
         ))
         .unwrap()
     }
@@ -797,8 +797,8 @@ mod tests {
     }
 
     fn launch_scatter_corpus() -> Value {
-        serde_json::from_str(include_str!(
-            "../../../tools/projectile_oracle/launch_scatter.json"
+        serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/launch_scatter.json",
         ))
         .unwrap()
     }
@@ -892,8 +892,8 @@ mod tests {
     #[ignore = "requires RA2_DIR with verified gamemd.exe math tables"]
     fn original_arc_solver_domain_and_failure_predicates() {
         let (_, table) = tables();
-        let rows: Vec<Value> = serde_json::from_str(include_str!(
-            "../../../tools/projectile_oracle/arc_domain.json"
+        let rows: Vec<Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/arc_domain.json",
         ))
         .unwrap();
         for (index, row) in rows.iter().enumerate() {

@@ -21,7 +21,7 @@ use serde_json::Value;
 
 pub(crate) fn rows(section: &str) -> Vec<Value> {
     let oracle: Value =
-        serde_json::from_str(include_str!("../../tools/ai_team_oracle.json")).unwrap();
+        serde_json::from_str(crate::test_fixture::text("tools/ai_team_oracle.json")).unwrap();
     oracle[section].as_array().unwrap().clone()
 }
 

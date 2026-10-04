@@ -7653,8 +7653,8 @@ fn rad_combat_tick(
 /// final health/admission, not the known intermediate radiation precision gap.
 #[test]
 fn rad_damage_fires_on_application_delay_boundary_only() {
-    let native: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/radiation_damage_boundary.json"
+    let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/radiation_damage_boundary.json",
     ))
     .unwrap();
     let native_row = |frame: u32, armor: u8| {
@@ -9850,8 +9850,8 @@ fn gsi_08_06_a_failed_arc_launch_skips_the_rest_of_the_shot() {
 /// frame and the `+0x2F8` copy, which VERA does not keep.)
 #[test]
 fn gsi_08_05_rearm_frames_match_the_original() {
-    let vectors: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/rearm_timer.json"
+    let vectors: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/rearm_timer.json",
     ))
     .unwrap();
     let rows = vectors["fire"].as_array().unwrap();

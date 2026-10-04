@@ -1349,7 +1349,7 @@ mod tests {
         // every clamped maximum in each dominant-channel branch, detail0..2,
         // top/common caps, negative values and the near-black reset.
         let bytes =
-            include_bytes!("../../tools/palette_oracle/fixtures/cell-light-finalization.bin");
+            crate::test_fixture::bytes("tools/palette_oracle/fixtures/cell-light-finalization.bin");
         assert_eq!(bytes.len() % 60, 0);
         for record in bytes.chunks_exact(60) {
             let row: Vec<i32> = record
@@ -1385,8 +1385,8 @@ mod tests {
 
     #[test]
     fn native_ground_level_ini_quantization_matches_all_four_original_sites() {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/palette_oracle/fixtures/ground-level.json"
+        let fixture: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/palette_oracle/fixtures/ground-level.json",
         ))
         .expect("original instruction fixture");
         for record in fixture["authored"].as_array().unwrap() {
@@ -1413,8 +1413,8 @@ mod tests {
 
     #[test]
     fn native_ground_level_defaults_and_authored_values_reach_cell_grid() {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/palette_oracle/fixtures/ground-level.json"
+        let fixture: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/palette_oracle/fixtures/ground-level.json",
         ))
         .expect("original instruction fixture");
         // Distinguish absent section, empty section, either key absent, explicit
@@ -2297,8 +2297,8 @@ mod tests {
 
     #[test]
     fn retained_scalar_refresh_matches_original_cell_484680() {
-        let native: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/light_retained_scalar.json"
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/light_retained_scalar.json",
         ))
         .unwrap();
         let cases = native["cases"].as_array().unwrap();

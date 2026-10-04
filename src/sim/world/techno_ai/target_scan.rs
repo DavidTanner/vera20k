@@ -907,8 +907,8 @@ mod tests {
     /// target, passive flag, last-scan frame, timer and estimates.
     #[test]
     fn retaliate_and_scan_matches_the_original() {
-        let rows: Vec<Value> = serde_json::from_str(include_str!(
-            "../../../../tools/spatial_oracle/techno_target_scan.json"
+        let rows: Vec<Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/techno_target_scan.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 171);
@@ -1000,8 +1000,8 @@ mod tests {
         use crate::sim::game_entity::GameEntity;
         use crate::sim::house_state::HouseState;
 
-        let corpus: Value = serde_json::from_str(include_str!(
-            "../../../../tools/spatial_oracle/passive_acquire_gate.json"
+        let corpus: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/passive_acquire_gate.json",
         ))
         .expect("corpus parses");
         let native_only = |input: &Value| {

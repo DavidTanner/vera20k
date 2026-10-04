@@ -52,8 +52,8 @@ fn original_cannon_launch_motion_and_live_bridge_draw_form_one_production_chain(
     }
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
     rules.install_art_data(ArtRegistry::from_ini(&art_ini));
-    let corpus: Value = serde_json::from_str(include_str!(
-        "../../../../tools/projectile_oracle/bridge_render_flight.json"
+    let corpus: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/bridge_render_flight.json",
     ))
     .unwrap();
     let source = &corpus["launch"];
@@ -343,8 +343,8 @@ fn original_ifv_dragon_frame_getter_matches_retained_flights_and_all_directions(
         .projectile(weapon.projectile.as_deref().unwrap())
         .unwrap();
     assert_eq!(kind.id, "AAHeatSeeker2");
-    let corpus: Value = serde_json::from_str(include_str!(
-        "../../../../tools/projectile_oracle/ifv_render.json"
+    let corpus: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/ifv_render.json",
     ))
     .unwrap();
     assert_eq!(

@@ -3234,8 +3234,8 @@ mod impact_height_tests {
         };
         let mut rules =
             crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-        let golden: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/bridge_debris_producer.json"
+        let golden: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/bridge_debris_producer.json",
         ))
         .unwrap();
         // Use the exact retained image-header inputs supplied to the original

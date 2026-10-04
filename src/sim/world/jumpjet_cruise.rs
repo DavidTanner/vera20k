@@ -617,8 +617,8 @@ mod tests {
     }
 
     fn native_row(name: &str) -> Value {
-        let rows: Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/jumpjet_flight.json"
+        let rows: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/jumpjet_flight.json",
         ))
         .expect("corpus parses");
         rows.as_array()
@@ -1206,8 +1206,8 @@ mod tests {
     /// the cell top height applies to a building's art `Height=`.
     #[test]
     fn building_height_factor_matches_the_native_startup_value() {
-        let native: Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/height_factor.json"
+        let native: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/height_factor.json",
         ))
         .expect("height factor parses");
         assert_eq!(

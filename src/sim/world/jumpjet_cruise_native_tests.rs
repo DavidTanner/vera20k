@@ -42,8 +42,8 @@ use std::sync::OnceLock;
 fn corpus() -> &'static Value {
     static CORPUS: OnceLock<Value> = OnceLock::new();
     CORPUS.get_or_init(|| {
-        let corpus: Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/jumpjet_states.json"
+        let corpus: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/jumpjet_states.json",
         ))
         .expect("native Jumpjet corpus");
         assert_eq!(corpus["schema_version"], 2);
@@ -961,7 +961,7 @@ fn native_scatter_result_survives_snapshot_and_continues_through_touchdown() {
     let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
     restored.retain_in_scenario_process_state_from(&sim);
     let native_seed0_hex =
-        include_str!("../../../tests/fixtures/rng/mapgen_seed0_native_0x3f4.hex")
+        crate::test_fixture::text("tests/fixtures/rng/mapgen_seed0_native_0x3f4.hex")
             .split_whitespace()
             .collect::<String>()
             .to_ascii_lowercase();

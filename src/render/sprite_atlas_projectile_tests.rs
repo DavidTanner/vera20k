@@ -4,8 +4,8 @@ use crate::rules::{ini_parser::IniFile, retail_ini_fixture::retail_ini};
 use serde_json::Value;
 
 fn native() -> Value {
-    serde_json::from_str(include_str!(
-        "../../tools/projectile_oracle/bridge_render_inputs.json"
+    serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/bridge_render_inputs.json",
     ))
     .unwrap()
 }
@@ -383,8 +383,8 @@ impl Drop for ProjectileAssetDirectory {
 #[test]
 fn projectile_asset_binding_uses_native_last_load_not_current_image_text() {
     use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
-    let corpus: Value = serde_json::from_str(include_str!(
-        "../../tools/projectile_oracle/bridge_render_art_state.json"
+    let corpus: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/bridge_render_art_state.json",
     ))
     .unwrap();
     let bytes = native()["physical_image"]["hex"]

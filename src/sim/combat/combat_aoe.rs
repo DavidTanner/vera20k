@@ -3773,8 +3773,8 @@ mod tests {
         // These witnesses execute original Scatter51D0D0 and Infantry51BF90
         // together. Exercise the production damage receiver, including HP,
         // queue/destination writes and fear, with the same entry prestates.
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/infantry_scatter_entry.json"
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/infantry_scatter_entry.json",
         ))
         .unwrap();
         assert_eq!(corpus.as_array().unwrap().len(), 14);
@@ -3804,8 +3804,8 @@ mod tests {
                 })
             );
         }
-        let destinations: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/infantry_scatter_destination.json"
+        let destinations: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/infantry_scatter_destination.json",
         ))
         .unwrap();
         assert_eq!(destinations.as_array().unwrap().len(), 18);

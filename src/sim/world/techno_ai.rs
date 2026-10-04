@@ -6347,10 +6347,9 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
         // Original Unit736473 Commence -> Foot/Techno ->6FA64E increments C4.
         // The executed MTNK first visit is pinned in this native projection;
         // Infantry51BC51 has the same instruction-established call ordering.
-        let native: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tools/spatial_oracle/anytown_damage/mission_test_vectors.json"
-        )))
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/anytown_damage/mission_test_vectors.json",
+        ))
         .unwrap();
         for category in [EntityCategory::Unit, EntityCategory::Infantry] {
             let rules = promotion_rules();

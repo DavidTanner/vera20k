@@ -4260,8 +4260,8 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
     use crate::rules::ruleset::RuleSet;
     use crate::sim::runtime::SimRuntime;
 
-    let native: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/projectile_oracle/ifv_lifecycle_controls.json"
+    let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/ifv_lifecycle_controls.json",
     ))
     .unwrap();
     // Supplied guided motion isolates the OLD-height collision predicate and
@@ -5476,8 +5476,8 @@ fn gsi_05_04_sentinel_origin_cell_target_becomes_explicit_null() {
 
 #[test]
 fn gsi_05_04_high_flying_source_and_target_become_explicit_null() {
-    let native: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/projectile_oracle/ifv_lifecycle_controls.json"
+    let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/ifv_lifecycle_controls.json",
     ))
     .unwrap();
     let control = &native["rows"][2];
@@ -7712,8 +7712,8 @@ fn mixed_display_lifecycle_matches_original_sequences_and_save_restore() {
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
     use crate::rules::voxel_anim_type::{VoxelAnimType, VoxelAnimTypeId};
-    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/display_non_entity.json"
+    let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/display_non_entity.json",
     ))
     .unwrap();
     assert_eq!(rows.len(), 9);

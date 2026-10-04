@@ -2598,8 +2598,8 @@ mod tests {
 
     #[test]
     fn damage_fire_references_follow_original_owner_then_anim_expiry() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/anim_damage_fire_expiry.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/anim_damage_fire_expiry.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 8);
@@ -2735,8 +2735,8 @@ mod tests {
     fn animation_display_owner_histories_match_native_and_survive_save() {
         use crate::sim::snapshot::GameSnapshot;
         use crate::sim::world::display_layers::DisplayLayer;
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/display_anim_owner.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/display_anim_owner.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 24);
@@ -3120,7 +3120,8 @@ mod tests {
     #[test]
     fn native_anim_boundary_and_reset_vectors() {
         let golden: serde_json::Value =
-            serde_json::from_str(include_str!("../../tools/anim_oracle/boundary.json")).unwrap();
+            serde_json::from_str(crate::test_fixture::text("tools/anim_oracle/boundary.json"))
+                .unwrap();
         let rules = runtime_rules("[TEST]\nEnd=64\n", &[("TEST", 64)]);
         let mut sim = Simulation::new();
         let type_id = sim.interner.intern("TEST");
@@ -3797,8 +3798,8 @@ mod tests {
 
     #[test]
     fn make_infantry_occupation_reads_constructor_side_flags_without_sprite_state() {
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/bridge_constructor.json"
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/bridge_constructor.json",
         ))
         .unwrap();
         // Supply original5FC380's completed cell fields at the Anim reader
@@ -3952,8 +3953,8 @@ mod tests {
     /// through `%f`; the stock values are integers either way).
     #[test]
     fn bouncer_launch_matches_the_original() {
-        let golden: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/anim_bouncer_launch.json"
+        let golden: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/anim_bouncer_launch.json",
         ))
         .unwrap();
         let rows = golden["ctor"].as_array().unwrap();

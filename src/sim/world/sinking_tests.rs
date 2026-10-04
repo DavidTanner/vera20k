@@ -49,8 +49,8 @@ fn fixture(relative_z: i32) -> (Simulation, RuleSet, u64) {
 
 #[test]
 fn native_sink_suffix_preserves_cadence_coordinates_and_complete_rng_states() {
-    let corpus: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/naval_sink_tick.json"
+    let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/naval_sink_tick.json",
     ))
     .unwrap();
     for row in corpus["cases"].as_array().unwrap() {
@@ -197,8 +197,8 @@ fn native_sinking_sound_readers_and_reachable_edges_match() {
     use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
     use crate::rules::sound_ini::SoundRegistry;
 
-    let corpus: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/naval_lifetime_audio.json"
+    let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/naval_lifetime_audio.json",
     ))
     .unwrap();
     let sounds =
@@ -343,8 +343,8 @@ fn native_sinking_sound_readers_and_reachable_edges_match() {
 fn load_preserves_sinking_edge_and_resets_shared_foot_sound_bytes() {
     use crate::rules::sound_ini::SoundRegistry;
     use crate::sim::snapshot::GameSnapshot;
-    let corpus: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/naval_lifetime_controls.json"
+    let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/naval_lifetime_controls.json",
     ))
     .unwrap();
     for row in corpus["load"].as_array().unwrap() {

@@ -273,8 +273,8 @@ mod tests {
     use serde_json::Value;
 
     fn corpus() -> Value {
-        serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/building_construction.json"
+        serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/building_construction.json",
         ))
         .unwrap()
     }
@@ -484,8 +484,8 @@ mod tests {
     /// type has no Buildup is Sell_Back's refusal, `production_sell`'s).
     #[test]
     fn sales_match_the_original_sell_visits() {
-        let corpus: Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/building_sale.json"
+        let corpus: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/building_sale.json",
         ))
         .unwrap();
         let mut compared = 0;

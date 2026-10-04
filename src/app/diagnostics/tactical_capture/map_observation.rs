@@ -1672,8 +1672,8 @@ mod tests {
     }
 
     fn example() -> MapCaptureProfile {
-        serde_json::from_str(include_str!(
-            "../../../../tools/map_observation.example.json"
+        serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.example.json",
         ))
         .unwrap()
     }
@@ -1683,8 +1683,8 @@ mod tests {
         let mut profile = example();
         profile.validate().unwrap();
         let radar: super::super::super::profile::TacticalCaptureProfile =
-            serde_json::from_str(include_str!(
-                "../../../../tools/tactical_certification/profiles/soviet-radar-online-v2.json"
+            serde_json::from_str(crate::test_fixture::text(
+                "tools/tactical_certification/profiles/soviet-radar-online-v2.json",
             ))
             .unwrap();
         assert_eq!(profile.launch, radar.launch_session());
@@ -1722,8 +1722,8 @@ mod tests {
 
     #[test]
     fn versioned_extension_fields_preserve_presence_and_reject_null_or_ignored_arguments() {
-        let original: Value = serde_json::from_str(include_str!(
-            "../../../../tools/map_observation.example.json"
+        let original: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.example.json",
         ))
         .unwrap();
         assert_eq!(serde_json::to_value(example()).unwrap(), original);
@@ -2160,17 +2160,17 @@ mod tests {
 
     #[test]
     fn jumpjet_discovery_profile_preserves_verified_production_prefix_without_guessed_actor() {
-        let profile: MapCaptureProfile = serde_json::from_str(include_str!(
-            "../../../../tools/map_observation.jumpjet-instance.example.json"
+        let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.jumpjet-instance.example.json",
         ))
         .unwrap();
         profile.validate().unwrap();
-        let cmin: Value = serde_json::from_str(include_str!(
-            "../../../../tools/map_observation.cmin-instance.example.json"
+        let cmin: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.cmin-instance.example.json",
         ))
         .unwrap();
-        let factory: Value = serde_json::from_str(include_str!(
-            "../../../../tools/map_observation.factory-tank-exit.example.json"
+        let factory: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.factory-tank-exit.example.json",
         ))
         .unwrap();
         let value = serde_json::to_value(&profile).unwrap();
@@ -2242,8 +2242,8 @@ mod tests {
 
     #[test]
     fn anytown_discovery_example_is_an_accepted_ordinary_allied_ai_launch() {
-        let profile: MapCaptureProfile = serde_json::from_str(include_str!(
-            "../../../../tools/map_observation.bridge-response.example.json"
+        let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.bridge-response.example.json",
         ))
         .unwrap();
         profile.validate().unwrap();
@@ -2263,12 +2263,12 @@ mod tests {
 
     #[test]
     fn barracks_output_example_preserves_opening_and_queues_two_gis_in_order() {
-        let profile: MapCaptureProfile = serde_json::from_str(include_str!(
-            "../../../../tools/map_observation.barracks-output.example.json"
+        let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.barracks-output.example.json",
         ))
         .unwrap();
-        let opening: MapCaptureProfile = serde_json::from_str(include_str!(
-            "../../../../tools/map_observation.building-opening.example.json"
+        let opening: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.building-opening.example.json",
         ))
         .unwrap();
         profile.validate().unwrap();
@@ -2305,8 +2305,8 @@ mod tests {
 
     #[test]
     fn rally_profile_reuses_literal_command_serde_and_rejects_ignored_fields() {
-        let mut value: Value = serde_json::from_str(include_str!(
-            "../../../../tools/map_observation.barracks-output.example.json"
+        let mut value: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.barracks-output.example.json",
         ))
         .unwrap();
         // Syntax-only supplied producer identity: the ordinary command owner

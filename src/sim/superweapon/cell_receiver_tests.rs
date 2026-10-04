@@ -561,8 +561,8 @@ fn infantry_terminal_zero_count_death_request_retains_the_previous_action() {
 
 #[test]
 fn infantry_terminal_retained_zero_count_death_retires_at_the_native_boundary() {
-    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/infantry_death_completion.json"
+    let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/infantry_death_completion.json",
     ))
     .unwrap();
     let native = rows

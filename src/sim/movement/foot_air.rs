@@ -412,8 +412,8 @@ mod tests {
     /// cache block, recorded in schema2 rather than a Rust-derived golden.
     #[test]
     fn native_uninit_retains_slot_until_destructor_cached_cell_clear() {
-        let native: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/jumpjet_states.json"
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/jumpjet_states.json",
         ))
         .unwrap();
         let control = native["composed_controls"]

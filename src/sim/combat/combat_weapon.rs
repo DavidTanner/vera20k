@@ -2194,8 +2194,8 @@ IsLocomotor=yes
     /// kinds and the unclamped stages (`2s` wraps).
     #[test]
     fn original_weapon_selection_rows() {
-        let payload: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/gattling_select.json"
+        let payload: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/gattling_select.json",
         ))
         .unwrap();
         let defaults = &payload["defaults"];
