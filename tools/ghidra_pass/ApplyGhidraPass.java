@@ -18,7 +18,6 @@ import ghidra.program.model.symbol.SymbolType;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -61,7 +60,9 @@ public class ApplyGhidraPass extends GhidraScript {
                 case DONE -> done++;
                 case CONFLICT -> conflicts++;
             }
-            if (status.state() != State.DONE || mode.equals("check")) report(i, op, status);
+            if (status.state() == State.CONFLICT || (status.state() == State.PENDING && mode.equals("check"))) {
+                report(i, op, status);
+            }
         }
         println(String.format("SUMMARY pending=%d done=%d conflict=%d", pending, done, conflicts));
         if (mode.equals("check") || pending == 0) return;
