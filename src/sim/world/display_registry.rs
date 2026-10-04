@@ -333,8 +333,8 @@ mod tests {
 
     #[test]
     fn entity_layer_matches_original_queries() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/display_entity_layer.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/display_entity_layer.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 88);

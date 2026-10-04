@@ -802,8 +802,8 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
 
 #[test]
 fn shroud_current_sight_spy_sat_event_preserves_registration_order_and_restore() {
-    let native: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/shroud_current_sight.json"
+    let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/shroud_current_sight.json",
     ))
     .unwrap();
     for gap_first in [false, true] {

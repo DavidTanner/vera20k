@@ -1379,8 +1379,8 @@ fn raw_infantry_frames_match_whole_original_selector_rows() {
     rules.install_art_data(ArtRegistry::from_ini(&art));
     rules.bind_animation_sequences(&parse_infantry_sequence_registry(&art));
     let set = rules.animation_sequence("E1").unwrap();
-    let corpus: serde_json::Value = serde_json::from_str(include_str!(
-        "../../tools/spatial_oracle/anytown_damage/foot_missions.json"
+    let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/anytown_damage/foot_missions.json",
     ))
     .unwrap();
     let receipt = &corpus["infantry_frame_selection_receipt"];
@@ -1483,8 +1483,8 @@ fn raw_infantry_frames_match_whole_original_selector_rows() {
 
 #[test]
 fn unit_body_counter_matches_original_foot_cadence() {
-    let corpus: serde_json::Value = serde_json::from_str(include_str!(
-        "../../tools/spatial_oracle/unit_simple_deploy.json"
+    let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/unit_simple_deploy.json",
     ))
     .unwrap();
     let speed = Gsi1306Speed::new();

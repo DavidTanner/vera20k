@@ -1423,8 +1423,8 @@ mod difficulty_tests {
     /// through [`HouseState::set_difficulty`].
     #[test]
     fn set_difficulty_matches_the_original() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/house_difficulty.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/house_difficulty.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 72);

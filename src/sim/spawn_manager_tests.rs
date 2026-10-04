@@ -403,8 +403,8 @@ fn hornet_launcher_maximum_matches_native_distance_ties() {
     // SpawnManager6B7B43 -> Unit+3AC/6F7780 -> CanFireAt6F77B0 ->
     // InRange6F7220. Its approximate distance accepts 6401 at Range6400;
     // the three original numeric controls bound this shared caller check.
-    let native: serde_json::Value = serde_json::from_str(include_str!(
-        "../../tools/spatial_oracle/fv_cell_attack/range_ties.json"
+    let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/fv_cell_attack/range_ties.json",
     ))
     .unwrap();
     let rows: Vec<_> = native["rows"]
@@ -2230,8 +2230,8 @@ fn retail_missiles_keep_their_launch_coordinate_from_unlimbo() {
     };
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
     rules.install_art_data(ArtRegistry::from_ini(&art));
-    let native: serde_json::Value = serde_json::from_str(include_str!(
-        "../../tools/projectile_oracle/ifv_fire_coord.json"
+    let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/ifv_fire_coord.json",
     ))
     .unwrap();
     let native = &native["spawn_launch"];

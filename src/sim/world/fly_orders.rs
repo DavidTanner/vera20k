@@ -324,8 +324,8 @@ mod tests {
 
     #[test]
     fn fly_link_retains_native_aircraft_only_airport_binding() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/fly_instance_link.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_instance_link.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 4);

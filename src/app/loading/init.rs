@@ -636,8 +636,8 @@ mod map_wall_owner_candidate_tests {
         // Native 554A80 -> 554AF0(mode0): every affected Cell483E30 call occurs
         // before return. The original-byte fixture binds the stock radius/area;
         // this scene exceeds the old 8192-cell app budget using unchanged lamps.
-        let native: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/light_publication.json"
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/light_publication.json",
         ))
         .unwrap();
         let terrain = flat_terrain(128, 128);

@@ -430,8 +430,8 @@ fn capture_building_command_accepts_collapsed_noncapturable_hut_for_every_relati
 /// Native execution: engineer_repair_joined own_damaged/allied_damaged.
 #[test]
 fn ordinary_friendly_repair_uses_capture_event_without_hut_exception() {
-    let native: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/engineer_repair_joined.json"
+    let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/engineer_repair_joined.json",
     ))
     .unwrap();
     let strength = native["native_building_inputs"]

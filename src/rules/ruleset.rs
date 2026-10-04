@@ -5657,8 +5657,10 @@ CellSpread=0
     /// up case-insensitively. The hand-written Default must NOT be a derived zero.
     #[test]
     fn cost_of_matches_the_original_cost_virtuals() {
-        let rows: serde_json::Value =
-            serde_json::from_str(include_str!("../../tools/spatial_oracle/cost_of.json")).unwrap();
+        let rows: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/cost_of.json",
+        ))
+        .unwrap();
         let bits = |value: &serde_json::Value| -> [NativeF32Bits; 5] {
             let bits: Vec<u32> = value
                 .as_array()
@@ -7685,8 +7687,8 @@ Projectile=Invisible
 
     #[test]
     fn native_discharge_retail_gi_binding_retains_independent_zero_defaults() {
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/infantry_discharge_rules.json"
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/infantry_discharge_rules.json",
         ))
         .unwrap();
         let physical = corpus["cases"]
@@ -7719,8 +7721,8 @@ Projectile=Invisible
 
     #[test]
     fn native_discharge_signed_art_fields_reach_infantry_type() {
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/infantry_discharge_rules.json"
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/infantry_discharge_rules.json",
         ))
         .unwrap();
         let row = corpus["cases"]

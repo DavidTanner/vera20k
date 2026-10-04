@@ -1292,8 +1292,8 @@ const POSITION_FINGERPRINT: u64 = 0x828D_9C15_C129_26CE;
 
 #[test]
 fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
-    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/drive_fresh_turn.json"
+    let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/drive_fresh_turn.json",
     ))
     .unwrap();
     for rot in [0, 5] {

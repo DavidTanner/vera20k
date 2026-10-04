@@ -68,8 +68,8 @@ mod tests {
 
     #[test]
     fn ordinary_tail_matches_executed_native_admissions() {
-        let vectors: Value = serde_json::from_str(include_str!(
-            "../../../tools/projectile_oracle/ordinary_collision_vectors.json"
+        let vectors: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/ordinary_collision_vectors.json",
         ))
         .unwrap();
         for (index, row) in vectors["admissions"].as_array().unwrap().iter().enumerate() {
@@ -185,8 +185,8 @@ mod tests {
     fn shared_probe_matches_original_bodies_and_receivers() {
         use crate::rules::ini_parser::IniFile;
         use crate::sim::movement::rocket_movement::{RocketPhase, attach_rocket_state};
-        let vectors: Value = serde_json::from_str(include_str!(
-            "../../../tools/projectile_oracle/shared_collision_vectors.json"
+        let vectors: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/shared_collision_vectors.json",
         ))
         .unwrap();
         for (index, row) in vectors["cases"].as_array().unwrap().iter().enumerate() {
@@ -363,8 +363,8 @@ mod tests {
     #[test]
     fn nearest_selector_matches_original_vtable_getters_and_list_ties() {
         use crate::rules::ini_parser::IniFile;
-        let vectors: Value = serde_json::from_str(include_str!(
-            "../../../tools/projectile_oracle/ordinary_collision_vectors.json"
+        let vectors: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/ordinary_collision_vectors.json",
         ))
         .unwrap();
         for row in vectors["nearest"].as_array().unwrap() {
@@ -442,8 +442,8 @@ mod tests {
     #[test]
     fn bridge_cell_impact_ladder_matches_original_ground_and_deck_receivers() {
         use crate::sim::projectile::{ImpactLadderBullet, resolve_impact_coord};
-        let corpus: Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/bridge_damage_admission.json"
+        let corpus: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/bridge_damage_admission.json",
         ))
         .unwrap();
         for row in corpus["ladder_cases"].as_array().unwrap() {
@@ -898,8 +898,8 @@ mod tests {
         use crate::sim::snapshot::GameSnapshot;
         let tables = crate::map::retail_trig::required_math_tables();
         assert!(tables.0.matches_retail() && tables.1.matches_retail());
-        let native: Vec<Value> = serde_json::from_str(include_str!(
-            "../../../tools/projectile_oracle/fireat_runtime.json"
+        let native: Vec<Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/fireat_runtime.json",
         ))
         .unwrap();
         for voxel in [false, true] {
@@ -1147,8 +1147,8 @@ mod tests {
         let mut runtime = SimRuntime::from_simulation(sim);
         // Original successive visits preserve the binary64 ramp, including
         // the approximate normalization's fractional bits after the first visit.
-        let rows: Vec<Value> = serde_json::from_str(include_str!(
-            "../../../tools/projectile_oracle/vertical_motion.json"
+        let rows: Vec<Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/vertical_motion.json",
         ))
         .unwrap();
         let row = rows
@@ -1306,8 +1306,8 @@ mod tests {
     #[test]
     fn ordinary_geometry_uses_native_double_and_integer_boundaries() {
         use crate::util::native_x87::NativeF64Bits;
-        let vectors: Value = serde_json::from_str(include_str!(
-            "../../../tools/projectile_oracle/ordinary_collision_vectors.json"
+        let vectors: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/ordinary_collision_vectors.json",
         ))
         .unwrap();
         for (index, row) in vectors["geometry"].as_array().unwrap().iter().enumerate() {

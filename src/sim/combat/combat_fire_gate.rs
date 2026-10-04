@@ -84,8 +84,8 @@ mod tests {
 
     #[test]
     fn aircraft_signed_ammo_gate_matches_original_fire_error_prefix() {
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/aircraft_attack_release.json"
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/aircraft_attack_release.json",
         ))
         .unwrap();
         let rows = corpus["fire_error_ammo"].as_array().unwrap();

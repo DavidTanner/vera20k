@@ -61,7 +61,10 @@ pub(super) const CMIN: &str = "[CMIN]\nStrength=400\nSpeed=4\nROT=5\nHarvester=y
     Locomotor={4A582747-9839-11D1-B709-00A024DDAFD1}\n";
 
 fn corpus() -> Value {
-    serde_json::from_str(include_str!("../../../tools/spatial_oracle/cmin_dock.json")).unwrap()
+    serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/cmin_dock.json",
+    ))
+    .unwrap()
 }
 
 fn skipped(row: &Value) -> bool {

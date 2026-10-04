@@ -64,8 +64,8 @@ fn entity(id: u64, kind: LocomotorKind, current: DriveCoord, head: DriveCoord) -
 
 #[test]
 fn lazy_track_constructor_projects_original_null_head_coordinates() {
-    let rows: Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/foot_navigation_coordinate.json"
+    let rows: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/foot_navigation_coordinate.json",
     ))
     .unwrap();
     let mut checked = 0;
@@ -97,8 +97,8 @@ fn lazy_track_constructor_projects_original_null_head_coordinates() {
 
 #[test]
 fn world_queries_match_all_original_foot_coordinate_rows_and_snapshot() {
-    let rows: Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/foot_navigation_coordinate.json"
+    let rows: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/foot_navigation_coordinate.json",
     ))
     .unwrap();
     assert_eq!(rows.as_array().unwrap().len(), 44);

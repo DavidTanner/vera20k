@@ -20,8 +20,8 @@ fn coord(v: &Value) -> DriveCoord {
 }
 
 fn corpus() -> Vec<Value> {
-    serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/track_destination.json"
+    serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/track_destination.json",
     ))
     .unwrap()
 }
@@ -34,8 +34,8 @@ fn corpus() -> Vec<Value> {
 fn shared_null_destination_matches_original_gate_and_timer_boundaries() {
     use crate::sim::mission::{MissionDispatchTimer, MissionId, state::MissionTestFixture};
 
-    let rows: Vec<Value> = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/track_destination_null_boundary.json"
+    let rows: Vec<Value> = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/track_destination_null_boundary.json",
     ))
     .unwrap();
     assert_eq!(rows.len(), 84);
@@ -414,8 +414,8 @@ fn repeated_move_orders_keep_the_stamp_but_sample_live_native_speed() {
     use crate::sim::movement::track_process::TrackFamily;
     use crate::util::fixed_math::SIM_ONE;
 
-    let corpus: Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/track_speed_native.json"
+    let corpus: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/track_speed_native.json",
     ))
     .unwrap();
     let mut checked = 0;
@@ -582,8 +582,8 @@ fn repeated_move_orders_keep_the_stamp_but_sample_live_native_speed() {
 /// directly with that composed boundary, including the retained moving head.
 #[test]
 fn command_move_matches_native_action_line_destination_inputs() {
-    let native: Value = serde_json::from_str(include_str!(
-        "../../../tools/procedural_drawing_oracle/action_lines.json"
+    let native: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/procedural_drawing_oracle/action_lines.json",
     ))
     .unwrap();
     let mut checked = 0;
@@ -1104,8 +1104,8 @@ fn destination_receipt_actor(
 fn noncell_foot_destinations_match_original_anytown_class_calls() {
     use crate::sim::rng::SimRng;
 
-    let native: Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/anytown_damage/foot_missions.json"
+    let native: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/anytown_damage/foot_missions.json",
     ))
     .unwrap();
     let rows = native["navigation_rows"].as_array().unwrap();

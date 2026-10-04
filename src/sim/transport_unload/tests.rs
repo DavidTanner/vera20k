@@ -333,8 +333,8 @@ fn vehicle_unload_republishes_threat_and_foot_coefficient_before_movement() {
     use crate::sim::house_state::HouseState;
     use crate::util::native_x87::NativeF64Bits;
 
-    let native: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/astar_threat_inputs.json"
+    let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/astar_threat_inputs.json",
     ))
     .unwrap();
     let reader = native["type_readers"]

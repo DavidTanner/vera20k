@@ -857,8 +857,8 @@ mod tests {
 
     #[test]
     fn nearby_raw_and_retained_seed_match_original_bounded_queries() {
-        let cases: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/nearby_raw_occupation.json"
+        let cases: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/nearby_raw_occupation.json",
         ))
         .unwrap();
         let cases = cases.as_array().unwrap();

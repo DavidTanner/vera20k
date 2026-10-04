@@ -18,7 +18,7 @@ use crate::sim::timer::CdTimer;
 use serde_json::Value;
 
 fn oracle() -> Value {
-    serde_json::from_str(include_str!("../../tools/ai_strategy_oracle.json")).unwrap()
+    serde_json::from_str(crate::test_fixture::text("tools/ai_strategy_oracle.json")).unwrap()
 }
 
 fn int(value: &Value) -> i32 {

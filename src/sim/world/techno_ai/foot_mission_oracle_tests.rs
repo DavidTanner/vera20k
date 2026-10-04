@@ -43,8 +43,8 @@ use crate::util::native_x87::MaskedX87Chop53;
 pub(super) fn oracle() -> &'static Value {
     static CORPUS: OnceLock<Value> = OnceLock::new();
     CORPUS.get_or_init(|| {
-        let value: Value = serde_json::from_str(include_str!(
-            "../../../../tools/spatial_oracle/anytown_damage/foot_missions.json"
+        let value: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/anytown_damage/foot_missions.json",
         ))
         .unwrap();
         assert_eq!(

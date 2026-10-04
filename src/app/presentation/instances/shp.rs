@@ -1201,8 +1201,8 @@ mod tests {
 
     #[test]
     fn completed_garrison_body_frames_match_native_oracle() {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../tools/garrison_oracle/body_frame.json"
+        let fixture: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/garrison_oracle/body_frame.json",
         ))
         .unwrap();
         let cases = fixture["cases"].as_array().unwrap();

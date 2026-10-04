@@ -3895,8 +3895,8 @@ mod infantry_hash_tests {
 
     #[test]
     fn foot_retarget_snapshot_retains_native_next_scan_mask_and_empty_clear() {
-        let native: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/anytown_damage/foot_missions.json"
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/anytown_damage/foot_missions.json",
         ))
         .unwrap();
         let row = native["greatest_threat_rows"]
@@ -3945,8 +3945,8 @@ mod infantry_hash_tests {
 
     #[test]
     fn inherited_foot_firing_state_survives_snapshot_and_changes_noninfantry_hash() {
-        let native: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/anytown_damage/foot_missions.json"
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/anytown_damage/foot_missions.json",
         ))
         .unwrap();
         let raw = native["rows"]
@@ -4034,8 +4034,8 @@ mod infantry_hash_tests {
         sim.substrate.entities.insert(actor);
         let clear_hash = sim.state_hash();
         let mut retained_hashes = vec![clear_hash];
-        let native: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/foot_scold_latch.json"
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/foot_scold_latch.json",
         ))
         .unwrap();
         for row in native["imported_latch"].as_array().unwrap() {

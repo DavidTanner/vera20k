@@ -672,8 +672,8 @@ mod tests {
     #[test]
     fn fly_takeoff_entry_matches_original_spatial_and_facing_transaction() {
         use crate::sim::movement::FacingClass;
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/fly_takeoff_entry.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_takeoff_entry.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 26);
@@ -775,13 +775,13 @@ mod tests {
     #[test]
     fn fly_can_enter_matches_original_ground_shroud_queries() {
         use crate::sim::vision::OwnerVisibility;
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/fly_can_enter.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_can_enter.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 102);
-        let base: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/fly_landing_phase.json"
+        let base: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_landing_phase.json",
         ))
         .unwrap();
         for row in rows {
@@ -838,13 +838,13 @@ mod tests {
 
     #[test]
     fn fly_landing_space_matches_original_occupants_and_reservations() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/fly_landing_space.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_landing_space.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 26);
-        let base: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/fly_landing_phase.json"
+        let base: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_landing_phase.json",
         ))
         .unwrap();
         for row in rows {
@@ -964,8 +964,8 @@ mod tests {
 
     #[test]
     fn fly_landing_phase_matches_complete_original_calls() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/fly_landing_phase.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_landing_phase.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 41);
@@ -1074,8 +1074,8 @@ mod tests {
 
     #[test]
     fn fly_landing_production_descent_and_restore_retain_air_until_completion() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/fly_landing_phase.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_landing_phase.json",
         ))
         .unwrap();
         let row = rows

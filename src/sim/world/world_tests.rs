@@ -4944,10 +4944,9 @@ fn concrete_damage_fixture(
     crate::map::overlay_types::OverlayTypeRegistry,
     serde_json::Value,
 ) {
-    let corpus: serde_json::Value = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tools/spatial_oracle/bridge_ordinary_damage.json"
-    )))
+    let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/bridge_ordinary_damage.json",
+    ))
     .unwrap();
     let native = corpus["cases"]
         .as_array()
@@ -4966,10 +4965,9 @@ fn concrete_damage_fixture(
         ));
     }
     let (mut sim, rules, registry) = super::entry_test_fixture::fixture_with_rules(&overlay_rules);
-    let recalc_native: serde_json::Value = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tools/spatial_oracle/terrain_recalc.json"
-    )))
+    let recalc_native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/terrain_recalc.json",
+    ))
     .unwrap();
     let pristine_land = recalc_native["cases"]
         .as_array()
@@ -5306,10 +5304,9 @@ fn test_bridge_snapshot_roundtrip_preserves_state_after_collapse() {
 /// its false return means there was no collapse or structural BlowUp/debris.
 #[test]
 fn test_bridge_dispatcher_consumes_one_path_gate_draw_per_non_ion_event() {
-    let admission: serde_json::Value = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tools/spatial_oracle/bridge_damage_admission.json"
-    )))
+    let admission: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/bridge_damage_admission.json",
+    ))
     .unwrap();
     let gate = admission["cases"]
         .as_array()

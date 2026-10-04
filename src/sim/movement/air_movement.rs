@@ -903,8 +903,8 @@ mod tests {
     /// current speed land within one Q16 quantum of the native binary64.
     #[test]
     fn native_target_speed_rows() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/fly_target_speed.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_target_speed.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 374);

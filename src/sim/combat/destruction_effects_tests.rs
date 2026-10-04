@@ -522,8 +522,8 @@ fn a_killed_building_draws_its_death_anims_before_its_survivors() {
 fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
     use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
     use crate::rules::terrain_rules::{LandType, SpeedCostProfile};
-    let controls: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/naval_lifetime_controls.json"
+    let controls: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/naval_lifetime_controls.json",
     ))
     .unwrap();
     let repeat = &controls["repeat_fatal"];
@@ -725,8 +725,8 @@ fn retail_dustbowl_death_anims_use_the_types_lists() {
                 .paths
                 .ra2_dir
         });
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/building_death_anims.json"
+    let golden: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/building_death_anims.json",
     ))
     .unwrap();
     let rows = golden["rows"].as_array().unwrap();

@@ -1442,8 +1442,8 @@ mod tests {
             eprintln!("skipped: set RA2_DIR to the retail install to run this");
             return;
         }
-        let rows: Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/jumpjet_flight.json"
+        let rows: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/jumpjet_flight.json",
         ))
         .expect("corpus parses");
         let rows = rows.as_array().expect("row list");
@@ -1921,8 +1921,8 @@ mod tests {
             eprintln!("skipped: set RA2_DIR to the retail install to run this");
             return;
         }
-        let rows: Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/jumpjet_states.json"
+        let rows: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/jumpjet_states.json",
         ))
         .expect("corpus parses");
         assert_eq!(rows["schema_version"], 2);
@@ -2186,8 +2186,8 @@ mod tests {
             eprintln!("skipped: set RA2_DIR to the retail install to run this");
             return;
         }
-        let corpus: Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/jumpjet_crash.json"
+        let corpus: Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/jumpjet_crash.json",
         ))
         .expect("corpus parses");
         let rows = corpus["fall"].as_array().expect("fall rows");

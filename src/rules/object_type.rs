@@ -2908,9 +2908,10 @@ mod tests {
             stored: i32,
             effective: i32,
         }
-        let rows: Vec<Row> =
-            serde_json::from_str(include_str!("../../tools/spatial_oracle/flight_level.json"))
-                .unwrap();
+        let rows: Vec<Row> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/flight_level.json",
+        ))
+        .unwrap();
         assert_eq!(rows.len(), 30);
         for row in rows {
             let mut ini = IniFile::from_str("[PLANE]\nStrength=100\n");
@@ -2943,8 +2944,8 @@ mod tests {
         }
         // Executed original ReadInteger call site and separate contact clamp.
         // Non-constructor defaults test the shared reader, not Rules pass lifetime.
-        let rows: Vec<Row> = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/building_dock_count_rules.json"
+        let rows: Vec<Row> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/building_dock_count_rules.json",
         ))
         .unwrap();
         for row in rows {
@@ -3343,8 +3344,8 @@ mod tests {
         struct Fixture {
             firestorm_wall: Vec<Row>,
         }
-        let fixture: Fixture = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/building_body_rules.json"
+        let fixture: Fixture = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/building_body_rules.json",
         ))
         .unwrap();
         for row in fixture.firestorm_wall {
@@ -4785,8 +4786,8 @@ mod tests {
 
     #[test]
     fn original_eight_refinery_smoke_frames_scalar_rows() {
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/refinery_smoke.json"
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/refinery_smoke.json",
         ))
         .unwrap();
         let rows = corpus["frames_parser"].as_array().unwrap();
@@ -5247,8 +5248,8 @@ mod simple_deploy_reader_tests {
     };
     #[test]
     fn simple_deploy_keys_match_native_reader_history() {
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/unit_simple_deploy.json"
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/unit_simple_deploy.json",
         ))
         .unwrap();
         let base = "[VehicleTypes]\n0=SCHP\n[SCHP]\nIsSimpleDeployer=yes\nDeployToLand=yes\n[AudioVisual]\nDeployDir=2\n";

@@ -81,8 +81,9 @@ The printed directory's `manifest.json` gives the executable filenames, SHA-256s
 checkout, commit, dirty status, combined tracked/nonignored source hash, command,
 Cargo/Rust versions and common build environment overrides. Labels cannot be
 replaced. This supports builds of selected binaries and `test --lib --no-run`;
-labels are not attached to checks or executed tests. Run a preserved test binary
-from its checkout so relative fixtures still resolve.
+labels are not attached to checks or executed tests. A preserved test binary reads
+its fixtures from the checkout that built it when it runs (`src/test_fixture.rs`),
+so run it from that checkout while it still matches the manifest's source hash.
 
 The manifest identifies source and executable bytes; it is **not** a hermetic
 reproducibility claim. Ignored/local retail inputs, external dependencies, Cargo

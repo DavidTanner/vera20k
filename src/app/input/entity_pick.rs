@@ -1831,8 +1831,8 @@ mod tests {
 
     #[test]
     fn mission_only_empty_selection_click_matches_native_flag_gate() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/aircraft_mission_only.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/aircraft_mission_only.json",
         ))
         .unwrap();
         let mut interner = StringInterner::new();

@@ -3483,9 +3483,10 @@ mod tests {
 
     #[test]
     fn vhp_scan_matches_original_integer_slices() {
-        let rows: serde_json::Value =
-            serde_json::from_str(include_str!("../../../tools/spatial_oracle/vhp_scan.json"))
-                .unwrap();
+        let rows: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/vhp_scan.json",
+        ))
+        .unwrap();
         let rows = rows.as_array().unwrap();
         assert_eq!(rows.len(), 498);
         for row in rows {

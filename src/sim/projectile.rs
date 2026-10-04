@@ -1946,8 +1946,8 @@ fn ordinary_motion_candidate(
 #[test]
 fn original_ordinary_repeated_live_gravity_preserves_both_coordinate_versions() {
     use crate::util::native_x87::NativeF64Bits;
-    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-        "../../tools/projectile_oracle/ordinary_motion.json"
+    let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/ordinary_motion.json",
     ))
     .unwrap();
     for (index, row) in rows.iter().enumerate() {
@@ -2046,8 +2046,8 @@ fn vertical_velocity_ramp(
 #[test]
 fn original_vertical_repeated_motion_preserves_binary64_and_integer_add_order() {
     use crate::util::native_x87::NativeF64Bits;
-    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-        "../../tools/projectile_oracle/vertical_motion.json"
+    let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+        "tools/projectile_oracle/vertical_motion.json",
     ))
     .unwrap();
     for (index, row) in rows.iter().enumerate() {
@@ -2222,8 +2222,8 @@ mod tests {
 
     #[test]
     fn resolve_impact_coord_matches_the_original() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../tools/projectile_oracle/impact_ladder.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/impact_ladder.json",
         ))
         .unwrap();
         const TARGET: [i32; 3] = [5000, 6000, 416];
@@ -2301,8 +2301,8 @@ mod tests {
 
     #[test]
     fn homing_impact_admission_matches_executed_retail_vectors() {
-        let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/projectile_oracle/homing_impact_vectors.json"
+        let vectors: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/homing_impact_vectors.json",
         ))
         .unwrap();
         for row in vectors["admissions"].as_array().unwrap() {
@@ -2329,8 +2329,8 @@ mod tests {
 
     #[test]
     fn homing_source_fuse_mode_matches_executed_retail_vectors() {
-        let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/projectile_oracle/homing_impact_vectors.json"
+        let vectors: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/homing_impact_vectors.json",
         ))
         .unwrap();
         for row in vectors["source_modes"].as_array().unwrap() {
@@ -2667,8 +2667,8 @@ mod tests {
 
     #[test]
     fn frame_inverse_rotates_and_animation_precedence_match_original_draws() {
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/projectile_oracle/bridge_render.json"
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/bridge_render.json",
         ))
         .unwrap();
         let ini = crate::rules::ini_parser::IniFile::from_str("[P]\nImage=P\n");
@@ -2711,8 +2711,8 @@ mod tests {
     #[test]
     fn projectile_load_timers_match_original_fire_save_load_and_check() {
         use crate::sim::timer::CdTimer;
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../tools/projectile_oracle/load_timers.json"
+        let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/load_timers.json",
         ))
         .unwrap();
         assert_eq!(rows.len(), 877);
@@ -2937,8 +2937,8 @@ mod tests {
     /// impact and every later one `0x0049F420(impact, distance, draw)`.
     #[test]
     fn native_cluster_loop_scatters_around_the_impact() {
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/projectile_oracle/launch_scatter.json"
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/launch_scatter.json",
         ))
         .unwrap();
         let rows = corpus["cluster_loop"].as_array().unwrap();
@@ -3067,8 +3067,8 @@ mod tests {
                     "the arm ends only once z passes DetonationAltitude"
                 );
                 assert_eq!(detonation.impact.x, 0, "no horizontal drift straight up");
-                let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-                    "../../tools/projectile_oracle/vertical_motion.json"
+                let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+                    "tools/projectile_oracle/vertical_motion.json",
                 ))
                 .unwrap();
                 let row = rows
@@ -3206,8 +3206,8 @@ mod tests {
 
     #[test]
     fn native_common_final_handoff_near_target_vectors() {
-        let oracle: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/projectile_oracle/ordinary_collision_vectors.json"
+        let oracle: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/ordinary_collision_vectors.json",
         ))
         .unwrap();
         for row in oracle["final_handoffs"].as_array().unwrap() {
@@ -3242,8 +3242,8 @@ mod tests {
 
     #[test]
     fn native_slope_matrix_and_elastic_reflection_vectors() {
-        let oracle: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/projectile_oracle/ordinary_collision_vectors.json"
+        let oracle: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/projectile_oracle/ordinary_collision_vectors.json",
         ))
         .unwrap();
         for (slope, row) in oracle["slope_matrices"]

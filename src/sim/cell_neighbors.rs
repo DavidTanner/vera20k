@@ -246,8 +246,8 @@ mod tests {
 
     #[test]
     fn native_foot_counter_history_slices() {
-        let rows: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/foot_neighbors.json"
+        let rows: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/foot_neighbors.json",
         ))
         .unwrap();
         assert_eq!(rows.as_array().unwrap().len(), 88);
@@ -478,8 +478,8 @@ mod tests {
 
     #[test]
     fn native_fly_landing_counter_slices() {
-        let rows: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/spatial_oracle/fly_landing_phase.json"
+        let rows: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_landing_phase.json",
         ))
         .unwrap();
         let mut compared = 0;

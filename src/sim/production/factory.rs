@@ -1396,8 +1396,8 @@ pub(super) fn native_time_to_build_inputs(row: &serde_json::Value) -> TimeToBuil
 /// result, and the row itself.
 #[cfg(test)]
 fn native_time_to_build_rows() -> Vec<(TimeToBuildInputs, i32, serde_json::Value)> {
-    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/time_to_build.json"
+    let rows: Vec<serde_json::Value> = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/time_to_build.json",
     ))
     .expect("oracle rows");
     rows.into_iter()
@@ -1413,8 +1413,8 @@ fn native_time_to_build_rows() -> Vec<(TimeToBuildInputs, i32, serde_json::Value
 /// start alone, `builds` rows then run `FactoryClass::AI` once per frame.
 #[cfg(test)]
 pub(super) fn native_factory_cadence() -> serde_json::Value {
-    serde_json::from_str(include_str!(
-        "../../../tools/spatial_oracle/factory_cadence.json"
+    serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/factory_cadence.json",
     ))
     .expect("cadence oracle")
 }
@@ -1537,8 +1537,8 @@ mod tests {
         use crate::sim::power_system::PowerState;
         use crate::sim::world::Simulation;
 
-        let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/house_power_consumers.json"
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/house_power_consumers.json",
         ))
         .unwrap();
         assert_eq!(
