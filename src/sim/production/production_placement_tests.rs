@@ -3727,7 +3727,7 @@ fn stock_infantry_fallback_unit_ready_uses_producer_getcoords() {
     ));
     assert_eq!(sim.session.binary_frame, 160);
     assert_eq!(sim.session.tick, 160);
-    assert!(sim.pending_commands_for_tests().is_empty());
+    assert!(sim.pending_command_snapshot().is_empty());
     let product = sim.substrate.entities.get(held).unwrap();
     let position = ground_pose::position_world_coord(&product.position);
     assert_eq!([position.x, position.y, position.z], [3712, 3968, 0]);

@@ -828,7 +828,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     assert!(dispatch_production_changes_for_tests(
         &mut sim, &rules, None
     ));
-    assert!(sim.pending_commands_for_tests().is_empty());
+    assert!(sim.pending_command_snapshot().is_empty());
     let first_entity = sim.substrate.entities.get(first).unwrap();
     assert!(!first_entity.lifecycle.in_limbo && first_entity.in_logic_vector);
     let first_contacts = first_entity.radio_contacts.clone();
@@ -871,7 +871,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
         0
     );
     super::publish_production_changes(&mut sim, &rules);
-    let pending = sim.pending_commands_for_tests();
+    let pending = sim.pending_command_snapshot();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].owner, owner);
     assert!(matches!(
@@ -909,7 +909,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     assert!(!dispatch_production_changes_for_tests(
         &mut sim, &rules, None
     ));
-    assert!(sim.pending_commands_for_tests().is_empty());
+    assert!(sim.pending_command_snapshot().is_empty());
     assert!(
         !sim.substrate.entities.contains(refused),
         "scalar cleanup is synchronous"

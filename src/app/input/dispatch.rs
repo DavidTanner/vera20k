@@ -252,6 +252,17 @@ pub(crate) fn tactical_mouse(state: &mut AppState, button: MouseButton, btn_stat
                     .input
                     .selection_state
                     .end_drag(release_point.0, release_point.1);
+                let band_release = matches!(action, SelectAction::BoxSelect(..));
+                if band_release {
+                    // BandBox_LeftUp4ABCF0 -> StartTimer70D150 precedes the
+                    // empty-catch bail and click fallthrough. The old
+                    // selection therefore flashes even when the box is empty.
+                    // Evidence: tools/procedural_drawing_oracle/action_lines.
+                    apply_selection_action_line_policy(
+                        state,
+                        ORDINARY_SELECTION_ACTION_LINE_POLICY,
+                    );
+                }
                 // BandBox_LeftUp 0x004AB9B0 does not early-return when nothing
                 // was armed: with the band flag clear it falls straight through
                 // to the action dispatch. So a release whose press never armed
@@ -294,6 +305,8 @@ pub(crate) fn tactical_mouse(state: &mut AppState, button: MouseButton, btn_stat
                         shift,
                         type_select_held,
                         |sx, sy| {
+                            // A resolved context dispatch consumes the click
+                            // even when its receiver admits no command.
                             try_queue_context_order_at_screen_point(state, sx, sy, true)
                                 .then_some(())
                         },
@@ -497,24 +510,14 @@ pub(crate) fn tactical_mouse(state: &mut AppState, button: MouseButton, btn_stat
                             ORDINARY_SELECTION_VOICE_POLICY,
                         );
                     }
-                    // Both selection arms of the band-box release open the
-                    // action-line window, so the units just picked up flash
-                    // whatever they are already doing.
-                    //
-                    // DRIFT, recorded not fixed: native runs
-                    // `ActionLines__StartTimer` 0x004ABCF0 on EVERY band
-                    // release, ahead of the `if (!bVar2)` bail, so a drag that
-                    // caught nothing still flashes the lines of whatever was
-                    // already selected. VERA only reaches here with a mutation,
-                    // because an empty catch returns `None`. Trigger: an empty
-                    // band drag over open ground. Player effect: the 25-frame
-                    // order-line flash on the existing group is missing.
-                    // Frequency: a few times a match. Downstream risk: none --
-                    // presentation only.
-                    apply_selection_action_line_policy(
-                        state,
-                        ORDINARY_SELECTION_ACTION_LINE_POLICY,
-                    );
+                    // Click-select4ABE83 starts separately. A band release
+                    // already started before its empty-catch decision above.
+                    if !band_release {
+                        apply_selection_action_line_policy(
+                            state,
+                            ORDINARY_SELECTION_ACTION_LINE_POLICY,
+                        );
+                    }
                 }
             }
         }
@@ -824,6 +827,32 @@ mod item83_click_route_tests {
             [1],
             "an ordered ground click never reaches selection clear"
         );
+    }
+
+    #[test]
+    fn consumed_empty_context_dispatch_does_not_become_a_selection_click() {
+        // Display4ABFA9 ->4ABFAE ->4AC294 consumes Move1/NoMove2
+        // independently of the receiver's event output. Select7 exits earlier
+        // at4ABEF3. This tests the existing typed route, not a reconstructed
+        // AppState or a fabricated production input receiver.
+        for (shift, type_select_held) in [(false, false), (false, true), (true, true)] {
+            let route = route_click_action_before_type_select(
+                SelectAction::Click(80.0, 70.0),
+                shift,
+                type_select_held,
+                |_, _| Some(Vec::<Command>::new()),
+            );
+            assert_eq!(route, ClickActionRoute::ContextOrder(Vec::new()));
+        }
+        // A genuine selection result still falls through. Event count alone
+        // cannot distinguish these two native input outcomes.
+        let route = route_click_action_before_type_select(
+            SelectAction::Click(80.0, 70.0),
+            false,
+            false,
+            |_, _| None::<Vec<Command>>,
+        );
+        assert_eq!(route, ClickActionRoute::Selection);
     }
 
     #[test]
@@ -2213,7 +2242,7 @@ mod item83_selection_order_tests {
     use super::{
         HELD_TYPE_SELECT_VOICE_POLICY, ORDINARY_SELECTION_ACTION_LINE_POLICY,
         ORDINARY_SELECTION_VOICE_POLICY, TYPE_SELECT_TAP_ACTION_LINE_POLICY,
-        TYPE_SELECT_TAP_VOICE_POLICY, apply_selection_action_line_policy_at_tick,
+        TYPE_SELECT_TAP_VOICE_POLICY, apply_selection_action_line_policy_at_frame,
         insert_selected_id_by_role, selected_stable_ids_in_order, selection_membership_committed,
         selection_voice_event, selection_voice_recipients,
     };
@@ -2348,7 +2377,7 @@ mod item83_selection_order_tests {
     fn item83_type_select_tap_preserves_action_line_timer_while_mouse_selection_starts_it() {
         let mut target_lines = TargetLineState::default();
 
-        apply_selection_action_line_policy_at_tick(
+        apply_selection_action_line_policy_at_frame(
             &mut target_lines,
             10,
             TYPE_SELECT_TAP_ACTION_LINE_POLICY,
@@ -2358,7 +2387,7 @@ mod item83_selection_order_tests {
             "a short TypeSelect tap leaves a zero timer untouched"
         );
 
-        apply_selection_action_line_policy_at_tick(
+        apply_selection_action_line_policy_at_frame(
             &mut target_lines,
             10,
             ORDINARY_SELECTION_ACTION_LINE_POLICY,
@@ -2368,7 +2397,7 @@ mod item83_selection_order_tests {
             "ordinary click/bandbox selection still opens the action-line window"
         );
 
-        apply_selection_action_line_policy_at_tick(
+        apply_selection_action_line_policy_at_frame(
             &mut target_lines,
             20,
             TYPE_SELECT_TAP_ACTION_LINE_POLICY,
@@ -2741,29 +2770,29 @@ fn handle_control_group_command(
 /// flash their current orders for the 25-frame window. TypeSelect tap preserves
 /// the prior timer instead.
 fn apply_selection_action_line_policy(state: &mut AppState, policy: SelectionActionLinePolicy) {
-    let Some(tick) = state
+    let Some(frame) = state
         .match_state
         .sim_runtime
         .as_ref()
         .map(|rt| &rt.simulation)
-        .map(|sim| sim.session.tick)
+        .map(|sim| sim.session.binary_frame)
     else {
         return;
     };
-    apply_selection_action_line_policy_at_tick(
+    apply_selection_action_line_policy_at_frame(
         &mut state.match_state.match_presentation.target_lines,
-        tick,
+        frame,
         policy,
     );
 }
 
-fn apply_selection_action_line_policy_at_tick(
+fn apply_selection_action_line_policy_at_frame(
     target_lines: &mut crate::app::presentation::target_lines::TargetLineState,
-    tick: u64,
+    frame: u32,
     policy: SelectionActionLinePolicy,
 ) {
     if policy == SelectionActionLinePolicy::Start {
-        target_lines.start_timer(tick);
+        target_lines.start_timer(frame);
     }
 }
 

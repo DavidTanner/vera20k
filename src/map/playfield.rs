@@ -58,7 +58,7 @@ impl PlayfieldBounds {
         raw_local_size: [i32; 4],
     ) -> Self {
         let [clipped_left, clipped_top, clipped_width, clipped_height] =
-            clip_local_size_to_map(size_width, size_height, raw_local_size);
+            crate::util::rect::clip_rect([0, 0, size_width, size_height], raw_local_size);
 
         let left = clipped_left.max(2);
         let top = clipped_top.max(2);
@@ -205,56 +205,6 @@ pub(crate) const fn rect_playfield_corners(
 /// `MapClass::IsCoordInPlayfield @ 0x005785F0`.
 pub(crate) const fn lepton_to_packed_cell_component(value: i32) -> i32 {
     (value / 256) as i16 as i32
-}
-
-/// Signed intersection of raw LocalSize with normalized Size, matching active
-/// `ClipRect @ 0x00421B60` inside `0x00567230`.
-/// Native passes LocalSize in EDX as the clipping bounds and Size on the stack
-/// as the initial candidate (`0x00567233..0x00567251`). Reversing those roles
-/// preserves ordinary intersections but changes signed-overflow branches.
-/// Executable comparison: `tools/spatial_oracle/map_queries.py`.
-fn clip_local_size_to_map(
-    size_width: i32,
-    size_height: i32,
-    [clip_left, clip_top, clip_width, clip_height]: [i32; 4],
-) -> [i32; 4] {
-    if clip_width <= 0 || clip_height <= 0 || size_width <= 0 || size_height <= 0 {
-        return [0; 4];
-    }
-
-    let (mut left, mut top, mut width, mut height) = (0i32, 0i32, size_width, size_height);
-    if left < clip_left {
-        width = width.wrapping_add(left.wrapping_sub(clip_left));
-        left = clip_left;
-    }
-    if width <= 0 {
-        return [0; 4];
-    }
-
-    if top < clip_top {
-        height = height.wrapping_add(top.wrapping_sub(clip_top));
-        top = clip_top;
-    }
-    if height <= 0 {
-        return [0; 4];
-    }
-
-    if clip_left.wrapping_add(clip_width) < left.wrapping_add(width) {
-        width = clip_left.wrapping_sub(left).wrapping_add(clip_width);
-    }
-    if width <= 0 {
-        return [0; 4];
-    }
-
-    let clip_bottom = clip_top.wrapping_add(clip_height);
-    if clip_bottom < top.wrapping_add(height) {
-        height = clip_bottom.wrapping_sub(top);
-    }
-    if height <= 0 {
-        return [0; 4];
-    }
-
-    [left, top, width, height]
 }
 
 #[cfg(test)]

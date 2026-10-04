@@ -71,7 +71,7 @@ pub(crate) struct EngineerEntryResult {
 mod bridge_engineer_admission_tests;
 
 impl Simulation {
-    pub(in crate::sim::world) fn house_is_human_player(&self, owner: InternedId) -> bool {
+    pub(crate) fn house_is_human_player(&self, owner: InternedId) -> bool {
         // House50B6F0: nonzero session mode compares exactly to LocalPlayer;
         // mode zero uses the two native human/control flags.
         if self.session.game_mode_nonzero {

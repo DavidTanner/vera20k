@@ -631,9 +631,6 @@ impl Simulation {
                 let Some(info) = self.resolve_move_info(*entity_id, rules) else {
                     return false;
                 };
-                // A Teleport mover takes its class setter inside
-                // `issue_ground_move` (`teleport_destination`), and a Jumpjet
-                // takes Foot's on either arm (`jumpjet_cell_destination`).
                 let result = if info.loco_layer == MovementLayer::Air {
                     // Air units fly in straight lines — no A* pathfinding needed.
                     let ok = self.issue_air_cell_destination(
@@ -655,6 +652,23 @@ impl Simulation {
                         }
                     }
                     ok
+                } else if !*queue
+                    && let Some(rules) = rules
+                    && self.unit_setter_receiver(*entity_id, Some(rules))
+                {
+                    // Event4C746F pushes1;4C747C calls virtual+480 with
+                    // the resolved destination. Unit741970 owns same-NavCom
+                    // return/force, class preprocessing and queue clearing.
+                    // Native: track_destination.json Unit rows, replayed by
+                    // command_move_destinations_match_native_unit_setter.
+                    // Rust's explicit queued-waypoint extension keeps its
+                    // existing route; queue=true is not clear_queue=false.
+                    self.set_unit_destination(
+                        *entity_id,
+                        crate::sim::components::NavTargetRef::cell(*target_rx, *target_ry),
+                        rules,
+                        true,
+                    )
                 } else {
                     self.issue_ground_move(
                         GroundMove {

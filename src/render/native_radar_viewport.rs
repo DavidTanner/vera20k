@@ -112,7 +112,9 @@ fn native_viewport_rect_from_center(
     let mut x = center
         .0
         .wrapping_sub(native_ftol(div(load_i32(tactical_width), denom_x)));
-    let mut y = center.1.wrapping_sub(native_ftol(mul(h_float, load_constant(0.5))));
+    let mut y = center
+        .1
+        .wrapping_sub(native_ftol(mul(h_float, load_constant(0.5))));
     let size = surface.generated_size();
 
     if x < 0 {
@@ -179,14 +181,21 @@ impl NativeRadarViewportState {
 }
 
 fn native_previous_border_visits(rect: NativeRadarRect) -> Vec<(i32, i32)> {
-    let mut visits = Vec::with_capacity((rect.w.wrapping_add(rect.h).wrapping_mul(2)).max(0) as usize);
+    let mut visits =
+        Vec::with_capacity((rect.w.wrapping_add(rect.h).wrapping_mul(2)).max(0) as usize);
     for y in 0..rect.h.max(0) {
         visits.push((rect.x, rect.y.wrapping_add(y)));
-        visits.push((rect.x.wrapping_add(rect.w).wrapping_sub(1), rect.y.wrapping_add(y)));
+        visits.push((
+            rect.x.wrapping_add(rect.w).wrapping_sub(1),
+            rect.y.wrapping_add(y),
+        ));
     }
     for x in 0..rect.w.max(0) {
         visits.push((rect.x.wrapping_add(x), rect.y));
-        visits.push((rect.x.wrapping_add(x), rect.y.wrapping_add(rect.h).wrapping_sub(1)));
+        visits.push((
+            rect.x.wrapping_add(x),
+            rect.y.wrapping_add(rect.h).wrapping_sub(1),
+        ));
     }
     visits
 }
@@ -249,10 +258,10 @@ fn native_radar_outline_instances(
     // `ui_scale`-wide float quad is not equivalent: batch_shader rounds its two
     // vertices independently and a 0.5-source-pixel quad can collapse.
     let edges = [
-        native_axis_line_rect(left, top, right, top),
-        native_axis_line_rect(right, top, right, bottom),
-        native_axis_line_rect(right, bottom, left, bottom),
-        native_axis_line_rect(left, bottom, left, top),
+        ([left, top], [right, top]),
+        ([right, top], [right, bottom]),
+        ([right, bottom], [left, bottom]),
+        ([left, bottom], [left, top]),
     ];
     let scale = screen.surface_scale();
     if scale.0 <= 0.0 || scale.1 <= 0.0 {
@@ -271,28 +280,32 @@ fn native_radar_outline_instances(
     let clip_top = shader_pixel_round(sidebar_surface[1]);
     let clip_right = shader_pixel_round(sidebar_surface[0] + sidebar_surface[2]);
     let clip_bottom = shader_pixel_round(sidebar_surface[1] + sidebar_surface[3]);
-    edges
-        .into_iter()
-        .filter_map(|edge| {
-            let source_x = source_content.0.wrapping_add(edge.x);
-            let source_y = source_content.1.wrapping_add(edge.y);
-            let (x, w) = nearest_scaled_interval(
+    let mut instances = Vec::with_capacity(4);
+    for (from, to) in edges {
+        super::surface_line::solid_line(from, to, |[left, top, width, height]| {
+            let source_x = source_content.0.wrapping_add(left);
+            let source_y = source_content.1.wrapping_add(top);
+            let Some((x, w)) = nearest_scaled_interval(
                 source_x,
-                edge.w,
+                width,
                 sidebar_surface[0],
                 scale.0,
                 clip_left,
                 clip_right,
-            )?;
-            let (y, h) = nearest_scaled_interval(
+            ) else {
+                return;
+            };
+            let Some((y, h)) = nearest_scaled_interval(
                 source_y,
-                edge.h,
+                height,
                 sidebar_surface[1],
                 scale.1,
                 clip_top,
                 clip_bottom,
-            )?;
-            Some(SpriteInstance {
+            ) else {
+                return;
+            };
+            instances.push(SpriteInstance {
                 position: [camera.0 + x as f32, camera.1 + y as f32],
                 size: [w as f32, h as f32],
                 uv_origin: [0.0, 0.0],
@@ -302,19 +315,9 @@ fn native_radar_outline_instances(
                 alpha: 1.0,
                 ..Default::default()
             })
-        })
-        .collect()
-}
-
-fn native_axis_line_rect(x1: i32, y1: i32, x2: i32, y2: i32) -> NativeRadarRect {
-    let left = x1.min(x2);
-    let top = y1.min(y2);
-    NativeRadarRect {
-        x: left,
-        y: top,
-        w: x1.max(x2).wrapping_sub(left).wrapping_add(1),
-        h: y1.max(y2).wrapping_sub(top).wrapping_add(1),
+        });
     }
+    instances
 }
 
 /// `batch_shader.wgsl` native-zoom vertex snap: `floor(value + 0.5)`.

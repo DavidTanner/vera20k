@@ -5355,8 +5355,8 @@ mod tests {
         let mut restored = GameSnapshot::load(&bytes).expect("v75 EXIT snapshot").sim;
 
         assert_eq!(
-            restored.pending_commands_for_tests(),
-            sim.pending_commands_for_tests()
+            restored.pending_command_snapshot(),
+            sim.pending_command_snapshot()
         );
         assert!(!restored.quit_requested);
         assert_eq!(restored.take_executed_exit_owner(), None);
@@ -5388,8 +5388,8 @@ mod tests {
             .expect("current GameSpeed snapshot")
             .sim;
         assert_eq!(
-            restored.pending_commands_for_tests(),
-            sim.pending_commands_for_tests()
+            restored.pending_command_snapshot(),
+            sim.pending_command_snapshot()
         );
         assert_eq!(restored.session.game_options.game_speed, 1);
         assert_eq!(restored.projected_in_game_options_speed(), Some(4));
@@ -5398,7 +5398,7 @@ mod tests {
         let result = restored.advance_tick(&due, None, None, None, 67);
         assert_eq!(result.executed_commands, 1);
         assert_eq!(restored.session.game_options.game_speed, 4);
-        assert!(restored.pending_commands_for_tests().is_empty());
+        assert!(restored.pending_command_snapshot().is_empty());
         assert_eq!(result.state_hash, restored.state_hash());
 
         let second = restored.advance_tick(&[], None, None, None, 67);
@@ -5747,8 +5747,8 @@ mod tests {
             .expect("v60 wall-sale snapshot")
             .sim;
         assert_eq!(
-            restored.pending_commands_for_tests(),
-            sim.pending_commands_for_tests()
+            restored.pending_command_snapshot(),
+            sim.pending_command_snapshot()
         );
         assert!(restored.houses.get(&owner).unwrap().player_control);
         assert!(restored.session.game_mode_nonzero);
@@ -6800,8 +6800,8 @@ mod tests {
         assert_eq!(restored.sim.session.total_sim_ms, 12_345);
         assert_eq!(restored.sim.session.house_order, vec![owner]);
         assert_eq!(
-            restored.sim.pending_commands_for_tests(),
-            sim.pending_commands_for_tests()
+            restored.sim.pending_command_snapshot(),
+            sim.pending_command_snapshot()
         );
         assert_eq!(
             restored.sim.scenario_rng.logical_state(),

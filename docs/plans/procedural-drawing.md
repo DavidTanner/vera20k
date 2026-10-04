@@ -1,155 +1,178 @@
 # Procedural gameplay drawing
 
-Goal: match active-retail `gamemd.exe` across all required procedural gameplay drawing.
-The examples are not scope limits. Missing behavior or unproven required consumers
-keep the goal open; recording them never completes it. One common gameplay chain
-per PR, with native execution, production pixels/performance and one fresh critic.
+Goal: match active-retail `gamemd.exe` across all required procedural gameplay
+drawing. Examples are not scope limits. Missing or unproven required behavior
+keeps the goal open. Complete one common gameplay chain per PR, with original
+execution comparisons, production output/performance and one fresh critic.
 
 ## Current checkpoint
 
 - Worktree `/Users/halvor/.codex/worktrees/procedural-drawing/vera20k`, branch
-  `feature/procedural-target-lines`, HEAD/base `7229c2df25` (latest documentation/manual-CI integration).
-  Implementation/evidence is committed as `b4b537a34` and submitted in
-  [PR1042](https://github.com/YuriPlanet/vera20k/pull/1042). The one fresh critic
-  completed; its single selection-scaling finding is fixed and revalidated.
-- First chain: selected local factory rally, Tactical6DA9D0 through DSurface4C0750.
-  Reverse selection order; live/selected/local/HasRally/ArchiveTarget gates;
-  GetCoords foundation center; target ground/bridge projection; black/color/color
-  patterned rows; signed frame phase; sequential clipping; complementary A passes.
-  No RNG draws, timer writes or detach. ArchiveTarget remains simulation-owned.
-- Required input/cleanup: Building443860 FNPC preparation, selection dispatch order,
-  Building455D50 Stop clearing, and shared Dummy terrain-speed admission. Existing
-  owners now cover these; rendering uses an isolated NativeCellQuery identity.
-- Shared prerequisites: native House RGB through existing PaletteLight (also radar);
-  stock SHROUD raster/selector; one CPU/GPU A source with per-blitter palette rows.
-  Fullscreen destination multiplication is removed. Rally uses two pooled UI draws
-  around the object/effect passes, bypassing depth. Camera is published after clamp.
-- Native image SHA256 `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`.
-  Ghidra selector `gamemd.exe`; no shared database edits. Reproducible evidence lives
-  in `tools/procedural_drawing_oracle/` and uses Unicorn2.1.4/FPCW0E7F/RGB565.
-- Corps:65 whole rally cases,4 overlap-order cases,4 retained clipping controls,
-  360 leaves and2 production crops;21 house colors;27 input cases plus2 unsafe-frame stack controls and
-  28 direct real/Dummy passability controls;110 destination/Stop cases;73 SHROUD
-  rasters,256 masks,16 flags and9 whole native shroud scenes.
-- Whole-scope baseline censuses: `docs/research/procedural-drawing-{native,rust}-audit.md`.
-  They identify23 families and are not completion certificates. Later work includes
-  action lines, selection/range/placement, lasers/bolts/waves, psychic/planning links,
-  light/distortion/particle/radar/beacon paths and required producers/lifecycles.
+  `feature/procedural-unit-order-lines`, base `b0b6dafc63750a368e4eee0abc91a1803664a820`
+  (main including Infantry destination PR1046, integrated without replacing it).
+  Implementation commit `d5b667327a69b2a2d16578e938cfc8382a0820ed`; subsequent
+  changes only extend final evidence/archive comparisons and documentation.
+  The selected ground Unit ordinary Move chain is implemented and has passed
+  88 final optimized tests, native CPU/GPU comparisons, full retail lib9671
+  passed/239 ignored, Clippy (724 warnings), Python594 passed/5 optional skips,
+  and the2505/2505 field ratchet. Twelve earlier production captures and their
+  portable archive pass. The first full suite passed9657, failed2 and ignored239;
+  both failures observed old eager-order assumptions: a repeated
+  destination preserves its speed stamp while Drive reads live FASTER speed;
+  the first path-cache construction happens on movement, not command admission.
+  Four corrected Rust regressions pass. The existing speed oracle now preserves
+  16 retained rank/order/prefix steps; all75 getter and116 prefix controls remain
+  unchanged, and independent speed/destination native checks pass.
+  Final integrated release replays pass:12 Move scenes,5760000 identical pixels
+  and385 observed boundaries; Rally480000pixels/1501boundaries also match.
+  The single fresh critic found no blocking implementation defect. Its P3
+  reproduction-command finding is fixed and the exact module command passes
+  without PYTHONPATH; the stale ground-move owner description is corrected.
+  No PR for this chain yet. The whole goal remains open.
+- Prior factory-rally chain [PR1042](https://github.com/YuriPlanet/vera20k/pull/1042)
+  merged at2135df0e33536ab11fddbdcdb8dae3a3b5f316f9. Its native comparisons, production archive,
+  performance reports and one critic disposition are in
+  `tools/procedural_drawing_oracle/`. The whole-scope goal remains active.
+- Active-retail image SHA256:
+  `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`.
+  Ghidra selector `gamemd.exe`; no database edits. Two new decompilation requests
+  timed out/reset; original-byte `tools.native_inspect` and Unicorn remain usable.
+- Root owns target_lines, shared surface-line/rectangle ports, rendering and their
+  native/GPU tests. Native agent owns only new `action_lines.{py,json,meta.json,md}`.
+  Input agent owns dispatch/context_order/load-reanchor and the existing sealed
+  map-observation gesture extension. Destination agent owns the ordinary Move
+  adapter to the existing Unit destination setter and its native regressions.
+  No Cargo while any tracked source/evidence is still being edited.
 
-## Actual validation
+## Current chain and evidence boundary
 
-- Solid-line regression failed first. Focused retry:219 passed,3 failed. The two
-  empty-INI fixtures and bridge voxel zoom-padding edge are now corrected; the
-  subsequent optimized run passed their checks, plus rally GPU comparison.
-- Optimized run:21 passed,1 unrelated tree benchmark failed on `last > first`
-  timestamp assertion. Existing main code; recorded as tooling/refactor issue1037.
-  Log `logs/procedural-drawing/release-validation.log`. Own measurements completed.
-- Native raster/GPU comparisons cover all65 rally inputs, BGRA/RGBA sRGB, both
-  passes, zoom0.75/1/1.5/2, nonzero camera and poisoned hardware depth; native Z
-  remains unchanged. Shared A composition and6 ordinary native shroud scenes passed.
-- All28 real/Dummy comparisons,25 defined input clicks,24 native Stop rows,
-  connected input-to-archive-to-Stop,21 house colors, selection ordering and retail
-  terrain-cost construction passed. Python map-observation95 checks and full580-tool suite passed (five optional skips).
-- Simulation field ratchet2505 versus2505 at origin/main. Five production captures
-  and portable native comparison passed. Full retail lib found one stale draw
-  assertion (9648 passed,238 ignored); its fix passed the44 rendering checks.
-  Clippy and122 final cleanup checks passed. After the critic fix, full retail
-  lib9651 passed/238 ignored, Clippy passed, Python580 passed/five skipped and
-  the field ratchet2505/2505 passed. The final release capture/native archive also passed; PR1042 is published.
+Selected local ground Unit, ordinary Move, planning off: input dispatch restarts
+70D150; Tactical6D4750 walks forward TechnoArray with House50B6F0, selected and
+UnitActionLines gates; Foot4DC060 admits positive CdTimer remaining and reads raw
+Location, NavCom or last queue target+48. In-Size flag100 targets use578080 ground
+plus Foot's initialized416 deck height. 7049C0 emits two point-minus2 three-pixel
+endpoint squares, then solid7BA5E0/7BA610. Lines read/write neither A nor Z, use no
+RNG and perform no detach. The shared timer has signed wrapping frame arithmetic,
+paused sentinel and successful-load reanchoring, not saturating u64 tick age.
 
-## Measured performance
+Native evidence now has 277 prepared-input controls plus 12 production rows.
+The original 277 remain unchanged after extending the existing surface fixture
+with bounded optional dimensions; independent Rally/shroud payloads remain exact.
+Production rows bind capture/profile/frame/executable hashes to unclipped 160×160
+native crops. All source inputs, map Size80×85, target terrain, PALETTE.PAL and
+coordinates have explicit native/retail provenance; no whole Scenario claim.
 
-Apple M4/Metal, optimized20-sample means. Rally builder1/64/1024 factories:
-0.0044/0.1146/2.3192ms; upload/encode0.0255/0.1165/1.4477ms. Synthetic stress,
-not whole-game FPS. GPU completion-wall means1.273/1.339/6.201ms include fence/map.
-Timestamp intervals are mostly unavailable; surviving samples are not a valid mean.
-The20k-instance A-blitter completion bound was3.835ms neutral versus3.780ms live A.
+The Rust owner shares solid/clipping with rally and radar, and rectangle421B60
+with map playfield. It reads physical PALETTE.PAL through PaletteLight, uses an
+isolated terrain query and CdTimer/binary_frame, and consumes the existing Unit
+setter for ordinary Move(clear_queue1). Empty band release and consumed empty
+context dispatch restart the timer; successful load reanchors retained state.
+Status/brackets now finish before effects, bandbox and selected action lines,
+as the original6D8DB0/6F5190 caller sequence requires. Range rings remain for the
+next range chain, rather than being certified by the ordinary MTNK path.
 
-Shroud CPU raster cost before caching:1.061ms at1280x720 unrevealed,16.780ms at
-5120x2880/minimum zoom; frontier0.562/8.759ms. Immutable row spans now reduce those raster costs to0.146/2.487ms unrevealed
-and0.153/1.444ms frontier. All13 focused native/scene/GPU checks passed after the
-change. Original native pixel payloads are unchanged; the shared-fixture metadata
-was regenerated and independently checked after the stock type extension.
-Reports, compressed logs and hashes are preserved under
-`tools/procedural_drawing_oracle/validation/`. Release capture last60-frame wall
-means were8.75/8.77ms clear and8.55/8.42ms shrouded (rally/Stop), including the
-observer/simulation/pacing; not isolated GPU time or ordinary play FPS.
+Validation: final integrated optimized88 tests passed. The CPU producer compares120inputs
+(115exact,5documented1pxclip controls),6mixed opaque orders,77solidleaves,
+45intersections,11timer prerequisites andpalette256row. GPU compares126inputs
+at2sRGBformats×4zooms with unchanged depth (1008draws);40clip-control draws are
+exact CPU-raster presentation, not exactnative claims. Native destination/input,
+capture-schema, map and radar checks are included. Logs:
+`unit-move-main-render-checks.log`, `unit-move-main-full-lib.log`,
+`unit-move-main-clippy.log`, `unit-move-main-python-runner.log`.
 
-## Current workers and next safe action
+Production release label `procedural-unit-move-production-v1`, executable
+SHAdc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd.
+Twelve immutable XMP03T4 captures exercise real Select/Move gestures, timer1/0,
+reselect, empty bands, Stop and arrival. Every native opaque store matches.
+Matched-time Move/Stop/reselect controls change only165/165/151native pixels;
+arrival/reselect changes zero tactical pixels and resets only the sidebar tooltip.
+Archive: `tools/procedural_drawing_oracle/unit-move-production-validation/`.
+The current release also reproduces every480000pixel and1501state boundary of
+retained rally v4; see `validation/unit-move-rally-consumer.json`.
 
-- All research agents remain read-only. Release build v3 passed, SHA256
-  `d5b05d06e77cb108ee1bee37d3a14852e4bc23cc51a5324f953faa7f992fd8d5`.
-  Its fifth1500-step clear capture matches every frame byte and all recorded
-  state boundaries from v2; portable native comparison passes all5 captures.
-  The action-line order now follows both rally passes (native6D4750). Clippy
-  passed after replacing redundant cell-query temporaries and grouping the
-  private shroud constructor dimensions. Two cfg(test) constructor callers
-  needed the same argument migration; all122 focused rerun checks passed.
-- Preserved stash b4474c90468940ace26bfe3a84fefb682b767abe holds pre-integration
-  work. All58 nonoverlapping owned paths were byte-identical after integration;
-  the single Jumpjet conflict retains incoming main and canonical cell query.
-- The first v1 capture failed at1351 because Select made its center-map cursor
-  animated. Evidence remains in `logs/procedural-drawing/rally-clear-capture`.
-  Optional sealed cursor[720,556] fixed the harness without relaxing static
-  cursor or idle-camera checks. All95 focused Python checks passed.
-- Clear/Stop and shrouded/Stop v2 pairs are VALID. Stock GAPILE1477 is3x2,
-  source[8064,21888,416], target35,89 level4/slope0/no bridge. Camera[-2100,1426],
-  zoom1, frame1500. Native crop origin[415,296] contains106 original stores;
-  all76 changed pixels and62 declared unobstructed floor stores match RGB565,
-  with no changes elsewhere among480,000 frame pixels. All1501 actor/terrain
-  observations differ only by ArchiveTarget after Stop. Covered30 stores do
-  not certify native object occlusion; shroud history is not certified.
-- Portable originals and comparison receipt are under
-  `tools/procedural_drawing_oracle/production-validation/`; recheck with that
-  package's `rally_production check`. No game executable is copied into Git.
-- Full retail lib:9648 passed,1 stale source-order assertion failed,238 ignored.
-  The obsolete fullscreen-shroud anchor is corrected with the action ordering;
-  44 focused rendering checks,122 cleanup checks and Clippy passed. The critic then found quadratic selection lookup/front insertion in the
-  shared input owner. Membership indexes/deque insertion preserve native order
-  and pending authority. Full retail9651, Clippy and Python580 passed after the
-  fix. The20k-mobile acquisition+rally mean fell16.58→2.10ms; missing-ledger
-  recovery34.51→4.38ms. Raw20-sample reports and the critic disposition are in
-  the validation directory. Final release v4 `c3aaa9ba6e930ca359cbddc1f2b7a7569e148f6b28365d6947fa95a830b72404`
-  produced `rally-clear-v4`: all480,000 frame pixels and1501 state boundaries
-  match v2, and all native mask/floor checks pass. Runtime Rust is frozen.
-  Next: authorized auto-merge of PR1042, confirm integration and dry-run owned
-  label retirement. No second critic. Then action lines on fresh main.
-- Cargo uses `/Users/halvor/Documents/vera20k-dev/.venv/bin/python -m tools.cargo_run`.
-  An earlier admission was blocked below16GiB; later admission succeeded without
-  manual deletion. Freeze all source/metadata during Cargo. Preserve ignored
-  logs, native inputs, owned labels and shared build ownership.
+Final release v2 was built from clean implementation commitd5b667327 (57.82s).
+Executable SHA776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5.
+All12 original scenes replay exactly through the ordinary renderer and real input
+gestures; the archive now retains both sets (192gzip files). Each pair passes
+the shared map-observation comparator, including input bytes, diagnostic clock,
+atlas, final frame and all385 state boundaries. Active/stopped/reselected/arrived
+frames were visually inspected. The final rally replay matches v4 completely.
+Logs, manifest and comparator results: `validation/unit-move-checks/receipt.json`.
+Initial capture-wrapper errors concerned a missing ignored output parent and
+launched no child; creating that directory was the only repair, with errors saved.
 
-## Limits that remain explicit
+Performance: native opaque composition in Techno order reduces the20k overlapping
+Move stress from979995spans/121519380bytes to63spans/7812bytes. Mean CPUbuild
+14.422→8.266ms; CPUstaging10.939→0.025ms; completionwall27.244→1.538ms (AppleM4,
+20samples, optimized, not whole-gameFPS or GPUduration). GPUtimestamps are null.
+Before/after samples are retained under `validation/action-line-workload-*.json`.
+The final integrated optimized run is retained separately as
+`validation/action-line-workload-final.json`.
 
-Minor visual residuals: native chop53 versus host-nearest clipping can shift one
-edge pixel; fractional VERA camera/zoom can expose one neutral far-edge A row/column.
-FrameFFFFFFFF FNPC accesses before the selected candidate pool; comparisons cover
-nonnegative signed frames, with a documented deterministic Rust extension afterward.
-Enabled fog/dynamic AlphaShapes, EMP input state, ConstructionYard repack and planning
-are broader required mechanisms; this ordinary stock-factory chain does not close them.
+After main integration, native Move/Rally/shroud payload and metadata checks pass
+unchanged. The final full Python suite passed594 with5 optional skips; the
+extended archive replay comparator passes6 focused controls. Its final-candidate
+mode retains the twelve original native-bound captures plus twelve new complete
+frame/state replays, rather than silently replacing the original observations.
 
-Research ahead only: action lines run after both rally passes, forward TechnoArray
-at6D4750. Unit6F3D60 uses a body TurretOffset anchor; navigation uses target+48, not+4C.
-Reuse CdTimer and the existing lead/coordinate owners. Inline probes are leads until
-saved as reproducible goldens; no second implementation chain has started.
+The single fresh read-only critic and owner disposition are retained in
+`tools/procedural_drawing_oracle/validation/unit-move-review.md`. No runtime
+changes were needed after validation. Required next: publish and integrate
+the coherent Move chain. Then proceed to selected Unit Attack
+anchors and their required consumers. Planning, other Foot paths and the wider
+procedural census remain required; documenting them does not close this goal.
 
-Read-only next-chain handoff (inline probes, not saved goldens yet): choose a
-selected local MTNK fresh ordinary Move, TarCom null, NavCom Cell, empty queue.
-4DC1AA uses raw Location;6F3D60 TurretOffset is attack-only. Reuse ground_pose
-object_location/target_get_coords with isolated queries, TargetLineState plus
-CdTimer.remaining(binary_frame)>0, and extend the private House50B6F0 read owner
-in world_orders rather than duplicate admission. Original PaletteReader supplied
-N53 middle26 PALETTE.PAL (SHAe85c535002573b5f95f7c361c4bdb95ee43e4914ddc926afda9ace995c54242b):
-index3=0540, index8=A800. Existing Rally/PaletteReader arenas, actual Unit vtable,
-original70D150 and4DC060 produced135 green pixels for Location[2688,5248,0] to
-Cell14,20 at frames100/124 after restart100, none125/126. 7049C0 calls two filled
-3x3 endpoint rectangles421B60 and solid7BA5E0→7BA610; no A/Z/RNG. Preserve an
-executable corpus before implementing; queue/repeated destination preprocessing,
-TechnoArray order, load-reanchored timer and broader input triggers remain unproven.
+## Integrated rally evidence
 
-Latest read-only research is preserved under ignored logs: selected-unit-move-line-expanded
-probe/handoff contains57 original cases (32 geometry/control,25 timer), all octants,
-clipping/rejected lines and timer wrap/sentinel boundaries. Original control135
-pixels matches; normal timers expire at elapsed25, startFFFFFFFF is the native
-sentinel. It is prepared-input research, not production parity. Both native and
-render research agents stay idle during measured workloads.
+Factory6DA9D0/4C0750:65 whole cases,4 overlap cases,4 retained clipping controls,
+360 leaves and2 production crops;21 House colors;27 input cases plus2 unsafe-frame
+controls;28 Dummy/passability cases;110 destination/Stop cases;73 SHROUD rasters,
+256 masks,16 flags and9 prepared shroud scenes. Shared CPU/GPU A composition uses
+per-blitter palette rows; camera uploads after clamp; rally passes straddle objects.
+
+After the critic's selection-scaling fix: full retail lib9651 passed/238 ignored;
+Clippy passed; Python580 passed/5 optional skips; field ratchet2505/2505. Native GPU
+comparisons covered BGRA/RGBA sRGB, both passes, zoom0.75/1/1.5/2, camera and poisoned
+depth. The final release v4 clear capture matches every480000 pixel and all1501
+state boundaries of v2. Five immutable portable captures and native crop checks
+pass. Covered stores do not establish full native object occlusion or shroud history.
+
+20k selected mobile acquisition+rally build mean16.58→2.10ms; missing-ledger recovery
+34.51→4.38ms (M4, optimized20 samples). Shroud immutable row spans reduced5120×2880
+CPU raster16.78→2.49ms unrevealed and8.76→1.44ms frontier. GPU timestamp intervals
+mostly unavailable; no GPU-speedup/FPS claim. Existing unrelated timestamp benchmark
+issue [1037](https://github.com/YuriPlanet/vera20k/issues/1037) remains open.
+
+## Preservation and next safe action
+
+- Keep comparison label `procedural-rally-production-v2` (SHAedb373c72f58c45a6b79cdd4d74d7923425efecb5c03e70cbb56f52f3ae45e31)
+  and final v4 (SHAc3aaa9ba6e930ca359cbddc1f2b7a7569e148f6b28365d6947fa95a830b72404).
+  Exact v1/v3 retirement preview and application passed, removed63492096 allocated
+  bytes with no errors; owner receipt `owned-builds/label-retirements/1791067591733474000-8ce080cc9d7446589027b086d205ab97.json`.
+  Post-merge owner cache trimming passed: no eligible files, zero removed,39.0GB
+  available. Receipt `owned-builds/retention/1791068207876860000-5784b2d7.json`.
+  Original capture directories remain untouched.
+- Preserved stash `b4474c90468940ace26bfe3a84fefb682b767abe` and all ignored native,
+  capture/failure/performance logs remain. v3 portable archive is preserved under
+  ignored logs; tracked archive keeps the four v2 controls plus final v4.
+  Integration stash `4b759e701ea67bbc4ff229e4427dd543aceda55b` is also preserved;
+  its tracked and untracked contents were applied to the new main base.
+- Cargo only through `/Users/halvor/Documents/vera20k-dev/.venv/bin/python -m tools.cargo_run`.
+  Source/evidence freeze is required. Use the narrowest useful check; no baseline
+  full suite. Platform workflows are manual and not requested; only ratchet is an
+  automatic merge requirement.
+- Keep both Move v1 (original native-bound captures) andv2 (final candidate)
+  labels as active evidence; do not retire either or their original runs.
+- Next: publish the reviewed Move chain. Final archive and Python rechecks pass.
+
+## Whole-scope residuals
+
+The baseline native/Rust censuses in `docs/research/procedural-drawing-*-audit.md`
+identify23 families, not completion. Attack/other Foot paths, selection/bandbox,
+range/placement/SW indicators, laser/Tesla/RadBeam/Disc/Wave/Spark effects, searchlight,
+ion distortion, psychic/capture/planning links, beacons/pixelFX/radar and their
+required producers/lifecycles still need complete chains. Planning, enabled fog,
+dynamic AlphaShapes, EMP input and ConstructionYard repack are required broader
+mechanisms. Attack-only source/aim stays an explicit residual in target_lines until
+its existing native owners are connected in the next chain. Minor chop/nearest clip
+and fractional far-edge A differences remain one-pixel visual residuals.

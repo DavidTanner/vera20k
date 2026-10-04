@@ -301,13 +301,6 @@ pub(crate) fn lifted_z_adjust(lift_px: i32, class_term: i32) -> f32 {
     (class_term - lift_px) as f32
 }
 
-/// `SpriteInstance::z_adjust` for a draw whose rows are drawn lifted by
-/// `z` height levels: the class term with the lift cancelled
-/// (`native_z::ground_anchored_z_adjust`).
-pub(crate) fn ground_z_adjust(z: u8, class_term: i32) -> f32 {
-    native_z::ground_anchored_z_adjust(i32::from(z), class_term) as f32
-}
-
 /// Extra depth bias carried by every anim SHP draw in the original engine's
 /// standard shape-depth expression, on top of the anim's own `ZAdjust=`.
 pub(crate) const ANIM_DRAW_DEPTH_BIAS_PX: i32 = -2;

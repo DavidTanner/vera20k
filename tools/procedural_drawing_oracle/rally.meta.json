@@ -198,7 +198,7 @@
     ]
   },
   "source_normalized_lf_sha256": {
-    "producer": "76c3588203fa5e29e088234d60041bd8f952a699640cb0be38013401b19c8e24",
+    "producer": "0168afa40ab7fa79a606116d117d24f634b00a37d3b38ec9121ec15f5636023d",
     "fixture_base": "25525c7397377b5ca9478d26a0275180e29824da5e1a760161720d4a6f9d3136",
     "type_reader_fixture": "6c4c486ee384598dae044a407f3b631c4d43fbb5c054351a440a0fe9edf2d09f",
     "ini_registry_fixture": "fc0d267d9c8453ba3090bfacd056af5207f47cb1170651cce5b0c41c80e90a2e",

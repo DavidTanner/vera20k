@@ -1327,7 +1327,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
                 let entity = sim.substrate.entities.get(held).unwrap();
                 assert!(entity.lifecycle.in_limbo && !entity.in_logic_vector);
                 assert!(
-                    !sim.pending_commands_for_tests().iter().any(|command| {
+                    !sim.pending_command_snapshot().iter().any(|command| {
                         matches!(command.payload, Command::PlaceProducedMobile { .. })
                     }),
                     "Factory completion retains its change flag until the next Strip prefix"
@@ -1546,7 +1546,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
         .factory_shadow
         .view(owner, ProductionCategory::Infantry);
     assert!(factory.is_none_or(|view| view.object.is_none() && view.queue.is_empty()));
-    assert!(sim.pending_commands_for_tests().is_empty());
+    assert!(sim.pending_command_snapshot().is_empty());
     assert_eq!(
         json!(sim.houses[&owner].economy.credits),
         native["final_wallet"]["credits"]

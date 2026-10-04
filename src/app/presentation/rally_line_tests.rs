@@ -44,7 +44,7 @@ fn packed(tint: [f32; 3]) -> u16 {
     (r >> 3) << 11 | (g >> 2) << 5 | (b >> 3)
 }
 
-fn composite(canvas: &mut [u16], instances: &[SpriteInstance], view: RallyViewport) {
+fn composite(canvas: &mut [u16], instances: &[SpriteInstance], view: TacticalViewport) {
     for instance in instances {
         let x = instance.position[0] as i32 - view.camera[0];
         let y = instance.position[1] as i32 - view.camera[1];
@@ -59,7 +59,7 @@ fn composite(canvas: &mut [u16], instances: &[SpriteInstance], view: RallyViewpo
 pub(super) fn assert_native_passes(
     actual: &[Vec<SpriteInstance>; 2],
     row: &Value,
-    view: RallyViewport,
+    view: TacticalViewport,
 ) {
     let mut canvas = vec![0x39E7; 160 * 120];
     for (index, pass) in actual.iter().enumerate() {
@@ -123,8 +123,8 @@ pub(super) fn projected_fixture(
     row: &Value,
     zoom: f32,
     camera: [i32; 2],
-) -> ([Vec<SpriteInstance>; 2], RallyViewport) {
-    let view = RallyViewport {
+) -> ([Vec<SpriteInstance>; 2], TacticalViewport) {
+    let view = TacticalViewport {
         camera,
         clip: point(&row["clip"]),
         zoom,
@@ -192,7 +192,7 @@ fn rally_crossing_stock_shroud_frontier_matches_the_original_combined_draw() {
     let row = serde_json::json!({
         "input": scene["input"], "passes": scene["rally_passes"]
     });
-    let view = RallyViewport {
+    let view = TacticalViewport {
         camera: [0; 2],
         clip: [0, 0, 160, 120],
         zoom: 1.,
@@ -323,7 +323,7 @@ fn native_rally_gates_foundation_ground_bridge_and_object_target_through_product
         let (sim, rules) = simulation_fixture(row);
         let mut camera = point(&row["camera"]);
         camera[1] += 15; // VERA's shared absolute projection bias, not a rally offset.
-        let view = RallyViewport {
+        let view = TacticalViewport {
             camera,
             clip: point(&row["clip"]),
             zoom: 1.,
@@ -446,7 +446,7 @@ fn retail_gapile_house_color_and_production_crop_match_original_rally_and_no_tar
         assert_eq!(camera, native_camera);
         assert_eq!(input["production_zoom"], 1);
         assert_eq!(input["alpha"], "clear");
-        let view = RallyViewport {
+        let view = TacticalViewport {
             camera,
             clip: point(&row["clip"]),
             zoom: 1.,
@@ -486,7 +486,7 @@ fn presentation_target_query_does_not_stamp_simulation_dummy_cell() {
         &[10],
         &HouseColorMap::new(),
         Some("Americans"),
-        RallyViewport {
+        TacticalViewport {
             camera: [0, 0],
             clip: [0, 0, 160, 120],
             zoom: 1.,
@@ -628,16 +628,18 @@ fn production_rally_gpu_matches_native_pixels_and_preserves_depth() {
 }
 
 #[test]
-#[ignore = "bounded CPU/GPU timing for actual rally builder, pooled upload and draw"]
+#[ignore = "bounded CPU/GPU timing for actual rally/Move builders, pooled upload and draw"]
 fn production_rally_workload_timing() {
     use crate::render::batch::{BatchRenderer, InstanceBufferPool};
     use crate::render::terrain_draw_gpu_tests::{Gpu, camera};
+    use crate::sim::components::DriveCoord;
+    use crate::sim::movement::ground_pose;
     use std::time::{Duration, Instant};
     let gpu = Gpu::with_features(wgpu::Features::TIMESTAMP_QUERY);
     let size = [800, 600];
     let format = wgpu::TextureFormat::Bgra8UnormSrgb;
     let batch = BatchRenderer::new_with_device(&gpu.device, &gpu.queue, format);
-    let view = RallyViewport {
+    let view = TacticalViewport {
         camera: [-400, 350],
         clip: [0, 0, 632, 568],
         zoom: 1.,
@@ -673,6 +675,110 @@ fn production_rally_workload_timing() {
     });
     let colors = HouseColorMap::new();
     let mut pool = InstanceBufferPool::new();
+    // Both production builders use this one upload/encode/query/readback owner.
+    // A single action-line batch must not draw a retained second rally buffer.
+    let mut measure_draw = |batches: &[&[SpriteInstance]], clip: [i32; 4]| {
+        const KEYS: [&str; 2] = ["procedural_first", "procedural_second"];
+        assert!(batches.len() <= KEYS.len());
+        let upload_started = Instant::now();
+        for (&key, instances) in KEYS.iter().zip(batches) {
+            pool.upload_on_device(&gpu.device, &gpu.queue, key, instances);
+        }
+        let upload_ms = upload_started.elapsed().as_secs_f64() * 1000.;
+        let encode_started = Instant::now();
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        let mut draw_calls = 0;
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Procedural line workload"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &cv,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &dv,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.2),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                // wgpu-hal27.0.4 Metal attaches these to vertex-start and
+                // fragment-end; empty encoder samples returned zero on M4.
+                // Upstream af91efa9, metal/command.rs:630..651.
+                timestamp_writes: Some(wgpu::RenderPassTimestampWrites {
+                    query_set: &queries,
+                    beginning_of_pass_write_index: Some(0),
+                    end_of_pass_write_index: Some(1),
+                }),
+                occlusion_query_set: None,
+            });
+            pass.set_scissor_rect(
+                clip[0] as u32,
+                clip[1] as u32,
+                clip[2] as u32,
+                clip[3] as u32,
+            );
+            for &key in KEYS.iter().take(batches.len()) {
+                if let Some((buffer, count)) = pool.get(key) {
+                    batch.draw_with_buffer_ui_passthrough(&mut pass, &texture, buffer, count);
+                    draw_calls += 1;
+                }
+            }
+        }
+        encoder.resolve_query_set(&queries, 0..2, &resolved, 0);
+        encoder.copy_buffer_to_buffer(&resolved, 0, &mapped, 0, 16);
+        let command = encoder.finish();
+        let encode_ms = encode_started.elapsed().as_secs_f64() * 1000.;
+        let submitted = Instant::now();
+        let submission = gpu.queue.submit([command]);
+        let submit_ms = submitted.elapsed().as_secs_f64() * 1000.;
+        let (tx, rx) = std::sync::mpsc::channel();
+        mapped
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
+        // wgpu27 PollType::Wait(Some(submission)) waits for execution and
+        // callbacks on native backends. This is completion wall time including
+        // submission, queued uploads, pass work, query copy and mapping, not
+        // a render-only GPU interval. API: wgpu-types27.0.1 PollType::Wait;
+        // https://docs.rs/wgpu/27.0.1/wgpu/type.PollType.html
+        gpu.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(submission),
+                timeout: Some(Duration::from_secs(60)),
+            })
+            .unwrap();
+        rx.recv().unwrap().unwrap();
+        let completed_ms = submitted.elapsed().as_secs_f64() * 1000.;
+        let data = mapped.slice(..).get_mapped_range();
+        let first = u64::from_le_bytes(data[..8].try_into().unwrap());
+        let last = u64::from_le_bytes(data[8..].try_into().unwrap());
+        // Retain unsupported samples explicitly, never report zero as a
+        // measured GPU cost. The completion clock above is independent.
+        let gpu_ms = (first != 0 && last != u64::MAX && last > first).then(|| {
+            (last - first) as f64 * f64::from(gpu.queue.get_timestamp_period()) / 1_000_000.
+        });
+        drop(data);
+        mapped.unmap();
+        let spans_per_batch: Vec<_> = batches.iter().map(|instances| instances.len()).collect();
+        let spans = spans_per_batch.iter().sum::<usize>();
+        serde_json::json!({
+            "upload_ms":upload_ms, "encode_ms":encode_ms,
+            "encode_upload_ms":upload_ms + encode_ms,
+            "submit_ms":submit_ms, "completed_ms":completed_ms, "gpu_ms":gpu_ms,
+            "timestamp_first":first, "timestamp_last":last,
+            "timestamp_period_ns":gpu.queue.get_timestamp_period(),
+            "spans_per_batch":spans_per_batch, "spans":spans,
+            "upload_calls":batches.iter().filter(|instances| !instances.is_empty()).count(),
+            "draw_calls":draw_calls,
+            "upload_bytes":spans * std::mem::size_of::<SpriteInstance>(),
+        })
+    };
     let mut results = Vec::new();
     for (count, mobile, missing, pending) in [
         (1, false, false, false),
@@ -735,97 +841,102 @@ fn production_rally_workload_timing() {
                     assert_eq!(selected, ledger);
                 }
             }
-            let begin = Instant::now();
-            pool.upload_on_device(&gpu.device, &gpu.queue, "rally_first", &actual[0]);
-            pool.upload_on_device(&gpu.device, &gpu.queue, "rally_second", &actual[1]);
-            let mut encoder = gpu.device.create_command_encoder(&Default::default());
-            {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Rally workload"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &cv,
-                        depth_slice: None,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &dv,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(0.2),
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: None,
-                    }),
-                    // wgpu-hal27.0.4 Metal attaches these to vertex-start and
-                    // fragment-end; empty encoder samples returned zero on M4.
-                    // Upstream af91efa9, metal/command.rs:630..651.
-                    timestamp_writes: Some(wgpu::RenderPassTimestampWrites {
-                        query_set: &queries,
-                        beginning_of_pass_write_index: Some(0),
-                        end_of_pass_write_index: Some(1),
-                    }),
-                    occlusion_query_set: None,
-                });
-                pass.set_scissor_rect(0, 0, 632, 568);
-                for key in ["rally_first", "rally_second"] {
-                    if let Some((buffer, count)) = pool.get(key) {
-                        batch.draw_with_buffer_ui_passthrough(&mut pass, &texture, buffer, count);
-                    }
-                }
-            }
-            let encode_upload_ms = begin.elapsed().as_secs_f64() * 1000.;
-            encoder.resolve_query_set(&queries, 0..2, &resolved, 0);
-            encoder.copy_buffer_to_buffer(&resolved, 0, &mapped, 0, 16);
-            let command = encoder.finish();
-            let submitted = Instant::now();
-            let submission = gpu.queue.submit([command]);
-            let (tx, rx) = std::sync::mpsc::channel();
-            mapped
-                .slice(..)
-                .map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
-            gpu.device
-                .poll(wgpu::PollType::Wait {
-                    submission_index: Some(submission),
-                    timeout: Some(Duration::from_secs(60)),
-                })
-                .unwrap();
-            rx.recv().unwrap().unwrap();
-            let completed_ms = submitted.elapsed().as_secs_f64() * 1000.;
-            let data = mapped.slice(..).get_mapped_range();
-            let first = u64::from_le_bytes(data[..8].try_into().unwrap());
-            let last = u64::from_le_bytes(data[8..].try_into().unwrap());
-            // Retain unsupported samples explicitly, never report zero as a
-            // measured GPU cost. Completion wall time remains an upper bound
-            // including queue submission, execution, query copy and map wait.
-            let gpu_ms = (first != 0 && last != u64::MAX && last > first).then(|| {
-                (last - first) as f64 * f64::from(gpu.queue.get_timestamp_period()) / 1_000_000.
-            });
-            drop(data);
-            mapped.unmap();
+            let mut timing = measure_draw(&[&actual[0], &actual[1]], view.clip);
             if sample >= 2 {
-                let spans = actual[0].len() + actual[1].len();
-                samples.push(
-                    serde_json::json!({ "selection_ms":selection_ms, "build_ms":build_ms, "encode_upload_ms":encode_upload_ms,
-                    "gpu_ms":gpu_ms, "completed_ms":completed_ms,
-                    "timestamp_first":first, "timestamp_last":last,
-                    "timestamp_period_ns":gpu.queue.get_timestamp_period(),
-                    "spans":spans, "upload_bytes":spans * std::mem::size_of::<SpriteInstance>() }),
-                );
+                timing["selection_ms"] = serde_json::json!(selection_ms);
+                timing["build_ms"] = serde_json::json!(build_ms);
+                timing["line_builder_ms"] = serde_json::json!(build_ms - selection_ms);
+                samples.push(timing);
             }
         }
         results.push(
-            serde_json::json!({ "selected_count": count, "mobile":mobile,
+            serde_json::json!({ "family":"rally", "selected_count": count, "mobile":mobile,
             "missing_ledger":missing, "pending_selection":pending, "samples": samples }),
         );
     }
-    let report = serde_json::json!({ "target": size, "format": "Bgra8UnormSrgb", "zoom":1,
-        "interval":"CPU build_ms includes the actual selection owner and production rally builder; selection_ms is its included selection subset. Pooled upload/encode is separate. GPU is the backend-reported render-pass timestamp interval for both draws, excludes buffer upload; unavailable timestamps give null. completed_ms independently measures submit through GPU/query-copy/map completion. Two warmups, twenty measured frames. Artificial overlapping stress counts; not whole-game FPS or native timing parity.",
+    for (count, selected, active) in [
+        (1, true, true),
+        (64, true, true),
+        (1024, true, true),
+        (20_000, true, true),
+        (20_000, true, false),
+        (20_000, false, true),
+    ] {
+        let (mut sim, mut line_state, mut view, palette) = super::action_tests::workload_fixture();
+        view.clip = [0, 0, 632, 568];
+        batch.write_camera(
+            &gpu.queue,
+            crate::render::batch::CameraUniform {
+                camera_pos: view.camera.map(|v| v as f32),
+                ..camera(size)
+            },
+        );
+        let template = sim.entities().get(1).unwrap().clone();
+        let source = ground_pose::position_world_coord(&template.position);
+        // An overlapping synthetic stress field: disperse raw source XY by
+        // 8-lepton increments within one cell, retain source Z and the shared
+        // Cell NavCom. All actors remain visible; line lengths vary slightly.
+        for id in 1..=count as u64 {
+            let mut entity = template.clone();
+            entity.stable_id = id;
+            entity.selected = selected;
+            ground_pose::put_location(
+                &mut entity.position,
+                DriveCoord {
+                    x: source.x + 8 * ((id - 1) % 32) as i32,
+                    y: source.y + 8 * (((id - 1) / 32) % 32) as i32,
+                    z: source.z,
+                },
+            );
+            sim.entities_mut().insert(entity);
+        }
+        let heights = BTreeMap::new();
+        let mut samples = Vec::new();
+        for sample in 0..22 {
+            let frame = 100 + sample;
+            sim.session.binary_frame = frame;
+            line_state.start_timer(if active {
+                frame
+            } else {
+                frame.wrapping_sub(DURATION_TICKS as u32)
+            });
+            assert_eq!(line_state.is_selected_action_active(frame), active);
+            let begin = Instant::now();
+            let actual = build_target_line_instances(
+                &line_state,
+                Some(&sim),
+                &heights,
+                Some(&palette),
+                view,
+            );
+            let build_ms = begin.elapsed().as_secs_f64() * 1000.;
+            assert_eq!(!actual.is_empty(), active && selected);
+            let mut timing = measure_draw(&[&actual], view.clip);
+            if sample >= 2 {
+                // This production builder scans Techno entities itself; it
+                // does not acquire the rally CurrentObjects selection ledger.
+                timing["selection_ms"] = serde_json::Value::Null;
+                timing["build_ms"] = serde_json::json!(build_ms);
+                timing["line_builder_ms"] = serde_json::json!(build_ms);
+                samples.push(timing);
+            }
+        }
+        results.push(serde_json::json!({
+            "family":"move", "actor_count":count,
+            "selected_count":if selected { count } else { 0 }, "timer_active":active,
+            "camera":view.camera, "clip":view.clip,
+            "source_xy_stride_leptons":8, "source_xy_grid_side":32,
+            "samples":samples,
+        }));
+    }
+    let report = serde_json::json!({ "schema":"vera20k.procedural-line-workload.v2",
+        "target": size, "format": "Bgra8UnormSrgb", "zoom":1,
+        "interval":"CPU build_ms includes the actual selection owner for rally (selection_ms subset) and the production builder. Move build_ms includes its own full entity scan and palette conversion; selection_ms is null. upload_ms measures pooled CPU staging; encode_ms includes pass/query-copy encoding and finish, and encode_upload_ms is their sum. submit_ms is the included CPU queue-submit subset of completed_ms. gpu_ms is the backend-reported render-pass timestamp interval (including attachment clears), excludes uploads; unavailable timestamps stay null. completed_ms independently measures submit through upload, GPU, query-copy and map completion and is not render-only GPU time. Two warmups, twenty measured frames; Move timer preparation and source construction occur before timing. Synthetic overlapping stress; not whole-game FPS or native timing parity.",
         "workloads":results });
     eprintln!("{}", serde_json::to_string_pretty(&report).unwrap());
-    if let Some(path) = std::env::var_os("VERA20K_RALLY_PERF_OUTPUT") {
+    if let Some(path) = std::env::var_os("VERA20K_PROCEDURAL_LINE_PERF_OUTPUT")
+        .or_else(|| std::env::var_os("VERA20K_RALLY_PERF_OUTPUT"))
+    {
         std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     }
 }

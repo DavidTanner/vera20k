@@ -910,7 +910,7 @@ fn human_mobile_completion_retains_identity_until_next_frame_place() {
             completed
         })
         .expect("the paid native step ladder completes");
-    assert!(sim.pending_commands_for_tests().is_empty());
+    assert!(sim.pending_command_snapshot().is_empty());
     sim.session.tick += 1;
     sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
     super::publish_production_changes(&mut sim, &rules);
@@ -927,13 +927,13 @@ fn human_mobile_completion_retains_identity_until_next_frame_place() {
         .unwrap();
     assert_eq!(factory.object.unwrap().entity_id, Some(held));
     assert_eq!(factory.queue.len(), 1, "StartNextQueued follows PLACE");
-    let pending = sim.pending_commands_for_tests();
+    let pending = sim.pending_command_snapshot();
     assert_eq!(pending.len(), 1);
     // The next frame's prefix appends PLACE for its own event tail, after
     // already accepted player events and before that frame's Factory sweep.
     assert_eq!(pending[0].execute_tick, u64::from(completed_frame) + 2);
     super::publish_production_changes(&mut sim, &rules);
-    assert_eq!(sim.pending_commands_for_tests().len(), 1);
+    assert_eq!(sim.pending_command_snapshot().len(), 1);
 }
 
 /// The live app records the Strip-augmented batch; playback regenerates the
@@ -1037,7 +1037,7 @@ fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
             .lifecycle
             .in_limbo
     );
-    assert_eq!(live.pending_commands_for_tests(), [future.clone()]);
+    assert_eq!(live.pending_command_snapshot(), [future.clone()]);
 
     let (mut replay, _, _) = make();
     let due = replay.take_due_replay_commands(admitted.clone());
@@ -1053,7 +1053,7 @@ fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
         .unwrap();
     assert_eq!(replay_output.take_admitted_commands(), admitted);
     assert_eq!(replay_output.tick.state_hash, output.tick.state_hash);
-    assert_eq!(replay.pending_commands_for_tests(), [future]);
+    assert_eq!(replay.pending_command_snapshot(), [future]);
     assert_eq!(
         replay
             .production

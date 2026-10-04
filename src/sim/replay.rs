@@ -1500,7 +1500,7 @@ mod tests {
 
         assert_eq!(hashes.len(), 2);
         assert!(
-            sim.pending_commands_for_tests().is_empty(),
+            sim.pending_command_snapshot().is_empty(),
             "the old replay seam ignored and discarded a future-stamped entry"
         );
     }
@@ -1536,7 +1536,7 @@ mod tests {
         assert_eq!(hashes.len(), 1);
         assert_eq!(sim.session.game_options.game_speed, 4);
         assert_eq!(
-            sim.pending_commands_for_tests(),
+            sim.pending_command_snapshot(),
             &[],
             "the recorded copy consumes its regenerated envelope exactly once"
         );
@@ -1566,7 +1566,7 @@ mod tests {
 
         assert_eq!(due, [place.clone()]);
         assert_eq!(
-            sim.pending_commands_for_tests(),
+            sim.pending_command_snapshot(),
             &[unrelated, place, future],
             "one recorded due PLACE consumes one copy; future/unrelated work survives"
         );
