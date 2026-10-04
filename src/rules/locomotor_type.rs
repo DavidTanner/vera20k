@@ -429,8 +429,9 @@ mod tests {
     /// which is the correct signal: the engine would then silently fall back to
     /// the default locomotor for those units.
     ///
-    /// Scope of the claim: `rulesmd.ini` and `rules.ini` only. Campaign, mission
-    /// and map INIs are UNCHECKED.
+    /// Scope of the claim: `rulesmd.ini` only (`rules.ini` is checked too, but
+    /// gamemd never reads it). The mode INIs and maps, which gamemd layers over
+    /// RULESMD, are UNCHECKED.
     #[test]
     fn dormant_clsids_absent_from_retail_inis() {
         for name in ["rulesmd.ini", "rules.ini"] {

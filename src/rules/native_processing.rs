@@ -173,8 +173,10 @@ impl NativeRulesProcessingFailure {
 /// Reproduce the Type-constructor portion of active YR's cold rules startup.
 ///
 /// This is deliberately not a `RulesClass::Process` call for the selected
-/// RULESMD root. `Load_Game_Rules @ 0x0052CD70` first runs only
-/// `ReadAudioVisual(root)`, may then run one full Process for optional
+/// RULESMD root. `Load_Game_Rules @ 0x0052CD70` also reads color schemes,
+/// `[ColorAdd]`, `[Movies]` and `[MultiplayerDialogSettings]` from the root
+/// (`0x0052D0FF..0x0052D144`), but its only Type-allocating root read is
+/// `ReadAudioVisual(root)`. It may then run one full Process for optional
 /// `LANGRULE.INI`, and `Init_Game @ 0x0052BA60` follows with the root Anim and
 /// Building master/body sweeps. Both body loops reload their live family count.
 ///

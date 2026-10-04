@@ -1103,9 +1103,9 @@ mod tests {
     ///   weapon names `Warhead=AP`, and both sections appear LATER in the file.
     ///   The engine resolves from a fully-parsed section table, so order is
     ///   irrelevant — both must resolve.
-    /// - **Case-duplicate name:** [HTNK] is redefined as [htnk] further down.
-    ///   One record per case-insensitive name, last definition wins
-    ///   (Strength 200, not 100), and lookup is case-insensitive.
+    /// - **Case-duplicate name:** [htnk] appears after [HTNK]. Raw section
+    ///   lookup is exact, so only the [HTNK] body the registry names is read
+    ///   (Strength 100, not 200); type lookup is case-insensitive.
     /// - **Sectionless registry entry:** GHOST is listed in [VehicleTypes] but
     ///   has no [GHOST] section. The registry allocation pass still creates its
     ///   constructor-default record before the later body-read pass.

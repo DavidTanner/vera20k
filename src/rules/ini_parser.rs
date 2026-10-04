@@ -306,8 +306,13 @@ impl IniFile {
         ini
     }
 
-    /// Load another INI into an already populated INI object. This models the
-    /// native PutString path: later nonempty exact keys replace earlier ones.
+    /// Load another INI into an already populated INI object: for the first
+    /// section of each exact name in `patch`, later nonempty exact keys
+    /// replace earlier values in place and new keys append.
+    ///
+    /// Residual: native merge (`0x00525BFA..0x00525D48`, `0x00528660`) also
+    /// applies duplicate patch sections and moves a replaced key to the end
+    /// of its section; neither is modelled here.
     pub fn merge(&mut self, patch: &IniFile) {
         for (patch_index, patch_section) in patch.sections.iter().enumerate() {
             if patch.first_section.get(&patch_section.name) != Some(&patch_index) {

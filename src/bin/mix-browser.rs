@@ -142,6 +142,9 @@ impl MixBrowserApp {
     }
 
     /// Build an ArtRegistry from art.ini + artmd.ini loaded via AssetManager.
+    ///
+    /// Non-native, browser-only convenience: gamemd reads `ARTMD.INI` alone and
+    /// never layers the RA2 `art.ini` under it.
     fn build_art_registry(asset_manager: &AssetManager) -> ArtRegistry {
         let art_data = asset_manager.get("art.ini").unwrap_or_default();
         let Ok(mut art_ini) = IniFile::from_bytes(&art_data) else {
