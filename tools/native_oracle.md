@@ -35,6 +35,9 @@ silently falls back. The loader hashes the same immutable bytes it maps. Only th
 retail executable with SHA-256
 `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`
 is accepted, including under optimized Python. No executable is distributed here.
+This restriction belongs to these comparison tools alone, because their harnesses
+run code at fixed addresses of that build: the game and the Rust tests accept any
+retail `gamemd.exe`, locate its math tables by their contents and check every byte.
 
 Both halves matter: the Python command checks current native output against the
 reference; the Rust test checks production conversion against that reference.

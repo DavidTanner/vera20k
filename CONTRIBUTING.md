@@ -17,8 +17,9 @@ issue you're working on or on [Discord](https://discord.gg/kmjRUn5m5F).
   menus, sidebar and input in `src/app/`, `src/ui/` and `src/sidebar/`, tools in `src/bin/`
   and `tools/`. Gameplay starter issues come with the evidence about what the original does.
 - **Reverse engineering.** Read `gamemd.exe` in your own Ghidra import, or run its code with
-  the [native comparison tools](tools/native_oracle.md) (Python and Unicorn; they accept one
-  `gamemd.exe` build, whose SHA-256 is listed there). See the
+  the [native comparison tools](tools/native_oracle.md) (Python and Unicorn). Only these
+  tools are tied to one `gamemd.exe` build, whose SHA-256 is listed there; playing, building
+  and the tests work with any retail copy. See the
   [Ghidra working notes](docs/research/ghidra-workflow.md).
 - **Docs and media.** Fix outdated docs; record screenshots or clips (game window only, so no
   paths or usernames show).
@@ -45,6 +46,10 @@ For anything large, ask on Discord or in an issue first.
 
    Set `ra2_dir` in `config.toml` with forward slashes (`C:/Games/RA2`); TOML treats `\` as an
    escape. Always use `--release` to play. The log goes to `logs/ra2.log`.
+
+   Any edition of Yuri's Revenge 1.001 works. VERA20k reads only the math tables inside your
+   `gamemd.exe`, finds them by their contents and checks every byte; no particular file
+   checksum is required to play, build or run the tests.
 
    VERA20k reads `config.toml` from the folder you launch it from, then from next to the
    executable, and a relative `ra2_dir` is relative to that file. With no config it looks for
