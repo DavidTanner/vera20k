@@ -14,7 +14,8 @@ execution comparisons, production output/performance and one fresh critic.
   commit; its implementation is d5b667327 and final evidence/review is8fd0dd330.
   Ratchet CI passed. Issue689 now preserves only the remaining queued, Jumpjet
   object and living Fly work. Attack implementation, native and production
-  comparisons, and final full validation pass. The fresh critic and PR remain.
+  comparisons, and final full validation pass. The fresh critic found no
+  actionable scoped defect; its report is retained. Publication is next.
 - Current common chain: selected local stock MTNK attacking a ground Unit,
   planning off. Extend the existing action-line and combat coordinate owners:
   native source6F3D60 is the body TurretOffset pivot; target70BCB0 leads moving
@@ -48,8 +49,9 @@ execution comparisons, production output/performance and one fresh critic.
   portable archives recheck successfully. All runtime source is identical to
   the captured release; identities and exact logs are retained in
   `tools/procedural_drawing_oracle/validation/unit-attack-checks/receipt.json`.
-  No native/GPU/capture/Cargo work remains active. Next one fresh read-only
-  critic and the mechanism PR. No Attack review yet. Independent read-only
+  No native/GPU/capture/Cargo work remains active. The single fresh read-only
+  critic found no actionable defect; no runtime changes followed review.
+  Next publish and integrate the mechanism PR. Independent read-only
   research is tracing the ordinary drag-selection rectangle; no next-chain
   implementation has started.
 - Prior factory-rally chain [PR1042](https://github.com/YuriPlanet/vera20k/pull/1042)
@@ -186,8 +188,7 @@ issue [1037](https://github.com/YuriPlanet/vera20k/issues/1037) remains open.
   evidence; its executable SHA is recorded above. Final full checks used the
   repository retention owner; receipts `1791085573382503000-74a998c4.json` and
   `1791085683564307000-0c198242.json` retain exact retirement decisions.
-- Next: one fresh Attack critic, disposition/focused fixes as required, then
-  publish and integrate the mechanism. Continue with ordinary drag-selection
+- Next: publish and integrate the reviewed Attack mechanism. Continue with ordinary drag-selection
   drawing. Whole-scope completion remains open.
 
 ## Whole-scope residuals

@@ -56,7 +56,9 @@ evidence and its comparison tooling. Full retail library validation passes
 tests pass (5 optional skips). The field ratchet remains2505/2505. Exact logs,
 source-tree identities and archive rechecks are in the
 [validation receipt](validation/unit-attack-checks/receipt.json). The single
-fresh read-only review is pending.
+fresh read-only [critic](validation/unit-attack-review.md) found no actionable
+defect in this chain. No runtime changes followed review; the whole drawing
+goal remains open.
 
 The [workload report](validation/action-line-attack-workload-first.json) uses
 the actual production builder and pooled GPU upload. At20k selected overlapping

@@ -51,7 +51,12 @@
       "current": 2505,
       "base": 2505
     },
-    "diff_check": "PASS"
+    "diff_check": "PASS",
+    "rustfmt": {
+      "edited_leaves": 12,
+      "exit_code": 0,
+      "recursive": false
+    }
   },
   "files": {
     "production-action-lines-check.log": {
@@ -146,6 +151,22 @@
     "unit-attack-render-second.log": {
       "bytes": 4721,
       "sha256": "bf356a844c85e0731df24e61ad10fe54e4c1442b3f26cd8c967b70317e0c11c2"
+    },
+    "unit-attack-final-rustfmt.log": {
+      "bytes": 40,
+      "sha256": "79a3328faf144827bc69dd89e255e72000168acb416ff63656c60a109e096765"
     }
+  },
+  "review": {
+    "reviewed_commit": "2f431d5f1839e422ea3b398e9df576de35b5d89f",
+    "base_commit": "24330e019e3875d001fcd16c1141355f8648c3a1",
+    "fresh_read_only": true,
+    "result": "No actionable scoped defect found",
+    "runtime_changes_after_review": false,
+    "report": "../unit-attack-review.md",
+    "local_session_sha256": "c236e62de5a70a7d6e0a5eac88930d06ca379cd081ede94f53fa24c42679cd3c",
+    "local_session_bytes": 754942,
+    "session_id": "01a1050b-99b9-7201-ab2d-9ebe62978b4d",
+    "exit_code": 0
   }
 }
