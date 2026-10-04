@@ -6713,7 +6713,7 @@ mod global_parity_harness_tests;
 mod production_shadow_tests;
 
 #[cfg(test)]
-mod factory_infantry_output_tests;
+pub(crate) mod factory_infantry_output_tests;
 
 #[cfg(test)]
 #[path = "radar_dirty_ack_tests.rs"]

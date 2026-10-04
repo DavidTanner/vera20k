@@ -151,8 +151,8 @@ pub(crate) use foot_speed::{SpeedRules, order_speed, owner_current_speed};
 
 pub use movement_commands::DestinationTiming;
 pub(crate) use movement_commands::{
-    can_accept_destination, issue_move_command_with_destination, prepare_walk_destination,
-    retain_committed_movement,
+    can_accept_destination, issue_move_command_with_destination, movement_goal_cell,
+    prepare_walk_destination, retain_committed_movement,
 };
 #[cfg(test)]
 pub(crate) use movement_commands::{issue_move_command, issue_move_command_with_layered};

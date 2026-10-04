@@ -219,9 +219,113 @@ human House and flat fixture map are supplied inputs. Existing Fixture OS
 GetKeyState owns SHORT results/stdcall cleanup, and event wallclock returns0.
 Configured key persistence, display hit testing, full Planning Mode, whole-world
 scheduling, networking/checksum, save-load and stock-map Tube incidence remain
-outside this evidence. All21 named controls have successful original executions within those bounds.
+outside this evidence. All21 named GI controls have successful original executions within those bounds.
 A failed observer, wrapper or budget remains a separate failed receipt and does
 not establish a native gameplay result.
 
 The connected Rust consumers, final retail checks and production observation are
 preserved in the [command-owner validation archive](validation/README.md).
+
+## Ordinary stock MTNK Cell controls
+
+The additive Unit rows use the same history, input, event, observer and selector
+owners. Accepted controls are `unit_plain_A_B`, `unit_shift_A_B`,
+`unit_plain_A_A`, `unit_shift_A_A`, `unit_plain_A_later_B`,
+`unit_shift_A_later_B`, `unit_owner_mismatch_B`, `unit_berserk_B`,
+`unit_deploying_B`, `unit_undeploying_B`,
+`unit_deployed_delayed_A`, `unit_deployed_B`, `unit_paid_head_B`,
+`unit_paid_head_Stop_B`, `unit_paid_head_same_A` and
+`unit_shift_outside_playfield_B`. The selected actor is the existing
+native-constructed/Unlimbo source MTNK in its supplied4096-byte fixture arena;
+it is not a native heap allocation or a delivered GI. Its retained initial
+GAPOWR target belongs to the admitted fixture and is cleared by original
+Techno6FCDB0 before the first Unit destination call.
+
+The selected startup input runs original registered Drive14 through7CBED3
+before this MTNK's7353C0 constructor. Original math/libm/FPCW, global accesses,
+cdecl SP+4, code guards, inherited prior Drive bytes and all three RNG streams
+are observed. The separately inherited prior Drive already exists and remains
+excluded from a claim about the first process-wide Drive startup. Both default
+no_rally/rally controls and both complete publication interleavings match the
+old native payloads before the named provider profile is admitted; prior source
+maps and candidate comparisons remain retained.
+
+Whole Unit7404B0/738910, Foot4DE1D0, actual111-byte Event construction/local
+dispatch and Unit741970 execute. Literal Shift10 alone reaches ordinary
+opcode04/Move2/planning0 and replaces the destination without a NavQueue append.
+Original class flag1 has its separate meaning. All five Unit RET8 sites are
+watched; these two histories return at743170 with SP+12. Setter EAX remains
+incidental. Concrete Drive112 bytes stay selected; its target fraction+50
+(4B3E00) is distinct from Foot+578 and rawDWORD68. The selector exports raw
+Techno+2B0 from the immutable actor bytes to bound the deployment exemption,
+without assigning a producer identity or introducing simulation state.
+
+Plain and literal Shift10 repeated A before AI both return at743184 with
+exactly retained class state. A then B on the next supplied frame, without an
+AI visit, updates the existing destination/timer owners at743170 and makes no
+RNG draw. The supplied frame advance is a command-boundary control, not a
+whole tick scheduler claim.
+
+Whole original UnitAI7360C0 produces the paid Drive head at frame531 after nine
+visits. Reissuing B retains that head while changing the destination. Actual
+Stop Event6 through4C65E0/4C6CB0 clears NavCom/destination and reduces Drive's
+target fraction to0.30000001192092896 while retaining the paid head; B then
+reuses it. Repeating A reaches true743184 and preserves the class input state,
+including all timer words. The next original UnitAI advances the existing
+track. Only the first whole AI visit draws: two Scenario(0,2) requests and three
+raw advances. Input, event and class boundaries make no draws. All three full
+RNG buffers remain in each receipt. These component command comparisons do
+not claim a Rust replay of the entire original AI or bootstrap.
+
+The deployed controls supply literal6E0=1 with rawTechno2B0=0. Before input,
+the original query returns0 and CellClick emits no Move. Supplying6E0 after the actual Move event was
+constructed instead lets the Event prefix queue Move and clear TarCom before
+the Unit class refuses its destination tail at743184. Click AL and dirty class
+EAX are not interpreted as command acceptance.
+
+The input-negative controls retain exact Mode5/House/flags and actor priors.
+CurrentHouseNULL with Human1/PlayerControl1, Berserk298=1, and separate literal
+6E1=1/6E2=1 controls all produce query0 with no resolver, Event or class call.
+Click AL is1 for the House/deployment controls and0 for Berserk; each preserves
+the prior enemy GAPOWR target, mission, NavCom, Drive, timers and all three RNG
+buffers with zero draws. The deployment bytes are component priors on stock
+MTNK; no deployment cycle or stock MTNK incidence is claimed.
+
+The resolver contrast requests existing Cell4,20 with literal Shift10. The
+actual query returns action2, committed CellClick still executes4DE1D0, and
+original FNPC56DC20 chooses Cell4,19. Actual MapSize is[16,16] and LocalSize
+is[0,0,32,32]; raw header, land table, navigation classes/zones and relevant
+Cell inputs are retained. A fresh replay adds only these read-only inputs and
+preserves every earlier selected field. The failed40,20 fixture-prerequisite
+and31,20 non-distinguishing attempts remain immutable failed receipts. This
+establishes this allocated flat-Cell playfield contrast, not arbitrary terrain,
+Dummy-Cell, shroud or zone coverage.
+
+Use the same public history options, for example:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python -m tools.spatial_oracle.walk_first_path --check-gi-reissue unit_shift_A_B --assets /path/to/exact/extract --output /existing-directory/new-unit-shift-replay.json.gz
+PYTHONDONTWRITEBYTECODE=1 python -m tools.spatial_oracle.walk_first_path --check
+PYTHONDONTWRITEBYTECODE=1 python -m tools.spatial_oracle.walk_move_admission --check
+PYTHONDONTWRITEBYTECODE=1 python -m tools.spatial_oracle.factory_infantry_output --check --assets /path/to/exact/extract
+```
+
+All15 planned Unit command histories and the additional actual playfield
+resolver contrast are accepted after original execution. The existing corpus
+contains those16 alongside the unchanged GI21; seven setter/three head and
+29 admission payloads remain unchanged. Full raw runs and their as-run source
+closures stay in this owner's manifest; the final observer's closure has79
+files. The two full current public publication
+wrappers and complete default no-rally/rally payload comparisons retain their
+historical source/data maps in the shared factory metadata. Saved checks do
+not replace a fresh selected whole-history replay.
+
+The historical GI validation manifest's native SHA
+`b90c182f52a7504741de7f0a9bf65570ed1999e42da10adbd7c46e778494a151`
+resolves to the decompressed
+[pre-Unit GI21 manifest seal](compatibility/sealed-gi21-pre-unit-manifest.json.gz).
+It does not bind the evolving active37 manifest. The historical GI validation
+archive remains unchanged.
+
+Free-MTNK component controls do not certify whole startup, display input, map
+loading, factory/depot contacts, other locomotor families, networking or save/load.

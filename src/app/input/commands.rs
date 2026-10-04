@@ -11,6 +11,10 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::intern::InternedId;
 use crate::sim::production;
 
+#[cfg(test)]
+#[path = "ground_command_native_tests.rs"]
+mod ground_command_native_tests;
+
 /// Default owner name when no playable house is found.
 const DEFAULT_OWNER: &str = "Americans";
 
@@ -831,9 +835,9 @@ pub(crate) struct CellMoveGoal {
 
 /// Cell-click producer only. The native4DE1D0 resolver precedes event
 /// encoding; synchronized/replay/internal Move payloads are already resolved.
-/// Original initialized GI Shift0x10 still executes that resolver and emits
-/// ordinary MegaMission (111-byte Event)/Move2 ->51AA40(Cell,1); it never
-/// appends a queued waypoint.
+/// Original initialized GI and MTNK Shift0x10 still execute that resolver and
+/// emit ordinary MegaMission (111-byte Event)/Move2 -> class(Cell,1); neither
+/// appends a queued waypoint (Infantry51AA40, Unit741970).
 /// Native input/event/true-RET controls: walk_first_path.json `gi_reissue`.
 pub(crate) fn ordinary_cell_move_goal(
     sim: &crate::sim::world::Simulation,
@@ -850,7 +854,8 @@ pub(crate) fn ordinary_cell_move_goal(
                 entity_id,
                 crate::sim::components::NavTargetRef::cell(clicked.0, clicked.1),
                 rules,
-            ))
+            )
+            || sim.drive_unit_setter_receiver(entity_id))
         && let Some(result) = sim.ordinary_ground_foot_cell_input(viewer, entity_id, clicked, rules)
     {
         return match result {
@@ -864,8 +869,9 @@ pub(crate) fn ordinary_cell_move_goal(
     //Existing compatibility adapter for other locomotors (Hover, Teleport,
     //Jumpjet, Fly), high movers and attack-move/queued input. Their native
     //caller contracts remain separate. A queued Teleport/high receiver may
-    //share Infantry setter coverage but returns None from the ordinary Foot
-    //input owner above, so it retains this compatibility queue flag.
+    //share class setter coverage but returns None from the ordinary Foot input
+    //owner above, so it retains this compatibility queue flag. Ship's caller
+    //migration remains separate (#687/#689).
     let mut goal = clicked;
     if let Some(grid) = sim.path_grid()
         && !crate::app::match_runtime::sim_tick::is_any_layer_walkable(grid, goal.0, goal.1)

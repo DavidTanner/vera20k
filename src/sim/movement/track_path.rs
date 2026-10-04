@@ -890,6 +890,19 @@ impl Simulation {
         })
     }
 
+    /// The represented Unit setter's active Drive cohort used by ordinary
+    /// Cell input, decoded Move admission and internal ground-order dispatch.
+    /// Ship and the other represented families keep their own caller routes.
+    pub(crate) fn drive_unit_setter_receiver(&self, id: u64) -> bool {
+        self.substrate.entities.get(id).is_some_and(|actor| {
+            track_unit(actor)
+                && actor
+                    .locomotor
+                    .as_ref()
+                    .is_some_and(|loco| loco.active_kind() == LocomotorKind::Drive)
+        })
+    }
+
     /// Unit 0x741970(target, clear_queue) from a class caller: the radio MOVE_HERE (Foot
     /// 0x004D91EB), Mission_Harvest's staging destination (0x0073EDB5),
     /// Mission_Enter's Teleporter re-assign (0x004D941D) and the Scatter
@@ -945,8 +958,9 @@ impl Simulation {
         actor.setter_force_reassign = false;
         //741A96..741ACD, after the same-NavCom guard: deployment refuses
         // through Foot4DF0D0, which clears NavCom, not locomotor movement.
-        // Techno+2B0 can exempt6E0; its Magnetron lift source has no producer
-        // here and remains a separate lifecycle residual (not Foot+6AD).
+        // Techno+2B0 can exempt6E0; its producer/lifecycle is unrepresented
+        // here and remains a separate residual (not Foot+6AD). The ordinary
+        // initialized MTNK controls in walk_first_path.json observe2B0=0.
         if actor.is_deployed() {
             super::navcom::foot_stop_moving(actor);
             return false;

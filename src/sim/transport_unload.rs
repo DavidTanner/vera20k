@@ -345,10 +345,10 @@ fn find_nearby_passable_for(
     )
 }
 
-/// `Set_Destination(cell, 1)` for an object the handler wants driven — the
-/// production representation is the same pathed move `Command::Move` issues.
-/// Without a path grid (headless fixtures) nothing moves.
-fn issue_pathed_move(
+/// `Set_Destination(cell, 1)` through the shared ground-order dispatcher.
+/// A represented Drive Unit reaches its class setter without a path grid;
+/// its later Process owns route search. Other callers retain their adapters.
+fn issue_ground_destination(
     sim: &mut Simulation,
     rules: &RuleSet,
     id: u64,
@@ -578,7 +578,7 @@ fn eject_head_passenger(
             // Unit73DBDB queues the passenger's Move directly, before
             // class destination73DC06; it does not execute a player event.
             sim.queue_mission_with_teardown(pax_id, MissionType::Move, DockTeardown::None);
-            issue_pathed_move(sim, rules, pax_id, dest, overlay_registry);
+            issue_ground_destination(sim, rules, pax_id, dest, overlay_registry);
 
             if let Some(sound) = leave_sound {
                 let sound_id = sim.interner.intern(&sound);
@@ -636,7 +636,7 @@ pub(crate) fn unit_mission_unload(
                 {
                     // `Set_Destination` only — the committed selector stays
                     // Unload and state 0 re-runs once the drive has ended.
-                    issue_pathed_move(sim, rules, id, cell, overlay_registry);
+                    issue_ground_destination(sim, rules, id, cell, overlay_registry);
                 }
                 return WAIT_MOVING_FRAMES;
             }
@@ -993,7 +993,7 @@ fn eject_from_aircraft(
             // followed by its radio callbacks. No Event Archive clear.
             sim.queue_mission_with_teardown(pax_id, MissionType::Move, DockTeardown::None);
             if let Some(dest) = scan_cell {
-                issue_pathed_move(sim, rules, pax_id, dest, overlay_registry);
+                issue_ground_destination(sim, rules, pax_id, dest, overlay_registry);
             }
             Ok(())
         },

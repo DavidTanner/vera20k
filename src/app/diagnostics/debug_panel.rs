@@ -355,7 +355,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                                 entity.position.sub_x,
                                 entity.position.sub_y,
                             ));
-                            if let Some(ref mt) = entity.movement_target {
+                            if entity.movement_target.is_some() {
                                 // The Foot+5E0 words from the reference cell.
                                 let path: Vec<(u16, u16)> = entity
                                     .navigation
@@ -369,7 +369,8 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                                     path.len(),
                                     entity.navigation.path_runtime.path_blocked,
                                 ));
-                                if let Some(goal) = mt.final_goal {
+                                if let Some(goal) = crate::sim::movement::movement_goal_cell(entity)
+                                {
                                     ui.label(format!("Goal: ({},{})", goal.0, goal.1));
                                 }
                                 // Show first few path steps with walkability.

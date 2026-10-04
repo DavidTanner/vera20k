@@ -93,9 +93,11 @@ def live_cell_input(f, actor, clicked, *, keys=(), invoke, snapshot, sequence, r
  from tools.spatial_oracle import building_construction as bc
  from tools.spatial_oracle._factory_infantry_output.runtime import require
  u, r = f.u, f.read32
- require(r(actor) == 0x7EB058, 'Live input requires original Infantry vtable')
- require(r(r(actor)+0x70) == 0x51F800 and r(r(actor)+0x140) == 0x51F250,
-         'Original Infantry input slots differ')
+ receivers = {0x7EB058:('GI',0x51F800,0x51F250), 0x7F5C70:('Unit',0x7404B0,0x738910)}
+ require(r(actor) in receivers, 'Live input requires a represented original vtable')
+ family,query,click = receivers[r(actor)]
+ require(r(r(actor)+0x70) == query and r(r(actor)+0x140) == click,
+         'Original input slots differ')
  require(r(0xAA0444) == 0, 'Selected OS key-state route requires native cache flag0')
  words = {int(key): 0x8000 for key in keys}
  os_calls = []
@@ -115,11 +117,11 @@ def live_cell_input(f, actor, clicked, *, keys=(), invoke, snapshot, sequence, r
  # input helper supplies words and observes it, with no register mutation.
  f.os_input_transport=dict(key_words=words,observe=observe_transport)
  try:
-  action = invoke('actual_GI_WhatAction',0x51F800,actor,coord,0,0)
+  action = invoke('actual_'+family+'_WhatAction',query,actor,coord,0,0)
   out['queried_action'] = action
   out['after_query'] = snapshot()
   out['cell_click_args'] = [action,coord,0,0]
-  out['click_return_eax'] = invoke('actual_GI_CellClick',0x51F250,actor,action,coord,0,0)
+  out['click_return_eax'] = invoke('actual_'+family+'_CellClick',click,actor,action,coord,0,0)
   out['after_click'] = snapshot()
  finally:
   del f.os_input_transport

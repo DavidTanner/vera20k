@@ -369,10 +369,7 @@ fn deferred_restore_completes_toward_navcom_over_a_stale_destination() {
         .destination()
         .unwrap();
     assert_eq!((destination.x / 256, destination.y / 256), (10, 13));
-    assert_eq!(
-        e.movement_target.as_ref().unwrap().final_goal,
-        Some((10, 13))
-    );
+    assert_eq!(crate::sim::movement::movement_goal_cell(e), Some((10, 13)));
     assert!(!e.navigation.pending_arrival_clear);
     // Foot 0x4D96C2..0x4D9707: the completed setter's accept tail.
     let timer = e.navigation.path_runtime.movement_timer;
@@ -394,10 +391,7 @@ fn deferred_order_with_a_retained_destination_reschedules_without_a_setter() {
     sim.session.binary_frame = 101;
     sim.complete_pending_order(id, Some(&rules), None);
     let e = sim.substrate.entities.get(id).unwrap();
-    assert_eq!(
-        e.movement_target.as_ref().unwrap().final_goal,
-        Some((13, 10))
-    );
+    assert_eq!(crate::sim::movement::movement_goal_cell(e), Some((13, 10)));
     assert!(!e.navigation.pending_arrival_clear);
     let timer = e.navigation.path_runtime.movement_timer;
     assert_eq!((timer.start_frame(), timer.duration()), (100, 9));
@@ -899,10 +893,7 @@ fn reorder_requests_the_new_route_in_the_process_that_ends_the_head() {
         assert_eq!((timer.start_frame(), timer.duration()), (frame as i32, 0));
         assert_eq!(e.navigation.path_runtime.retries_left, 10);
         assert!(
-            e.movement_target
-                .as_ref()
-                .is_some_and(|target| target.final_goal == Some((10, 16)))
-                && route_installed(e),
+            crate::sim::movement::movement_goal_cell(e) == Some((10, 16)) && route_installed(e),
             "the Process that ended the head installed the new route"
         );
         return;
@@ -1318,10 +1309,7 @@ fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
         crate::sim::movement::track_head::committed_track_head(e),
         Some(head)
     );
-    assert_eq!(
-        e.movement_target.as_ref().unwrap().final_goal,
-        Some((20, 10))
-    );
+    assert_eq!(crate::sim::movement::movement_goal_cell(e), Some((20, 10)));
     let ended = visit_until_head_changes(&mut sim, &rules, &registry, id, head, frame);
     let e = sim.substrate.entities.get(id).unwrap();
     let destination = e
@@ -1335,10 +1323,7 @@ fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
     assert_eq!((destination.x / 256, destination.y / 256), (20, 10));
     assert!(!e.navigation.pending_arrival_clear);
     assert!(
-        e.movement_target
-            .as_ref()
-            .is_some_and(|target| target.final_goal == Some((20, 10)))
-            && route_installed(e),
+        crate::sim::movement::movement_goal_cell(e) == Some((20, 10)) && route_installed(e),
         "frame {ended}: the Process that ended the track requested the restored route"
     );
 }
@@ -1462,10 +1447,7 @@ fn queued_waypoint_arrival_returns_before_the_continuation() {
         let e = sim.substrate.entities.get(id).unwrap();
         assert!(!e.navigation.pending_arrival_clear);
         assert!(
-            e.movement_target
-                .as_ref()
-                .is_some_and(|target| target.final_goal == Some((14, 10)))
-                && route_installed(e),
+            crate::sim::movement::movement_goal_cell(e) == Some((14, 10)) && route_installed(e),
             "the next Process requested the waypoint route"
         );
         return;

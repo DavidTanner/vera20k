@@ -1633,7 +1633,11 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
         "the Process search starts on the bridge layer: AStar 0x00429A90 takes the start height from the Foot's OnBridge byte"
     );
     assert_eq!(route.last().copied(), Some((3, 0)));
-    assert_eq!(movement.final_goal, Some((3, 0)));
+    assert_eq!(movement.final_goal, None);
+    assert_eq!(
+        crate::sim::movement::movement_goal_cell(continued),
+        Some((3, 0))
+    );
 }
 
 #[test]

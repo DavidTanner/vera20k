@@ -30,7 +30,7 @@ class ContinueCaller(ast.NodeTransformer):
             self.budgets += 1
         return self.generic_visit(node)
 
-def generate(control, live_continuation=None):
+def generate(control, live_continuation=None, *, drive_startup=False):
     require(sys.flags.optimize == 0, 'Original emulation requires normal Python')
     require(control in ('no_rally', 'rally'), 'Unknown initialized native control')
     from tools.spatial_oracle._factory_infantry_output import runtime as rt, idle
@@ -55,6 +55,7 @@ def generate(control, live_continuation=None):
     notifications = []
     gate_rows = []
     gate_rng = {}
+    drive_observations = []
 
     def globals_snapshot(f):
         return dict(walk_region_b45bb0_b45c30=bytes(f.u.mem_read(11819952, 128)).hex(), foot_empty_8b3da8=list(struct.unpack('<3i', f.u.mem_read(9125288, 12))), walk_empty_b45be8=list(struct.unpack('<3i', f.u.mem_read(11820008, 12))), level_height_b45c28=struct.unpack('<i', f.u.mem_read(11820072, 4))[0], fpcw=f.u.reg_read(UC_X86_REG_FPCW), rng=f.rng())
@@ -62,7 +63,12 @@ def generate(control, live_continuation=None):
 
     def fixture_boundary(*args, **kwargs):
         nonlocal boundary_count
+        if drive_startup:
+            require('drive_startup' not in kwargs, 'Duplicate selected startup input')
+            kwargs['drive_startup'] = True
         f = original_fixture(*args, **kwargs)
+        if drive_startup:
+            drive_observations.append(f.drive_startup)
         boundary_count += 1
         require(boundary_count == 1, 'Expected one original runtime VM')
         u, r = (f.u, f.read32)
@@ -244,6 +250,8 @@ def generate(control, live_continuation=None):
             require(p['walk'] and (not p['walk']['moving']) and (not p['walk']['motion']) and (not any(p['walk']['destination'])) and (not any(p['walk']['paid_head'])), 'Native private Walk terminal cleanup not reached')
     except Exception as exc:
         failure = dict(type=type(exc).__name__, message=str(exc), traceback=traceback.format_exc())
+        if hasattr(exc, 'original_drive_startup'):
+            drive_observations.append(exc.original_drive_startup)
     finally:
         death.joined_fixture = original_fixture
         for u, hook in hooks:
@@ -257,6 +265,8 @@ def generate(control, live_continuation=None):
     result = dict(schema=1, status='PASS' if failure is None else 'FAIL', selected_control=control, native_sha256=native.NATIVE_SHA256, shared_helpers=profile, driver_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), original_idle_caller_sha256=hashlib.sha256(source.encode()).hexdigest(), derived_caller_ast_sha256=hashlib.sha256(ast.dump(module, include_attributes=False).encode()).hexdigest(), original_registered_walk_startup=startup, startup_calls=calls, startup_writes=writes, actual_house_place_notification_coordinates=notifications, walk_completion_gate_observations=gate_rows, gate_complete_rng_states=gate_rng, selected_loop_global_reads=list(consumer_reads.values()), selected_loop_global_writes=list(consumer_writes.values()), original_global_consumer_instructions=list(consumer_instructions.values()), full_original_primary=primaries[0] if primaries else None, full_original_gi_observer=observer, failure=failure, bounds=['Actual registered14-entry Walk group is executed through original7CBED3 after inherited unrelated prior actors and before selected GAPILE/E1 object constructors.', 'No scalar104, EMPTY, x87 result, object lifecycle, movement or RNG answer is supplied.', 'Original caller uses inherited PC53/chop FPCW; exact before/after bits and original x87/libm calls are retained.', 'No-rally uses the existing same exit/construction caller but suppresses the external authored SetRally click; the real default Archive remains native0. Foundation exit CRT executes for both controls.', 'Only stopping predicate and100M/500s wholeInfAI observer budgets differ from historical515/522 controls.', 'Restricted native Strip→deliveredInfAI→Factory→local event schedule, explicit physical map/House/prior actors and full-startup exclusions remain.', 'Historical zero-threshold515/522/707 receipts remain immutable and do not establish stock Walk completion timing.'])
     rt.verify_callers()
     rt.verify_helpers()
+    if drive_observations:
+        result['original_registered_drive_startup'] = drive_observations[0]
     if live_continuation is not None:
         # Seal both existing complete controls and remove observation hooks
         # before the optional caller executes. Only the live VM is retained;

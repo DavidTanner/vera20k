@@ -356,10 +356,7 @@ mod gsi_04_03b_tests {
         // Unit741970 names the reserved cell unchanged; only the second
         // miner's own Process refuses the reserved head (above).
         assert_eq!(
-            second
-                .movement_target
-                .as_ref()
-                .and_then(|movement| movement.final_goal),
+            crate::sim::movement::movement_goal_cell(second),
             Some(shared_head)
         );
         assert!(sim.substrate.occupancy.contains_entity(1, 2, 1));
@@ -2194,12 +2191,8 @@ mod harvest_scan_dispatch_tests {
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.queued().known(), Some(MissionType::Guard));
-        let goal = entity
-            .movement_target
-            .as_ref()
-            .and_then(|m| m.final_goal)
-            .or_else(|| drive_destination_cell(entity))
-            .expect("exit destination set from the refinery cell");
+        let goal =
+            drive_destination_cell(entity).expect("exit destination set from the refinery cell");
         let inside = (REFINERY_NW.0..REFINERY_NW.0 + 4).contains(&goal.0)
             && (REFINERY_NW.1..REFINERY_NW.1 + 3).contains(&goal.1);
         assert!(
@@ -2279,18 +2272,13 @@ mod harvest_scan_dispatch_tests {
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.current().known(), Some(MissionType::Harvest));
         assert_eq!(
-            entity
-                .movement_target
-                .as_ref()
-                .and_then(|m| m.final_goal)
-                .or_else(|| drive_destination_cell(entity)),
+            drive_destination_cell(entity),
             Some((10, 14)),
             "the dispatch gate re-engaged and the miner drives to the order"
         );
     }
 
-    /// The Drive locomotor destination's cell (+34), the goal when the order
-    /// adapter has none.
+    /// The Drive locomotor's authoritative destination cell (+34).
     fn drive_destination_cell(entity: &GameEntity) -> Option<(u16, u16)> {
         let coord = entity
             .locomotor

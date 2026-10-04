@@ -266,14 +266,24 @@ fn destination_fixture(
     sim.install_resolved_terrain_for_new_map(terrain(input["bridge"] == true));
     sim.install_fixture_path_grid(Some(&crate::sim::pathfinding::PathGrid::new(32, 32)));
     sim.substrate.entities.insert(entity);
-    let mut rules =
-        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(""))
-            .unwrap();
+    // The concrete dispatch preflight needs the supplied actor's type
+    // identity in the registry. Native boundary fields remain the fixture
+    // inputs above; this minimal INI is not a native reader comparison.
+    let mut rules = crate::rules::ruleset::RuleSet::from_ini(
+        &crate::rules::ini_parser::IniFile::from_str("[VehicleTypes]\n0=MOVER\n[MOVER]\n"),
+    )
+    .unwrap();
     rules.general.blockage_path_delay_ticks = 22;
     (sim, rules)
 }
 
 fn compare(e: &GameEntity, row: &Value) {
+    if let Some(adapter) = &e.movement_target {
+        assert_eq!(
+            adapter.final_goal, None,
+            "track goal belongs to the locomotor"
+        );
+    }
     let (destination, head) = if row["input"]["family"] == "drive" {
         let d = e
             .locomotor
@@ -647,6 +657,67 @@ fn command_move_matches_native_action_line_destination_inputs() {
     assert_eq!(checked, 7);
 }
 
+/// Unit741A80..741A9C returns before any write for the same NavCom without
+/// Techno+1F8. Replay the original supplied-prior Drive row through the
+/// production ground-order boundary, which must reach that class guard rather
+/// than composing the accepted Foot/Move_To suffix again. This is a setter
+/// boundary comparison, not a stock MTNK input or whole movement history.
+#[test]
+fn ground_orders_preserve_the_native_unit_same_destination_noop() {
+    use crate::sim::world::{GroundMove, Simulation};
+
+    // The native guard returns before type tuning is read. The registry only
+    // supplies the represented Unit identity required by class preflight.
+    let rules = crate::rules::ruleset::RuleSet::from_ini(
+        &crate::rules::ini_parser::IniFile::from_str("[VehicleTypes]\n0=MOVER\n[MOVER]\n"),
+    )
+    .unwrap();
+    let mut checked = 0;
+    for row in corpus() {
+        let input = &row["input"];
+        if input["entry"] != "unit"
+            || input["family"] != "drive"
+            || input["same_nav"] != true
+            || input["force_reassign"] == true
+            || input["null"] == true
+        {
+            continue;
+        }
+        checked += 1;
+        for published_grid in [true, false] {
+            let mut sim = Simulation::new();
+            sim.session.binary_frame = 100;
+            let mut e = actor(input);
+            e.navigation.nav_com = Some(NavTargetRef::cell(11, 10));
+            sim.interner = crate::sim::intern::test_interner();
+            sim.substrate.entities.insert(e);
+            sim.install_resolved_terrain_for_new_map(terrain(false));
+            if published_grid {
+                sim.install_fixture_path_grid(Some(&crate::sim::pathfinding::PathGrid::new(
+                    32, 32,
+                )));
+            }
+            let rng = sim.rng_state();
+            assert!(sim.issue_ground_move(
+                GroundMove {
+                    entity_id: 1,
+                    target: (11, 10),
+                    speed: SimFixed::from_num(768),
+                    queue: false,
+                    speed_type: None,
+                    owner_blocks: true,
+                    object_destination: None,
+                },
+                Some(&rules),
+                None,
+            ));
+            compare(sim.substrate.entities.get(1).unwrap(), &row);
+            assert_eq!(sim.rng_state(), rng);
+        }
+    }
+    assert_eq!(checked, 1);
+}
+
 #[test]
 fn ordinary_track_orders_match_native_without_an_eager_path_or_power_change() {
     let mut checked = 0;
@@ -696,7 +767,11 @@ fn ordinary_track_orders_match_native_without_an_eager_path_or_power_change() {
                 serde_json::from_value(serde_json::to_value(entity).unwrap()).unwrap();
             compare(&restored, &row);
             let request = entity.movement_target.as_ref().unwrap();
-            assert_eq!(request.final_goal, Some((11, 10)));
+            assert_eq!(request.final_goal, None);
+            assert_eq!(
+                crate::sim::movement::movement_goal_cell(entity),
+                Some((11, 10))
+            );
             assert!(
                 entity
                     .navigation
@@ -1256,7 +1331,7 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
                     .locomotor
                     .as_ref()
                     .and_then(|l| l.walk_destination_cell())
-                    .or(actor.movement_target.as_ref().unwrap().final_goal),
+                    .or_else(|| crate::sim::movement::movement_goal_cell(actor)),
                 Some((
                     goal_cell[0].as_u64().unwrap() as u16,
                     goal_cell[1].as_u64().unwrap() as u16

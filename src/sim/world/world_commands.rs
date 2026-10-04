@@ -592,16 +592,18 @@ impl Simulation {
                             *entity_id,
                             crate::sim::components::NavTargetRef::cell(*target_rx, *target_ry),
                             rules,
-                        )
+                        ) || self.drive_unit_setter_receiver(*entity_id)
                     })
                 {
                     return false;
                 }
-                // Event4C7353 does not test Infantry Doing. Its prelude queues
-                // Move before class51AA40 applies the independent human
-                // Doing27..30 refusal. The original non-Deployer contrast in
-                // walk_first_path.json emits that Event and retains queued2
-                // even though the void destination setter leaves NavCom NULL.
+                // Event4C7353 queues Move and clears Target before the class
+                // applies its own refusal. Infantry51AA40 tests human Doing;
+                // Unit741970 tests deployment after the same-Nav/force arm.
+                // Original non-Deployer GI and delayed deployed MTNK controls
+                // in walk_first_path.json retain queued2 even when the void
+                // class setter leaves NavCom NULL. Decoded commands must not
+                // repeat the input wrapper's separate no-order decision.
                 // Other class adapters retain the legacy early gate until
                 // their destination owner is represented (remaining #687).
                 // Native order admission: a dead, zero-strength or in-limbo
@@ -661,13 +663,25 @@ impl Simulation {
                     // return/force, class preprocessing and queue clearing.
                     // Native: track_destination.json Unit rows, replayed by
                     // command_move_destinations_match_native_unit_setter.
-                    // Rust's explicit queued-waypoint extension keeps its
-                    // existing route; queue=true is not clear_queue=false.
-                    self.set_unit_destination(
+                    // The setter is void: a guarded class refusal still
+                    // executes this Event. Use the shared dispatcher, as
+                    // for internal Drive orders, rather than interpreting
+                    // the class's implementation result as input refusal.
+                    // Original delayed6E0 MTNK: walk_first_path.json.
+                    self.assign_destination_represented(
                         *entity_id,
-                        crate::sim::components::NavTargetRef::cell(*target_rx, *target_ry),
-                        rules,
-                        true,
+                        Some(crate::sim::components::NavTargetRef::cell(
+                            *target_rx, *target_ry,
+                        )),
+                        Some(rules),
+                        overlay_registry,
+                    )
+                    .map_or_else(
+                        |cause| {
+                            log::warn!("Unit Move destination {}: {cause}", entity_id);
+                            false
+                        },
+                        |()| true,
                     )
                 } else {
                     self.issue_ground_move(
@@ -3750,8 +3764,9 @@ mod tests {
         let rules = bunker_rules();
         let mut sim = Simulation::new();
         spawn_bunker_struct(&mut sim, 2, "Americans", 10, 10);
-        // Place the tank ON the bunker cell so the install needs no pathfinding
-        // (the movement subsystem is not run in this harness).
+        // Place the tank ON the bunker cell. The native destination setter
+        // still admits this same-cell order; Drive Process consumes it before
+        // the install machine can observe the stopped candidate.
         spawn_bunkerable(&mut sim, 1, "Americans", "TANK", 10, 10);
         let unit = sim.substrate.entities.get_mut(1).unwrap();
         unit.locomotor = Some(
@@ -3784,9 +3799,14 @@ mod tests {
             sim.substrate.entities.get(1).unwrap().bunker_link,
             BunkerLink::Approaching(2)
         );
+        // Production visits movement before bunker installation. The shared
+        // Drive4B066C..4B06D2 prefix consumes a same-cell NavCom through the
+        // class NULL setter before acquiring any path-search inputs.
+        sim.process_ground_locomotor_stats_for_test(1, Some(&rules), None)
+            .unwrap();
 
         // 2) Drive the install machine to Occupied, completing each body turn
-        // it issues (no movement subsystem here).
+        // it issues in this component harness.
         for _ in 0..6 {
             tick_bunker_install(&mut sim, &rules, None);
             let frame = sim.session.binary_frame;
