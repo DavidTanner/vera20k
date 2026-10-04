@@ -51,6 +51,13 @@ decoded graph: a generally edited `PcodeSyntaxTree` may also contain dead operat
 outside its blocks. The comparison tool uses the block export and still requires
 complete reads and native frame checks.
 
+That export omits SSA definition identities and block edges. Repeated
+`(space, offset, size, merge_group)` values can describe different definitions;
+do not join them globally as one value. Branch direction also needs native
+instructions and C: at `0x740E2B`, the exported `INT_NOTEQUAL`/`CBRANCH` target
+appears reversed relative to the original `JE` and matching C. A predicate and
+target alone cannot establish which branch executes.
+
 In installed GhidraMCP 5.14.2 with Ghidra 12.1.2, `clone_data_type` can rename a
 stored function definition instead of creating an independent copy. The handler
 calls `source.clone(current_manager)` and then `setName`; both
