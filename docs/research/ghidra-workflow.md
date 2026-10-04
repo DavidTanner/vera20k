@@ -210,6 +210,21 @@ was checked:
   the older one stays primary, and listings and decompiles show it: `vtable_BuildingClass`,
   `vtable_MapClass` and the other map and sidebar layers, and the locomotors'
   `<Class>__ILocomotion_vtable`, `__IUnknown_vtable` and `__IPiggyback_vtable`.
+- `[2026-10-04 VERA-cited names]`: a function the Rust code cites as a `0x…` or
+  `FUN_…` address that still had its default `FUN_` name, named from its
+  instructions, callers and receiver; the plate gives the evidence and the citing
+  Rust files. 191 functions were named. For 11 of them the only match was a number
+  inside the body from the FFmpeg tables in `bink_data.rs`, not a citation; they are
+  named from their code alone. Eleven matched functions have no call, jump or stored
+  pointer anywhere in the image; they keep `FUN_`, and their plates say what the body
+  does. The scan missed citations written without `0x` (such as
+  `comparison410A40`), so some cited functions are still `FUN_`. Switch tables the
+  Rust code cites
+  got a plate listing their cases. Prefixes on functions without a receiver (static
+  initializers and helpers such as `Shell__`, `Rmg__` and `Planning__`) are module
+  labels, not class claims. The pass is recorded for replay on other copies of the
+  database as
+  [`2026-10-04-vera-cited-names.json`](../../tools/ghidra_pass/passes/2026-10-04-vera-cited-names.json).
 
 Destructor and COM-interface method names rest on the bytes. For the 2,356 method
 names taken from YRpp's declaration order, each body's `ret N` was compared with
@@ -484,6 +499,10 @@ within an authorized analysis-repair task, with prior definitions recoverable.
 Once that scope is granted, do not ask permission for every edit. Read back structural
 repairs immediately, including layout/offsets and affected decompilation. Byte patches,
 bulk reanalysis and unrelated database changes need their own task scope.
+
+Several copies of the database exist. Record a pass as a ledger for
+[`ApplyGhidraPass.java`](../../tools/ghidra_pass.md) so the other copies can replay it
+instead of redoing it.
 
 Use one writer per shared program and coordinate changes affecting other workers'
 evidence. Small coherent annotation batches are allowed. Inspect per-item results,
