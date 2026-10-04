@@ -11,9 +11,9 @@
 //! terrain, overlays, alliances and rules at this point of the frame; debug
 //! builds compare the two on every read. Scatter, air and other direct moves
 //! do not come through here. Ordinary represented Unit Move dispatches directly
-//! to `set_unit_destination` in `world_commands`, preserving its repeated-NavCom
-//! admission before any path-search inputs are acquired. A Walk infantryman
-//! takes the existing Infantry
+//! through the concrete destination dispatcher in `world_commands`. Internal
+//! Drive orders take the same Unit setter here before acquiring path inputs.
+//! A Walk infantryman takes the existing Infantry
 //! destination owner, including repeated and queued requests; its first
 //! Process owns the path search. A mover on Teleport takes
 //! its class setter instead of a route: no pass moves a Teleport owner. A
@@ -64,7 +64,9 @@ impl Simulation {
     /// a Jumpjet's cell order takes Foot's
     /// ([`Self::jumpjet_cell_destination`]), which ignores `queue`. A Walk
     /// infantryman takes Infantry51AA40 before borrowing any path-search
-    /// inputs. Its class flag1 never appends to NavQueue.
+    /// inputs. Its class flag1 never appends to NavQueue. A represented Drive
+    /// Unit likewise takes Unit741970 before any grid read. Its same-Nav/force,
+    /// deployment, radio and queue decisions belong to that sole class owner.
     pub(crate) fn issue_ground_move(
         &mut self,
         order: GroundMove,
@@ -81,6 +83,30 @@ impl Simulation {
                 || NavTargetRef::cell(order.target.0, order.target.1),
                 |(reference, _)| reference,
             );
+            if self.drive_unit_setter_receiver(order.entity_id) {
+                // Event4C747C dispatches the void Unit741970(target,1),
+                // including its unchanged-NavCom return741A80..741A9C.
+                // The represented dispatcher preserves that return contract
+                // and re-reads an object's live +4C through the class owner.
+                // Native boundary controls: track_destination.json, Drive
+                // Unit rows. Ship's naval-rally caller still prewrites NavCom;
+                // its class/caller migration requires legal naval execution
+                // (remaining #687/#689), so it keeps the adapter below.
+                return self
+                    .assign_destination_represented(
+                        order.entity_id,
+                        Some(requested),
+                        Some(rules),
+                        registry,
+                    )
+                    .map_or_else(
+                        |cause| {
+                            log::warn!("Unit ground destination {}: {cause}", order.entity_id);
+                            false
+                        },
+                        |()| true,
+                    );
+            }
             if self.infantry_setter_receiver(order.entity_id, requested, rules) {
                 // Event4C747C and the other concrete destination callers
                 // dispatch class+480(target,1), not a second Walk composition.

@@ -43,10 +43,10 @@ use crate::sim::intern::InternedId;
 /// * **Shift alone.** On an object it returns the
 ///   add-to-selection action, which the object click handler has no case for and
 ///   therefore sends no mission; on a cell it returns the plain Move action, an
-///   ordinary immediate move. The represented Walk Infantry Cell producer
-///   resolves and encodes that Move through its shared owner. Other receiver
-///   and object contexts retain VERA's queue adapter. Retail Planning Mode has
-///   its own event opcodes and remains unimplemented.
+///   ordinary immediate move. Represented Walk Infantry and Drive Unit Cell
+///   producers resolve and encode that Move through the shared owner. Other
+///   receiver and object contexts retain VERA's queue adapter. Retail Planning
+///   Mode has its own event opcodes and remains unimplemented.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OrderModifier {
     /// No modifier held — the object/cell context action stands.
@@ -59,8 +59,8 @@ pub(crate) enum OrderModifier {
     AttackMove,
     /// Ctrl+Alt — guard area.
     GuardArea,
-    /// Shift — the producer normalizes represented Infantry Cell Moves;
-    /// other contexts retain VERA's queue adapter.
+    /// Shift — the producer normalizes represented Infantry/Drive Unit Cell
+    /// Moves; other contexts retain VERA's queue adapter.
     Queue,
 }
 

@@ -604,6 +604,10 @@ impl Duel {
             sim.session.house_order.push(id);
         }
         let grid = crate::sim::arena_fixture::flat_arena(&mut sim, &rules);
+        // Production binds every rule identity before building the derived
+        // type table. A table built with only House IDs cannot resolve types
+        // interned by later spawns, including destination preflight inputs.
+        sim.intern_rule_type_ids(&rules);
         sim.resolve_type_handles(&rules);
         Some(Self {
             sim,
@@ -614,9 +618,17 @@ impl Duel {
     }
 
     fn spawn(&mut self, kind: &str, owner: &str, rx: u16, ry: u16, facing: u8) -> u64 {
-        self.sim
+        let id = self
+            .sim
             .spawn_object(kind, owner, rx, ry, facing, &self.rules)
-            .unwrap_or_else(|| panic!("spawn {kind}"))
+            .unwrap_or_else(|| panic!("spawn {kind}"));
+        assert!(
+            self.sim
+                .object_type(self.sim.entities().get(id).unwrap().type_ref(), &self.rules)
+                .is_some(),
+            "spawned {kind} must have a bound production type identity"
+        );
+        id
     }
 
     fn order(&mut self, owner: &str, command: Command) {
@@ -653,6 +665,24 @@ impl Duel {
                 entity,
                 self.sim.resolved_terrain.as_ref(),
             ),
+        )
+    }
+
+    fn actor_state(&self, id: u64) -> String {
+        let Some(actor) = self.sim.substrate.entities.get(id) else {
+            return format!("{id}: retired");
+        };
+        format!(
+            "{id}: location={:?}, health={}, mission={:?}, target={:?}, nav={:?}, moving={:?}, fraction={:?}, adapter={}, last_fire={}",
+            self.location(id),
+            actor.health.current,
+            actor.mission,
+            actor.attack_target,
+            actor.navigation.nav_com,
+            crate::sim::movement::motion_query::is_moving(actor),
+            actor.foot_speed.applied_fraction(),
+            actor.movement_target.is_some(),
+            actor.last_fire_frame,
         )
     }
 
@@ -810,6 +840,7 @@ fn a_moving_rhino_is_led() {
             target_id: rhino,
         },
     );
+    let mut moving_frames = 0;
     for _ in 0..240 {
         let moving = duel
             .sim
@@ -819,6 +850,7 @@ fn a_moving_rhino_is_led() {
             .is_some_and(|entity| {
                 crate::sim::movement::motion_query::is_moving(entity) == Some(true)
             });
+        moving_frames += u32::from(moving);
         duel.tick();
         let Some(shell) = duel.launched_by(grizzly) else {
             continue;
@@ -843,7 +875,11 @@ fn a_moving_rhino_is_led() {
         );
         return;
     }
-    panic!("no shell was launched at the moving Rhino");
+    panic!(
+        "no shell was launched at the moving Rhino ({moving_frames} moving frames); {}; {}",
+        duel.actor_state(grizzly),
+        duel.actor_state(rhino),
+    );
 }
 
 /// A homing missile at a moving Rhino is led too, but its proximity fuse keeps
@@ -873,6 +909,7 @@ fn a_homing_missile_fuses_on_the_unled_target() {
             target_id: rhino,
         },
     );
+    let mut moving_frames = 0;
     for _ in 0..240 {
         let moving = duel
             .sim
@@ -882,6 +919,7 @@ fn a_homing_missile_fuses_on_the_unled_target() {
             .is_some_and(|entity| {
                 crate::sim::movement::motion_query::is_moving(entity) == Some(true)
             });
+        moving_frames += u32::from(moving);
         duel.tick();
         let Some(missile) = duel.launched_by(ifv) else {
             continue;
@@ -893,5 +931,9 @@ fn a_homing_missile_fuses_on_the_unled_target() {
         assert_eq!(guidance.fuse_reference, missile.launch_target);
         return;
     }
-    panic!("no missile was launched at the moving Rhino");
+    panic!(
+        "no missile was launched at the moving Rhino ({moving_frames} moving frames); {}; {}",
+        duel.actor_state(ifv),
+        duel.actor_state(rhino),
+    );
 }

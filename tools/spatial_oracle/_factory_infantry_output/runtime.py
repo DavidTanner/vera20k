@@ -199,12 +199,22 @@ def candidate_helper_profile():
     files = meta.get('initialized_candidate_helper_files')
     require(files and all(sha(REPO_ROOT/path) == digest for path, digest in files.items()),
             'Explicit initialized candidate helper bytes changed')
+    callers = meta.get('initialized_candidate_caller_files', {})
+    require(set(callers) <= {'runtime.py', 'initialized.py'}, 'Unsupported candidate caller')
+    original_callers = {path: meta['caller_files'][path] for path in callers}
+    for path, row in callers.items():
+        source = HERE/path
+        require(source.is_file() and source.stat().st_size == row['bytes'] and sha(source) == row['sha256'],
+                'Explicit initialized candidate caller bytes changed: '+path)
+    for path, row in callers.items():
+        meta['caller_files'][path] = dict(original_callers[path], **row)
     meta['helper_profiles'][name] = dict(files=files,
         status='candidate native comparison only; not registered compatibility')
     try:
         yield verify_helpers()
     finally:
         del meta['helper_profiles'][name]
+        meta['caller_files'].update(original_callers)
 
 
 def write_new(path, value):

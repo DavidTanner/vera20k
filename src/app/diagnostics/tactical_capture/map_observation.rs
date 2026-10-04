@@ -1148,6 +1148,29 @@ impl TacticalCaptureSession {
                         .and_then(|walk| walk.walk_destination())
                         .map(|coord| [coord.x, coord.y, coord.z]);
                     let walk_is_moving: Option<bool> = walk.and_then(|walk| walk.walk_is_moving());
+                    // Read the installed Drive/Ship owner without allocating
+                    // runtime or deriving a head from NavCom/path directions.
+                    // Its selector/cursor distinguish a paid segment from a
+                    // destination awaiting the first Process invocation.
+                    let track = entity.locomotor.as_ref().and_then(|loco| {
+                        use crate::sim::movement::track_process::TrackFamily;
+                        let family = TrackFamily::from_kind(loco.active_kind())?;
+                        let progress = loco.track_progress(family)?;
+                        let valid = loco.track_valid(family)?;
+                        Some(json!({
+                            "family": match family {
+                                TrackFamily::Drive => "Drive",
+                                TrackFamily::Ship => "Ship",
+                            },
+                            "destination_leptons": loco.track_destination(family)
+                                .map(|coord| [coord.x, coord.y, coord.z]),
+                            "head_leptons": loco.track_head(family)
+                                .map(|coord| [coord.x, coord.y, coord.z]),
+                            "selector": progress.turn_index,
+                            "cursor": progress.cursor,
+                            "valid": valid,
+                        }))
+                    });
                     Some(json!({
                         "pending_entry_500": entity.pending_entry(),
                         "retarget_after_stop_688": entity.foot_retarget_after_stop(),
@@ -1173,6 +1196,7 @@ impl TacticalCaptureSession {
                         "walk_head_leptons": walk_head_leptons,
                         "walk_destination_leptons": walk_destination_leptons,
                         "walk_is_moving": walk_is_moving,
+                        "track": track,
                     }))
                 } else {
                     None

@@ -350,11 +350,19 @@ fn follow_clicked_goal(
                 "clicked goal {goal:?} must become a movement target after command admission"
             );
             assert_eq!(
-                entity
-                    .locomotor
-                    .as_ref()
-                    .and_then(|l| l.walk_destination_cell())
-                    .or(entity.movement_target.as_ref().and_then(|t| t.final_goal)),
+                entity.locomotor.as_ref().and_then(|locomotor| {
+                    // Walk and Drive own their installed destination; the
+                    // scheduling adapter retains no ground goal copy.
+                    locomotor.walk_destination_cell().or_else(|| {
+                        locomotor
+                            .track_destination(
+                                crate::sim::movement::track_process::TrackFamily::Drive,
+                            )
+                            .map(|destination| {
+                                ((destination.x / 256) as u16, (destination.y / 256) as u16)
+                            })
+                    })
+                }),
                 Some(goal),
                 "each chained retail command must install its exact destination"
             );

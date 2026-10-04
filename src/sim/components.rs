@@ -94,12 +94,13 @@ impl Health {
 // GameEntity body own retained construction and sale state.
 pub(crate) use crate::sim::building_construction::{BuildingDown, BuildingUp};
 
-/// Movement path target â€” entity is moving along a computed A* path.
+/// Move-order scheduling adapter.
 ///
 /// The order adapter a move order attaches (ground orders through
 /// `issue_move_command_with_destination`, Fly and Jumpjet orders through
-/// their own setters). A Walk keeps only its presence, which schedules its
-/// Process; Drive/Ship, Fly and Jumpjet orders also keep their goal. No order
+/// their own setters). Walk, Drive and Ship keep presence and speed for their
+/// Process; their locomotor owns the destination and paid head. Other adapters
+/// retain their existing goal. No order
 /// keeps route cells: a Foot's route is its Foot+5E0 queue
 /// (`navigation.path_replay`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -107,8 +108,8 @@ pub struct MovementTarget {
     /// Maximum movement speed in leptons per second (from rules.ini Speed= value).
     /// 256 leptons = 1 cell. Fixed-point for deterministic multiplayer.
     pub speed: SimFixed,
-    /// The order's goal cell, which the path may stop short of. Read by the
-    /// track speed host and Jumpjet cruise.
+    /// Goal for the remaining adapter families, including Jumpjet cruise.
+    /// Walk/Drive/Ship leave this empty; their locomotor owns the coordinate.
     pub final_goal: Option<(u16, u16)>,
 }
 

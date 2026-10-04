@@ -790,14 +790,13 @@ fn nighthawk_ejects_five_passengers_to_scanned_neighbours() {
         for &id in &pax {
             if fx.revealed(id) && !out.iter().any(|(seen, ..)| *seen == id) {
                 let e = fx.sim.substrate.entities.get(id).expect("passenger");
-                let dest = e.movement_target.as_ref().and_then(|t| t.final_goal).or(
-                    match e.navigation.nav_com {
+                let dest =
+                    crate::sim::movement::movement_goal_cell(e).or(match e.navigation.nav_com {
                         Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) => {
                             Some((rx, ry))
                         }
                         _ => None,
-                    },
-                );
+                    });
                 out.push((id, fx.frame(), e.mission.effective(), dest));
             }
         }
@@ -965,14 +964,10 @@ fn relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell() {
     assert!(elevation.timer_start_frame() > spawn_elevation);
     assert_eq!(elevation.destination(), 0x3800);
     let e = fx.sim.substrate.entities.get(bggy).expect("passenger");
-    let dest =
-        e.movement_target
-            .as_ref()
-            .and_then(|t| t.final_goal)
-            .or(match e.navigation.nav_com {
-                Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) => Some((rx, ry)),
-                _ => None,
-            });
+    let dest = crate::sim::movement::movement_goal_cell(e).or(match e.navigation.nav_com {
+        Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) => Some((rx, ry)),
+        _ => None,
+    });
     assert_ne!(
         dest,
         Some((18, 20)),

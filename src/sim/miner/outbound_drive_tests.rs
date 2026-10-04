@@ -446,7 +446,11 @@ fn assert_command_state(
     let route = entity.navigation.path_replay.installed_cells(START);
     assert_eq!(route.first().copied(), Some(START));
     assert_eq!(route.last().copied(), Some(target));
-    assert_eq!(movement.final_goal, Some(target));
+    assert_eq!(movement.final_goal, None);
+    assert_eq!(
+        crate::sim::movement::movement_goal_cell(entity),
+        Some(target)
+    );
     assert_eq!(
         movement.speed,
         ra2_speed_to_leptons_per_second(object.speed),
@@ -812,7 +816,7 @@ fn production_stock_harv_far_return_drive_uses_rule_profile() {
         !entity.radio_contacts.contains(refinery_id),
         "beyond HarvesterTooFarDistance the return sends no HELLO"
     );
-    assert_eq!(movement.final_goal, Some(staging));
+    assert_eq!(movement.final_goal, None);
     assert_eq!(
         entity.navigation.nav_com,
         Some(NavTargetRef::cell(staging.0, staging.1)),
@@ -961,8 +965,7 @@ fn gsi_04_07_placement_miner_return_threads_live_wall_neighbor_authority() {
             .substrate
             .entities
             .get(wall_miner)
-            .and_then(|entity| entity.movement_target.as_ref())
-            .and_then(|movement| movement.final_goal),
+            .and_then(crate::sim::movement::movement_goal_cell),
         Some(staging),
         "Wall=yes must supply the off-marker neighbor exception to the live return route",
     );

@@ -2,8 +2,76 @@
 import copy
 import json
 import unittest
+from unittest import mock
 
 from tools.spatial_oracle._factory_infantry_output import fixture, runtime as rt, saved
+
+
+class CandidateSourceAdmissionTests(unittest.TestCase):
+    """Candidate execution never changes the registered source authority."""
+
+    def candidate_metadata(self):
+        meta = copy.deepcopy(rt.metadata())
+        self.assertNotIn('unregistered-initialized-candidate', meta['helper_profiles'])
+        return meta
+
+    def assert_registered_maps_preserved(self, meta, callers, profiles):
+        self.assertEqual(meta['caller_files'], callers)
+        self.assertEqual(meta['helper_profiles'], profiles)
+
+    def test_reject_unselected_caller_before_admission(self):
+        meta = self.candidate_metadata()
+        callers, profiles = copy.deepcopy(meta['caller_files']), copy.deepcopy(meta['helper_profiles'])
+        meta['initialized_candidate_caller_files']['phase.py'] = meta['caller_files']['phase.py']
+        with mock.patch.object(rt, 'metadata', return_value=meta):
+            with self.assertRaisesRegex(ValueError, 'Unsupported candidate caller'):
+                with rt.candidate_helper_profile():
+                    self.fail('Unselected caller was admitted')
+        self.assert_registered_maps_preserved(meta, callers, profiles)
+
+    def test_reject_changed_candidate_caller_bytes(self):
+        meta = self.candidate_metadata()
+        callers, profiles = copy.deepcopy(meta['caller_files']), copy.deepcopy(meta['helper_profiles'])
+        meta['initialized_candidate_caller_files']['initialized.py']['sha256'] = '0' * 64
+        with mock.patch.object(rt, 'metadata', return_value=meta):
+            with self.assertRaisesRegex(ValueError, 'Explicit initialized candidate caller bytes changed'):
+                with rt.candidate_helper_profile():
+                    self.fail('Changed caller bytes were admitted')
+        self.assert_registered_maps_preserved(meta, callers, profiles)
+
+    def test_reject_changed_candidate_helper_bytes(self):
+        meta = self.candidate_metadata()
+        callers, profiles = copy.deepcopy(meta['caller_files']), copy.deepcopy(meta['helper_profiles'])
+        name = next(iter(meta['initialized_candidate_helper_files']))
+        meta['initialized_candidate_helper_files'][name] = '0' * 64
+        with mock.patch.object(rt, 'metadata', return_value=meta):
+            with self.assertRaisesRegex(ValueError, 'Explicit initialized candidate helper bytes changed'):
+                with rt.candidate_helper_profile():
+                    self.fail('Changed helper bytes were admitted')
+        self.assert_registered_maps_preserved(meta, callers, profiles)
+
+    def test_restore_registered_maps_after_native_comparison_failure(self):
+        meta = self.candidate_metadata()
+        callers, profiles = copy.deepcopy(meta['caller_files']), copy.deepcopy(meta['helper_profiles'])
+        with mock.patch.object(rt, 'metadata', return_value=meta):
+            with self.assertRaisesRegex(RuntimeError, 'native comparison failed'):
+                with rt.candidate_helper_profile() as profile:
+                    self.assertEqual(profile['profile_sha256'],
+                                     rt.canonical_sha(meta['initialized_candidate_helper_files']))
+                    self.assertEqual(meta['caller_files']['initialized.py'],
+                                     meta['initialized_candidate_caller_files']['initialized.py'])
+                    raise RuntimeError('native comparison failed')
+        self.assert_registered_maps_preserved(meta, callers, profiles)
+
+    def test_restore_registered_maps_after_shared_census_failure(self):
+        meta = self.candidate_metadata()
+        callers, profiles = copy.deepcopy(meta['caller_files']), copy.deepcopy(meta['helper_profiles'])
+        with mock.patch.object(rt, 'metadata', return_value=meta), \
+                mock.patch.object(rt, 'verify_helpers', side_effect=ValueError('candidate census refusal')):
+            with self.assertRaisesRegex(ValueError, 'candidate census refusal'):
+                with rt.candidate_helper_profile():
+                    self.fail('Refused source census was admitted')
+        self.assert_registered_maps_preserved(meta, callers, profiles)
 
 
 class PublicationPhaseEvidenceTests(unittest.TestCase):

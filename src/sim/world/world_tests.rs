@@ -6559,14 +6559,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         .expect("first Drive step has a committed occupation head");
     assert_eq!((committed_head.rx, committed_head.ry), (5, 4));
     assert_eq!(
-        sim.substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .movement_target
-            .as_ref()
-            .unwrap()
-            .final_goal,
+        crate::sim::movement::movement_goal_cell(sim.substrate.entities.get(1).unwrap()),
         Some((8, 4))
     );
 
@@ -6590,8 +6583,9 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         ((head.x / 256) as u16, (head.y / 256) as u16),
         (committed_head.rx, committed_head.ry)
     );
+    assert_eq!(stopped_target.final_goal, None);
     assert_eq!(
-        stopped_target.final_goal,
+        crate::sim::movement::movement_goal_cell(stopped),
         Some((committed_head.rx, committed_head.ry))
     );
     let drive = stopped
@@ -6854,7 +6848,11 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
             .remaining_directions()
             .is_empty()
     );
-    assert_eq!(target.final_goal, Some(committed_cell));
+    assert_eq!(target.final_goal, None);
+    assert_eq!(
+        crate::sim::movement::movement_goal_cell(stopped),
+        Some(committed_cell)
+    );
     let ship = stopped
         .locomotor
         .as_ref()
@@ -7659,11 +7657,11 @@ fn test_guard_returns_to_anchor_when_displaced() {
         .entities
         .get(1)
         .expect("entity 1 should exist");
-    let movement = ge
+    let _movement = ge
         .movement_target
         .as_ref()
         .expect("guard should re-path back to its anchor");
-    assert_eq!(movement.final_goal, Some((2, 2)));
+    assert_eq!(crate::sim::movement::movement_goal_cell(ge), Some((2, 2)));
 }
 
 #[test]
@@ -8887,7 +8885,7 @@ fn stacking_motion_state(sim: &Simulation, id: u64) -> String {
             "id={id} at ({},{}) sub=({},{}) movement_target=None",
             e.position.rx, e.position.ry, e.position.sub_x, e.position.sub_y
         ),
-        Some(mt) => format!(
+        Some(_) => format!(
             "id={id} at ({},{}) sub=({},{}) route_ahead={:?} words_left={} goal={:?}",
             e.position.rx,
             e.position.ry,
@@ -8895,7 +8893,7 @@ fn stacking_motion_state(sim: &Simulation, id: u64) -> String {
             e.position.sub_y,
             e.navigation.path_replay.route_cells(),
             e.navigation.path_replay.remaining_directions().len(),
-            mt.final_goal
+            crate::sim::movement::movement_goal_cell(e)
         ),
     };
     format!(

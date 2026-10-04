@@ -9,8 +9,8 @@ use crate::sim::movement::ground_pose;
 impl Simulation {
     /// Resolve the ordinary grounded Foot Cell-click corridor (4DE1D0) before
     /// event encoding, for Walk infantry and Drive/Ship Units. The receiver is
-    /// class-generic: Unit differs only in +70 (0x7404B0, action 1 for these
-    /// grounded non-Teleporter movers) and What_Am_I, and reads its locomotor
+    /// class-generic: Unit differs only in +70 (0x7404B0, ordinary action1
+    /// or outside-playfield action2) and What_Am_I, and reads its locomotor
     /// only through Foot+4C (0x4DBDF0). Unit reach: BandBox_LeftUp -> 4AE750 ->
     /// 738910 -> 4D7D50 -> 4D806F -> 4DE1D0 (static chain). None leaves other
     /// actor/caller families on their existing input adapter; it is not
@@ -67,25 +67,28 @@ impl Simulation {
         if entity.lifecycle.cell_marked && height >= 2 * GROUND_LEVEL_HEIGHT_LEPTONS {
             return None;
         }
-        // The selected ordinary Move action first passes the Infantry input
-        // wrappers, not the later51AA40 destination setter. Original51F800
+        // The selected ordinary Move action first passes the class input
+        // wrappers, not the later destination setter. Original51F800
         // returns action0 for a non-player House50B6F0; for a local Deployer
         // in Doing27..30 it maps Foot action1 to2 (51F8ED..51F94E). Only that
         // live query2 refuses the Doing-family click at51F277..51F28C.
         // Berserk independently refuses at51F28F..51F29E. Deployer is the
         // existing layered ReadBool owner (524606..524620), defaultfalse.
-        // Actual initialized plain/Shift controls: walk_first_path.json
-        // gi_reissue input controls; these checks precede MegaMission entirely.
+        // Unit7404B0 independently applies House50B6F0, then its6E0/1/2
+        // deployment suffix740709..740727. CellClick738910 re-queries6E0
+        // and independently refuses Berserk at73893D..73894C. Reuse the
+        // existing deployment predicate; stock MTNK has SimpleDeployer=0.
+        // Original initialized controls: walk_first_path.json gi_reissue
+        // GI/MTNK input rows; these checks precede MegaMission entirely.
         // Other class/action/high/Teleport input remains on its existing
         // adapter; decoded or internal commands never run this input owner.
-        if entity.category == crate::map::entities::EntityCategory::Infantry
+        let infantry = entity.category == crate::map::entities::EntityCategory::Infantry;
+        let drive_unit = self.drive_unit_setter_receiver(id);
+        if (infantry || drive_unit)
             && (!self.house_is_human_player(entity.owner())
                 || entity.berserk.active
-                || (object.deployer
-                    && entity
-                        .mission_leaf
-                        .as_infantry()
-                        .is_some_and(|leaf| (27..=30).contains(&leaf.doing()))))
+                || (infantry && object.deployer && entity.infantry_deploy_doing())
+                || (drive_unit && entity.is_deployed()))
         {
             return Some(Ok(None));
         }
@@ -110,6 +113,9 @@ impl Simulation {
             self.session.binary_frame,
             &FootCellClick {
                 clicked: (clicked.0 as i16, clicked.1 as i16),
+                // Original action1 and2 take the same resolver arms in this
+                // bounded ground/non-Teleporter domain. The actual joined
+                // Unit outside-playfield control observes query2 ->4,19.
                 action: 1,
                 current,
                 coordinate,

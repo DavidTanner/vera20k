@@ -624,7 +624,7 @@ def joined_stock_observer(f):
     u.hook_add(UC_HOOK_CODE,observe);u.hook_add(UC_HOOK_MEM_WRITE,write)
     return dict(f=f,calls=calls,writes=writes,pcs=pcs,pending=pending,snapshot=snapshot)
 
-def joined_fixture(inputs, health, *, seed=31, building_ai=False):
+def joined_fixture(inputs, health, *, seed=31, building_ai=False, drive_startup=False):
     import hashlib
     from collections import deque
     from types import SimpleNamespace
@@ -681,6 +681,81 @@ def joined_fixture(inputs, health, *, seed=31, building_ai=False):
                 assert self.infantry_startup['before']['rng'] == self.infantry_startup['after']['rng']
                 assert (read(0xA8F240), read(0xA8F234)) == (104, 416)
                 self.phase = 'setup'
+
+            if drive_startup:
+                # Selected-source startup, after the inherited supplied dock
+                # Drive and before source7353C0. Keep historical defaults;
+                # execute the registered group, never another scalar104 prior.
+                from unicorn import UC_HOOK_MEM_READ, UC_MEM_READ
+                from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_FPCW, UC_X86_REG_FPSW
+                from tools.spatial_oracle.unit_scatter_state import LOCO as PRIOR_DRIVE
+                assert building_ai and not {0x4D31E0, 0x7353C0} & self.executed
+                u, read = self.u, self.read32
+                begin, end = 0x812D2C, 0x812D64
+                expected = (0x4AF330, 0x4AF360, 0x4AF380, 0x4AF3A0,
+                    0x4AF3C0, 0x4AF3E0, 0x4AF400, 0x4AF440, 0x4AF470,
+                    0x4AF4A0, 0x4AF4D0, 0x4AF4E0, 0x4AF500, 0x4AF520)
+                original_table = native.file_span(native.image_bytes(), begin, end-begin)[1]
+                assert struct.unpack('<14I', original_table) == expected
+                assert bytes(u.mem_read(begin, end-begin)) == original_table
+                self.phase = 'setup_selected_source_drive_crt_startup'
+                calls, accesses, pending = [], [], []
+
+                def state():
+                    return dict(globals_8a0758_8a07d4=bytes(u.mem_read(0x8A0758, 0x7C)).hex(),
+                        level_height=read(0x8A07D0), bridge_height=read(0x8A07C4),
+                        empty=list(struct.unpack('<3i', u.mem_read(0x8A0790, 12))),
+                        origin=list(struct.unpack('<3i', u.mem_read(0x8A07B8, 12))),
+                        fpcw=u.reg_read(UC_X86_REG_FPCW), fpsw=u.reg_read(UC_X86_REG_FPSW),
+                        rng=self.rng())
+
+                def code(_u, pc, _size, _data):
+                    sp = u.reg_read(UC_X86_REG_ESP)
+                    for row in pending[:]:
+                        if pc == row['return_pc'] and sp > row['sp']:
+                            row.update(returned_sp=sp, after=state())
+                            pending.remove(row)
+                    if pc in expected or pc in (0x7CBED3, 0x7C8FB0, 0x4CAC40, 0x4CAD50, 0x4CADE0, 0x7C5F00):
+                        row = dict(pc=pc, sp=sp, return_pc=read(sp), before=state())
+                        calls.append(row); pending.append(row)
+
+                def memory(_u, access, address, size, value, _data):
+                    accesses.append(dict(pc=u.reg_read(UC_X86_REG_EIP), access='read' if access==UC_MEM_READ else 'write',
+                        address=address, size=size, value=value,
+                        before=bytes(u.mem_read(address,size)).hex()))
+
+                prior = bytes(u.mem_read(PRIOR_DRIVE, 0x70))
+                self.drive_startup = dict(dispatcher=0x7CBED3, table_begin=begin, table_end=end,
+                    table_bytes=original_table.hex(), entries=list(expected), before=state(),
+                    inherited_prior_drive=dict(pointer=PRIOR_DRIVE, raw_before=prior.hex(),
+                        origin='Separate supplied Unit/dock fixture: original4AF540 before selected startup; bridge globals104/416 were supplied there'),
+                    calls=calls, accesses=accesses)
+                hooks = [u.hook_add(UC_HOOK_CODE, code),
+                    u.hook_add(UC_HOOK_MEM_READ, memory, begin=0x8A0758, end=0x8A07D3),
+                    u.hook_add(UC_HOOK_MEM_WRITE, memory, begin=0x8A0758, end=0x8A07D3)]
+                try:
+                    bc.invoke(u, 0x7CBED3, 0, begin, end)
+                    sp = u.reg_read(UC_X86_REG_ESP)
+                    for row in pending[:]:
+                        if row['return_pc'] == native.RET_MAGIC:
+                            row.update(returned_sp=sp, after=state()); pending.remove(row)
+                    self.drive_startup.update(after=state(), returned_sp=sp,
+                        executed_entries=[r['pc'] for r in calls if r['pc'] in expected],
+                        native_code_unchanged=self.code_unchanged(), pending_calls=pending,
+                        inherited_prior_drive_raw_after=bytes(u.mem_read(PRIOR_DRIVE,0x70)).hex())
+                    assert sp == bc.SP+4  # Original7CBEEC C3: cdecl caller owns args.
+                    assert self.drive_startup['executed_entries'] == list(expected)
+                    assert not pending and self.drive_startup['native_code_unchanged']
+                    assert bytes(u.mem_read(PRIOR_DRIVE,0x70)) == prior
+                    print('original selected Drive CRT height '+str(read(0x8A07D0))+
+                        ', bridge '+str(read(0x8A07C4))+', FPCW '+hex(u.reg_read(UC_X86_REG_FPCW)), flush=True)
+                except Exception as exc:
+                    self.drive_startup.update(failed_state=state())
+                    exc.original_drive_startup = self.drive_startup
+                    raise
+                finally:
+                    for hook in hooks: u.hook_del(hook)
+                    self.phase = 'setup'
 
         def string(self, pointer):
             data = bytearray()
@@ -816,6 +891,9 @@ def joined_fixture(inputs, health, *, seed=31, building_ai=False):
             occupied_ground_list='Building2x2 foundation; later admitted MTNK and escaped E1 only')
     f.phase = 'setup_unit_constructor'
     f.source = f.allocate(0x1000)
+    if drive_startup:
+        f.source_arena = dict(pointer=f.source, size=0x1000,
+            origin='Supplied fixture arena; native7353C0 constructor, not original operator-new allocation')
     before, start = f.rng(), len(f.draws)
     result = bc.invoke(u, 0x7353C0, f.source, f.types['MTNK'], er.HOUSE)
     f.unit_constructor = dict(entry='0x007353C0', pointer=f.source,

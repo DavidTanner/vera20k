@@ -688,6 +688,7 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                                   *(('air',) if 'air' in foot else ()),
                                   *(('walk_head_leptons', 'walk_destination_leptons',
                                      'walk_is_moving') if walk_state else ()),
+                                  *(('track',) if 'track' in foot else ()),
                                   *(('pending_entry_500',) if 'pending_entry_500' in foot else ())),
                            f'{label}.foot')
         if 'air' in foot:
@@ -721,6 +722,22 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                     require_value(foot[key], None, f'{label}.foot.{key}')
             elif type(moving) is not bool:
                 raise ValidationError(f'{label}.foot.walk_is_moving must be boolean or null')
+        # An additive immutable projection of the installed Drive/Ship owner.
+        # Historical sealed receipts omit it; absence cannot prove no track.
+        if 'track' in foot and foot['track'] is not None:
+            track_label = f'{label}.foot.track'
+            track = require_object(foot['track'], track_label)
+            require_exact_keys(track, ('family', 'destination_leptons', 'head_leptons',
+                                       'selector', 'cursor', 'valid'), track_label)
+            if track['family'] not in ('Drive', 'Ship'):
+                raise ValidationError(f'{track_label}.family must be Drive or Ship')
+            for key in ('destination_leptons', 'head_leptons'):
+                if track[key] is not None:
+                    _coordinate(track[key], f'{track_label}.{key}', leptons=True)
+            for key in ('selector', 'cursor'):
+                _bounded_int(track[key], f'{track_label}.{key}', -(1 << 31), (1 << 31) - 1)
+            if type(track['valid']) is not bool:
+                raise ValidationError(f'{track_label}.valid must be a boolean')
     return identity, owner
 
 

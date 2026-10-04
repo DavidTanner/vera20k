@@ -1378,10 +1378,7 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
     // The Ship setter accepts the rally without a route; its first Process
     // requests one.
     assert_eq!(
-        produced
-            .movement_target
-            .as_ref()
-            .and_then(|movement| movement.final_goal),
+        crate::sim::movement::movement_goal_cell(produced),
         Some((20, 10)),
         "selected producer's rally target owns the destination"
     );
@@ -1571,7 +1568,11 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
             .remaining_directions()
             .is_empty()
     );
-    assert_eq!(request.final_goal, Some((39, 39)));
+    assert_eq!(request.final_goal, None);
+    assert_eq!(
+        crate::sim::movement::movement_goal_cell(produced),
+        Some((39, 39))
+    );
 }
 
 #[test]

@@ -56,28 +56,42 @@ pub(super) fn committed_movement_head(entity: &GameEntity) -> Option<(u16, u16)>
 /// owns destination/queue writes: explicit Attack's null setter does not clear
 /// NavQueue, whereas the Unit setter's null arm (`0x007423BE`) does.
 pub(crate) fn retain_committed_movement(e: &mut GameEntity) {
-    let head = committed_movement_head(e);
-    retain_path_to_head(e, head);
+    if committed_movement_head(e).is_some() {
+        // Walk75BD29 samples current XYZ against its paid head; a
+        // Drive/Ship curve finishes at its head after Foot+5E0 retires.
+        // Keep the scheduling adapter, with no second goal coordinate.
+        if let Some(target) = e.movement_target.as_mut() {
+            target.final_goal = None;
+        }
+    } else {
+        e.movement_target = None;
+    }
 }
 
-fn retain_path_to_head(e: &mut GameEntity, committed_head: Option<(u16, u16)>) {
-    match (committed_head, e.movement_target.as_mut()) {
-        // A paid head is the whole retained movement: Walk75BD29 samples
-        // current XYZ against it, and a Drive/Ship curve finishes at its head
-        // with the Foot+5E0 queue the caller retired. The adapter keeps no
-        // route cells; a track's goal becomes its head, so the abandoned
-        // order goal no longer drives its speed.
-        (Some(head_cell), Some(target)) => {
-            let walk = e
-                .locomotor
-                .as_ref()
-                .is_some_and(|l| l.kind == LocomotorKind::Walk);
-            if !walk {
-                target.final_goal = Some(head_cell);
-            }
+/// Read the movement goal for diagnostics without retaining another copy.
+/// Drive/Ship display Foot's requested Cell, including a Move_To refusal
+/// that leaves a different locomotor destination (track_destination native
+/// warp controls). Object requests use the captured locomotor coordinate;
+/// after Stop the paid head remains. Other adapters retain their existing
+/// goal. This projection is for presentation; it makes no simulation decision.
+pub(crate) fn movement_goal_cell(entity: &GameEntity) -> Option<(u16, u16)> {
+    let adapter = entity.movement_target.as_ref()?;
+    if entity.locomotor.as_ref().is_some_and(|loco| {
+        matches!(
+            loco.active_kind(),
+            LocomotorKind::Drive | LocomotorKind::Ship
+        )
+    }) {
+        if let Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) =
+            entity.navigation.nav_com
+        {
+            return Some((rx, ry));
         }
-        _ => e.movement_target = None,
+        return super::track_path::track_destination(entity)
+            .or_else(|| super::track_head::committed_track_head(entity))
+            .map(|coord| ((coord.x / 256) as u16, (coord.y / 256) as u16));
     }
+    adapter.final_goal
 }
 
 /// The caller's native frame and configured Foot blocked timer duration.
@@ -671,21 +685,18 @@ pub(super) fn prepare_destination_execution(
     target: (u16, u16),
     speed: SimFixed,
 ) {
-    let committed_head = committed_movement_head(entity);
-    // Walk's goal is its locomotor destination (Walk+0x1C); its adapter
-    // keeps no goal cell.
-    let final_goal = (!entity
-        .locomotor
-        .as_ref()
-        .is_some_and(|l| l.kind == LocomotorKind::Walk))
+    // Walk/Drive/Ship keep their goal in the locomotor destination, not in
+    // this scheduling adapter. Their movement hosts already read that owner.
+    let final_goal = (!entity.locomotor.as_ref().is_some_and(|l| {
+        matches!(
+            l.active_kind(),
+            LocomotorKind::Walk | LocomotorKind::Drive | LocomotorKind::Ship
+        )
+    }))
     .then_some(target);
     entity.movement_target = Some(MovementTarget {
         speed,
         final_goal,
         ..Default::default()
     });
-    if committed_head.is_some() {
-        retain_path_to_head(entity, committed_head);
-        entity.movement_target.as_mut().unwrap().final_goal = final_goal;
-    }
 }

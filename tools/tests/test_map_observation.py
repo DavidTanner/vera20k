@@ -909,6 +909,65 @@ class MapObservationTests(unittest.TestCase):
                 self.assertEqual(report['status'], 'INVALID', report)
                 self.assertIn('.foot', report['errors'][0])
 
+    def test_track_receipts_preserve_paid_head_through_stop_and_compare_owner_fields(self):
+        self.scripted_profile()
+        self.actor_frames = {step: [self.actor(category='Unit')] for step in range(4)}
+        self.actor_frames[0][0]['foot']['track'] = None
+        self.actor_frames[1][0]['foot']['track'] = {
+            'family': 'Drive', 'destination_leptons': [22528, 13824, 416],
+            'head_leptons': [22400, 13696, 416], 'selector': 28, 'cursor': 2, 'valid': True}
+        self.actor_frames[2][0]['foot']['track'] = {
+            **self.actor_frames[1][0]['foot']['track'], 'destination_leptons': None}
+        self.actor_frames[3][0]['foot']['track'] = {
+            'family': 'Drive', 'destination_leptons': None, 'head_leptons': None,
+            'selector': -1, 'cursor': 0, 'valid': False}
+        before = self.valid_capture('track-before')
+        checked = observation.validate_run(before)
+        self.assertEqual(checked['status'], 'VALID', checked['errors'])
+        for step, frame in enumerate(checked['capture']['observations']['frames']):
+            self.assertEqual(frame['actors'][0]['foot']['track'],
+                             self.actor_frames[step][0]['foot']['track'])
+
+        def change(manifest):
+            track = manifest['observations']['frames'][1]['actors'][0]['foot']['track']
+            track['head_leptons'][0] += 1
+            track['destination_leptons'][2] += 1
+            track['cursor'] += 1
+            track['valid'] = False
+
+        self.change = change
+        after = self.valid_capture('track-after')
+        compared = observation.compare_runs(before, after)
+        self.assertEqual(compared['status'], 'MISMATCH', compared['errors'])
+        self.assertCountEqual([row['field'] for row in compared['differences']], [
+            'observations.frames[1].actors[0].foot.track.head_leptons[0]',
+            'observations.frames[1].actors[0].foot.track.destination_leptons[2]',
+            'observations.frames[1].actors[0].foot.track.cursor',
+            'observations.frames[1].actors[0].foot.track.valid'])
+
+    def test_track_receipts_reject_partial_fields_bad_types_and_unknown_owners(self):
+        self.scripted_profile()
+        self.actor_frames[1] = [self.actor(category='Unit')]
+        self.actor_frames[1][0]['foot']['track'] = {
+            'family': 'Ship', 'destination_leptons': None, 'head_leptons': [1, 2, 3],
+            'selector': 0, 'cursor': 1, 'valid': True}
+        changes = [lambda track: track.pop('cursor'),
+                   lambda track: track.update(family='Walk'),
+                   lambda track: track.update(selector=0.5),
+                   lambda track: track.update(cursor=True),
+                   lambda track: track.update(head_leptons=[1, 2]),
+                   lambda track: track.update(destination_leptons=[1, 2, 1 << 31]),
+                   lambda track: track.update(valid=1),
+                   lambda track: track.update(extra=0)]
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'bad-track-{index}'
+                self.change = lambda m, f=change: f(
+                    m['observations']['frames'][1]['actors'][0]['foot']['track'])
+                report = self.run_capture()
+                self.assertEqual(report['status'], 'INVALID', report)
+                self.assertIn('.foot.track', report['errors'][0])
+
     def test_profile_version_order_field_types_and_budgets_are_checked_before_spawn(self):
         profile = deepcopy(self.profile)
         cases = [dict(profile, commands=[]), dict(profile, observe_owners=[]),

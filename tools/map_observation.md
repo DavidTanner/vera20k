@@ -10,6 +10,13 @@ target handle or `null`. This read-only field is independent of NavCom, mission
 and admitted radio contacts. Older sealed v6 receipts remain accepted without
 the field; its absence supplies no evidence about pending entry.
 
+Foot's optional `track` observation reads the installed Drive/Ship owner's
+destination and head XYZ, selector, signed cursor and valid byte. It sends no
+movement callback and creates no runtime. A paid head may survive Stop after
+the destination becomes `null`; its cursor and physical pose show the remaining
+segment. Historical sealed receipts omit `track`, which supplies no evidence
+about that state. An explicit `null` means no installed track state was observed.
+
 The explicit profile schema belongs to
 `src/app/diagnostics/tactical_capture/map_observation.rs`. Start from
 [`map_observation.example.json`](map_observation.example.json), whose launch is the

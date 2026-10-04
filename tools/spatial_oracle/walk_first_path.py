@@ -107,7 +107,7 @@ def generate():
              head_producer=[head_query(row) for row in [{'mission':0,'nav':False,'target':False},{'mission':1,'nav':True,'target':True},{'mission':1,'nav':False,'target':True}]])
 
 class GIMoveHistory:
- """Observe an original input/event/AI history on the existing live GI VM."""
+ """Observe original input/event/AI histories on the existing live Foot VM."""
  def __init__(self,f,final,name):
   import copy,hashlib
   from collections import deque
@@ -117,22 +117,37 @@ class GIMoveHistory:
   from tools.spatial_oracle._factory_infantry_output.runtime import require
   self.f,self.u,self.r,self.bc,self.cell=f,f.u,f.read32,bc,cell
   self.require,self.copy,self.hashlib=require,copy,hashlib
-  self.actor=final['delivered_infantry'][-1]['pointer']
+  self.unit=name.startswith('unit_')
+  self.actor=f.source if self.unit else final['delivered_infantry'][-1]['pointer']
   self.producer=final['barracks']['pointer']
   self.loco=self.r(self.actor+0x674)-4
   self.name=name;self.sequence=0;self.phase='created'
   self.events=[];self.writes=[];self.pending=[];self.boundaries=[]
   self.inputs=[];self.streams={};self.recent=deque(maxlen=80)
   self.draw_start=len(f.draws);self.advance_start=len(f.advances)
-  self.initial_actor_allocation=next(x for x in f.allocations if x['pointer']==self.actor)
+  self.initial_actor_allocation=f.source_arena if self.unit else next(x for x in f.allocations if x['pointer']==self.actor)
   self.actor_bytes=self.initial_actor_allocation['size']
   require(0x6DC<=self.actor_bytes<=0x1000,'Unexpected original GI allocation')
-  require(self.r(self.actor)==0x7EB058,'Live product is not original Infantry')
+  require(self.r(self.actor)==(0x7F5C70 if self.unit else 0x7EB058),'Live actor vtable differs')
+  self.loco_bytes=next(x['size'] for x in f.allocations if x['pointer']==self.loco) if self.unit else 0x38
+  if self.unit:
+   require(self.loco_bytes==0x70 and self.r(self.loco+4)==0x7E7EB0,'Expected original constructed Drive')
+   target=self.r(self.actor+0x2B4)
+   require(target and self.r(target)==0x7E3EBC,'Expected retained original Building target')
+   target_type=self.r(target+0x520)
+   self.target_prior=dict(pointer=target,vtable=self.r(target),native_id=self.r(target+0x10),
+       raw=bytes(self.u.mem_read(target,0x800)).hex(),owner=self.r(target+0x21C),
+       health=self.ints(target+0x6C,1)[0],alive=self.u.mem_read(target+0x90,1)[0],
+       limbo=self.u.mem_read(target+0x81,1)[0],marked=self.u.mem_read(target+0x74,1)[0],
+       flags=self.r(target+0x14),location=self.ints(target+0x9C,3),
+       mission=self.ints(target+0xAC,1)[0],queued=self.ints(target+0xB4,1)[0],
+       type=dict(pointer=target_type,name=bytes(self.u.mem_read(target_type+0x24,25)).split(b'\0')[0].decode('latin1')),
+       origin='Retained native source TarCom, original Building type/vtable; supplied admitted fixture prior, not a fresh target')
   self.map_cells=[cell(x,y) for y in range(32) for x in range(32)]
   self.map_before={p:bytes(self.u.mem_read(p,0x200)) for p in self.map_cells}
   self.map_base=min(self.map_cells);self.map_end=max(self.map_cells)+0x200
   self.vtables={p:bytes(self.u.mem_read(p,n)) for p,n in
-      [(0x7EB058,0x600),(self.r(self.loco),0x20),(self.r(self.loco+4),0x70)]}
+      [(self.r(self.actor),0x600),(self.r(self.loco),0x20),(self.r(self.loco+4),0x70)]}
   self.hooks=[self.u.hook_add(UC_HOOK_CODE,self.observe),
       self.u.hook_add(UC_HOOK_MEM_WRITE,self.written)]
   self.initial=self.snapshot()
@@ -195,7 +210,7 @@ class GIMoveHistory:
 
  def snapshot(self):
   p,l,r,u=self.actor,self.loco,self.r,self.u
-  positions=[self.ints(p+0x9C,3),self.ints(l+0x1C,3),self.ints(l+0x28,3)]
+  positions=[self.ints(p+0x9C,3),self.ints(l+(0x34 if self.unit else 0x1C),3),self.ints(l+(0x40 if self.unit else 0x28),3)]
   picked={self.cell(x//256,y//256) for x,y,z in positions if 0<=x//256<32 and 0<=y//256<32}
   picked.update(self.cell(*xy) for xy in ((20,20),(21,20)))
   # Full raw bytes of occupied/paid/request/current Cells remain alongside
@@ -203,7 +218,7 @@ class GIMoveHistory:
   # baseline map content address, rather than repeatedly copied here.
   active=[q for q in self.map_cells if r(q+0xE4) or r(q+0xE8) or r(q+0x124) or r(q+0x128)]
   picked.update(active)
-  t=r(p+0x6C0)
+  t=r(p+(0x6C4 if self.unit else 0x6C0))
   state=dict(frame=r(self.bc.FRAME),actor=p,actor_raw=bytes(u.mem_read(p,self.actor_bytes)).hex(),
       location=positions[0],marked=u.mem_read(p+0x74,1)[0],on_bridge=u.mem_read(p+0x8C,1)[0],
       object_list_next=r(p+0x30),mission=self.ints(p+0xAC,1)[0],queued=self.ints(p+0xB4,1)[0],
@@ -237,6 +252,31 @@ class GIMoveHistory:
    state['input_context']=dict(game_mode=r(0xA8B238),current_house=r(0xA83D4C),actor_owner=house,
        human=u.mem_read(house+0x1EC,1)[0],player_control=u.mem_read(house+0x1ED,1)[0],
        deployer=u.mem_read(t+0xEC8,1)[0],berserk=u.mem_read(p+0x298,1)[0])
+  if self.unit:
+   for key in ('walk','doing','prone','entry_blocked'):
+    del state[key]
+   for key in ('fraidycat','cyborg','crawls'):
+    del state['type'][key]
+   state.update(health=self.ints(p+0x6C,1)[0],alive=u.mem_read(p+0x90,1)[0],limbo=u.mem_read(p+0x81,1)[0],
+       deploy_bytes=list(u.mem_read(p+0x6E0,3)),force_reassign=u.mem_read(p+0x1F8,1)[0],
+       raw_techno_2b0=r(p+0x2B0),
+       skip_move=u.mem_read(p+0x6AC,1)[0],suspended_mission=self.ints(p+0xB0,1)[0],
+       actor_flags=r(p+0x14),native_id=r(p+0x10),logic_registered=u.mem_read(p+0x98,1)[0],
+       drive=dict(base=l,interface=l+4,raw=bytes(u.mem_read(l,self.loco_bytes)).hex(),
+           owner=r(l+0xC),references=r(l+0x14),power=u.mem_read(l+0x10,1)[0],
+           destination=positions[1],head=positions[2],word_4c=r(l+0x4C),
+           # Original4B3E00 stores the class target fraction here, distinct
+           # from Foot+578 and the constructor's separate DWORD+68.
+           target_speed_fraction_bits=bytes(u.mem_read(l+0x50,8)).hex(),selector=self.ints(l+0x58,1)[0],
+           cursor=self.ints(l+0x5C,1)[0],reversed=u.mem_read(l+0x60,1)[0],
+           latch=u.mem_read(l+0x62,1)[0],valid=u.mem_read(l+0x63,1)[0],
+           straight=u.mem_read(l+0x64,1)[0],flag_65=u.mem_read(l+0x65,1)[0],dword_68=r(l+0x68)))
+   state['type'].update(crusher=u.mem_read(t+0xD28,1)[0],move_to_shroud=u.mem_read(t+0xC8D,1)[0],
+       simple_deployer=u.mem_read(t+0xE13,1)[0],balloon_hover=u.mem_read(t+0xD6A,1)[0],
+       teleporter=u.mem_read(t+0xCD4,1)[0],passengers=self.ints(t+0x5E0,1)[0])
+   house=r(p+0x21C)
+   state['input_context']=dict(game_mode=r(0xA8B238),current_house=r(0xA83D4C),actor_owner=house,
+       human=u.mem_read(house+0x1EC,1)[0],player_control=u.mem_read(house+0x1ED,1)[0],berserk=u.mem_read(p+0x298,1)[0])
   return state
 
  WATCH={0x51F800:('GI_WhatAction',12),0x4DDDE0:('Foot_WhatAction',12),
@@ -258,6 +298,13 @@ class GIMoveHistory:
      0x47EAE0:('Cell_OccupyUp',None),0x65A970:('Radio_Transmit',None),
      0x4D9FF0:('Foot_Stop',0),0x4DA030:('Foot_RecycleDestination',0),
      0x65C780:('RNG_Random',0),0x65C7E0:('RNG_RandomRanged',8)}
+ UNIT_WATCH={0x7404B0:('Unit_WhatAction',12),0x738910:('Unit_CellClick',16),
+     0x50B6F0:('House_InputOwner',0),0x73F0A0:('Unit_CanEnter',20),
+     0x741970:('Unit_SetDestination',8),0x6FCDB0:('Techno_SetTarget',4),
+     0x7360C0:('Unit_AI',0),0x4B0500:('Drive_Process',4),
+     0x4AFD40:('Drive_MoveTo',16),0x4AFE00:('Drive_StopMoving',4),
+     0x4AFB80:('Drive_IsMoving',4),0x4C65E0:('StopEvent_Construct',16)}
+ UNIT_RET8=(0x741A7D,0x742D24,0x742E37,0x743170,0x743184)
 
  def finish_returns(self,pc,sp):
   for row in self.pending[:]:
@@ -267,12 +314,18 @@ class GIMoveHistory:
     if row['pc']==0x51AA40:
      self.require(row.get('true_ret8_pc')==0x51B1DE,'Class setter did not reach true RET8')
      self.require(sp==row['sp']+12,'Class setter original RET8 stack cleanup differs')
+    if self.unit and row['pc'] in self.UNIT_WATCH:
+     self.require(sp==row['sp']+4+row['declared_cleanup'],'Unit/COM original cleanup differs')
+     if row['pc']==0x741970:
+      self.require(row.get('true_ret8_pc') in self.UNIT_RET8,'Unit setter did not reach true RET8')
     if row['pc']==0x70C610:
      self.require(sp==row['sp']+8,'Archive setter original RET4 stack cleanup differs')
-    if row['pc']==0x4C6860:
+    if row['pc'] in (0x4C6860,0x4C65E0):
      row['constructed_event_bytes']=bytes(self.u.mem_read(row['this'],0x6F)).hex()
     if row['pc']==0x4DE1D0:
      row['resolved_cell']=list(struct.unpack('<2h',self.u.mem_read(row['args'][0],4)))
+     if self.name=='unit_shift_outside_playfield_B':
+      row['resolved_cell_fields']=self.cell_state(self.cell(*row['resolved_cell']))
     if row['pc']==0x56DC20:
      row['chosen_cell']=list(struct.unpack('<2h',self.u.mem_read(row['args'][0],4)))
     self.pending.remove(row)
@@ -286,8 +339,9 @@ class GIMoveHistory:
        frame=self.r(self.bc.FRAME),phase=self.phase,sp=sp,
        edx=u.reg_read(UC_X86_REG_EDX),esi=u.reg_read(UC_X86_REG_ESI),
        eax=u.reg_read(UC_X86_REG_EAX),edi=u.reg_read(UC_X86_REG_EDI),rng=self.rng()))
-  if pc==0x51B1DE:
-   candidates=[r for r in self.pending if r['pc']==0x51AA40]
+  if pc==0x51B1DE or self.unit and pc in self.UNIT_RET8:
+   entry=0x51AA40 if pc==0x51B1DE else 0x741970
+   candidates=[r for r in self.pending if r['pc']==entry]
    self.require(candidates,'RET8 without class entry')
    row=candidates[-1]
    self.require(sp==row['sp'] and self.r(sp)==row['return_pc'],'Class RET8 entry stack differs')
@@ -298,8 +352,11 @@ class GIMoveHistory:
        frame=self.r(self.bc.FRAME),phase=self.phase,sp=sp,
        ecx=u.reg_read(UC_X86_REG_ECX),eax=u.reg_read(UC_X86_REG_EAX),
        stack=self.ints(sp,6),state=self.snapshot()))
-  if self.name=='archive_A_B' and pc==0x70C610:
+  if self.name=='unit_shift_outside_playfield_B' and pc==0x578460:
+   name,cleanup='Map_IsInPlayfield',8
+  elif self.name=='archive_A_B' and pc==0x70C610:
    name,cleanup='Archive_SetTarget',4
+  elif self.unit and pc in self.UNIT_WATCH:name,cleanup=self.UNIT_WATCH[pc]
   elif pc in self.WATCH:name,cleanup=self.WATCH[pc]
   else:return
   row=dict(sequence=self.next_sequence(),kind=name,pc=pc,frame=self.r(self.bc.FRAME),
@@ -311,7 +368,7 @@ class GIMoveHistory:
   self.events.append(row);self.pending.append(row)
 
  def written(self,u,access,address,size,value,data):
-  ranges=[(self.actor,self.actor+self.actor_bytes,'actor'),(self.loco,self.loco+0x38,'Walk'),
+  ranges=[(self.actor,self.actor+self.actor_bytes,'actor'),(self.loco,self.loco+self.loco_bytes,'Drive' if self.unit else 'Walk'),
       (self.map_base,self.map_end,'Cell'),(0xA802C8,0xA83C54,'OutList'),
       (0x8B41F8,0xA70204,'DoList'),(0xA8EB60,0xA8EC40,'Options')]
   for offset in (0x588,0x5AC):
@@ -355,11 +412,19 @@ class GIMoveHistory:
   self.u.mem_write(self.bc.FRAME,dwords(value))
   self.events.append(dict(sequence=self.next_sequence(),kind='authored_absolute_frame',before=before,after=value))
 
- def click(self,xy,keys=()):
+ def click(self,xy,keys=(),*,dispatch=True):
   from tools.spatial_oracle import walk_move_admission as owner
   row=owner.live_cell_input(self.f,self.actor,xy,keys=keys,invoke=self.invoke,
       snapshot=self.snapshot,sequence=self.next_sequence,record=self.inputs.append)
-  self.pump()
+  if dispatch:self.pump()
+
+ def supply_fields(self,words,*,bounds):
+  """Retain literal component priors; never supply a gameplay answer."""
+  supplied=[]
+  for p,n,value in words:
+   before=bytes(self.u.mem_read(p,n)).hex();self.u.mem_write(p,value.to_bytes(n,'little'))
+   supplied.append(dict(address=p,bytes=n,before=before,after=bytes(self.u.mem_read(p,n)).hex()))
+  self.events.append(dict(sequence=self.next_sequence(),kind='supplied_native_input_context',words=supplied,bounds=bounds))
 
  def execute(self):
   import traceback
@@ -369,16 +434,61 @@ class GIMoveHistory:
    self.defaults={hex(a):self.r(a) for a in (0xA8EBF8,0xA8EBFC,0xA8EC00,0xA8EC04,0xA8EC08,0xA8EC0C)}
    self.require(list(self.defaults.values())==[0x12,0x12,0x11,0x11,0x10,0x10],'Original modifier default values differ')
    a,b=(20,20),(21,20)
-   if self.name=='plain_A_B':
+   if self.name in ('plain_A_B','unit_plain_A_B'):
     self.click(a);self.click(b)
-   elif self.name=='shift_A_B':
+   elif self.name in ('shift_A_B','unit_shift_A_B'):
     self.click(a,keys=(0x10,));self.click(b,keys=(0x10,))
+   elif self.name=='unit_shift_outside_playfield_B':
+    from tools.spatial_oracle.anytown_damage.navigation import Navigation,BASE
+    # An authored coordinate, not an authored resolver/passability answer.
+    # Reuse the actual constructed map/zone/terrain state and retain its
+    # literal query inputs before the original wrappers/FNPC run.
+    requested=(4,20)
+    # Reuse the existing navigation observer on this same VM. Width/side
+    # are observation dimensions derived from the original Map header;
+    # no Navigation instance or graph/initializer is reconstructed.
+    self.uc=self.u;self.width=self.r(0x87F7E8+0xF4)+self.r(0x87F7E8+0xF8)
+    self.side=self.width+1
+    self.require(self.r(0x87F7E8+0x68)==BASE,'Existing navigation plane owner differs')
+    self.resolver_map_prior=dict(map_address=0x87F7E8,
+        raw_header=bytes(self.u.mem_read(0x87F7E8,0x150)).hex(),
+        land_table_address=0x89EA40,
+        land_table_hex=bytes(self.u.mem_read(0x89EA40,12*36)).hex(),
+        navigation=Navigation.nav_snapshot(self),
+        cells=[self.cell_state(self.cell(*xy)) for xy in sorted({requested,a,
+            tuple(v//256 for v in self.initial['location'][:2])})],
+        requested=list(requested),
+        bounds='Authored existing physical Cell4,20 is selected from original578460 bounds and recorded map header; original query/resolver establishes the outcome. No map/zone/terrain, gameplay query, resolver, event, class or RNG answer is supplied. Full baseline Cell bytes remain retained. Earlier40,20 and31,20 attempts remain separate failed receipts with as-run sources.')
+    self.click(a,keys=(0x10,));second_click_sequence=self.sequence
+    self.click(requested,keys=(0x10,))
+    self.require(any(row.get('pc')==0x56DC20 and row['sequence']>second_click_sequence
+        for row in self.events),
+        'Original outside-playfield resolver did not reach FNPC')
+    self.require(any(row.get('pc')==0x4DE1D0 and row.get('resolved_cell')!=list(requested)
+        and row['sequence']>second_click_sequence for row in self.events),
+        'Original outside-playfield resolver did not distinguish the requested Cell')
    elif self.name=='other12_A_B':
     self.click(a,keys=(0x12,));self.click(b,keys=(0x12,))
-   elif self.name=='plain_A_A':
+   elif self.name in ('plain_A_A','unit_plain_A_A'):
     self.click(a);self.click(a)
-   elif self.name=='plain_A_later_B':
+   elif self.name=='unit_shift_A_A':
+    self.click(a,keys=(0x10,));self.click(a,keys=(0x10,))
+   elif self.name in ('plain_A_later_B','unit_plain_A_later_B'):
     self.click(a);self.frame(self.r(self.bc.FRAME)+1);self.click(b)
+   elif self.name=='unit_shift_A_later_B':
+    self.click(a,keys=(0x10,));self.frame(self.r(self.bc.FRAME)+1);self.click(b,keys=(0x10,))
+   elif self.name in ('unit_owner_mismatch_B','unit_berserk_B','unit_deployed_B',
+       'unit_deploying_B','unit_undeploying_B','unit_deployed_delayed_A'):
+    fields={'unit_owner_mismatch_B':[(0xA83D4C,4,0)],
+        'unit_berserk_B':[(self.actor+0x298,1,1)],
+        'unit_deployed_B':[(self.actor+0x6E0,1,1)],
+        'unit_deploying_B':[(self.actor+0x6E1,1,1)],
+        'unit_undeploying_B':[(self.actor+0x6E2,1,1)],
+        'unit_deployed_delayed_A':[(self.actor+0x6E0,1,1)]}[self.name]
+    if self.name=='unit_deployed_delayed_A':self.click(a,dispatch=False)
+    self.supply_fields(fields,bounds='Literal original-field component prior on stock MTNK; no deployment cycle, query, event, class, path or RNG answer supplied. The delayed control retains the actual emitted Move before changing6E0 and pumping it.')
+    if self.name=='unit_deployed_delayed_A':self.pump()
+    else:self.click(b)
    elif self.name=='archive_A_B':
     self.invoke('original_Archive_SetTarget_CellA_component_prior',0x70C610,self.actor,self.cell(*a))
     self.require(self.r(self.actor+0x218)==self.cell(*a),'Original Archive setter did not retain CellA')
@@ -405,12 +515,7 @@ class GIMoveHistory:
      priors=[(0xA8B238,4,5),(0xA83D4C,4,house),(house+0x1EC,1,0),(house+0x1ED,1,0)]
     elif self.name=='nonDeployer_Doing27_B':priors=[(typ+0xEC8,1,0)]
     else:priors=[(self.actor+0x298,1,1)]
-    supplied=[]
-    for p,n,value in priors:
-     before=bytes(self.u.mem_read(p,n)).hex();self.u.mem_write(p,value.to_bytes(n,'little'))
-     supplied.append(dict(address=p,bytes=n,before=before,after=bytes(self.u.mem_read(p,n)).hex()))
-    self.events.append(dict(sequence=self.next_sequence(),kind='supplied_native_input_context',
-        words=supplied,bounds='Explicit original-field component priors; no native query, event, class or gameplay answer is supplied.'))
+    self.supply_fields(priors,bounds='Explicit original-field component priors; no native query, event, class or gameplay answer is supplied.')
     if 'Doing27' in self.name:
      self.invoke('actual_GI_DoAction_Deploy',0x51D6F0,self.actor,27,1,0)
      self.require(self.ints(self.actor+0x6C4,1)[0]==27,'Original Deploy did not produce Doing27')
@@ -473,17 +578,33 @@ class GIMoveHistory:
     self.require(any(row.get('pc')==0x56DC20 for row in self.events),'Original FNPC was not reached')
     if self.name.endswith('MTNK'):
      self.require(any(row.get('pc')==0x42D170 for row in self.events),'Original code6 path estimate was not reached')
-   elif self.name in ('paid_head_B','paid_head_Stop_B'):
+   elif self.name in ('paid_head_B','paid_head_Stop_B','unit_paid_head_B',
+       'unit_paid_head_Stop_B','unit_paid_head_same_A'):
     self.click(a)
     for i in range(100):
      self.frame(self.r(self.bc.FRAME)+1)
-     self.invoke('whole_original_GI_AI_'+str(i+1),0x51BAB0,self.actor,count=100000000,wall=500000000)
+     self.invoke('whole_original_'+('Unit' if self.unit else 'GI')+'_AI_'+str(i+1),
+         0x7360C0 if self.unit else 0x51BAB0,self.actor,count=100000000,wall=500000000)
      state=self.snapshot()
-     if state['walk']['moving'] and any(state['walk']['head']):break
-    self.require(state['walk']['moving'] and any(state['walk']['head']),'No completed paid-head visit reached')
+     private=state['drive' if self.unit else 'walk']
+     moving=self.invoke('actual_Drive_IsMoving',0x4AFB80,0,self.loco+4)&255 if self.unit else private['moving']
+     if moving and any(private['head']):break
+    self.require(moving and any(private['head']),'No completed paid-head visit reached')
     self.require(not state['tether'] and not any(state['contacts']),'Paid-head visit retains producer contact')
     if self.name=='paid_head_Stop_B':self.invoke('actual_GI_Stop',0x51DAF0,self.actor)
-    self.click(b)
+    if self.name=='unit_paid_head_Stop_B':
+     issued=[row for row in self.events if row.get('kind')=='Event_Construct'][-1]
+     self.require(bytes.fromhex(issued['constructed_event_bytes'])[0]==4,'Original Move event missing')
+     # Reuse the original Move caller's event arena/identity and the existing
+     # original Stop4C65E0/4C6CB0 owner, not GI Stop or a MoveNULL surrogate.
+     event=issued['this'];owner,uid,kind=issued['args'][:3]
+     self.invoke('actual_StopEvent_constructor',0x4C65E0,event,owner,6,uid,kind&255)
+     self.require(self.u.mem_read(event,1)[0]==6,'Original Stop opcode differs')
+     self.invoke('actual_StopEvent_execute',0x4C6CB0,event)
+    self.click(a if self.name=='unit_paid_head_same_A' else b)
+    if self.unit:
+     self.frame(self.r(self.bc.FRAME)+1)
+     self.invoke('whole_original_Unit_AI_after_reissue',0x7360C0,self.actor,count=100000000,wall=500000000)
    else:raise ValueError('Unknown GI native history: '+self.name)
    self.require(not self.pending,'Unreturned recorded original calls')
    self.require(self.f.code_unchanged(),'Original executable code changed')
@@ -496,7 +617,7 @@ class GIMoveHistory:
   changed_cells=[dict(pointer=p,before=raw.hex(),after=bytes(self.u.mem_read(p,0x200)).hex())
       for p,raw in self.map_before.items() if bytes(self.u.mem_read(p,0x200))!=raw]
   map_raw=b''.join(self.map_before[p] for p in self.map_cells)
-  return dict(schema_version=1,status='PASS' if failure is None else 'FAIL',name=self.name,
+  result=dict(schema_version=1,status='PASS' if failure is None else 'FAIL',name=self.name,
       native_code_unchanged=self.f.code_unchanged(),original_gi_allocation=self.initial_actor_allocation,
       initial=self.initial,modifier_defaults=getattr(self,'defaults',None),
       inputs=self.inputs,boundaries=self.boundaries,ordered_calls=self.events,ordered_writes=self.writes,
@@ -505,13 +626,28 @@ class GIMoveHistory:
       raw_advances=self.copy.deepcopy(self.f.advances[self.advance_start:]),
       baseline_map=dict(cells=self.map_cells,bytes=len(map_raw),sha256=self.hashlib.sha256(map_raw).hexdigest(),raw=map_raw.hex()),
       changed_cells=changed_cells,pending_calls=self.pending,failure=failure)
+  if self.unit:
+   result['initial_target_prior']=self.target_prior
+   result['original_actor_arena']=result.pop('original_gi_allocation')
+   result['drive_field_sources']=dict(allocation_bytes=0x70,
+       target_speed_fraction_bits=dict(offset=0x50,bytes=8,writer=0x4B3E00),
+       straight=dict(offset=0x64,bytes=1,constructor_writer=0x4AF5B8),
+       flag_65=dict(offset=0x65,bytes=1,constructor_writer=0x4AF5BB),
+       dword_68=dict(offset=0x68,bytes=4,constructor_writer=0x4AF5BF),
+       bounds='Concrete Drive base offsets. DWORD68 is raw observed state, not the target speed. Whole original112 bytes remain retained.')
+   if hasattr(self,'resolver_map_prior'):result['resolver_map_prior']=self.resolver_map_prior
+  return result
 
 
 GI_HISTORIES=('plain_A_B','shift_A_B','other12_A_B','plain_A_A','plain_A_later_B',
     'paid_head_B','paid_head_Stop_B','attack_same_A','prone_B','prone_A_A','human_Doing27_B','human_Doing27_shift_B',
     'human_Doing27_class_B','current_cell_raw20_B','findpath_existing_idle_MTNK','findpath_existing_GAPILE',
     'archive_A_B','mode5_current_mismatch_B','mode5_current_nonhuman_Doing27_input_class_B',
-    'nonDeployer_Doing27_B','berserk_B')
+    'nonDeployer_Doing27_B','berserk_B','unit_plain_A_B','unit_shift_A_B',
+    'unit_plain_A_A','unit_shift_A_A','unit_plain_A_later_B','unit_shift_A_later_B',
+    'unit_paid_head_B','unit_paid_head_Stop_B','unit_paid_head_same_A',
+    'unit_owner_mismatch_B','unit_berserk_B','unit_deployed_B','unit_deploying_B',
+    'unit_undeploying_B','unit_deployed_delayed_A','unit_shift_outside_playfield_B')
 
 GI_EVIDENCE=Path(__file__).with_name('_walk_first_path')
 
@@ -531,9 +667,28 @@ def project_gi_reissue(result):
  rt.require(result['native_sha256']==rt.metadata()['native_sha256'],'Native binary identity differs')
  def select(value):
   if isinstance(value,dict):
-   if 'actor_raw' in value and 'walk' in value:
+   if value.get('map_address')==0x87F7E8 and 'raw_header' in value:
+    header=bytes.fromhex(value['raw_header'])
+    value=dict(value,map_size=list(struct.unpack_from('<2i',header,0xF4)),
+        local_size=list(struct.unpack_from('<4i',header,0xFC)))
+   if 'actor_raw' in value and ('walk' in value or 'drive' in value):
+    if 'drive' in value:
+     # This literal exemption input remains in the immutable actor bytes;
+     # export it for a bounded class consumer without naming its producer.
+     actor_raw=bytes.fromhex(value['actor_raw'])
+     value=dict(value,raw_techno_2b0=int.from_bytes(actor_raw[0x2B0:0x2B4],'little'))
     value={k:v for k,v in value.items() if k!='actor_raw'}
-    value['walk']={k:v for k,v in value['walk'].items() if k!='raw'}
+    family='drive' if 'drive' in value else 'walk'
+    if family=='walk':value[family]={k:v for k,v in value[family].items() if k!='raw'}
+    else:
+     # Correct the first unregistered receipt's neutral50 label through the
+     # same mechanical selector. No value is recomputed or supplied.
+     private=dict(value['drive']);raw=bytes.fromhex(private['raw'])
+     rt.require(len(raw)==0x70,'Native Drive allocation bytes differ')
+     private.pop('accumulator_50',None)
+     private.update(target_speed_fraction_bits=raw[0x50:0x58].hex(),
+         straight=raw[0x64],flag_65=raw[0x65],dword_68=int.from_bytes(raw[0x68:0x6C],'little'))
+     value['drive']=private
     value['cells']=[{k:v for k,v in cell.items() if k!='raw'} for cell in value['cells']]
    return {k:select(v) for k,v in value.items()}
   if isinstance(value,list):return [select(v) for v in value]
@@ -542,7 +697,7 @@ def project_gi_reissue(result):
  history['inputs']=[{k:v for k,v in row.items() if k not in ('before','after_query','after_click')}
      for row in history['inputs']]
  history['ordered_calls']=[{k:v for k,v in row.items()
-     if row.get('kind')=='GI_SetDestination' or k not in ('before','after','at_ret8','state')}
+     if row.get('kind') in ('GI_SetDestination','Unit_SetDestination') or k not in ('before','after','at_ret8','state')}
      for row in history['ordered_calls']]
  return dict(native_sha256=result['native_sha256'],bootstrap=result['bootstrap'],**select(history))
 
@@ -613,14 +768,15 @@ def gi_reissue(name,assets,*,candidate=False):
  rt.configure_assets(assets)
  rt.require(name in GI_HISTORIES,'Unknown additive GI history')
  def run():
-  return initialized.generate('no_rally',live_continuation=lambda f,final:GIMoveHistory(f,final,name).execute())
+  return initialized.generate('no_rally',live_continuation=lambda f,final:GIMoveHistory(f,final,name).execute(),
+      drive_startup=name.startswith('unit_'))
  if candidate:
   with rt.candidate_helper_profile():original=run()
  else:original=run()
  if original['status']!='PASS':return original
  identity=rt.metadata()['initialized_controls']['no_rally']
  row=original['live_continuation']
- return dict(schema_version=1,status=row['status'],native_sha256=original['native_sha256'],
+ result=dict(schema_version=1,status=row['status'],native_sha256=original['native_sha256'],
      shared_helpers=original['shared_helpers'],
      bootstrap=dict(control='no_rally',complete_primary_native_equal=True,complete_private_native_equal=True,
          complete_primary_native_sha256=identity['complete_primary_sha256'],
@@ -635,6 +791,10 @@ def gi_reissue(name,assets,*,candidate=False):
          'Supplied local scheduling/absolute frames and original selected GI AI only; no display hit test, HWND, complete input/Planning Mode, whole-world/network/save-load parity claim.',
          'Every class boundary records actual51B1DE RET8 and12-byte entry-to-caller cleanup; setter incidental EAX is not an acceptance result.',
          'All Main/Scenario/Mapgen0x3F4 states, requests/advances, all timer words and ordered actor/Walk/Cell/vector/ring writes are retained.'])
+ if name.startswith('unit_'):
+  result['bootstrap']['original_registered_drive_startup']=original['original_registered_drive_startup']
+  result['bounds']=list(original['bounds'])+['Selected native source MTNK, supplied fixture arena; inherited prior Drive is excluded. Whole Unit query/Cell resolver/Move Event/class, original Drive14 and all three streams retained. Unit setter EAX is incidental; actual RET8 and native state establish the boundary.']
+ return result
 
 
 if __name__=='__main__':

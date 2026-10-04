@@ -34,7 +34,7 @@
   },
   "gi_reissue_evidence": {
     "manifest": "_walk_first_path/manifest.json",
-    "sha256": "b90c182f52a7504741de7f0a9bf65570ed1999e42da10adbd7c46e778494a151",
+    "sha256": "eb53699b9766cc3958a132e1f51c1fe5ec442cefaa057afeb4803640544ebd58",
     "histories": [
       "plain_A_B",
       "shift_A_B",
@@ -56,7 +56,23 @@
       "mode5_current_nonhuman_Doing27_input_class_B",
       "prone_A_A",
       "nonDeployer_Doing27_B",
-      "berserk_B"
+      "berserk_B",
+      "unit_plain_A_B",
+      "unit_shift_A_B",
+      "unit_deployed_delayed_A",
+      "unit_paid_head_B",
+      "unit_paid_head_Stop_B",
+      "unit_deployed_B",
+      "unit_shift_outside_playfield_B",
+      "unit_paid_head_same_A",
+      "unit_plain_A_A",
+      "unit_shift_A_A",
+      "unit_plain_A_later_B",
+      "unit_shift_A_later_B",
+      "unit_owner_mismatch_B",
+      "unit_berserk_B",
+      "unit_deploying_B",
+      "unit_undeploying_B"
     ],
     "selector": "walk_first_path.project_gi_reissue",
     "check_scope": "Fresh legacy7setter/3head plus saved raw/source-bound GI selection; selected whole-history replay is --check-gi-reissue",
@@ -66,8 +82,17 @@
       "Default Options4E7E20 keys are executed; configured INI persistence is not established. OS GetKeyState/stdcall cleanup and event wallclock0 remain existing Fixture transport seams.",
       "Structured boundary/class-RET8 state, all three timer words, ordered writes/calls, full vector backing and all three complete RNG states are selected. Full raw actor/Walk/Cell/map and repeated observer snapshots remain in pinned compressed receipts.",
       "Event4C6860 leaves byte+0D and other undeclared bytes untouched. Full111 are retained; selected MegaMission semantic fields are type0, house2, frame3, actor7/B, missionC, targetE/12, destination13/17, follow18/1C, flag1D.",
-      "No display hit testing, HWND, complete configured input/Planning Mode, whole-world scheduler, network/checksum, save-load or Tube incidence parity claim."
+      "No display hit testing, HWND, complete configured input/Planning Mode, whole-world scheduler, network/checksum, save-load or Tube incidence parity claim.",
+      "Additive ordinary stock MTNK controls select existing sourceMTNK after actual7353C0/737BA0 in a supplied4096-byte fixture arena, not a native heap allocation. The delivered-GI and old7+3/29 controls stay unchanged.",
+      "Selected original registered Drive14 runs through7CBED3 before this MTNK constructor, with original math/FPCW/global writes and cdecl SP+4 observed. The separately inherited prior Drive and whole process startup are excluded.",
+      "Unit query7404B0/CellClick738910, actual4DE1D0 resolution, event111 construction/OutList/local DoList and741970 execute. LiteralShift10 alone records ordinary opcode04/Move2/planning0; class flag1 is not queue semantics.",
+      "All five Unit RET8 sites are watched by the shared collector. Original command histories reach743170 or guarded743184 with C20800/SP+12; a class no-op is distinct from Event rejection. Dirty Unit EAX is not an acceptance Bool.",
+      "Concrete Drive112 bytes remain selected: target fraction+50 is distinct from Foot+578 and rawDWORD68. Raw Techno+2B0 is selected mechanically to bound the deployment exemption, without importing an unproven producer.",
+      "Full Main/Scenario/Mapgen buffers, timer raw3words, callbacks/writes and retained GAPOWR target prior stay source-bound. Ordinary free-MTNK component histories exclude whole world/input/map-loader/factory-contact/save-load parity.",
+      "Actual whole UnitAI7360C0 and Drive processing establish a paid head, B/StopEvent6/repeatedA command returns and one continuation. Only prior AI1/frame523 has two Scenario(0,2) requests/three raw advances; command boundaries have zero draws. No whole Rust AI/scheduler parity claim.",
+      "Literal Mode5/currentHouseNULL, Berserk298=1 and separate6E0/6E1/6E2 component priors establish no-order input controls; delayed6E0 establishes the real Event prefix then class refusal. All Unit rows retain rawTechno2B0=0; no deployment producer/stock MTNK incidence or nonzero2B0 coverage is claimed.",
+      "Allocated Cell4,20 with Shift10/action2 reaches actual4DE1D0 and FNPC4,19. Native MapSize16,16/LocalSize0,0,32,32, full header/land/navigation and selected Cell inputs are retained. Every prior r7 selected field equals r8; failed40,20 fixture-prerequisite and31,20 non-distinguishing attempts remain immutable. No arbitrary terrain/shroud/zone/Dummy coverage claim."
     ]
   },
-  "payload_sha256": "ebac715c69694ca9f39b65aa5fc52bf22a7721f4c7f2308e9fbc2c57fd2b90b1"
+  "payload_sha256": "a6503783b89b498df22be7a8647d2c12aec05c89efe8b0b7651288d155c4a298"
 }

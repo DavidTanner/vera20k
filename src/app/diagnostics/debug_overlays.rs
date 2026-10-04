@@ -55,7 +55,8 @@ pub(crate) fn resolve_debug_speed_type(state: &AppState) -> SpeedType {
         return st;
     }
     state
-        .match_state.sim_runtime
+        .match_state
+        .sim_runtime
         .as_ref()
         .map(|rt| &rt.simulation)
         .and_then(|sim| {
@@ -77,7 +78,12 @@ pub(crate) fn build_terrain_cost_overlay_instances(
     sw: f32,
     sh: f32,
 ) -> Vec<SpriteInstance> {
-    let Some(sim) = state.match_state.sim_runtime.as_ref().map(|rt| &rt.simulation) else {
+    let Some(sim) = state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .map(|rt| &rt.simulation)
+    else {
         log::warn!("Terrain cost overlay: no simulation");
         return Vec::new();
     };
@@ -164,7 +170,13 @@ pub(crate) fn build_heightmap_overlay_instances(
     let mut instances: Vec<SpriteInstance> = Vec::with_capacity(2048);
 
     // Find max z for normalization.
-    let max_z: u8 = state.height_map().values().copied().max().unwrap_or(1).max(1);
+    let max_z: u8 = state
+        .height_map()
+        .values()
+        .copied()
+        .max()
+        .unwrap_or(1)
+        .max(1);
 
     // One-shot diagnostic: log bridge_height_map size on first call.
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -182,7 +194,11 @@ pub(crate) fn build_heightmap_overlay_instances(
 
     for (&(rx, ry), &z) in state.height_map() {
         // Bridge cells: render at deck height so the overlay aligns with the bridge surface.
-        let render_z: u8 = state.bridge_height_map().get(&(rx, ry)).copied().unwrap_or(z);
+        let render_z: u8 = state
+            .bridge_height_map()
+            .get(&(rx, ry))
+            .copied()
+            .unwrap_or(z);
         let (sx, sy) = terrain::iso_to_screen(rx, ry, render_z);
         if !in_view(sx, sy, TILE_WIDTH, TILE_HEIGHT, cam_x, cam_y, sw, sh, 60.0) {
             continue;
@@ -308,7 +324,12 @@ pub(crate) fn build_path_overlay_instances(
     sw: f32,
     sh: f32,
 ) -> Vec<SpriteInstance> {
-    let Some(sim) = state.match_state.sim_runtime.as_ref().map(|rt| &rt.simulation) else {
+    let Some(sim) = state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .map(|rt| &rt.simulation)
+    else {
         return Vec::new();
     };
     let cam_x: f32 = state.match_state.input.camera_x;
@@ -327,9 +348,9 @@ pub(crate) fn build_path_overlay_instances(
         if !entity.selected {
             continue;
         }
-        let Some(ref mt) = entity.movement_target else {
+        if entity.movement_target.is_none() {
             continue;
-        };
+        }
         // The Foot+5E0 words from the reference cell; the first is next.
         let path: Vec<(u16, u16)> = entity
             .navigation
@@ -362,8 +383,8 @@ pub(crate) fn build_path_overlay_instances(
                 ..Default::default()
             });
         }
-        // Also draw final_goal if it's not the last path step.
-        if let Some(goal) = mt.final_goal {
+        // Also draw the owner's goal if it's not the last path step.
+        if let Some(goal) = crate::sim::movement::movement_goal_cell(entity) {
             let last = path.last().copied().unwrap_or((0, 0));
             if goal != last {
                 let z: u8 = state

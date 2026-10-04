@@ -597,7 +597,11 @@ fn hills_opposing_ordinary_moves_repath_on_the_deck() {
                 deck_rebuilds += 1;
             }
             previous = queue.clone();
-            assert_eq!(target.final_goal, Some((98, 75)));
+            assert_eq!(target.final_goal, None);
+            assert_eq!(
+                crate::sim::movement::movement_goal_cell(actor),
+                Some((98, 75))
+            );
         }
         if cell == (98, 75) {
             break;

@@ -100,10 +100,7 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
     assert_eq!(accepted.navigation.path_replay.directions, [2, 8]);
     assert_eq!(accepted.navigation.path_replay.remaining_directions(), [8]);
     assert_eq!(accepted.navigation.path_replay.reference_cell, Some((1, 0)));
-    assert_eq!(
-        accepted.movement_target.as_ref().unwrap().final_goal,
-        Some((5, 0))
-    );
+    assert_eq!(movement_goal_cell(accepted), Some((5, 0)));
     assert!(committed_track_head(accepted).is_some());
     assert!(
         accepted
@@ -359,7 +356,8 @@ fn test_drive_queue_command_reissues_destination_without_navqueue_append() {
             .remaining_directions()
             .is_empty()
     );
-    assert_eq!(movement.final_goal, Some((4, 0)));
+    assert_eq!(movement.final_goal, None);
+    assert_eq!(movement_goal_cell(entity), Some((4, 0)));
     assert_eq!(
         entity
             .locomotor
@@ -1218,7 +1216,8 @@ fn gsi_06_02_cross_zone_move_order_is_accepted_without_redirect() {
     );
     let entity = entities.get(1).unwrap();
     let target = entity.movement_target.as_ref().unwrap();
-    assert_eq!(target.final_goal, Some((4, 0)));
+    assert_eq!(target.final_goal, None);
+    assert_eq!(movement_goal_cell(entity), Some((4, 0)));
     assert!(
         entity
             .navigation
@@ -1648,7 +1647,7 @@ fn drive_first_process_route(
     let entity = sim.substrate.entities.get(1).unwrap();
     (
         entity.navigation.path_replay.installed_cells(start),
-        entity.movement_target.as_ref().and_then(|t| t.final_goal),
+        movement_goal_cell(entity),
     )
 }
 
@@ -1676,8 +1675,8 @@ fn test_long_path_truncated_to_24_steps() {
 }
 
 #[test]
-fn test_blocked_repath_uses_final_goal_not_segment_end() {
-    // When blocked mid-segment, repath should target final_goal, not segment end.
+fn test_blocked_repath_preserves_locomotor_destination_beyond_segment_end() {
+    // The locomotor retains the destination beyond the installed path segment.
     let (route, final_goal) = drive_first_process_route((0, 2), (40, 2));
     assert_eq!(final_goal, Some((40, 2)));
     // The segment path ends at (24, 2), but final_goal is (40, 2).
