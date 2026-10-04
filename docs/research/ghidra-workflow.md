@@ -210,13 +210,16 @@ was checked:
   the older one stays primary, and listings and decompiles show it: `vtable_BuildingClass`,
   `vtable_MapClass` and the other map and sidebar layers, and the locomotors'
   `<Class>__ILocomotion_vtable`, `__IUnknown_vtable` and `__IPiggyback_vtable`.
-- `[2026-10-04 VERA-cited names]`: a function the Rust code cites that still had its
-  default `FUN_` name, named from its instructions, callers and receiver; the plate
-  gives the evidence and the citing Rust files. 192 functions were named; 12 of them
-  matched only numbers in the FFmpeg tables of `bink_data.rs`, not a real citation,
-  and are named from their code alone. Ten matched functions have no call, jump or
-  stored pointer anywhere in the image; they keep `FUN_`, and their plates say what
-  the body does. Switch tables the Rust code cites
+- `[2026-10-04 VERA-cited names]`: a function the Rust code cites as a `0x…` or
+  `FUN_…` address that still had its default `FUN_` name, named from its
+  instructions, callers and receiver; the plate gives the evidence and the citing
+  Rust files. 191 functions were named. For 11 of them the only match was a number
+  inside the body from the FFmpeg tables in `bink_data.rs`, not a citation; they are
+  named from their code alone. Eleven matched functions have no call, jump or stored
+  pointer anywhere in the image; they keep `FUN_`, and their plates say what the body
+  does. The scan missed citations written without `0x` (such as
+  `comparison410A40`), so some cited functions are still `FUN_`. Switch tables the
+  Rust code cites
   got a plate listing their cases. Prefixes on functions without a receiver (static
   initializers and helpers such as `Shell__`, `Rmg__` and `Planning__`) are module
   labels, not class claims. The pass is recorded for replay on other copies of the
