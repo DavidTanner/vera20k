@@ -146,7 +146,6 @@ pub(crate) use drive_locomotion::drive_do_turn;
 pub(crate) use drive_locomotion::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 #[cfg(test)]
 pub(crate) use foot_speed::owner_current_speed_from_fraction;
-#[cfg(test)]
 pub(crate) use foot_speed::owner_speed_bonus;
 pub(crate) use foot_speed::{SpeedRules, order_speed, owner_current_speed};
 
