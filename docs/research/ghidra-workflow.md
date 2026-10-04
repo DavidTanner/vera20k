@@ -544,6 +544,13 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   each register and stack slot. A prototype uses convention-derived dynamic storage;
   it cannot express every custom ABI. Keep an unrepresentable native contract qualified
   rather than assign its input to an unsupported register or invent an object receiver.
+- `get_function_variables` mixes stored metadata with decompiler hints. Local
+  `name`, `type` and `storage` come from the database; `is_phantom` depends on whether
+  the current decompile exposes that local name, and controls `needs_type`,
+  `needs_rename` and suggested types/prefixes. A callee signature change can change
+  those hints while every stored local tuple stays identical (checked in 5.14.2 on
+  2026-10-04). Preserve the raw replies, compare stored tuples separately, and check
+  the changed caller's C and native operand flow before admitting the hint changes.
 - A `__thiscall` prototype must declare as many stack bytes as the function's RETs pop.
   `(void)` on a `ret 0xC` function breaks the stack analysis of its callers. A custom
   prototype that declares only `this` makes every direct caller's decompile drop the
