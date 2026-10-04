@@ -10,6 +10,8 @@ execution comparisons, production output/performance and one fresh critic.
 - Worktree `/Users/halvor/.codex/worktrees/procedural-drawing/vera20k`, branch
   `feature/procedural-unit-order-lines`, base `b0b6dafc63750a368e4eee0abc91a1803664a820`
   (main including Infantry destination PR1046, integrated without replacing it).
+  Implementation commit `d5b667327a69b2a2d16578e938cfc8382a0820ed`; subsequent
+  changes only extend final evidence/archive comparisons and documentation.
   The selected ground Unit ordinary Move chain is implemented and has passed
   88 final optimized tests, native CPU/GPU comparisons, full retail lib9671
   passed/239 ignored, Clippy (724 warnings), Python594 passed/5 optional skips,
@@ -21,8 +23,12 @@ execution comparisons, production output/performance and one fresh critic.
   Four corrected Rust regressions pass. The existing speed oracle now preserves
   16 retained rank/order/prefix steps; all75 getter and116 prefix controls remain
   unchanged, and independent speed/destination native checks pass.
-  The final integrated release replays and fresh critic remain;
-  no PR for this chain yet. The whole goal remains open.
+  Final integrated release replays pass:12 Move scenes,5760000 identical pixels
+  and385 observed boundaries; Rally480000pixels/1501boundaries also match.
+  The single fresh critic found no blocking implementation defect. Its P3
+  reproduction-command finding is fixed and the exact module command passes
+  without PYTHONPATH; the stale ground-move owner description is corrected.
+  No PR for this chain yet. The whole goal remains open.
 - Prior factory-rally chain [PR1042](https://github.com/YuriPlanet/vera20k/pull/1042)
   merged at2135df0e33536ab11fddbdcdb8dae3a3b5f316f9. Its native comparisons, production archive,
   performance reports and one critic disposition are in
@@ -84,6 +90,17 @@ Archive: `tools/procedural_drawing_oracle/unit-move-production-validation/`.
 The current release also reproduces every480000pixel and1501state boundary of
 retained rally v4; see `validation/unit-move-rally-consumer.json`.
 
+Final release v2 was built from clean implementation commitd5b667327 (57.82s).
+Executable SHA776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5.
+All12 original scenes replay exactly through the ordinary renderer and real input
+gestures; the archive now retains both sets (192gzip files). Each pair passes
+the shared map-observation comparator, including input bytes, diagnostic clock,
+atlas, final frame and all385 state boundaries. Active/stopped/reselected/arrived
+frames were visually inspected. The final rally replay matches v4 completely.
+Logs, manifest and comparator results: `validation/unit-move-checks/receipt.json`.
+Initial capture-wrapper errors concerned a missing ignored output parent and
+launched no child; creating that directory was the only repair, with errors saved.
+
 Performance: native opaque composition in Techno order reduces the20k overlapping
 Move stress from979995spans/121519380bytes to63spans/7812bytes. Mean CPUbuild
 14.422→8.266ms; CPUstaging10.939→0.025ms; completionwall27.244→1.538ms (AppleM4,
@@ -98,8 +115,10 @@ extended archive replay comparator passes6 focused controls. Its final-candidate
 mode retains the twelve original native-bound captures plus twelve new complete
 frame/state replays, rather than silently replacing the original observations.
 
-Required next: final release replays; one fresh read-only critic, fix confirmed defects, publish
-and integrate the coherent Move chain. Then proceed to selected Unit Attack
+The single fresh read-only critic and owner disposition are retained in
+`tools/procedural_drawing_oracle/validation/unit-move-review.md`. No runtime
+changes were needed after validation. Required next: publish and integrate
+the coherent Move chain. Then proceed to selected Unit Attack
 anchors and their required consumers. Planning, other Foot paths and the wider
 procedural census remain required; documenting them does not close this goal.
 
@@ -142,8 +161,9 @@ issue [1037](https://github.com/YuriPlanet/vera20k/issues/1037) remains open.
   Source/evidence freeze is required. Use the narrowest useful check; no baseline
   full suite. Platform workflows are manual and not requested; only ratchet is an
   automatic merge requirement.
-- Next: build the final release and run the new captures through the existing
-  observation/archive owners, then one fresh critic and publication.
+- Keep both Move v1 (original native-bound captures) andv2 (final candidate)
+  labels as active evidence; do not retire either or their original runs.
+- Next: publish the reviewed Move chain. Final archive and Python rechecks pass.
 
 ## Whole-scope residuals
 

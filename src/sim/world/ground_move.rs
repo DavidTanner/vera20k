@@ -1,7 +1,8 @@
 //! Ground move orders: the path-search inputs an order's move reads.
 //!
-//! Command orders, pursuing and resumed orders, miners, ejected passengers
-//! and the factory rally give a ground mover its destination through
+//! Pursuing and resumed orders, miners, ejected passengers, the factory rally
+//! and command routes without a direct class dispatch give a ground mover its
+//! destination through
 //! [`Simulation::issue_ground_move`]: the blocker plane and, where the site
 //! asks for them, the mover's owner block sets, then
 //! `issue_move_command_with_destination`. Both come from the products the
@@ -9,7 +10,10 @@
 //! (`MovementPassCache`). Each equals a whole-world build from the entities,
 //! terrain, overlays, alliances and rules at this point of the frame; debug
 //! builds compare the two on every read. Scatter, air and other direct moves
-//! do not come through here. A Walk infantryman takes the existing Infantry
+//! do not come through here. Ordinary represented Unit Move dispatches directly
+//! to `set_unit_destination` in `world_commands`, preserving its repeated-NavCom
+//! admission before any path-search inputs are acquired. A Walk infantryman
+//! takes the existing Infantry
 //! destination owner, including repeated and queued requests; its first
 //! Process owns the path search. A mover on Teleport takes
 //! its class setter instead of a route: no pass moves a Teleport owner. A

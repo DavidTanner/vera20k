@@ -10,7 +10,7 @@ Run from the repository root with the native-oracle environment described in
 [`../native_oracle.md`](../native_oracle.md):
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python tools/procedural_drawing_oracle/action_lines.py --check
+PYTHONDONTWRITEBYTECODE=1 python -m tools.procedural_drawing_oracle.action_lines --check
 ```
 
 `--write` deliberately regenerates both payload and metadata. No native

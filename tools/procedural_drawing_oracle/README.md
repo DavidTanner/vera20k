@@ -34,7 +34,7 @@ compare directly with original native pixels. The optimized focused run passed
 checks. Full-candidate validation is recorded in the checkpoint.
 
 The [portable production archive](unit-move-production-validation/receipt.json)
-contains 12 normal release XMP03T4 captures on Apple M4/Metal. Real local mouse
+contains 12 normal release XMP03T4 scenes and their12 final release replays on Apple M4/Metal. Real local mouse
 gestures exercise selection, Move, last-active/expired frames, reselection and
 empty bands. Ordinary Stop and arrival exercise NavCom cleanup. Every native
 opaque store matches the final frame. The matched-time Move, Stop and reselection
@@ -42,6 +42,10 @@ pairs compare all 480000 pixels, changing only 165, 165 and 151 native stores.
 After arrival, reselection leaves all 358976 tactical pixels identical; its click
 resets the separate sidebar tooltip. These are prepared native inputs bound to
 captured state, not native whole-Scenario or whole-frame emulation.
+The final executable (`776a416b…`, clean source `d5b667327`) reproduces all
+5760000 captured frame pixels and385 observed boundaries. The observation
+owner independently checks sealed input bytes, diagnostic clock and atlas;
+portable rechecks validate the retained bytes and scoped pixel/state results.
 
 ```sh
 python -m tools.procedural_drawing_oracle.action_lines --check
@@ -53,6 +57,9 @@ The [rally consumer check](validation/unit-move-rally-consumer.json) compares th
 new release with the retained rally v4: all 480000 frame pixels and 1501 state
 boundaries are identical. Original capture directories and labeled binaries remain
 with the build/capture owners; no extra executable was copied into this packet.
+The final v2 release repeats that exact result; its shared-owner comparison and
+the build/native/Rust/Python output are preserved in
+[`validation/unit-move-checks`](validation/unit-move-checks/receipt.json).
 
 Dense selections compose native opaque stores into a temporary logical pixel
 grid in forward Techno order, then emit disjoint row spans. Small selections keep
@@ -69,6 +76,9 @@ The [final integrated run](validation/action-line-workload-final.json) retains
 the same63 spans/7812 bytes: CPU construction8.541ms, staging0.022ms and
 completion1.533ms. Full retail lib9671 passed/239 ignored, Clippy passed,
 Python594 passed/5 optional skips, and the field ratchet remained2505/2505.
+The [single fresh critic](validation/unit-move-review.md) found no blocking
+implementation defect. Its reproduction-command finding and the stale command
+owner description are corrected; the exact module command passes without PYTHONPATH.
 
 The implementation cites [WGSL pixel-center semantics](https://www.w3.org/TR/WGSL/#builtin-values-position)
 for scaling native logical pixels. The version-matched

@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 import tempfile
 
-from tools.map_observation import validate_capture, validate_run
+from tools.map_observation import compare_runs, validate_capture, validate_run
 
 
 HERE = Path(__file__).resolve().parent
@@ -380,6 +380,15 @@ def record(root: Path, archive: Path, final_candidate: str | None = None, family
         captures.append((document(run / 'child-output/capture.json'),
                          (run / 'child-output/frame.bgra').read_bytes()))
         capture_hashes.append(digest((run / 'child-output/capture.json').read_bytes()))
+    if family == 'unit-move' and final_candidate:
+        # The observation owner checks original executable/input bytes and
+        # the full diagnostic clock/atlas policy before these portable frame
+        # and state comparisons are retained. Do not fork that live protocol.
+        for name in action_cases():
+            compared = compare_runs(root / name, root / final_candidate / name)
+            check(compared['status'] == 'MATCH',
+                  f'{name}: final observation comparison failed: '
+                  f'{compared["errors"]} {compared["differences"]}')
     result = compare_family(family, captures, capture_hashes)
     archive.mkdir(parents=True)
     for name in runs:

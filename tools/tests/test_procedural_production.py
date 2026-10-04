@@ -22,9 +22,19 @@ class UnitMoveProductionTests(unittest.TestCase):
             cls.captures.append((json.loads(raw), pixels))
             cls.hashes.append(production.digest(raw))
         cls.receipt = production.document(archive / 'receipt.json')
+        cls.final_captures, cls.final_hashes = [], []
+        if cls.receipt.get('final_candidate'):
+            candidate = archive / cls.receipt['final_candidate_run']
+            for name in cls.cases:
+                raw = gzip.decompress((candidate / name / 'child-output/capture.json.gz').read_bytes())
+                pixels = gzip.decompress((candidate / name / 'child-output/frame.bgra.gz').read_bytes())
+                cls.final_captures.append((json.loads(raw), pixels))
+                cls.final_hashes.append(production.digest(raw))
 
     def test_retained_native_stores_and_real_input_controls(self):
-        self.assertEqual(production.compare_action(self.captures, self.hashes),
+        self.assertEqual(production.compare_family('unit-move',
+                                                  self.captures + self.final_captures,
+                                                  self.hashes + self.final_hashes),
                          self.receipt['comparison'])
 
     def test_original_pixel_mismatch_cannot_pass_on_receipt_hashes_alone(self):

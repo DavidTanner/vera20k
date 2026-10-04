@@ -352,16 +352,102 @@
       "Every native opaque line store matches RGB565. Three matched-time controls check all 480000 pixels; arrival/reselection matches all 358976 tactical pixels and differs only in the observed sidebar tooltip.",
       "Captured nonshift fresh Move starts with an empty NavQueue and executes native clear_queue1; queue absence and flat-ground source equivalence use the traced production owners, not an extra diagnostic state copy.",
       "The existing last60-frame wall mean includes simulation, observation and pacing. Short captures include startup; no GPU-duration or ordinary-play FPS claim."
-    ]
+    ],
+    "final_candidate": {
+      "unit-move-active-v1": {
+        "capture_sha256": "3dc1e42c0e9d082a9c87cff4fb9997becc085349003966a2b7cb12bfa65b10af",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "455b8456235da85a13ff00ccfee4201a5479fcb64114f0a2e3fb00a4149c24b6",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 7
+      },
+      "unit-selected-only-v1": {
+        "capture_sha256": "a93a758a7600d9159c7098cd4bf98b8f3532d6e3b90c11d511031d5a4ac29f2a",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "02a759640488fd6bc51185b5d368b78dedc26913a040e35b31e89fb8b851a5f0",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 7
+      },
+      "unit-move-before-stop-v1": {
+        "capture_sha256": "7a778a3f4b03d92ff35aa332b6bf39d92c97960a337a4147296c6a8bb38e6c54",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "5746e7a050b5304124dc29f6c02f31b1c71fa03510ccffd8c7c2a8c0e3aa7a1a",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 8
+      },
+      "unit-move-stopped-v1": {
+        "capture_sha256": "31941f329d583368291a1d1780f4354d8f5e940fcc32c03bdbb6e559abec6ea7",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "d80670eaf9b1754f5c73816c3d626082ebc699da5c8f4f98c291355248aa1977",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 8
+      },
+      "unit-move-last-active-v1": {
+        "capture_sha256": "c57c7bb2fa54482efb6f20335157cf17459674a19bb7be3fa7ece6dad62c448f",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "d015dd29b61bb500f83811712cf6162d0b642a7e6e51e77667c255c7f2c762ee",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 30
+      },
+      "unit-move-expired-v1": {
+        "capture_sha256": "539ff1057bab843c0fa6613260f422c68c357428908605cbb2567631f62ddd05",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "91ef1e5759ed2dffc55d0dfcab83a3da55654ec4b67557398b187de8ae77e54c",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 31
+      },
+      "unit-move-expired-next-v1": {
+        "capture_sha256": "e84c7e5535872638c35ec915ae285d53e6251f1029abce5f07829458ad46c93a",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "2772b4f632589bf81fef500170156faa0cec9765f264d48e5b1e4f36b4cf696d",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 32
+      },
+      "unit-move-reselect-v1": {
+        "capture_sha256": "8b0c0c3e7fd1cd9446a0f7761dbaa764b3de63b3b084c01dbe827cd72890e1e7",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "2af20da1da22fa9a9dce3c321e46180430ff75e64502e37fec692420c135bcfb",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 32
+      },
+      "empty-band-unselected-v1": {
+        "capture_sha256": "5929a3ce6dc1bae2dfefe42668194315ac78f7a9191e7c3c3b6237d358ec05f8",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "85c471ebcd7c0405a0681f28d01de812577f6719096318cd6593fc08bcc95e03",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 6
+      },
+      "unit-move-empty-band-restart-v1": {
+        "capture_sha256": "91ece240086dce2df765a40757b2c5390d2e6757710d2237695ff267991b9bc9",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "1dd6906e848ff04eb94b2e0dba5995187302090645471bd22bdb03a6a5b94a8c",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 32
+      },
+      "unit-move-arrived-control-v1": {
+        "capture_sha256": "afd2af5f214b799d477c2f530dbc0bc427cd858a81645eb0be535c58922226e1",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "7e3978dd5a2080a5e5a0649b7bf83dcdd2fe7c1c317acd91c6c1987011a92913",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 96
+      },
+      "unit-move-arrived-reselect-v1": {
+        "capture_sha256": "f0b1f75d88e315877c16e90b7ac4f53b0e41fb179e7e9a5c0e73745f0bb0a7f6",
+        "executable_sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5",
+        "identical_frame_sha256": "1ba8eb4e6e9dca6ee61b1467e3a34be0e399619a91af2d5b1e928ac813c30eb0",
+        "compared_frame_pixels": 480000,
+        "state_boundaries": 96
+      }
+    }
   },
   "family": "unit-move",
-  "final_candidate": false,
-  "final_candidate_run": null,
+  "final_candidate": true,
+  "final_candidate_run": "unit-move-final-v2",
   "live_run_validations": {
     "unit-move-active-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.521225Z",
+      "checked_at_utc": "2026-10-04T01:27:22.406913Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -474,7 +560,7 @@
     "unit-selected-only-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.558636Z",
+      "checked_at_utc": "2026-10-04T01:27:22.441091Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -587,7 +673,7 @@
     "unit-move-before-stop-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.595066Z",
+      "checked_at_utc": "2026-10-04T01:27:22.475353Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -700,7 +786,7 @@
     "unit-move-stopped-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.632632Z",
+      "checked_at_utc": "2026-10-04T01:27:22.510080Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -813,7 +899,7 @@
     "unit-move-last-active-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.678423Z",
+      "checked_at_utc": "2026-10-04T01:27:22.553896Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -926,7 +1012,7 @@
     "unit-move-expired-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.727026Z",
+      "checked_at_utc": "2026-10-04T01:27:22.600941Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -1039,7 +1125,7 @@
     "unit-move-expired-next-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.775476Z",
+      "checked_at_utc": "2026-10-04T01:27:22.645738Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -1152,7 +1238,7 @@
     "unit-move-reselect-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.825066Z",
+      "checked_at_utc": "2026-10-04T01:27:22.691291Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -1265,7 +1351,7 @@
     "empty-band-unselected-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.861926Z",
+      "checked_at_utc": "2026-10-04T01:27:22.725189Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -1378,7 +1464,7 @@
     "unit-move-empty-band-restart-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.908130Z",
+      "checked_at_utc": "2026-10-04T01:27:22.768471Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -1491,7 +1577,7 @@
     "unit-move-arrived-control-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:07.984484Z",
+      "checked_at_utc": "2026-10-04T01:27:22.841559Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -1604,7 +1690,7 @@
     "unit-move-arrived-reselect-v1": {
       "schema_version": "vera20k.map-observation-validation.v1",
       "status": "VALID",
-      "checked_at_utc": "2026-10-04T00:28:08.065451Z",
+      "checked_at_utc": "2026-10-04T01:27:22.918122Z",
       "errors": [],
       "native_comparator": "NONE",
       "parity_certification": "NONE",
@@ -1697,6 +1783,1362 @@
           556.0
         ],
         "frame_wall_mean_ms": 8.364066123962402,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-move-active-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:22.957057Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-active-v1/run.json",
+        "byte_length": 113646,
+        "sha256": "bcdff7fe8ed8272e3da3575224c055f6b50b16445efd043110b0c5a862098c39"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3517,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-active-v1/profile.json",
+          "sha256": "40867e4e969354b30a2c9236f80b948947f0defda39d87fda46394a3c8a9e5f1"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-active-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-active-v1/child-output/capture.json",
+          "byte_length": 115920,
+          "sha256": "3dc1e42c0e9d082a9c87cff4fb9997becc085349003966a2b7cb12bfa65b10af"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-active-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "455b8456235da85a13ff00ccfee4201a5479fcb64114f0a2e3fb00a4149c24b6"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 6,
+          "deterministic_state_hash": 15721322421228552929,
+          "simulation_tick": 6,
+          "total_simulation_ms": 132
+        },
+        "exact_step_count": 6,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 1039.380859375,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-selected-only-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:22.990598Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-selected-only-v1/run.json",
+        "byte_length": 113051,
+        "sha256": "343f044f45450eea7222b3dc25f1ced96c029b529815225f4693827ec27a0e53"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3362,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-selected-only-v1/profile.json",
+          "sha256": "48da7a40346d761afe1cde0a828f6d00c02e9729118f13ad0f8952ab1ab00567"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-selected-only-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-selected-only-v1/child-output/capture.json",
+          "byte_length": 115240,
+          "sha256": "a93a758a7600d9159c7098cd4bf98b8f3532d6e3b90c11d511031d5a4ac29f2a"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-selected-only-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "02a759640488fd6bc51185b5d368b78dedc26913a040e35b31e89fb8b851a5f0"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 6,
+          "deterministic_state_hash": 16537761440620215398,
+          "simulation_tick": 6,
+          "total_simulation_ms": 132
+        },
+        "exact_step_count": 6,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 885.8060302734375,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-move-before-stop-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:23.024234Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-before-stop-v1/run.json",
+        "byte_length": 124278,
+        "sha256": "f459eb5274d31cae54d55bc1836334da346aa223615026b12ee983ed890baef8"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3517,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-before-stop-v1/profile.json",
+          "sha256": "25d6bd225c3ab37e380f2d6b0e2f6417eebab31796fe3ffa4b561bc96488fe2e"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-before-stop-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-before-stop-v1/child-output/capture.json",
+          "byte_length": 126517,
+          "sha256": "7a778a3f4b03d92ff35aa332b6bf39d92c97960a337a4147296c6a8bb38e6c54"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-before-stop-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "5746e7a050b5304124dc29f6c02f31b1c71fa03510ccffd8c7c2a8c0e3aa7a1a"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 7,
+          "deterministic_state_hash": 8582076721799337990,
+          "simulation_tick": 7,
+          "total_simulation_ms": 154
+        },
+        "exact_step_count": 7,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 765.5407104492188,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-move-stopped-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:23.058108Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-stopped-v1/run.json",
+        "byte_length": 124378,
+        "sha256": "5cab3a40644cafcdd9e803b90d44a0755c1f80ae20df18d62133ecd2f4c7a092"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3676,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-stopped-v1/profile.json",
+          "sha256": "c6f19895938cdc6e7358b2cfd5e1f59fed97f99696293b1048b846ad1a049ff7"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-stopped-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-stopped-v1/child-output/capture.json",
+          "byte_length": 126729,
+          "sha256": "31941f329d583368291a1d1780f4354d8f5e940fcc32c03bdbb6e559abec6ea7"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-stopped-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "d80670eaf9b1754f5c73816c3d626082ebc699da5c8f4f98c291355248aa1977"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 7,
+          "deterministic_state_hash": 10851154840207813238,
+          "simulation_tick": 7,
+          "total_simulation_ms": 154
+        },
+        "exact_step_count": 7,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 799.0755615234375,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-move-last-active-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:23.101969Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-last-active-v1/run.json",
+        "byte_length": 357614,
+        "sha256": "7f2ec2fb14af2dc2cc9498a717d0bc3ccd35aa3995c3e1cc8da59be5f92702d3"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3518,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-last-active-v1/profile.json",
+          "sha256": "be74112bd0f7cbb5fa4a7239282a6c076fef727e942dad7755cddd85dc79db3f"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-last-active-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-last-active-v1/child-output/capture.json",
+          "byte_length": 359858,
+          "sha256": "c57c7bb2fa54482efb6f20335157cf17459674a19bb7be3fa7ece6dad62c448f"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-last-active-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "d015dd29b61bb500f83811712cf6162d0b642a7e6e51e77667c255c7f2c762ee"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 29,
+          "deterministic_state_hash": 10191880927913229555,
+          "simulation_tick": 29,
+          "total_simulation_ms": 638
+        },
+        "exact_step_count": 29,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 226.58355712890625,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-move-expired-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:23.146871Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-expired-v1/run.json",
+        "byte_length": 368201,
+        "sha256": "96c19efc0e32c3c328551efb17f8864dbea56c8e237a207840eb8ec7c3d48257"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3518,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-expired-v1/profile.json",
+          "sha256": "d139967b26f806cf9499b946a227b82e94d28a67c2f7b9e778b20770d579071b"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-expired-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-expired-v1/child-output/capture.json",
+          "byte_length": 370473,
+          "sha256": "539ff1057bab843c0fa6613260f422c68c357428908605cbb2567631f62ddd05"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-expired-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "91ef1e5759ed2dffc55d0dfcab83a3da55654ec4b67557398b187de8ae77e54c"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 30,
+          "deterministic_state_hash": 12761253370621307083,
+          "simulation_tick": 30,
+          "total_simulation_ms": 660
+        },
+        "exact_step_count": 30,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 267.8190002441406,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-move-expired-next-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:23.192530Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-expired-next-v1/run.json",
+        "byte_length": 378852,
+        "sha256": "72efed06477ae2c646f9dde0fd13d7fb8ce7b8beb611aa8536015022eaace333"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3518,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-expired-next-v1/profile.json",
+          "sha256": "31fbc11c173fc5f13dbce593c63df2e80aac16a04a106b8622ec1e1393eeada2"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-expired-next-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-expired-next-v1/child-output/capture.json",
+          "byte_length": 381089,
+          "sha256": "e84c7e5535872638c35ec915ae285d53e6251f1029abce5f07829458ad46c93a"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-expired-next-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "2772b4f632589bf81fef500170156faa0cec9765f264d48e5b1e4f36b4cf696d"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 31,
+          "deterministic_state_hash": 12119609329059706285,
+          "simulation_tick": 31,
+          "total_simulation_ms": 682
+        },
+        "exact_step_count": 31,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 221.7771759033203,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-move-reselect-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:23.237639Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-reselect-v1/run.json",
+        "byte_length": 379397,
+        "sha256": "7fd528d18f5080538676632bc616d408047d8fcd15d7cdb17fa5e19d37fa595f"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3674,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-reselect-v1/profile.json",
+          "sha256": "8626b70f5a9d908d75e6586ded5e8aea047618c7a0e5aeb8bff566a8f0488141"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-reselect-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-reselect-v1/child-output/capture.json",
+          "byte_length": 381734,
+          "sha256": "8b0c0c3e7fd1cd9446a0f7761dbaa764b3de63b3b084c01dbe827cd72890e1e7"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-reselect-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "2af20da1da22fa9a9dce3c321e46180430ff75e64502e37fec692420c135bcfb"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 31,
+          "deterministic_state_hash": 12119609329059706285,
+          "simulation_tick": 31,
+          "total_simulation_ms": 682
+        },
+        "exact_step_count": 31,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 214.60519409179688,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/empty-band-unselected-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:23.271820Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/empty-band-unselected-v1/run.json",
+        "byte_length": 102397,
+        "sha256": "f814e02804222b3fdb05000f608cbc34cad67f661f20b4ade208310e017908e6"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3412,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/empty-band-unselected-v1/profile.json",
+          "sha256": "3ac2aeac211bb79a06b70b70d3e54840c864a3956a3cf4a55e924d6beb4b3b65"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/empty-band-unselected-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/empty-band-unselected-v1/child-output/capture.json",
+          "byte_length": 104574,
+          "sha256": "5929a3ce6dc1bae2dfefe42668194315ac78f7a9191e7c3c3b6237d358ec05f8"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/empty-band-unselected-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "85c471ebcd7c0405a0681f28d01de812577f6719096318cd6593fc08bcc95e03"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 5,
+          "deterministic_state_hash": 12315133237830324807,
+          "simulation_tick": 5,
+          "total_simulation_ms": 110
+        },
+        "exact_step_count": 5,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 1157.59521484375,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-move-empty-band-restart-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:23.315779Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-empty-band-restart-v1/run.json",
+        "byte_length": 379496,
+        "sha256": "db358336aa6dfff1049cca1f8935171b27889024d2efc8c4e3813ca11b4f3252"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3724,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-empty-band-restart-v1/profile.json",
+          "sha256": "80db2aca17fbaab27e99ed807349b18863830e8489bc2b70d3fd72b1f68587cc"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-empty-band-restart-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-empty-band-restart-v1/child-output/capture.json",
+          "byte_length": 381772,
+          "sha256": "91ece240086dce2df765a40757b2c5390d2e6757710d2237695ff267991b9bc9"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-empty-band-restart-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "1dd6906e848ff04eb94b2e0dba5995187302090645471bd22bdb03a6a5b94a8c"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 31,
+          "deterministic_state_hash": 4965295334306636632,
+          "simulation_tick": 31,
+          "total_simulation_ms": 682
+        },
+        "exact_step_count": 31,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 266.0790710449219,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-move-arrived-control-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:23.388340Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-arrived-control-v1/run.json",
+        "byte_length": 1058437,
+        "sha256": "81646dcf7fdb4bae16393d167d8dbce7f131b697695316a6774a2a42d2213e70"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3518,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-arrived-control-v1/profile.json",
+          "sha256": "0175a0d69739b46662405f2165f1c76674e3beb2e79f7f71f1242269f3d6e0a4"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-arrived-control-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-arrived-control-v1/child-output/capture.json",
+          "byte_length": 1060652,
+          "sha256": "afd2af5f214b799d477c2f530dbc0bc427cd858a81645eb0be535c58922226e1"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-arrived-control-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "7e3978dd5a2080a5e5a0649b7bf83dcdd2fe7c1c317acd91c6c1987011a92913"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 95,
+          "deterministic_state_hash": 3874980843601270300,
+          "simulation_tick": 95,
+          "total_simulation_ms": 2090
+        },
+        "exact_step_count": 95,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 8.722851753234863,
+        "neutral_input": {
+          "camera_input_idle": true,
+          "static_default_cursor": true
+        },
+        "camera": {
+          "requested_cell": [
+            28,
+            88
+          ],
+          "top_left": [
+            -2100.0,
+            1426.0
+          ],
+          "zoom": 1.0
+        }
+      }
+    },
+    "unit-move-final-v2/unit-move-arrived-reselect-v1": {
+      "schema_version": "vera20k.map-observation-validation.v1",
+      "status": "VALID",
+      "checked_at_utc": "2026-10-04T01:27:23.475673Z",
+      "errors": [],
+      "native_comparator": "NONE",
+      "parity_certification": "NONE",
+      "run": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-arrived-reselect-v1/run.json",
+        "byte_length": 1059016,
+        "sha256": "013aa5caf00d8ae34acdca361dc18536da750f62dc2b3079355c119494cacfed"
+      },
+      "inputs": {
+        "profile": {
+          "byte_length": 3674,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-arrived-reselect-v1/profile.json",
+          "sha256": "83572ac0b01abd5c75aa521600859949e0e9180d41fe2f86fc25bbee07e8c9da"
+        },
+        "config": {
+          "byte_length": 596,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+          "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+        },
+        "contract": {
+          "byte_length": 590,
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-arrived-reselect-v1/contract.json",
+          "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+        },
+        "executable": {
+          "byte_length": 31859792,
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+          "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+        }
+      },
+      "input_provenance": {
+        "profile": "SEALED_COPY",
+        "config": "SEALED_COPY",
+        "contract": "SEALED_COPY",
+        "executable": "EXTERNALLY_REVALIDATED"
+      },
+      "capture": {
+        "manifest": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-arrived-reselect-v1/child-output/capture.json",
+          "byte_length": 1061296,
+          "sha256": "f0b1f75d88e315877c16e90b7ac4f53b0e41fb179e7e9a5c0e73745f0bb0a7f6"
+        },
+        "frame": {
+          "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/unit-move-final-v2/unit-move-arrived-reselect-v1/child-output/frame.bgra",
+          "byte_length": 1920000,
+          "sha256": "1ba8eb4e6e9dca6ee61b1467e3a34be0e399619a91af2d5b1e928ac813c30eb0"
+        },
+        "map_source": {
+          "entry_id": -854728974,
+          "kind": "mix",
+          "logical_name": "XMP03T4.MAP",
+          "payload_len": 156269,
+          "source_archive": "multimd.mix",
+          "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+        },
+        "initial": {
+          "binary_frame": 0,
+          "deterministic_state_hash": 3115043356402336864,
+          "simulation_tick": 0,
+          "total_simulation_ms": 0
+        },
+        "final": {
+          "binary_frame": 95,
+          "deterministic_state_hash": 3874980843601270300,
+          "simulation_tick": 95,
+          "total_simulation_ms": 2090
+        },
+        "exact_step_count": 95,
+        "unit_atlas": {
+          "last_build_rasterized_sprite_count": 18432,
+          "pages": [
+            {
+              "dimension": "D2",
+              "extent": [
+                6293,
+                6366,
+                1
+              ],
+              "format": "R8Uint",
+              "mip_level_count": 1,
+              "sample_count": 1,
+              "texel_payload_bytes": 40061238
+            }
+          ],
+          "resident_sprite_count": 18432,
+          "total_texel_payload_bytes": 40061238
+        },
+        "cursor_position": [
+          720.0,
+          556.0
+        ],
+        "frame_wall_mean_ms": 9.516261100769043,
         "neutral_input": {
           "camera_input_idle": true,
           "static_default_cursor": true
@@ -2192,6 +3634,486 @@
       "gzip_sha256": "f90e5e1a942f8a52e0caee81cc495b0a5fd424cc0b36e37c4c4c099272632580"
     },
     "unit-move-arrived-reselect-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "1ba8eb4e6e9dca6ee61b1467e3a34be0e399619a91af2d5b1e928ac813c30eb0",
+      "gzip_sha256": "fa503d2af0ddc5d9e0f80c7b6122b8454c6332e8fa5d9c765d314866738e80cf"
+    },
+    "unit-move-final-v2/unit-move-active-v1/run.json.gz": {
+      "bytes": 113646,
+      "sha256": "bcdff7fe8ed8272e3da3575224c055f6b50b16445efd043110b0c5a862098c39",
+      "gzip_sha256": "ff0e799986acee9c5ebbf22815d08809e69193da9089a5f1f9a71118b347d2a2"
+    },
+    "unit-move-final-v2/unit-move-active-v1/profile.json.gz": {
+      "bytes": 3517,
+      "sha256": "40867e4e969354b30a2c9236f80b948947f0defda39d87fda46394a3c8a9e5f1",
+      "gzip_sha256": "8d7fb58867ffec1717ee4d14593b9ce4dbc171e56268009b0ab40e9aaf54b496"
+    },
+    "unit-move-final-v2/unit-move-active-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-move-active-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-move-active-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-move-active-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-move-active-v1/child-output/capture.json.gz": {
+      "bytes": 115920,
+      "sha256": "3dc1e42c0e9d082a9c87cff4fb9997becc085349003966a2b7cb12bfa65b10af",
+      "gzip_sha256": "4babe937cf99b654b49e7a59897b9f17aa9f9779c50cd43a3a9c9722967a58d6"
+    },
+    "unit-move-final-v2/unit-move-active-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "455b8456235da85a13ff00ccfee4201a5479fcb64114f0a2e3fb00a4149c24b6",
+      "gzip_sha256": "244baa1fceab9049c191c0ab49dc18c1d1f08785b22a52092bd4a79591b4436f"
+    },
+    "unit-move-final-v2/unit-selected-only-v1/run.json.gz": {
+      "bytes": 113051,
+      "sha256": "343f044f45450eea7222b3dc25f1ced96c029b529815225f4693827ec27a0e53",
+      "gzip_sha256": "8b9425d262bf91b2cb5e8ed78070c4253308906581c3eb3b5f8c06021e9b6251"
+    },
+    "unit-move-final-v2/unit-selected-only-v1/profile.json.gz": {
+      "bytes": 3362,
+      "sha256": "48da7a40346d761afe1cde0a828f6d00c02e9729118f13ad0f8952ab1ab00567",
+      "gzip_sha256": "f93632de327bc86da8de3956fedd42ddc98956a31eb622bfd992a2bd4e7bea82"
+    },
+    "unit-move-final-v2/unit-selected-only-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-selected-only-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-selected-only-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-selected-only-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-selected-only-v1/child-output/capture.json.gz": {
+      "bytes": 115240,
+      "sha256": "a93a758a7600d9159c7098cd4bf98b8f3532d6e3b90c11d511031d5a4ac29f2a",
+      "gzip_sha256": "a5402a9ab6e0ed06af1be69fb36fb8e05971aec0e86ed4044393067fcf4536de"
+    },
+    "unit-move-final-v2/unit-selected-only-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "02a759640488fd6bc51185b5d368b78dedc26913a040e35b31e89fb8b851a5f0",
+      "gzip_sha256": "2c8039e1bdc777e94cf27c6bb5e70dd3d9347ff8975d032812a6ce78e485af7b"
+    },
+    "unit-move-final-v2/unit-move-before-stop-v1/run.json.gz": {
+      "bytes": 124278,
+      "sha256": "f459eb5274d31cae54d55bc1836334da346aa223615026b12ee983ed890baef8",
+      "gzip_sha256": "a29a18bd047cc3919ad95667c03f1a71ccff393e1aff694233b00b81e1628538"
+    },
+    "unit-move-final-v2/unit-move-before-stop-v1/profile.json.gz": {
+      "bytes": 3517,
+      "sha256": "25d6bd225c3ab37e380f2d6b0e2f6417eebab31796fe3ffa4b561bc96488fe2e",
+      "gzip_sha256": "e2d0000f37d211e36c4c7bbef1be3f88d44cd5493a27458fc1f3c662bf036b5c"
+    },
+    "unit-move-final-v2/unit-move-before-stop-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-move-before-stop-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-move-before-stop-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-move-before-stop-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-move-before-stop-v1/child-output/capture.json.gz": {
+      "bytes": 126517,
+      "sha256": "7a778a3f4b03d92ff35aa332b6bf39d92c97960a337a4147296c6a8bb38e6c54",
+      "gzip_sha256": "f11a0ae8756c129185bbcbed886bb63ebad012d1787abc2e8f3843a502d21c41"
+    },
+    "unit-move-final-v2/unit-move-before-stop-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "5746e7a050b5304124dc29f6c02f31b1c71fa03510ccffd8c7c2a8c0e3aa7a1a",
+      "gzip_sha256": "996a59608ae7649cc84f68cf9effe431faaba6080cdc4e0f5426d532d80c7cb2"
+    },
+    "unit-move-final-v2/unit-move-stopped-v1/run.json.gz": {
+      "bytes": 124378,
+      "sha256": "5cab3a40644cafcdd9e803b90d44a0755c1f80ae20df18d62133ecd2f4c7a092",
+      "gzip_sha256": "8a8d5f4e7a6d586948cb49e5a048f6bacbb9b27a588cdfa02ca03a6729d6544e"
+    },
+    "unit-move-final-v2/unit-move-stopped-v1/profile.json.gz": {
+      "bytes": 3676,
+      "sha256": "c6f19895938cdc6e7358b2cfd5e1f59fed97f99696293b1048b846ad1a049ff7",
+      "gzip_sha256": "bbe9b26dd2f2cc073cae293cc1bda97d2b7a790178b23c3c80f42f56646212ab"
+    },
+    "unit-move-final-v2/unit-move-stopped-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-move-stopped-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-move-stopped-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-move-stopped-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-move-stopped-v1/child-output/capture.json.gz": {
+      "bytes": 126729,
+      "sha256": "31941f329d583368291a1d1780f4354d8f5e940fcc32c03bdbb6e559abec6ea7",
+      "gzip_sha256": "cf138cf32a188088cfa2b1ae575fa9d47305f0e173035873f139ef6d1f50eb2b"
+    },
+    "unit-move-final-v2/unit-move-stopped-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "d80670eaf9b1754f5c73816c3d626082ebc699da5c8f4f98c291355248aa1977",
+      "gzip_sha256": "034b7e0609ba1fa9e6207e4213a41e23728974a1a5b53ebc84fc8c367a01fa5b"
+    },
+    "unit-move-final-v2/unit-move-last-active-v1/run.json.gz": {
+      "bytes": 357614,
+      "sha256": "7f2ec2fb14af2dc2cc9498a717d0bc3ccd35aa3995c3e1cc8da59be5f92702d3",
+      "gzip_sha256": "4f6f77b4e43dd4143512044efc73805615c80517e15cfef9c96be077a94758f3"
+    },
+    "unit-move-final-v2/unit-move-last-active-v1/profile.json.gz": {
+      "bytes": 3518,
+      "sha256": "be74112bd0f7cbb5fa4a7239282a6c076fef727e942dad7755cddd85dc79db3f",
+      "gzip_sha256": "77a049ccebbeccca4f5564d0d4269bf8ec5bcd2d32fa36e631dc7fcfbfcdfcd5"
+    },
+    "unit-move-final-v2/unit-move-last-active-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-move-last-active-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-move-last-active-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-move-last-active-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-move-last-active-v1/child-output/capture.json.gz": {
+      "bytes": 359858,
+      "sha256": "c57c7bb2fa54482efb6f20335157cf17459674a19bb7be3fa7ece6dad62c448f",
+      "gzip_sha256": "9dc67af8dc91c2f999f7de3802c7fce2bbdaa3a7677c04f32f957487811f7b30"
+    },
+    "unit-move-final-v2/unit-move-last-active-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "d015dd29b61bb500f83811712cf6162d0b642a7e6e51e77667c255c7f2c762ee",
+      "gzip_sha256": "87155f5c53878a9464e0751f0f1532d7717b82b6c6c2e1e06b391d93aef57b8f"
+    },
+    "unit-move-final-v2/unit-move-expired-v1/run.json.gz": {
+      "bytes": 368201,
+      "sha256": "96c19efc0e32c3c328551efb17f8864dbea56c8e237a207840eb8ec7c3d48257",
+      "gzip_sha256": "83ece3c24f1537cd194d8ef80e7b5dc80615191aa76f93cddc600da785574076"
+    },
+    "unit-move-final-v2/unit-move-expired-v1/profile.json.gz": {
+      "bytes": 3518,
+      "sha256": "d139967b26f806cf9499b946a227b82e94d28a67c2f7b9e778b20770d579071b",
+      "gzip_sha256": "e9d8cf3f88c4688b2ca04a521e272e3d026598c75380f3fe5293d9be28cb3e43"
+    },
+    "unit-move-final-v2/unit-move-expired-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-move-expired-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-move-expired-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-move-expired-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-move-expired-v1/child-output/capture.json.gz": {
+      "bytes": 370473,
+      "sha256": "539ff1057bab843c0fa6613260f422c68c357428908605cbb2567631f62ddd05",
+      "gzip_sha256": "2041d0b30baacbb9b98d4b6fda999fc49b46e3abf8b88b17417b99b216149d58"
+    },
+    "unit-move-final-v2/unit-move-expired-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "91ef1e5759ed2dffc55d0dfcab83a3da55654ec4b67557398b187de8ae77e54c",
+      "gzip_sha256": "65e2265558f165038fd39e0cfdb2802b304adb83de190e9ebb540c1f007e8270"
+    },
+    "unit-move-final-v2/unit-move-expired-next-v1/run.json.gz": {
+      "bytes": 378852,
+      "sha256": "72efed06477ae2c646f9dde0fd13d7fb8ce7b8beb611aa8536015022eaace333",
+      "gzip_sha256": "bdd3d99e2623e83660b0eaa204cf5894f14e5e6548727e466858a2b34560d5c6"
+    },
+    "unit-move-final-v2/unit-move-expired-next-v1/profile.json.gz": {
+      "bytes": 3518,
+      "sha256": "31fbc11c173fc5f13dbce593c63df2e80aac16a04a106b8622ec1e1393eeada2",
+      "gzip_sha256": "848812c7630d40a5354f3d72d1b4e79e799ae2a917ba692cb46bf832f3231d49"
+    },
+    "unit-move-final-v2/unit-move-expired-next-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-move-expired-next-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-move-expired-next-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-move-expired-next-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-move-expired-next-v1/child-output/capture.json.gz": {
+      "bytes": 381089,
+      "sha256": "e84c7e5535872638c35ec915ae285d53e6251f1029abce5f07829458ad46c93a",
+      "gzip_sha256": "12d924ef42f2db7579abc4005b7d08f5ea894436e2133b9a105ff7aca7adcb43"
+    },
+    "unit-move-final-v2/unit-move-expired-next-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "2772b4f632589bf81fef500170156faa0cec9765f264d48e5b1e4f36b4cf696d",
+      "gzip_sha256": "2d8cfe7f592ad67a02b9cbeb4e150b11b92de5b810666b80f77f23f78d5c9a24"
+    },
+    "unit-move-final-v2/unit-move-reselect-v1/run.json.gz": {
+      "bytes": 379397,
+      "sha256": "7fd528d18f5080538676632bc616d408047d8fcd15d7cdb17fa5e19d37fa595f",
+      "gzip_sha256": "537f3adbd8975d7f767f06f9dc977e8745c3dd7e9e756011e44d29a341ed6879"
+    },
+    "unit-move-final-v2/unit-move-reselect-v1/profile.json.gz": {
+      "bytes": 3674,
+      "sha256": "8626b70f5a9d908d75e6586ded5e8aea047618c7a0e5aeb8bff566a8f0488141",
+      "gzip_sha256": "fba867c7239432e446f84746303230a7b4d3289a9d3575af3bc568d79d50b29c"
+    },
+    "unit-move-final-v2/unit-move-reselect-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-move-reselect-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-move-reselect-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-move-reselect-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-move-reselect-v1/child-output/capture.json.gz": {
+      "bytes": 381734,
+      "sha256": "8b0c0c3e7fd1cd9446a0f7761dbaa764b3de63b3b084c01dbe827cd72890e1e7",
+      "gzip_sha256": "18c5b71542b0fdd3c6652c645cd0ac3eb30934d41d3f2dcfc6d5d89e12f6253e"
+    },
+    "unit-move-final-v2/unit-move-reselect-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "2af20da1da22fa9a9dce3c321e46180430ff75e64502e37fec692420c135bcfb",
+      "gzip_sha256": "e4ba6e704aea565eda58d05bc1371f1cb54c793c201f09406b77c8fdfb461d67"
+    },
+    "unit-move-final-v2/empty-band-unselected-v1/run.json.gz": {
+      "bytes": 102397,
+      "sha256": "f814e02804222b3fdb05000f608cbc34cad67f661f20b4ade208310e017908e6",
+      "gzip_sha256": "d77d8cb138240093bc5975bfec4bb107c16069492d5175fd380ea6aa3fe28d82"
+    },
+    "unit-move-final-v2/empty-band-unselected-v1/profile.json.gz": {
+      "bytes": 3412,
+      "sha256": "3ac2aeac211bb79a06b70b70d3e54840c864a3956a3cf4a55e924d6beb4b3b65",
+      "gzip_sha256": "5cd33e77ecc449aa366d537f27c518126a0afeeb0740c2a3ad78efe9cc12a40f"
+    },
+    "unit-move-final-v2/empty-band-unselected-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/empty-band-unselected-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/empty-band-unselected-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/empty-band-unselected-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/empty-band-unselected-v1/child-output/capture.json.gz": {
+      "bytes": 104574,
+      "sha256": "5929a3ce6dc1bae2dfefe42668194315ac78f7a9191e7c3c3b6237d358ec05f8",
+      "gzip_sha256": "4aef01b3467511f7e5486f4146d4803a66fa816d84d95f07c235ebfb224f2f02"
+    },
+    "unit-move-final-v2/empty-band-unselected-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "85c471ebcd7c0405a0681f28d01de812577f6719096318cd6593fc08bcc95e03",
+      "gzip_sha256": "ac4089dcb383b77039112461d0579effc1add70ff2676caff359ec48f0eb5654"
+    },
+    "unit-move-final-v2/unit-move-empty-band-restart-v1/run.json.gz": {
+      "bytes": 379496,
+      "sha256": "db358336aa6dfff1049cca1f8935171b27889024d2efc8c4e3813ca11b4f3252",
+      "gzip_sha256": "110b6f636ba7f673becf6ff7836fe26af668b252de1808984267854c2edc97ae"
+    },
+    "unit-move-final-v2/unit-move-empty-band-restart-v1/profile.json.gz": {
+      "bytes": 3724,
+      "sha256": "80db2aca17fbaab27e99ed807349b18863830e8489bc2b70d3fd72b1f68587cc",
+      "gzip_sha256": "58bd202ecd16a7a26e84f2a632e70997eec485c87194492942f046bdf94cf9fa"
+    },
+    "unit-move-final-v2/unit-move-empty-band-restart-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-move-empty-band-restart-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-move-empty-band-restart-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-move-empty-band-restart-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-move-empty-band-restart-v1/child-output/capture.json.gz": {
+      "bytes": 381772,
+      "sha256": "91ece240086dce2df765a40757b2c5390d2e6757710d2237695ff267991b9bc9",
+      "gzip_sha256": "d855c557a1ac8b8ebe20739fcce68cddb6ccc9b55b30fec667be5a9753bf4eac"
+    },
+    "unit-move-final-v2/unit-move-empty-band-restart-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "1dd6906e848ff04eb94b2e0dba5995187302090645471bd22bdb03a6a5b94a8c",
+      "gzip_sha256": "290e1b69452f495b5491b5e3f35b4061d3d86eb812ef40ee5181ef14df6cadbf"
+    },
+    "unit-move-final-v2/unit-move-arrived-control-v1/run.json.gz": {
+      "bytes": 1058437,
+      "sha256": "81646dcf7fdb4bae16393d167d8dbce7f131b697695316a6774a2a42d2213e70",
+      "gzip_sha256": "1009c412ec6d268747e2e7f812f16c0f17c0bc3c67d23f036ded21b5e93a7582"
+    },
+    "unit-move-final-v2/unit-move-arrived-control-v1/profile.json.gz": {
+      "bytes": 3518,
+      "sha256": "0175a0d69739b46662405f2165f1c76674e3beb2e79f7f71f1242269f3d6e0a4",
+      "gzip_sha256": "4871a7379c1849bcf44e50ef40d1bee31f0fc3988e97f042e6376cab9f4e3735"
+    },
+    "unit-move-final-v2/unit-move-arrived-control-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-move-arrived-control-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-move-arrived-control-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-move-arrived-control-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-move-arrived-control-v1/child-output/capture.json.gz": {
+      "bytes": 1060652,
+      "sha256": "afd2af5f214b799d477c2f530dbc0bc427cd858a81645eb0be535c58922226e1",
+      "gzip_sha256": "b6e8cad8c704952183f3ec293e80b1fd42ab1cd7fab6610fd496acdfbcec19a0"
+    },
+    "unit-move-final-v2/unit-move-arrived-control-v1/child-output/frame.bgra.gz": {
+      "bytes": 1920000,
+      "sha256": "7e3978dd5a2080a5e5a0649b7bf83dcdd2fe7c1c317acd91c6c1987011a92913",
+      "gzip_sha256": "425740116157f940656ce4c6088a6317e234c67af22b53f187ac37c62cc2497c"
+    },
+    "unit-move-final-v2/unit-move-arrived-reselect-v1/run.json.gz": {
+      "bytes": 1059016,
+      "sha256": "013aa5caf00d8ae34acdca361dc18536da750f62dc2b3079355c119494cacfed",
+      "gzip_sha256": "e1e00d0eb9baeaeffe9d764010b4db6b8f4f9a640ea3331d306c7abc5c47039c"
+    },
+    "unit-move-final-v2/unit-move-arrived-reselect-v1/profile.json.gz": {
+      "bytes": 3674,
+      "sha256": "83572ac0b01abd5c75aa521600859949e0e9180d41fe2f86fc25bbee07e8c9da",
+      "gzip_sha256": "954c30b9e76c385ca3e2e8845880754bec95f790f1e759669abfb964ab6e6f0e"
+    },
+    "unit-move-final-v2/unit-move-arrived-reselect-v1/contract.json.gz": {
+      "bytes": 590,
+      "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0",
+      "gzip_sha256": "ae9121b6780cf6afde3cf475932381892017b3b4d79bcd8c809a50a98cd5a986"
+    },
+    "unit-move-final-v2/unit-move-arrived-reselect-v1/config.toml.gz": {
+      "bytes": 596,
+      "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a",
+      "gzip_sha256": "b3701f6c194bc992d9edb5d789b198db56349d23a6be2af56803c3fc55c15811"
+    },
+    "unit-move-final-v2/unit-move-arrived-reselect-v1/stdout.log.gz": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "unit-move-final-v2/unit-move-arrived-reselect-v1/stderr.log.gz": {
+      "bytes": 410,
+      "sha256": "198a41f8a820429d184de88bf1d51838ac74b700a85b8167c86ae421401536a6",
+      "gzip_sha256": "19a36ec648f085506d85e6104320ceeee7d5190102e00e648386193727e2e5b6"
+    },
+    "unit-move-final-v2/unit-move-arrived-reselect-v1/child-output/capture.json.gz": {
+      "bytes": 1061296,
+      "sha256": "f0b1f75d88e315877c16e90b7ac4f53b0e41fb179e7e9a5c0e73745f0bb0a7f6",
+      "gzip_sha256": "a51e382461c006b4f213cf47bb582d6069cc9ff285a0633db06bb90c1be728ff"
+    },
+    "unit-move-final-v2/unit-move-arrived-reselect-v1/child-output/frame.bgra.gz": {
       "bytes": 1920000,
       "sha256": "1ba8eb4e6e9dca6ee61b1467e3a34be0e399619a91af2d5b1e928ac813c30eb0",
       "gzip_sha256": "fa503d2af0ddc5d9e0f80c7b6122b8454c6332e8fa5d9c765d314866738e80cf"
