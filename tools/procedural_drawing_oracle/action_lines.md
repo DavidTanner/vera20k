@@ -1,7 +1,7 @@
 # Selected ground Unit action lines
 
 `action_lines.py` executes original retail `gamemd.exe` for the selected local
-ordinary ground Unit Move route. `action_lines.json` is the executable result;
+ordinary ground Unit Move and Attack routes. `action_lines.json` is the executable result;
 `action_lines.meta.json` pins the binary and every reused fixture source. It is
 native evidence for bounded prepared inputs, not a native Scenario or production
 rendering capture. The implementation and production validation remain separate.
@@ -63,6 +63,44 @@ and the recorded original constructors. Each requested moving row calls the
 actual Drive Move_To; an independent original Is_Moving call asserts its
 admission before drawing. This prevents a cold zero deploy field from silently
 turning a moving control into a stationary one.
+
+Four `attack_production_cases` replay captured stationary/moving Attack inputs
+and their unselected controls through the existing Tactical batch loop. The
+matched release receipts supply source1374 and target1386 MTNK coordinates,
+selection, TarCom/NavCom, timer frames and raw opt-in `action_line_inputs`.
+Profile, receipt, BGRA frame and executable hashes are pinned. The prepared
+native current-speed queries reproduce source17/target0 for the stationary
+pair and source5/target17 for the moving pair. The source's latter applied
+fraction is exactly19661/65536; Housef32 and cratef64 inputs retain their bits.
+Original Drive Move_To and IsMoving establish both captured motion flags.
+
+The native stationary line stores188 red pixels; the moving line stores101,
+with led aim `[8233,23679,416]`. Both controls call no Foot drawing and store
+no pixels. A192x160 crop at production origin `[176,336]` fits the existing
+guarded64KiB surface reservation. Native camera `[-1924,1747]` follows the
+previously established camera-plus-crop-minus15Y convention. Every original
+endpoint rectangle and solid segment remains unclipped. Existing
+[`rally_production.py`](rally_production.py) owns the separate receipt/archive
+and production pixel comparison; native background is only a write sentinel.
+All320 earlier rows and every earlier top-level payload value are preserved.
+
+The source-basis boundary is explicit in `attack_production_reference`.
+Moving actors occupy Cells29,92 and33,92, which were not among the observed
+terrain cells. Exact physicalZ416, zero GTNK TurretOffset and no rocking owner
+are supplied. The observed Cell34,92 fields belong to the competing NavCom or
+unused fallback. This packet does not label the moving cells capture-proven
+flat or reproduce their terrain/track history.
+
+The equivalent zero-offset origin is supported by the existing native slope
+owner: all21 initialized slope matrices have zero translation. Twenty-one
+stable original pivot controls retain the source origin. One active timer
+control also enters Drive's zero-angle translation arithmetic with supplied
+half sizes15.5/20.5 and retains that origin. Its equal source/destination slope
+uses original755A40; differing-slope quaternion conversion is instruction
+evidence (`646A39/646A41/646A49` clear translation). This establishes the
+origin boundary, not general matrix parity, a VXL reader or nonzero rocking.
+The same drawing purity guard covers direct Foot and Tactical replay without
+duplicating the surface, rasterizer or actor/Drive ownership.
 
 The prerequisite mode executes original source/target Unit constructors and
 Unlimbo, then real enemy-object query `73FD50 ->4DDED0 ->6FFEC0` with no modifier

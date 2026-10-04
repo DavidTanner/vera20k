@@ -265,6 +265,9 @@ class ActionFixture:
         fireat_speed.weapon(u, True, weapon['rot'], int(weapon['floater']), weapon['speed'])
         track_speed_native.seed_getter_state(u, case['target_speed_inputs'],
                                             target, rally.TYPE, house, country, rules)
+        if 'source_speed_inputs' in case:
+            track_speed_native.seed_getter_state(u, case['source_speed_inputs'],
+                                                self.actor, rally.TYPE, rally.HOUSE, country, rules)
         u.mem_write(rules + 0x16B8, words(weapon['gravity']))
         u.mem_write(rally.TYPE + 0x898, words(fireat_speed.WEAPON if weapon['present'] else 0))
         u.mem_write(rally.TYPE + 0x720, words(case['turret_offset']))
@@ -288,6 +291,8 @@ class ActionFixture:
                 self.invoke(0x4C91E0, actor + field, (0,))
                 u.mem_write(heading, words(angle))
                 self.invoke(0x4C9300, actor + field, (heading,))
+        if case.get('source_moving'):
+            self.invoke(0x4AFD40, 0, (source_loco + 4, *case['source']))
         if case['target_moving']:
             self.invoke(0x4AFD40, 0, (target_loco + 4, *case['target_xyz']))
         self.attack_target_motion = bool(self.invoke(0x4AFB80, 0, (target_loco + 4,)) & 255)
@@ -296,6 +301,13 @@ class ActionFixture:
         self.attack_state_ranges = dict(source=(self.actor, 0x700), target=(target, 0x700),
             source_locomotor=(source_loco, 0x70), target_locomotor=(target_loco, 0x70),
             timer=(TIMER, 12))
+        if 'source_speed_inputs' in case:
+            self.captured_getter_checks = dict(
+                source_moving=bool(self.invoke(0x4AFB80, 0, (source_loco + 4,)) & 255),
+                target_moving=self.attack_target_motion,
+                source_current_speed=self.invoke(0x4DB1A0, self.actor),
+                target_current_speed=self.invoke(0x4DB1A0, target))
+            assert self.captured_getter_checks == case['captured_getter_expectations']
 
     def invoke(self, pc, this=0, args=()):
         answer = call(self.u, pc, this, args)
@@ -309,6 +321,26 @@ class ActionFixture:
         timer = list(struct.unpack('<3I', self.u.mem_read(TIMER, 12)))
         assert timer[0] == frame and timer[2] == 25
         return timer
+
+    def read_only_draw(self, draw):
+        """One guard for direct Foot and production Tactical Attack drawing."""
+        before = {name: bytes(self.u.mem_read(pointer, size))
+                  for name, (pointer, size) in self.attack_state_ranges.items()}
+        forbidden = []
+        def observe(_u, pc, _size, _data):
+            if pc in (0x65C640, 0x65C660, 0x65C780, 0x65C7E0,
+                      0x70D150, 0x70D4A0, 0x7258D0, 0x5F65F0):
+                forbidden.append(f'0x{pc:08X}')
+        hook = self.u.hook_add(UC_HOOK_CODE, observe)
+        try:
+            draw()
+        finally:
+            self.u.hook_del(hook)
+        unchanged = {name: raw == bytes(self.u.mem_read(*self.attack_state_ranges[name]))
+                     for name, raw in before.items()}
+        assert all(unchanged.values()), unchanged
+        assert not forbidden, forbidden
+        return dict(state_unchanged=unchanged, rng_timer_restart_detach_entries=forbidden)
 
     def result(self):
         u = self.u
@@ -385,25 +417,9 @@ def attack(case, row):
     f.setup_attack()
     timer = f.start(case['timer_start'])
     f.u.mem_write(FRAME, words(case['frame']))
-    before = {name: bytes(f.u.mem_read(pointer, size))
-              for name, (pointer, size) in f.attack_state_ranges.items()}
-    forbidden = []
-    def observe(_u, pc, _size, _data):
-        if pc in (0x65C640, 0x65C660, 0x65C780, 0x65C7E0,
-                  0x70D150, 0x70D4A0, 0x7258D0, 0x5F65F0):
-            forbidden.append(f'0x{pc:08X}')
-    hook = f.u.hook_add(UC_HOOK_CODE, observe)
-    try:
-        f.invoke(0x4DC060, f.actor, (0, 0))
-    finally:
-        f.u.hook_del(hook)
-    unchanged = {name: raw == bytes(f.u.mem_read(*f.attack_state_ranges[name]))
-                 for name, raw in before.items()}
-    assert all(unchanged.values()), unchanged
-    assert not forbidden, forbidden
+    guard = f.read_only_draw(lambda: f.invoke(0x4DC060, f.actor, (0, 0)))
     return dict(f.result(), native_timer=timer, target_motion_admitted=f.attack_target_motion,
-                state_unchanged=unchanged,
-                rng_timer_restart_detach_entries=forbidden)
+                **guard)
 
 
 def batch_cases():
@@ -427,6 +443,11 @@ def batch_cases():
 def batch(case, row):
     """Execute the real local Techno-array loop, including every Foot call."""
     f = ActionFixture(case, row)
+    if case.get('attack'):
+        # Production Attack reuses the established actor/Drive pair itself.
+        # Copying that actor would retain a Drive back-pointer to the old one.
+        assert 'actors' not in case
+        f.setup_attack()
     timer = f.start(case['timer_start'])
     u = f.u
     u.mem_write(FRAME, words(case['frame']))
@@ -436,7 +457,7 @@ def batch(case, row):
     order = case.get('techno_order', list(range(len(actors))))
     actor_pointers, cell_pointers = [], {}
     for index, actor in enumerate(actors):
-        pointer = MEM + 0x70000 + index * 0x800
+        pointer = f.actor if case.get('attack') else MEM + 0x70000 + index * 0x800
         actor_pointers.append(pointer)
         u.mem_write(pointer, actor_template)
         u.mem_write(pointer + 0x9C, words(*actor['source']))
@@ -469,8 +490,15 @@ def batch(case, row):
     u.mem_write(0xAC4CF4, b'\x00')
     u.mem_write(SP, bytes(0x110))
     u.reg_write(UC_X86_REG_ESP, SP)
-    native.run_checked(u, 0x6D46DD, 0x6D4912, count=5000000,
-        required_addresses=[0x637AA0, 0x50B6F0])
+    def draw():
+        native.run_checked(u, 0x6D46DD, 0x6D4912, count=5000000,
+            required_addresses=[0x637AA0, 0x50B6F0])
+    extra = {}
+    if case.get('attack'):
+        extra = dict(f.read_only_draw(draw), target_motion_admitted=f.attack_target_motion,
+                     captured_getter_checks=f.captured_getter_checks)
+    else:
+        draw()
     assert u.reg_read(UC_X86_REG_ESP) == SP
     f.returned(0x6D4912, SP)
     pointer_to_index = {p: i for i, p in enumerate(actor_pointers)}
@@ -485,7 +513,7 @@ def batch(case, row):
     assert timer == list(struct.unpack('<3I', u.mem_read(TIMER, 12)))
     return dict(f.result(), native_timer=timer, actor_call_order=call_order,
         action_calls=action_calls, actor_pointers=[f'0x{p:08X}' for p in actor_pointers],
-        executed_slice=['0x006D46DD', '0x006D4912'], stack_delta=0)
+        executed_slice=['0x006D46DD', '0x006D4912'], stack_delta=0, **extra)
 
 
 def compositing_cases():
@@ -675,6 +703,253 @@ def production_inputs():
             "profile_sha256", "frame_sha256")}
         production.update(actor_id=1374, executable_sha256=
             "dc06728fb081e18054a28e9e9aa61e5ca6e7e3e82a20acc9052ac2471e6653dd")
+        result.append(dict(input=case, production=production))
+    return result
+
+
+def attack_production_inputs():
+    """Four immutable captured states; regeneration never reads ignored receipts."""
+    records = [{'run': 'stationary-attack-inputs-v1',
+      'frame': 1286,
+      'timer_start': 1282,
+      'source': [7349, 23680, 416],
+      'target_xyz': [8832, 23680, 416],
+      'source_cell': [28, 92],
+      'target_actor_cell': [34, 92],
+      'nav_cell': [34, 92],
+      'selected': True,
+      'source_action_line_inputs': {'applied_speed_fraction_fixed_bits': 65536,
+                                    'body_facing': 16384,
+                                    'crate_speed_multiplier_f64_bits': 4607182418800017408,
+                                    'current_speed': 17,
+                                    'current_weapon': '105mm',
+                                    'house_speed_bonus_f32_bits': 1065353216,
+                                    'is_moving': True,
+                                    'locomotor': 'Drive',
+                                    'rocking_angles_fixed_bits': None,
+                                    'turret_facing': 16383,
+                                    'turret_offset': 0,
+                                    'veterancy': 0},
+      'target_action_line_inputs': {'applied_speed_fraction_fixed_bits': 0,
+                                    'body_facing': 49152,
+                                    'crate_speed_multiplier_f64_bits': 4607182418800017408,
+                                    'current_speed': 0,
+                                    'current_weapon': '105mm',
+                                    'house_speed_bonus_f32_bits': 1065353216,
+                                    'is_moving': False,
+                                    'locomotor': 'Drive',
+                                    'rocking_angles_fixed_bits': None,
+                                    'turret_facing': 49152,
+                                    'turret_offset': 0,
+                                    'veterancy': 0},
+      'terrain_inputs': [{'cell': [28, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0},
+                         {'cell': [34, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0},
+                         {'cell': [32, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0}],
+      'capture_sha256': '83aa60796fe19650da9e42fe91027b80b36aed50b904b1f7f5b390691c9cec17',
+      'profile_sha256': 'b585b2bc4de66d665b8d7581c1f669cef19c99f1fcfbc29d344a2c62ed4209a7',
+      'frame_sha256': 'd80af5698ada3413aeb0b190487ed4dc8d0d79ca6cf9bb00a05f94d53aa047ea'},
+     {'run': 'stationary-enemy-band-control-inputs-v1',
+      'frame': 1286,
+      'timer_start': 1285,
+      'source': [7349, 23680, 416],
+      'target_xyz': [8832, 23680, 416],
+      'source_cell': [28, 92],
+      'target_actor_cell': [34, 92],
+      'nav_cell': [34, 92],
+      'selected': False,
+      'source_action_line_inputs': {'applied_speed_fraction_fixed_bits': 65536,
+                                    'body_facing': 16384,
+                                    'crate_speed_multiplier_f64_bits': 4607182418800017408,
+                                    'current_speed': 17,
+                                    'current_weapon': '105mm',
+                                    'house_speed_bonus_f32_bits': 1065353216,
+                                    'is_moving': True,
+                                    'locomotor': 'Drive',
+                                    'rocking_angles_fixed_bits': None,
+                                    'turret_facing': 16383,
+                                    'turret_offset': 0,
+                                    'veterancy': 0},
+      'target_action_line_inputs': {'applied_speed_fraction_fixed_bits': 0,
+                                    'body_facing': 49152,
+                                    'crate_speed_multiplier_f64_bits': 4607182418800017408,
+                                    'current_speed': 0,
+                                    'current_weapon': '105mm',
+                                    'house_speed_bonus_f32_bits': 1065353216,
+                                    'is_moving': False,
+                                    'locomotor': 'Drive',
+                                    'rocking_angles_fixed_bits': None,
+                                    'turret_facing': 49152,
+                                    'turret_offset': 0,
+                                    'veterancy': 0},
+      'terrain_inputs': [{'cell': [28, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0},
+                         {'cell': [34, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0},
+                         {'cell': [32, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0}],
+      'capture_sha256': 'f3f576b47e3fc0b0e5e8352561ec5e3f1ef671c734d9f30726dd3bd7bb644813',
+      'profile_sha256': 'e49b4bb1da3af5121543abe74f549cf48d4317d7385f7393fa0e3cb80f5557d7',
+      'frame_sha256': '1255163e82d3b292fd004f6ee4442a6ceb0b285739576b5d3e04d4e57e7c2c7a'},
+     {'run': 'moving-attack-inputs-v1',
+      'frame': 1298,
+      'timer_start': 1282,
+      'source': [7500, 23680, 416],
+      'target_xyz': [8451, 23680, 416],
+      'source_cell': [29, 92],
+      'target_actor_cell': [33, 92],
+      'nav_cell': None,
+      'selected': True,
+      'source_action_line_inputs': {'applied_speed_fraction_fixed_bits': 19661,
+                                    'body_facing': 16384,
+                                    'crate_speed_multiplier_f64_bits': 4607182418800017408,
+                                    'current_speed': 5,
+                                    'current_weapon': '105mm',
+                                    'house_speed_bonus_f32_bits': 1065353216,
+                                    'is_moving': True,
+                                    'locomotor': 'Drive',
+                                    'rocking_angles_fixed_bits': None,
+                                    'turret_facing': 16383,
+                                    'turret_offset': 0,
+                                    'veterancy': 0},
+      'target_action_line_inputs': {'applied_speed_fraction_fixed_bits': 65536,
+                                    'body_facing': 49152,
+                                    'crate_speed_multiplier_f64_bits': 4607182418800017408,
+                                    'current_speed': 17,
+                                    'current_weapon': '105mm',
+                                    'house_speed_bonus_f32_bits': 1065353216,
+                                    'is_moving': True,
+                                    'locomotor': 'Drive',
+                                    'rocking_angles_fixed_bits': None,
+                                    'turret_facing': 49153,
+                                    'turret_offset': 0,
+                                    'veterancy': 0},
+      'terrain_inputs': [{'cell': [28, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0},
+                         {'cell': [34, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0},
+                         {'cell': [32, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0}],
+      'capture_sha256': 'f313660a560a2e3ee588f96b91c1d179f37b5654ac72a6bad9daa9b0f1229bb4',
+      'profile_sha256': '3d04cff8ad569b21761aa736b36ebfbc615bf79b120a0a68365c5d98e3b200ff',
+      'frame_sha256': '483db1a8c34f9dfb8560319fdf092f39cd07aae9ca6dde4160603f53a268293f'},
+     {'run': 'moving-enemy-band-control-inputs-v1',
+      'frame': 1298,
+      'timer_start': 1297,
+      'source': [7500, 23680, 416],
+      'target_xyz': [8451, 23680, 416],
+      'source_cell': [29, 92],
+      'target_actor_cell': [33, 92],
+      'nav_cell': None,
+      'selected': False,
+      'source_action_line_inputs': {'applied_speed_fraction_fixed_bits': 19661,
+                                    'body_facing': 16384,
+                                    'crate_speed_multiplier_f64_bits': 4607182418800017408,
+                                    'current_speed': 5,
+                                    'current_weapon': '105mm',
+                                    'house_speed_bonus_f32_bits': 1065353216,
+                                    'is_moving': True,
+                                    'locomotor': 'Drive',
+                                    'rocking_angles_fixed_bits': None,
+                                    'turret_facing': 16383,
+                                    'turret_offset': 0,
+                                    'veterancy': 0},
+      'target_action_line_inputs': {'applied_speed_fraction_fixed_bits': 65536,
+                                    'body_facing': 49152,
+                                    'crate_speed_multiplier_f64_bits': 4607182418800017408,
+                                    'current_speed': 17,
+                                    'current_weapon': '105mm',
+                                    'house_speed_bonus_f32_bits': 1065353216,
+                                    'is_moving': True,
+                                    'locomotor': 'Drive',
+                                    'rocking_angles_fixed_bits': None,
+                                    'turret_facing': 49153,
+                                    'turret_offset': 0,
+                                    'veterancy': 0},
+      'terrain_inputs': [{'cell': [28, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0},
+                         {'cell': [34, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0},
+                         {'cell': [32, 92],
+                          'allocated': True,
+                          'level': 4,
+                          'slope': 0,
+                          'raw_bridge_flags': 0}],
+      'capture_sha256': 'b600f0f044abaa9861700b1660a3400320bb885943a97a30dd5e89a58abe68e6',
+      'profile_sha256': '42b84286db242211625f342a7ba015f1a1b1f5396cbfd47f14ec7b280cbc6249',
+      'frame_sha256': '40254ac9b2438abadd0e38e76ac40e94bb53b1d8e4842d4c02bb10bd511197b5'}]
+    result = []
+    for record in records:
+        src = record['source_action_line_inputs']
+        dst = record['target_action_line_inputs']
+        speed = {}
+        for label, observed in (('source', src), ('target', dst)):
+            assert observed['veterancy'] == 0 and observed['current_weapon'] == '105mm'
+            assert observed['turret_offset'] == 0 and observed['rocking_angles_fixed_bits'] is None
+            assert observed['locomotor'] == 'Drive'
+            speed[label] = dict(speed_percent=7, raw=17,
+                house=struct.unpack('<f', struct.pack('<I', observed['house_speed_bonus_f32_bits']))[0],
+                crate=struct.unpack('<d', struct.pack('<Q', observed['crate_speed_multiplier_f64_bits']))[0],
+                applied=observed['applied_speed_fraction_fixed_bits'] / 65536,
+                veteran=float(struct.unpack('<f', struct.pack('<f', 1.2))[0]),
+                rank=0.0, faster=True, elite_faster=False, flag_owner=-1)
+        origin = [176, 336]
+        case = dict(name=record['run'], attack=True, family='attack',
+            surface_size=[192, 160], clip=[0, 0, 192, 160],
+            camera=[-2100 + origin[0], 1426 + origin[1] - 15], map_size=[80, 85],
+            source=record['source'], target_xyz=record['target_xyz'],
+            target_cell=record['nav_cell'] or [34, 92], nav_null=record['nav_cell'] is None,
+            selected=record['selected'], timer_start=record['timer_start'], frame=record['frame'],
+            health=300, on_bridge=False, level=4, slope=0, flags=0, queue_cells=[], alpha='clear',
+            target_present=True, source_moving=src['is_moving'], target_moving=dst['is_moving'],
+            body_facing=src['body_facing'], turret_facing=src['turret_facing'],
+            target_facing=dst['body_facing'], turret_offset=0, unit_deploy_state=-1,
+            source_speed_inputs=speed['source'], target_speed_inputs=speed['target'],
+            current_weapon_index=0,
+            weapon_inputs=dict(speed=95, speed_percent=40, range_cells=5,
+                               rot=0, floater=False, gravity=6, present=True),
+            captured_getter_expectations=dict(source_moving=src['is_moving'], target_moving=dst['is_moving'],
+                source_current_speed=src['current_speed'], target_current_speed=dst['current_speed']))
+        production = {key: record[key] for key in ('run', 'capture_sha256', 'profile_sha256',
+            'frame_sha256', 'source_cell', 'target_actor_cell', 'source_action_line_inputs',
+            'target_action_line_inputs', 'terrain_inputs')}
+        production.update(actor_id=1374, target_actor_id=1386, crop_origin=origin,
+            executable_sha256='4b4a83ceed0f074bab7dd0461c2bfef33f6e26a55c5842e8f43601eaad06e18c')
         result.append(dict(input=case, production=production))
     return result
 
@@ -950,6 +1225,84 @@ def timer_references():
     return {f'0x{address:08X}': native_inspect.inspect(image,
         native_inspect.parser().parse_args(['find-bytes', address.to_bytes(4, 'little').hex()]))
         for address in (TIMER, TIMER + 4, TIMER + 8)}
+
+
+def attack_production_reference(palette_row):
+    """Pin input provenance and the zero-offset source-basis boundary."""
+    from tools.native_slope import slope_matrices
+    matrices = slope_matrices()
+    assert len(matrices) == 21 and all(row[i] == 0 for row in matrices for i in (3, 7, 11))
+    previous_path = Path('tools/projectile_oracle/ordinary_collision_vectors.json')
+    previous_raw = previous_path.read_bytes()
+    previous = json.loads(previous_raw)
+    assert previous['sha256'] == native.NATIVE_SHA256 and previous['slope_matrices'] == matrices
+
+    case = attack_production_inputs()[0]['input']
+    f = ActionFixture(case, palette_row)
+    f.setup_attack()
+    u = f.u
+    u.mem_write(FRAME, words(case['frame']))
+    u.mem_write(0xB45188, words(*(word for row in matrices for word in row)))
+    # Supplied VXL half sizes exercise the zero-angle translation arithmetic.
+    # This does not run the VXL asset reader or claim a captured slope history.
+    u.mem_write(rally.TYPE + 0x360, struct.pack('<dd', 15.5, 20.5))
+    loco = read32(u, f.actor + 0x674)
+    output = MEM + 0x7E000
+    controls = []
+    for slope, active in [(slope, False) for slope in range(21)] + [(0, True)]:
+        u.mem_write(loco + 0x18, words(slope, slope))
+        timer = [case['frame'] - 4, 0, 8, 8] if active else [0xFFFFFFFF, 0, 0, 0]
+        u.mem_write(loco + 0x20, words(*timer))
+        entries = []
+        def observe(_u, pc, _size, _data):
+            if pc in (0x4AFFEE, 0x4B02B3, 0x7559B0, 0x755A40):
+                entries.append(f'0x{pc:08X}')
+        hook = u.hook_add(UC_HOOK_CODE, observe)
+        try:
+            guard = f.read_only_draw(lambda: f.invoke(0x6F3D60, f.actor, (output, 0)))
+        finally:
+            u.hook_del(hook)
+        coordinate = signed_words(u, output, 3)
+        assert coordinate == case['source']
+        assert ('0x004AFFEE' in entries) == active
+        if active:
+            assert '0x00755A40' in entries
+        controls.append(dict(slope=slope, previous_slope=slope, slope_timer_words=timer,
+            binary_frame=case['frame'], active_transition=active, coordinate=coordinate,
+            entries=entries, **guard))
+
+    image = native.image_bytes()
+    instructions = {name: native_inspect.inspect(image, native_inspect.parser().parse_args(
+        ['disasm', hex(start), '--bytes', str(end-start)]))
+        for name, start, end in (
+            ('drive_draw_matrix', 0x4AFF60, 0x4B0405),
+            ('base_facing_matrix', 0x55A730, 0x55A7CF),
+            ('quaternion_matrix_zero_translation', 0x646980, 0x646A75),
+            ('matrix_translate', 0x5AE890, 0x5AE8EF))}
+    prerequisite_path = Path(__file__).with_name('action_lines_attack_prerequisites.json')
+    return dict(capture_root='logs/procedural-drawing/attack-production',
+        release_label='procedural-unit-attack-production-v1',
+        executable_sha256='4b4a83ceed0f074bab7dd0461c2bfef33f6e26a55c5842e8f43601eaad06e18c',
+        production_camera=[-2100, 1426], production_zoom=1, world_y_bias=15,
+        production_extent=[800, 600], tactical_extent=[632, 568], crop_extent=[192, 160],
+        crop_origin=[176, 336], map_reference='production_reference.map',
+        prerequisite_packet=dict(path=str(prerequisite_path), sha256=sha(prerequisite_path.read_bytes()),
+            fields='type_inputs, type_readers.turret_offset, type_readers.warhead_ap, aim_cases'),
+        no_rocking_origin=dict(startup_matrix_owner='tools/native_slope.py:slope_matrices',
+            prior_packet=dict(path=str(previous_path), sha256=sha(previous_raw)),
+            translation_words=[[row[i] for i in (3, 7, 11)] for row in matrices],
+            source=case['source'], body_facing=case['body_facing'], turret_facing=case['turret_facing'],
+            turret_offset=0, rocking_angles=[0, 0], supplied_half_sizes=[15.5, 20.5],
+            controls=controls, instructions=instructions),
+        input_boundaries=[
+            'Four valid receipts pin final state, raw opt-in action_line_inputs, profile, full BGRA frame and release executable. The native loop begins from those prepared states; it does not replay Scenario loading, input gestures, event scheduling, pursuit or movement history.',
+            'Source and target original Drive constructors, Move_To when captured IsMoving istrue, original IsMoving, live Foot speed and Facing setters execute. Captured fixed applied-fraction bits are divided by65536 exactly; captured Housef32 and cratef64 bits decode directly. Original speed reads must equal both captured current_speed values. Captured rookie rank maps to native0.0; no promotion accumulation is inferred.',
+            'Both current weapons are physical105mm, type MTNK/GTNK offset0, with physical full-reader Speed7/raw17, weaponSpeed40/Range5/postpass95, CannonROT0/Floaterfalse and Gravity6 from the pinned prerequisite packet. Physical AP defaults Rocker/DirectRockerfalse. No rocking owner is captured; zero native angles are supplied. Queue state remains the ordinary nonshift Attack/Move empty-queue route, not an observed queue serialization.',
+            'The stationary pair captures sourceCell28,92 and targetCell34,92. Moving final actors occupy29,92 and33,92; those two terrain cells were not observed. Exact actor physicalZ416 is supplied. The supplied level4/slope0/flags0 Cell34,92 is the observed competing NavCom or unused null-Nav fallback, not a claimed terrain observation for the moving actors.',
+            'The source basis uses the original flat Drive setup, retaining captured source motion. At TurretOffset0 and zero rocking the origin is invariant under all21 original startup slope matrices: every translation column iszero. The22 pivot controls execute all stable slots plus the active slope-timer zero-angle arithmetic with supplied half sizes15.5/20.5. The latter enters4AFFEE and original755A40 with equal source/destination slopes; different-slope interpolation is instruction evidence because646980 explicitly clears every translation column. These controls do not establish arbitrary rocking, malformed matrices or a captured slope transition history.',
+            'Stock UnitActionLines defaults, local human owner, active selected source and inactive planning feed the unchanged Tactical loop. Unselected matched controls preserve Target and motion but make no Foot call or pixel store. Setup getter checks precede the guarded drawing interval; drawing leaves actor/Drive/timer bytes unchanged and enters no observed RNG, restart or detach call.',
+            'Native camera equals captured camera plus crop origin minus[0,15] at zoom1. Both complete endpoint boxes and every original line remain unclipped in192x160, inside the unchanged guarded64KiB surface reservation. Background is a write-mask sentinel. Production comparison must bind these raw inputs to receipts and compare every original opaque store; selection brackets/health differences in the unselected control are a distinct earlier pass.',
+        ])
 
 
 def attack_instruction_evidence():
@@ -1354,10 +1707,14 @@ def generate():
         ordering_vtables=ordering_vtables(),
         instruction_evidence=instruction_evidence(), timer_literal_address_occurrences=timer_references(),
         attack_cases=[attack(case, palette_row) for case in attack_cases()],
-        attack_instruction_evidence=attack_instruction_evidence())
+        attack_instruction_evidence=attack_instruction_evidence(),
+        attack_production_cases=[dict(batch(row['input'], palette_row),
+            size=row['input']['surface_size'], production=row['production'])
+            for row in attack_production_inputs()],
+        attack_production_reference=attack_production_reference(palette_row))
     for forward, reverse in zip(result['compositing_cases'][::2], result['compositing_cases'][1::2], strict=True):
         assert forward['full_surface_sha256'] != reverse['full_surface_sha256']
-    for row in result['production_cases']:
+    for row in result['production_cases'] + result['attack_production_cases']:
         for call in row['calls']:
             if call['name'] == 'clip_line':
                 assert call['accepted_al'] == 1 and call['points_before'] == call['points_after']
@@ -1369,7 +1726,7 @@ def generate():
 
 def metadata():
     return native.provenance(
-        scope='Selected ground Unit Move and Attack action lines4DC060 ->7049C0, original RGB565 pixel leaves, timers, prepared Tactical admission/batches, existing Unit/Drive destination composition, twelve Move production-input replays and prepared Attack pivot/live aim; finite comparisons, not whole Scenario parity',
+        scope='Selected ground Unit Move and Attack action lines4DC060 ->7049C0, original RGB565 pixel leaves, timers, prepared Tactical admission/batches, existing Unit/Drive destination composition, twelve Move and four Attack production-input replays, prepared Attack pivot/live aim and zero-rocking origin controls; finite comparisons, not whole Scenario parity',
         assumptions=[
             'Original gamemd.exe, FPCW0E7F, physical RA2/CACHE palette assets, RGB565160x120 BSurface, fixed background sentinel. Existing original palette initialization owns conversion; index3 middle row supplies Move green.',
             'The first57 cases promote the saved ignored research corpus geometry and timer pairs. Map dimensions32x32 and original Foot bridge initializer chain are now explicit; prior flat outputs remain identical.',
@@ -1391,6 +1748,9 @@ def metadata():
             'Attack weapon_inputs supply stored speed95/ROT0/Floaterfalse/Gravity6, bound to the full physical105mm reader and postpass in the prerequisite packet. Authored Speed40 first reads102 through474810; the later7729F0 Range5 ballistic postpass produces95. speed_percent and range_cells retain that authorship, not a fitted inverse. The prepared raster fixture writes the stored value through its existing weapon setup; original773070 derives shot speed from distance and ROT0 does not consume the stored field. Offset80/body/turret controls distinguish body pivot from muzzle FLH; stock GTNK offset0 is independently read. No rocking, slope basis, damage producer or full Unit constructor is claimed for these prepared raster rows.',
             'Prepared Unit deploy state6D8=-1 matches the existing track_destination input contract and the actual constructors recorded in the prerequisite packet. Original Drive Move_To executes for moving rows; a separate original Is_Moving call asserts the requested true/false state before every draw, so a declined movement gate cannot masquerade as a moving-target comparison.',
             'Attack query snapshots compare every source/target actor byte0x700, both Drive0x70 ranges and all12 timer bytes. Known raw/ranged RNG, timer restart, world/abstract detach and UnInit entry guards remain empty during Foot drawing. Physical Convert middle-row index8 supplies red0xA800. Null Target controls reuse existing Move/empty admission without a competing raster owner.',
+            'Four attack_production_cases bind the opt-in getter inputs from matched stationary/moving release captures and unselected controls. The same ActionFixture and complete Tactical batch owner execute, retaining the actual actor/Drive back-pointer rather than copying an Attack actor. Exact original IsMoving/current-speed checks match source17/target0 and source5/target17. All320 prior rows and earlier top-level values are retained; production_reference remains the earlier Move boundary.',
+            'Attack production crops are192x160 inside the existing guarded64KiB surface. Original source6F3D60 and lead70BCB0 feed every unclipped endpoint/solid store. The captured fixed fraction19661/65536, direct native f32/f64 speed inputs, current105mm weapon and separate source/target headings remain explicit. Current input and native raster receipts do not substitute for a production pixel comparison.',
+            'No-rocking source-basis evidence reuses native_slope.slope_matrices and compares its21 original matrices with the existing ordinary_collision packet. All21 stable pivot controls and one active slope-timer zero-angle control preserve the raw source origin; original646980 instruction stores establish zero translation after differing-slope quaternion conversion. Half sizes15.5/20.5 are supplied for the arithmetic control; VXL reading and actual moving-cell slope history are not claimed. The exact raw actor coordinates, zero offset and absent rocking remain the production-input boundary.',
         ],
         substitutions=[
             'Reuse original BSurface storage/lock/pitch methods instead of platform DirectDraw, through existing Rally fixture; original solid/fill leaves are unmodified.',
@@ -1458,6 +1818,7 @@ if __name__ == '__main__':
             'map_query_fixture': 'tools/spatial_oracle/map_queries.py',
             'live_speed_fixture': 'tools/spatial_oracle/track_speed_native.py',
             'weapon_speed_fixture': 'tools/projectile_oracle/fireat_speed.py',
+            'slope_fixture': 'tools/native_slope.py',
         }.items()}
     if prerequisites:
         # Resolve recurring dependencies before finish_vectors freezes their

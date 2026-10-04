@@ -1,0 +1,148 @@
+Cache retention: under_budget, removed 0 allocated bytes; /Users/halvor/Documents/vera20k/.git/owned-builds/retention/1791083583391762000-4375cb92.json
+Checkout: /Users/halvor/.codex/worktrees/procedural-drawing/vera20k
+Target: /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/target/owned-worktrees/ac12fa2c75003672
+Command: ['cargo', 'build', '--message-format=json-render-diagnostics', '--release', '-p', 'vera20k', '--bin', 'vera20k']
+   Compiling vera20k v0.1.0 (/Users/halvor/.codex/worktrees/procedural-drawing/vera20k)
+warning: unused import: `MissionId`
+ --> src/sim/game_entity/construction_stage.rs:7:27
+  |
+7 | use crate::sim::mission::{MissionId, MissionType};
+  |                           ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `MinerState`
+  --> src/sim/miner/harvest_mission.rs:19:24
+   |
+19 | use super::{MinerKind, MinerState};
+   |                        ^^^^^^^^^^
+
+warning: unused import: `begin_selling`
+  --> src/sim/production/mod.rs:59:24
+   |
+59 |     archive_less_sale, begin_selling, eject_destruction_garrison_with_context,
+   |                        ^^^^^^^^^^^^^
+
+warning: unused import: `mission_handlers::*`
+  --> src/sim/world/techno_ai.rs:27:5
+   |
+27 | use mission_handlers::*;
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `techno_ai::dispatch_foot_mission`
+  --> src/sim/world/mod.rs:73:16
+   |
+73 | pub(crate) use techno_ai::dispatch_foot_mission;
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::sim::movement`
+  --> src/sim/world/world_commands.rs:30:5
+   |
+30 | use crate::sim::movement;
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `set_walk_destination_coord`
+  --> src/sim/movement/mod.rs:93:74
+   |
+93 |     building_dock_cell, building_dock_coordinate, nav_target_coordinate, set_walk_destination_coord,
+   |                                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::rules::ini_parser::IniFile`
+  --> src/app/loading/init_helpers.rs:24:5
+   |
+24 | use crate::rules::ini_parser::IniFile;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `accept_speed_crate` is never used
+   --> src/sim/components.rs:548:19
+    |
+451 | impl FootSpeedState {
+    | ------------------- method in this implementation
+...
+548 |     pub(crate) fn accept_speed_crate(
+    |                   ^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `PickupSelection` is never constructed
+  --> src/sim/crates/pickup.rs:12:19
+   |
+12 | pub(super) struct PickupSelection {
+   |                   ^^^^^^^^^^^^^^^
+
+warning: function `select_pickup_outcome` is never used
+  --> src/sim/crates/pickup.rs:25:15
+   |
+25 | pub(super) fn select_pickup_outcome(
+   |               ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `remove_pickup_crate` is never used
+   --> src/sim/crates/runtime.rs:114:15
+    |
+114 | pub(super) fn remove_pickup_crate(
+    |               ^^^^^^^^^^^^^^^^^^^
+
+warning: function `apply_speed_crate` is never used
+  --> src/sim/crates/speed.rs:15:15
+   |
+15 | pub(super) fn apply_speed_crate(
+   |               ^^^^^^^^^^^^^^^^^
+
+warning: field `visited` is never read
+  --> src/sim/world/techno_ai.rs:53:16
+   |
+52 | pub(super) struct ObjectAiOutcome {
+   |                   --------------- field in this struct
+53 |     pub(super) visited: bool,
+   |                ^^^^^^^
+
+warning: fields `has_destination` and `effective_mission` are never read
+   --> src/sim/world/techno_ai/mission_handlers.rs:734:16
+    |
+713 | pub(super) struct MissionHandlerInput {
+    |                   ------------------- fields in this struct
+...
+734 |     pub(super) has_destination: bool,
+    |                ^^^^^^^^^^^^^^^
+...
+737 |     pub(super) effective_mission: Option<MissionType>,
+    |                ^^^^^^^^^^^^^^^^^
+    |
+    = note: `MissionHandlerInput` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: method `destination` is never used
+   --> src/sim/movement/teleport_movement.rs:118:19
+    |
+109 | impl TeleportState {
+    | ------------------ method in this implementation
+...
+118 |     pub(crate) fn destination(&self) -> Option<DriveCoord> {
+    |                   ^^^^^^^^^^^
+
+warning: method `vehicle_bits_ignoring` is never used
+   --> src/sim/occupancy.rs:971:19
+    |
+793 | impl CellOccupationGrid {
+    | ----------------------- method in this implementation
+...
+971 |     pub(crate) fn vehicle_bits_ignoring(
+    |                   ^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `building_capture_notified` and `discovered_by_current_house` are never used
+   --> src/sim/house_state.rs:575:19
+    |
+568 | impl HouseState {
+    | --------------- methods in this implementation
+...
+575 |     pub(crate) fn building_capture_notified(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+583 |     pub(crate) fn discovered_by_current_house(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `vera20k` (lib) generated 18 warnings (run `cargo fix --lib -p vera20k` to apply 8 suggestions)
+    Finished `release` profile [optimized] target(s) in 53.26s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+Preserved build: /Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-attack-production-v1
+Cache retention: under_budget, removed 0 allocated bytes; /Users/halvor/Documents/vera20k/.git/owned-builds/retention/1791083674116039000-41a75d49.json

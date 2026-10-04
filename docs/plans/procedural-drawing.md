@@ -32,10 +32,19 @@ execution comparisons, production output/performance and one fresh critic.
   `logs/procedural-drawing/unit-attack-workload-first.json`:20k selected moving
   target Attack construction11.909ms, CPU staging0.0357ms, completion1.540ms,
   34 spans/4216bytes. Synthetic overlap,20 samples; GPU intervals remain null.
-  All writers are frozen. Next build the production release and replay the four
-  stationary/moving Attack and enemy-band controls plus observer-off control.
-  Inputs are ready in `logs/procedural-drawing/attack-production/`; render agent
-  is waiting for the successful label `procedural-unit-attack-production-v1`.
+  Clean release v1 from`ee20ca9fe`, exeSHA4b4a83ceed0f074bab7dd0461c2bfef33f6e26a55c5842e8f43601eaad06e18c,
+  passes five captures. All188 stationary/101 moving native stores match; both
+  deselected controls draw zero stores. Native source-origin controls cover21
+  stable slopes plus one zero-angle active transition; differing-slope translation
+  clears have instruction-level proof, not an exhaustive interpolation corpus.
+  All320 prior rows stay unchanged. Independent native checks pass;14 portable
+  production tests pass. The archive retains40 gzip files, native input bindings,
+  both matched pairs and a480000pixel/1299boundary observer-off comparison.
+  The shared archive now hashes only the native image and consumed case set;
+  original Move payload provenance is retained and all compressed Move captures
+  stay unchanged. No native/GPU/capture work remains active. Next integrate the
+  fetched docs-only main update, run final full retail lib/Clippy/Python checks,
+  then one fresh read-only critic and the mechanism PR. No Attack review yet.
 - Prior factory-rally chain [PR1042](https://github.com/YuriPlanet/vera20k/pull/1042)
   merged at2135df0e33536ab11fddbdcdb8dae3a3b5f316f9. Its native comparisons, production archive,
   performance reports and one critic disposition are in

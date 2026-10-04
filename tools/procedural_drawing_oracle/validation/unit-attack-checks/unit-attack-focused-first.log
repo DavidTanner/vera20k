@@ -1,0 +1,138 @@
+Cache retention: under_budget, removed 0 allocated bytes; /Users/halvor/Documents/vera20k/.git/owned-builds/retention/1791082512649411000-ba75e676.json
+Checkout: /Users/halvor/.codex/worktrees/procedural-drawing/vera20k
+Target: /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/target/owned-worktrees/ac12fa2c75003672
+Command: ['cargo', 'test', '--message-format=json-render-diagnostics', '--release', '-p', 'vera20k', '--lib', '--', 'app::presentation::target_lines::', 'sim::combat::fire_coord::', 'sim::combat::fireat_launch_tests::', 'sim::projectile::launch::tests::original_aim_lead_rows', 'app::diagnostics::tactical_capture::session::map_observation::tests::', '--include-ignored', '--test-threads=1']
+   Compiling vera20k v0.1.0 (/Users/halvor/.codex/worktrees/procedural-drawing/vera20k)
+warning: unused import: `MinerState`
+  --> src/sim/miner/harvest_mission.rs:19:24
+   |
+19 | use super::{MinerKind, MinerState};
+   |                        ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vera20k` (lib test) generated 1 warning (run `cargo fix --lib -p vera20k --tests` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 2m 56s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/lib.rs (target/owned-worktrees/ac12fa2c75003672/release/deps/vera20k-ff73bf773e0f423b)
+
+running 67 tests
+test app::diagnostics::tactical_capture::session::map_observation::tests::anytown_discovery_example_is_an_accepted_ordinary_allied_ai_launch ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::barracks_output_example_preserves_opening_and_queues_two_gis_in_order ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::capture_rejects_missing_hud_update_or_any_wall_clock_sample ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::capture_retains_only_actual_draws_in_committed_order ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::command_schedule_keeps_equal_step_input_order_and_refuses_missed_or_final_steps ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::cursor_position_requires_integer_screen_coordinates_away_from_the_outermost_pixel ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::example_preserves_existing_accepted_launch_and_allows_chosen_map ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::gesture_schedule_retains_equal_step_order_and_conditional_receipt_presence ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::gestures_require_sealed_neutral_cursor_and_strict_tactical_pixel_arguments ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::invalid_budgets_and_unknown_request_fields_fail ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::jumpjet_discovery_profile_preserves_verified_production_prefix_without_guessed_actor ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::observations_require_l0_then_every_committed_frame_and_bound_retained_samples ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::production_profile_reuses_typed_command_serde_without_name_translation ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::rally_profile_reuses_literal_command_serde_and_rejects_ignored_fields ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::type_discovery_preserves_retained_identity_and_optional_transcript_presence ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::type_filters_require_bounded_unique_names_from_the_exact_loaded_registry ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::unresolved_launch_duplicate_slots_and_inconsistent_roster_fail ... ok
+test app::diagnostics::tactical_capture::session::map_observation::tests::versioned_extension_fields_preserve_presence_and_reject_null_or_ignored_arguments ... ok
+test app::presentation::target_lines::action_tests::move_line_query_leaves_the_simulation_dummy_unchanged ... ok
+test app::presentation::target_lines::action_tests::original_action_timer_wrap_sentinel_and_positive_remainder ... ok
+test app::presentation::target_lines::action_tests::original_foot_move_line_pixels_through_production_builder ... ok
+test app::presentation::target_lines::action_tests::original_opaque_overlap_order_across_batch_cutover ... ok
+test app::presentation::target_lines::action_tests::original_solid_leaf_and_endpoint_intersection ... ok
+test app::presentation::target_lines::action_tests::original_source_and_target_projection_before_surface_clipping ... FAILED
+test app::presentation::target_lines::action_tests::original_timer_default_and_successful_load_reanchor ... ok
+test app::presentation::target_lines::action_tests::original_unit_attack_line_pixels_and_read_only_coordinate_queries ... FAILED
+test app::presentation::target_lines::action_tests::physical_palette_matches_original_convert_middle_row ... ok
+test app::presentation::target_lines::action_tests::production_action_line_gpu_matches_original_surface ... FAILED
+test app::presentation::target_lines::action_tests::retail_tank_attack_inputs_match_original_readers ... ok
+test app::presentation::target_lines::rally_tests::native_patterned_leaf_all_octants_ties_endpoints_and_phases ... ok
+test app::presentation::target_lines::rally_tests::native_rally_gates_foundation_ground_bridge_and_object_target_through_production_builder ... ok
+test app::presentation::target_lines::rally_tests::native_rally_producer_clipped_rows_phase_and_abuffer_passes ... ok
+test app::presentation::target_lines::rally_tests::presentation_target_query_does_not_stamp_simulation_dummy_cell ... ok
+test app::presentation::target_lines::rally_tests::production_rally_gpu_matches_native_pixels_and_preserves_depth ... ok
+test app::presentation::target_lines::rally_tests::production_rally_workload_timing ... FAILED
+test app::presentation::target_lines::rally_tests::rally_crossing_stock_shroud_frontier_matches_the_original_combined_draw ... ok
+test app::presentation::target_lines::rally_tests::retail_gapile_house_color_and_production_crop_match_original_rally_and_no_target ... ok
+test app::presentation::target_lines::tests::disabling_unit_action_lines_does_not_disable_rally_lines ... ok
+test app::presentation::target_lines::tests::factory_rally_builder_emits_only_selected_local_eligible_structures ... ok
+test app::presentation::target_lines::tests::line_builders_skip_when_sim_or_rules_missing ... ok
+test app::presentation::target_lines::tests::rally_pattern_matches_original_producer_pixels ... ok
+test app::presentation::target_lines::tests::selected_action_attack_target_wins_over_movement ... FAILED
+test app::presentation::target_lines::tests::selected_action_timer_expires_at_25_ticks ... ok
+test app::presentation::target_lines::tests::start_timer_opens_the_window_without_a_command ... ok
+test app::presentation::target_lines::tests::unit_action_lines_option_disables_selected_timer ... ok
+test sim::combat::fire_coord::building_tests::building_aim_directions_match_the_original ... ok
+test sim::combat::fire_coord::tests::a_building_pixel_offset_mirrors_on_odd_bursts ... ok
+test sim::combat::fire_coord::tests::a_stored_firers_exact_height_carries_into_the_fire_coordinate ... ok
+test sim::combat::fire_coord::tests::a_unit_fires_from_its_flh_for_the_selected_slot ... ok
+test sim::combat::fire_coord::tests::an_occupied_building_fires_from_the_occupants_muzzle_port ... ok
+test sim::combat::fire_coord::tests::building_muzzle_z_adjust_follows_the_native_clamp ... ok
+test sim::combat::fire_coord::tests::muzzle_anim_pick_follows_the_native_ladder ... ok
+test sim::combat::fire_coord::tests::numbered_flh_readers_and_slot_bounds_match_original ... ok
+test sim::combat::fire_coord::tests::numbered_weapon_index_and_elite_weapon_binding_reach_fire_coordinate ... ok
+test sim::combat::fire_coord::tests::retail_empty_fv_burst_flh_matches_original_flat_drive ... ok
+test sim::combat::fire_coord::tests::retail_flh_base_matches_original_get_flh ... ok
+test sim::combat::fireat_launch_tests::a_grizzly_hits_a_rhino_four_cells_away ... ok
+test sim::combat::fireat_launch_tests::a_grizzly_shell_leaves_its_barrel_at_getspeed ... ok
+test sim::combat::fireat_launch_tests::a_homing_missile_fuses_on_the_unled_target ... ok
+test sim::combat::fireat_launch_tests::a_moving_rhino_is_led ... ok
+test sim::combat::fireat_launch_tests::grand_cannon_recoil_follows_successful_launch_ai_and_snapshot ... ok
+test sim::combat::fireat_launch_tests::grand_cannon_recoil_state_cannot_change_simulation_hash_or_rng ... ok
+test sim::combat::fireat_launch_tests::original_aim_query_reads_live_motion_rank_and_facing_without_mutation ... ok
+test sim::combat::fireat_launch_tests::original_direct_fireat_keeps_argument_speed_separate_from_live_tarcom_aim ... ok
+test sim::combat::fireat_launch_tests::retail_cannon_uses_converted_speed_and_arcing_under_gravity_6 ... ok
+test sim::combat::fireat_launch_tests::target_uninit_clears_tarcom_before_aim_query_and_physical_removal ... ok
+test sim::projectile::launch::tests::original_aim_lead_rows ... ok
+
+failures:
+
+---- app::presentation::target_lines::action_tests::original_source_and_target_projection_before_surface_clipping stdout ----
+
+thread 'app::presentation::target_lines::action_tests::original_source_and_target_projection_before_surface_clipping' (44695291) panicked at src/app/presentation/action_line_tests.rs:233:9:
+assertion `left == right` failed
+  left: Number(67)
+ right: Number(95)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- app::presentation::target_lines::action_tests::original_unit_attack_line_pixels_and_read_only_coordinate_queries stdout ----
+
+thread 'app::presentation::target_lines::action_tests::original_unit_attack_line_pixels_and_read_only_coordinate_queries' (44695293) panicked at src/app/presentation/action_line_tests.rs:233:9:
+assertion `left == right` failed
+  left: Number(67)
+ right: Number(95)
+
+---- app::presentation::target_lines::action_tests::production_action_line_gpu_matches_original_surface stdout ----
+Terrain production owner GPU: AdapterInfo { name: "Apple M4", vendor: 0, device: 0, device_type: IntegratedGpu, driver: "", driver_info: "", backend: Metal }
+
+thread 'app::presentation::target_lines::action_tests::production_action_line_gpu_matches_original_surface' (44695295) panicked at src/app/presentation/action_line_tests.rs:233:9:
+assertion `left == right` failed
+  left: Number(67)
+ right: Number(95)
+
+---- app::presentation::target_lines::rally_tests::production_rally_workload_timing stdout ----
+Terrain production owner GPU: AdapterInfo { name: "Apple M4", vendor: 0, device: 0, device_type: IntegratedGpu, driver: "", driver_info: "", backend: Metal }
+
+thread 'app::presentation::target_lines::rally_tests::production_rally_workload_timing' (44695823) panicked at src/app/presentation/action_line_tests.rs:233:9:
+assertion `left == right` failed
+  left: Number(67)
+ right: Number(95)
+
+---- app::presentation::target_lines::tests::selected_action_attack_target_wins_over_movement stdout ----
+
+thread 'app::presentation::target_lines::tests::selected_action_attack_target_wins_over_movement' (44695843) panicked at src/sim/intern.rs:93:21:
+index out of bounds: the len is 0 but the index is 1
+
+
+failures:
+    app::presentation::target_lines::action_tests::original_source_and_target_projection_before_surface_clipping
+    app::presentation::target_lines::action_tests::original_unit_attack_line_pixels_and_read_only_coordinate_queries
+    app::presentation::target_lines::action_tests::production_action_line_gpu_matches_original_surface
+    app::presentation::target_lines::rally_tests::production_rally_workload_timing
+    app::presentation::target_lines::tests::selected_action_attack_target_wins_over_movement
+
+test result: FAILED. 62 passed; 5 failed; 0 ignored; 0 measured; 9846 filtered out; finished in 6.06s
+
+error: test failed, to rerun pass `-p vera20k --lib`
+Cache retention: under_budget, removed 0 allocated bytes; /Users/halvor/Documents/vera20k/.git/owned-builds/retention/1791082738278971000-fb535805.json

@@ -1,0 +1,221 @@
+{
+  "status": "PASS",
+  "native_case_set_sha256": "46279d384373fc8d732c61618c221d1932d521d7f7c7380559d63fe479b80459",
+  "captures": {
+    "stationary-attack-inputs-v1": {
+      "native_stores": 188,
+      "capture_sha256": "83aa60796fe19650da9e42fe91027b80b36aed50b904b1f7f5b390691c9cec17",
+      "frame_sha256": "d80af5698ada3413aeb0b190487ed4dc8d0d79ca6cf9bb00a05f94d53aa047ea",
+      "source": [
+        7349,
+        23680,
+        416
+      ],
+      "target": [
+        8832,
+        23680,
+        416
+      ],
+      "source_inputs": {
+        "applied_speed_fraction_fixed_bits": 65536,
+        "body_facing": 16384,
+        "crate_speed_multiplier_f64_bits": 4607182418800017408,
+        "current_speed": 17,
+        "current_weapon": "105mm",
+        "house_speed_bonus_f32_bits": 1065353216,
+        "is_moving": true,
+        "locomotor": "Drive",
+        "rocking_angles_fixed_bits": null,
+        "turret_facing": 16383,
+        "turret_offset": 0,
+        "veterancy": 0
+      },
+      "target_inputs": {
+        "applied_speed_fraction_fixed_bits": 0,
+        "body_facing": 49152,
+        "crate_speed_multiplier_f64_bits": 4607182418800017408,
+        "current_speed": 0,
+        "current_weapon": "105mm",
+        "house_speed_bonus_f32_bits": 1065353216,
+        "is_moving": false,
+        "locomotor": "Drive",
+        "rocking_angles_fixed_bits": null,
+        "turret_facing": 49152,
+        "turret_offset": 0,
+        "veterancy": 0
+      },
+      "frame_wall_mean_ms": 8.958740234375
+    },
+    "stationary-enemy-band-control-inputs-v1": {
+      "native_stores": 0,
+      "capture_sha256": "f3f576b47e3fc0b0e5e8352561ec5e3f1ef671c734d9f30726dd3bd7bb644813",
+      "frame_sha256": "1255163e82d3b292fd004f6ee4442a6ceb0b285739576b5d3e04d4e57e7c2c7a",
+      "source": [
+        7349,
+        23680,
+        416
+      ],
+      "target": [
+        8832,
+        23680,
+        416
+      ],
+      "source_inputs": {
+        "applied_speed_fraction_fixed_bits": 65536,
+        "body_facing": 16384,
+        "crate_speed_multiplier_f64_bits": 4607182418800017408,
+        "current_speed": 17,
+        "current_weapon": "105mm",
+        "house_speed_bonus_f32_bits": 1065353216,
+        "is_moving": true,
+        "locomotor": "Drive",
+        "rocking_angles_fixed_bits": null,
+        "turret_facing": 16383,
+        "turret_offset": 0,
+        "veterancy": 0
+      },
+      "target_inputs": {
+        "applied_speed_fraction_fixed_bits": 0,
+        "body_facing": 49152,
+        "crate_speed_multiplier_f64_bits": 4607182418800017408,
+        "current_speed": 0,
+        "current_weapon": "105mm",
+        "house_speed_bonus_f32_bits": 1065353216,
+        "is_moving": false,
+        "locomotor": "Drive",
+        "rocking_angles_fixed_bits": null,
+        "turret_facing": 49152,
+        "turret_offset": 0,
+        "veterancy": 0
+      },
+      "frame_wall_mean_ms": 8.733001708984375
+    },
+    "moving-attack-inputs-v1": {
+      "native_stores": 101,
+      "capture_sha256": "f313660a560a2e3ee588f96b91c1d179f37b5654ac72a6bad9daa9b0f1229bb4",
+      "frame_sha256": "483db1a8c34f9dfb8560319fdf092f39cd07aae9ca6dde4160603f53a268293f",
+      "source": [
+        7500,
+        23680,
+        416
+      ],
+      "target": [
+        8451,
+        23680,
+        416
+      ],
+      "source_inputs": {
+        "applied_speed_fraction_fixed_bits": 19661,
+        "body_facing": 16384,
+        "crate_speed_multiplier_f64_bits": 4607182418800017408,
+        "current_speed": 5,
+        "current_weapon": "105mm",
+        "house_speed_bonus_f32_bits": 1065353216,
+        "is_moving": true,
+        "locomotor": "Drive",
+        "rocking_angles_fixed_bits": null,
+        "turret_facing": 16383,
+        "turret_offset": 0,
+        "veterancy": 0
+      },
+      "target_inputs": {
+        "applied_speed_fraction_fixed_bits": 65536,
+        "body_facing": 49152,
+        "crate_speed_multiplier_f64_bits": 4607182418800017408,
+        "current_speed": 17,
+        "current_weapon": "105mm",
+        "house_speed_bonus_f32_bits": 1065353216,
+        "is_moving": true,
+        "locomotor": "Drive",
+        "rocking_angles_fixed_bits": null,
+        "turret_facing": 49153,
+        "turret_offset": 0,
+        "veterancy": 0
+      },
+      "frame_wall_mean_ms": 8.543020248413086
+    },
+    "moving-enemy-band-control-inputs-v1": {
+      "native_stores": 0,
+      "capture_sha256": "b600f0f044abaa9861700b1660a3400320bb885943a97a30dd5e89a58abe68e6",
+      "frame_sha256": "40254ac9b2438abadd0e38e76ac40e94bb53b1d8e4842d4c02bb10bd511197b5",
+      "source": [
+        7500,
+        23680,
+        416
+      ],
+      "target": [
+        8451,
+        23680,
+        416
+      ],
+      "source_inputs": {
+        "applied_speed_fraction_fixed_bits": 19661,
+        "body_facing": 16384,
+        "crate_speed_multiplier_f64_bits": 4607182418800017408,
+        "current_speed": 5,
+        "current_weapon": "105mm",
+        "house_speed_bonus_f32_bits": 1065353216,
+        "is_moving": true,
+        "locomotor": "Drive",
+        "rocking_angles_fixed_bits": null,
+        "turret_facing": 16383,
+        "turret_offset": 0,
+        "veterancy": 0
+      },
+      "target_inputs": {
+        "applied_speed_fraction_fixed_bits": 65536,
+        "body_facing": 49152,
+        "crate_speed_multiplier_f64_bits": 4607182418800017408,
+        "current_speed": 17,
+        "current_weapon": "105mm",
+        "house_speed_bonus_f32_bits": 1065353216,
+        "is_moving": true,
+        "locomotor": "Drive",
+        "rocking_angles_fixed_bits": null,
+        "turret_facing": 49153,
+        "turret_offset": 0,
+        "veterancy": 0
+      },
+      "frame_wall_mean_ms": 8.522835731506348
+    }
+  },
+  "paired_controls": {
+    "stationary": {
+      "compared_frame_pixels": 480000,
+      "state_boundaries": 1287,
+      "native_stores": 188,
+      "changed_pixels": 332,
+      "selection_region": [
+        140,
+        285,
+        110,
+        100
+      ],
+      "other_selection_pixels": 144
+    },
+    "moving": {
+      "compared_frame_pixels": 480000,
+      "state_boundaries": 1299,
+      "native_stores": 101,
+      "changed_pixels": 245,
+      "selection_region": [
+        140,
+        285,
+        110,
+        100
+      ],
+      "other_selection_pixels": 144
+    }
+  },
+  "observer_off": {
+    "capture_sha256": "5b1c763dbddd448dc2ad189eb1c5f1b963a6b428606b4681016524a5089dd976",
+    "exact_frame_pixels": 480000,
+    "state_boundaries": 1299
+  },
+  "limitations": [
+    "Original Tactical/Foot/pivot/lead execution uses prepared captured inputs and separately established retail getters; this is not native whole-Scenario or whole-frame execution.",
+    "Every native opaque line store matches RGB565. Deselection also removes the source health/selection overlay; those bounded differences are not native selection goldens.",
+    "The source uses a supplied unrocked Drive basis. Zero TurretOffset and the original slope matrices zero translation make its pivot independent of the slope; no complete terrain or DrawMatrix history is claimed.",
+    "The last60-frame wall mean includes simulation, observations, render and presentation; it is not GPU duration or ordinary-play FPS."
+  ]
+}

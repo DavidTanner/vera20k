@@ -1,9 +1,71 @@
 # Procedural gameplay drawing evidence
 
-The current chain is **selected local ground Unit ordinary Move lines**. Factory
-rally drawing is integrated. The whole-scope native/Rust censuses are in
+The current chain is **selected local stock MTNK Attack lines against a ground Unit**.
+Factory rally and ordinary ground Unit Move drawing are integrated. The whole-scope native/Rust censuses are in
 [the checkpoint](../../docs/plans/procedural-drawing.md). No unresolved census
 entry is completed by documenting it.
+
+## Selected ground Unit Attack
+
+Foot4DC060 uses the Techno6F3D60 turret pivot and70BCB0's live TarCom aim.
+The latter leads moving Units using their actual locomotor motion, current
+speed, body facing and the firer's current weapon. Attack takes priority over
+NavCom and the queued Move route. The source does not use weapon FLH.
+
+`sim::combat::fire_coord` now owns the pivot alongside GetFLH's existing base
+and transform. `sim::combat::aim_coord` owns the one live aim query shared by
+selected lines and FireAt. FireAt's explicit argument still controls launch
+distance/speed independently of its call-local TarCom aim. A null TarCom yields
+zero aim; an unresolved nonnull ID exposes a lifecycle defect. No presentation
+query mutates simulation, Facing, shared Dummy, timers or RNG. The existing
+movement getter is also available to the opt-in capture observer; no new state
+or competing rules/speed owner was added.
+
+Native execution is retained in [`action_lines.md`](action_lines.md) and its
+payloads:31 prepared Attack rasters,8 retained aim cases,2 full FireAt cases,
+real constructor/Unlimbo/action/event/target/Stop/expiry calls and retail readers.
+All289 previous rows remain unchanged. `Speed=40` reads102, then the Range5
+ballistic postpass uses the previously loaded Gravity6 and stores95. The Rust
+fixture runs distinct base/mode/map Process passes; a flattened or one-pass
+fixture would supply different state. The actual retail RuleSet comparison
+checks the physical MTNK/GTNK/105mm/AP inputs independently.
+
+Focused optimized validation passes the shared aim, FireAt, full expiry RNG
+and timer checks, the physical retail reader checks and all27 rendering tests.
+The action GPU comparison now covers157 inputs in two sRGB formats at four
+zooms (1256 draws), preserving depth. These include31 Attack rows; the existing
+five1px clipped Move residuals retain their prior bounded CPU-presentation claim.
+Initial failures were fixture setup and one test-only getter export; failure
+logs remain with the checks, not silently replaced by the passing run.
+
+Clean release `procedural-unit-attack-production-v1` from`ee20ca9fe` has
+executable SHA`4b4a83ceed0f074bab7dd0461c2bfef33f6e26a55c5842e8f43601eaad06e18c`.
+Five ordinary renderer XMP03T4 captures exercise actual Select/Attack clicks,
+stationary and moving targets, matched enemy-band deselection and observer-off.
+Native192×160 crops contain every188 stationary/101 moving line store, with
+the moving aim at[8233,23679,416] ahead of target[8451,23680,416]. These stores
+match the captured RGB565 output. Both controls draw no line. Paired frames
+change only the line and144 source health/selection pixels; selection rasters
+are a separate required chain, not certified by this comparison. The opt-in
+observer leaves all480000 pixels and1299 observation boundaries unchanged.
+This establishes prepared native drawing from captured inputs, not native whole
+Scenario/full-frame emulation. Final full-suite validation and review are pending.
+
+The [workload report](validation/action-line-attack-workload-first.json) uses
+the actual production builder and pooled GPU upload. At20k selected overlapping
+Attack sources and one moving target:34 spans/4216 bytes, mean CPU construction
+11.909ms, CPU staging0.0357ms, submission-through-completion1.540ms. Two warmups
+and20 measured samples on M4/Metal; GPU timestamp intervals are unavailable.
+One selected source costs0.00530ms to build. Expired timers skip construction;
+an unselected20k actor scan costs0.153ms. These are component measurements with
+repeated overlapping positions, not a dispersed20k game or FPS claim.
+
+Production archives identify the native image and the exact case set they
+consume. The original whole-payload hash remains historical provenance at
+record time. The Move archive's case set was checked byte-for-byte against
+its original commit before migrating that identity, so appending Attack rows
+does not invalidate unchanged Move evidence. All compressed Move captures
+remain untouched.
 
 ## Selected ground Unit Move
 
