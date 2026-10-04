@@ -2,9 +2,9 @@
 
 The existing map-observation owner validates capture receipts. Rally compares
 native RGB565 stores on unobstructed floor and ArchiveTarget cleanup. Ordinary
-Move compares opaque native stores, real input and matched-time controls. This
+Move and Attack compare opaque native stores, real input and matched-time controls. This
 does not certify native Scenario initialization, revelation history or occlusion.
-The historical module name remains the shared archive owner for rally and Move.
+The historical module name remains the shared archive owner for procedural lines.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 RUNS = ('rally-clear-v2', 'rally-stop-v2',
         'rally-shroud-v2', 'rally-shroud-stop-v2')
 FINAL_RUN = 'rally-clear-final'
+ATTACK_OBSERVER_OFF_RUN = 'moving-attack-observer-off-v1'
 FILES = ('run.json', 'profile.json', 'contract.json', 'config.toml',
          'stdout.log', 'stderr.log', 'child-output/capture.json',
          'child-output/frame.bgra')
@@ -156,6 +157,25 @@ def action_cases():
     return cases
 
 
+def attack_cases():
+    rows = document(HERE / 'action_lines.json')['attack_production_cases']
+    cases = {row['production']['run']: row for row in rows}
+    check(len(cases) == len(rows) == 4, 'expected four distinct Attack captures')
+    return cases
+
+
+def action_case_set_digest(cases):
+    """Bind the actual native rows used by a family, independent of later additions.
+
+    A whole corpus digest is historical provenance, not a stable identity for
+    twelve unchanged Move cases when a later mechanism appends more evidence.
+    Include the executable identity and every input, output and capture binding.
+    """
+    metadata = document(HERE / 'action_lines.meta.json')
+    scoped = dict(native_sha256=metadata['native_sha256'], cases=list(cases.values()))
+    return digest(json.dumps(scoped, sort_keys=True, separators=(',', ':')).encode())
+
+
 def action_actor(frame, actor_id=1374):
     return next(actor for actor in frame['actors'] if actor['stable_id'] == actor_id)
 
@@ -169,6 +189,24 @@ def changed_points(a, b, width):
     check(len(a) == len(b), 'paired frame lengths differ')
     return [(i % width, i // width) for i in range(len(a) // 4)
             if a[i * 4:i * 4 + 4] != b[i * 4:i * 4 + 4]]
+
+
+def bound_action_capture(name, row, capture, pixels, capture_hash):
+    proof = row['production']
+    profile = capture['profile']['request']
+    frame = capture['observations']['frames'][-1]
+    check(capture_hash == proof['capture_sha256'], f'{name}: native receipt binding differs')
+    check(capture['profile']['sha256'] == proof['profile_sha256'], f'{name}: profile differs')
+    check(digest(pixels) == capture['frame']['sha256'] == proof['frame_sha256'],
+          f'{name}: native frame binding differs')
+    check(capture['inputs']['executable']['sha256'] == proof['executable_sha256'],
+          f'{name}: native executable binding differs')
+    check([profile['width'], profile['height']] == [800, 600], f'{name}: unexpected extent')
+    check(capture['map_source']['source_sha256'] ==
+          '7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e',
+          f'{name}: retail XMP03T4 bytes differ')
+    check(row['input']['map_size'] == [80, 85], f'{name}: native map Size differs')
+    return profile, frame, action_actor(frame, proof['actor_id'])
 
 
 def compare_action(captures, capture_hashes):
@@ -185,21 +223,8 @@ def compare_action(captures, capture_hashes):
     for (name, row), (capture, pixels), capture_hash in zip(
             cases.items(), captures, capture_hashes, strict=True):
         proof, native = row['production'], row['input']
-        profile = capture['profile']['request']
-        frame = capture['observations']['frames'][-1]
-        actor = action_actor(frame, proof['actor_id'])
+        profile, frame, actor = bound_action_capture(name, row, capture, pixels, capture_hash)
         observed_input = frame['input']
-        check(capture_hash == proof['capture_sha256'], f'{name}: native receipt binding differs')
-        check(capture['profile']['sha256'] == proof['profile_sha256'], f'{name}: profile differs')
-        check(digest(pixels) == capture['frame']['sha256'] == proof['frame_sha256'],
-              f'{name}: native frame binding differs')
-        check(capture['inputs']['executable']['sha256'] == proof['executable_sha256'],
-              f'{name}: native executable binding differs')
-        check([profile['width'], profile['height']] == [800, 600], f'{name}: unexpected extent')
-        check(capture['map_source']['source_sha256'] ==
-              '7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e',
-              f'{name}: retail XMP03T4 bytes differ')
-        check(native['map_size'] == [80, 85], f'{name}: native map Size differs')
         check(actor['type_id'] == 'MTNK' and actor['owner'] == profile['launch']['player_name']
               and actor['active'] and not actor['in_limbo'] and actor['health'] > 0,
               f'{name}: actor is not a live local MTNK')
@@ -304,7 +329,7 @@ def compare_action(captures, capture_hashes):
                            changed_tactical_pixels=len(tactical),
                            exact_tactical_pixels=632 * 568 if kind == 'arrived' else None,
                            state_boundaries=len(frames))
-    return dict(status='PASS', native_payload_sha256=digest((HERE / 'action_lines.json').read_bytes()),
+    return dict(status='PASS', native_case_set_sha256=action_case_set_digest(cases),
                 captures=results, paired_controls=pairs, limitations=[
                     'Original Tactical/Foot/primitive execution uses prepared captured inputs; this is not a native Scenario or whole native frame comparison.',
                     'Every native opaque line store matches RGB565. Three matched-time controls check all 480000 pixels; arrival/reselection matches all 358976 tactical pixels and differs only in the observed sidebar tooltip.',
@@ -312,27 +337,193 @@ def compare_action(captures, capture_hashes):
                     'The existing last60-frame wall mean includes simulation, observation and pacing. Short captures include startup; no GPU-duration or ordinary-play FPS claim.'])
 
 
+def compare_attack(captures, capture_hashes):
+    """Check captured live inputs and every original Attack store.
+
+    Deselection also removes the source's health/selection overlay. Its bounded
+    image differences are reported separately; they are not native selection
+    goldens. The observer-off replay checks that getters do not affect the game.
+    """
+    cases = attack_cases()
+    check(len(captures) == len(capture_hashes) == len(cases) + 1,
+          'Attack capture inventory differs')
+    by_name = dict(zip(cases, captures[:-1], strict=True))
+    results = {}
+    for (name, row), (capture, pixels), capture_hash in zip(
+            cases.items(), captures[:-1], capture_hashes[:-1], strict=True):
+        proof, native = row['production'], row['input']
+        profile, frame, source = bound_action_capture(name, row, capture, pixels, capture_hash)
+        target = action_actor(frame, proof['target_actor_id'])
+        check(profile.get('observe_action_line_inputs') is True, f'{name}: input observer absent')
+        check(source['owner'] == profile['launch']['player_name'] and
+              source['target'] == {'Entity': proof['target_actor_id']}, f'{name}: live TarCom differs')
+        for actor, key in ((source, 'source'), (target, 'target')):
+            check(actor['type_id'] == 'MTNK' and actor['category'] == 'Unit' and
+                  actor['active'] and not actor['in_limbo'] and not actor['dying'] and
+                  actor['health'] == 300 and not actor['on_bridge'],
+                  f'{name}: {key} is not an untouched live ground MTNK')
+            inputs = actor['action_line_inputs']
+            check(inputs == proof[f'{key}_action_line_inputs'], f'{name}: {key} query inputs differ')
+            check(inputs['locomotor'] == 'Drive' and inputs['current_weapon'] == '105mm' and
+                  inputs['turret_offset'] == 0 and inputs['rocking_angles_fixed_bits'] in (None, [0, 0])
+                  and inputs['veterancy'] == 0, f'{name}: {key} leaves the native input coverage')
+        check(source['physical_leptons'] == native['source'], f'{name}: native source differs')
+        check(target['physical_leptons'] == native['target_xyz'], f'{name}: native target differs')
+        source_inputs, target_inputs = source['action_line_inputs'], target['action_line_inputs']
+        expected_getters = dict(source_moving=source_inputs['is_moving'],
+                                target_moving=target_inputs['is_moving'],
+                                source_current_speed=source_inputs['current_speed'],
+                                target_current_speed=target_inputs['current_speed'])
+        check(row['captured_getter_checks'] == native['captured_getter_expectations'] == expected_getters,
+              f'{name}: original live getters differ from captured owners')
+        check(source['cell'] == proof['source_cell'] and target['cell'] == proof['target_actor_cell'],
+              f'{name}: captured actor cells differ')
+        for supplied in proof['terrain_inputs']:
+            observed = next(cell for cell in frame['terrain'] if cell['cell'] == supplied['cell'])
+            check({key: observed[key] for key in supplied} == supplied,
+                  f'{name}: captured competing NavCom terrain differs')
+        for field, observed in (
+                ('body_facing', source_inputs['body_facing']),
+                ('turret_facing', source_inputs['turret_facing']),
+                ('target_facing', target_inputs['body_facing']),
+                ('source_moving', source_inputs['is_moving']),
+                ('target_moving', target_inputs['is_moving'])):
+            check(native[field] == observed, f'{name}: native {field} differs')
+        for label, inputs in (('source', source_inputs), ('target', target_inputs)):
+            speed = native[f'{label}_speed_inputs']
+            check(speed['applied'] == inputs['applied_speed_fraction_fixed_bits'] / 65536 and
+                  speed['house'] == speed['crate'] == 1 and speed['rank'] == 0 and
+                  inputs['house_speed_bonus_f32_bits'] == 1065353216 and
+                  inputs['crate_speed_multiplier_f64_bits'] == 4607182418800017408,
+                  f'{name}: prepared {label} speed fields differ from the live owners')
+        selected = proof['actor_id'] in frame['input']['selected_ids']
+        check(not frame['input']['selection_pending'] and selected == native['selected'],
+              f'{name}: native selection differs')
+        check(native['target_present'] and (source['nav'] is None) == native['nav_null'],
+              f'{name}: native order presence differs')
+        if source['nav'] is not None:
+            cell = source['nav']['Cell']
+            check(native['target_cell'] == [cell['rx'], cell['ry']], f'{name}: competing NavCom differs')
+        check(frame['binary_frame'] == profile['ticks'] == native['frame'], f'{name}: frame differs')
+        check(frame['input']['target_line_remaining'] == 25 - (native['frame'] - native['timer_start'])
+              and frame['input']['target_line_active'], f'{name}: native timer differs')
+        camera = capture['render']['camera']
+        ox, oy = proof['crop_origin']
+        check(camera['zoom'] == 1 and all(value == int(value) for value in camera['top_left']) and
+              native['camera'] == [int(camera['top_left'][0]) + ox,
+                                   int(camera['top_left'][1]) + oy - 15],
+              f'{name}: native crop projection differs')
+        stores = action_stores(row)
+        check(bool(stores) == selected, f'{name}: original selected gate differs')
+        for (x, y), expected in stores.items():
+            check(0 <= x < 632 and 0 <= y < 568, f'{name}: native store leaves tactical viewport')
+            start = (y * 800 + x) * 4
+            check(packed565(pixels[start:start + 4]) == expected,
+                  f'{name}: original opaque store differs at{x},{y}')
+        gestures = capture['observations']['gesture_input']['receipts']
+        attack = gestures[1]
+        check(attack['issued_binary_frame'] == 1282 and attack['queued_commands'] == [{
+            'execute_tick': 1282, 'owner': source['owner'],
+            'payload': {'Attack': {'attacker_id': proof['actor_id'], 'target_id': proof['target_actor_id']}}}],
+            f'{name}: real enemy click did not issue Attack')
+        results[name] = dict(native_stores=len(stores), capture_sha256=capture_hash,
+                             frame_sha256=digest(pixels), source=source['physical_leptons'],
+                             target=target['physical_leptons'],
+                             source_inputs=source_inputs, target_inputs=target_inputs,
+                             frame_wall_mean_ms=capture['render']['frame_wall_mean_ms'])
+
+    pairs = {}
+    for kind in ('stationary', 'moving'):
+        name = f'{kind}-attack-inputs-v1'
+        control_name = f'{kind}-enemy-band-control-inputs-v1'
+        active, pixels = by_name[name]
+        control, control_pixels = by_name[control_name]
+        expected_profile = copy.deepcopy(active['profile']['request'])
+        expected_profile['gestures'].append(control['profile']['request']['gestures'][-1])
+        check(expected_profile == control['profile']['request'], f'{kind}: unexpected control profile')
+        last = control['observations']['gesture_input']['receipts'][-1]
+        check(last['band_box_before_release'] and last['queued_commands'] == [{
+            'execute_tick': last['issued_simulation_tick'], 'owner': expected_profile['launch']['player_name'],
+            'payload': {'Select': {'additive': False, 'entity_ids': []}}}],
+            f'{kind}: control must only deselect through an enemy band')
+        check(active['final'] == control['final'], f'{kind}: gameplay hash/clock changed')
+        for key in ('camera', 'internal_extent', 'surface_extent', 'gpu', 'cursor_position'):
+            check(active['render'][key] == control['render'][key], f'{kind}: render {key} differs')
+        frames, controls = active['observations']['frames'], control['observations']['frames']
+        check(len(frames) == len(controls), f'{kind}: paired observations incomplete')
+        for index, (a, b) in enumerate(zip(frames, controls, strict=True)):
+            expected = copy.deepcopy(a)
+            if index == len(frames) - 1:
+                expected['input']['selected_ids'] = []
+                expected['input']['target_line_remaining'] = 24
+            check(expected == b, f'{kind}: unexplained state delta at step{index}')
+        stores = action_stores(cases[name])
+        changed = changed_points(pixels, control_pixels, 800)
+        extra = [point for point in changed if point not in stores]
+        # Conservative source-overlay region for these fixed camera/input
+        # scenes, inspected separately from the original line comparisons.
+        # It admits health/selection changes only; it is not their native raster.
+        selection_region = [140, 285, 110, 100]
+        x, y, w, h = selection_region
+        check(all(x <= px < x + w and y <= py < y + h for px, py in extra),
+              f'{kind}: frame changed outside the line and source selection region')
+        pairs[kind] = dict(compared_frame_pixels=480000, state_boundaries=len(frames),
+                           native_stores=len(stores), changed_pixels=len(changed),
+                           selection_region=selection_region, other_selection_pixels=len(extra))
+
+    recorded, recorded_pixels = by_name['moving-attack-inputs-v1']
+    plain, plain_pixels = captures[-1]
+    expected_profile = dict(recorded['profile']['request'])
+    del expected_profile['observe_action_line_inputs']
+    check(expected_profile == plain['profile']['request'], 'observer-off profile differs')
+    check(recorded_pixels == plain_pixels, 'input observer changed frame pixels')
+    for key in ('initial', 'final', 'map_source'):
+        check(recorded[key] == plain[key], f'input observer changed {key}')
+    observations = dict(recorded['observations'])
+    plain_observations = dict(plain['observations'])
+    frames, plain_frames = observations.pop('frames'), plain_observations.pop('frames')
+    check(observations == plain_observations and len(frames) == len(plain_frames),
+          'input observer changed observation/gesture metadata')
+    for index, (a, b) in enumerate(zip(frames, plain_frames, strict=True)):
+        expected = copy.deepcopy(a)
+        for actor in expected['actors']:
+            actor.pop('action_line_inputs')
+        check(expected == b, f'input observer changed boundary{index}')
+    return dict(status='PASS', native_case_set_sha256=action_case_set_digest(cases),
+                captures=results, paired_controls=pairs,
+                observer_off=dict(capture_sha256=capture_hashes[-1],
+                                  exact_frame_pixels=len(plain_pixels) // 4,
+                                  state_boundaries=len(frames)), limitations=[
+                    'Original Tactical/Foot/pivot/lead execution uses prepared captured inputs and separately established retail getters; this is not native whole-Scenario or whole-frame execution.',
+                    'Every native opaque line store matches RGB565. Deselection also removes the source health/selection overlay; those bounded differences are not native selection goldens.',
+                    'The source uses a supplied unrocked Drive basis. Zero TurretOffset and the original slope matrices zero translation make its pivot independent of the slope; no complete terrain or DrawMatrix history is claimed.',
+                    'The last60-frame wall mean includes simulation, observations, render and presentation; it is not GPU duration or ordinary-play FPS.'])
+
+
 def run_names(family, final_candidate):
-    check(family in ('rally', 'unit-move'), 'unknown procedural comparison family')
+    check(family in ('rally', 'unit-move', 'unit-attack'), 'unknown procedural comparison family')
     if final_candidate:
         check_run_name(final_candidate)
-    if family == 'unit-move':
-        runs = tuple(action_cases())
+    if family in ('unit-move', 'unit-attack'):
+        runs = (tuple(action_cases()) if family == 'unit-move' else
+                tuple(attack_cases()) + (ATTACK_OBSERVER_OFF_RUN,))
         return runs + (tuple(f'{final_candidate}/{name}' for name in runs) if final_candidate else ())
     return RUNS + ((final_candidate,) if final_candidate else ())
 
 
 def compare_family(family, captures, capture_hashes):
-    if family != 'unit-move':
+    if family == 'rally':
         return compare(captures)
-    count = len(action_cases())
+    runs = run_names(family, None)
+    count = len(runs)
     check(len(captures) == len(capture_hashes) and len(captures) in (count, count * 2),
-          'Move capture inventory differs')
-    result = compare_action(captures[:count], capture_hashes[:count])
+          'action capture inventory differs')
+    comparator = compare_action if family == 'unit-move' else compare_attack
+    result = comparator(captures[:count], capture_hashes[:count])
     if len(captures) == count * 2:
         candidates = {}
         for name, reference, candidate, capture_hash in zip(
-                action_cases(), captures[:count], captures[count:], capture_hashes[count:], strict=True):
+                runs, captures[:count], captures[count:], capture_hashes[count:], strict=True):
             before, pixels_before = reference
             after, pixels_after = candidate
             for key in ('profile', 'map_source', 'initial', 'final', 'observations'):
@@ -380,11 +571,11 @@ def record(root: Path, archive: Path, final_candidate: str | None = None, family
         captures.append((document(run / 'child-output/capture.json'),
                          (run / 'child-output/frame.bgra').read_bytes()))
         capture_hashes.append(digest((run / 'child-output/capture.json').read_bytes()))
-    if family == 'unit-move' and final_candidate:
+    if family in ('unit-move', 'unit-attack') and final_candidate:
         # The observation owner checks original executable/input bytes and
         # the full diagnostic clock/atlas policy before these portable frame
         # and state comparisons are retained. Do not fork that live protocol.
-        for name in action_cases():
+        for name in run_names(family, None):
             compared = compare_runs(root / name, root / final_candidate / name)
             check(compared['status'] == 'MATCH',
                   f'{name}: final observation comparison failed: '
@@ -405,6 +596,8 @@ def record(root: Path, archive: Path, final_candidate: str | None = None, family
     receipt = dict(comparison=result, family=family, final_candidate=bool(final_candidate),
                    final_candidate_run=final_candidate,
                    live_run_validations=validations, files=files)
+    if family in ('unit-move', 'unit-attack'):
+        receipt['native_payload_sha256_at_record'] = digest((HERE / 'action_lines.json').read_bytes())
     (archive / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
     return result
 
@@ -454,10 +647,10 @@ def main():
     parser.add_argument('operation', choices=('record', 'check'))
     parser.add_argument('--archive', type=Path, required=True)
     parser.add_argument('--runs', type=Path)
-    parser.add_argument('--family', choices=('rally', 'unit-move'), default='rally',
+    parser.add_argument('--family', choices=('rally', 'unit-move', 'unit-attack'), default='rally',
                         help='comparison to record; check reads the retained family')
     parser.add_argument('--final-candidate', nargs='?', const=FINAL_RUN, metavar='RUN_NAME',
-                        help='additional rally clear run, or directory containing all twelve Move replays')
+                        help='additional rally clear run, or directory containing every Move/Attack replay')
     args = parser.parse_args()
     if args.operation == 'record':
         if args.runs is None:

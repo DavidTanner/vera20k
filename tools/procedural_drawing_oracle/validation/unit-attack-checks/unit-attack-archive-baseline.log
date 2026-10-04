@@ -1,0 +1,20 @@
+======================================================================
+FAIL: test_retained_native_stores_and_real_input_controls (tools.tests.test_procedural_production.UnitMoveProductionTests.test_retained_native_stores_and_real_input_controls)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/tools/tests/test_procedural_production.py", line 35, in test_retained_native_stores_and_real_input_controls
+    self.assertEqual(production.compare_family('unit-move',
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                              self.captures + self.final_captures,
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                              self.hashes + self.final_hashes),
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     self.receipt['comparison'])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'sta[35 chars]6': '650b8159a87037a706e494574d76e5a658dcb65ff[9567 chars]96}}} != {'sta[35 chars]6': '36bf5a7d66970e077d4b2301d50a7fcfa31957402[9567 chars]96}}}
+Diff is 19384 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 6 tests in 2.051s
+
+FAILED (failures=1)

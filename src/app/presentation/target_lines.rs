@@ -7,16 +7,13 @@
 //! ## Dependency rules
 //! - Part of the app layer - reads sim state but never mutates it.
 
-use std::collections::BTreeMap;
-
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseColorMap;
 use crate::map::resolved_terrain::NativeCellQuery;
-use crate::map::terrain;
 use crate::render::batch::SpriteInstance;
 use crate::rules::house_colors::{HouseColorRamps, NO_REMAP};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::{AttackTarget, TargetKind};
+use crate::sim::combat::TargetKind;
 use crate::sim::components::NavTargetRef;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::timer::CdTimer;
@@ -119,7 +116,7 @@ impl TargetLineState {
 pub(crate) fn build_target_line_instances(
     line_state: &TargetLineState,
     sim: Option<&Simulation>,
-    height_map: &BTreeMap<(u16, u16), u8>,
+    rules: Option<&RuleSet>,
     palette_bytes: Option<&[u8]>,
     viewport: TacticalViewport,
 ) -> Vec<SpriteInstance> {
@@ -151,8 +148,7 @@ pub(crate) fn build_target_line_instances(
     // CurrentObjects selection vector or the Logic active-object order.
     // EntityStore's monotonic stable IDs retain that represented order.
     for entity in sim.entities().values() {
-        let Some(line) = selected_action_line_for_entity(entity, sim, height_map, cells.as_ref())
-        else {
+        let Some(line) = selected_action_line_for_entity(entity, sim, rules, cells.as_ref()) else {
             continue;
         };
         lines.push(ProjectedActionLine {
@@ -366,7 +362,7 @@ pub(crate) fn build_factory_rally_line_instances(
 fn selected_action_line_for_entity(
     entity: &GameEntity,
     sim: &Simulation,
-    height_map: &BTreeMap<(u16, u16), u8>,
+    rules: Option<&RuleSet>,
     cells: Option<&NativeCellQuery<'_>>,
 ) -> Option<SelectedActionLine> {
     if !entity.selected
@@ -375,14 +371,21 @@ fn selected_action_line_for_entity(
     {
         return None;
     }
+    let project = |x, y, z| crate::util::lepton::absolute_leptons_to_screen(x, y, z).into();
     if let Some(attack) = &entity.attack_target {
-        let end = resolve_attack_target_point(attack, sim, height_map)?;
+        let rules = rules?;
+        let start = crate::sim::combat::fire_coord::turret_pivot_coordinate(sim, rules, entity)?;
+        let end = crate::sim::combat::aim_coord::led_target_coordinate(
+            sim,
+            rules,
+            entity.stable_id(),
+            Some(attack.target),
+        );
         return Some(SelectedActionLine {
-            // RESIDUAL: the attack-only vt300 TurretOffset and70BCB0 aim
-            // inputs belong to the next attack-line chain. Retain the prior
-            // attack anchor until its existing coordinate consumers migrate.
-            start: selected_action_line_source(entity),
-            end,
+            // Foot4DC0C6/4DC0DF: +300 pivot and70BCB0's own TarCom+58.
+            // FireAt shares the latter query; no presentation copy of lead.
+            start: project(start.x, start.y, start.z),
+            end: project(end.x, end.y, end.z),
             kind: SelectedLineKind::Attack,
         });
     }
@@ -419,67 +422,12 @@ fn selected_action_line_for_entity(
             .ok()?
             .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
-    let project = |coord: crate::sim::components::DriveCoord| {
-        crate::util::lepton::absolute_leptons_to_screen(coord.x, coord.y, coord.z).into()
-    };
+    let start = object_location(entity, terrain);
     Some(SelectedActionLine {
-        start: project(object_location(entity, terrain)),
-        end: project(end),
+        start: project(start.x, start.y, start.z),
+        end: project(end.x, end.y, end.z),
         kind: SelectedLineKind::Move,
     })
-}
-
-fn selected_action_line_source(entity: &GameEntity) -> ScreenPoint {
-    let (x, y) = crate::render::locomotor_visual::screen_position(entity);
-    ScreenPoint { x, y }
-}
-
-fn resolve_attack_target_point(
-    attack: &AttackTarget,
-    sim: &Simulation,
-    height_map: &BTreeMap<(u16, u16), u8>,
-) -> Option<ScreenPoint> {
-    match attack.target {
-        TargetKind::Entity(target_id) => sim.entities().get(target_id).map(|target| ScreenPoint {
-            x: crate::render::locomotor_visual::screen_position(target).0,
-            y: crate::render::locomotor_visual::screen_position(target).1,
-        }),
-        TargetKind::Cell(rx, ry) => {
-            Some(project_cell_destination(rx, ry, height_map, None, Some(sim)).into())
-        }
-    }
-}
-
-fn project_cell_destination(
-    rx: u16,
-    ry: u16,
-    height_map: &BTreeMap<(u16, u16), u8>,
-    bridge_height_map: Option<&BTreeMap<(u16, u16), u8>>,
-    sim: Option<&Simulation>,
-) -> (f32, f32) {
-    let z = bridge_deck_height_for_cell(rx, ry, bridge_height_map, sim)
-        .or_else(|| height_map.get(&(rx, ry)).copied())
-        .unwrap_or(0);
-    let (sx, sy) = terrain::iso_to_screen(rx, ry, z);
-    (sx + 30.0, sy + 15.0)
-}
-
-fn bridge_deck_height_for_cell(
-    rx: u16,
-    ry: u16,
-    bridge_height_map: Option<&BTreeMap<(u16, u16), u8>>,
-    sim: Option<&Simulation>,
-) -> Option<u8> {
-    if let Some(deck_z) = bridge_height_map.and_then(|map| map.get(&(rx, ry)).copied()) {
-        return Some(deck_z);
-    }
-
-    let cell = sim?.resolved_terrain.as_ref()?.cell(rx, ry)?;
-    let is_low_bridge = cell
-        .bridge_layer
-        .as_ref()
-        .is_some_and(|layer| layer.direction == crate::map::resolved_terrain::BridgeDirection::Low);
-    (cell.has_bridge_deck && !is_low_bridge).then_some(cell.bridge_deck_level)
 }
 
 fn rally_tint_for_owner(
@@ -620,6 +568,7 @@ mod tests {
     use crate::rules::house_colors::HouseColorIndex;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
+    use crate::sim::combat::AttackTarget;
     use crate::sim::components::MovementTarget;
     use crate::sim::game_entity::GameEntity;
 
@@ -668,6 +617,8 @@ mod tests {
     fn sim_with_selected_unit_that_has_attack_and_move() -> Simulation {
         let mut sim = Simulation::new();
         let mut unit = GameEntity::test_default(1, "MTNK", "Americans", 10, 10);
+        unit.owner = sim.interner.intern("Americans");
+        unit.type_ref = sim.interner.intern("MTNK");
         unit.selected = true;
         sim.session.game_mode_nonzero = true;
         sim.session.current_house = Some(unit.owner());
@@ -677,7 +628,9 @@ mod tests {
             ..Default::default()
         });
         unit.attack_target = Some(AttackTarget::new(2));
-        let target = GameEntity::test_default(2, "HTNK", "Soviet", 14, 10);
+        let mut target = GameEntity::test_default(2, "HTNK", "Soviet", 14, 10);
+        target.owner = sim.interner.intern("Soviet");
+        target.type_ref = sim.interner.intern("HTNK");
         sim.entities_mut().insert(unit);
         sim.entities_mut().insert(target);
         sim
@@ -737,25 +690,6 @@ mod tests {
     }
 
     #[test]
-    fn bridge_height_entry_lifts_cell_destination_endpoint() {
-        let rx = 10;
-        let ry = 5;
-        let deck_z = 4_u8;
-        let height_map = BTreeMap::new();
-        let mut bridge_height_map = BTreeMap::new();
-        bridge_height_map.insert((rx, ry), deck_z);
-
-        let ground = project_cell_destination(rx, ry, &height_map, None, None);
-        let bridge = project_cell_destination(rx, ry, &height_map, Some(&bridge_height_map), None);
-
-        assert_eq!(bridge.0, ground.0);
-        assert!(
-            (ground.1 - bridge.1 - deck_z as f32 * terrain::HEIGHT_STEP).abs() < f32::EPSILON,
-            "bridge endpoint should lift by deck_z * HEIGHT_STEP"
-        );
-    }
-
-    #[test]
     fn selected_action_timer_expires_at_25_ticks() {
         let state = active_line_state_for_tick(100);
         assert!(state.is_selected_action_active(124));
@@ -784,7 +718,11 @@ mod tests {
     fn selected_action_attack_target_wins_over_movement() {
         let sim = sim_with_selected_unit_that_has_attack_and_move();
         let actor = sim.entities().get(1).unwrap();
-        let line = selected_action_line_for_entity(actor, &sim, &BTreeMap::new(), None).unwrap();
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[VehicleTypes]\n0=MTNK\n1=HTNK\n[MTNK]\nStrength=300\n[HTNK]\nStrength=400\n",
+        ))
+        .unwrap();
+        let line = selected_action_line_for_entity(actor, &sim, Some(&rules), None).unwrap();
         assert_eq!(line.kind, SelectedLineKind::Attack);
     }
 
@@ -812,14 +750,7 @@ mod tests {
         let rules = rules_with_factory_and_non_factory();
 
         assert!(
-            build_target_line_instances(
-                &state,
-                Some(&sim),
-                &BTreeMap::new(),
-                None,
-                test_viewport()
-            )
-            .is_empty()
+            build_target_line_instances(&state, Some(&sim), None, None, test_viewport()).is_empty()
         );
         assert!(
             !build_factory_rally_line_instances(
@@ -841,7 +772,7 @@ mod tests {
             build_target_line_instances(
                 &TargetLineState::default(),
                 None,
-                &BTreeMap::new(),
+                None,
                 None,
                 test_viewport()
             )

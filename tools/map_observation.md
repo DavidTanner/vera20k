@@ -27,6 +27,17 @@ to every draw. Place it over a neutral sidebar area when selecting actors would
 otherwise produce an animated order cursor. Profiles without this field retain
 the ordinary post-load center position.
 
+Optional v2 `observe_action_line_inputs: true` adds each actor's existing
+read-only facing, active locomotor/motion, applied speed fraction, crate/house
+speed factors, current speed/weapon, veterancy, turret offset and rocking angles.
+Building rows contain `null`. Fixed-point and floating-point bits are named
+explicitly; they are not silently converted to native values. `false` or an
+absent field adds no actor fields, preserving historical observations. Version1
+rejects the option, even when false; present null/nonboolean values are invalid.
+The [procedural drawing comparisons](procedural_drawing_oracle/README.md)
+bind these observations to separately executed native readers/getters and retain
+an observer-off replay proving unchanged frame bytes and gameplay boundaries.
+
 `render.frame_wall_mean_ms`, when present, reads the existing frame timer's last
 up-to-60 intervals. It includes simulation, diagnostic observation, rendering and
 presentation pacing. It is cadence metadata, not GPU duration or ordinary play

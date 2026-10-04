@@ -3164,27 +3164,15 @@ struct FireAtLaunchAim {
 /// with `weapon` from `source` at `target_coord` (the target's unled
 /// vt+0x58/vt+0xA4 coordinate). Native execution of the numeric leaves:
 /// `tools/projectile_oracle/fireat_speed.py`. The aim (`0x0070BCB0`) reads
-/// the firer's `Target` (`+0x2B4`), not FireAt's argument; `snap.target` is
-/// the firer's attack target on every VERA fire path.
+/// the call-local TarCom authority independently of FireAt's argument. The
+/// argument's coordinate supplies only the launch-speed distance here
+/// (`0x006FE1DA..0x006FE218`, `0x006FE53A`).
 ///
 /// RESIDUAL: a building target's vt+0xA4 adds its type's
 /// `TargetCoordOffset=` (`0x004500A0`, BuildingType `+0xEBC`), unparsed; the
 /// launch distance uses its centre. Trigger: shots at the three shipyards,
 /// the only stock types with an offset. Effect: a launch speed a few leptons
 /// per frame off.
-///
-/// A Jumpjet target's current speed reads the fraction its `Process` hands
-/// `SetSpeedFraction` (`jumpjet_cruise.rs`; native vt+0x544 at `0x0054B9A4`,
-/// `0x0054C814`, `0x0054D1AE`), so a moving Kirov, Floating Disc, Siege
-/// Chopper or Rocketeer is led.
-///
-/// A Hover target answers `Is_Moving` 0x00514C30 and its speed fraction
-/// from its own Process (`hover_process`).
-///
-/// RESIDUAL (lead inputs): a garrison shot's GetCurrentWeapon would be
-/// the occupant's (`BuildingClass::GetWeapon 0x004526F0`), not the building
-/// type's slot; every retail occupant weapon is Inviso, which never reaches
-/// the lead, so it is dormant.
 fn fireat_launch_aim(
     world: &Simulation,
     rules: &RuleSet,
@@ -3192,9 +3180,10 @@ fn fireat_launch_aim(
     weapon: &crate::rules::weapon_type::WeaponType,
     source: ProjectileCoord,
     target_coord: ProjectileCoord,
+    tarcom: Option<TargetKind>,
 ) -> FireAtLaunchAim {
     use crate::sim::projectile::launch::{
-        LaunchSpeedProjectile, fireat_launch_distance, lead_aim, weapon_launch_speed,
+        LaunchSpeedProjectile, fireat_launch_distance, weapon_launch_speed,
     };
     let speed_projectile = |weapon: &crate::rules::weapon_type::WeaponType| {
         weapon
@@ -3206,56 +3195,14 @@ fn fireat_launch_aim(
                 floater: projectile.floater,
             })
     };
-    let firer_coords = object_get_coords(world, snap.stable_id);
     let speed = weapon_launch_speed(
         weapon.speed,
         speed_projectile(weapon),
         rules.general.gravity,
         fireat_launch_distance(source, target_coord),
     );
-    let lead = match snap.target {
-        TargetKind::Entity(target_id) => world
-            .substrate
-            .entities
-            .get(target_id)
-            .filter(|target| target.category == EntityCategory::Unit)
-            .filter(|target| crate::sim::movement::motion_query::is_moving(target) == Some(true))
-            .zip(firer_coords)
-            .and_then(|(target, firer_coords)| {
-                let firer = world.substrate.entities.get(snap.stable_id)?;
-                let firer_type = rules.object(world.interner.resolve(firer.type_ref()))?;
-                let current = combat_weapon::current_weapon(firer, firer_type)
-                    .and_then(|id| rules.weapon(id))?;
-                let target_type = rules.object(world.interner.resolve(target.type_ref()));
-                let target_coords = object_get_coords(world, target_id)?;
-                // `ObjectClass::Distance @ 0x005F6360` to a UnitClass target.
-                let distance = crate::util::native_x87::object_distance(
-                    [firer_coords.x, firer_coords.y, firer_coords.z],
-                    [target_coords.x, target_coords.y, target_coords.z],
-                    None,
-                );
-                Some(lead_aim(
-                    target_coord,
-                    target.body_facing_current(world.session.binary_frame),
-                    distance,
-                    weapon_launch_speed(
-                        current.speed,
-                        speed_projectile(current),
-                        rules.general.gravity,
-                        distance,
-                    ),
-                    crate::sim::movement::owner_current_speed(
-                        target,
-                        target_type,
-                        rules.general.veteran_speed,
-                        &world.houses,
-                    ),
-                ))
-            }),
-        TargetKind::Cell(..) => None,
-    };
     FireAtLaunchAim {
-        aim: lead.unwrap_or(target_coord),
+        aim: super::aim_coord::led_target_coordinate(world, rules, snap.stable_id, tarcom),
         speed,
     }
 }
@@ -3626,8 +3573,15 @@ pub(super) fn emit_admitted_fire(
         // a `Dropping=` projectile the firer's GetCoords, `0x006FE2E2`); the
         // delta aims at the target, led when it is a moving vehicle
         // (`0x0070BCB0`). See `fireat_launch_source`/`fireat_launch_aim`.
-        let launch_geometry =
-            fireat_launch_aim(world, rules, snap, weapon, launch_source.coord, impact);
+        let launch_geometry = fireat_launch_aim(
+            world,
+            rules,
+            snap,
+            weapon,
+            launch_source.coord,
+            impact,
+            tarcom,
+        );
         let origin = launch_source.coord;
         let projectile_type = weapon
             .projectile

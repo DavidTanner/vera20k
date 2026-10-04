@@ -1,0 +1,172 @@
+{
+  "validated_commit": "431fcbcb6b9315d0e352b56c4dab606f48748333",
+  "base_commit": "24330e019e3875d001fcd16c1141355f8648c3a1",
+  "release_source_commit": "ee20ca9feabda48be633df55845891801b8782d6",
+  "release_executable_sha256": "4b4a83ceed0f074bab7dd0461c2bfef33f6e26a55c5842e8f43601eaad06e18c",
+  "runtime_source_equivalence": {
+    "compared_paths": [
+      "src",
+      "Cargo.toml",
+      "Cargo.lock",
+      "build.rs"
+    ],
+    "changed_paths": [],
+    "validated_src_tree": "56766a28e60c8aa1f0bb3121a8a12ba503a8b7ea",
+    "release_src_tree": "56766a28e60c8aa1f0bb3121a8a12ba503a8b7ea"
+  },
+  "results": {
+    "full_retail_lib": {
+      "passed": 9675,
+      "failed": 0,
+      "ignored": 239,
+      "seconds": 85.82,
+      "env": {
+        "VERA20K_REQUIRE_RETAIL_INI": "1"
+      },
+      "command": "python -m tools.cargo_run -- test -p vera20k --lib",
+      "exit_code": 0
+    },
+    "clippy": {
+      "command": "python -m tools.cargo_run -- clippy -p vera20k --lib",
+      "env": {
+        "VERA20K_REQUIRE_RETAIL_INI": "1"
+      },
+      "exit_code": 0,
+      "warnings_retained": true
+    },
+    "full_python": {
+      "run": 606,
+      "failed": 0,
+      "optional_skips": 5,
+      "seconds": 37.999,
+      "exit_code": 0
+    },
+    "native_modes": [
+      "default: PASS",
+      "attack-prerequisites: PASS"
+    ],
+    "portable_attack_archive": "PASS",
+    "portable_move_archive": "PASS",
+    "field_ratchet": {
+      "current": 2505,
+      "base": 2505
+    },
+    "diff_check": "PASS",
+    "rustfmt": {
+      "edited_leaves": 12,
+      "exit_code": 0,
+      "recursive": false
+    }
+  },
+  "files": {
+    "production-action-lines-check.log": {
+      "bytes": 153,
+      "sha256": "d88245b15f77df226f7d3107ee0b7b2f12fdd9c4063677da05b25041e8142b05"
+    },
+    "production-native-validation.json": {
+      "bytes": 951,
+      "sha256": "36c08be398895515ab661f663c831f7506a71e11bae5b6769cc0381ec173007c"
+    },
+    "production-prerequisites-check.log": {
+      "bytes": 174,
+      "sha256": "0aa451983e1b7f41e2b9fedb3d3937ef7f03e495b7c3c2bc0f56e61ccd819e9a"
+    },
+    "release-v1-capture-report.md": {
+      "bytes": 4579,
+      "sha256": "68868b116edf11bbf2287534d8931b2b76d6e951de7a54c09144e5fc23a48d54"
+    },
+    "release-v1-capture-summary.json": {
+      "bytes": 31456,
+      "sha256": "abe70962c453ead0e94e0e406213661c93e45a408aeb1b99aaed2dd4410e2bf9"
+    },
+    "release-v1-old-moving-comparison.json": {
+      "bytes": 9976,
+      "sha256": "b0d66db2f91943df98976e552fcbf672e0544cf3ebb2929b8252b4162380623f"
+    },
+    "unit-attack-archive-baseline.log": {
+      "bytes": 1429,
+      "sha256": "c77e200085f12edb6e0a78c0124584f80d9e3e61f664fc946f5a9205c2796433"
+    },
+    "unit-attack-archive-identity-fixed.log": {
+      "bytes": 97,
+      "sha256": "26068e8b9d19f5c1b06a415f6a597b7c82f4b4c1b34cec4dd05594feca12a559"
+    },
+    "unit-attack-clippy.log.gz": {
+      "bytes": 422806,
+      "sha256": "7c9d1de8fe30238389effcaadbde02b40c3aa103265c6741d31135d3738c9442",
+      "gzip_sha256": "e9151de394e3bd9e9a9e986bf4773ff0c97da888167fc3bdb46d051c1575f5e9"
+    },
+    "unit-attack-field-ratchet.log": {
+      "bytes": 90,
+      "sha256": "5bfe3650b49c8e6d0a491eff2cfb987361d1020aed39a8d95ac46e04deda9dc1"
+    },
+    "unit-attack-final-field-ratchet.log": {
+      "bytes": 90,
+      "sha256": "b2d8122acae127d800579341bca73919cd6be97422ada2739d0535b854827b96"
+    },
+    "unit-attack-focused-first.log": {
+      "bytes": 12577,
+      "sha256": "64531a35283a270083de1523bea148b6702706004153e56cdf2ca833704019bb"
+    },
+    "unit-attack-full-lib.log.gz": {
+      "bytes": 986127,
+      "sha256": "e21466f17f2929559cf7abd12ff452fb0ee6a6fbb524b2b4e0dc99989d363843",
+      "gzip_sha256": "e469bd513996aa10503bb95f625d7ec2d747ade23affb4bd791379a616c673a1"
+    },
+    "unit-attack-move-archive-recheck.log": {
+      "bytes": 97,
+      "sha256": "962ee750d8958655065bda8cea4b593ea368750dc3c68a88b1679c604c1a2e02"
+    },
+    "unit-attack-move-production-recheck.log.gz": {
+      "bytes": 12688,
+      "sha256": "d5b57f6d3d648dfff96fc1cc0bf742a2c6ecf1d03ed3ed7e96d97e8f24b0bfb7",
+      "gzip_sha256": "733673c2dfffb57380cb03c4fc17500d66754659e74b2d76d1d4dd81c0f54303"
+    },
+    "unit-attack-procedural-tests.log": {
+      "bytes": 98,
+      "sha256": "ff1b6062f421bebea3418ea4b36c16818d30425ce3cae2abfbc82e0984815b9d"
+    },
+    "unit-attack-production-recheck.log.gz": {
+      "bytes": 7197,
+      "sha256": "d2f9a19646546b4ce3c330865cd0df598edffb22e2edc6d40bba10590aba64ef",
+      "gzip_sha256": "fb9a1a21c10f30dfe5d267f168312851adef334de14dcb564f2437f9db5d4bcb"
+    },
+    "unit-attack-production-record.log": {
+      "bytes": 7197,
+      "sha256": "d2f9a19646546b4ce3c330865cd0df598edffb22e2edc6d40bba10590aba64ef"
+    },
+    "unit-attack-python-full.log.gz": {
+      "bytes": 115572,
+      "sha256": "5e277fee10e342828ff53ed9c89e7a9449739e140783255a1dc9f5285204c095",
+      "gzip_sha256": "2c5b9e9a992920bc017f3532c973d089e54ccc079fd9f68bccf24c8acf20f434"
+    },
+    "unit-attack-release-v1-retry.log": {
+      "bytes": 5816,
+      "sha256": "1d58683093261024008b7e85320dfb8eb681caf8d9ffc828bdaba3c92ef2279f"
+    },
+    "unit-attack-release-v1.log": {
+      "bytes": 3835,
+      "sha256": "4fc22f559146eb8d485b89feb202397dd2b1ec32cd9aca4eec77682166adc5cc"
+    },
+    "unit-attack-render-second.log": {
+      "bytes": 4721,
+      "sha256": "bf356a844c85e0731df24e61ad10fe54e4c1442b3f26cd8c967b70317e0c11c2"
+    },
+    "unit-attack-final-rustfmt.log": {
+      "bytes": 40,
+      "sha256": "79a3328faf144827bc69dd89e255e72000168acb416ff63656c60a109e096765"
+    }
+  },
+  "review": {
+    "reviewed_commit": "2f431d5f1839e422ea3b398e9df576de35b5d89f",
+    "base_commit": "24330e019e3875d001fcd16c1141355f8648c3a1",
+    "fresh_read_only": true,
+    "result": "No actionable scoped defect found",
+    "runtime_changes_after_review": false,
+    "report": "../unit-attack-review.md",
+    "local_session_sha256": "c236e62de5a70a7d6e0a5eac88930d06ca379cd081ede94f53fa24c42679cd3c",
+    "local_session_bytes": 754942,
+    "session_id": "01a1050b-99b9-7201-ab2d-9ebe62978b4d",
+    "exit_code": 0
+  }
+}

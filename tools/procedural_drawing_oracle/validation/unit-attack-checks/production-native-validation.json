@@ -1,0 +1,16 @@
+{
+  "check_modes": [
+    "default",
+    "attack-prerequisites"
+  ],
+  "both_passed": true,
+  "diff_check_passed": true,
+  "source_frozen_hashes": {
+    "tools/procedural_drawing_oracle/action_lines.py": "045808eb6007d7b368e205eb1147d5b35258edac0b0fcfc925b5a5f7c0fd131f",
+    "tools/procedural_drawing_oracle/action_lines.json": "fc14c82572777e199e85abf81ec8a49f7dc45b5f9138648ea590da9ab2a8b75e",
+    "tools/procedural_drawing_oracle/action_lines.meta.json": "12d3e645095ba86156b4667e2e001897eb67030069f320c51db2853d9f55c639",
+    "tools/procedural_drawing_oracle/action_lines.md": "82f93ec43661d1080bdbb7a3b6f805223aed36fc9dfeb52a83d806cad1c4d0ee",
+    "tools/procedural_drawing_oracle/action_lines_attack_prerequisites.json": "4584867d33dbe588dcc956e4ea7255a7f905222b15754153a5520c44ba78e8e9",
+    "tools/procedural_drawing_oracle/action_lines_attack_prerequisites.meta.json": "5cb5c25c60b492c73157424a9b84a377166fb149564d486134402609beca75ce"
+  }
+}

@@ -1,7 +1,7 @@
-# Selected ground Unit Move action lines
+# Selected ground Unit action lines
 
 `action_lines.py` executes original retail `gamemd.exe` for the selected local
-ordinary ground Unit Move route. `action_lines.json` is the executable result;
+ordinary ground Unit Move and Attack routes. `action_lines.json` is the executable result;
 `action_lines.meta.json` pins the binary and every reused fixture source. It is
 native evidence for bounded prepared inputs, not a native Scenario or production
 rendering capture. The implementation and production validation remain separate.
@@ -17,6 +17,132 @@ PYTHONDONTWRITEBYTECODE=1 python -m tools.procedural_drawing_oracle.action_lines
 instruction is replaced by this adapter. Surface, palette and destination setup
 reuse `Rally`, `PaletteReader` and `track_destination.make_destination_fixture`.
 Do not create another rasterizer or terrain/actor fixture for these cases.
+
+The appended `attack_cases` use this same surface and primitive owner for the
+ordinary ground Unit Attack branch. The separate reproducible prerequisite
+mode composes the existing retail `anytown_damage.mission.Mission` world:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python -m tools.procedural_drawing_oracle.action_lines --attack-prerequisites --check
+```
+
+It requires the retained original asset inputs used by Mission, through
+`VERA20K_SHRAPNEL_INPUTS` and `VERA20K_ANYTOWN_INPUTS`. It produces
+`action_lines_attack_prerequisites.json` and its metadata with the same
+`finish_vectors` check/write protocol. Physical inputs and reused source
+identities are recorded; no research-path imports are used. The earlier289
+Move/control/production rows and all their prior top-level values are preserved.
+
+## Ordinary ground Unit Attack extension
+
+Nonnull TarCom takes priority over NavCom and the whole queued-cell vector at
+`4DC0B3..4DC1A7`. Actual Unit virtual `+300` resolves to `6F3D60`: this is a body
+pivot using Drive's drawing matrix and type `TurretOffset`, not PrimaryFireFLH.
+Unit `+AC=41BE00` delegates to raw Object coordinates. Aim `70BCB0` starts from
+TarCom `+58=410540`; a moving Unit uses real Drive admission, live Foot speed,
+current weapon, raw object distance and current body facing. The branch then
+uses palette index8 (`0xA800`) and the existing original `7049C0`/solid leaves.
+
+Thirty-one prepared raster rows cover eight endpoint directions with stationary
+and moving targets, simultaneous NavCom/queue priority, no NavCom, timer24/25,
+target-null controls, body/turret headings, nonstock pivot80, and target live
+fraction/veteran/crate inputs. `weapon_inputs` explicitly supplies stored
+speed95/ROT0/Floaterfalse/Gravity6 from the physical105mm reader/postpass packet.
+Its authored Speed40 reads102 first; the later Range5 ballistic postpass writes95.
+Both authored values are retained beside the prepared stored value. The actual
+`773070` calculation still runs and derives ROT0 speed from distance. Every raw
+speed17 has authored Speed7 alongside it. Existing `track_speed_native` owns the
+supplied getter fields; the physical full Unit reader in the prerequisite
+packet independently establishes Speed7 ->17. All original actor, locomotor
+and timer bytes remain unchanged across drawing, with no observed RNG, restart
+or detach entry. These rows use a flat, unrocked source; wider draw-matrix
+variants are separate required mechanisms.
+
+Prepared Unit deploy state `+6D8=-1` matches the existing destination fixture
+and the recorded original constructors. Each requested moving row calls the
+actual Drive Move_To; an independent original Is_Moving call asserts its
+admission before drawing. This prevents a cold zero deploy field from silently
+turning a moving control into a stationary one.
+
+Four `attack_production_cases` replay captured stationary/moving Attack inputs
+and their unselected controls through the existing Tactical batch loop. The
+matched release receipts supply source1374 and target1386 MTNK coordinates,
+selection, TarCom/NavCom, timer frames and raw opt-in `action_line_inputs`.
+Profile, receipt, BGRA frame and executable hashes are pinned. The prepared
+native current-speed queries reproduce source17/target0 for the stationary
+pair and source5/target17 for the moving pair. The source's latter applied
+fraction is exactly19661/65536; Housef32 and cratef64 inputs retain their bits.
+Original Drive Move_To and IsMoving establish both captured motion flags.
+
+The native stationary line stores188 red pixels; the moving line stores101,
+with led aim `[8233,23679,416]`. Both controls call no Foot drawing and store
+no pixels. A192x160 crop at production origin `[176,336]` fits the existing
+guarded64KiB surface reservation. Native camera `[-1924,1747]` follows the
+previously established camera-plus-crop-minus15Y convention. Every original
+endpoint rectangle and solid segment remains unclipped. Existing
+[`rally_production.py`](rally_production.py) owns the separate receipt/archive
+and production pixel comparison; native background is only a write sentinel.
+All320 earlier rows and every earlier top-level payload value are preserved.
+
+The source-basis boundary is explicit in `attack_production_reference`.
+Moving actors occupy Cells29,92 and33,92, which were not among the observed
+terrain cells. Exact physicalZ416, zero GTNK TurretOffset and no rocking owner
+are supplied. The observed Cell34,92 fields belong to the competing NavCom or
+unused fallback. This packet does not label the moving cells capture-proven
+flat or reproduce their terrain/track history.
+
+The equivalent zero-offset origin is supported by the existing native slope
+owner: all21 initialized slope matrices have zero translation. Twenty-one
+stable original pivot controls retain the source origin. One active timer
+control also enters Drive's zero-angle translation arithmetic with supplied
+half sizes15.5/20.5 and retains that origin. Its equal source/destination slope
+uses original755A40; differing-slope quaternion conversion is instruction
+evidence (`646A39/646A41/646A49` clear translation). This establishes the
+origin boundary, not general matrix parity, a VXL reader or nonzero rocking.
+The same drawing purity guard covers direct Foot and Tactical replay without
+duplicating the surface, rasterizer or actor/Drive ownership.
+
+The prerequisite mode executes original source/target Unit constructors and
+Unlimbo, then real enemy-object query `73FD50 ->4DDED0 ->6FFEC0` with no modifier
+keys. Actual Unit/Techno FireError returns an admissible result and the query
+returns Attack5. This required two existing prerequisites absent from the
+earlier Cell-target Mission fixture: original Object scalar initialization
+(`8141D8` via `object_flight_height.initialize_object_scalars`) and physical
+layered `[ElevationModel]` reader `66D150`. Cold Object constants made the
+target appear airborne; the missing elevation divisor later faulted at
+`6F705A`. Those exploratory failures remain in ignored research logs and are
+not goldens or alternate gameplay behavior. Existing OS key transport supplies
+GetKeyState SHORT0 at the import boundary; no action result is substituted.
+
+The admitted query is followed by original Attack Event construction/delivery,
+QueueMission, AssignTarget and Unit destination setter. The retained target
+then runs real Move destination, fraction, Facing and veteran setters before
+each `70BCB0` query. Separate cases execute a missing current-weapon control,
+real Stop, and concrete pointer expiry with supplied dead-target state. The
+last boundary establishes target clearing and passive-scan RNG/timer effects;
+it does not execute damage or the target's entire destruction/retirement loop.
+Event delivery does not restart the action-line timer; the already-established
+Display caller owns that restart. Whole mouse picking, event scheduling and
+Scenario load remain outside the composition.
+
+Two full original `6FDD50` controls distinguish its explicit Cell argument from
+TarCom. The first launches using the argument distance/speed, then aims using a
+different moving veteran Unit TarCom. The second retains the same valid
+argument after Stop; `70BCB0` returns zero, and later bullet placement fails.
+It must not be described as FireAt refusing a null TarCom at entry. The packet
+records original calls, bullet origin/velocity bits, and RNG per mutation step;
+direct aim reads leave actor/Drive/RNG unchanged. FireAt animation and concrete
+expiry may consume Scenario RNG independently of that read-only query.
+
+Original UnitType construction and exact ART `TurretOffset` reader establish
+default0 and physical GTNK omission0; retained/default/exact-case/wrap controls
+are executable. The original AP constructor and full layered Warhead reader
+establish `Rocker=false`, `DirectRocker=false` for the physical105mm/AP duel.
+This is why incoming AP fire does not require the broader Rocker producer for
+this bounded common path. It does not establish the other warheads, positive
+rocking angles, slopes, airborne targets, planning, force-attack Cell input or
+multiturret selection. Production output/performance validation remains the
+implementation owner's separate evidence.
 
 `ActionFixture` accepts optional `input.surface_size`; `Rally` owns the dimensions
 and initializes the same original BSurface/ABuffer storage. The default remains

@@ -112,6 +112,46 @@ impl From<&AttackerSnapshot> for FireSource {
     }
 }
 
+/// The turret pivot (`TechnoClass` virtual +300, `0x006F3D60`), before any
+/// weapon FLH. Foot's selected Attack line reads this coordinate. Native
+/// translates the locomotor basis by ART `TurretOffset`, rotates the basis
+/// about the turret, then transforms the zero vector; that final rotation
+/// cannot move the pivot. Reuse the existing GetFLH transform with zero FLH
+/// instead of creating another facing/truncation implementation.
+///
+/// A source without a locomotor starts from the identity, so its offset is
+/// along world X. The result adds to the same virtual +AC base as GetFLH.
+/// Executed source/ART controls: tools/procedural_drawing_oracle/action_lines.
+///
+/// The represented basis retains GetFLH's slope/rocking limitations. Stock
+/// MTNK's GTNK art has offset0, and stable Drive slope matrices have zero
+/// translation, so those slopes do not move this pivot. AP has Rocker0;
+/// the ordinary untouched 105mm/AP duel does not create a rocking pose.
+/// Ground rocking producers and their DrawMatrix translation remain a
+/// required separate mechanism for Rocker hits (for example V3WH/Parasite).
+pub(crate) fn turret_pivot_coordinate(
+    world: &Simulation,
+    rules: &RuleSet,
+    entity: &GameEntity,
+) -> Option<ProjectileCoord> {
+    let obj = rules.object(world.interner.resolve(entity.type_ref()))?;
+    let source = FireSource::of_entity(entity);
+    let base = fire_coordinate_base(world, rules, &source, obj);
+    let offset = base.art.map_or(0, |art| art.turret_offset);
+    let delta = if entity.locomotor.is_some() {
+        // Retain the existing transform's representable-coordinate boundary;
+        // authored TurretOffset is not clamped by the ART reader.
+        crate::util::flh_transform::native_flh_world_delta(0, 0, 0, offset, base.facings, 0)?
+    } else {
+        (offset, 0, 0)
+    };
+    Some(ProjectileCoord::new(
+        base.x.wrapping_add(delta.0),
+        base.y.wrapping_add(delta.1),
+        base.z.wrapping_add(delta.2),
+    ))
+}
+
 /// Resolve the fire coordinate of `snap` firing the selected native weapon index.
 ///
 /// Non-buildings: `TechnoClass::GetFLH @ 0x006F3AD0`, the type's `FLH` rotated

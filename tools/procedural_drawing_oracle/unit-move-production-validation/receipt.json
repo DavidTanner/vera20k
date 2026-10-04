@@ -1,7 +1,6 @@
 {
   "comparison": {
     "status": "PASS",
-    "native_payload_sha256": "36bf5a7d66970e077d4b2301d50a7fcfa31957402889f70947225d8f309a6cad",
     "captures": {
       "unit-move-active-v1": {
         "native_stores": 165,
@@ -438,7 +437,8 @@
         "compared_frame_pixels": 480000,
         "state_boundaries": 96
       }
-    }
+    },
+    "native_case_set_sha256": "00147802b667522211ee593941d20a5924c6cc1848e9cf1eccd42d195f307d16"
   },
   "family": "unit-move",
   "final_candidate": true,
@@ -4118,5 +4118,6 @@
       "sha256": "1ba8eb4e6e9dca6ee61b1467e3a34be0e399619a91af2d5b1e928ac813c30eb0",
       "gzip_sha256": "fa503d2af0ddc5d9e0f80c7b6122b8454c6332e8fa5d9c765d314866738e80cf"
     }
-  }
+  },
+  "native_payload_sha256_at_record": "36bf5a7d66970e077d4b2301d50a7fcfa31957402889f70947225d8f309a6cad"
 }

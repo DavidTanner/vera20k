@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "prior_commit": "58f3fd9dbac162eed267850edb1e8cfe5d714028",
+  "prior_payload_sha256": "36bf5a7d66970e077d4b2301d50a7fcfa31957402889f70947225d8f309a6cad",
+  "identical_production_rows": 12,
+  "native_case_set_sha256": "00147802b667522211ee593941d20a5924c6cc1848e9cf1eccd42d195f307d16",
+  "archive_files_changed": [
+    "receipt.json"
+  ],
+  "compressed_capture_bytes_unchanged": true
+}

@@ -60,6 +60,10 @@ fn drawing_rows() -> impl Iterator<Item = &'static Value> {
         .chain(native()["batch_cases"].as_array().unwrap().iter())
 }
 
+fn attack_rows() -> impl Iterator<Item = &'static Value> {
+    native()["attack_cases"].as_array().unwrap().iter()
+}
+
 fn viewport(input: &Value, zoom: f32) -> TacticalViewport {
     let mut camera = point(&input["camera"]);
     camera[1] += 15; // Shared VERA world projection bias, not a line adjustment.
@@ -158,6 +162,156 @@ fn fixture(row: &Value) -> (Simulation, TargetLineState, TacticalViewport) {
     (sim, state, viewport(input, 1.))
 }
 
+/// Prepare the original raster inputs through existing rules/state owners.
+/// These supplied poses supplement the separately executed retail constructor,
+/// command and live-getter histories; they do not stand in for those histories.
+fn drawing_fixture(
+    row: &Value,
+) -> (
+    Simulation,
+    Option<RuleSet>,
+    TargetLineState,
+    TacticalViewport,
+) {
+    use crate::rules::art_data::ArtRegistry;
+    use crate::rules::ini_parser::IniFile;
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
+    use crate::sim::combat::{AttackTarget, veterancy};
+    use crate::sim::movement::locomotor::LocomotorState;
+    use crate::sim::movement::track_process::TrackFamily;
+    use crate::util::native_x87::NativeF64Bits;
+
+    let (mut sim, state, view) = fixture(row);
+    let input = &row["input"];
+    if input["family"] != "attack" {
+        return (sim, None, state, view);
+    }
+    let speed = &input["target_speed_inputs"];
+    let weapon = &input["weapon_inputs"];
+    let ini = IniFile::from_str(&format!(
+        "[AudioVisual]\nGravity={}\n[General]\nVeteranSpeed={}\n\
+         [Countries]\n0=Americans\n[Americans]\nSpeedUnitsMult={}\n\
+         [VehicleTypes]\n0=MTNK\n[MTNK]\nImage=GTNK\nSpeed={}\nTurret=yes\n\
+         Primary={}\nVeteranAbilities={}\nEliteAbilities={}\n\
+         [ACTION]\nProjectile=ACTIONP\nSpeed={}\nRange={}\n\
+         [ACTIONP]\nROT={}\nFloater={}\n",
+        weapon["gravity"].as_f64().unwrap(),
+        speed["veteran"].as_f64().unwrap(),
+        speed["house"].as_f64().unwrap(),
+        speed["speed_percent"].as_i64().unwrap(),
+        if weapon["present"].as_bool().unwrap() {
+            "ACTION"
+        } else {
+            ""
+        },
+        if speed["faster"].as_bool().unwrap() {
+            "FASTER"
+        } else {
+            ""
+        },
+        if speed["elite_faster"].as_bool().unwrap() {
+            "FASTER"
+        } else {
+            ""
+        },
+        weapon["speed_percent"].as_i64().unwrap(),
+        weapon["range_cells"].as_i64().unwrap(),
+        weapon["rot"].as_i64().unwrap(),
+        if weapon["floater"].as_bool().unwrap() {
+            "yes"
+        } else {
+            "no"
+        },
+    ));
+    let art = IniFile::from_str(&format!(
+        "[GTNK]\nTurretOffset={}\nPrimaryFireFLH=150,0,100\n",
+        input["turret_offset"].as_i64().unwrap(),
+    ));
+    // ReadTypeData runs before AudioVisual in each Process pass. The first
+    // weapon postpass therefore sees constructor Gravity3; the later mode
+    // and map passes see the loaded Gravity6 and produce the retained95.
+    // Native chronology: rules_oracle/weapon_speed_order and the physical
+    // action_lines_attack_prerequisites packet. Do not flatten these passes.
+    let mut layers = RulesLayerStack::new(ini);
+    layers.push(RulesLayerKind::GameMode, IniFile::empty());
+    layers.push(RulesLayerKind::Scenario, IniFile::empty());
+    let mut rules =
+        RuleSet::from_processed_rules(&layers.process_with_fixed_art(&art).unwrap()).unwrap();
+    rules.install_art_data(ArtRegistry::from_ini(&art));
+    if weapon["present"].as_bool().unwrap() {
+        assert_eq!(
+            serde_json::json!(rules.weapon("ACTION").unwrap().speed),
+            weapon["speed"]
+        );
+    }
+    assert_eq!(
+        crate::util::fixed_math::ra2_speed_to_leptons_per_frame(
+            rules.object("MTNK").unwrap().speed
+        ),
+        speed["raw"].as_i64().unwrap() as i32,
+        "prepared raw speed is bound to the original type reader's authored input"
+    );
+    assert_eq!(speed["flag_owner"], -1, "retail CTF is dormant");
+    for house in sim.houses.values_mut() {
+        house.project_country_mults(&rules, &sim.interner);
+    }
+    let frame = sim.session.binary_frame;
+    let actor = sim.entities_mut().get_mut(1).unwrap();
+    actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
+    actor
+        .body_facing
+        .snap(input["body_facing"].as_u64().unwrap() as u16, frame);
+    let mut turret = crate::sim::movement::FacingClass::new(0, 0);
+    turret.snap(input["turret_facing"].as_u64().unwrap() as u16, frame);
+    actor.barrel_facing = Some(turret);
+    actor.attack_target = input["target_present"]
+        .as_bool()
+        .unwrap()
+        .then(|| AttackTarget::new(2));
+    let owner = actor.owner;
+    let type_ref = actor.type_ref;
+    let mut target = GameEntity::test_default(2, "MTNK", "Americans", 20, 20);
+    target.owner = owner;
+    target.type_ref = type_ref;
+    target.selected = false;
+    let [x, y, z] = point(&input["target_xyz"]);
+    crate::sim::movement::ground_pose::put_location(&mut target.position, DriveCoord { x, y, z });
+    let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Drive);
+    if input["target_moving"].as_bool().unwrap() {
+        locomotor.ensure_installed_track_state();
+        assert!(
+            locomotor.store_track_destination(TrackFamily::Drive, Some(DriveCoord { x, y, z }))
+        );
+    }
+    target.locomotor = Some(locomotor);
+    target
+        .body_facing
+        .snap(input["target_facing"].as_u64().unwrap() as u16, frame);
+    match speed["rank"].as_f64().unwrap() {
+        0. => {}
+        1. => veterancy::set_veteran(&mut target),
+        2. => veterancy::set_elite(&mut target),
+        other => panic!("unsupported prepared rank {other}"),
+    }
+    assert!(
+        target
+            .foot_speed
+            .accept_speed_crate(NativeF64Bits::from_bits(
+                speed["crate"].as_f64().unwrap().to_bits(),
+            ))
+    );
+    target
+        .foot_speed
+        .set_speed_fraction_native_bits(speed["applied"].as_f64().unwrap().to_bits());
+    assert_eq!(
+        crate::sim::movement::motion_query::is_moving(&target),
+        input["target_moving"].as_bool()
+    );
+    sim.entities_mut().insert(target);
+    (sim, Some(rules), state, view)
+}
+
 fn built(row: &Value, zoom: f32) -> (Vec<SpriteInstance>, TacticalViewport) {
     if let Some(primitives) = row["input"]["primitives"].as_array() {
         let view = viewport(&row["input"], zoom);
@@ -203,12 +357,12 @@ fn built(row: &Value, zoom: f32) -> (Vec<SpriteInstance>, TacticalViewport) {
             view,
         );
     }
-    let (sim, state, mut view) = fixture(row);
+    let (sim, rules, state, mut view) = drawing_fixture(row);
     view.zoom = zoom;
     let instances = build_target_line_instances(
         &state,
         Some(&sim),
-        &BTreeMap::new(),
+        rules.as_ref(),
         Some(&palette_bytes()),
         view,
     );
@@ -217,17 +371,42 @@ fn built(row: &Value, zoom: f32) -> (Vec<SpriteInstance>, TacticalViewport) {
 
 /// Prepared native input for the existing shared CPU/GPU workload harness.
 /// The harness disperses raw source locations; it never generates goldens.
-pub(super) fn workload_fixture() -> (Simulation, TargetLineState, TacticalViewport, Vec<u8>) {
-    let row = baseline_rows()
-        .find(|row| {
+pub(super) fn workload_fixture(
+    kind: SelectedLineKind,
+) -> (
+    Simulation,
+    Option<RuleSet>,
+    TargetLineState,
+    TacticalViewport,
+    Vec<u8>,
+) {
+    let row = match kind {
+        SelectedLineKind::Move => baseline_rows().find(|row| {
             row["input"]["source"] == serde_json::json!([2688, 5248, 0])
                 && row["input"]["target_cell"] == serde_json::json!([14, 20])
                 && row["input"]["timer_start"] == 100
                 && row["input"]["frame"] == 100
-        })
-        .unwrap();
-    let (sim, state, view) = fixture(row);
-    (sim, state, view, palette_bytes())
+        }),
+        SelectedLineKind::Attack => attack_rows().find(|row| {
+            row["input"]["target_present"] == true
+                && row["input"]["target_moving"] == true
+                && row["input"]["turret_offset"] == 0
+                && row["input"]["frame"] == 100
+        }),
+    }
+    .unwrap();
+    let (mut sim, rules, state, view) = drawing_fixture(row);
+    if kind == SelectedLineKind::Attack {
+        // Keep the one unselected moving target outside the20k source IDs.
+        // This is synthetic load setup, before measurement; no gameplay tick
+        // or identity-lifecycle equivalence is claimed for it.
+        let mut target = sim.entities_mut().remove(2).unwrap();
+        target.stable_id = 20_001;
+        sim.entities_mut().insert(target);
+        sim.entities_mut().get_mut(1).unwrap().attack_target =
+            Some(crate::sim::combat::AttackTarget::new(20_001));
+    }
+    (sim, rules, state, view, palette_bytes())
 }
 
 fn words(row: &Value) -> Vec<u16> {
@@ -326,6 +505,112 @@ fn original_foot_move_line_pixels_through_production_builder() {
 }
 
 #[test]
+fn original_unit_attack_line_pixels_and_read_only_coordinate_queries() {
+    let rows: Vec<_> = attack_rows().collect();
+    assert!(rows.len() >= 9);
+    for row in rows {
+        let (sim, rules, state, view) = drawing_fixture(row);
+        let hash = sim.state_hash();
+        let rng = (
+            sim.main_rng.logical_state(),
+            sim.scenario_rng.logical_state(),
+        );
+        let query = NativeCellQuery::canonical(sim.resolved_terrain.as_ref().unwrap());
+        let dummy = query.dummy().snapshot();
+        let instances = build_target_line_instances(
+            &state,
+            Some(&sim),
+            rules.as_ref(),
+            Some(&palette_bytes()),
+            view,
+        );
+        assert_native_pixels(&raster(&instances, view), &words(row), [160, 120], 0, row);
+        assert_eq!(sim.state_hash(), hash, "{}", row["input"]);
+        assert_eq!(
+            (
+                sim.main_rng.logical_state(),
+                sim.scenario_rng.logical_state()
+            ),
+            rng
+        );
+        assert_eq!(query.dummy().snapshot(), dummy);
+    }
+}
+
+#[test]
+fn retail_tank_attack_inputs_match_original_readers() {
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules_for_map("XMP03T4.MAP")
+    else {
+        return;
+    };
+    let original: Value = serde_json::from_str(include_str!(
+        "../../../tools/procedural_drawing_oracle/action_lines_attack_prerequisites.json"
+    ))
+    .unwrap();
+    let input = &original["type_inputs"];
+    let rules = &retail.rules;
+    let object = rules.object("MTNK").unwrap();
+    let art = crate::sim::combat::fire_coord::firer_art(rules, object).unwrap();
+    let weapon = rules.weapon(object.primary.as_deref().unwrap()).unwrap();
+    let projectile = rules
+        .projectile(weapon.projectile.as_deref().unwrap())
+        .unwrap();
+    let warhead = rules.warhead(weapon.warhead.as_deref().unwrap()).unwrap();
+    assert_eq!(object.image, input["resolved_image"].as_str().unwrap());
+    assert_eq!(
+        object.primary.as_deref().unwrap(),
+        input["primary_name"].as_str().unwrap()
+    );
+    assert_eq!(serde_json::json!(art.turret_offset), input["turret_offset"]);
+    assert_eq!(
+        [
+            art.primary_fire_flh.forward,
+            art.primary_fire_flh.lateral,
+            art.primary_fire_flh.height,
+        ],
+        point::<3>(&input["primary_flh"])
+    );
+    assert_eq!(
+        serde_json::json!(crate::util::fixed_math::ra2_speed_to_leptons_per_frame(
+            object.speed
+        )),
+        input["speed"],
+    );
+    assert_eq!(
+        rules.general.veteran_speed.to_bits(),
+        u64::from_le_bytes(
+            hex_bytes(input["veteran_speed_bits"].as_str().unwrap())
+                .try_into()
+                .unwrap(),
+        )
+    );
+    assert_eq!(
+        rules.country_speed_mults("Americans")[1].bits(),
+        u32::from_le_bytes(
+            hex_bytes(input["country_speed_bits"].as_str().unwrap())
+                .try_into()
+                .unwrap(),
+        )
+    );
+    assert_eq!(serde_json::json!(weapon.speed), input["weapon_speed"]);
+    assert_eq!(serde_json::json!(projectile.rot), input["projectile_rot"]);
+    assert_eq!(
+        serde_json::json!(u8::from(projectile.floater)),
+        input["projectile_floater"]
+    );
+    assert_eq!(serde_json::json!(rules.general.gravity), input["gravity"]);
+    assert_eq!(
+        weapon.warhead.as_deref().unwrap(),
+        input["warhead"].as_str().unwrap()
+    );
+    assert_eq!(serde_json::json!(warhead.rocker), input["rocker"]);
+    assert_eq!(
+        serde_json::json!(warhead.direct_rocker),
+        input["direct_rocker"]
+    );
+}
+
+#[test]
 fn original_opaque_overlap_order_across_batch_cutover() {
     let rows = native()["compositing_cases"].as_array().unwrap();
     assert_eq!(rows.len(), 6);
@@ -337,7 +622,12 @@ fn original_opaque_overlap_order_across_batch_cutover() {
 
 #[test]
 fn original_source_and_target_projection_before_surface_clipping() {
-    for row in native()["cases"].as_array().unwrap() {
+    for row in native()["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(attack_rows())
+    {
         let Some(clip) = row["calls"]
             .as_array()
             .unwrap()
@@ -346,12 +636,12 @@ fn original_source_and_target_projection_before_surface_clipping() {
         else {
             continue;
         };
-        let (sim, _, view) = fixture(row);
+        let (sim, rules, _, view) = drawing_fixture(row);
         let cells = sim.resolved_terrain.as_ref().map(NativeCellQuery::isolated);
         let line = selected_action_line_for_entity(
             sim.entities().get(1).unwrap(),
             &sim,
-            &BTreeMap::new(),
+            rules.as_ref(),
             cells.as_ref(),
         )
         .unwrap();
@@ -492,13 +782,7 @@ fn move_line_query_leaves_the_simulation_dummy_unchanged() {
     let terrain = sim.resolved_terrain.as_ref().unwrap();
     let query = NativeCellQuery::canonical(terrain);
     let before = query.dummy().snapshot().coord;
-    let _ = build_target_line_instances(
-        &state,
-        Some(&sim),
-        &BTreeMap::new(),
-        Some(&palette_bytes()),
-        view,
-    );
+    let _ = build_target_line_instances(&state, Some(&sim), None, Some(&palette_bytes()), view);
     assert_eq!(query.dummy().snapshot().coord, before);
 }
 
@@ -521,8 +805,9 @@ fn production_action_line_gpu_matches_original_surface() {
             let cv = color.create_view(&Default::default());
             let depth = gpu.target(size, wgpu::TextureFormat::Depth32Float);
             let dv = depth.create_view(&Default::default());
-            for row in
-                drawing_rows().chain(native()["compositing_cases"].as_array().unwrap().iter())
+            for row in drawing_rows()
+                .chain(attack_rows())
+                .chain(native()["compositing_cases"].as_array().unwrap().iter())
             {
                 let (mut instances, view) = built(row, zoom);
                 batch.write_camera(

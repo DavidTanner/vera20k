@@ -628,7 +628,7 @@ fn production_rally_gpu_matches_native_pixels_and_preserves_depth() {
 }
 
 #[test]
-#[ignore = "bounded CPU/GPU timing for actual rally/Move builders, pooled upload and draw"]
+#[ignore = "bounded CPU/GPU timing for rally/Move/Attack builders, pooled upload and draw"]
 fn production_rally_workload_timing() {
     use crate::render::batch::{BatchRenderer, InstanceBufferPool};
     use crate::render::terrain_draw_gpu_tests::{Gpu, camera};
@@ -854,15 +854,23 @@ fn production_rally_workload_timing() {
             "missing_ledger":missing, "pending_selection":pending, "samples": samples }),
         );
     }
-    for (count, selected, active) in [
-        (1, true, true),
-        (64, true, true),
-        (1024, true, true),
-        (20_000, true, true),
-        (20_000, true, false),
-        (20_000, false, true),
-    ] {
-        let (mut sim, mut line_state, mut view, palette) = super::action_tests::workload_fixture();
+    for (kind, (count, selected, active)) in [SelectedLineKind::Move, SelectedLineKind::Attack]
+        .into_iter()
+        .flat_map(|kind| {
+            [
+                (1, true, true),
+                (64, true, true),
+                (1024, true, true),
+                (20_000, true, true),
+                (20_000, true, false),
+                (20_000, false, true),
+            ]
+            .into_iter()
+            .map(move |workload| (kind, workload))
+        })
+    {
+        let (mut sim, rules, mut line_state, mut view, palette) =
+            super::action_tests::workload_fixture(kind);
         view.clip = [0, 0, 632, 568];
         batch.write_camera(
             &gpu.queue,
@@ -875,7 +883,9 @@ fn production_rally_workload_timing() {
         let source = ground_pose::position_world_coord(&template.position);
         // An overlapping synthetic stress field: disperse raw source XY by
         // 8-lepton increments within one cell, retain source Z and the shared
-        // Cell NavCom. All actors remain visible; line lengths vary slightly.
+        // Cell NavCom or live Unit TarCom. All sources remain visible; line
+        // lengths vary slightly. The Attack target retains its native fixture
+        // motion/speed/facing inputs without advancing a gameplay tick.
         for id in 1..=count as u64 {
             let mut entity = template.clone();
             entity.stable_id = id;
@@ -890,7 +900,6 @@ fn production_rally_workload_timing() {
             );
             sim.entities_mut().insert(entity);
         }
-        let heights = BTreeMap::new();
         let mut samples = Vec::new();
         for sample in 0..22 {
             let frame = 100 + sample;
@@ -905,7 +914,7 @@ fn production_rally_workload_timing() {
             let actual = build_target_line_instances(
                 &line_state,
                 Some(&sim),
-                &heights,
+                rules.as_ref(),
                 Some(&palette),
                 view,
             );
@@ -922,7 +931,8 @@ fn production_rally_workload_timing() {
             }
         }
         results.push(serde_json::json!({
-            "family":"move", "actor_count":count,
+            "family":match kind { SelectedLineKind::Move => "move", SelectedLineKind::Attack => "attack" },
+            "actor_count":count + usize::from(kind == SelectedLineKind::Attack),
             "selected_count":if selected { count } else { 0 }, "timer_active":active,
             "camera":view.camera, "clip":view.clip,
             "source_xy_stride_leptons":8, "source_xy_grid_side":32,
@@ -931,7 +941,7 @@ fn production_rally_workload_timing() {
     }
     let report = serde_json::json!({ "schema":"vera20k.procedural-line-workload.v2",
         "target": size, "format": "Bgra8UnormSrgb", "zoom":1,
-        "interval":"CPU build_ms includes the actual selection owner for rally (selection_ms subset) and the production builder. Move build_ms includes its own full entity scan and palette conversion; selection_ms is null. upload_ms measures pooled CPU staging; encode_ms includes pass/query-copy encoding and finish, and encode_upload_ms is their sum. submit_ms is the included CPU queue-submit subset of completed_ms. gpu_ms is the backend-reported render-pass timestamp interval (including attachment clears), excludes uploads; unavailable timestamps stay null. completed_ms independently measures submit through upload, GPU, query-copy and map completion and is not render-only GPU time. Two warmups, twenty measured frames; Move timer preparation and source construction occur before timing. Synthetic overlapping stress; not whole-game FPS or native timing parity.",
+        "interval":"CPU build_ms includes the actual selection owner for rally (selection_ms subset) and the production builder. Move/Attack build_ms includes the full entity scan, live coordinate queries and palette conversion; selection_ms is null. upload_ms measures pooled CPU staging; encode_ms includes pass/query-copy encoding and finish, and encode_upload_ms is their sum. submit_ms is the included CPU queue-submit subset of completed_ms. gpu_ms is the backend-reported render-pass timestamp interval (including attachment clears), excludes uploads; unavailable timestamps stay null. completed_ms independently measures submit through upload, GPU, query-copy and map completion and is not render-only GPU time. Two warmups, twenty measured frames; timer preparation and source construction occur before timing. Synthetic overlapping stress; not whole-game FPS or native timing parity.",
         "workloads":results });
     eprintln!("{}", serde_json::to_string_pretty(&report).unwrap());
     if let Some(path) = std::env::var_os("VERA20K_PROCEDURAL_LINE_PERF_OUTPUT")

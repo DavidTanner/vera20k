@@ -1,0 +1,51 @@
+Cache retention: under_budget, removed 0 allocated bytes; /Users/halvor/Documents/vera20k/.git/owned-builds/retention/1791082872119354000-8f1a71dd.json
+Checkout: /Users/halvor/.codex/worktrees/procedural-drawing/vera20k
+Target: /Users/halvor/.codex/worktrees/procedural-drawing/vera20k/target/owned-worktrees/ac12fa2c75003672
+Command: ['cargo', 'test', '--message-format=json-render-diagnostics', '--release', '-p', 'vera20k', '--lib', 'app::presentation::target_lines::', '--', '--include-ignored', '--test-threads=1']
+   Compiling vera20k v0.1.0 (/Users/halvor/.codex/worktrees/procedural-drawing/vera20k)
+warning: unused import: `MinerState`
+  --> src/sim/miner/harvest_mission.rs:19:24
+   |
+19 | use super::{MinerKind, MinerState};
+   |                        ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vera20k` (lib test) generated 1 warning (run `cargo fix --lib -p vera20k --tests` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 2m 59s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/lib.rs (target/owned-worktrees/ac12fa2c75003672/release/deps/vera20k-ff73bf773e0f423b)
+
+running 27 tests
+test app::presentation::target_lines::action_tests::move_line_query_leaves_the_simulation_dummy_unchanged ... ok
+test app::presentation::target_lines::action_tests::original_action_timer_wrap_sentinel_and_positive_remainder ... ok
+test app::presentation::target_lines::action_tests::original_foot_move_line_pixels_through_production_builder ... ok
+test app::presentation::target_lines::action_tests::original_opaque_overlap_order_across_batch_cutover ... ok
+test app::presentation::target_lines::action_tests::original_solid_leaf_and_endpoint_intersection ... ok
+test app::presentation::target_lines::action_tests::original_source_and_target_projection_before_surface_clipping ... ok
+test app::presentation::target_lines::action_tests::original_timer_default_and_successful_load_reanchor ... ok
+test app::presentation::target_lines::action_tests::original_unit_attack_line_pixels_and_read_only_coordinate_queries ... ok
+test app::presentation::target_lines::action_tests::physical_palette_matches_original_convert_middle_row ... ok
+test app::presentation::target_lines::action_tests::production_action_line_gpu_matches_original_surface ... ok
+test app::presentation::target_lines::action_tests::retail_tank_attack_inputs_match_original_readers ... ok
+test app::presentation::target_lines::rally_tests::native_patterned_leaf_all_octants_ties_endpoints_and_phases ... ok
+test app::presentation::target_lines::rally_tests::native_rally_gates_foundation_ground_bridge_and_object_target_through_production_builder ... ok
+test app::presentation::target_lines::rally_tests::native_rally_producer_clipped_rows_phase_and_abuffer_passes ... ok
+test app::presentation::target_lines::rally_tests::presentation_target_query_does_not_stamp_simulation_dummy_cell ... ok
+test app::presentation::target_lines::rally_tests::production_rally_gpu_matches_native_pixels_and_preserves_depth ... ok
+test app::presentation::target_lines::rally_tests::production_rally_workload_timing ... ok
+test app::presentation::target_lines::rally_tests::rally_crossing_stock_shroud_frontier_matches_the_original_combined_draw ... ok
+test app::presentation::target_lines::rally_tests::retail_gapile_house_color_and_production_crop_match_original_rally_and_no_target ... ok
+test app::presentation::target_lines::tests::disabling_unit_action_lines_does_not_disable_rally_lines ... ok
+test app::presentation::target_lines::tests::factory_rally_builder_emits_only_selected_local_eligible_structures ... ok
+test app::presentation::target_lines::tests::line_builders_skip_when_sim_or_rules_missing ... ok
+test app::presentation::target_lines::tests::rally_pattern_matches_original_producer_pixels ... ok
+test app::presentation::target_lines::tests::selected_action_attack_target_wins_over_movement ... ok
+test app::presentation::target_lines::tests::selected_action_timer_expires_at_25_ticks ... ok
+test app::presentation::target_lines::tests::start_timer_opens_the_window_without_a_command ... ok
+test app::presentation::target_lines::tests::unit_action_lines_option_disables_selected_timer ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 9886 filtered out; finished in 9.15s
+
+Cache retention: under_budget, removed 0 allocated bytes; /Users/halvor/Documents/vera20k/.git/owned-builds/retention/1791083104517205000-3347077a.json

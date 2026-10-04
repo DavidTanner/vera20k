@@ -8,27 +8,52 @@ execution comparisons, production output/performance and one fresh critic.
 ## Current checkpoint
 
 - Worktree `/Users/halvor/.codex/worktrees/procedural-drawing/vera20k`, branch
-  `feature/procedural-unit-order-lines`, base `b0b6dafc63750a368e4eee0abc91a1803664a820`
-  (main including Infantry destination PR1046, integrated without replacing it).
-  Implementation commit `d5b667327a69b2a2d16578e938cfc8382a0820ed`; subsequent
-  changes only extend final evidence/archive comparisons and documentation.
-  The selected ground Unit ordinary Move chain is implemented and has passed
-  88 final optimized tests, native CPU/GPU comparisons, full retail lib9671
-  passed/239 ignored, Clippy (724 warnings), Python594 passed/5 optional skips,
-  and the2505/2505 field ratchet. Twelve earlier production captures and their
-  portable archive pass. The first full suite passed9657, failed2 and ignored239;
-  both failures observed old eager-order assumptions: a repeated
-  destination preserves its speed stamp while Drive reads live FASTER speed;
-  the first path-cache construction happens on movement, not command admission.
-  Four corrected Rust regressions pass. The existing speed oracle now preserves
-  16 retained rank/order/prefix steps; all75 getter and116 prefix controls remain
-  unchanged, and independent speed/destination native checks pass.
-  Final integrated release replays pass:12 Move scenes,5760000 identical pixels
-  and385 observed boundaries; Rally480000pixels/1501boundaries also match.
-  The single fresh critic found no blocking implementation defect. Its P3
-  reproduction-command finding is fixed and the exact module command passes
-  without PYTHONPATH; the stale ground-move owner description is corrected.
-  No PR for this chain yet. The whole goal remains open.
+  `feature/procedural-unit-attack-lines`, validated HEAD
+  `431fcbcb6b9315d0e352b56c4dab606f48748333`, integrated main `24330e019e`.
+  Move [PR1047](https://github.com/YuriPlanet/vera20k/pull/1047) merged at that
+  commit; its implementation is d5b667327 and final evidence/review is8fd0dd330.
+  Ratchet CI passed. Issue689 now preserves only the remaining queued, Jumpjet
+  object and living Fly work. Attack implementation, native and production
+  comparisons, and final full validation pass. The fresh critic found no
+  actionable scoped defect; its report is retained. Publication is next.
+- Current common chain: selected local stock MTNK attacking a ground Unit,
+  planning off. Extend the existing action-line and combat coordinate owners:
+  native source6F3D60 is the body TurretOffset pivot; target70BCB0 leads moving
+  Unit targets from their live motion/speed/facing and the current weapon.
+  FireAt is an affected consumer and must retain one shared query. Original
+  event/target lifecycle, ART reads, pose inputs and actual in-game output are
+  prerequisites, not optional follow-ups. Research lives under ignored
+  `logs/procedural-drawing/attack-research/` until promoted through existing owners.
+  Native action and prerequisite independent checks pass:31 Attack raster cases,
+  8 retained aim queries,2 full FireAt controls; all289 prior cases unchanged.
+  Shared combat aim, distinct FireAt argument speed, expiry full RNG/timer and
+  retail reader checks pass. First optimized run62 passed/5 fixture failures;
+  fixed the synthetic rules chronology and legacy test interner, then all27
+  rendering tests passed, including1256 action-line GPU draws and rally consumers.
+  Python map-observation tests pass105. Workload report is
+  `logs/procedural-drawing/unit-attack-workload-first.json`:20k selected moving
+  target Attack construction11.909ms, CPU staging0.0357ms, completion1.540ms,
+  34 spans/4216bytes. Synthetic overlap,20 samples; GPU intervals remain null.
+  Clean release v1 from`ee20ca9fe`, exeSHA4b4a83ceed0f074bab7dd0461c2bfef33f6e26a55c5842e8f43601eaad06e18c,
+  passes five captures. All188 stationary/101 moving native stores match; both
+  deselected controls draw zero stores. Native source-origin controls cover21
+  stable slopes plus one zero-angle active transition; differing-slope translation
+  clears have instruction-level proof, not an exhaustive interpolation corpus.
+  All320 prior rows stay unchanged. Independent native checks pass;14 portable
+  production tests pass. The archive retains40 gzip files, native input bindings,
+  both matched pairs and a480000pixel/1299boundary observer-off comparison.
+  The shared archive now hashes only the native image and consumed case set;
+  original Move payload provenance is retained and all compressed Move captures
+  stay unchanged. Final full retail lib9675 passed/239 ignored, Clippy passed,
+  Python606 passed/5 optional skips, and final field ratchet2505/2505. Both
+  portable archives recheck successfully. All runtime source is identical to
+  the captured release; identities and exact logs are retained in
+  `tools/procedural_drawing_oracle/validation/unit-attack-checks/receipt.json`.
+  No native/GPU/capture/Cargo work remains active. The single fresh read-only
+  critic found no actionable defect; no runtime changes followed review.
+  Next publish and integrate the mechanism PR. Independent read-only
+  research is tracing the ordinary drag-selection rectangle; no next-chain
+  implementation has started.
 - Prior factory-rally chain [PR1042](https://github.com/YuriPlanet/vera20k/pull/1042)
   merged at2135df0e33536ab11fddbdcdb8dae3a3b5f316f9. Its native comparisons, production archive,
   performance reports and one critic disposition are in
@@ -37,14 +62,8 @@ execution comparisons, production output/performance and one fresh critic.
   `1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c`.
   Ghidra selector `gamemd.exe`; no database edits. Two new decompilation requests
   timed out/reset; original-byte `tools.native_inspect` and Unicorn remain usable.
-- Root owns target_lines, shared surface-line/rectangle ports, rendering and their
-  native/GPU tests. Native agent owns only new `action_lines.{py,json,meta.json,md}`.
-  Input agent owns dispatch/context_order/load-reanchor and the existing sealed
-  map-observation gesture extension. Destination agent owns the ordinary Move
-  adapter to the existing Unit destination setter and its native regressions.
-  No Cargo while any tracked source/evidence is still being edited.
 
-## Current chain and evidence boundary
+## Integrated Unit Move evidence
 
 Selected local ground Unit, ordinary Move, planning off: input dispatch restarts
 70D150; Tactical6D4750 walks forward TechnoArray with House50B6F0, selected and
@@ -117,9 +136,8 @@ frame/state replays, rather than silently replacing the original observations.
 
 The single fresh read-only critic and owner disposition are retained in
 `tools/procedural_drawing_oracle/validation/unit-move-review.md`. No runtime
-changes were needed after validation. Required next: publish and integrate
-the coherent Move chain. Then proceed to selected Unit Attack
-anchors and their required consumers. Planning, other Foot paths and the wider
+changes were needed after validation. PR1047 is merged; selected Unit Attack
+anchors and their required consumers are the next chain. Planning, other Foot paths and the wider
 procedural census remain required; documenting them does not close this goal.
 
 ## Integrated rally evidence
@@ -163,16 +181,25 @@ issue [1037](https://github.com/YuriPlanet/vera20k/issues/1037) remains open.
   automatic merge requirement.
 - Keep both Move v1 (original native-bound captures) andv2 (final candidate)
   labels as active evidence; do not retire either or their original runs.
-- Next: publish the reviewed Move chain. Final archive and Python rechecks pass.
+- Move post-merge retention preview passed with no errors or removals; receipt
+  `owned-builds/retention/1791078381102958000-3371161c.json`. All four retained
+  rally/Move labels still support active comparisons; none is superseded.
+- Keep Attack release label `procedural-unit-attack-production-v1` as active
+  evidence; its executable SHA is recorded above. Final full checks used the
+  repository retention owner; receipts `1791085573382503000-74a998c4.json` and
+  `1791085683564307000-0c198242.json` retain exact retirement decisions.
+- Next: publish and integrate the reviewed Attack mechanism. Continue with ordinary drag-selection
+  drawing. Whole-scope completion remains open.
 
 ## Whole-scope residuals
 
 The baseline native/Rust censuses in `docs/research/procedural-drawing-*-audit.md`
-identify23 families, not completion. Attack/other Foot paths, selection/bandbox,
+identify23 families, not completion. Other Attack/Foot paths, selection/bandbox,
 range/placement/SW indicators, laser/Tesla/RadBeam/Disc/Wave/Spark effects, searchlight,
 ion distortion, psychic/capture/planning links, beacons/pixelFX/radar and their
 required producers/lifecycles still need complete chains. Planning, enabled fog,
 dynamic AlphaShapes, EMP input and ConstructionYard repack are required broader
-mechanisms. Attack-only source/aim stays an explicit residual in target_lines until
-its existing native owners are connected in the next chain. Minor chop/nearest clip
+mechanisms. The current stock MTNK Attack chain connects shared source/aim;
+ground rocking, nonzero-offset slope poses and other Foot paths remain required.
+Minor chop/nearest clip
 and fractional far-edge A differences remain one-pixel visual residuals.

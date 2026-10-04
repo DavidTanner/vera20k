@@ -482,6 +482,80 @@ class MapObservationTests(unittest.TestCase):
                 actor['foot']['pending_entry_500'] = value
                 observation._actor(actor, 'actor')
 
+    @staticmethod
+    def action_line_inputs():
+        # Schema fixture only; native coordinate values come from the original
+        # executable, never this portable fake-child receipt.
+        return {'body_facing': 65535, 'turret_facing': None, 'locomotor': 'Drive',
+                'is_moving': True, 'applied_speed_fraction_fixed_bits': 32768,
+                'crate_speed_multiplier_f64_bits': 4607182418800017408,
+                'house_speed_bonus_f32_bits': 1065353216, 'current_speed': 14,
+                'veterancy': 512, 'current_weapon': '105mm', 'turret_offset': -80,
+                'rocking_angles_fixed_bits': [0, 0]}
+
+    def test_action_line_inputs_are_opt_in_and_round_trip_nullable_owner_state(self):
+        self.scripted_profile()
+        self.profile['observe_action_line_inputs'] = True
+        self.profile_path.write_text(json.dumps(self.profile))
+        for step, actors in self.actor_frames.items():
+            actors[0]['action_line_inputs'] = self.action_line_inputs()
+            if step == 2:
+                actors[0]['action_line_inputs'].update(
+                    locomotor=None, is_moving=None, current_weapon=None,
+                    rocking_angles_fixed_bits=None)
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        for frame in report['capture']['observations']['frames']:
+            expected = self.actor_frames[frame['completed_steps']][0]['action_line_inputs']
+            self.assertEqual(frame['actors'][0]['action_line_inputs'], expected)
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+        self.assertEqual(json.loads((self.output / 'profile.json').read_text()), self.profile)
+
+    def test_action_line_inputs_profile_rejects_v1_presence_and_nonboolean_values(self):
+        self.scripted_profile()
+        for enabled in (False, True):
+            observation._profile_extensions(dict(self.profile, observe_action_line_inputs=enabled))
+            with self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile,
+                    schema_version=observation.PROFILE_V1, observe_action_line_inputs=enabled))
+        for value in (None, 0, 1, 'true', [], {}):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile, observe_action_line_inputs=value))
+
+    def test_action_line_inputs_require_exact_presence_and_keep_structure_null(self):
+        actor = self.actor()
+        with self.assertRaises(ValidationError):
+            observation._actor(actor, 'actor', action_line_inputs=True)
+        actor['action_line_inputs'] = self.action_line_inputs()
+        with self.assertRaises(ValidationError):
+            observation._actor(actor, 'actor')
+        observation._actor(actor, 'actor', action_line_inputs=True)
+        actor['action_line_inputs'] = None
+        with self.assertRaises(ValidationError):
+            observation._actor(actor, 'actor', action_line_inputs=True)
+        structure = self.actor(category='Structure')
+        structure['action_line_inputs'] = None
+        observation._actor(structure, 'actor', action_line_inputs=True)
+        structure['action_line_inputs'] = self.action_line_inputs()
+        with self.assertRaises(ValidationError):
+            observation._actor(structure, 'actor', action_line_inputs=True)
+
+    def test_action_line_inputs_reject_malformed_getter_receipts(self):
+        cases = [('body_facing', -1), ('turret_facing', 65536), ('locomotor', 'drive'),
+                 ('is_moving', 1), ('applied_speed_fraction_fixed_bits', 65537),
+                 ('crate_speed_multiplier_f64_bits', 1 << 64),
+                 ('house_speed_bonus_f32_bits', True), ('current_speed', 1 << 31),
+                 ('veterancy', 65536), ('current_weapon', ''), ('turret_offset', 1.0),
+                 ('rocking_angles_fixed_bits', [0]), ('rocking_angles_fixed_bits', [False, 0])]
+        for key, value in cases:
+            with self.subTest(key=key, value=value), self.assertRaises(ValidationError):
+                inputs = dict(self.action_line_inputs(), **{key: value})
+                observation._action_line_inputs(inputs, 'Unit', 'actor.action_line_inputs')
+        inputs = self.action_line_inputs()
+        inputs.pop('current_speed')
+        with self.assertRaises(ValidationError):
+            observation._action_line_inputs(inputs, 'Unit', 'actor.action_line_inputs')
+
     def test_type_filter_binds_discovery_and_retains_identity_after_type_and_owner_change(self):
         self.scripted_profile()
         self.profile['observe_types'] = ['E1']

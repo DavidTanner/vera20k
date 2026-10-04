@@ -7,7 +7,7 @@
     1,
     33621247
   ],
-  "scope": "Selected ground Unit ordinary Move action lines4DC060 ->7049C0, original RGB565 pixel leaves, timer restart/default/load slices, prepared Tactical admission/batches, existing Unit/Drive destination fixture composition and twelve production-capture input replays; finite prepared-input comparisons, not whole Scenario parity",
+  "scope": "Selected ground Unit Move and Attack action lines4DC060 ->7049C0, original RGB565 pixel leaves, timers, prepared Tactical admission/batches, existing Unit/Drive destination composition, twelve Move and four Attack production-input replays, prepared Attack pivot/live aim and zero-rocking origin controls; finite comparisons, not whole Scenario parity",
   "assumptions": [
     "Original gamemd.exe, FPCW0E7F, physical RA2/CACHE palette assets, RGB565160x120 BSurface, fixed background sentinel. Existing original palette initialization owns conversion; index3 middle row supplies Move green.",
     "The first57 cases promote the saved ignored research corpus geometry and timer pairs. Map dimensions32x32 and original Foot bridge initializer chain are now explicit; prior flat outputs remain identical.",
@@ -23,8 +23,15 @@
     "Native start=-1 and signed wrapping timer arithmetic are sampled as supplied boundary controls, without claiming normal-game reachability. Timer middle dword is observed stack carry and has no elapsed-time role.",
     "Destination controls reuse track_destination.make_destination_fixture in the same VM and execute Unit741970 ->Foot4D94B0/Drive4AFD40 before drawing. Empty radio/deploy/EMP/transport state and supplied type/rules are inherited fixture boundaries. Repeated NavCom and force flag controls establish setter admission; full click/event dispatch is instruction evidence, not executed here.",
     "Solid and rectangle leaves run unchanged. Pixel cases cover finite directions, clipping and endpoint intersections; no exhaustive integer domain or native desktop/window proof. Existing bounded chop53 clipping residual remains separate from ordering correctness.",
-    "Known RNG65C780/65C7E0 entries are rejected during observed drawing/setter phases. Existing setter fixture initializes Scenario RNG before these phases. No attack lead/FLH, aircraft, jumpjet, transport, pathfinding, detach or downstream mission cadence is claimed.",
-    "Physical MTNK/GTNK strings are context evidence only; parsing/default/read order and layered Scenario data remain with their existing rules/type evidence owners. The drawing itself consumes no MTNK type fields."
+    "Move cases reject known RNG65C780/65C7E0 entries during observed drawing/setter phases. Existing setter fixture initializes Scenario RNG before these phases. Aircraft, jumpjet, transport, pathfinding, detach and downstream mission cadence are outside this pixel corpus.",
+    "The earlier Move physical MTNK/GTNK strings remain context evidence. Attack retail field/default/command evidence is generated separately by the same producer --attack-prerequisites mode.",
+    "Thirty-one Attack cases execute the original Foot TarCom-priority branch, source6F3D60, original Drive4AFF60/55A730, target70BCB0, actual Unit coordinate/current-weapon/Facing virtuals, live Foot4DB1A0, and the unchanged pixel leaves. Original Drive/Facing constructors and setters establish flat actors; type/House/weapon/position/Target/NavCom/queue values remain explicit prepared inputs. Physical Speed7 -> raw17 is independently recorded by the full retail Unit reader in the prerequisite packet; target fraction/rank/crate controls reuse track_speed_native.seed_getter_state.",
+    "Attack weapon_inputs supply stored speed95/ROT0/Floaterfalse/Gravity6, bound to the full physical105mm reader and postpass in the prerequisite packet. Authored Speed40 first reads102 through474810; the later7729F0 Range5 ballistic postpass produces95. speed_percent and range_cells retain that authorship, not a fitted inverse. The prepared raster fixture writes the stored value through its existing weapon setup; original773070 derives shot speed from distance and ROT0 does not consume the stored field. Offset80/body/turret controls distinguish body pivot from muzzle FLH; stock GTNK offset0 is independently read. No rocking, slope basis, damage producer or full Unit constructor is claimed for these prepared raster rows.",
+    "Prepared Unit deploy state6D8=-1 matches the existing track_destination input contract and the actual constructors recorded in the prerequisite packet. Original Drive Move_To executes for moving rows; a separate original Is_Moving call asserts the requested true/false state before every draw, so a declined movement gate cannot masquerade as a moving-target comparison.",
+    "Attack query snapshots compare every source/target actor byte0x700, both Drive0x70 ranges and all12 timer bytes. Known raw/ranged RNG, timer restart, world/abstract detach and UnInit entry guards remain empty during Foot drawing. Physical Convert middle-row index8 supplies red0xA800. Null Target controls reuse existing Move/empty admission without a competing raster owner.",
+    "Four attack_production_cases bind the opt-in getter inputs from matched stationary/moving release captures and unselected controls. The same ActionFixture and complete Tactical batch owner execute, retaining the actual actor/Drive back-pointer rather than copying an Attack actor. Exact original IsMoving/current-speed checks match source17/target0 and source5/target17. All320 prior rows and earlier top-level values are retained; production_reference remains the earlier Move boundary.",
+    "Attack production crops are192x160 inside the existing guarded64KiB surface. Original source6F3D60 and lead70BCB0 feed every unclipped endpoint/solid store. The captured fixed fraction19661/65536, direct native f32/f64 speed inputs, current105mm weapon and separate source/target headings remain explicit. Current input and native raster receipts do not substitute for a production pixel comparison.",
+    "No-rocking source-basis evidence reuses native_slope.slope_matrices and compares its21 original matrices with the existing ordinary_collision packet. All21 stable pivot controls and one active slope-timer zero-angle control preserve the raw source origin; original646980 instruction stores establish zero translation after differing-slope quaternion conversion. Half sizes15.5/20.5 are supplied for the arithmetic control; VXL reading and actual moving-cell slope history are not claimed. The exact raw actor coordinates, zero offset and absent rocking remain the production-input boundary."
   ],
   "substitutions": [
     "Reuse original BSurface storage/lock/pitch methods instead of platform DirectDraw, through existing Rally fixture; original solid/fill leaves are unmodified.",
@@ -53,7 +60,7 @@
     "fill_endpoint": "0x007BB020"
   },
   "source_normalized_lf_sha256": {
-    "producer": "4e77689e164be7048d59f0e228e0a4b96e1d7efd3574363d24ebf4ee6c215463",
+    "producer": "045808eb6007d7b368e205eb1147d5b35258edac0b0fcfc925b5a5f7c0fd131f",
     "native_oracle": "141fc5f3981b40d41869643c0350e3988e40be2e470cba8a0b4a77bb7df39b27",
     "native_inspect": "12038060971ec7a41da24e13a9851e23858fba4542c6e9a9f9ca17f3a8252087",
     "rally_fixture": "0168afa40ab7fa79a606116d117d24f634b00a37d3b38ec9121ec15f5636023d",
@@ -72,7 +79,10 @@
     "unit_source_fixture": "3384579566b40ebcc9d8d56d53a0736655eb3a15a6bf7f08730611b15852a009",
     "unit_state_fixture": "c8269a41294316c97f990051506c4a9d9dbe923d8143a54a1a92c69645d2a112",
     "unit_entry_fixture": "18986785b9cc42d7c811aa0c37d352f5ddc9d8746bfa926b807e5f493e33f209",
-    "map_query_fixture": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305"
+    "map_query_fixture": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+    "live_speed_fixture": "74cada010b3d108e18d07e749d0dfaa1162507362ee10c30c71d251135d7eeda",
+    "weapon_speed_fixture": "022156d2243883ddad452076238f45e1186464d48908feec77e4825f8d4851ed",
+    "slope_fixture": "737b8294db419d298d362029825a255ae70df9945bef4c8b588369a53eaf13de"
   },
-  "payload_sha256": "14e710c2c0079953ed7eefca99546961e4e6d13b4cb67a7c4dd0d7ecf5266de4"
+  "payload_sha256": "eb25c3fad5cb9bffd6795d6513bfd69e1eefe6e72e35c41b5ba01e0da6515786"
 }

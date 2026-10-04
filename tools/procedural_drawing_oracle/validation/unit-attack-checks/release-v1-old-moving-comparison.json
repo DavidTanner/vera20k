@@ -1,0 +1,265 @@
+{
+  "schema_version": "vera20k.map-observation-comparison.v1",
+  "status": "MISMATCH",
+  "checked_at_utc": "2026-10-04T03:21:21.640201Z",
+  "errors": [],
+  "native_comparator": "NONE",
+  "parity_certification": "NONE",
+  "before_path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-v2",
+  "after_path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-observer-off-v1",
+  "differences": [
+    {
+      "field": "frame.bytes",
+      "before": "b965c5118c89df77cd299aa59c384aa9aa49c46628808fbfc7563dcfb2166aa5",
+      "after": "483db1a8c34f9dfb8560319fdf092f39cd07aae9ca6dde4160603f53a268293f"
+    }
+  ],
+  "before": {
+    "schema_version": "vera20k.map-observation-validation.v1",
+    "status": "VALID",
+    "checked_at_utc": "2026-10-04T03:21:22.427939Z",
+    "errors": [],
+    "native_comparator": "NONE",
+    "parity_certification": "NONE",
+    "run": {
+      "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-v2/run.json",
+      "byte_length": 10993832,
+      "sha256": "9375419101d8d93a5d799dd40d73fb0d8516ddf5a94292aefb13af99acc0d3a8"
+    },
+    "inputs": {
+      "profile": {
+        "byte_length": 3800,
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-profile.json",
+        "sha256": "0c58877ff8187e7730df33adb3e07f0b40838f01abf5fab73f47e90d4bf9a5b1"
+      },
+      "config": {
+        "byte_length": 596,
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+        "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+      },
+      "contract": {
+        "byte_length": 590,
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/contract.json",
+        "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+      },
+      "executable": {
+        "byte_length": 31859792,
+        "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-move-production-v2/0/vera20k",
+        "sha256": "776a416bc6645aa0da3137b207012fd5cf51a3516e99a81fb4da79a5e7d9c4c5"
+      }
+    },
+    "input_provenance": {
+      "profile": "SEALED_COPY",
+      "config": "SEALED_COPY",
+      "contract": "SEALED_COPY",
+      "executable": "EXTERNALLY_REVALIDATED"
+    },
+    "observation_transcript": {
+      "manifest": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-v2/child-output/capture.json",
+        "byte_length": 10996321,
+        "sha256": "2bb6939db254aa6abd47731e2e4c8a9263fc00026e69d3f494e0f6d7fc769493"
+      },
+      "policy": "map-ordinary-command-observation-v4",
+      "frame_count": 1299,
+      "command_count": 2
+    },
+    "capture": {
+      "manifest": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-v2/child-output/capture.json",
+        "byte_length": 10996321,
+        "sha256": "2bb6939db254aa6abd47731e2e4c8a9263fc00026e69d3f494e0f6d7fc769493"
+      },
+      "frame": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-v2/child-output/frame.bgra",
+        "byte_length": 1920000,
+        "sha256": "b965c5118c89df77cd299aa59c384aa9aa49c46628808fbfc7563dcfb2166aa5"
+      },
+      "map_source": {
+        "entry_id": -854728974,
+        "kind": "mix",
+        "logical_name": "XMP03T4.MAP",
+        "payload_len": 156269,
+        "source_archive": "multimd.mix",
+        "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+      },
+      "initial": {
+        "binary_frame": 0,
+        "deterministic_state_hash": 3115043356402336864,
+        "simulation_tick": 0,
+        "total_simulation_ms": 0
+      },
+      "final": {
+        "binary_frame": 1298,
+        "deterministic_state_hash": 13568668633787589161,
+        "simulation_tick": 1298,
+        "total_simulation_ms": 28556
+      },
+      "exact_step_count": 1298,
+      "unit_atlas": {
+        "last_build_rasterized_sprite_count": 18432,
+        "pages": [
+          {
+            "dimension": "D2",
+            "extent": [
+              6293,
+              6366,
+              1
+            ],
+            "format": "R8Uint",
+            "mip_level_count": 1,
+            "sample_count": 1,
+            "texel_payload_bytes": 40061238
+          }
+        ],
+        "resident_sprite_count": 18432,
+        "total_texel_payload_bytes": 40061238
+      },
+      "cursor_position": [
+        720.0,
+        556.0
+      ],
+      "frame_wall_mean_ms": 8.361742973327637,
+      "neutral_input": {
+        "camera_input_idle": true,
+        "static_default_cursor": true
+      },
+      "camera": {
+        "requested_cell": [
+          28,
+          88
+        ],
+        "top_left": [
+          -2100.0,
+          1426.0
+        ],
+        "zoom": 1.0
+      }
+    }
+  },
+  "after": {
+    "schema_version": "vera20k.map-observation-validation.v1",
+    "status": "VALID",
+    "checked_at_utc": "2026-10-04T03:21:22.929993Z",
+    "errors": [],
+    "native_comparator": "NONE",
+    "parity_certification": "NONE",
+    "run": {
+      "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-observer-off-v1/run.json",
+      "byte_length": 10993874,
+      "sha256": "9a16ba3a51cbd0bc6877a9a5c6f2a1749f9a4ba24a098bda7c9b0d0458114ad9"
+    },
+    "inputs": {
+      "profile": {
+        "byte_length": 3800,
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-profile.json",
+        "sha256": "0c58877ff8187e7730df33adb3e07f0b40838f01abf5fab73f47e90d4bf9a5b1"
+      },
+      "config": {
+        "byte_length": 596,
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/config.toml",
+        "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+      },
+      "contract": {
+        "byte_length": 590,
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/contract.json",
+        "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+      },
+      "executable": {
+        "byte_length": 31807952,
+        "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/procedural-unit-attack-production-v1/0/vera20k",
+        "sha256": "4b4a83ceed0f074bab7dd0461c2bfef33f6e26a55c5842e8f43601eaad06e18c"
+      }
+    },
+    "input_provenance": {
+      "profile": "SEALED_COPY",
+      "config": "SEALED_COPY",
+      "contract": "SEALED_COPY",
+      "executable": "EXTERNALLY_REVALIDATED"
+    },
+    "observation_transcript": {
+      "manifest": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-observer-off-v1/child-output/capture.json",
+        "byte_length": 10996323,
+        "sha256": "5b1c763dbddd448dc2ad189eb1c5f1b963a6b428606b4681016524a5089dd976"
+      },
+      "policy": "map-ordinary-command-observation-v4",
+      "frame_count": 1299,
+      "command_count": 2
+    },
+    "capture": {
+      "manifest": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-observer-off-v1/child-output/capture.json",
+        "byte_length": 10996323,
+        "sha256": "5b1c763dbddd448dc2ad189eb1c5f1b963a6b428606b4681016524a5089dd976"
+      },
+      "frame": {
+        "path": "/Users/halvor/.codex/worktrees/procedural-drawing/vera20k/logs/procedural-drawing/attack-production/moving-attack-observer-off-v1/child-output/frame.bgra",
+        "byte_length": 1920000,
+        "sha256": "483db1a8c34f9dfb8560319fdf092f39cd07aae9ca6dde4160603f53a268293f"
+      },
+      "map_source": {
+        "entry_id": -854728974,
+        "kind": "mix",
+        "logical_name": "XMP03T4.MAP",
+        "payload_len": 156269,
+        "source_archive": "multimd.mix",
+        "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+      },
+      "initial": {
+        "binary_frame": 0,
+        "deterministic_state_hash": 3115043356402336864,
+        "simulation_tick": 0,
+        "total_simulation_ms": 0
+      },
+      "final": {
+        "binary_frame": 1298,
+        "deterministic_state_hash": 13568668633787589161,
+        "simulation_tick": 1298,
+        "total_simulation_ms": 28556
+      },
+      "exact_step_count": 1298,
+      "unit_atlas": {
+        "last_build_rasterized_sprite_count": 18432,
+        "pages": [
+          {
+            "dimension": "D2",
+            "extent": [
+              6293,
+              6366,
+              1
+            ],
+            "format": "R8Uint",
+            "mip_level_count": 1,
+            "sample_count": 1,
+            "texel_payload_bytes": 40061238
+          }
+        ],
+        "resident_sprite_count": 18432,
+        "total_texel_payload_bytes": 40061238
+      },
+      "cursor_position": [
+        720.0,
+        556.0
+      ],
+      "frame_wall_mean_ms": 8.429044723510742,
+      "neutral_input": {
+        "camera_input_idle": true,
+        "static_default_cursor": true
+      },
+      "camera": {
+        "requested_cell": [
+          28,
+          88
+        ],
+        "top_left": [
+          -2100.0,
+          1426.0
+        ],
+        "zoom": 1.0
+      }
+    }
+  },
+  "full_ignored_comparison_sha256": "69479ab937f23cbb9ee31e838d613f36f2ab60ccf5f16a06c69be48e0ec4e3a8",
+  "summary_policy": "Existing validation_summary omits duplicated observation/presentation-clock data; full comparison remains in ignored attack-production logs and original capture bundles."
+}
