@@ -558,6 +558,14 @@ Checked 2026-10-01 on a staging copy, receiver tools:
   those hints while every stored local tuple stays identical (checked in 5.14.2 on
   2026-10-04). Preserve the raw replies, compare stored tuples separately, and check
   the changed caller's C and native operand flow before admitting the hint changes.
+- `get_function_by_address` renders an effective signature through `getSignature()`;
+  the saved rich reader and `SignatureCensus` use `getPrototypeString(true, false)`
+  for a formal signature. Auto parameters and convention text can therefore differ.
+  For a DEFAULT signature with no parameters, HTTP renders `(void)` while the saved
+  readers can render `()`. HTTP names are unqualified; census names include namespaces.
+  Checked in Ghidra 12.1.2/MCP 5.14.2 on 2026-10-04. Preserve each literal view and
+  compare it with the same producer before/after; verify storage and flags separately.
+  These formatting differences do not establish a native ABI or a source declaration.
 - A `__thiscall` prototype must declare as many stack bytes as the function's RETs pop.
   `(void)` on a `ret 0xC` function breaks the stack analysis of its callers. A custom
   prototype that declares only `this` makes every direct caller's decompile drop the
