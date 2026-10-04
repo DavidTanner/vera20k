@@ -49,7 +49,14 @@ change only the line and144 source health/selection pixels; selection rasters
 are a separate required chain, not certified by this comparison. The opt-in
 observer leaves all480000 pixels and1299 observation boundaries unchanged.
 This establishes prepared native drawing from captured inputs, not native whole
-Scenario/full-frame emulation. Final full-suite validation and review are pending.
+Scenario/full-frame emulation. The final candidate has identical `src`, Cargo
+manifests and build script to the captured release; later changes retain the
+evidence and its comparison tooling. Full retail library validation passes
+9675 tests (239 ignored), Clippy passes with retained warnings, and all606 Python
+tests pass (5 optional skips). The field ratchet remains2505/2505. Exact logs,
+source-tree identities and archive rechecks are in the
+[validation receipt](validation/unit-attack-checks/receipt.json). The single
+fresh read-only review is pending.
 
 The [workload report](validation/action-line-attack-workload-first.json) uses
 the actual production builder and pooled GPU upload. At20k selected overlapping

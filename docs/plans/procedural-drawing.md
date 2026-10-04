@@ -8,12 +8,13 @@ execution comparisons, production output/performance and one fresh critic.
 ## Current checkpoint
 
 - Worktree `/Users/halvor/.codex/worktrees/procedural-drawing/vera20k`, branch
-  `feature/procedural-unit-attack-lines`, base `58f3fd9dbac162eed267850edb1e8cfe5d714028`.
+  `feature/procedural-unit-attack-lines`, validated HEAD
+  `431fcbcb6b9315d0e352b56c4dab606f48748333`, integrated main `24330e019e`.
   Move [PR1047](https://github.com/YuriPlanet/vera20k/pull/1047) merged at that
   commit; its implementation is d5b667327 and final evidence/review is8fd0dd330.
   Ratchet CI passed. Issue689 now preserves only the remaining queued, Jumpjet
-  object and living Fly work. Attack implementation passes focused validation;
-  production capture, final full checks and the fresh critic remain pending.
+  object and living Fly work. Attack implementation, native and production
+  comparisons, and final full validation pass. The fresh critic and PR remain.
 - Current common chain: selected local stock MTNK attacking a ground Unit,
   planning off. Extend the existing action-line and combat coordinate owners:
   native source6F3D60 is the body TurretOffset pivot; target70BCB0 leads moving
@@ -42,9 +43,15 @@ execution comparisons, production output/performance and one fresh critic.
   both matched pairs and a480000pixel/1299boundary observer-off comparison.
   The shared archive now hashes only the native image and consumed case set;
   original Move payload provenance is retained and all compressed Move captures
-  stay unchanged. No native/GPU/capture work remains active. Next integrate the
-  fetched docs-only main update, run final full retail lib/Clippy/Python checks,
-  then one fresh read-only critic and the mechanism PR. No Attack review yet.
+  stay unchanged. Final full retail lib9675 passed/239 ignored, Clippy passed,
+  Python606 passed/5 optional skips, and final field ratchet2505/2505. Both
+  portable archives recheck successfully. All runtime source is identical to
+  the captured release; identities and exact logs are retained in
+  `tools/procedural_drawing_oracle/validation/unit-attack-checks/receipt.json`.
+  No native/GPU/capture/Cargo work remains active. Next one fresh read-only
+  critic and the mechanism PR. No Attack review yet. Independent read-only
+  research is tracing the ordinary drag-selection rectangle; no next-chain
+  implementation has started.
 - Prior factory-rally chain [PR1042](https://github.com/YuriPlanet/vera20k/pull/1042)
   merged at2135df0e33536ab11fddbdcdb8dae3a3b5f316f9. Its native comparisons, production archive,
   performance reports and one critic disposition are in
@@ -175,18 +182,23 @@ issue [1037](https://github.com/YuriPlanet/vera20k/issues/1037) remains open.
 - Move post-merge retention preview passed with no errors or removals; receipt
   `owned-builds/retention/1791078381102958000-3371161c.json`. All four retained
   rally/Move labels still support active comparisons; none is superseded.
-- Next: finish original Attack prerequisite/consumer evidence and implement its
-  shared coordinate queries, then native/Rust/GPU/production validation and one
-  fresh critic. The Move archive and final Python rechecks pass.
+- Keep Attack release label `procedural-unit-attack-production-v1` as active
+  evidence; its executable SHA is recorded above. Final full checks used the
+  repository retention owner; receipts `1791085573382503000-74a998c4.json` and
+  `1791085683564307000-0c198242.json` retain exact retirement decisions.
+- Next: one fresh Attack critic, disposition/focused fixes as required, then
+  publish and integrate the mechanism. Continue with ordinary drag-selection
+  drawing. Whole-scope completion remains open.
 
 ## Whole-scope residuals
 
 The baseline native/Rust censuses in `docs/research/procedural-drawing-*-audit.md`
-identify23 families, not completion. Attack/other Foot paths, selection/bandbox,
+identify23 families, not completion. Other Attack/Foot paths, selection/bandbox,
 range/placement/SW indicators, laser/Tesla/RadBeam/Disc/Wave/Spark effects, searchlight,
 ion distortion, psychic/capture/planning links, beacons/pixelFX/radar and their
 required producers/lifecycles still need complete chains. Planning, enabled fog,
 dynamic AlphaShapes, EMP input and ConstructionYard repack are required broader
-mechanisms. Attack-only source/aim stays an explicit residual in target_lines until
-its existing native owners are connected in the next chain. Minor chop/nearest clip
+mechanisms. The current stock MTNK Attack chain connects shared source/aim;
+ground rocking, nonzero-offset slope poses and other Foot paths remain required.
+Minor chop/nearest clip
 and fractional far-edge A differences remain one-pixel visual residuals.
