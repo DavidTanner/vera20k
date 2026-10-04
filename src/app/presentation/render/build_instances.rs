@@ -615,7 +615,7 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
             .sim_runtime
             .as_ref()
             .map(|rt| &rt.simulation),
-        &state.height_map(),
+        state.rules(),
         state
             .process_assets
             .manager()

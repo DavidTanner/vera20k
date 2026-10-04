@@ -17,6 +17,7 @@
 //! - Part of sim/ — depends on sim/components and rules/ (RuleSet).
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
+pub(crate) mod aim_coord;
 pub(crate) mod base_defense_response;
 pub mod burst;
 pub(crate) mod cell_spread;

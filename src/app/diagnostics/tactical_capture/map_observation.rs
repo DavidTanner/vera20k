@@ -120,6 +120,14 @@ pub(crate) struct MapCaptureProfile {
         skip_serializing_if = "Option::is_none"
     )]
     observe_types: Option<Vec<String>>,
+    // Opt-in immutable inputs for native Attack-coordinate comparisons.
+    // Historical profiles and their exact observation rows stay unchanged.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_action_line_inputs: Option<bool>,
     #[serde(
         default,
         deserialize_with = "deserialize_present",
@@ -165,6 +173,7 @@ impl MapCaptureProfile {
                     && self.gestures.is_none()
                     && self.observe_owners.is_none()
                     && self.observe_types.is_none()
+                    && self.observe_action_line_inputs.is_none()
                     && self.camera_cell.is_none()
                     && self.cursor_position.is_none()
                     && self.terrain_cells.is_none(),
@@ -1235,7 +1244,7 @@ impl TacticalCaptureSession {
                 let contacts: Vec<_> = (0..entity.radio_contacts.capacity())
                     .map(|slot| entity.radio_contacts.slot(slot))
                     .collect();
-                actors.push(json!({
+                let mut observation = json!({
                     "stable_id": id, "owner": owner,
                     "type_id": type_name, "category": entity.category,
                     "cell": [entity.position.rx, entity.position.ry],
@@ -1253,7 +1262,47 @@ impl TacticalCaptureSession {
                     "building": building, "unit": unit,
                     "miner": miner,
                     "radio": {"contacts": contacts, "dock_entered_with": entity.dock_entered_with},
-                }));
+                });
+                if profile.observe_action_line_inputs == Some(true) {
+                    let inputs = if entity.category
+                        == crate::map::entities::EntityCategory::Structure
+                    {
+                        Value::Null
+                    } else {
+                        let rules = state
+                            .rules()
+                            .context("action-line observation rules absent")?;
+                        let object = rules
+                            .object(type_name)
+                            .context("action-line observation type absent")?;
+                        // Read existing authority; never call a setter, advance
+                        // Facing, change SharedCellDummy or recompute an order.
+                        // Fixed-point raw bits are labelled as such, not passed
+                        // off as native doubles. Native comparisons establish
+                        // each getter before consuming these prepared inputs.
+                        json!({
+                            "body_facing": entity.body_facing_current(sim.session.binary_frame),
+                            "turret_facing": entity.barrel_facing.as_ref()
+                                .map(|facing| facing.current(sim.session.binary_frame)),
+                            "locomotor": entity.locomotor.as_ref().map(|loco| loco.active_kind()),
+                            "is_moving": crate::sim::movement::motion_query::is_moving(entity),
+                            "applied_speed_fraction_fixed_bits": entity.foot_speed.applied_fraction().to_bits(),
+                            "crate_speed_multiplier_f64_bits": entity.foot_speed.crate_multiplier().bits(),
+                            "house_speed_bonus_f32_bits": crate::sim::movement::owner_speed_bonus(
+                                &sim.houses, entity, Some(object)).bits(),
+                            "current_speed": crate::sim::movement::owner_current_speed(
+                                entity, Some(object), rules.general.veteran_speed, &sim.houses),
+                            "veterancy": entity.veterancy(),
+                            "current_weapon": crate::sim::combat::combat_weapon::current_weapon(entity, object),
+                            "turret_offset": crate::sim::combat::fire_coord::firer_art(rules, object)
+                                .map_or(0, |art| art.turret_offset),
+                            "rocking_angles_fixed_bits": entity.rocking.as_ref().map(|rocking| [
+                                rocking.angle_sideways.to_bits(), rocking.angle_forwards.to_bits()]),
+                        })
+                    };
+                    observation["action_line_inputs"] = inputs;
+                }
+                actors.push(observation);
             }
         }
         let missing_actor_ids = ids
@@ -1661,6 +1710,9 @@ mod tests {
         legacy.observe_types = Some(vec!["CLEG".to_owned()]);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
+        legacy.observe_action_line_inputs = Some(false);
+        assert!(legacy.validate().is_err());
+        let mut legacy = example();
         legacy.cursor_position = Some([720, 556]);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
@@ -1672,6 +1724,7 @@ mod tests {
             "payload": {"DeployMcv": {"entity_id": 1}}}]);
         modern["observe_owners"] = json!(["Computer1"]);
         modern["observe_types"] = json!(["CLEG"]);
+        modern["observe_action_line_inputs"] = json!(true);
         modern["cursor_position"] = json!([720, 556]);
         modern["gestures"] = json!([]);
         let profile: MapCaptureProfile = serde_json::from_value(modern.clone()).unwrap();
@@ -1682,6 +1735,7 @@ mod tests {
             "gestures",
             "observe_owners",
             "observe_types",
+            "observe_action_line_inputs",
             "camera_cell",
             "cursor_position",
             "terrain_cells",
@@ -1692,6 +1746,15 @@ mod tests {
                 serde_json::from_value::<MapCaptureProfile>(invalid).is_err(),
                 "{key}"
             );
+        }
+        modern["observe_action_line_inputs"] = json!(false);
+        let disabled: MapCaptureProfile = serde_json::from_value(modern.clone()).unwrap();
+        disabled.validate().unwrap();
+        assert_eq!(serde_json::to_value(disabled).unwrap(), modern);
+        for value in [json!(0), json!(1), json!("true"), json!([])] {
+            let mut invalid = modern.clone();
+            invalid["observe_action_line_inputs"] = value;
+            assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
         }
         for (key, value) in [("ignored", json!(true)), ("entity_id", json!(1.0))] {
             let mut invalid = modern.clone();

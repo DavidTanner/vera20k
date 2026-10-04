@@ -8,6 +8,417 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::projectile::{ProjectileCoord, launch::fireat_launch_distance};
 use crate::sim::world::Simulation;
 
+fn attack_aim_corpus() -> serde_json::Value {
+    serde_json::from_str(include_str!(
+        "../../../tools/procedural_drawing_oracle/action_lines_attack_prerequisites.json"
+    ))
+    .expect("original retained Unit aim and FireAt controls")
+}
+
+fn attack_aim_row<'a>(
+    corpus: &'a serde_json::Value,
+    group: &str,
+    name: &str,
+) -> &'a serde_json::Value {
+    corpus[group]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == name)
+        .unwrap_or_else(|| panic!("missing native {group} case {name}"))
+}
+
+fn attack_aim_coord(row: &serde_json::Value) -> ProjectileCoord {
+    ProjectileCoord::new(
+        row[0].as_i64().unwrap() as i32,
+        row[1].as_i64().unwrap() as i32,
+        row[2].as_i64().unwrap() as i32,
+    )
+}
+
+/// Use the existing retail-rules fixture with the original query's actor
+/// coordinates. The represented local terrain is flat level four, matching
+/// these recorded cells; this is not a replay of the whole native Scenario.
+fn attack_aim_duel(corpus: &serde_json::Value) -> Option<(Duel, u64, u64)> {
+    let mut duel = Duel::new()?;
+    let initial = attack_aim_row(corpus, "aim_cases", "stationary_target_aim");
+    let source = attack_aim_coord(&initial["input"]["source_xyz"]);
+    let target = attack_aim_coord(&initial["input"]["target_xyz"]);
+    duel.sim.session.map_width = 128;
+    duel.sim.session.map_height = 128;
+    duel.sim
+        .install_resolved_terrain_for_new_map(crate::map::resolved_terrain::test_grid(
+            128,
+            128,
+            |rx, ry| {
+                let mut cell = crate::map::resolved_terrain::test_clear_cell(rx, ry);
+                cell.level = 4;
+                cell.speed_costs = crate::map::resolved_terrain::TEST_OPEN_SPEED_COSTS;
+                cell.base_speed_costs = cell.speed_costs;
+                cell
+            },
+        ));
+    assert!(duel.sim.rebuild_dynamic_navigation(&duel.rules));
+    duel.grid = duel
+        .sim
+        .path_grid_snapshot()
+        .map(|grid| (*grid).clone())
+        .expect("native aim fixture navigation grid");
+    let source_id = duel.spawn(
+        "MTNK",
+        "Americans",
+        (source.x / 256) as u16,
+        (source.y / 256) as u16,
+        128,
+    );
+    let target_id = duel.spawn(
+        "MTNK",
+        "Russians",
+        (target.x / 256) as u16,
+        (target.y / 256) as u16,
+        0,
+    );
+    duel.sim.resolve_type_handles(&duel.rules);
+    assert_eq!(duel.location(source_id), source);
+    assert_eq!(duel.location(target_id), target);
+    duel.sim
+        .assign_target_represented(
+            source_id,
+            Some(super::TargetKind::Entity(target_id)),
+            Some(&duel.rules),
+        )
+        .expect("original Unit Assign_Target receiver");
+    Some((duel, source_id, target_id))
+}
+
+fn begin_native_aim_motion(duel: &mut Duel, target_id: u64) {
+    // The native history calls Unit741970 to Cell87,53, then SetSpeedFraction
+    // 4D3710(1). It does not run Process_Track before querying the aim.
+    assert!(duel.sim.set_unit_destination(
+        target_id,
+        crate::sim::components::NavTargetRef::Cell { rx: 87, ry: 53 },
+        &duel.rules,
+        true,
+    ));
+    let target = duel.sim.substrate.entities.get_mut(target_id).unwrap();
+    target
+        .foot_speed
+        .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
+    assert_eq!(
+        crate::sim::movement::motion_query::is_moving(target),
+        Some(true)
+    );
+}
+
+fn assert_read_only_native_aim(duel: &Duel, source_id: u64, row: &serde_json::Value) {
+    let hash = duel.sim.state_hash();
+    let main_rng = duel.sim.main_rng.logical_state();
+    let scenario_rng = duel.sim.scenario_rng.logical_state();
+    let tarcom = duel
+        .sim
+        .substrate
+        .entities
+        .get(source_id)
+        .unwrap()
+        .attack_target
+        .as_ref()
+        .map(|target| target.target);
+    let actual = super::aim_coord::led_target_coordinate(&duel.sim, &duel.rules, source_id, tarcom);
+    assert_eq!(actual, attack_aim_coord(&row["aim"]), "{}", row["name"]);
+    assert_eq!(duel.sim.state_hash(), hash, "{}: query state", row["name"]);
+    assert_eq!(
+        duel.sim.main_rng.logical_state(),
+        main_rng,
+        "{}: Main RNG",
+        row["name"]
+    );
+    assert_eq!(
+        duel.sim.scenario_rng.logical_state(),
+        scenario_rng,
+        "{}: Scenario RNG",
+        row["name"]
+    );
+}
+
+/// Original70BCB0 runs actual target virtuals, Drive::Is_Moving, Foot's live
+/// speed, GetCurrentWeapon and FacingClass. Keep the same moving actor while
+/// its rank changes: the earlier movement-order speed must not freeze lead.
+#[test]
+fn original_aim_query_reads_live_motion_rank_and_facing_without_mutation() {
+    let corpus = attack_aim_corpus();
+    let Some((mut duel, source, target)) = attack_aim_duel(&corpus) else {
+        return;
+    };
+    assert_read_only_native_aim(
+        &duel,
+        source,
+        attack_aim_row(&corpus, "aim_cases", "stationary_target_aim"),
+    );
+    begin_native_aim_motion(&mut duel, target);
+    let order_speed = duel
+        .sim
+        .substrate
+        .entities
+        .get(target)
+        .unwrap()
+        .movement_target
+        .as_ref()
+        .unwrap()
+        .speed;
+    for (facing, name) in [
+        (0, "moving_target_aim_0"),
+        (0x4000, "moving_target_aim_16384"),
+        (0xc000, "moving_target_aim_49152"),
+    ] {
+        duel.sim
+            .substrate
+            .entities
+            .get_mut(target)
+            .unwrap()
+            .body_facing
+            .snap(facing, duel.sim.session.binary_frame);
+        assert_read_only_native_aim(&duel, source, attack_aim_row(&corpus, "aim_cases", name));
+    }
+    super::veterancy::set_veteran(duel.sim.substrate.entities.get_mut(target).unwrap());
+    assert_eq!(
+        duel.sim
+            .substrate
+            .entities
+            .get(target)
+            .unwrap()
+            .movement_target
+            .as_ref()
+            .unwrap()
+            .speed,
+        order_speed
+    );
+    assert_read_only_native_aim(
+        &duel,
+        source,
+        attack_aim_row(&corpus, "aim_cases", "veteran_target_aim"),
+    );
+    duel.sim
+        .assign_target_represented(source, None, Some(&duel.rules))
+        .unwrap();
+    assert_read_only_native_aim(
+        &duel,
+        source,
+        attack_aim_row(&corpus, "aim_cases", "targetless_aim"),
+    );
+}
+
+/// Full original6FDD50 uses Cell87,54 for the shot's launch speed while
+/// 70BCB0 independently leads a veteran MTNK TarCom at87,52. Checking the
+/// emitted bullet catches the old snap.target/argument-coordinate coupling.
+#[test]
+fn original_direct_fireat_keeps_argument_speed_separate_from_live_tarcom_aim() {
+    let corpus = attack_aim_corpus();
+    let Some((mut duel, source, target)) = attack_aim_duel(&corpus) else {
+        return;
+    };
+    begin_native_aim_motion(&mut duel, target);
+    let actor = duel.sim.substrate.entities.get_mut(target).unwrap();
+    actor
+        .body_facing
+        .snap(0xc000, duel.sim.session.binary_frame);
+    super::veterancy::set_veteran(actor);
+    let row = attack_aim_row(
+        &corpus,
+        "fireat_cases",
+        "fireat_argument_cell_distinct_from_moving_tarcom_unit",
+    );
+    assert_read_only_native_aim(&duel, source, row);
+    let argument = attack_aim_coord(&row["input"]["argument_target_xyz"]);
+    let argument_target =
+        super::TargetKind::Cell((argument.x / 256) as u16, (argument.y / 256) as u16);
+    duel.sim.commit_fire_visit(
+        super::world_receiver::FireVisit::Direct {
+            id: source,
+            target: argument_target,
+            weapon_index: 0,
+        },
+        &duel.rules,
+        None,
+    );
+    let bullets: Vec<_> = duel
+        .sim
+        .projectiles
+        .iter()
+        .map(|(_, bullet)| bullet)
+        .collect();
+    assert_eq!(bullets.len(), 1);
+    let bullet = bullets[0];
+    assert_eq!(
+        bullet.launch_origin,
+        attack_aim_coord(&row["bullet"]["position"])
+    );
+    assert_eq!(
+        bullet.launch_target, argument,
+        "Bullet::Fire retains the unled argument"
+    );
+    assert_eq!(
+        i64::from(bullet.speed_leptons_per_frame),
+        row["launch_speed"].as_i64().unwrap()
+    );
+    let expected_velocity = row["bullet"]["velocity"]["bits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|component| u64::from_str_radix(component.as_str().unwrap(), 16).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        bullet
+            .velocity
+            .native()
+            .map(|component| component.bits())
+            .as_slice(),
+        expected_velocity
+    );
+
+    // A valid argument does not become the fallback for null TarCom. The
+    // native second Direct call reaches70BCB0, returns zero, and emits no
+    // surviving bullet. This does not certify its full failure cleanup order.
+    let null = attack_aim_row(
+        &corpus,
+        "fireat_cases",
+        "fireat_argument_cell_with_null_tarcom",
+    );
+    duel.sim
+        .assign_target_represented(source, None, Some(&duel.rules))
+        .unwrap();
+    assert_read_only_native_aim(&duel, source, null);
+    let previous_bullets = duel
+        .sim
+        .projectiles
+        .iter()
+        .map(|(&id, _)| id)
+        .collect::<Vec<_>>();
+    assert!(null["bullet"].is_null());
+    duel.sim.commit_fire_visit(
+        super::world_receiver::FireVisit::Direct {
+            id: source,
+            target: argument_target,
+            weapon_index: 0,
+        },
+        &duel.rules,
+        None,
+    );
+    assert_eq!(
+        duel.sim
+            .projectiles
+            .iter()
+            .map(|(&id, _)| id)
+            .collect::<Vec<_>>(),
+        previous_bullets
+    );
+}
+
+/// A non-null stable TarCom must resolve until the existing UnInit expiry
+/// owner clears it. Exercise that owner and the deferred destructor before a
+/// presentation-style query. The original concrete expiry receipt also pins
+/// the passive-scan timer and all three complete RNG states at that boundary.
+#[test]
+fn target_uninit_clears_tarcom_before_aim_query_and_physical_removal() {
+    use crate::sim::rng::SimRng;
+
+    let corpus = attack_aim_corpus();
+    let Some((mut duel, source, target)) = attack_aim_duel(&corpus) else {
+        return;
+    };
+    let expiry = attack_aim_row(&corpus, "steps", "supplied_dead_target_expiry_active_scan");
+    let assert_rng = |sim: &Simulation, native: &serde_json::Value, boundary: &str| {
+        for (name, actual) in [
+            ("scenario", &sim.scenario_rng),
+            ("main", &sim.main_rng),
+            ("mapgen", &sim.mapgen_rng),
+        ] {
+            let expected: SimRng = serde_json::from_value(native[name].clone()).unwrap();
+            assert_eq!(
+                actual.logical_view(),
+                expected.logical_view(),
+                "{boundary}: full {name} table, disabled flag and both indexes"
+            );
+        }
+    };
+    let assert_timer = |sim: &Simulation, native: &serde_json::Value| {
+        let timer = sim
+            .substrate
+            .entities
+            .get(source)
+            .unwrap()
+            .passive_scan_timer;
+        // MissionTimer owns the native +180 start/+188 duration. The
+        // intervening +184 DWORD is not a represented cadence input.
+        assert_eq!(u64::from(timer.start_frame), native[0].as_u64().unwrap());
+        assert_eq!(u64::from(timer.duration), native[2].as_u64().unwrap());
+    };
+    duel.sim.session.binary_frame = expiry["before"]["source"]["frame"].as_u64().unwrap() as u32;
+    let before_timer = &expiry["before"]["targeting_timer"];
+    duel.sim
+        .substrate
+        .entities
+        .get_mut(source)
+        .unwrap()
+        .passive_scan_timer
+        .arm(
+            before_timer[0].as_u64().unwrap() as u32,
+            before_timer[2].as_u64().unwrap() as u32,
+        );
+    // Match the supplied native boundary, independently checking all 250
+    // words and both cursors below; index_a=3 alone would not establish it.
+    duel.sim.scenario_rng = SimRng::new(0);
+    for _ in 0..3 {
+        duel.sim.scenario_rng.next_u32();
+    }
+    duel.sim.main_rng = SimRng::new(0);
+    duel.sim.mapgen_rng = SimRng::new(0);
+    assert_rng(&duel.sim, &expiry["rng_before"], "before UnInit");
+    assert_timer(&duel.sim, before_timer);
+
+    let ((), draws) = crate::sim::rng::trace_draws(|| {
+        duel.sim.uninit_with_rules(target, &duel.rules);
+    });
+    let expected_raw: Vec<_> = expiry["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["kind"] == "raw")
+        .map(|event| event["value"].as_u64().unwrap())
+        .collect();
+    assert_eq!(
+        draws
+            .iter()
+            .map(|draw| draw["value"].as_u64().unwrap())
+            .collect::<Vec<_>>(),
+        expected_raw,
+        "the full UnInit emits only the original expiry draw"
+    );
+    assert_rng(&duel.sim, &expiry["rng_after"], "after UnInit");
+    assert_timer(&duel.sim, &expiry["after"]["targeting_timer"]);
+    assert!(
+        duel.sim.substrate.entities.get(target).is_some(),
+        "UnInit defers physical removal"
+    );
+    assert!(
+        duel.sim
+            .substrate
+            .entities
+            .get(source)
+            .unwrap()
+            .attack_target
+            .is_none(),
+        "PointerExpired clears the live reference first"
+    );
+    let expected = attack_aim_row(&corpus, "aim_cases", "expired_target_aim");
+    assert_read_only_native_aim(&duel, source, expected);
+    duel.sim
+        .process_pending_delete_with(Some(&duel.rules), None);
+    assert!(duel.sim.substrate.entities.get(target).is_none());
+    assert_read_only_native_aim(&duel, source, expected);
+    assert_rng(&duel.sim, &expiry["rng_after"], "after deferred removal");
+    assert_timer(&duel.sim, &expiry["after"]["targeting_timer"]);
+}
+
 #[test]
 fn grand_cannon_recoil_follows_successful_launch_ai_and_snapshot() {
     let Some(mut duel) = Duel::new() else {

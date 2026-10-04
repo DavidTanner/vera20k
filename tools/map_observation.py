@@ -50,7 +50,7 @@ ORDER_VARIANTS = frozenset(('Select', 'Move', 'Stop', 'Attack', 'ForceAttack', '
                             'DeployMcv', 'ForceAttackCell', 'CaptureBuilding', 'ToggleRepair',
                             'EnterTransport', 'UnloadPassengers', 'RepairAtDepot', 'SellBuilding', 'SetRally'))
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
-EXTENSION_FIELDS = frozenset(('commands', 'gestures', 'observe_owners', 'observe_types', 'camera_cell',
+EXTENSION_FIELDS = frozenset(('commands', 'gestures', 'observe_owners', 'observe_types', 'observe_action_line_inputs', 'camera_cell',
                               'cursor_position', 'terrain_cells'))
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
 
@@ -307,6 +307,8 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
             selected_types.add(name)
     if 'camera_cell' in profile:
         _coordinate(profile['camera_cell'], 'profile.camera_cell')
+    if 'observe_action_line_inputs' in profile and type(profile['observe_action_line_inputs']) is not bool:
+        raise ValidationError('profile.observe_action_line_inputs must be a boolean')
     if 'cursor_position' in profile:
         position = require_array(profile['cursor_position'], 'profile.cursor_position')
         if len(position) != 2:
@@ -585,8 +587,44 @@ def _houses(value: Any, owners: list[str], label: str) -> int:
     return len(houses)
 
 
+def _action_line_inputs(value: Any, category: str, label: str) -> None:
+    if category == 'Structure':
+        require_value(value, None, label)
+        return
+    inputs = require_object(value, label)
+    require_exact_keys(inputs, ('body_facing', 'turret_facing', 'locomotor', 'is_moving',
+                               'applied_speed_fraction_fixed_bits', 'crate_speed_multiplier_f64_bits',
+                               'house_speed_bonus_f32_bits', 'current_speed', 'veterancy',
+                               'current_weapon', 'turret_offset', 'rocking_angles_fixed_bits'), label)
+    _bounded_int(inputs['body_facing'], f'{label}.body_facing', 0, (1 << 16) - 1)
+    if inputs['turret_facing'] is not None:
+        _bounded_int(inputs['turret_facing'], f'{label}.turret_facing', 0, (1 << 16) - 1)
+    if inputs['locomotor'] not in (None, 'Drive', 'Hover', 'Walk', 'Fly', 'Teleport', 'Ship', 'Jumpjet', 'Rocket'):
+        raise ValidationError(f'{label}.locomotor is unknown')
+    if inputs['is_moving'] is not None and type(inputs['is_moving']) is not bool:
+        raise ValidationError(f'{label}.is_moving must be boolean or null')
+    _bounded_int(inputs['applied_speed_fraction_fixed_bits'],
+                 f'{label}.applied_speed_fraction_fixed_bits', 0, 1 << 16)
+    _bounded_int(inputs['crate_speed_multiplier_f64_bits'],
+                 f'{label}.crate_speed_multiplier_f64_bits', 0, (1 << 64) - 1)
+    _bounded_int(inputs['house_speed_bonus_f32_bits'],
+                 f'{label}.house_speed_bonus_f32_bits', 0, (1 << 32) - 1)
+    _bounded_int(inputs['veterancy'], f'{label}.veterancy', 0, (1 << 16) - 1)
+    for key in ('current_speed', 'turret_offset'):
+        _bounded_int(inputs[key], f'{label}.{key}', -(1 << 31), (1 << 31) - 1)
+    if inputs['current_weapon'] is not None and not require_string(inputs['current_weapon'], f'{label}.current_weapon'):
+        raise ValidationError(f'{label}.current_weapon is empty')
+    if inputs['rocking_angles_fixed_bits'] is not None:
+        angles = require_array(inputs['rocking_angles_fixed_bits'], f'{label}.rocking_angles_fixed_bits')
+        if len(angles) != 2:
+            raise ValidationError(f'{label}.rocking_angles_fixed_bits must contain two angles')
+        for index, bits in enumerate(angles):
+            _bounded_int(bits, f'{label}.rocking_angles_fixed_bits[{index}]', -(1 << 31), (1 << 31) - 1)
+
+
 def _actor(value: Any, label: str, *, building_state: bool = True,
-           docking_state: bool = True, walk_state: bool = True) -> tuple[int, str]:
+           docking_state: bool = True, walk_state: bool = True,
+           action_line_inputs: bool = False) -> tuple[int, str]:
     actor = require_object(value, label)
     require_exact_keys(actor, ('stable_id', 'owner', 'type_id', 'category', 'cell',
                               'physical_leptons', 'on_bridge', 'health', 'active',
@@ -594,6 +632,7 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                               *(('building',) if building_state else ()),
                               *(('unit',) if 'unit' in actor else ()),
                               *(('jumpjet',) if 'jumpjet' in actor else ()),
+                              *(('action_line_inputs',) if action_line_inputs else ()),
                               *(('miner', 'radio') if docking_state else ())), label)
     identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
     owner = require_string(actor['owner'], f'{label}.owner')
@@ -602,6 +641,8 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
     category = actor['category']
     if category not in ('Unit', 'Infantry', 'Aircraft', 'Structure'):
         raise ValidationError(f'{label}.category is unknown')
+    if action_line_inputs:
+        _action_line_inputs(actor['action_line_inputs'], category, f'{label}.action_line_inputs')
     if docking_state:
         _docking_state(actor, label)
     if building_state:
@@ -867,7 +908,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
         for index, value in enumerate(actors):
             actor_label = f'{row_label}.actors[{index}]'
             identity, owner = _actor(value, actor_label, building_state=building_state,
-                                     docking_state=docking_state, walk_state=walk_state)
+                                     docking_state=docking_state, walk_state=walk_state,
+                                     action_line_inputs=profile.get('observe_action_line_inputs', False))
             if identity <= previous_id:
                 raise ValidationError(f'{actor_label}.stable_id is repeated or out of order')
             if identity not in seen and owner not in owners:

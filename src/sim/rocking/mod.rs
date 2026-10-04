@@ -10,32 +10,37 @@
 //! (`sim::world::crash`), [`tick`]'s crashing branch
 //! ([`rocking_system::advance_crash_spin`], `RockingUpdate 0x0070B63D`)
 //! integrates them, and the unit renderer draws the angles through Fly
-//! Draw_Matrix's crashing arm (`render::vxl_raster`). Everything below is about
-//! the ordinary damped rocker, which still has no producer and no consumer:
+//! Draw_Matrix's crashing arm (`render::vxl_raster`); Jumpjet crash tilt also
+//! consumes these angles. Everything below is about the ordinary damped
+//! ground rocker, which still has no producer or Drive body-drawing consumer:
 //!
 //! - **No producer.** [`apply_rocker_impulse`] has no caller outside this
 //!   module's tests. gamemd reaches `TechnoClass::ApplyRocker` (vtable `+0x3D8`
 //!   → `0x0070B280`) from exactly four places, established this session by a
 //!   `CALL [reg+0x3D8]` census over all 1.16M instructions in the image:
 //!   `BulletClass::DetonateAtCoord @ 0x004699A1` (`DirectRocker=`, zero stock
-//!   authors), `Apply_area_damage @ 0x00489DFF`/`0x00489E3E` (`Rocker=`, 18
-//!   stock warheads), and `ParasiteClass::AI @ 0x0062A21C` (a parasite bite
+//!   authors), `Apply_area_damage @ 0x00489DFF`/`0x00489E3E` (`Rocker=`), and
+//!   `ParasiteClass::AI @ 0x0062A21C` (a parasite bite
 //!   on a non-Infantry victim, force `1.5`; its lateral-sign RNG draw at
 //!   `0x0062A17F` is taken in `combat/parasite.rs`).
 //!   `FootClass::ReceiveEMP @ 0x004DECF0` writes the velocities directly
 //!   instead. **Firing never rocks the body** — there is no
 //!   `ApplyRocker` site in `Fire_At`, and none in any crush or deploy path.
-//! - **No consumer.** `grep` over `render/` and `app/` finds no read of
-//!   `GameEntity::rocking`, so even a correct impulse would tilt nothing, and
+//! - **No ground-body consumer.** The presentation consumers of
+//!   `GameEntity::rocking` select Fly/Jumpjet crash arms, not ordinary Drive
+//!   Draw_Matrix. A ground impulse alone would not tilt its vehicle body, and
 //!   the self-destruct hook the production caller passes is
 //!   [`NoopSelfDestruct`].
 //!
-//! - Trigger: any `Rocker=yes` warhead detonating near a vehicle — that is most
-//!   tank and artillery shells in the game.
+//! - Trigger: a `Rocker=yes` warhead, such as stock `V3WH`, detonating near a
+//!   vehicle. Ordinary stock `105mm`/`AP` shots do not enter either warhead
+//!   rocker arm: the original Warhead constructor and `ReadINI 0x0075D3A0`
+//!   retain both `Rocker` and `DirectRocker` as false for physical AP.
+//!   Evidence: `tools/procedural_drawing_oracle/action_lines_attack_prerequisites.json`.
 //! - Player effect: vehicles do not lurch when shells land beside them. The
 //!   whole "shot lands next to the Rhino and the Rhino rocks" reading is
 //!   missing.
-//! - Frequency: continuous in any engagement.
+//! - Frequency: engagements involving the applicable warheads or parasites.
 //! - Downstream risk: wiring the producer alone would add per-entity
 //!   deterministic state and move the pinned replay hash while changing nothing
 //!   a player can see, so the producer and the renderer belong in one slice. See

@@ -1,4 +1,4 @@
-"""Original selected ground Unit Move action-line chain and shared pixel leaves.
+"""Original selected ground Unit action-line chains and shared pixel leaves.
 
 Prepared actor/terrain/camera inputs compose existing native fixture owners.
 Original class setters, geometry, timers, projection, clipping and pixel writes
@@ -11,6 +11,7 @@ import hashlib
 import itertools
 import json
 import struct
+import sys
 
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX,
@@ -187,6 +188,11 @@ class ActionFixture:
                 row['rectangle_after'] = signed_words(self.u, row['output_pointer'], 4)
             elif row['name'] == 'cell_get_coords':
                 row['coordinate_after'] = signed_words(self.u, row['args'][0], 3)
+            elif row['name'] in ('attack_pivot', 'attack_aim', 'object_coordinate',
+                                 'target_coordinate', 'object_location'):
+                row['coordinate_after'] = signed_words(self.u, row['args'][0], 3)
+            elif row['name'] == 'facing_current':
+                row['facing_after'] = read32(self.u, row['args'][0]) & 0xFFFF
 
     def observe(self, _u, pc, _size, _data):
         u = self.u
@@ -202,6 +208,19 @@ class ActionFixture:
                  0x565730: ('world_cell', 1, 4), 0x578080: ('ground_height', 1, 4),
                  0x741970: ('unit_destination', 2, 8), 0x4D94B0: ('foot_destination', 2, 8),
                  0x4AFD40: ('drive_move', 4, 16)}
+        if self.case.get('attack'):
+            specs.update({0x6F3D60: ('attack_pivot', 2, 8),
+                0x70BCB0: ('attack_aim', 1, 4), 0x4AFF60: ('drive_draw_matrix', 3, 12),
+                0x55A730: ('locomotor_draw_matrix', 3, 12),
+                0x410540: ('target_coordinate', 1, 4),
+                0x5F65A0: ('object_coordinate', 1, 4),
+                0x41BE00: ('object_location', 1, 4),
+                0x4AFB80: ('drive_is_moving', 1, 4),
+                0x4DB1A0: ('live_foot_speed', 0, 0),
+                0x50C050: ('house_speed', 1, 4), 0x70D0D0: ('ability', 1, 4),
+                0x70E1A0: ('current_weapon', 0, 0), 0x70E140: ('get_weapon', 1, 4),
+                0x7177C0: ('type_weapon', 1, 4), 0x773070: ('weapon_speed', 1, 4),
+                0x4C93D0: ('facing_current', 1, 4)})
         if pc not in specs:
             return
         row = self.trace.calls[self.trace.entered(pc, sp, specs[pc])]
@@ -225,6 +244,58 @@ class ActionFixture:
             row['output_pointer'] = u.reg_read(UC_X86_REG_ECX)
             row['clip_rectangle'] = signed_words(u, u.reg_read(UC_X86_REG_EDX), 4)
             row['rectangle_before'] = signed_words(u, args[0], 4)
+        elif pc in (0x4AFF60, 0x4AFB80):
+            row['com_this'] = args[0]
+
+    def setup_attack(self):
+        """Supply actor inputs using the existing live-speed and weapon owners.
+
+        Drive/Facing constructors and setters execute. No target getter, speed,
+        locomotor or weapon virtual is replaced. This bounded adapter does not
+        claim whole Unit construction; the prerequisite mode composes that.
+        """
+        from tools.projectile_oracle import fireat_speed
+        from tools.spatial_oracle import track_speed_native
+        case, u = self.case, self.u
+        target = MEM + 0x71000
+        source_loco, target_loco, heading = MEM + 0x72000, MEM + 0x72100, MEM + 0x72200
+        house, country, rules = MEM + 0x74000, MEM + 0x7B000, MEM + 0x7C000
+        u.mem_map(native.SCRATCH, native.SCRATCH_SIZE)
+        weapon = case['weapon_inputs']
+        fireat_speed.weapon(u, True, weapon['rot'], int(weapon['floater']), weapon['speed'])
+        track_speed_native.seed_getter_state(u, case['target_speed_inputs'],
+                                            target, rally.TYPE, house, country, rules)
+        u.mem_write(rules + 0x16B8, words(weapon['gravity']))
+        u.mem_write(rally.TYPE + 0x898, words(fireat_speed.WEAPON if weapon['present'] else 0))
+        u.mem_write(rally.TYPE + 0x720, words(case['turret_offset']))
+        u.mem_write(rally.TYPE + 0xCA1, b'\1')
+        for actor, loco, coord, hull, turret in (
+            (self.actor, source_loco, case['source'], case['body_facing'], case['turret_facing']),
+            (target, target_loco, case['target_xyz'], case['target_facing'], 0),
+        ):
+            u.mem_write(actor, words(0x7F5C70))
+            u.mem_write(actor + 0x14, words(4))
+            u.mem_write(actor + 0x6C4, words(rally.TYPE))
+            # Original Unit constructor's idle deploy sentinel. The existing
+            # track_destination fixture supplies this same prerequisite; zero
+            # would make Unit746C90 reject the original Drive Move_To.
+            u.mem_write(actor + 0x6D8, words(case['unit_deploy_state']))
+            u.mem_write(actor + 0x9C, words(*coord))
+            self.invoke(0x4AF540, loco)
+            u.mem_write(loco + 0xC, words(actor))
+            u.mem_write(actor + 0x674, words(loco + 4))
+            for field, angle in ((0x388, hull), (0x3A0, turret)):
+                self.invoke(0x4C91E0, actor + field, (0,))
+                u.mem_write(heading, words(angle))
+                self.invoke(0x4C9300, actor + field, (heading,))
+        if case['target_moving']:
+            self.invoke(0x4AFD40, 0, (target_loco + 4, *case['target_xyz']))
+        self.attack_target_motion = bool(self.invoke(0x4AFB80, 0, (target_loco + 4,)) & 255)
+        assert self.attack_target_motion == case['target_moving']
+        u.mem_write(self.actor + 0x2B4, words(target if case['target_present'] else 0))
+        self.attack_state_ranges = dict(source=(self.actor, 0x700), target=(target, 0x700),
+            source_locomotor=(source_loco, 0x70), target_locomotor=(target_loco, 0x70),
+            timer=(TIMER, 12))
 
     def invoke(self, pc, this=0, args=()):
         answer = call(self.u, pc, this, args)
@@ -263,6 +334,76 @@ def producer(case, row):
     f.invoke(0x4DC060, f.actor, (0, 0))
     assert timer == list(struct.unpack('<3I', f.u.mem_read(TIMER, 12)))
     return dict(f.result(), native_timer=timer)
+
+
+def attack_cases():
+    """Finite prepared Unit/Drive inputs, separate from retail command history."""
+    speed = dict(speed_percent=7, raw=17, house=1.0,
+        veteran=float(struct.unpack('<f', struct.pack('<f', 1.2))[0]),
+        rank=0.0, crate=1.0, applied=1.0, faster=True,
+        elite_faster=False, flag_owner=-1)
+    base = dict(attack=True, family='attack', source=[5248, 5248, 416], target_xyz=[5504, 5248, 416],
+        target_cell=[19, 20], camera=[-80, 495], clip=[0, 0, 160, 120],
+        timer_start=100, frame=100, level=4, slope=0, flags=0, alpha='clear',
+        target_present=True, target_moving=False, target_facing=0,
+        body_facing=0, turret_facing=0x4000, turret_offset=0, unit_deploy_state=-1,
+        target_speed_inputs=speed, current_weapon_index=0,
+        weapon_inputs=dict(speed=95, speed_percent=40, range_cells=5,
+                           rot=0, floater=False, gravity=6, present=True))
+    rows = []
+    for index, (dx, dy) in enumerate(((256, 0), (256, 256), (0, 256), (-256, 256),
+                                    (-256, 0), (-256, -256), (0, -256), (256, -256))):
+        for moving in (False, True):
+            rows.append(dict(base, name=f'attack_direction_{index}_moving_{int(moving)}',
+                target_xyz=[5248 + dx, 5248 + dy, 416], target_moving=moving,
+                target_facing=index * 8192))
+    for name, extra in (
+        ('same_coordinate', dict(target_xyz=base['source'])),
+        ('turret_other', dict(turret_facing=0xC000)),
+        ('hull_other', dict(body_facing=0x4000)),
+        ('pivot_80', dict(turret_offset=80)),
+        ('pivot_80_hull_other', dict(turret_offset=80, body_facing=0x4000)),
+        ('pivot_80_turret_other', dict(turret_offset=80, turret_facing=0xC000)),
+        ('queue_priority', dict(queue_cells=[[22, 20], [20, 21]])),
+        ('no_nav', dict(nav_null=True)),
+        ('timer_last', dict(frame=124)), ('timer_expired', dict(frame=125)),
+        ('tarcom_null_nav', dict(target_present=False)),
+        ('tarcom_null_no_nav', dict(target_present=False, nav_null=True)),
+        ('moving_fraction_half', dict(target_moving=True,
+            target_speed_inputs=dict(speed, applied=0.5))),
+        ('moving_veteran', dict(target_moving=True,
+            target_speed_inputs=dict(speed, rank=1.0))),
+        ('moving_crate', dict(target_moving=True,
+            target_speed_inputs=dict(speed, crate=1.25))),
+    ):
+        rows.append(dict(base, name='attack_' + name, **extra))
+    return rows
+
+
+def attack(case, row):
+    f = ActionFixture(case, row)
+    f.setup_attack()
+    timer = f.start(case['timer_start'])
+    f.u.mem_write(FRAME, words(case['frame']))
+    before = {name: bytes(f.u.mem_read(pointer, size))
+              for name, (pointer, size) in f.attack_state_ranges.items()}
+    forbidden = []
+    def observe(_u, pc, _size, _data):
+        if pc in (0x65C640, 0x65C660, 0x65C780, 0x65C7E0,
+                  0x70D150, 0x70D4A0, 0x7258D0, 0x5F65F0):
+            forbidden.append(f'0x{pc:08X}')
+    hook = f.u.hook_add(UC_HOOK_CODE, observe)
+    try:
+        f.invoke(0x4DC060, f.actor, (0, 0))
+    finally:
+        f.u.hook_del(hook)
+    unchanged = {name: raw == bytes(f.u.mem_read(*f.attack_state_ranges[name]))
+                 for name, raw in before.items()}
+    assert all(unchanged.values()), unchanged
+    assert not forbidden, forbidden
+    return dict(f.result(), native_timer=timer, target_motion_admitted=f.attack_target_motion,
+                state_unchanged=unchanged,
+                rng_timer_restart_detach_entries=forbidden)
 
 
 def batch_cases():
@@ -811,6 +952,378 @@ def timer_references():
         for address in (TIMER, TIMER + 4, TIMER + 8)}
 
 
+def attack_instruction_evidence():
+    image = native.image_bytes()
+    ranges = dict(source_pivot=(0x6F3D60, 0x6F3F34), target_aim=(0x70BCB0, 0x70BE45),
+        foot_attack_branch=(0x4DC0B3, 0x4DC1AA), current_weapon=(0x70E1A0, 0x70E1D9),
+        object_high_flight=(0x5F6B90, 0x5F6BC5), cannon_air_rejection=(0x6FC705, 0x6FC73C),
+        elevation_range_division=(0x6F703D, 0x6F706E),
+        object_action_attack_admission=(0x700536, 0x70056C),
+        attack_event_mission=(0x4C739B, 0x4C73C0),
+        event_target_destination=(0x4C7467, 0x4C7482),
+        fireat_argument_speed=(0x6FE4F2, 0x6FE545),
+        fireat_tarcom_aim=(0x6FE625, 0x6FE661),
+        pointer_expiry_scan_target=(0x7079B7, 0x707A43),
+        turret_offset_art_read=(0x715876, 0x71589A),
+        warhead_rocker_read=(0x75D5AA, 0x75D5DE))
+    rows = {}
+    for name, (start, end) in ranges.items():
+        report = native_inspect.inspect(image, native_inspect.parser().parse_args(
+            ['disasm', hex(start), '--bytes', str(end-start)]))
+        _, raw = native.file_span(image, start, end-start)
+        rows[name] = dict(begin=f'0x{start:08X}', end_exclusive=f'0x{end:08X}',
+                         bytes_hex=raw.hex(), sha256=sha(raw), **report)
+    return rows
+
+
+def attack_type_readers():
+    """Execute the existing retail cache/reader owners for pivot and no-rocking."""
+    from unicorn.x86_const import UC_X86_REG_EBP, UC_X86_REG_ESI
+    from tools.spatial_oracle.anytown_damage import mtnk_attack as base
+    from tools.spatial_oracle.engineer_bridge_cursor_caller import HutTypeReader
+    from tools.spatial_oracle.building_body_rules import SP as READER_SP
+    from tools.rules_oracle.weapon_speed_order import fresh
+
+    m = HutTypeReader()
+    u = m.u
+    typ = m.alloc(0x1900)
+    m.phase = 'MTNK_constructor'
+    m.invoke(0x7470D0, typ, (m.cstring('MTNK'),))
+    constructor = {name: signed_words(u, typ + offset, 1)[0]
+                   for name, offset in (('turret_offset', 0x720), ('turret_count', 0x808),
+                                        ('weapon_count', 0x80C))}
+    art_path = base.layers()[0][1].parent / 'ARTMD.INI'
+    art_raw = art_path.read_bytes()
+    physical, physical_lines = base.lexical(art_raw, {'GTNK'})
+    u.mem_write(typ + 0x1F8, b'GTNK\0')
+    reads, rows = [], []
+    def observe(_u, pc, _size, _data):
+        if pc == 0x5276D0:
+            sp = u.reg_read(UC_X86_REG_ESP)
+            reads.append(dict(section=m.string(m.read32(sp + 4)),
+                key=m.string(m.read32(sp + 8)), default=signed_words(u, sp + 12, 1)[0]))
+    hook = u.hook_add(UC_HOOK_CODE, observe)
+    for name, values in (
+        ('physical_GTNK', physical['GTNK']), ('positive_control', {'TurretOffset': '80'}),
+        ('missing_retains_prior', {}), ('wrong_case_retains_prior', {'turretoffset': '999'}),
+        ('negative_control', {'TurretOffset': '-80'}),
+        ('decimal_wrapping', {'TurretOffset': '4294967297'}),
+    ):
+        m.phase = name
+        m.make_ini({'GTNK': values})
+        before = signed_words(u, typ + 0x720, 1)[0]
+        u.reg_write(UC_X86_REG_ESP, READER_SP)
+        u.reg_write(UC_X86_REG_EBP, typ)
+        u.reg_write(UC_X86_REG_ESI, typ + 0x1F8)
+        native.run_checked(u, 0x715876, 0x71589A, required_addresses=[0x5276D0])
+        rows.append(dict(name=name, raw=values.get('TurretOffset'), before=before,
+            after=signed_words(u, typ + 0x720, 1)[0], read=reads[-1],
+            stack_delta=u.reg_read(UC_X86_REG_ESP) - READER_SP))
+    u.hook_del(hook)
+    m.unchanged()
+    result = dict(turret_offset=dict(constructor=constructor, rows=rows,
+        art=dict(file='ARTMD.INI', bytes=len(art_raw), sha256=sha(art_raw),
+                 sections=physical, source_lines=physical_lines)))
+
+    m, _, _ = fresh()
+    u = m.u
+    u.mem_write(0x8874C0, words(0x7EB6D4, m.alloc(4096), 1024, 1, 0, 10))
+    warhead = m.invoke(0x75E3B0, m.cstring('AP'))
+    original = bytes(u.mem_read(warhead + 0x14E, 2)).hex()
+    reads, rows = [], []
+    def observe_bool(_u, pc, _size, _data):
+        if pc == 0x5295F0:
+            sp = u.reg_read(UC_X86_REG_ESP)
+            key = m.string(m.read32(sp + 8))
+            if key in ('Rocker', 'DirectRocker'):
+                reads.append(dict(section=m.string(m.read32(sp + 4)), key=key,
+                    default_byte=m.read32(sp + 12) & 255,
+                    stack_word_hex=f'{m.read32(sp + 12):08x}'))
+    hook = u.hook_add(UC_HOOK_CODE, observe_bool)
+    for filename, path in base.layers():
+        if not path.exists():
+            assert filename == 'LANGRULE.INI'
+            rows.append(dict(file=filename, absent=True))
+            continue
+        raw = path.read_bytes()
+        selected, lines = base.lexical(raw, {'AP'})
+        m.rules_cache(selected)
+        start = len(reads)
+        before = bytes(u.mem_read(warhead + 0x14E, 2)).hex()
+        admitted = m.invoke(0x75D3A0, warhead, (base.RULES,)) & 255
+        rows.append(dict(file=filename, bytes=len(raw), sha256=sha(raw), sections=selected,
+            source_lines=lines, admitted=admitted, before=before,
+            after=bytes(u.mem_read(warhead + 0x14E, 2)).hex(), reads=reads[start:]))
+    u.hook_del(hook)
+    result['warhead_ap'] = dict(constructor_entry='0x0075E3B0', constructor_fields_hex=original,
+        fields=['Rocker +0x14E', 'DirectRocker +0x14F'], layers=rows)
+    return result
+
+
+def attack_prerequisites():
+    """Compose the existing retail Mission world, without its fixed Cell order.
+
+    Full original constructors, placement, object admission, event/setter,
+    live aim and FireAt run. This adapter supplies a second House and chooses
+    explicit operations; it does not replace the existing world or its hooks.
+    """
+    from tools.spatial_oracle.anytown_damage import mission, mtnk_attack as base
+    from tools.spatial_oracle.engineer_repair_admission import EngineerJoinedFixture
+    from tools.spatial_oracle.object_flight_height import initialize_object_scalars
+
+    class PlacementBoundary(Exception):
+        pass
+
+    q = mission.Mission()
+    m, u = q.m, q.u
+    result = dict(schema='vera20k.unit-attack-prerequisites.v1',
+                  native_sha256=native.NATIVE_SHA256, steps=[], aim_cases=[], fireat_cases=[])
+    result['object_initializers'] = [f'0x{a:08X}' for a in initialize_object_scalars(u, m.invoke)]
+    def before_fixed_cell_command():
+        raise PlacementBoundary()
+    try:
+        q.setup(placement_observer=before_fixed_cell_command)
+    except PlacementBoundary:
+        pass
+    else:
+        raise AssertionError('Mission placement observer was not reached')
+    result.update(inputs=q.inputs, world=q.world, source_after_placement=q.state())
+    assert q.placement_result & 255 == 1 and m.read32(q.src + 0x2B4) == 0
+    assert not any(row.get('kind') == 'event_execute' for row in q.events)
+    result['elevation_layers'] = []
+    for filename, path in base.layers():
+        if not path.exists():
+            assert filename == 'LANGRULE.INI'
+            result['elevation_layers'].append(dict(file=filename, absent=True))
+            continue
+        raw = path.read_bytes()
+        selected, lines = base.lexical(raw, {'ElevationModel'})
+        m.rules_cache(selected)
+        admitted = m.invoke(0x66D150, q.rules, (base.RULES,)) & 255
+        result['elevation_layers'].append(dict(file=filename, sha256=sha(raw),
+            sections=selected, source_lines=lines, admitted=admitted,
+            increment=m.read32(q.rules + 0x1838)))
+    text_before = sha(bytes(u.mem_read(0x401000, 0x3E0000)))
+    enemy = m.alloc(0x16000)
+    u.mem_write(enemy + 0x30, words(1, q.country))
+    for off in (0x188, 0x1A8):
+        u.mem_write(enemy + off, struct.pack('<d', 1.0))
+    for off in (0x5514, 0x5564):
+        u.mem_write(enemy + off + 4, words(m.alloc(4096), 1024))
+    u.mem_write(enemy + 0x5788, words(2))
+    u.mem_write(q.house + 0x5788, words(1))
+    houses = m.alloc(8)
+    u.mem_write(houses, words(q.house, enemy))
+    u.mem_write(0xA8022C, words(houses))
+    target = m.alloc(0x1000)
+    q.phase = 'setup'
+    start = len(q.events)
+    m.invoke(0x7353C0, target, (q.typ, 0))
+    for off in (0x21C, 0x14C):
+        u.mem_write(target + off, words(enemy))
+    target_coord = m.alloc(12)
+    m.invoke(0x486840, q.resident.ptrs[87, 52], (target_coord,))
+    q.phase = 'target_placement'
+    placement = m.invoke(0x737BA0, target, (target_coord, 0x80))
+    result['target_construction'] = dict(placement_al=placement & 255,
+        position=base.xyz(u, target + 0x9C), events=q.events[start:],
+        id=m.read32(target + 0x10), source_id=m.read32(q.src + 0x10),
+        unit_deploy_state=base.i32(u, target + 0x6D8),
+        source_unit_deploy_state=base.i32(u, q.src + 0x6D8),
+        supplied_enemy=dict(pointer=enemy, index=1, country='Americans',
+                            alliance_mask=2, source_alliance_mask=1, human=False))
+    assert placement & 255 == 1
+    projectile = m.read32(q.weapon + 0xA0)
+    warhead = m.read32(q.weapon + 0xAC)
+    result['type_inputs'] = dict(speed=base.i32(u, q.typ + 0x678),
+        country_speed_bits=bytes(u.mem_read(q.country + 0x12C, 4)).hex(),
+        veteran_speed_bits=bytes(u.mem_read(q.rules + 0x678, 8)).hex(),
+        primary=hex(m.read32(q.typ + 0x898)), primary_name=m.string(q.weapon + 0x24),
+        resolved_image=m.string(q.typ + 0x1F8), turret_offset=base.i32(u, q.typ + 0x720),
+        primary_flh=base.xyz(u, q.typ + 0x89C), damage=base.i32(u, q.weapon + 0xA4),
+        weapon_speed=base.i32(u, q.weapon + 0xA8), projectile_rot=base.i32(u, projectile + 0x2DC),
+        projectile_floater=u.mem_read(projectile + 0x295, 1)[0], gravity=base.i32(u, q.rules + 0x16B8),
+        warhead=m.string(warhead + 0x24), rocker=bool(u.mem_read(warhead + 0x14E, 1)[0]),
+        direct_rocker=bool(u.mem_read(warhead + 0x14F, 1)[0]))
+    event, out, heading = m.alloc(0x70), m.alloc(12), m.alloc(4)
+    observed, pending = [], {}
+    names = {0x70BCB0: 'aim', 0x410540: 'target_coordinate', 0x5F65A0: 'object_coordinate',
+        0x4AFB80: 'drive_is_moving', 0x4DB1A0: 'foot_current_speed', 0x50C050: 'house_speed',
+        0x70D0D0: 'ability', 0x70E1A0: 'current_weapon', 0x70E140: 'get_weapon',
+        0x7177C0: 'type_weapon', 0x773070: 'shot_speed', 0x4C93D0: 'facing_current',
+        0x7446E0: 'unit_expiry', 0x4D9960: 'foot_expiry', 0x7077C0: 'techno_expiry',
+        0x65AAC0: 'radio_expiry', 0x5F5230: 'object_expiry', 0x70D4A0: 'world_detach',
+        0x7258D0: 'abstract_detach', 0x5F65F0: 'uninit', 0x73FD50: 'unit_object_action',
+        0x4DDED0: 'foot_object_action', 0x6FFEC0: 'techno_object_action',
+        0x6FDD50: 'techno_fireat', 0x6F3330: 'weapon_selection',
+        0x4F9A90: 'house_ally', 0x70D150: 'draw_timer_restart'}
+    def returned(row):
+        row['returned_eax'] = u.reg_read(UC_X86_REG_EAX)
+        if 'output_pointer' in row:
+            row['returned_coord'] = base.xyz(u, row['output_pointer'])
+        if 'facing_pointer' in row:
+            row['returned_facing'] = m.read32(row['facing_pointer']) & 0xFFFF
+    def observe(_u, pc, _size, _data):
+        if pc in pending:
+            row = pending[pc].pop()
+            if not pending[pc]:
+                del pending[pc]
+            returned(row)
+        if pc in names:
+            sp = u.reg_read(UC_X86_REG_ESP)
+            row = dict(pc=hex(pc), name=names[pc], ecx=hex(u.reg_read(UC_X86_REG_ECX)),
+                       caller=hex(m.read32(sp)))
+            if pc in (0x70BCB0, 0x410540, 0x5F65A0):
+                row['output_pointer'] = m.read32(sp + 4)
+            if pc == 0x4C93D0:
+                row['facing_pointer'] = m.read32(sp + 4)
+            if pc == 0x4AFB80:
+                row['com_this'] = hex(m.read32(sp + 4))
+            if pc in (0x73FD50, 0x4DDED0, 0x6FFEC0, 0x6FDD50):
+                row['args'] = [m.read32(sp + 4), m.read32(sp + 8)]
+            if pc == 0x773070:
+                row['distance'] = base.i32(u, sp + 4)
+            observed.append(row)
+            pending.setdefault(m.read32(sp), []).append(row)
+    hook = u.hook_add(UC_HOOK_CODE, observe)
+    # Reuse the OS key transport owner at its import boundaries only. Cold
+    # GetKeyState IAT bytes are data and must never be executed as a function.
+    transport = EngineerJoinedFixture.__new__(EngineerJoinedFixture)
+    transport.u, transport.read32 = u, m.read32
+    transport.trail, transport.trace, transport.platform_audio = [], [], None
+    result['os_input_calls'] = []
+    transport.os_input_transport = dict(key_words={}, observe=result['os_input_calls'].append)
+    def platform(_u, pc, size, data):
+        if pc in (0x53EC9A, 0x646F20):
+            transport.phase = q.phase
+            EngineerJoinedFixture.hook(transport, u, pc, size, data)
+    platform_hook = u.hook_add(UC_HOOK_CODE, platform)
+    def rng():
+        return {key: base.sr.rng_state(u, pointer) for key, pointer in q.resident.rngs.items()}
+    def state():
+        loco = m.read32(target + 0x674) - 4
+        return dict(source=q.state(), target=hex(m.read32(q.src + 0x2B4)),
+            source_nav=hex(m.read32(q.src + 0x5A4)), source_nav_queue=m.read32(q.src + 0x598),
+            targeting_timer=list(struct.unpack('<3i', u.mem_read(q.src + 0x180, 12))),
+            target_position=base.xyz(u, target + 0x9C), target_nav=hex(m.read32(target + 0x5A4)),
+            target_destination=base.xyz(u, loco + 0x34), target_head=base.xyz(u, loco + 0x40),
+            target_applied_bits=bytes(u.mem_read(target + 0x578, 8)).hex(),
+            target_rank_bits=bytes(u.mem_read(target + 0x150, 4)).hex())
+    def step(name, invoke):
+        q.phase = name
+        start, before, before_rng = len(q.events), state(), rng()
+        observed.clear()
+        pending.clear()
+        answer = invoke()
+        for row in pending.pop(native.RET_MAGIC, []):
+            returned(row)
+        assert not pending, pending
+        row = dict(name=name, before=before, after=state(), result=answer,
+            events=q.events[start:], original_calls=list(observed), rng_before=before_rng, rng_after=rng())
+        result['steps'].append(row)
+        return row
+    def command_attack():
+        args = (0, m.read32(q.src + 0x10), 0x34, 1, m.read32(target + 0x10), 0x34, 0, 0, 0, 0)
+        m.invoke(0x4C6860, event, args)
+        encoded = bytes(u.mem_read(event, 0x6F)).hex()
+        m.invoke(0x4C6CB0, event)
+        return dict(args=args, event_hex=encoded)
+    def query_aim():
+        pointers = dict(source=(q.src, 0x700), target=(target, 0x700),
+            source_locomotor=(m.read32(q.src + 0x674) - 4, 0x70),
+            target_locomotor=(m.read32(target + 0x674) - 4, 0x70), timer=(TIMER, 12))
+        before = {key: bytes(u.mem_read(*span)) for key, span in pointers.items()}
+        m.invoke(0x70BCB0, q.src, (out,))
+        unchanged = {key: raw == bytes(u.mem_read(*pointers[key])) for key, raw in before.items()}
+        assert all(unchanged.values()), unchanged
+        return dict(aim=base.xyz(u, out), state_unchanged=unchanged)
+    def aim(name):
+        inputs = dict(source_xyz=base.xyz(u, q.src + 0x9C), target_xyz=base.xyz(u, target + 0x9C),
+            tarcom_kind='null' if not m.read32(q.src + 0x2B4) else
+                ('Unit' if m.read32(q.src + 0x2B4) == target else 'Cell'),
+            target_speed_fraction_bits=bytes(u.mem_read(target + 0x578, 8)).hex(),
+            target_rank_bits=bytes(u.mem_read(target + 0x150, 4)).hex(),
+            current_weapon_present=bool(m.read32(q.typ + 0x898)))
+        row = step(name, query_aim)
+        assert row['rng_before'] == row['rng_after']
+        assert not any(call['name'] == 'draw_timer_restart' for call in row['original_calls'])
+        for call in row['original_calls']:
+            if call['name'] == 'foot_current_speed':
+                inputs['target_current_speed'] = call['returned_eax']
+            elif call['name'] == 'facing_current':
+                inputs['target_facing'] = call['returned_facing']
+            elif call['name'] == 'drive_is_moving':
+                inputs['target_moving'] = bool(call['returned_eax'] & 255)
+        result['aim_cases'].append(dict(name=name, input=inputs, **row['result'],
+            calls=row['original_calls'], rng_unchanged=row['rng_before'] == row['rng_after']))
+    m.invoke(0x4E7E20, 0)
+    admitted = step('ordinary_enemy_object_action', lambda: m.invoke(0x73FD50, q.src, (target, 0)))
+    assert admitted['result'] == 5, admitted['result']
+    step('fresh_enemy_unit_attack_event', command_attack)
+    aim('stationary_target_aim')
+    step('target_move_destination', lambda: m.invoke(0x741970, target, (q.resident.ptrs[87, 53], 1)))
+    step('target_full_fraction', lambda: m.invoke(0x4D3710, target, (0, 0x3FF00000)))
+    for facing in (0, 0x4000, 0xC000):
+        u.mem_write(heading, words(facing))
+        step(f'target_facing_{facing}', lambda: m.invoke(0x4C9300, target + 0x388, (heading,)))
+        aim(f'moving_target_aim_{facing}')
+    step('target_veteran', lambda: m.invoke(0x750090, target + 0x150, (1,)))
+    aim('veteran_target_aim')
+    # Current-weapon absence is a supplied control. Restore the actual physical
+    # binding before the affected full FireAt consumer executes.
+    u.mem_write(q.typ + 0x898, words(0))
+    aim('moving_target_missing_current_weapon')
+    u.mem_write(q.typ + 0x898, words(q.weapon))
+    step('repeat_enemy_unit_attack_event', command_attack)
+    def fireat(name):
+        argument = q.resident.ptrs[87, 54]
+        get_coords = m.read32(m.read32(argument) + 0x58)
+        m.invoke(get_coords, argument, (out,))
+        argument_xyz = base.xyz(u, out)
+        def invoke():
+            answer = m.invoke(0x6FDD50, q.src, (argument, 0))
+            return dict(argument=hex(argument), argument_kind='Cell', argument_cell=[87, 54],
+                tarcom=hex(m.read32(q.src + 0x2B4)), returned=hex(answer),
+                bullet=None if not answer else dict(position=base.xyz(u, answer + 0x9C),
+                                                   velocity=base.vec(u, answer + 0xE8)))
+        row = step(name, invoke)
+        calls = row['original_calls']
+        launch = next(c for c in calls if c['name'] == 'shot_speed' and c['caller'] == '0x6fe53f')
+        aim_call = next(c for c in calls if c['name'] == 'aim')
+        result['fireat_cases'].append(dict(name=name,
+            input=dict(source_xyz=row['before']['source']['position'], argument_target_xyz=argument_xyz,
+                argument_kind='Cell', argument_cell=[87, 54], argument_getter=f'0x{get_coords:08X}',
+                tarcom_kind='null' if row['before']['target'] == '0x0' else 'Unit',
+                target_xyz=row['before']['target_position']),
+            aim=aim_call['returned_coord'], launch_distance=launch['distance'],
+            launch_speed=launch['returned_eax'], bullet=row['result']['bullet'], calls=calls,
+            rng_events=[e for e in row['events'] if e['kind'] in ('rng', 'raw')]))
+    fireat('fireat_argument_cell_distinct_from_moving_tarcom_unit')
+    def stop():
+        m.invoke(0x4C65E0, event, (0, 6, m.read32(q.src + 0x10), 0x34))
+        return m.invoke(0x4C6CB0, event)
+    step('source_stop_event', stop)
+    aim('targetless_aim')
+    fireat('fireat_argument_cell_with_null_tarcom')
+    step('attack_again', command_attack)
+    u.mem_write(q.src + 0x180, words(0, 0, 30))
+    u.mem_write(FRAME, words(10))
+    q.frame = 10
+    u.mem_write(target + 0x6C, words(0))
+    u.mem_write(target + 0x90, b'\0')
+    step('supplied_dead_target_expiry_active_scan', lambda: m.invoke(0x7446E0, q.src, (target, 1)))
+    aim('expired_target_aim')
+    u.hook_del(hook)
+    u.hook_del(platform_hook)
+    result['native_text_unchanged'] = text_before == sha(bytes(u.mem_read(0x401000, 0x3E0000)))
+    assert result['native_text_unchanged']
+    result['setup_rng_events'] = [row for row in q.events if row.get('kind') in ('rng', 'raw')
+                                 and row['phase'] in ('setup', 'placement', 'target_placement')]
+    result['type_readers'] = attack_type_readers()
+    result['instruction_evidence'] = attack_instruction_evidence()
+    return result
+
+
 def generate():
     palette_row, palette_evidence = physical_palette()
     rows = [producer(c, palette_row) for c in producer_cases()]
@@ -839,7 +1352,9 @@ def generate():
             production=row['production']) for row in production_inputs()],
         production_reference=production_reference(),
         ordering_vtables=ordering_vtables(),
-        instruction_evidence=instruction_evidence(), timer_literal_address_occurrences=timer_references())
+        instruction_evidence=instruction_evidence(), timer_literal_address_occurrences=timer_references(),
+        attack_cases=[attack(case, palette_row) for case in attack_cases()],
+        attack_instruction_evidence=attack_instruction_evidence())
     for forward, reverse in zip(result['compositing_cases'][::2], result['compositing_cases'][1::2], strict=True):
         assert forward['full_surface_sha256'] != reverse['full_surface_sha256']
     for row in result['production_cases']:
@@ -854,7 +1369,7 @@ def generate():
 
 def metadata():
     return native.provenance(
-        scope='Selected ground Unit ordinary Move action lines4DC060 ->7049C0, original RGB565 pixel leaves, timer restart/default/load slices, prepared Tactical admission/batches, existing Unit/Drive destination fixture composition and twelve production-capture input replays; finite prepared-input comparisons, not whole Scenario parity',
+        scope='Selected ground Unit Move and Attack action lines4DC060 ->7049C0, original RGB565 pixel leaves, timers, prepared Tactical admission/batches, existing Unit/Drive destination composition, twelve Move production-input replays and prepared Attack pivot/live aim; finite comparisons, not whole Scenario parity',
         assumptions=[
             'Original gamemd.exe, FPCW0E7F, physical RA2/CACHE palette assets, RGB565160x120 BSurface, fixed background sentinel. Existing original palette initialization owns conversion; index3 middle row supplies Move green.',
             'The first57 cases promote the saved ignored research corpus geometry and timer pairs. Map dimensions32x32 and original Foot bridge initializer chain are now explicit; prior flat outputs remain identical.',
@@ -870,8 +1385,12 @@ def metadata():
             'Native start=-1 and signed wrapping timer arithmetic are sampled as supplied boundary controls, without claiming normal-game reachability. Timer middle dword is observed stack carry and has no elapsed-time role.',
             'Destination controls reuse track_destination.make_destination_fixture in the same VM and execute Unit741970 ->Foot4D94B0/Drive4AFD40 before drawing. Empty radio/deploy/EMP/transport state and supplied type/rules are inherited fixture boundaries. Repeated NavCom and force flag controls establish setter admission; full click/event dispatch is instruction evidence, not executed here.',
             'Solid and rectangle leaves run unchanged. Pixel cases cover finite directions, clipping and endpoint intersections; no exhaustive integer domain or native desktop/window proof. Existing bounded chop53 clipping residual remains separate from ordering correctness.',
-            'Known RNG65C780/65C7E0 entries are rejected during observed drawing/setter phases. Existing setter fixture initializes Scenario RNG before these phases. No attack lead/FLH, aircraft, jumpjet, transport, pathfinding, detach or downstream mission cadence is claimed.',
-            'Physical MTNK/GTNK strings are context evidence only; parsing/default/read order and layered Scenario data remain with their existing rules/type evidence owners. The drawing itself consumes no MTNK type fields.',
+            'Move cases reject known RNG65C780/65C7E0 entries during observed drawing/setter phases. Existing setter fixture initializes Scenario RNG before these phases. Aircraft, jumpjet, transport, pathfinding, detach and downstream mission cadence are outside this pixel corpus.',
+            'The earlier Move physical MTNK/GTNK strings remain context evidence. Attack retail field/default/command evidence is generated separately by the same producer --attack-prerequisites mode.',
+            'Thirty-one Attack cases execute the original Foot TarCom-priority branch, source6F3D60, original Drive4AFF60/55A730, target70BCB0, actual Unit coordinate/current-weapon/Facing virtuals, live Foot4DB1A0, and the unchanged pixel leaves. Original Drive/Facing constructors and setters establish flat actors; type/House/weapon/position/Target/NavCom/queue values remain explicit prepared inputs. Physical Speed7 -> raw17 is independently recorded by the full retail Unit reader in the prerequisite packet; target fraction/rank/crate controls reuse track_speed_native.seed_getter_state.',
+            'Attack weapon_inputs supply stored speed95/ROT0/Floaterfalse/Gravity6, bound to the full physical105mm reader and postpass in the prerequisite packet. Authored Speed40 first reads102 through474810; the later7729F0 Range5 ballistic postpass produces95. speed_percent and range_cells retain that authorship, not a fitted inverse. The prepared raster fixture writes the stored value through its existing weapon setup; original773070 derives shot speed from distance and ROT0 does not consume the stored field. Offset80/body/turret controls distinguish body pivot from muzzle FLH; stock GTNK offset0 is independently read. No rocking, slope basis, damage producer or full Unit constructor is claimed for these prepared raster rows.',
+            'Prepared Unit deploy state6D8=-1 matches the existing track_destination input contract and the actual constructors recorded in the prerequisite packet. Original Drive Move_To executes for moving rows; a separate original Is_Moving call asserts the requested true/false state before every draw, so a declined movement gate cannot masquerade as a moving-target comparison.',
+            'Attack query snapshots compare every source/target actor byte0x700, both Drive0x70 ranges and all12 timer bytes. Known raw/ranged RNG, timer restart, world/abstract detach and UnInit entry guards remain empty during Foot drawing. Physical Convert middle-row index8 supplies red0xA800. Null Target controls reuse existing Move/empty admission without a competing raster owner.',
         ],
         substitutions=[
             'Reuse original BSurface storage/lock/pitch methods instead of platform DirectDraw, through existing Rally fixture; original solid/fill leaves are unmodified.',
@@ -887,9 +1406,37 @@ def metadata():
             fill_endpoint=0x7BB020))
 
 
+def attack_prerequisite_metadata():
+    return native.provenance(
+        scope='Ordinary enemy MTNK object admission, actual Attack/Stop events, live Unit aim70BCB0 and distinct-argument FireAt6FDD50, concrete supplied-death pointer expiry, pivot/default and physical AP readers; bounded composition of existing Mission world',
+        assumptions=[
+            'Mission owns native constructors, physical MTNK/GTNK/105mm/Cannon/AP/country/Rules readers, retained crop map, COM factories, placement and observers. Its placement callback stops before the existing fixed Cell command. Original Object14-entry CRT table runs through object_flight_height.initialize_object_scalars; physical ElevationModel66D150 runs through each present layer before object action. These prerequisites avoid a cold-height airborne false result and a zero elevation divisor; neither native result is replaced.',
+            'The source and target execute complete original Unit constructors and Unlimbo at physical cells87,50 and87,52. A second supplied House uses the existing physical Americans Country, index1/alliance2 and source alliance1. Full House constructor, bookkeeping and complete Scenario load are outside the boundary.',
+            'Original Options defaults4E7E20 and Unit73FD50/Foot4DDED0/Techno6FFEC0 execute a no-modifier enemy-object query and return Attack5 through real Unit/Techno FireError. Existing EngineerJoinedFixture owns GetKeyState platform transport; all supplied key SHORTs are0. Full mouse pick/dispatch, selection generation and network queue are excluded.',
+            'Attack Event4C6860/4C6CB0 uses native registered Unit IDs/tag34 and mission1. Fresh/repeated delivery, command setup, QueueMission, AssignTarget and null destination setter execute. Stop event4C65E0/4C6CB0 clears through the same original setters. Drawing timer restart belongs to the established Display caller and is not implicitly supplied by Event delivery.',
+            'Target Unit741970 to real Cell87,53, speed-fraction4D3710(1), Facing4C9300 and veteran750090 execute on the retained actor. Direct70BCB0 queries use actual Unit/Drive/current-speed/current-weapon/Facing virtuals. No Process_Track tick, promotion points or crate producer runs. Missing current weapon is an explicit supplied control restored before FireAt.',
+            'Each direct aim compares source/target actor and Drive storage and all recorded RNG states. The query is read-only and uses TarCom; null returnszero. Full FireAt separately uses its explicit physical Cell87,54 argument for launch distance/speed, then70BCB0 uses moving veteran Unit TarCom. The second FireAt retains that argument with null TarCom: aimzero executes, then placement failure removes the bullet. This is not a FireAt entry refusal.',
+            'Full FireAt animation may consume Scenario RNG. The concrete Unit7446E0 expiry row supplies target health0/alive0 and active passive-scan timer, then executes inherited expiry and AssignTarget(NULL), including actual bounded/rejection RNG draws. Full damage, world detach traversal for target destruction and deferred target retirement remain outside this row; no query RNG is inferred from mutation phases.',
+            'Original UnitType7470D0 and exact ART TurretOffset715876/ReadInt5276D0 prove constructor0, physical GTNK omission0, retained defaults/exact case and wrap controls. Original AP75E3B0/75CEC0 and full75D3A0 read physical RULESMD, absentLANGRULE, MPBattleMD and XMP03T4 in order, preserving Rocker/DirectRockerfalse. This bounds the current105mm/AP duel, not the broader rocking/damage mechanism.',
+            'Physical map/crop classes, seed0 RNG state and retained original fixture boundaries do not constitute a whole game load or production capture. No pixels are compared in this prerequisite mode; prepared original surface comparisons remain attack_cases in action_lines.json.',
+        ],
+        substitutions=[
+            'Inherited Mission/BulletReader supplies source-order INI caches, allocation/CRT/TLS/archive boundaries, selected voice/audio sinks, radar tracker sinks, OS COM activation to original Drive/Bullet factories, Interlocked/OleRun/IsBadReadPtr, empty SEH and setup wall clock. Native visual type loaders5F8110/5F8CE0 remain explicit excluded boundaries.',
+            'The existing OS input transport supplies GetKeyState SHORT0 only; source actor/type/terrain/action/FireError/aim/speed/coordinate/detach return values are never substituted. All original code bytes remain unchanged.',
+        ], entry_points=dict(unit_object_action=0x73FD50, unit_ctor=0x7353C0,
+            unit_unlimbo=0x737BA0, object_crt_table=0x8141D8, elevation_reader=0x66D150,
+            attack_event=0x4C6860, event_delivery=0x4C6CB0, assign_target=0x6FCDB0,
+            unit_destination=0x741970, speed_fraction=0x4D3710, current_speed=0x4DB1A0,
+            aim=0x70BCB0, current_weapon=0x70E1A0, weapon_speed=0x773070, fireat=0x6FDD50,
+            stop_event=0x4C65E0, unit_expiry=0x7446E0, techno_expiry=0x7077C0,
+            unit_type_ctor=0x7470D0, turret_offset_reader=0x715876,
+            warhead_ctor=0x75CEC0, warhead_reader=0x75D3A0))
+
+
 if __name__ == '__main__':
-    native.finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=metadata,
-        source_paths={name: Path(path) for name, path in {
+    prerequisites = '--attack-prerequisites' in sys.argv[1:]
+    arguments = [arg for arg in sys.argv[1:] if arg != '--attack-prerequisites']
+    sources = {name: Path(path) for name, path in {
             'producer': __file__, 'native_oracle': 'tools/native_oracle.py',
             'native_inspect': 'tools/native_inspect.py',
             'rally_fixture': 'tools/procedural_drawing_oracle/rally.py',
@@ -909,4 +1456,19 @@ if __name__ == '__main__':
             'unit_state_fixture': 'tools/spatial_oracle/unit_scatter_state.py',
             'unit_entry_fixture': 'tools/spatial_oracle/unit_entry.py',
             'map_query_fixture': 'tools/spatial_oracle/map_queries.py',
-        }.items()})
+            'live_speed_fixture': 'tools/spatial_oracle/track_speed_native.py',
+            'weapon_speed_fixture': 'tools/projectile_oracle/fireat_speed.py',
+        }.items()}
+    if prerequisites:
+        # Resolve recurring dependencies before finish_vectors freezes their
+        # identity. Every imported tools module is existing evidence ownership.
+        from tools.spatial_oracle.anytown_damage import mission, mtnk_attack
+        from tools.spatial_oracle import engineer_repair_admission, object_flight_height, fire_error
+        from tools.rules_oracle import weapon_speed_order
+        sources.update({name: Path(module.__file__) for name, module in tuple(sys.modules.items())
+                        if name.startswith('tools.') and (getattr(module, '__file__', None) or '').endswith('.py')})
+    native.finish_vectors(attack_prerequisites if prerequisites else generate,
+        Path(__file__).with_name('action_lines_attack_prerequisites.json') if prerequisites
+            else Path(__file__).with_suffix('.json'),
+        provenance=attack_prerequisite_metadata if prerequisites else metadata,
+        argv=arguments, source_paths=sources)
