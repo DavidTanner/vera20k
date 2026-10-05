@@ -438,11 +438,14 @@ Notes for readers:
   `_com_issue_error` cannot return either, but it stays unmarked and untyped; its plate
   says why. No switch table has a case the flows lack. 10,088 functions without a
   prototype still have an unknown stack purge.
-- **Stack objects.** Since 2026-10-01 the 923 functions that callers hand a stack object
-  in ECX take it: 735 are `__thiscall`, and 188 are `__fastcall` because they read EDX
-  first too. `this` is `void *`, and each prototype declares the stack bytes its RETs pop.
-  Before, the decompiler did not see the object passed, so it kept the values last stored
-  there: a COM smart pointer folded to NULL, and the branches that test it vanished
+- **Stack-address inputs.** The 2026-10-01 pass assigned an ECX input to 923 functions:
+  735 were `__thiscall`, and 188 were `__fastcall` because they read EDX first too.
+  `this` was `void *`, and each prototype declared the stack bytes its RETs pop. Those
+  signatures and the `[stack objects 2026-10-01]` label record incoming storage, not
+  established object identity; check the pointee in the original body and callers.
+  For the stack-object cases, the decompiler previously missed the passed object and
+  kept the values last stored there: a COM smart pointer folded to NULL, and the branches
+  that test it vanished
   (FootClass__ChronoWarpTo 0x4DF7F0, SuperClass__Launch 0x6CC390). 9,407 of the 10,674
   calls that pass a stack address in ECX now reach a typed function. Plates tagged
   `[stack objects 2026-10-01]` say why each takes ECX: it reads it first, or it passes it
@@ -570,8 +573,18 @@ Checked 2026-10-01, struct tools:
   found"). Change a live layout only by filling undefined bytes and retyping or renaming
   in place; a retype to a smaller type frees the tail bytes.
 
-Checked 2026-10-01 on a staging copy, receiver tools:
+Receiver tools, checked on staging copies:
 
+- An incoming ECX value does not establish an object receiver. Neither a class-name
+  prefix, a convention-generated auto `this`, nor `lea ecx, [esp + ...]` proves its
+  pointee identity. Confirm the input's use in the original body and its producer at
+  callers before assigning object `this` or a class namespace; distinguish a complete
+  object from a biased interface pointer. `BuildingTypeClass__FindIndexByName`
+  (`0x45E7B0`) and `BuildingTypeClass__FindOrAllocate` (`0x4653C0`) consume name bytes
+  in ECX, including caller-local text buffers, and compare them with BuildingType IDs.
+  Their compatible one-register `__fastcall` view keeps `char *pName` explicit in
+  `ECX:4` and uses the global namespace. It models the checked argument storage and
+  does not establish the original C++ static/member declaration.
 - `set_function_this_type` needs a `__thiscall` or `__fastcall` convention first. It
   moves the function into a class namespace named after the struct, and the auto
   `this` then takes that struct. It leaves an explicit custom-storage `this` with its
