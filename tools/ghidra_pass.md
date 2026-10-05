@@ -13,13 +13,33 @@ it reads anything else. It never overwrites state it did not plan against: each
 operation records what it expects to find, and anything else is a conflict that is
 reported and skipped.
 
+The [Rust-cited names ledger](ghidra_pass/passes/2026-10-04-vera-cited-names.json)
+was reviewed against the pinned original PE on 2026-10-05. It now admits 189 of
+the original 191 names, including ten neutral replacements where a proposed
+class or source name lacked evidence, and 217 bounded function/table plates.
+Five template/operator spellings also use C identifiers: Ghidra otherwise prints
+both vector `*=` and `+=` helpers as the same `Vector3D<float>__operator__` name.
+`0x522D00` and `0x522D20` keep their default names: the inspected slave callers
+do not establish the proposed InfantryClass receiver. Eleven additional notes
+on unnamed functions are withheld because their broader receiver, source
+equivalence or reachability claims were not established. The complete proposals,
+decisions and witnesses are in the [review evidence](ghidra_pass/evidence/2026-10-05-cited-names-review.json).
+
+This ledger uses `atomic: true`. Copies that already applied the original PR #1055
+may conflict on a replaced name or a changed paragraph under the same tag. Compare
+those exact conflicts individually; do not disable the guard to obtain a partial
+replay. This pass does not create missing functions or establish signatures,
+typed `this`, class layouts, executed arithmetic/RNG behavior or runtime reachability.
+
 ## Running a pass
 
 Run `check` first. It reports every operation and writes nothing. `apply` writes
 the pending operations in one transaction: it evaluates each operation again just
 before writing it, reads each write back, and rolls the whole transaction back if
-any readback fails. Save the program afterwards, then run `check` again and expect
-`pending=0`.
+any readback fails or cancellation is detected before commit. Save the program
+afterwards, then run `check` again and require `pending=0` **and** `conflict=0`.
+With `"atomic": false`, conflicts are skipped, so `pending=0` alone can describe
+an incomplete replay. Record any deliberately excluded conflict separately.
 
 In the Ghidra GUI, add `tools/ghidra_pass` to the Script Manager's script
 directories, run `ApplyGhidraPass.java`, then pick the ledger and the mode. The
@@ -40,6 +60,9 @@ Ghidra uses the GUI's settings directory by default. On 2026-10-04, headless run
 beside an open Ghidra 12.1.2 GUI were followed by `felixcache` `NoSuchFileException`
 errors on the GUI's next script run; give a headless run its own directory with
 `JAVA_TOOL_OPTIONS=-Dapplication.settingsdir=/some/other/dir`.
+`analyzeHeadless` can return exit status 0 after a post-script exception: inspect
+the diagnostic log and the expected summary rather than treating status 0 as a
+passing replay.
 
 Through GhidraMCP's inline-script runner, pass both arguments (without them the
 script waits for a GUI dialog). The runner splits arguments on whitespace, so the
@@ -83,3 +106,14 @@ remains.
 The ledger is also the record of what the pass changed and why: the plate text
 carries the evidence, following the tagged-paragraph convention in
 [the Ghidra workflow](../docs/research/ghidra-workflow.md#names-and-their-sources).
+
+## Runner regression checks
+
+On a private copy, run `CheckGhidraPassCancellation.java --private-copy` with
+`analyzeHeadless -process <program> -noanalysis -readOnly` and the same script
+directory. It exercises Ghidra's normal script execution and transactions,
+cancelling after the first rename both with and without a second operation.
+Both runs must restore the original name and plate. It also checks that an atomic
+pass with zero pending operations and one conflict is rejected. The expected
+output has two `CANCELLATION ROLLBACK OK` lines and one
+`ATOMIC CONFLICT REJECTION OK` line.
