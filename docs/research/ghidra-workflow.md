@@ -87,6 +87,10 @@ when cloned into their own manager. Do not use this route to fork a callback typ
 - Find state writers and initialization. Zero-filled image data may be populated
   at runtime. Confirm active-YR gates and retail inputs; inherited TS code alone
   does not establish a feature's applicability.
+- A scan finding no absolute pointer or direct branch to an address does not
+  establish that it never runs. Computed pointers and indirect dispatch are
+  outside that scan. Record its coverage; unreachable claims need breakpoint
+  or flag-to-leaf evidence.
 - A missing field in a register-tracking scan does not prove it is unused. Check
   indexed operands and receiver preservation across compiler helpers. `_chkstk`
   saves ECX at `0x7CA650` and restores it at `0x7CA678`; treating that call as an
@@ -128,6 +132,16 @@ a loaded asset or working helper does not prove the final result. Keep address,
 verified role and reproducible evidence together, naming uncertainty honestly.
 
 ## Names and their sources
+
+For recorded name/comment passes, use the
+[annotation replay runner](../../tools/ghidra_pass.md). Check both `pending=0`
+and `conflict=0` after saving: a non-atomic pass can skip conflicts while reaching
+zero pending operations. Existing names and comments remain evidence leads;
+transferring them does not establish class layouts or receiver types.
+GhidraMCP's `get_plate_comment` and `set_plate_comment` address function headers.
+For a plate on switch data, read `audit_global.plate_comment`, append to the
+existing text, write only `batch_set_comments.plate_comment`, and read it back.
+Do not treat a function-only read error as an empty data comment.
 
 Bulk passes append a dated, tagged paragraph to each plate they touch (data labels
 get a plate on the data address). The tag says where the name came from and what
@@ -178,9 +192,9 @@ was checked:
 - Trigger actions: `TriggerAction__Execute` 0x6DD8B0 (the fork's
   `TActionClass::Execute`) switches on the action kind. Of the 131 handlers the fork
   binds, it calls 47 from the case its enum names. The other 84 have no call, jump or
-  pointer anywhere in the image, so the game never runs them; the fork notes that
-  Execute inlines most handlers. Port an action from its Execute case; the handler's
-  plate says whether the game runs it.
+  pointer found by the static image scan; that alone does not prove they never
+  run. The fork notes that Execute inlines most handlers. Port an action from its
+  Execute case and establish the active path there.
 - `[2026-09-30 destructor audit]`: a destructor an older pass had named
   `__Constructor`, with the byte evidence.
 - `[2026-09-30 duplicate names]`: a name several functions shared, or a

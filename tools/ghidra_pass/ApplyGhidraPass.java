@@ -53,6 +53,7 @@ public class ApplyGhidraPass extends GhidraScript {
 
         int pending = 0, done = 0, conflicts = 0;
         for (int i = 0; i < ops.size(); i++) {
+            monitor.checkCancelled();
             JsonObject op = ops.get(i).getAsJsonObject();
             Status status = evaluate(op);
             switch (status.state()) {
@@ -64,11 +65,13 @@ public class ApplyGhidraPass extends GhidraScript {
                 report(i, op, status);
             }
         }
+        monitor.checkCancelled();
         println(String.format("SUMMARY pending=%d done=%d conflict=%d", pending, done, conflicts));
-        if (mode.equals("check") || pending == 0) return;
+        if (mode.equals("check")) return;
         if (conflicts > 0 && atomic) {
             throw new IllegalStateException("atomic pass has conflicts; nothing applied");
         }
+        if (pending == 0) return;
 
         // Each op is evaluated again just before it is applied, so an op can rely on an
         // earlier op of the same ledger (a plate on a function the ledger renames).
@@ -77,6 +80,7 @@ public class ApplyGhidraPass extends GhidraScript {
         int applied = 0, skipped = 0;
         try {
             for (int i = 0; i < ops.size(); i++) {
+                monitor.checkCancelled();
                 JsonObject op = ops.get(i).getAsJsonObject();
                 Status before = evaluate(op);
                 if (before.state() == State.DONE) continue;
@@ -92,11 +96,12 @@ public class ApplyGhidraPass extends GhidraScript {
                 }
                 applied++;
             }
+            monitor.checkCancelled();
             ok = true;
         } finally {
             currentProgram.endTransaction(tx, ok);
         }
-        println(String.format("APPLIED %d (skipped conflicts: %d); save the program, then run check: expect pending=0",
+        println(String.format("APPLIED %d (skipped conflicts: %d); save the program, then run check: expect pending=0 and conflict=0",
             applied, skipped));
     }
 
