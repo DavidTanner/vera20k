@@ -1,8 +1,9 @@
 name: Release
 
 # Downloadable builds of the game for players who do not compile it. Pushing a
-# tag such as v0.1.0 builds every platform and publishes a GitHub pre-release
-# with SHA-256 checksums; a manual run only uploads the archives as workflow
+# tag that matches the Cargo.toml version (v0.1.0 for version 0.1.0) builds
+# every platform and publishes a GitHub pre-release with SHA-256 checksums and
+# signed build provenance; a manual run only uploads the archives as workflow
 # artifacts. Archives hold the game program, config.toml.example, the license
 # and a README.txt made from .github/release/README.txt.in, never game files.
 on:
@@ -15,8 +16,10 @@ permissions:
 
 env:
   # rust-lld ships with rustup and links much faster than link.exe (as in
-  # test.yml). x86-64 Windows only.
+  # test.yml). Linking the C runtime statically removes the program's need for
+  # VCRUNTIME140.dll, which Windows does not ship. x86-64 Windows only.
   CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld
+  CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
 
 jobs:
   build:
@@ -44,7 +47,16 @@ jobs:
       - name: Check out with LF line endings
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+      - name: Require the tag to match the Cargo.toml version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $version (expected v$version)" >&2
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install Linux dependencies
@@ -69,7 +81,7 @@ jobs:
           else
             tar -czf "../$name.tar.gz" ./*
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: |
@@ -83,11 +95,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Signed SLSA build provenance: `gh attestation verify <archive>
+      # --repo YuriPlanet/vera20k` proves an archive came from this workflow.
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
+      - uses: actions/attest@v4
+        with:
+          subject-path: dist/vera20k-*
       - name: Create the pre-release
         env:
           GH_TOKEN: ${{ github.token }}

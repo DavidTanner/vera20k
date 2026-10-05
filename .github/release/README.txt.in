@@ -28,5 +28,12 @@ REQUIREMENTS
 This is early software: expect missing features and differences from the
 original game. Report them at https://github.com/YuriPlanet/vera20k/issues
 
+Official downloads come only from
+https://github.com/YuriPlanet/vera20k/releases. To check that an archive was
+built there, run: gh attestation verify <archive> --repo YuriPlanet/vera20k
+
 VERA20k is licensed under the GNU General Public License version 3
 (LICENSE-GPL). Source code: https://github.com/YuriPlanet/vera20k
+
+Command & Conquer, Red Alert and Yuri's Revenge are trademarks of Electronic
+Arts Inc. VERA20k is not affiliated with or endorsed by Electronic Arts.
