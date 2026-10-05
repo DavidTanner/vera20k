@@ -34,6 +34,8 @@ built there, run: gh attestation verify <archive> --repo YuriPlanet/vera20k
 
 VERA20k is licensed under the GNU General Public License version 3
 (LICENSE-GPL). Source code: https://github.com/YuriPlanet/vera20k
+THIRD_PARTY_LICENSES.html lists the open-source libraries it includes and
+their licenses.
 
 Command & Conquer, Red Alert and Yuri's Revenge are trademarks of Electronic
 Arts Inc. VERA20k is not affiliated with or endorsed by Electronic Arts.
