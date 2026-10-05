@@ -63,6 +63,7 @@ VERA20k 希望把庞大的中国红警玩家群体与世界各地的玩家联系
 
 如果你是中国开发者，愿意来帮忙，我们非常希望和你聊聊。我们一起合作！
 欢迎在 GitHub 上[提交 issue](https://github.com/YuriPlanet/vera20k/issues)，或者来 [Discord](https://discord.gg/kmjRUn5m5F) 找我们。
+用中文写 issue 也完全没问题。
 
 ## 参与贡献
 
