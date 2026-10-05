@@ -56,6 +56,14 @@ cargo run --release --bin vera20k
 通过[对比工具](tools/native_oracle.md)和实际游玩进行检查。开发规则见
 [AGENTS.md](AGENTS.md)，详细记录见[研究笔记](docs/research/README.md)。
 
+<!-- Chinese-only section: intentionally absent from README.md and the other translations. -->
+## 致中国玩家和开发者
+
+VERA20k 希望把庞大的中国红警玩家群体与世界各地的玩家联系在一起，让我们可以一起对战。
+
+如果你是中国开发者，愿意来帮忙，我们非常希望和你聊聊。我们一起合作！
+欢迎在 GitHub 上[提交 issue](https://github.com/YuriPlanet/vera20k/issues)，或者来 [Discord](https://discord.gg/kmjRUn5m5F) 找我们。
+
 ## 参与贡献
 
 欢迎帮忙。你可以编写代码、测试游戏、改进文档，或对照原版游玩，告诉我们哪些地方感觉不对。
