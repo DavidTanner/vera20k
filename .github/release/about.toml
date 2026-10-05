@@ -30,3 +30,5 @@ targets = [
 # Build scripts and test-only crates are not part of the shipped program.
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
+# VERA20k itself (publish = false) is first-party; its license is LICENSE-GPL.
+private = { ignore = true }
