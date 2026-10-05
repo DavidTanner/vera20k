@@ -13,7 +13,7 @@
 
 # VERA20k
 
-Red Alert 2: Yuri's Revenge — rebuilt in Rust for large multiplayer battles.
+Red Alert 2: Yuri's Revenge — rebuilt in Rust
 
 VERA20k is a rewrite of the original engine, `gamemd.exe`. It uses the original game files,
 so you'll need your own copy of Yuri's Revenge. It's available in *Command & Conquer The
