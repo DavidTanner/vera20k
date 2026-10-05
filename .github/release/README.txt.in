@@ -20,9 +20,13 @@ REQUIREMENTS
   A GPU with Vulkan, DirectX 12 or Metal.
   Windows: SmartScreen may warn about an unknown app; choose More info, then
     Run anyway.
-  macOS: the program is not notarized. Run ./vera20k from Terminal in this
-    folder; if macOS blocks it, allow it under System Settings, Privacy &
-    Security.
+  macOS: the program is not notarized by Apple yet, so macOS refuses to open
+    it as downloaded. Open Terminal, type cd and a space, drag this folder
+    onto the Terminal window and press Return. Then run these two lines; the
+    first removes macOS's "downloaded from the internet" mark from this one
+    program, and you only need it once:
+      xattr -d com.apple.quarantine vera20k
+      ./vera20k
   Linux: needs ALSA (libasound2) and a Vulkan driver.
 
 This is early software: expect missing features and differences from the
