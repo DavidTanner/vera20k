@@ -4,8 +4,9 @@ name: Release
 # tag that matches the Cargo.toml version (v0.1.0 for version 0.1.0) builds
 # every platform and publishes a GitHub pre-release with SHA-256 checksums and
 # signed build provenance; a manual run only uploads the archives as workflow
-# artifacts. Archives hold the game program, config.toml.example, the license
-# and a README.txt made from .github/release/README.txt.in, never game files.
+# artifacts. Archives hold the game program, config.toml.example, the license,
+# the third-party notices (THIRD_PARTY_LICENSES.html) and a README.txt made
+# from .github/release/README.txt.in, never game files.
 on:
   push:
     tags: ['v*']
@@ -58,6 +59,17 @@ jobs:
             exit 1
           fi
       - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+      # Before the build, so a crate with an unrecognized or GPL-incompatible
+      # license stops the release early (.github/release/about.toml).
+      - name: Third-party license notices
+        shell: bash
+        run: |
+          mkdir -p dist
+          cargo about generate --locked --fail -c .github/release/about.toml \
+            -o dist/THIRD_PARTY_LICENSES.html .github/release/about.hbs
       - uses: Swatinem/rust-cache@v2
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -71,7 +83,8 @@ jobs:
           version="${GITHUB_REF_NAME//\//-}"
           name="vera20k-$version-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          cp "target/release/${{ matrix.program }}" config.toml.example LICENSE-GPL "dist/$name/"
+          cp "target/release/${{ matrix.program }}" config.toml.example LICENSE-GPL \
+            dist/THIRD_PARTY_LICENSES.html "dist/$name/"
           sed "s/@VERSION@/$version/" .github/release/README.txt.in > "dist/$name/README.txt"
           # Files sit at the archive root so they can be extracted straight into
           # the game folder.
