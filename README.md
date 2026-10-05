@@ -25,6 +25,7 @@ Ultimate Collection* on [Steam](https://store.steampowered.com/bundle/39394/) an
 1. Keep the gameplay, visuals and atmosphere of the original Yuri's Revenge.
 2. Support bigger battles: up to **30 players** and **20,000 units** on larger maps.
 3. Incorporate new RTS features.
+4. Integrated multiplayer client
 
 ## Current status
 
