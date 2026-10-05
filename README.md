@@ -14,9 +14,7 @@
 # VERA20k
 
 VERA20k is a rewrite of the original engine, `gamemd.exe`. It uses the original game files,
-so you'll need your own copy of Yuri's Revenge. It's available in *Command & Conquer The
-Ultimate Collection* on [Steam](https://store.steampowered.com/bundle/39394/) and
-[EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc).
+so you'll need your own copy of Yuri's Revenge.
 
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k skirmish setup screen and in-game view" width="100%">
 
