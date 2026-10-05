@@ -1,0 +1,99 @@
+name: Release
+
+# Downloadable builds of the game for players who do not compile it. Pushing a
+# tag such as v0.1.0 builds every platform and publishes a GitHub pre-release
+# with SHA-256 checksums; a manual run only uploads the archives as workflow
+# artifacts. Archives hold the game program, config.toml.example, the license
+# and a README.txt made from .github/release/README.txt.in, never game files.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # rust-lld ships with rustup and links much faster than link.exe (as in
+  # test.yml). x86-64 Windows only.
+  CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+            program: vera20k.exe
+          # The oldest supported Ubuntu runner, so the build also runs on
+          # distributions with an older glibc.
+          - os: ubuntu-22.04
+            target: linux-x64
+            program: vera20k
+          - os: macos-latest
+            target: macos-arm64
+            program: vera20k
+    steps:
+      # The program embeds text files (shaders, the capture contract); keep
+      # their LF bytes instead of the Windows runner's CRLF checkout.
+      - name: Check out with LF line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+      - name: Build the game
+        run: cargo build --release --locked --bin vera20k
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME//\//-}"
+          name="vera20k-$version-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp "target/release/${{ matrix.program }}" config.toml.example LICENSE-GPL "dist/$name/"
+          sed "s/@VERSION@/$version/" .github/release/README.txt.in > "dist/$name/README.txt"
+          # Files sit at the archive root so they can be extracted straight into
+          # the game folder.
+          cd "dist/$name"
+          if [ "$RUNNER_OS" = Windows ]; then
+            7z a -tzip "../$name.zip" ./* > /dev/null
+          else
+            tar -czf "../$name.tar.gz" ./*
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum vera20k-* > SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --prerelease --generate-notes --title "VERA20k $GITHUB_REF_NAME" ./*
