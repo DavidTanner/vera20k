@@ -5,6 +5,8 @@ title: VERA20k Engine
 
 # VERA20k
 
+English · [简体中文](zh-CN/)
+
 Red Alert 2: Yuri's Revenge — rebuilt from scratch in Rust.
 
 A short map of the code. If it disagrees with the code, the code is right. Each module's `//!` header says what it does and what it may depend on.
