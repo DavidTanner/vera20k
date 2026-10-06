@@ -72,6 +72,12 @@ mismatch. Check the original instruction and the operation's block/operand role
 before classifying a shift; preserve the raw diagnostic and separately check
 the native receiver and call inputs.
 
+The repository's `NativeFrames.code` skips memory operands at function entry.
+At `0x465380`, original `MOV EAX,[ESP+8]` (`8B 44 24 08`) reads a four-byte stack
+input, while the mapper reports no stack operands for that body. Check the entry
+instruction and its input/output in C and high p-code separately; an empty frame
+map does not certify their absence or survival.
+
 In installed GhidraMCP 5.14.2 with Ghidra 12.1.2, `clone_data_type` can rename a
 stored function definition instead of creating an independent copy. The handler
 calls `source.clone(current_manager)` and then `setName`; both
