@@ -573,6 +573,16 @@ Checked 2026-09-30 against the headless GhidraMCP 5.14.2 server:
   For rename-only checks, compare C tokens with only the admitted identifier
   substitutions. Preserve literal contents and operator boundaries; compare
   comments, warnings and p-code separately.
+- The decompiler exports plate text inside a block comment. An inner annotation
+  such as `/*ECX*/` or `/*bridge*/` closes that exported comment early and can make
+  complete-body readers reject intact function code. Use plain parentheses in
+  plate text. Preserve the failing raw export when repairing delimiters; a syntax
+  repair does not establish the annotation's claims or a passing before comparison.
+- Saved-copy readers with the same Java filename in multiple script directories
+  can dispatch an older copy despite the supplied script path. Give a modified
+  private reader a unique filename and matching public class name. Check the
+  actual `SCRIPT:` path and output markers against the pinned reader source;
+  successful earlier post-scripts do not establish that the final reader ran.
 
 Checked 2026-10-01, struct tools:
 
@@ -691,6 +701,13 @@ Receiver tools, checked on staging copies:
   as `ECX:4 (auto)`. Compare the literal storage and `isAutoParameter()` together.
   Removing the tag only from the expected string rejects a correctly stored
   automatic `this`.
+- Stack cleanup totals do not establish each argument's physical storage.
+  The research helper `protos.slot` rounds widths to four-byte homes, so
+  `Stack[0x4]:1` and `Stack[0x4]:4` have the same `stack_end`; duplicate homes also
+  leave that maximum unchanged. Check each saved datatype, storage varnode width,
+  ordinal, automatic-parameter flag and distinct home against the native contract.
+  A four-byte datatype display and matching `RET` cleanup cannot admit a narrowed
+  native four-byte argument.
 - A successful type-size lookup or `validate_function_prototype` reply does not
   establish that the signature parser can resolve a datatype. The validator checks
   format and convention without parsing the types. On 2026-10-02, two `GUID` entries
