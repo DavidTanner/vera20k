@@ -58,6 +58,11 @@ instructions and C: at `0x740E2B`, the exported `INT_NOTEQUAL`/`CBRANCH` target
 appears reversed relative to the original `JE` and matching C. A predicate and
 target alone cannot establish which branch executes.
 
+Raw tuples can also be reused within one instruction. At `0x6F188A`, an address
+input has the same unique tuple as a later `LOAD` output. Resolve only definitions
+before each use within that instruction; a later output cannot establish the input.
+Keep entry values opaque unless original instructions and connected C establish their role.
+
 An exported operation's `seq.address` does not prove its native operand role.
 Ghidra 12.1.2 can insert a phi-edge `COPY` tagged with the predecessor block's
 last address. At `0x41028C`, the native instruction reads the receiver at entry
