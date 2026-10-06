@@ -58,7 +58,7 @@ Use `--release` to play; debug builds are too slow. See
 Most of the code is written by AI coding agents that I direct. We use Ghidra to study the
 original engine, then port its behavior to Rust and check it with
 [comparison tools](tools/native_oracle.md) and playtesting. The working rules are in
-[AGENTS.md](AGENTS.md), with the details in our [research notes](docs/research/README.md).
+[AGENTS.md](AGENTS.md).
 
 ## Contributing
 

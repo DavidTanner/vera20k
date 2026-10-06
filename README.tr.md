@@ -61,8 +61,7 @@ testleri çalıştırma bilgileri için [CONTRIBUTING.md](CONTRIBUTING.md#set-up
 Kodun büyük bölümünü yönlendirdiğim yapay zekâ kodlama ajanları yazıyor. Özgün motoru
 Ghidra ile inceliyor, ardından davranışını Rust'a aktarıyor ve
 [karşılaştırma araçları](tools/native_oracle.md) ile oyun testleri kullanarak kontrol ediyoruz.
-Çalışma kurallarımız [AGENTS.md](AGENTS.md) dosyasında, ayrıntılar ise
-[araştırma notlarımızda](docs/research/README.md).
+Çalışma kurallarımız [AGENTS.md](AGENTS.md) dosyasında.
 
 ## Katkıda bulunma
 

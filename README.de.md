@@ -64,8 +64,7 @@ einzelnen Plattformen und zum Ausführen der Tests.
 Der Großteil des Codes wird von KI-Programmieragenten geschrieben, die ich anleite.
 Wir untersuchen die ursprüngliche Engine mit Ghidra, übertragen dann ihr Verhalten
 nach Rust und prüfen es mit [Vergleichswerkzeugen](tools/native_oracle.md) und Spieltests.
-Unsere Arbeitsregeln stehen in [AGENTS.md](AGENTS.md), weitere Einzelheiten in unseren
-[Forschungsnotizen](docs/research/README.md).
+Unsere Arbeitsregeln stehen in [AGENTS.md](AGENTS.md).
 
 ## Mitmachen
 
