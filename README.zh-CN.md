@@ -57,7 +57,7 @@ cargo run --release --bin vera20k
 
 大部分代码由我指导的 AI 编程助手编写。我们用 Ghidra 研究原版引擎，再将其行为移植到 Rust，
 通过[对比工具](tools/native_oracle.md)和实际游玩进行检查。开发规则见
-[AGENTS.md](AGENTS.md)，详细记录见[研究笔记](docs/research/README.md)。
+[AGENTS.md](AGENTS.md)。
 
 <!-- Chinese-only section: intentionally absent from README.md and the other translations. -->
 ## 致中国玩家和开发者

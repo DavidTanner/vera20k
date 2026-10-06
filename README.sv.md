@@ -62,7 +62,7 @@ Använd `--release` när du spelar; debugbyggen är för långsamma. Se
 Större delen av koden skrivs av AI-agenter som jag leder. Vi använder Ghidra för att studera
 originalmotorn, portar sedan dess beteende till Rust och kontrollerar det med
 [jämförelseverktyg](tools/native_oracle.md) och speltester. Arbetsreglerna finns i
-[AGENTS.md](AGENTS.md), med fler detaljer i våra [forskningsanteckningar](docs/research/README.md).
+[AGENTS.md](AGENTS.md).
 
 ## Bidra
 
