@@ -5,7 +5,7 @@ title: VERA20k Engine
 
 # VERA20k
 
-English · [简体中文](zh-CN/)
+[Svenska](sv/) · [简体中文](zh-CN/) · [Deutsch](de/) · [العربية](ar/) · [Русский](ru/) · [ไทย](th/) · [Türkçe](tr/) · **English**
 
 Red Alert 2: Yuri's Revenge — rebuilt from scratch in Rust.
 

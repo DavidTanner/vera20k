@@ -72,7 +72,7 @@ Yardım etmek için tersine mühendislik deneyimine ihtiyacınız yok.
 [CONTRIBUTING.md](CONTRIBUTING.md) dosyasını okuyun,
 [yeni başlayanlara uygun işlere](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue)
 göz atın ya da [Discord](https://discord.gg/kmjRUn5m5F) üzerinden merhaba deyin.
-[Mimariye genel bakış](https://yuriplanet.github.io/vera20k/), motorun parçalarının nasıl bir araya geldiğini açıklıyor.
+[Mimariye genel bakış](https://yuriplanet.github.io/vera20k/tr/), motorun parçalarının nasıl bir araya geldiğini açıklıyor.
 
 ## Teşekkürler ve yasal bilgiler
 
