@@ -18,6 +18,15 @@ so you'll need your own copy of Yuri's Revenge.
 
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k skirmish setup screen and in-game view" width="100%">
 
+## Who it's for
+
+VERA20k is made by gamers, for gamers, and players have the final say in where it goes. Thanks
+to its moddable engine, Red Alert 2 has become many games: team battles, campaigns, roleplay,
+tower defense, mods like Mental Omega, competitive 1v1 and more.
+
+VERA20k aims to keep all of it working as it does in the original, but its focus is an engine
+built for multiplayer, especially large team games.
+
 ## Project goals
 
 1. Keep the gameplay, visuals and atmosphere of the original Yuri's Revenge.
