@@ -547,6 +547,12 @@ explicitly save the intended program, and read back the changes before unrelated
 work or handoff. A committed analysis transaction is not a disk save. After a timeout,
 inspect actual state before retrying; report partial or unsaved work accurately.
 
+Quiet-window checks and frozen local files do not keep database evidence current.
+Unsaved signature, calling-convention, purge or storage changes can leave project
+file hashes unchanged; name/body hashes omit those properties too. After a backup
+or any wait, reread the affected function metadata and full C/p-code at the final
+prewrite boundary. Invalidate that admission after an intervening change or batch.
+
 Label/type changes affect analysis, not executable bytes. Inspect current analyzer
 settings when relevant; do not assume historical settings are still in force or
 blame drift on an analyzer without evidence.
