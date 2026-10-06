@@ -132,6 +132,22 @@ when cloned into their own manager. Do not use this route to fork a callback typ
   above the return address. The repository's
   [`ghidra_compare frames`](../../tools/ghidra_compare.md#stack-frames-against-the-native-instructions)
   command compares the decompiler's offsets with ESP computed from the code.
+  Typing the function pointer does not change the pop: the decompiler applies a pointer's
+  prototype only after its stack analysis (`ActionDeindirect`). A user
+  `CALL_OVERRIDE_UNCONDITIONAL` reference on the call does: the decompile then shows a
+  direct call with the target's prototype and pop. Add one only where the target is
+  proven to be a single function ([Virtual-call references](#virtual-call-references)).
+- In a method typed with an interface view (`<Class>_ILocomotionView`, the object seen
+  from its interface pointer at +4), `this[-1].<last view field>`, with or without `&`,
+  is `this - 4`, the object itself. An owner typed `FootClass *` that is an AircraftClass
+  shows AircraftClass fields as `pLinkedTo[1].<field>`, offsets past FootClass's size.
+- A method that gets `this` on the stack (COM interface methods, view methods) may store
+  another value in `this`'s slot. From there on the decompile shows that value as `this`.
+  Check writes to entry stack +4 before trusting a later `this`.
+- MSVC's `_ftol` (`Math__ftol`, 0x7C5F00) takes its input in ST0, which a prototype set
+  over HTTP cannot express. Its callers show `Math__ftol()`, and the decompiler drops the
+  x87 expression that computes the input. A parameter used only there looks unused:
+  Rocket's FUN_006620f0 reads `pRocketRules` +0x28 (0x662100, `fimul` at 0x66218E).
 - A typed stack aggregate can change the displayed base without moving the address
   the code uses. Follow the full constant pointer expression in high p-code, including
   member offsets: the native LEA at `0x425713` addresses entry stack `-24`; after typing
@@ -349,6 +365,20 @@ and the list of added references are in the research folder listed in `LOCAL.md`
   method without callers may still be called virtually.
 - `get_bulk_function_hashes` hashes cover references, so the hashes of the functions
   that got one changed that day.
+
+Since 2026-10-06, locomotor calls whose target is proven to be a single function carry
+user-defined `CALL_OVERRIDE_UNCONDITIONAL` references instead (`add_memory_reference`,
+operand 0), and their decompiles show direct calls with correct stack pops:
+
+- calls through the object's own vtables (no locomotor class derives from another);
+- calls through the owner's vtable in slots that UnitClass, InfantryClass, AircraftClass
+  and FootClass all fill with the same function;
+- calls through a cell that the map's cell getters returned (CellClass has no subclasses).
+
+Each function's plate lists its overrides; the evidence is in the same research folder.
+Other virtual calls keep the decompiler's guess that they pop nothing. Ghidra's per-call
+signature override would fix them, but it is stored as a label in the function's
+`override` namespace, and GhidraMCP's `create_label` writes only global labels.
 
 ## Class layouts
 
@@ -691,6 +721,17 @@ Receiver tools, checked on staging copies:
   with the census. Further prototype writes preserve an already valid purge, so this
   prelude cannot repair an existing incorrect stored value.
 - The server renumbers parameters named `param_N` by position.
+- `set_function_prototype` renames a function that still has its default `FUN_` name to
+  the name in the prototype text, although the tool description says that name is only
+  parsed. Use the intended name in the prototype, or rename afterwards.
+- `set_function_prototype` writes `void *` without an error for a pointer to a type name
+  it cannot find. Check that each named type exists before the write, and read the
+  signature back.
+- `create_function_signature` stores no calling convention and no parameter names, and
+  nothing reads its parameters back; check the type through a caller's decompile.
+- A PRE comment shows in the decompile only above a statement whose instruction keeps its
+  p-code. One on a register copy that the decompiler folds away does not appear; put it
+  on the call, store or cast of the statement.
 - A return-type-only write can pass metadata readback while leaving the decompile
   unusable. In the 2026-10-03 INI rehearsal, `undefined1` left eight inferred
   full-EAX returns unchanged; concrete `byte` then locked their still-unknown
