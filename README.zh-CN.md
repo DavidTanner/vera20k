@@ -68,7 +68,7 @@ VERA20k 的开发者都是你们的朋友。我们希望把庞大的中国红警
 欢迎在 GitHub 上[提交 issue](https://github.com/YuriPlanet/vera20k/issues)，或者来 [Discord](https://discord.gg/kmjRUn5m5F) 找我们。
 用中文写 issue 也完全没问题。
 
-我们还没有 QQ 群。如果你愿意为 VERA20k 建一个 QQ 群，请在 issue 里告诉我们，我们很乐意加入！
+我们还没有 QQ 群。如果你愿意为 VERA20k 建一个 QQ 群，请在 issue 或 Discord 上告诉我们，我们很乐意加入！
 
 ## 参与贡献
 
