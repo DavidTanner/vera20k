@@ -20,6 +20,16 @@ ve [EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ult
 
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k çatışma ayarları ekranı ve oyun içi görünüm" width="100%">
 
+## Kimin için?
+
+VERA20k oyuncular tarafından, oyuncular için yapılıyor ve projenin nereye gideceğine son sözü
+oyuncular söylüyor. Kolayca modlanabilen motoru sayesinde Red Alert 2 pek çok farklı oyuna
+dönüştü: takım savaşları, kampanyalar, rol yapma, kule savunma, Mental Omega gibi modlar,
+rekabetçi 1v1 ve daha fazlası.
+
+VERA20k tüm bunların orijinaldeki gibi çalışmasını hedefliyor, ancak odak noktası çok oyunculu
+oyun, özellikle de büyük takım maçları için tasarlanmış bir motor.
+
 ## Projenin hedefleri
 
 1. Orijinal Yuri's Revenge'in oynanışını, görsellerini ve atmosferini korumak.
