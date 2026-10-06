@@ -14,7 +14,7 @@
 Red Alert 2: Yuri's Revenge — in Rust neu entwickelt, für große Mehrspielerschlachten.
 
 VERA20k ist eine Neuimplementierung der ursprünglichen Engine, `gamemd.exe`. Sie verwendet
-die originalen Spieldateien, also brauchst du eine eigene Kopie von Yuri's Revenge. Das Spiel
+die originalen Spieldateien, also brauchst du eine eigene Kopie von Red Alert 2: Yuri's Revenge. Das Spiel
 ist in *Command & Conquer The Ultimate Collection* auf
 [Steam](https://store.steampowered.com/bundle/39394/) und bei
 [EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc) erhältlich.
@@ -27,9 +27,9 @@ VERA20k wird von Spielern für Spieler gemacht, und die Spieler haben das letzte
 das Projekt entwickelt. Der Schwerpunkt liegt auf Mehrspielerpartien, vor allem auf großen
 Teamspielen.
 
-1. Spielmechanik, Grafik und Atmosphäre des ursprünglichen Yuri's Revenge bewahren, ebenso die
-   vielen Spiele, die seine moddbare Engine möglich gemacht hat: Teamschlachten, Kampagnen,
-   Rollenspiel, Tower Defense, Mods wie Mental Omega, kompetitives 1v1 und mehr.
+1. Spielmechanik, Grafik und Atmosphäre des ursprünglichen Red Alert 2: Yuri's Revenge bewahren,
+   ebenso die Spielweisen, die seine moddbare Engine möglich gemacht hat: Teamschlachten,
+   Kampagnen, Rollenspiel, Tower Defense, Mods wie Mental Omega, kompetitives 1v1 und mehr.
 2. Größere Schlachten ermöglichen: bis zu **30 Spieler** und **20.000 Einheiten** auf größeren Karten.
 3. Neue RTS-Funktionen und einen integrierten Mehrspieler-Client hinzufügen.
 
