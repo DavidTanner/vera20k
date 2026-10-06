@@ -62,11 +62,13 @@ cargo run --release --bin vera20k
 <!-- Chinese-only section: intentionally absent from README.md and the other translations. -->
 ## 致中国玩家和开发者
 
-VERA20k 希望把庞大的中国红警玩家群体与世界各地的玩家联系在一起，让我们可以一起对战。
+VERA20k 的开发者都是你们的朋友。我们希望把庞大的中国红警玩家群体与世界各地的玩家联系在一起，让大家可以一起对战。
 
-如果你是中国开发者，愿意来帮忙，我们非常希望和你聊聊。我们一起合作！
+我们非常希望中国的开发者和玩家加入进来，和我们一起开发、一起游玩！
 欢迎在 GitHub 上[提交 issue](https://github.com/YuriPlanet/vera20k/issues)，或者来 [Discord](https://discord.gg/kmjRUn5m5F) 找我们。
 用中文写 issue 也完全没问题。
+
+我们还没有 QQ 群。如果你愿意为 VERA20k 建一个 QQ 群，请在 issue 里告诉我们，我们很乐意加入！
 
 ## 参与贡献
 
