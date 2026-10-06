@@ -19,19 +19,17 @@ ist in *Command & Conquer The Ultimate Collection* auf
 [Steam](https://store.steampowered.com/bundle/39394/) und bei
 [EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc) erhältlich.
 
+VERA20k wird von Spielern für Spieler gemacht, und die Spieler haben das letzte Wort, wohin sich
+das Projekt entwickelt.
+
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k: Gefechtseinstellungen und eine Szene aus dem Spiel" width="100%">
 
-## Ziele
+## Projektziele
 
-VERA20k wird von Spielern für Spieler gemacht, und die Spieler haben das letzte Wort, wohin sich
-das Projekt entwickelt. Der Schwerpunkt liegt auf Mehrspielerpartien, vor allem auf großen
-Teamspielen.
-
-1. Spielmechanik, Grafik und Atmosphäre des ursprünglichen Red Alert 2: Yuri's Revenge bewahren,
-   ebenso die Spielweisen, die seine moddbare Engine möglich gemacht hat: Teamschlachten,
-   Kampagnen, Rollenspiel, Tower Defense, Mods wie Mental Omega, kompetitives 1v1 und mehr.
+1. Spielmechanik, Grafik und Atmosphäre des ursprünglichen Red Alert 2: Yuri's Revenge bewahren.
 2. Größere Schlachten ermöglichen: bis zu **30 Spieler** und **20.000 Einheiten** auf größeren Karten.
-3. Neue RTS-Funktionen und einen integrierten Mehrspieler-Client hinzufügen.
+3. Neue RTS-Funktionen integrieren.
+4. Integrierter Mehrspieler-Client
 
 ## Aktueller Stand
 

@@ -18,16 +18,16 @@ VERA20k 是对原版引擎 `gamemd.exe` 的重写。它使用原版游戏文件�
 [Steam](https://store.steampowered.com/bundle/39394/) 和
 [EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc) 购买。
 
+VERA20k 由玩家打造、为玩家而做，项目的方向由玩家说了算。
+
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k 遭遇战设置界面和游戏画面" width="100%">
 
-## 目标
+## 项目目标
 
-VERA20k 由玩家打造、为玩家而做，项目的方向由玩家说了算。重点是多人游戏，尤其是大型团队对战。
-
-1. 保留原版《红色警戒2：尤里的复仇》的玩法、画面和氛围，以及其可修改引擎所催生的玩法：
-   团队对战、战役、角色扮演、塔防、《心灵终结》（Mental Omega）等 Mod、竞技 1v1 等等。
+1. 保留原版《红色警戒2：尤里的复仇》的玩法、画面和氛围。
 2. 支持更大规模的战斗：在更大的地图上，容纳最多 **30 名玩家**和 **20,000 个单位**。
-3. 加入新的 RTS 功能和内置的多人游戏客户端。
+3. 加入新的 RTS 功能。
+4. 内置多人游戏客户端
 
 ## 当前进度
 

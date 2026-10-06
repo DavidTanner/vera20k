@@ -18,19 +18,17 @@ spelfilerna, så du behöver en egen kopia av Red Alert 2: Yuri's Revenge. Spele
 The Ultimate Collection* på [Steam](https://store.steampowered.com/bundle/39394/) och
 [EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc).
 
+VERA20k görs av spelare, för spelare, och det är spelarna som har sista ordet om vart projektet
+ska gå.
+
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k: inställningar för skirmish och bild från spelet" width="100%">
 
-## Mål
+## Projektets mål
 
-VERA20k görs av spelare, för spelare, och det är spelarna som har sista ordet om vart projektet
-ska gå. Fokus ligger på flerspelare, särskilt stora lagmatcher.
-
-1. Bevara spelmekaniken, utseendet och stämningen i originalversionen av
-   Red Alert 2: Yuri's Revenge, och de spelsätt som dess moddbara motor har gjort möjliga:
-   lagstrider, kampanjer, rollspel, tower defense, moddar som Mental Omega, tävlingsinriktad 1v1
-   och mycket mer.
+1. Bevara spelmekaniken, utseendet och stämningen i originalversionen av Red Alert 2: Yuri's Revenge.
 2. Stödja större slag: upp till **30 spelare** och **20 000 enheter** på större kartor.
-3. Lägga till nya RTS-funktioner och en inbyggd flerspelarklient.
+3. Integrera nya RTS-funktioner.
+4. Integrerad flerspelarklient
 
 ## Aktuellt läge
 

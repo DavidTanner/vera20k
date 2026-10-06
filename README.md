@@ -16,18 +16,16 @@
 VERA20k is a rewrite of the original engine, `gamemd.exe`. It uses the original game files,
 so you'll need your own copy of Red Alert 2: Yuri's Revenge.
 
+VERA20k is made by gamers, for gamers, and players have the final say in where it goes.
+
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k skirmish setup screen and in-game view" width="100%">
 
-## Goals
+## Project goals
 
-VERA20k is made by gamers, for gamers, and players have the final say in where it goes. Its
-focus is multiplayer, especially large team games.
-
-1. Keep the gameplay, visuals and atmosphere of the original Red Alert 2: Yuri's Revenge, and the
-   gameplay its moddable engine made possible: team battles, campaigns, roleplay, tower defense,
-   mods like Mental Omega, competitive 1v1 and more.
+1. Keep the gameplay, visuals and atmosphere of the original Red Alert 2: Yuri's Revenge.
 2. Support bigger battles: up to **30 players** and **20,000 units** on larger maps.
-3. Add new RTS features and an integrated multiplayer client.
+3. Incorporate new RTS features.
+4. Integrated multiplayer client
 
 ## Current status
 
