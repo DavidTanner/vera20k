@@ -13,25 +13,21 @@
 
 用 Rust 重写《红色警戒2：尤里的复仇》，让更大规模的多人对战成为可能。
 
-VERA20k 是对原版引擎 `gamemd.exe` 的重写。它使用原版游戏文件，因此你需要自行准备一份《尤里的复仇》。
+VERA20k 是对原版引擎 `gamemd.exe` 的重写。它使用原版游戏文件，因此你需要自行准备一份《红色警戒2：尤里的复仇》。
 该游戏收录于 *Command & Conquer The Ultimate Collection*，可在
 [Steam](https://store.steampowered.com/bundle/39394/) 和
 [EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc) 购买。
 
+VERA20k 由玩家打造、为玩家而做，项目的方向由玩家说了算。
+
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k 遭遇战设置界面和游戏画面" width="100%">
-
-## 为谁而做
-
-VERA20k 由玩家打造、为玩家而做，项目的方向由玩家说了算。得益于引擎出色的可修改性，《红色警戒2》演变出了许多不同的玩法：
-团队对战、战役、角色扮演、塔防、《心灵终结》（Mental Omega）等 Mod、竞技 1v1 等等。
-
-VERA20k 力求让这一切都像在原版中一样运行，但重点是打造一个为多人游戏而生的引擎，尤其是大型团队对战。
 
 ## 项目目标
 
-1. 保留原版《尤里的复仇》的玩法、画面和氛围。
+1. 保留原版《红色警戒2：尤里的复仇》的玩法、画面和氛围。
 2. 支持更大规模的战斗：在更大的地图上，容纳最多 **30 名玩家**和 **20,000 个单位**。
 3. 加入新的 RTS 功能。
+4. 内置多人游戏客户端
 
 ## 当前进度
 

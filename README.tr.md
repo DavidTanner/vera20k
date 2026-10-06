@@ -14,27 +14,21 @@
 Red Alert 2: Yuri's Revenge — büyük çok oyunculu savaşlar için Rust ile yeniden yazıldı.
 
 VERA20k, özgün oyun motoru `gamemd.exe`'nin yeniden yazımıdır. Orijinal oyun dosyalarını
-kullandığı için kendi Yuri's Revenge kopyanıza ihtiyacınız var. Oyun, [Steam](https://store.steampowered.com/bundle/39394/)
+kullandığı için kendi Red Alert 2: Yuri's Revenge kopyanıza ihtiyacınız var. Oyun, [Steam](https://store.steampowered.com/bundle/39394/)
 ve [EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc)
 üzerinde satılan *Command & Conquer The Ultimate Collection* paketinde bulunuyor.
 
-<img src="docs/images/vera20k-screenshots.png" alt="VERA20k çatışma ayarları ekranı ve oyun içi görünüm" width="100%">
-
-## Kimin için?
-
 VERA20k oyuncular tarafından, oyuncular için yapılıyor ve projenin nereye gideceğine son sözü
-oyuncular söylüyor. Kolayca modlanabilen motoru sayesinde Red Alert 2 pek çok farklı oyuna
-dönüştü: takım savaşları, kampanyalar, rol yapma, kule savunma, Mental Omega gibi modlar,
-rekabetçi 1v1 ve daha fazlası.
+oyuncular söylüyor.
 
-VERA20k tüm bunların orijinaldeki gibi çalışmasını hedefliyor, ancak odak noktası çok oyunculu
-oyun, özellikle de büyük takım maçları için tasarlanmış bir motor.
+<img src="docs/images/vera20k-screenshots.png" alt="VERA20k çatışma ayarları ekranı ve oyun içi görünüm" width="100%">
 
 ## Projenin hedefleri
 
-1. Orijinal Yuri's Revenge'in oynanışını, görsellerini ve atmosferini korumak.
+1. Orijinal Red Alert 2: Yuri's Revenge'in oynanışını, görsellerini ve atmosferini korumak.
 2. Daha büyük haritalarda **30 oyuncuya** ve **20.000 birime** kadar daha büyük savaşları desteklemek.
 3. Yeni RTS özellikleri eklemek.
+4. Entegre çok oyunculu istemci
 
 ## Mevcut durum
 
