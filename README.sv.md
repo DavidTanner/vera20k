@@ -20,20 +20,16 @@ The Ultimate Collection* på [Steam](https://store.steampowered.com/bundle/39394
 
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k: inställningar för skirmish och bild från spelet" width="100%">
 
-## Vem är det för?
+## Mål
 
 VERA20k görs av spelare, för spelare, och det är spelarna som har sista ordet om vart projektet
-ska gå. Tack vare sin moddbara motor har Red Alert 2 blivit många olika spel: lagstrider,
-kampanjer, rollspel, tower defense, moddar som Mental Omega, tävlingsinriktad 1v1 och mycket mer.
+ska gå. Fokus ligger på flerspelare, särskilt stora lagmatcher.
 
-VERA20k siktar på att allt detta ska fungera som i originalet, men fokus ligger på en motor
-byggd för flerspelare, särskilt stora lagmatcher.
-
-## Projektets mål
-
-1. Bevara spelmekaniken, utseendet och stämningen i originalversionen av Yuri's Revenge.
+1. Bevara spelmekaniken, utseendet och stämningen i originalversionen av Yuri's Revenge, och de
+   många spel som dess moddbara motor har gjort möjliga: lagstrider, kampanjer, rollspel, tower
+   defense, moddar som Mental Omega, tävlingsinriktad 1v1 och mycket mer.
 2. Stödja större slag: upp till **30 spelare** och **20 000 enheter** på större kartor.
-3. Integrera nya RTS-funktioner.
+3. Lägga till nya RTS-funktioner och en inbyggd flerspelarklient.
 
 ## Aktuellt läge
 

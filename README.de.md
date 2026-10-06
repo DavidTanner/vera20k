@@ -21,21 +21,17 @@ ist in *Command & Conquer The Ultimate Collection* auf
 
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k: Gefechtseinstellungen und eine Szene aus dem Spiel" width="100%">
 
-## Für wen?
+## Ziele
 
 VERA20k wird von Spielern für Spieler gemacht, und die Spieler haben das letzte Wort, wohin sich
-das Projekt entwickelt. Dank seiner moddbaren Engine ist Red Alert 2 zu vielen Spielen geworden:
-Teamschlachten, Kampagnen, Rollenspiel, Tower Defense, Mods wie Mental Omega, kompetitives 1v1
-und mehr.
+das Projekt entwickelt. Der Schwerpunkt liegt auf Mehrspielerpartien, vor allem auf großen
+Teamspielen.
 
-VERA20k soll all das wie im Original unterstützen; der Schwerpunkt liegt aber auf einer Engine
-für Mehrspielerpartien, vor allem für große Teamspiele.
-
-## Projektziele
-
-1. Spielmechanik, Grafik und Atmosphäre des ursprünglichen Yuri's Revenge bewahren.
+1. Spielmechanik, Grafik und Atmosphäre des ursprünglichen Yuri's Revenge bewahren, ebenso die
+   vielen Spiele, die seine moddbare Engine möglich gemacht hat: Teamschlachten, Kampagnen,
+   Rollenspiel, Tower Defense, Mods wie Mental Omega, kompetitives 1v1 und mehr.
 2. Größere Schlachten ermöglichen: bis zu **30 Spieler** und **20.000 Einheiten** auf größeren Karten.
-3. Neue RTS-Funktionen integrieren.
+3. Neue RTS-Funktionen und einen integrierten Mehrspieler-Client hinzufügen.
 
 ## Aktueller Stand
 
