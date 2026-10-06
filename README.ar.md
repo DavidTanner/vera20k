@@ -74,7 +74,7 @@ cargo run --release --bin vera20k
 اقرأ [CONTRIBUTING.md](CONTRIBUTING.md)، أو تصفّح
 [المهام المناسبة للبداية](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue)، أو ألقِ
 التحية على [Discord](https://discord.gg/kmjRUn5m5F).
-تشرح [نظرة عامة على البنية](https://yuriplanet.github.io/vera20k/) كيف تتكامل أجزاء المحرك.
+تشرح [نظرة عامة على البنية](https://yuriplanet.github.io/vera20k/ar/) كيف تتكامل أجزاء المحرك.
 
 ## شكر ومعلومات قانونية
 

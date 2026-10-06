@@ -73,7 +73,7 @@ cargo run --release --bin vera20k
 Прочитай [CONTRIBUTING.md](CONTRIBUTING.md), посмотри
 [задачи для начинающих](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue)
 или поздоровайся в [Discord](https://discord.gg/kmjRUn5m5F).
-[Обзор архитектуры](https://yuriplanet.github.io/vera20k/) объясняет, как устроен движок.
+[Обзор архитектуры](https://yuriplanet.github.io/vera20k/ru/) объясняет, как устроен движок.
 
 ## Благодарности и правовая информация
 

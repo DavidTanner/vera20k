@@ -6,7 +6,7 @@ lang: zh-CN
 
 # VERA20k
 
-[English](../) · 简体中文
+[Svenska](../sv/) · **简体中文** · [Deutsch](../de/) · [العربية](../ar/) · [Русский](../ru/) · [ไทย](../th/) · [Türkçe](../tr/) · [English](../)
 
 《红色警戒2：尤里的复仇》——用 Rust 从零重写。
 

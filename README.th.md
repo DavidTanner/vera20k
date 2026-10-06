@@ -67,7 +67,7 @@ cargo run --release --bin vera20k
 
 อ่าน [CONTRIBUTING.md](CONTRIBUTING.md) ดู[งานที่เหมาะสำหรับผู้เริ่มต้น](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue)
 หรือแวะมาทักทายใน [Discord](https://discord.gg/kmjRUn5m5F)
-[ภาพรวมสถาปัตยกรรม](https://yuriplanet.github.io/vera20k/) อธิบายว่าส่วนต่าง ๆ ของเอนจินทำงานร่วมกันอย่างไร
+[ภาพรวมสถาปัตยกรรม](https://yuriplanet.github.io/vera20k/th/) อธิบายว่าส่วนต่าง ๆ ของเอนจินทำงานร่วมกันอย่างไร
 
 ## เครดิตและข้อกฎหมาย
 

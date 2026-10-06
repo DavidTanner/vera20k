@@ -73,7 +73,7 @@ av reverse engineering för att hjälpa till.
 Läs [CONTRIBUTING.md](CONTRIBUTING.md), titta på
 [bra första uppgifter](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue) eller säg
 hej på [Discord](https://discord.gg/kmjRUn5m5F).
-[Arkitekturöversikten](https://yuriplanet.github.io/vera20k/) förklarar hur motorn hänger ihop.
+[Arkitekturöversikten](https://yuriplanet.github.io/vera20k/sv/) förklarar hur motorn hänger ihop.
 
 ## Tack och juridisk information
 

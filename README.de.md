@@ -75,7 +75,7 @@ Du brauchst keine Erfahrung mit Reverse Engineering, um mitzuhelfen.
 Lies [CONTRIBUTING.md](CONTRIBUTING.md), schau dir die
 [Aufgaben für den Einstieg](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue)
 an oder sag auf [Discord](https://discord.gg/kmjRUn5m5F) Hallo.
-Die [Architekturübersicht](https://yuriplanet.github.io/vera20k/) erklärt, wie die Engine aufgebaut ist.
+Die [Architekturübersicht](https://yuriplanet.github.io/vera20k/de/) erklärt, wie die Engine aufgebaut ist.
 
 ## Danksagung und Rechtliches
 
