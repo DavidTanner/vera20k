@@ -76,7 +76,7 @@ VERA20k 希望把庞大的中国红警玩家群体与世界各地的玩家联系
 可以先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，看看
 [适合新手的 issue](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue)，
 或者来 [Discord](https://discord.gg/kmjRUn5m5F) 打个招呼。
-[架构概览](https://yuriplanet.github.io/vera20k/)介绍了引擎各部分如何协作。
+[架构概览](https://yuriplanet.github.io/vera20k/zh-CN/)介绍了引擎各部分如何协作。
 
 ## 致谢与法律声明
 
