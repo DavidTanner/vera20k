@@ -554,6 +554,11 @@ Checked 2026-09-30 against the headless GhidraMCP 5.14.2 server:
   `name_substring` finds the others.
 - The `find_code_gaps` records carry the neighbouring function names; compare gap
   positions and sizes, not the text, across renames.
+- Longer names can rewrap caller C while basic p-code stays unchanged (checked in
+  Ghidra 12.1.2/MCP 5.14.2 on 2026-10-06: 0x4144B0's call to 0x4DB0D0).
+  For rename-only checks, compare C tokens with only the admitted identifier
+  substitutions. Preserve literal contents and operator boundaries; compare
+  comments, warnings and p-code separately.
 
 Checked 2026-10-01, struct tools:
 
