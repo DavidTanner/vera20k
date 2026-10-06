@@ -58,6 +58,15 @@ instructions and C: at `0x740E2B`, the exported `INT_NOTEQUAL`/`CBRANCH` target
 appears reversed relative to the original `JE` and matching C. A predicate and
 target alone cannot establish which branch executes.
 
+An exported operation's `seq.address` does not prove its native operand role.
+Ghidra 12.1.2 can insert a phi-edge `COPY` tagged with the predecessor block's
+last address. At `0x41028C`, the native instruction reads the receiver at entry
+stack `+4`, while a high-p-code `COPY` from stack `+8` seeds the GUID comparison
+loop at `0x410290`. Grouping operands by that address reports a false frame
+mismatch. Check the original instruction and the operation's block/operand role
+before classifying a shift; preserve the raw diagnostic and separately check
+the native receiver and call inputs.
+
 In installed GhidraMCP 5.14.2 with Ghidra 12.1.2, `clone_data_type` can rename a
 stored function definition instead of creating an independent copy. The handler
 calls `source.clone(current_manager)` and then `setName`; both
