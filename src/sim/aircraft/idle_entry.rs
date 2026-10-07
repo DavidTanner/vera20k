@@ -1,7 +1,7 @@
-//! `AircraftClass::Enter_Idle_Mode @ 0x004176F0` (vt+0x484) for an unarmed
-//! `MissileSpawn=` aircraft: every retail missile (V3ROCKET, DMISL, CMISL)
-//! has no weapon. Mission_Move (state 0 without a NavCom, state 3 once
-//! stopped) and Mission_Attack's state 10 call it with `(0, 1)`.
+//! `AircraftClass::Enter_Idle_Mode @ 0x004176F0` (vt+0x484), the one owner of
+//! an aircraft's idle mode. Mission_Move (state 0 without a NavCom, state 3
+//! once stopped) and Mission_Attack's state 10 call it with `(0, 1)`, as do
+//! Mission_Unload once the hold is empty and VERA's own Idle state.
 //!
 //! - The head (`0x004176F8`): a suspended selector (vt+0x1FC, `0x005B3A10`)
 //!   is restored (vt+0x1F8) and nothing else happens; a restored Patrol
@@ -11,27 +11,58 @@
 //!   queued ParadropApproach or SpyplaneApproach commences at once
 //!   (`0x00417764`). All three return 0.
 //! - `FootClass::Enter_Idle_Mode @ 0x004D82B0`, whose answer is the call's.
-//! - The landed arm (`0x00417A38`), which `MissileSpawn=` (Type `+0xD68`)
-//!   selects whatever the layer and height: with `+0x3D4` set
-//!   (`GameEntity::is_mission_only`, which Unlimbo sets on every
-//!   non-Selectable missile), passengers (`+0x118`) unload, or guard in a
-//!   team; a team member guards; any other aircraft drops its Target and
-//!   its destination, in that order, and retreats. Without `+0x3D4` it drops
-//!   the destination, then the Target, and guards.
-//! - The tail (`0x00417AD4`): radio contact (`0x0065AE30`) makes it Enter;
-//!   the mission is queued (vt+0x1E8) and commenced when ready (vt+0x200,
+//! - The pick (`0x00417787`): Area Guard for a computer house's unteamed armed
+//!   aircraft, else Guard.
+//! - The landed arm (`0x00417A38`), for an aircraft on the ground layer
+//!   (vt+0x78), at or below its landing altitude (vt+0x1C8 against
+//!   IFlyControl+0xC) or `MissileSpawn=` (Type `+0xD68`), whatever its layer
+//!   and height. With `+0x3D4` set (`GameEntity::is_mission_only`, which
+//!   Unlimbo sets on every non-Selectable missile), passengers (`+0x118`)
+//!   unload, or guard in a team; a team member keeps the pick; any other
+//!   aircraft drops its Target and its destination, in that order, and
+//!   retreats. Without `+0x3D4` it drops the destination, then the Target,
+//!   and keeps the pick.
+//! - The tail (`0x00417AD4`): an armed aircraft without Ammo and out of radio
+//!   contact hunts a dock; radio contact (`0x0065AE30`) makes it Enter; the
+//!   mission is queued (vt+0x1E8) and commenced when ready (vt+0x200,
 //!   vt+0x1EC).
 //!
-//! A computer house's unteamed armed aircraft would pick Area Guard over
-//! Guard (`0x00417787`), and an armed one with no ammo would hunt a dock in
-//! the tail; an unarmed aircraft reaches neither, which is why the port is
-//! limited to unarmed ones. The airborne arm (`0x00417802`) is never taken
-//! by a `MissileSpawn=` aircraft.
+//! VERA's tree (`aircraft::idle_mode`) stands in for the two parts not
+//! ported, through [`IdleEntry::Vera`]:
+//!
+//! RESIDUAL: the airborne arm (`0x00417802`): re-engaging, a dock in radio
+//! contact, Find_Nearest_Friendly_Airfield (`0x0041A160`) and an AirportBound
+//! aircraft's Crash. The tree also stands in for the head and the Foot base
+//! before it, and its choice is VERA's aircraft state, never a queued
+//! mission. Trigger: every aircraft that enters idle mode in flight (a
+//! Harrier after its run, a Kirov at its destination). Effect: a suspended
+//! mission is not restored, Retreat, Paradrop and Spy Plane missions do not
+//! hold, a queued waypoint is not taken, and the current mission stays the
+//! one that ended. Frequency: every combat aircraft's sortie. Downstream:
+//! readers of an aircraft's current mission see the ended one.
+//!
+//! RESIDUAL: the tail's dock hunt (vt+0x528 with the type's `Dock=`, Enter,
+//! or an AirportBound aircraft's Crash), which the tree replaces after the
+//! landed arm's clears. Trigger: an armed aircraft entering idle mode on the
+//! ground with Ammo 0 and out of radio contact. Effect: its choice is the
+//! tree's, and no mission is queued. Frequency: rare; a rearming aircraft
+//! waits on its pad in VERA's docking states.
+//!
+//! The picked missions' aircraft handlers are not ported except Unload and
+//! Retreat: a `Fly` aircraft that commenced Guard, Area Guard or Enter holds
+//! VERA's Guard state, the tree's own choice for it, and one that commenced
+//! Unload or Retreat holds no VERA state, so their native handlers alone run.
+//! A missile's Rocket keeps only the native handlers' states
+//! (`aircraft::commence_handler_state`), so one that picks Guard, Area Guard
+//! or Enter (in a team or in radio contact; no retail missile) runs no
+//! handler.
 //!
 //! Evidence: tools/spatial_oracle/aircraft_idle_retreat.py runs the original
-//! 0x004176F0 over every combination of what this arm reads, the head's
-//! cases, and the Ammo, layer and height values it ignores;
-//! `idle_entry_tests` replays every row through [`enter_idle_mode`].
+//! 0x004176F0 up to its airborne arm: every combination of what the landed
+//! arm reads for a `MissileSpawn=` aircraft and for one on the ground or at
+//! its landing altitude, armed and unarmed, the head's cases, the dock hunt's
+//! gate, and the airborne arm's entry. `idle_entry_tests` replays every row
+//! through [`enter_idle_mode`].
 //!
 //! Not kept: Mission_Attack's state 10 clears `+0x6D5` before the call and
 //! sets it after (`0x00418C9B`, `0x00418D00`). Its one reader, Aircraft
@@ -39,10 +70,13 @@
 //! planning-path arrival (`0x00709A6B` -> `0x006385C0`), which needs a
 //! waypoint-planning token (`0x00705D20`) VERA never has.
 
+use super::{AircraftMission, IdleEntry};
 use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::world::Simulation;
+use crate::sim::world::display_layers::DisplayLayer;
 
 #[cfg(test)]
 #[path = "idle_entry_tests.rs"]
@@ -65,6 +99,15 @@ struct IdleFacts {
     passengers: bool,
     /// `+0x5D4`, the team.
     team: bool,
+    /// `HouseClass::IsControlledByHuman @ 0x0050B730` on the owner.
+    human: bool,
+    /// `TechnoClass::Is_Armed @ 0x00701120` (vt+0x2AC).
+    armed: bool,
+    /// Ammo `+0x2FC`.
+    ammo: i32,
+    /// The landed arm's test (`0x004177BA..0x004177FC`): the ground layer,
+    /// the height at or below the landing altitude, or `MissileSpawn=`.
+    landed: bool,
 }
 
 /// What the call does, each where the original does it.
@@ -89,15 +132,23 @@ trait IdleHost {
     fn ready(&mut self) -> bool;
 }
 
-/// The call on an unarmed `MissileSpawn=` aircraft. Returns its answer, the
-/// Foot base's, or 0 where the head returns.
-fn enter_idle_mode(facts: &IdleFacts, host: &mut impl IdleHost) -> bool {
-    use MissionType::*;
+/// The call: its answer (the Foot base's, or 0 where the head returns), or
+/// `None` where VERA's tree stands in (module RESIDUALs), before the head
+/// for an aircraft in flight and after the landed arm's clears for the dock
+/// hunt.
+fn enter_idle_mode(facts: &IdleFacts, host: &mut impl IdleHost) -> Option<bool> {
+    use MissionType::{
+        AreaGuard, Enter, Guard, ParadropApproach, ParadropOverfly, Patrol, Retreat,
+        SpyplaneApproach, SpyplaneOverfly, Unload,
+    };
+    if !facts.landed {
+        return None;
+    }
     if facts.suspended {
         if host.restore().known() == Some(Patrol) {
             host.restart_patrol();
         }
-        return false;
+        return Some(false);
     }
     let current = facts.current.known();
     if matches!(
@@ -105,30 +156,38 @@ fn enter_idle_mode(facts: &IdleFacts, host: &mut impl IdleHost) -> bool {
         Some(Retreat | ParadropApproach | ParadropOverfly | SpyplaneApproach | SpyplaneOverfly)
     ) && !facts.airstrike
     {
-        return false;
+        return Some(false);
     }
     if matches!(
         facts.queued.known(),
         Some(ParadropApproach | SpyplaneApproach)
     ) {
         host.commence();
-        return false;
+        return Some(false);
     }
     let answer = host.foot_enter_idle();
-    // Is_Armed (vt+0x2AC) is false, so the pick at 0x00417787 is Guard.
+    // `0x00417787`, read again by the arm without `+0x3D4` (`0x00417AA3`).
+    let pick = if !facts.human && !facts.team && facts.armed {
+        AreaGuard
+    } else {
+        Guard
+    };
     let mission = if !facts.mission_only {
         host.clear_destination();
         host.clear_target();
-        Guard
+        pick
     } else if facts.passengers {
         if facts.team { Guard } else { Unload }
     } else if facts.team {
-        Guard
+        pick
     } else {
         host.clear_target();
         host.clear_destination();
         Retreat
     };
+    if facts.ammo == 0 && facts.armed && !host.in_radio_contact() {
+        return None;
+    }
     let mission = if host.in_radio_contact() {
         Enter
     } else {
@@ -138,23 +197,34 @@ fn enter_idle_mode(facts: &IdleFacts, host: &mut impl IdleHost) -> bool {
     if host.ready() {
         host.commence();
     }
-    answer
+    Some(answer)
 }
 
-/// [`enter_idle_mode`] for aircraft `id`, or `None` when it is not an
-/// unarmed `MissileSpawn=` aircraft, whose idle mode is VERA's tree
-/// (`aircraft::enter_idle_mode`).
-pub(super) fn enter_idle_mode_native(
+/// [`enter_idle_mode`] for aircraft `id`: [`IdleEntry::Native`] when it ran,
+/// [`IdleEntry::Vera`] where VERA's tree stands in.
+pub(crate) fn enter_idle_mode_for(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
     registry: Option<&OverlayTypeRegistry>,
-) -> Option<bool> {
-    let entity = sim.substrate.entities.get(id)?;
-    let object = rules.object(sim.interner.resolve(entity.type_ref()))?;
-    if !object.missile_spawn || crate::sim::combat::combat_weapon::is_armed(entity, object) {
-        return None;
-    }
+) -> IdleEntry {
+    let Some(entity) = sim.substrate.entities.get(id) else {
+        return IdleEntry::NotCalled;
+    };
+    let Some(object) = rules.object(sim.interner.resolve(entity.type_ref())) else {
+        return IdleEntry::NotCalled;
+    };
+    let landing = super::landing_base::landing_base(
+        entity,
+        &sim.substrate.entities,
+        Some((rules, &sim.interner)),
+    );
+    let landed = sim.entity_display_layer(id, Some(rules)) == Some(DisplayLayer::GROUND)
+        || crate::sim::movement::air_movement::current_fly_height(
+            entity,
+            sim.resolved_terrain.as_ref(),
+        ) <= landing
+        || object.missile_spawn;
     let facts = IdleFacts {
         suspended: entity.mission.suspended() != MissionId::NONE,
         current: entity.mission.current(),
@@ -169,14 +239,54 @@ pub(super) fn enter_idle_mode_native(
             .cargo()
             .is_some_and(|cargo| cargo.count() != 0),
         team: sim.team_script_vm.team_for_member(id).is_some(),
+        human: sim
+            .houses
+            .get(&entity.owner())
+            .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero)),
+        armed: crate::sim::combat::combat_weapon::is_armed(entity, object),
+        ammo: entity
+            .aircraft_ammo
+            .as_ref()
+            .map_or(-1, |ammo| ammo.current),
+        landed,
     };
     let mut host = WorldIdle {
         sim,
         id,
         rules,
         registry,
+        queued: None,
     };
-    Some(enter_idle_mode(&facts, &mut host))
+    if enter_idle_mode(&facts, &mut host).is_none() {
+        return IdleEntry::Vera;
+    }
+    let queued = host.queued;
+    hold_fly_state(sim, id, queued);
+    IdleEntry::Native
+}
+
+/// The VERA state a `Fly` aircraft holds for the mission its idle mode
+/// commenced (module doc); one whose mission was only queued keeps the state
+/// of the visit that ended, as the original keeps running that handler.
+fn hold_fly_state(sim: &mut Simulation, id: u64, queued: Option<MissionType>) {
+    let Some(entity) = sim.substrate.entities.get_mut(id) else {
+        return;
+    };
+    let fly = entity
+        .locomotor
+        .as_ref()
+        .is_some_and(|locomotor| locomotor.kind == LocomotorKind::Fly);
+    let Some(mission) = queued.filter(|&mission| entity.mission.current().known() == Some(mission))
+    else {
+        return;
+    };
+    if !fly {
+        return;
+    }
+    entity.aircraft_mission = match mission {
+        MissionType::Unload | MissionType::Retreat => None,
+        _ => Some(AircraftMission::Guard),
+    };
 }
 
 struct WorldIdle<'a> {
@@ -184,6 +294,8 @@ struct WorldIdle<'a> {
     id: u64,
     rules: &'a RuleSet,
     registry: Option<&'a OverlayTypeRegistry>,
+    /// The mission the call queued.
+    queued: Option<MissionType>,
 }
 
 impl IdleHost for WorldIdle<'_> {
@@ -242,6 +354,7 @@ impl IdleHost for WorldIdle<'_> {
     }
 
     fn queue(&mut self, mission: MissionType) {
+        self.queued = Some(mission);
         let entity = self.sim.substrate.entities.get_mut(self.id).unwrap();
         crate::sim::mission::authority::queue_entity_mission_deferred(
             entity,

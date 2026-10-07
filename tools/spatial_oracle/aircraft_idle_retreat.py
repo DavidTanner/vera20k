@@ -1,4 +1,4 @@
-"""Original AircraftClass::Enter_Idle_Mode (0x004176F0) for a MissileSpawn aircraft and
+"""Original AircraftClass::Enter_Idle_Mode (0x004176F0) up to its airborne arm and
 AircraftClass::Mission_Retreat (0x00415A50), one call per row.
 
 Each row runs the ORIGINAL function on a supplied Aircraft whose vtable is a clone of 0x007E22A4
@@ -10,21 +10,22 @@ the owner, and reads no scratch byte (owner, type, house, interface) the row did
 
 Enter_Idle_Mode, called as Mission_Move (0x004166E0) and Mission_Attack state 10 (0x00418CFA)
 call it: vt+0x484(0, 1), thiscall, RET 8.
-    The body and Is_Suspended vt+0x1FC (0x005B3A10, +0xB0 != -1) run natively. The type has
-    MissileSpawn (+0xD68) and Is_Armed vt+0x2AC (0x00701120) answers false: no retail
-    MissileSpawn type (V3ROCKET, DMISL, CMISL) has a weapon.
+    The body and Is_Suspended vt+0x1FC (0x005B3A10, +0xB0 != -1) run natively; the type's
+    MissileSpawn (+0xD68) and AirportBound (+0xE0D) bytes are the row's.
     Stubs: Restore vt+0x1F8 (0x004D8F80; the stub moves the suspended selector +0xB0 to the
     current +0xAC and empties +0xB0, the selector half of the restore), Commence vt+0x1EC
     (0x0041B870), Queue_Mission vt+0x1E8 (0x0041BA90), Ready_To_Commence vt+0x200 (0x0041B5E0),
-    Assign_Target vt+0x3C8 (0x006FCDB0), Assign_Destination vt+0x480 (0x0041AA80), the layer
-    vt+0x78 (0x0041ADC0), the height vt+0x1C8 (0x005F5F40) and IFlyControl+0xC, the landing
-    altitude (0x0041B6A0), through a scratch interface vtable at +0x6C0.
+    Is_Armed vt+0x2AC (0x00701120), Assign_Target vt+0x3C8 (0x006FCDB0), Assign_Destination
+    vt+0x480 (0x0041AA80), the tail's dock search vt+0x528 (0x0041BBD0; recorded, answers no
+    dock), Crash vt+0x3DC (0x004DEBB0), the layer vt+0x78 (0x0041ADC0), the height vt+0x1C8
+    (0x005F5F40) and IFlyControl+0xC, the landing altitude (0x0041B6A0), through a scratch
+    interface vtable at +0x6C0.
     Entry hooks: FootClass::Enter_Idle_Mode 0x004D82B0 (RET 8), HouseClass::IsControlledByHuman
-    0x0050B730 and RadioClass::In_Radio_Contact 0x0065AE30.
-    The airborne arm's and the tail's dock-hunt callees fail the row if reached: GetWeapon
-    vt+0x3F8, Get_Mission vt+0x184, vt+0x54, the dock search vt+0x528, Transmit_Message
-    vt+0x278, Crash vt+0x3DC, 0x006EC370, 0x006EA870 and Find_Nearest_Friendly_Airfield
-    0x0041A160.
+    0x0050B730 and RadioClass::In_Radio_Contact 0x0065AE30. The airborne arm's entry 0x00417802
+    is recorded and the row leaves through the function's own epilogue 0x00417B8E (which
+    restores the four registers and returns 0), so its callees (GetWeapon vt+0x3F8, Get_Mission
+    vt+0x184, vt+0x54, Transmit_Message vt+0x278, 0x006EC370, 0x006EA870 and
+    Find_Nearest_Friendly_Airfield 0x0041A160) fail the row if reached.
 
 Mission_Retreat (vt+0x230, thiscall, no arguments, RET):
     The body, HouseClass 0x0050DA80 (the waypoint edge +0x577C, 0 outside 0..3) and the static
@@ -71,17 +72,20 @@ SLOTS = {
     0x1C8: ("height", 0x5F5F40, 0), 0x3C8: ("assign_target", 0x6FCDB0, 4),
     0x480: ("assign_destination", 0x41AA80, 8), 0x1BC: ("get_cell", 0x5F6960, 0),
     0x3F8: ("get_weapon", 0x70E140, None), 0x184: ("get_mission", 0x5B3040, None),
-    0x54: ("vt54", 0x41B920, None), 0x528: ("dock_search", 0x41BBD0, None),
-    0x278: ("transmit_message", 0x65AAA0, None), 0x3DC: ("crash", 0x4DEBB0, None),
+    0x54: ("vt54", 0x41B920, None), 0x528: ("dock_search", 0x41BBD0, 0xC),
+    0x278: ("transmit_message", 0x65AAA0, None), 0x3DC: ("crash", 0x4DEBB0, 4),
 }
 # Slots the two functions reach that stay native (asserted only).
 NATIVE_SLOTS = {0x1FC: 0x5B3A10, 0x484: ENTER_IDLE, 0x230: MISSION_RETREAT}
+# The airborne arm's entry and the epilogue a row leaves it through.
+AIRBORNE_ARM, IDLE_RETURN_ZERO = 0x417802, 0x417B8E
 # Entry hooks: address -> (name, pops); None pops fails the row.
 HOOKS = {
     0x4D82B0: ("foot_enter_idle", 8), 0x50B730: ("house_human", 0),
     0x65AE30: ("in_radio_contact", 0), 0x4AA440: ("pick_cell_on_edge", 0x1C),
     0x5657A0: ("map_cell", 4), 0x6EC370: ("team_6ec370", None),
     0x6EA870: ("team_remove_6ea870", None), 0x41A160: ("nearest_airfield", None),
+    AIRBORNE_ARM: ("airborne_arm", 0),
 }
 STUB_AT = {name: STUBS + 0x10 * n for n, (name, _, _) in enumerate(SLOTS.values())}
 STUB_AT["landing_altitude"] = STUBS + 0x10 * len(SLOTS)
@@ -184,7 +188,8 @@ class Fixture:
         self.put8(OWNER + 0x3D4, row["mission_only"])
         self.put32(OWNER + 0x5D4, TEAM if row["team"] else 0)
         self.put8(OWNER + 0x6D2, row["latch"])
-        self.put8(TYPE + 0xD68, 1)                         # MissileSpawn
+        self.put8(TYPE + 0xD68, row["missile_spawn"])
+        self.put8(TYPE + 0xE0D, row["airport_bound"])
 
     def build_retreat(self, row):
         self.build(row)
@@ -256,13 +261,22 @@ class Fixture:
         elif name == "get_cell":
             self.calls.append(["get_cell"])
             value = self.cell_pointer(row["own"])
+        elif name == "dock_search":
+            self.calls.append(["dock_search", s32(self.arg(1)), s32(self.arg(2))])
+        elif name == "crash":
+            self.calls.append(["crash", self.name(self.arg(0))])
+            value = 1
         else:                                              # is_armed, layer, height, landing
-            value = {"is_armed": 0, "layer": row.get("layer"), "height": row.get("height"),
-                     "landing_altitude": row.get("landing")}[name]
+            value = {"is_armed": row.get("armed"), "layer": row.get("layer"),
+                     "height": row.get("height"), "landing_altitude": row.get("landing")}[name]
         return self.returns(value, pops)
 
     def on_hook(self, u, address, _size, _data):
         name, pops = HOOKS[address]
+        if name == "airborne_arm":
+            self.calls.append(["airborne_arm"])
+            u.reg_write(UC_X86_REG_EIP, IDLE_RETURN_ZERO)
+            return None
         if not self.from_body(name):
             return None
         if pops is None:
@@ -360,6 +374,7 @@ IDLE_DEFAULTS = {
     "current": 2, "queued": -1, "suspended": -1, "airstrike": False, "human": False,
     "team": False, "passengers": False, "mission_only": True, "ammo": 1, "radio": False,
     "ready": True, "foot": False, "layer": 3, "height": 768, "landing": 0, "state": 7, "latch": 1,
+    "missile_spawn": True, "armed": False, "airport_bound": False,
 }
 RETREAT_DEFAULTS = {"nav": None, "own": [60, 64], "house_edge": -1, "waypoint_edge": 0,
                     "pick": [5, 6]}
@@ -400,6 +415,48 @@ def idle_rows():
     for layer, height, landing in ((2, 768, 0), (3, 0, 0), (3, 100, 100), (3, 768, 100), (1, -5, 0)):
         rows.append(dict(name=f"layer{layer}.z{height}.landing{landing}", layer=layer,
                          height=height, landing=landing))
+    # Any other aircraft takes the same arm on the ground (the layer) or at or below its
+    # landing altitude (the height); armed, a computer house's unteamed one picks Area Guard.
+    entries = {"ground": dict(layer=2), "low": dict(layer=3, height=100, landing=100)}
+    for entry, place in entries.items():
+        for mission_only in (True, False):
+            for passengers in (False, True):
+                for team in (False, True):
+                    for human in (False, True):
+                        for armed in (False, True):
+                            for radio in (False, True):
+                                rows.append(dict(
+                                    name=f"landed.{entry}.m{int(mission_only)}"
+                                         f".p{int(passengers)}.t{int(team)}.h{int(human)}"
+                                         f".a{int(armed)}.r{int(radio)}",
+                                    missile_spawn=False, mission_only=mission_only,
+                                    passengers=passengers, team=team, human=human, armed=armed,
+                                    radio=radio, **place))
+    # An armed MissileSpawn aircraft (no retail type).
+    for mission_only in (True, False):
+        for passengers in (False, True):
+            for team in (False, True):
+                for human in (False, True):
+                    rows.append(dict(name=f"armed_missile.m{int(mission_only)}.p{int(passengers)}"
+                                          f".t{int(team)}.h{int(human)}",
+                                     armed=True, mission_only=mission_only,
+                                     passengers=passengers, team=team, human=human))
+    # The tail's dock hunt: armed, no Ammo and no radio contact.
+    for entry, place in {"missile": {}, "ground": dict(missile_spawn=False, layer=2)}.items():
+        for mission_only in (True, False):
+            for radio in (False, True):
+                for airport_bound in (False, True):
+                    for ammo in (0, -1):
+                        rows.append(dict(
+                            name=f"dock.{entry}.m{int(mission_only)}.r{int(radio)}"
+                                 f".ab{int(airport_bound)}.ammo{ammo}",
+                            armed=True, ammo=ammo, mission_only=mission_only, radio=radio,
+                            airport_bound=airport_bound, **place))
+    # The airborne arm, after the head and the Foot base.
+    for name, extra in (("plain", {}), ("armed", dict(armed=True)), ("foot", dict(foot=True)),
+                        ("suspended", dict(suspended=1)), ("protected", dict(current=4)),
+                        ("queued", dict(queued=0x1A)), ("low_ammo", dict(armed=True, ammo=0))):
+        rows.append(dict(name=f"airborne.{name}", missile_spawn=False, **extra))
     return rows
 
 
@@ -425,23 +482,31 @@ def generate():
 
 def metadata():
     return provenance(
-        scope="AircraftClass::Enter_Idle_Mode 0x004176F0 as vt+0x484(0, 1) on an unarmed "
-              "MissileSpawn aircraft: every combination of +0x3D4, passengers (+0x118), team "
-              "(+0x5D4), IsControlledByHuman, In_Radio_Contact, Ready_To_Commence and the Foot "
-              "base's return, from Move with nothing queued; a suspended selector; each "
-              "protected current with and without an Airstrike (+0x294); queued missions; Ammo, "
-              "layer and height values. AircraftClass::Mission_Retreat 0x00415A50 with a NULL "
+        scope="AircraftClass::Enter_Idle_Mode 0x004176F0 as vt+0x484(0, 1) up to its airborne "
+              "arm. On an unarmed MissileSpawn aircraft: every combination of +0x3D4, passengers "
+              "(+0x118), team (+0x5D4), IsControlledByHuman, In_Radio_Contact, Ready_To_Commence "
+              "and the Foot base's return, from Move with nothing queued; a suspended selector; "
+              "each protected current with and without an Airstrike (+0x294); queued missions; "
+              "Ammo, layer and height values. Without MissileSpawn, the landed arm entered on the "
+              "ground layer and at the landing altitude over every combination of +0x3D4, "
+              "passengers, team, IsControlledByHuman, Is_Armed and In_Radio_Contact; armed "
+              "MissileSpawn rows; the tail's dock hunt (Ammo 0 or -1, radio contact, AirportBound) "
+              "up to its dock search, which answers no dock; the airborne arm's entry. AircraftClass::Mission_Retreat 0x00415A50 with a NULL "
               "NavCom over House+0x1E0 {-1, 0..4, -5} x +0x577C {0..3, -1, 4}, picked cells "
               "equal to and differing from the empty cell in either word, and a NavCom that is "
               "the owner's cell, another cell or an object. Returned value, ordered call log "
               "with arguments, and for Enter_Idle_Mode Mission+0xBC and +0x6D2 afterwards. Not "
-              "the airborne arm, an armed aircraft's dock hunt, the restore's target and "
-              "destination setters, or PickCellOnEdge's own search and draws.",
+              "the airborne arm's body, a found dock, the restore's target and destination "
+              "setters, or PickCellOnEdge's own search and draws.",
         assumptions=[
             "One emulator; per row the scratch region (0x10000 bytes) and the stack frame are "
             "rewritten. The owner holds a clone of the Aircraft vtable 0x007E22A4 with only the "
             "stubbed slots replaced, House +0x21C, IFlyControl +0x6C0 on a scratch copy of "
-            "0x007E2250 with +0xC replaced, and type +0x6C4 with MissileSpawn (+0xD68) set.",
+            "0x007E2250 with +0xC replaced, and type +0x6C4 with the row's MissileSpawn "
+            "(+0xD68) and AirportBound (+0xE0D).",
+            "A row reaching the airborne arm (0x00417802) records it and leaves through the "
+            "function's epilogue 0x00417B8E, which the arm's own returns share: the frame holds "
+            "only the four pushed registers there.",
             "Enter_Idle_Mode rows preset Mission+0xBC = 7 and +0x6D2 = 1 to show which arm "
             "writes them; the arguments are (0, 1), as both Mission_Move and Mission_Attack "
             "state 10 push them.",
@@ -454,8 +519,9 @@ def metadata():
         substitutions=[
             "Enter_Idle_Mode: Restore vt+0x1F8 moves +0xB0 to +0xAC and empties +0xB0; Commence "
             "vt+0x1EC, Queue_Mission vt+0x1E8, Assign_Target vt+0x3C8 and Assign_Destination "
-            "vt+0x480 record their arguments; Ready vt+0x200 answers the row's value; Is_Armed "
-            "vt+0x2AC answers false; the layer vt+0x78, height vt+0x1C8 and landing altitude "
+            "vt+0x480 record their arguments; Ready vt+0x200 and Is_Armed vt+0x2AC answer the "
+            "row's values; the dock search vt+0x528 records its two flags and answers no dock; "
+            "Crash vt+0x3DC records its attacker; the layer vt+0x78, height vt+0x1C8 and landing altitude "
             "IFlyControl+0xC answer the row's values; FootClass::Enter_Idle_Mode 0x004D82B0, "
             "IsControlledByHuman 0x0050B730 and In_Radio_Contact 0x0065AE30 are entry hooks "
             "answering the row's values.",

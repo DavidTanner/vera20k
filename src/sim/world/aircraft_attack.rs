@@ -7,7 +7,7 @@
 use super::Simulation;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::aircraft::{AircraftMission, IdleEntry, attack_mission};
+use crate::sim::aircraft::{AircraftMission, IdleEntry, attack_mission, enter_idle_mode_for};
 use crate::sim::combat::TargetKind;
 use crate::sim::combat::{combat_weapon, fire_coord};
 use crate::sim::components::NavTargetRef;
@@ -279,9 +279,9 @@ struct WorldExit<'a> {
 
 impl attack_mission::ExitHost for WorldExit<'_> {
     fn clear_target(&mut self) {
-        if let Some(entity) = self.sim.substrate.entities.get_mut(self.id) {
-            crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
-        }
+        self.sim
+            .assign_target_represented(self.id, None, Some(self.rules))
+            .expect("aircraft dispatch");
     }
 
     fn assign_edge_destination(&mut self) {
@@ -306,6 +306,6 @@ impl attack_mission::ExitHost for WorldExit<'_> {
     }
 
     fn enter_idle_mode(&mut self) {
-        self.idle = IdleEntry::call(self.sim, self.id, self.rules, self.registry);
+        self.idle = enter_idle_mode_for(self.sim, self.id, self.rules, self.registry);
     }
 }

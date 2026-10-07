@@ -28,6 +28,7 @@
 //! waypoint edge instead.
 
 use crate::rules::ruleset::RuleSet;
+use crate::sim::cell_rect::CellRef;
 use crate::sim::components::NavTargetRef;
 use crate::sim::world::Simulation;
 use crate::sim::world::edge_cell::Edge;
@@ -85,15 +86,26 @@ fn retreat_visit(
 /// One visit of aircraft `id`.
 pub(super) fn retreat(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
     let entity = sim.substrate.entities.get(id).expect("aircraft dispatch");
-    // GetCell is the cell holding the Location, which `position` names.
     let nav_com = match entity.navigation.nav_com {
         None => RetreatNavCom::None,
-        Some(NavTargetRef::Cell { rx, ry })
-            if (rx, ry) == (entity.position.rx, entity.position.ry) =>
-        {
-            RetreatNavCom::OwnCell
+        Some(nav_com) => {
+            // GetCell: Map[coord] of the Location, whose miss is the dummy
+            // cell no NavCom is.
+            let here = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
+            let own = crate::sim::cell_rect::get_cellclass_fallback_leptons(
+                sim.resolved_terrain.as_ref(),
+                here.x,
+                here.y,
+            );
+            match (nav_com, own) {
+                (NavTargetRef::Cell { rx, ry }, CellRef::Real(cell))
+                    if (cell.rx, cell.ry) == (rx, ry) =>
+                {
+                    RetreatNavCom::OwnCell
+                }
+                _ => RetreatNavCom::Elsewhere,
+            }
         }
-        Some(_) => RetreatNavCom::Elsewhere,
     };
     let waypoint_edge = sim.aircraft_house_waypoint_edge(id);
     retreat_visit(

@@ -1,5 +1,5 @@
 //! Replays `tools/spatial_oracle/aircraft_idle_retreat.json`'s `enter_idle`
-//! rows: the original `0x004176F0` on an unarmed MissileSpawn aircraft.
+//! rows: the original `0x004176F0` up to its airborne arm.
 
 use super::*;
 use serde_json::{Value, json};
@@ -68,42 +68,73 @@ impl IdleHost for Recorder<'_> {
     }
 }
 
-/// Every row: the call log, the answer and the head's Patrol writes. The
-/// rows also vary the house's control, Ammo, the layer and the height, which
-/// the original reads and this arm ignores.
+/// Every row: the call log, the answer and the head's Patrol writes where the
+/// port runs; where VERA's tree stands in, that the original reached the same
+/// point: the airborne arm before any call, the dock hunt after the landed
+/// arm's clears.
 #[test]
 fn enter_idle_mode_matches_the_original() {
     let rows = rows();
-    assert_eq!(rows.len(), 170);
+    assert_eq!(rows.len(), 353);
     for row in &rows {
         let input = &row["input"];
         let name = input["name"].as_str().unwrap();
-        let mission = |key: &str| MissionId::from_raw(input[key].as_i64().unwrap() as i32);
+        let int = |key: &str| input[key].as_i64().unwrap();
+        let mission = |key: &str| MissionId::from_raw(int(key) as i32);
+        // `0x004177BA..0x004177FC`.
+        let landed =
+            int("layer") == 2 || int("height") <= int("landing") || flag(input, "missile_spawn");
         let facts = IdleFacts {
-            suspended: input["suspended"].as_i64() != Some(-1),
+            suspended: int("suspended") != -1,
             current: mission("current"),
             queued: mission("queued"),
             airstrike: flag(input, "airstrike"),
             mission_only: flag(input, "mission_only"),
             passengers: flag(input, "passengers"),
             team: flag(input, "team"),
+            human: flag(input, "human"),
+            armed: flag(input, "armed"),
+            ammo: int("ammo") as i32,
+            landed,
         };
         let mut host = Recorder {
             input,
             calls: Vec::new(),
-            state: input["state"].as_i64().unwrap(),
-            latch: input["latch"].as_i64().unwrap(),
+            state: int("state"),
+            latch: int("latch"),
         };
         let answer = enter_idle_mode(&facts, &mut host);
-        assert_eq!(Value::Array(host.calls), row["calls"], "{name}: calls");
-        assert_eq!(u64::from(answer), row["ret"].as_u64().unwrap(), "{name}");
+        let native = row["calls"].as_array().unwrap();
+        let reached = |call: &str| native.iter().position(|logged| logged[0] == call);
+        // The original's own test agrees: the airborne arm only off the
+        // ground and above the landing altitude, after the Foot base.
         assert_eq!(
-            (host.state, host.latch),
-            (
-                row["state"].as_i64().unwrap(),
-                row["latch"].as_i64().unwrap()
-            ),
-            "{name}: Mission+0xBC and +0x6D2"
+            reached("airborne_arm").is_some(),
+            !landed && reached("foot_enter_idle").is_some(),
+            "{name}: the airborne arm"
         );
+        match answer {
+            None if !landed => assert!(host.calls.is_empty(), "{name}: the tree stands in"),
+            None => {
+                let hunt = reached("dock_search").expect("the original hunts a dock");
+                assert_eq!(
+                    host.calls,
+                    native[..hunt],
+                    "{name}: calls before the dock hunt"
+                );
+            }
+            Some(answer) => {
+                assert_eq!(Value::Array(host.calls), row["calls"], "{name}: calls");
+                assert_eq!(u64::from(answer), row["ret"].as_u64().unwrap(), "{name}");
+                assert_eq!(
+                    (host.state, host.latch),
+                    (
+                        row["state"].as_i64().unwrap(),
+                        row["latch"].as_i64().unwrap()
+                    ),
+                    "{name}: Mission+0xBC and +0x6D2"
+                );
+            }
+        }
     }
 }

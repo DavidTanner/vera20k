@@ -17,9 +17,8 @@
 //!   and now-supported Unit members, so that count no longer bounds this gap.
 //!   Downstream: a stuck aircraft team keeps its members and its `Max=`
 //!   slot.
-//! - `Enter_Idle_Mode` for an aircraft (`0x004176F0`) is ported only for an
-//!   unarmed `MissileSpawn=` one (`aircraft::idle_entry`); see
-//!   [`Simulation::team_member_enter_idle_mode`].
+//! - `Enter_Idle_Mode` for an aircraft (`0x004176F0`) is not called for a
+//!   member leaving its team; see [`Simulation::team_member_enter_idle_mode`].
 
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
@@ -130,10 +129,10 @@ impl Simulation {
     /// ([`Self::unit_enter_idle_mode`]), Infantry `0x0051CBA0` (VERA's Foot
     /// selector, [`crate::sim::world::queue_foot_enter_idle_mode`]).
     ///
-    /// RESIDUAL: Aircraft `0x004176F0` is ported only for an unarmed
-    /// `MissileSpawn=` aircraft (`aircraft::idle_entry`), which no team holds;
-    /// an aircraft leaving a team keeps its mission. Trigger: an aircraft member leaves its team
-    /// alive. Effect: it does not return to its idle mission.
+    /// RESIDUAL: the Aircraft arm (`0x004176F0`, `aircraft::enter_idle_mode_now`)
+    /// is not called, so an aircraft leaving a team keeps its mission.
+    /// Trigger: an aircraft member leaves its team alive. Effect: it does not
+    /// return to its idle mission.
     pub(crate) fn team_member_enter_idle_mode(&mut self, id: u64, rules: &RuleSet) {
         match self
             .substrate

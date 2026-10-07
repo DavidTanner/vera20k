@@ -6,7 +6,7 @@
 use super::Simulation;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::aircraft::{AircraftMission, IdleEntry, move_mission};
+use crate::sim::aircraft::{AircraftMission, IdleEntry, enter_idle_mode_for, move_mission};
 use crate::sim::components::NavTargetRef;
 use crate::sim::mission::MissionType;
 use crate::sim::movement::{ground_pose, motion_query, nav_target_coordinate};
@@ -195,7 +195,7 @@ impl move_mission::MoveHost for WorldMove<'_> {
     }
 
     fn enter_idle_mode(&mut self) {
-        self.idle = IdleEntry::call(self.sim, self.id, self.rules, self.registry);
+        self.idle = enter_idle_mode_for(self.sim, self.id, self.rules, self.registry);
     }
 
     fn assign_attack_cell(&mut self) {
