@@ -184,7 +184,6 @@ mod tests {
     #[test]
     fn shared_probe_matches_original_bodies_and_receivers() {
         use crate::rules::ini_parser::IniFile;
-        use crate::sim::movement::rocket_movement::{RocketPhase, attach_rocket_state};
         let vectors: Value = serde_json::from_str(crate::test_fixture::text(
             "tools/projectile_oracle/shared_collision_vectors.json",
         ))
@@ -291,31 +290,19 @@ mod tests {
                 }
                 entity.lifecycle.cell_marked = target["marked"].as_bool().unwrap_or(true);
                 entity.on_bridge = target["on_bridge"].as_bool().unwrap_or(false);
+                // The supplied phase is the installed Rocket's MissionState.
                 if target["rocket"].as_bool().unwrap_or(false)
                     && target["phase"].as_u64().unwrap() != 0
                 {
-                    attach_rocket_state(
-                        &mut sim.substrate.entities,
-                        2,
-                        (2, 2),
-                        (3, 2),
-                        SimFixed::from_num(1),
-                    );
-                    sim.substrate
-                        .entities
-                        .get_mut(2)
+                    let mut locomotor =
+                        crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+                            crate::rules::locomotor_type::LocomotorKind::Rocket,
+                        );
+                    locomotor
+                        .rocket_runtime_mut()
                         .unwrap()
-                        .rocket_state
-                        .as_mut()
-                        .unwrap()
-                        .phase = match target["phase"].as_u64().unwrap() {
-                        1 => RocketPhase::Ignition,
-                        2 => RocketPhase::Tilt,
-                        3 => RocketPhase::Ascent,
-                        4 => RocketPhase::Cruise,
-                        5 => RocketPhase::Terminal,
-                        _ => RocketPhase::Secondary,
-                    };
+                        .set_mission_state_for_test(target["phase"].as_u64().unwrap() as i32);
+                    sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(locomotor);
                 }
                 spawn.target = ProjectileTarget::Entity(2);
             } else {

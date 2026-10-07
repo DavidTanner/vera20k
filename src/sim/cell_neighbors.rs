@@ -274,26 +274,18 @@ mod tests {
             );
             sim.substrate.entities.insert(entity);
             let rules = input["rocket_phase"].as_u64().map(|phase| {
-                use crate::sim::movement::rocket_movement::{self, RocketPhase};
-                rocket_movement::attach_rocket_state(
-                    &mut sim.substrate.entities,
-                    1,
-                    (64, 64),
-                    (70, 70),
-                    crate::util::fixed_math::SIM_ONE,
-                );
-                let entity = sim.substrate.entities.get_mut(1).unwrap();
-                if phase == 0 {
-                    entity.rocket_state = None;
-                } else {
-                    entity.rocket_state.as_mut().unwrap().phase = [
-                        RocketPhase::Ignition,
-                        RocketPhase::Tilt,
-                        RocketPhase::Ascent,
-                        RocketPhase::Cruise,
-                        RocketPhase::Terminal,
-                        RocketPhase::Secondary,
-                    ][phase as usize - 1];
+                // The supplied phase is the installed Rocket's MissionState
+                // (+0x40); zero stands for no Rocket locomotor at all.
+                if phase != 0 {
+                    let mut locomotor =
+                        crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+                            crate::rules::locomotor_type::LocomotorKind::Rocket,
+                        );
+                    locomotor
+                        .rocket_runtime_mut()
+                        .unwrap()
+                        .set_mission_state_for_test(phase as i32);
+                    sim.substrate.entities.get_mut(1).unwrap().locomotor = Some(locomotor);
                 }
                 let key = if input["rocket_rule_offset"] == 0x4E0 {
                     "V3RocketType"

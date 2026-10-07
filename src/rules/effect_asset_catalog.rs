@@ -183,6 +183,13 @@ pub(crate) const CLIFF_COLLAPSE_ANIMS: [&str; 3] = ["XGRYMED1", "XGRYMED2", "XGR
 /// it by this literal (`0x004150EF..0x00415102`), no rules key names it.
 pub(crate) const AIRCRAFT_SMOKE_ANIM: &str = "SGRYSMK1";
 
+/// The launch puffs and trail a missile's Rocket locomotor constructs:
+/// `RocketLocomotionClass::Process @ 0x006622C0` finds them by
+/// `AnimTypeClass::FindIndex @ 0x00427CB0` on the literals `[0x008399AC]`
+/// (`0x008399BC`) and `[0x008399B0]` (`0x008399B4`); no rules key names them.
+pub(crate) const ROCKET_TAKEOFF_ANIM: &str = "V3TAKOFF";
+pub(crate) const ROCKET_TRAIL_ANIM: &str = "V3TRAIL";
+
 /// Every animation name the simulation can turn into an `AnimClass` instance,
 /// which the loader must bind before the match starts.
 ///
@@ -311,6 +318,10 @@ pub fn anim_class_roots(rules: &RuleSet) -> Vec<String> {
     // The aircraft smoke (`sim::world::crash`): without this root SGRYSMK1
     // never bound and every puff failed to construct.
     insert(AIRCRAFT_SMOKE_ANIM);
+    // The rocket's puffs and trail (`sim::movement::rocket_movement`): without
+    // these roots neither ever constructed.
+    insert(ROCKET_TAKEOFF_ANIM);
+    insert(ROCKET_TRAIL_ANIM);
     roots.into_iter().collect()
 }
 
@@ -571,13 +582,20 @@ mod anim_class_root_tests {
     }
 
     /// Producers that name their type outside any warhead list: the ore
-    /// twinkle and the cliff-collapse literals.
+    /// twinkle, the cliff-collapse literals and the rocket's puffs and trail.
     #[test]
-    fn roots_cover_ore_twinkle_and_cliff_collapse_literals() {
+    fn roots_cover_ore_twinkle_and_producer_literals() {
         let rules = RuleSet::from_ini(&IniFile::from_str("[General]\nOreTwinkle=MYTWINKLE\n"))
             .expect("rules");
         let roots = anim_class_roots(&rules);
-        for name in ["MYTWINKLE", "XGRYMED1", "XGRYMED2", "XGRYSML1"] {
+        for name in [
+            "MYTWINKLE",
+            "XGRYMED1",
+            "XGRYMED2",
+            "XGRYSML1",
+            "V3TAKOFF",
+            "V3TRAIL",
+        ] {
             assert!(
                 roots.iter().any(|root| root == name),
                 "{name} missing: {roots:?}"

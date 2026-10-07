@@ -234,43 +234,27 @@ fn iso_height_shift_cells(height_leptons: i32) -> i32 {
 /// The engine keeps a single 3-D world coordinate per object and feeds its Z to
 /// both the reveal-centre shift and the line-of-sight viewer level, so terrain
 /// elevation and flight altitude are one quantity here too. A falling object
-/// reads its Location Z, which the fall moves every frame anyway. An Air-layer
-/// locomotor's altitude lifts an object as `render::locomotor_visual` lifts
-/// one without an exact coordinate.
-///
-/// RESIDUAL: a rocket reads its stored level plus its flight's altitude
-/// (`rocket_state`), not its Location, which its Unlimbo set to the launch
-/// coordinate (`spawn_manager::launch_coordinate`) and its flight moves. The
-/// shroud therefore sees it lower than its Location and its sprite by the
-/// launch's lift over the owner's floor: FLH height plus 10, 85 leptons for
-/// a V3 rocket.
-/// - Trigger: every spawned missile in flight; only V3ROCKET sees in retail
-///   (`Sight=1`; DMISL and CMISL have `Sight=0`).
-/// - Effect: its reveal-centre shift and line-of-sight viewer level come from
-///   that lower height.
-/// - Frequency: every V3 rocket flight.
-/// - Risk: the hashed shroud counters can differ from native around it.
+/// and a rocket read their Location Z, which the fall and the flight
+/// (`RocketLocomotionClass::Process`, `rocket_movement`) move every frame
+/// anyway. An Air-layer locomotor's altitude lifts an object as
+/// `render::locomotor_visual` lifts one without an exact coordinate.
 fn entity_height_leptons(entity: &crate::sim::game_entity::GameEntity) -> i32 {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::movement::locomotor::MovementLayer;
 
-    if entity.is_falling_down()
+    let rocket = entity
+        .locomotor
+        .as_ref()
+        .is_some_and(|loco| loco.kind == LocomotorKind::Rocket);
+    if (rocket || entity.is_falling_down())
         && let Some(z) = entity.position.exact_z_leptons
     {
         return z;
     }
     let terrain: i32 = i32::from(entity.position.z) * LEPTONS_PER_HEIGHT_LEVEL;
-    let above_ground: i32 = if let Some(state) = entity.rocket_state.as_ref() {
-        state.altitude.to_num::<i32>()
-    } else {
-        match entity.locomotor.as_ref() {
-            Some(loco)
-                if loco.layer == MovementLayer::Air && loco.kind != LocomotorKind::Rocket =>
-            {
-                loco.altitude.to_num::<i32>()
-            }
-            _ => 0,
-        }
+    let above_ground: i32 = match entity.locomotor.as_ref() {
+        Some(loco) if loco.layer == MovementLayer::Air && !rocket => loco.altitude.to_num::<i32>(),
+        _ => 0,
     };
     terrain + above_ground
 }

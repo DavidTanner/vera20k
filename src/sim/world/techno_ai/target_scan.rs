@@ -636,7 +636,12 @@ impl<'r> ScanHost for WorldScan<'_, 'r> {
     }
 
     fn clear_spawn_targets(&mut self) {
-        crate::sim::spawn_manager::clear_all_spawn_targets(self.sim, self.id);
+        crate::sim::spawn_manager::clear_all_spawn_targets(
+            self.sim,
+            self.id,
+            Some(self.rules),
+            None,
+        );
     }
 
     fn assign_target(&mut self, target: Option<TargetKind>) {

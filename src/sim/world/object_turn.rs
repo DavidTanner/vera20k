@@ -10,7 +10,7 @@ use super::{Simulation, techno_ai};
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::lifecycle_request::LifecycleRequest;
-use crate::sim::movement::{self, rocket_movement, teleport_movement};
+use crate::sim::movement::{self, teleport_movement};
 
 /// Whether this Unit visit reaches FootClass's SHP body-counter cadence.
 ///
@@ -261,7 +261,9 @@ impl Simulation {
                 self.process_air_locomotor(stable_id, rules, overlay_registry)
             }
             LocomotorKind::Teleport => self.process_teleport_locomotor(stable_id, rules, ctx),
-            LocomotorKind::Rocket => Ok(self.process_rocket_locomotor(stable_id)),
+            LocomotorKind::Rocket => {
+                Ok(self.process_rocket_locomotor(stable_id, rules, overlay_registry))
+            }
         }
     }
 
@@ -458,35 +460,27 @@ impl Simulation {
         Ok(process)
     }
 
-    /// Rocket Process (`0x006622C0`): the flight step, an arrival's
-    /// detonation request and a dead missile's explosion.
-    fn process_rocket_locomotor(&mut self, stable_id: u64) -> LocomotorProcess {
+    /// Rocket Process (`0x006622C0`, [`Simulation::process_rocket`]). A
+    /// detonation UnInits its owner, which ends `FootClass::AI` and
+    /// `AircraftClass::AI` (`0x004DA87A`). RulesClass is always present
+    /// natively; a rules-less fixture has no rocket block to fly by.
+    fn process_rocket_locomotor(
+        &mut self,
+        stable_id: u64,
+        rules: Option<&RuleSet>,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> LocomotorProcess {
         let mut process = LocomotorProcess::admitted();
-        let tick = self.session.tick;
-        let arrived = self
+        let Some(rules) = rules else {
+            return process;
+        };
+        let outcome = self.process_rocket(stable_id, rules, overlay_registry);
+        process.bridge_state_changed = outcome.bridge_state_changed;
+        process.ended = !self
             .substrate
             .entities
-            .get_mut(stable_id)
-            .is_some_and(|entity| rocket_movement::process_rocket(entity, tick));
-        if arrived {
-            self.pending_rocket_detonations.push(stable_id);
-        }
-        // `0x00662FA1..0x00662FD0`: after the flight step the Process moves
-        // its owner's AircraftTracker entry (`0x004138C0`) to the new cell.
-        self.sync_air_spatial_membership(stable_id);
-        // `0x00662FD5..0x00662FE1`: a missile left with no Health explodes
-        // where it is and is UnInit, so `FootClass::AI` and
-        // `AircraftClass::AI` stop here.
-        let died = !arrived
-            && self
-                .substrate
-                .entities
-                .get(stable_id)
-                .is_some_and(|entity| entity.health.current <= 0 && entity.rocket_state.is_some());
-        if died {
-            crate::sim::spawn_manager::detonate_dead_missile(self, stable_id);
-            process.ended = true;
-        }
+            .get(stable_id)
+            .is_some_and(|entity| entity.is_object_alive());
         process
     }
 }

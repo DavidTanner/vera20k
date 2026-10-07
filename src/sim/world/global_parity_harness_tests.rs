@@ -555,7 +555,10 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // The Drive/Ship payload migration remains. All618 same-binary Rust rows
 // match except tick_result.state_hash; the control recovers incoming pins.
 // tools/spatial_oracle/factory_infantry_output_replay/main7e9/receipt.json.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x0F2C_FFB8_42D8_155E;
+// Rocket locomotor port: the entity-level absent rocket_state tag is removed;
+// the Rocket payload owns its fold. Restoring only that old 0 tag recovers
+// incoming 0F2CFFB842D8155E in the same test binary. Control removed.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x5451_F0CA_2072_01A9;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

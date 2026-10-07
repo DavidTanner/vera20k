@@ -40,8 +40,7 @@ fn original_cannon_launch_motion_and_live_bridge_draw_form_one_production_chain(
         return;
     };
     let (trig, acos) = crate::map::retail_trig::required_math_tables();
-    let atan = crate::map::retail_trig::required_atan_table();
-    if !(trig.matches_retail() && acos.matches_retail() && atan.matches_retail()) {
+    if !(trig.matches_retail() && acos.matches_retail()) {
         assert!(
             !std::env::var_os(crate::rules::retail_ini_fixture::REQUIRE_RETAIL_INI_ENV)
                 .is_some_and(|value| !value.is_empty() && value != "0"),

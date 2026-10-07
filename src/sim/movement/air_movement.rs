@@ -692,12 +692,11 @@ fn missile_flight_override(
         // Rocket in retail, and `motion_query::is_moving_now` needs the frame
         // for its Drive and Ship turn arm, which the flight-level callers do
         // not carry.
-        return Some(
-            entity
-                .rocket_state
-                .as_ref()
-                .is_some_and(|rocket| rocket.phase.is_moving_now()),
-        );
+        return Some(entity.locomotor.as_ref().is_some_and(|locomotor| {
+            locomotor
+                .rocket_runtime()
+                .is_some_and(super::rocket_movement::RocketRuntime::is_moving_now)
+        }));
     }
     None
 }

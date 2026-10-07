@@ -1370,8 +1370,7 @@ fn techno_common_pre(
     }
     // `UnitClass::UpdateDisguise @ 0x007468C0` asks the locomotor's Is_Moving
     // (ILocomotion+0x10 at `0x007468F4` and `0x0074693D`), not whether an
-    // order is pending. A locomotor that query does not answer (Rocket) reads
-    // as still; no retail `DisguiseWhenStill=` type has one.
+    // order is pending. A locomotor without its runtime reads as still.
     let is_moving = crate::sim::movement::motion_query::is_moving(entity) == Some(true);
     if is_moving {
         if let Some(disguise) = sim
@@ -4950,10 +4949,7 @@ mod tests {
         if gates.lifecycle_countdown_exit {
             return Err(HostTraceError::LifecyclePath);
         }
-        if entity.teleport_state().is_some()
-            || entity.rocket_state.is_some()
-            || entity.parachute_state.is_some()
-        {
+        if entity.teleport_state().is_some() || entity.parachute_state.is_some() {
             return Err(HostTraceError::SpecialLocomotorPath);
         }
 

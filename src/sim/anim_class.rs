@@ -2112,7 +2112,7 @@ impl Simulation {
         if let (Some(bounce_anim), Some(coord)) =
             (config.bounce_anim.as_deref(), self.anim_absolute_coord(id))
         {
-            self.spawn_bounce_anim(rules, bounce_anim, coord, BOUNCE_CONTACT_DRAW_FLAGS, 0);
+            self.spawn_named_anim(rules, bounce_anim, coord, 0, BOUNCE_CONTACT_DRAW_FLAGS, 0);
         }
         // Map[coord] (`0x004239E5`); VERA keeps no objects on the dummy cell.
         let (Some(warhead_name), Some((rx, ry))) = (
@@ -2219,23 +2219,24 @@ impl Simulation {
         let above_deck = position.z >= ground.wrapping_add(BRIDGE_DECK_HEIGHT_LEPTONS);
         if self.bounce_cell_is_water(position, rules) && !above_deck {
             let wake = rules.general.wake.name.clone();
-            self.spawn_bounce_anim(rules, &wake, location, BOUNCE_CONTACT_DRAW_FLAGS, 0);
+            self.spawn_named_anim(rules, &wake, location, 0, BOUNCE_CONTACT_DRAW_FLAGS, 0);
             if let Some(splash) = rules.combat_damage.splash_list.first() {
                 let splash_coord = AnimWorldCoord {
                     z: location.z.wrapping_add(BOUNCE_SPLASH_LIFT_LEPTONS),
                     ..location
                 };
-                self.spawn_bounce_anim(rules, splash, splash_coord, BOUNCE_CONTACT_DRAW_FLAGS, 0);
+                self.spawn_named_anim(rules, splash, splash_coord, 0, BOUNCE_CONTACT_DRAW_FLAGS, 0);
             }
             return false;
         }
         let Some(expire) = config.expire_anim.as_deref() else {
             return false;
         };
-        self.spawn_bounce_anim(
+        self.spawn_named_anim(
             rules,
             expire,
             location,
+            0,
             BOUNCE_EXPIRE_DRAW_FLAGS,
             BOUNCE_EXPIRE_Z_ADJUST,
         );
@@ -2275,20 +2276,23 @@ impl Simulation {
         bridge_state_changed
     }
 
-    /// `new AnimClass(type, coord, 0, 1, flags, zAdjust, 0)` for a landing
-    /// chunk's follow-up anims.
-    fn spawn_bounce_anim(
+    /// `new AnimClass(AnimTypes[FindIndex(name)], &coord, delay, 1, flags,
+    /// zAdjust, 0)`: a landing chunk's follow-up anims and the rocket puffs of
+    /// Rocket Process and the spawn manager's Boomer launch. A type that never
+    /// bound constructs nothing.
+    pub(crate) fn spawn_named_anim(
         &mut self,
         rules: &RuleSet,
         type_name: &str,
         coord: AnimWorldCoord,
+        delay: u16,
         draw_flags: u32,
         z_adjust: i32,
     ) {
         let type_id = self.interner.intern(type_name);
         let (rx, ry, sub_x, sub_y, z) = coord.to_cell_sub_z();
         let descriptor = AnimClassSpawnDescriptor {
-            delay: 0,
+            delay,
             loop_count: 1,
             draw_flags,
             z_adjust,
@@ -2296,7 +2300,7 @@ impl Simulation {
             ..AnimClassSpawnDescriptor::new(type_id, rx, ry, sub_x, sub_y, z)
         };
         if let Err(error) = self.spawn_anim_at_world(rules, descriptor, coord) {
-            log::debug!("landing anim [{type_name}] did not construct: {error}");
+            log::debug!("anim [{type_name}] did not construct: {error}");
         }
     }
 
