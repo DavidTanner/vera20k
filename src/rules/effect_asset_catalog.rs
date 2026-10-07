@@ -190,6 +190,11 @@ pub(crate) const AIRCRAFT_SMOKE_ANIM: &str = "SGRYSMK1";
 pub(crate) const ROCKET_TAKEOFF_ANIM: &str = "V3TAKOFF";
 pub(crate) const ROCKET_TRAIL_ANIM: &str = "V3TRAIL";
 
+/// The fireball a `NUKE` warhead's bullet waits on: `BulletClass::AI` finds
+/// it by `AnimTypeClass::FindIndex @ 0x00427CB0` on the literal
+/// `0x0081AF8C` (`0x00467EB1`); no rules key names it.
+pub(crate) const NUKE_BALL_ANIM: &str = "NUKEBALL";
+
 /// Every animation name the simulation can turn into an `AnimClass` instance,
 /// which the loader must bind before the match starts.
 ///
@@ -322,6 +327,9 @@ pub fn anim_class_roots(rules: &RuleSet) -> Vec<String> {
     // these roots neither ever constructed.
     insert(ROCKET_TAKEOFF_ANIM);
     insert(ROCKET_TRAIL_ANIM);
+    // The nuke's buildup (`sim::superweapon::nuke`): without this root the
+    // falling missile waited on no anim and struck one frame after landing.
+    insert(NUKE_BALL_ANIM);
     roots.into_iter().collect()
 }
 

@@ -24,7 +24,7 @@ pub mod genetic_converter;
 pub mod invulnerability;
 pub mod iron_curtain;
 pub mod lightning_storm;
-mod nuke;
+pub(crate) mod nuke;
 #[cfg(test)]
 mod nuke_tests;
 pub mod paradrop;
@@ -575,14 +575,22 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
 }
 
 /// Tick already-active global superweapon effects in their native pre-object
-/// scheduler slot: `LightningStorm::Process @ 0x0053A6C0` runs the Psychic
-/// Dominator's Process (`0x0053A742`) before the storm's own work. Returns
-/// whether a bridge changed.
+/// scheduler slot: `LightningStorm::Process @ 0x0053A6C0` steps the nuke's
+/// screen flash, then runs the Psychic Dominator's Process (`0x0053A742`)
+/// before the storm's own work. Returns whether a bridge changed.
 pub fn tick_active_superweapon_effects(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
+    if sim
+        .session
+        .lighting
+        .step_nuke_flash(sim.session.binary_frame as i32)
+    {
+        // `0x0053A705`; the screen redraw (`0x0053A711`) is presentation.
+        sim.update_lighting();
+    }
     let bridge_changed = psychic_dominator::process(sim, rules, overlay_registry);
     lightning_storm::process(sim, rules, overlay_registry);
     bridge_changed

@@ -661,7 +661,8 @@ pub enum SimSoundEvent {
     },
     /// `CreateRadarEvent(13, cell)` from `SuperClass::Launch` case 4
     /// (`0x006CC4BE` at the Chronosphere's source, `0x006CC4D2` at its
-    /// target), on every client: each admits it on its own radar.
+    /// target) or a `NUKE` warhead's impact (`BulletClass::AI`,
+    /// `0x00467EA7`), on every client: each admits it on its own radar.
     SuperWeaponRadarEvent { radar: RadarEventRequest },
     /// The lightning storm actually began — the moment the sky flips to Ion,
     /// which on retail data is ~250 frames *after* the Weather Controller
@@ -3605,12 +3606,17 @@ impl Simulation {
     /// Advance the global ambient scalar before ore and active superweapons.
     /// A storm selecting Ion later in this frame can first move it next frame.
     /// `LogicClass::PerTickUpdate` (`0x0055B33D..0x0055B4D7`) restarts the
-    /// fade timer with `DominatorAmbientChangeRate=` while the Psychic
-    /// Dominator is active (`PsyDom::Active`, `0x0055B3A4`), else with
-    /// `AmbientChangeRate=`; its NukeFlash and chrono screen arm
-    /// (`NukeAmbientChangeRate=`) is not modelled.
+    /// fade timer with `NukeAmbientChangeRate=` while the nuke flash fades in
+    /// or out (`0x0055B389`, `0x0055B392`), else with
+    /// `DominatorAmbientChangeRate=` while the Psychic Dominator is active
+    /// (`PsyDom::Active`, `0x0055B3A4`), else with `AmbientChangeRate=`. The
+    /// chrono screen's test (`0x0055B39B`), in the nuke's arm, is not
+    /// modelled: map trigger action 127 sets it (`0x0053B460`), and VERA does
+    /// not port that action.
     pub(crate) fn tick_scenario_lighting_transition(&mut self, rules: &RuleSet) {
-        let interval_frames = if crate::sim::superweapon::psychic_dominator::active(self) {
+        let interval_frames = if self.session.lighting.nuke_flash_running() {
+            self.session.lighting.nuke_change_rate()
+        } else if crate::sim::superweapon::psychic_dominator::active(self) {
             self.session.lighting.dominator_change_rate
         } else {
             rules.general.ambient_change_interval_frames
@@ -6315,15 +6321,15 @@ impl Simulation {
             self.tick_ore_growth_rungs(rules, overlay_registry);
             // `BombListClass::UpdateAll` follows growth and spread (0x0055B4E1).
             self.bomb_list_update(rules);
-            // `Kamikaze__Update` follows it (0x0055B4F0).
+            // `Kamikaze__Update` follows it (0x0055B4F0). `LightningStorm::
+            // Process` runs whatever the superweapons option (0x0055B5C8): a
+            // map's NUKE weapon starts the nuke flash without a Super.
             self.kamikaze_update(rules);
-            if self.session.game_options.super_weapons {
-                bridge_state_changed |= crate::sim::superweapon::tick_active_superweapon_effects(
-                    self,
-                    rules,
-                    overlay_registry,
-                );
-            }
+            bridge_state_changed |= crate::sim::superweapon::tick_active_superweapon_effects(
+                self,
+                rules,
+                overlay_registry,
+            );
             self.radiation.tick_decay(
                 self.session.binary_frame,
                 &rules.radiation,

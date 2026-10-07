@@ -40747,6 +40747,1555 @@
       "warning_kept": null
     }
   ],
+  "nuke_flash": {
+    "runs": [
+      {
+        "frame": 4000,
+        "frames": 60,
+        "start": {
+          "events": [
+            [
+              "recalc",
+              1750,
+              1500,
+              1250,
+              1
+            ],
+            [
+              "redraw",
+              1
+            ]
+          ],
+          "flash": [
+            1,
+            4000,
+            30
+          ],
+          "target": 200,
+          "timer": [
+            4000,
+            1
+          ]
+        },
+        "steps": [
+          [
+            31,
+            2,
+            4031,
+            15,
+            [
+              [
+                "update_lighting"
+              ],
+              [
+                "redraw",
+                1
+              ]
+            ]
+          ],
+          [
+            47,
+            0,
+            4031,
+            15,
+            []
+          ]
+        ],
+        "target_before": 100,
+        "timer": [
+          77,
+          55
+        ]
+      },
+      {
+        "frame": 17,
+        "frames": 60,
+        "start": {
+          "events": [
+            [
+              "recalc",
+              1750,
+              1500,
+              1250,
+              1
+            ],
+            [
+              "redraw",
+              1
+            ]
+          ],
+          "flash": [
+            1,
+            17,
+            30
+          ],
+          "target": 200,
+          "timer": [
+            17,
+            1
+          ]
+        },
+        "steps": [
+          [
+            31,
+            2,
+            48,
+            15,
+            [
+              [
+                "update_lighting"
+              ],
+              [
+                "redraw",
+                1
+              ]
+            ]
+          ],
+          [
+            47,
+            0,
+            48,
+            15,
+            []
+          ]
+        ],
+        "target_before": 150,
+        "timer": [
+          -1,
+          0
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "after": [
+          1,
+          100,
+          30
+        ],
+        "duration": 30,
+        "events": [],
+        "frame": 130,
+        "start": 100,
+        "status": 1
+      },
+      {
+        "after": [
+          2,
+          131,
+          15
+        ],
+        "duration": 30,
+        "events": [
+          [
+            "update_lighting"
+          ],
+          [
+            "redraw",
+            1
+          ]
+        ],
+        "frame": 131,
+        "start": 100,
+        "status": 1
+      },
+      {
+        "after": [
+          1,
+          100,
+          -1
+        ],
+        "duration": -1,
+        "events": [],
+        "frame": 5000,
+        "start": 100,
+        "status": 1
+      },
+      {
+        "after": [
+          2,
+          100,
+          15
+        ],
+        "duration": 15,
+        "events": [],
+        "frame": 115,
+        "start": 100,
+        "status": 2
+      },
+      {
+        "after": [
+          0,
+          100,
+          15
+        ],
+        "duration": 15,
+        "events": [],
+        "frame": 116,
+        "start": 100,
+        "status": 2
+      },
+      {
+        "after": [
+          2,
+          100,
+          -1
+        ],
+        "duration": -1,
+        "events": [],
+        "frame": 5000,
+        "start": 100,
+        "status": 2
+      },
+      {
+        "after": [
+          0,
+          100,
+          15
+        ],
+        "duration": 15,
+        "events": [],
+        "frame": 5000,
+        "start": 100,
+        "status": 0
+      },
+      {
+        "after": [
+          3,
+          100,
+          15
+        ],
+        "duration": 15,
+        "events": [],
+        "frame": 5000,
+        "start": 100,
+        "status": 3
+      },
+      {
+        "after": [
+          2,
+          2147483633,
+          15
+        ],
+        "duration": 30,
+        "events": [
+          [
+            "update_lighting"
+          ],
+          [
+            "redraw",
+            1
+          ]
+        ],
+        "frame": 2147483633,
+        "start": 2147483632,
+        "status": 1
+      },
+      {
+        "after": [
+          2,
+          -19,
+          15
+        ],
+        "duration": 30,
+        "events": [
+          [
+            "update_lighting"
+          ],
+          [
+            "redraw",
+            1
+          ]
+        ],
+        "frame": -19,
+        "start": -50,
+        "status": 1
+      },
+      {
+        "after": [
+          1,
+          -50,
+          30
+        ],
+        "duration": 30,
+        "events": [],
+        "frame": -20,
+        "start": -50,
+        "status": 1
+      }
+    ]
+  },
+  "nuke_impact": [
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          0
+        ],
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          1
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "anim",
+          "NUKEBALL",
+          [
+            2660,
+            3122,
+            416
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        376
+      ],
+      "location_after": [
+        2660,
+        3122,
+        416
+      ],
+      "next_anim": 1,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 1,
+      "warhead": "NUKE"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            416
+          ]
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "anim",
+          "NUKEBALL",
+          [
+            2660,
+            3122,
+            416
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": 0,
+      "holders": [],
+      "holders_after": [
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        416
+      ],
+      "location_after": [
+        2660,
+        3122,
+        416
+      ],
+      "next_anim": 1,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 1,
+      "warhead": "Nuke"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            441
+          ]
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "anim",
+          "NUKEBALL",
+          [
+            2660,
+            3122,
+            441
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": 25,
+      "holders": [],
+      "holders_after": [
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        441
+      ],
+      "location_after": [
+        2660,
+        3122,
+        441
+      ],
+      "next_anim": 1,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 1,
+      "warhead": "nuke"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            415
+          ]
+        ],
+        [
+          "mark",
+          0
+        ],
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            415
+          ]
+        ],
+        [
+          "mark",
+          1
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "anim",
+          "NUKEBALL",
+          [
+            2660,
+            3122,
+            416
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": -1,
+      "holders": [],
+      "holders_after": [
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        415
+      ],
+      "location_after": [
+        2660,
+        3122,
+        416
+      ],
+      "next_anim": 1,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 1,
+      "warhead": "NUKE"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            822
+          ]
+        ],
+        [
+          "mark",
+          0
+        ],
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            822
+          ]
+        ],
+        [
+          "mark",
+          1
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "anim",
+          "NUKEBALL",
+          [
+            2660,
+            3122,
+            832
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": -10,
+      "holders": [],
+      "holders_after": [
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        822
+      ],
+      "location_after": [
+        2660,
+        3122,
+        832
+      ],
+      "next_anim": 1,
+      "on_bridge": true,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 1,
+      "warhead": "NUKE"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "anim",
+          "NUKEBALL",
+          [
+            2660,
+            3122,
+            416
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        376
+      ],
+      "location_after": [
+        2660,
+        3122,
+        416
+      ],
+      "next_anim": 1,
+      "on_bridge": false,
+      "on_map": false,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 1,
+      "warhead": "NUKE"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          0
+        ],
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          1
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "detonate",
+          1
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        376
+      ],
+      "location_after": [
+        2660,
+        3122,
+        416
+      ],
+      "next_anim": 0,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM"
+      ],
+      "waits": 0,
+      "warhead": "NUKE"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          0
+        ],
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          1
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "detonate",
+          0
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [],
+      "impact_flag": 0,
+      "location": [
+        2660,
+        3122,
+        376
+      ],
+      "location_after": [
+        2660,
+        3122,
+        416
+      ],
+      "next_anim": 0,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM"
+      ],
+      "waits": 0,
+      "warhead": "NUKE"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          0
+        ],
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          1
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "anim",
+          "NUKEBALL",
+          [
+            2660,
+            3122,
+            416
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        376
+      ],
+      "location_after": [
+        2660,
+        3122,
+        416
+      ],
+      "next_anim": 1,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEBALL"
+      ],
+      "waits": 1,
+      "warhead": "NUKE"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          0
+        ],
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          1
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "anim",
+          "nukeball",
+          [
+            2660,
+            3122,
+            416
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        376
+      ],
+      "location_after": [
+        2660,
+        3122,
+        416
+      ],
+      "next_anim": 1,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "nukeball"
+      ],
+      "waits": 1,
+      "warhead": "NUKE"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "detonate",
+          1
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        376
+      ],
+      "location_after": [
+        2660,
+        3122,
+        376
+      ],
+      "next_anim": 0,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 0,
+      "warhead": "NUKE2"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "detonate",
+          0
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [],
+      "impact_flag": 0,
+      "location": [
+        2660,
+        3122,
+        376
+      ],
+      "location_after": [
+        2660,
+        3122,
+        376
+      ],
+      "next_anim": 0,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 0,
+      "warhead": "NukeMaker"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "detonate",
+          1
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        376
+      ],
+      "location_after": [
+        2660,
+        3122,
+        376
+      ],
+      "next_anim": 0,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 0,
+      "warhead": "NUK"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          0
+        ],
+        [
+          "floor",
+          [
+            2660,
+            3122,
+            376
+          ]
+        ],
+        [
+          "mark",
+          1
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            10,
+            12
+          ]
+        ],
+        [
+          "anim",
+          "NUKEBALL",
+          [
+            2660,
+            3122,
+            416
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [
+        "other"
+      ],
+      "holders_after": [
+        "other",
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        2660,
+        3122,
+        376
+      ],
+      "location_after": [
+        2660,
+        3122,
+        416
+      ],
+      "next_anim": 1,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 1,
+      "warhead": "NUKE"
+    },
+    {
+      "candidate": [
+        -3,
+        -257,
+        0
+      ],
+      "cell": [
+        0,
+        -1
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            -300,
+            -1,
+            376
+          ]
+        ],
+        [
+          "mark",
+          0
+        ],
+        [
+          "floor",
+          [
+            -300,
+            -1,
+            376
+          ]
+        ],
+        [
+          "mark",
+          1
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            -1,
+            0
+          ]
+        ],
+        [
+          "anim",
+          "NUKEBALL",
+          [
+            -300,
+            -1,
+            416
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        -300,
+        -1,
+        376
+      ],
+      "location_after": [
+        -300,
+        -1,
+        416
+      ],
+      "next_anim": 1,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 1,
+      "warhead": "NUKE"
+    },
+    {
+      "candidate": [
+        2819,
+        3528,
+        900
+      ],
+      "cell": [
+        11,
+        13
+      ],
+      "events": [
+        [
+          "floor",
+          [
+            255,
+            256,
+            376
+          ]
+        ],
+        [
+          "mark",
+          0
+        ],
+        [
+          "floor",
+          [
+            255,
+            256,
+            376
+          ]
+        ],
+        [
+          "mark",
+          1
+        ],
+        [
+          "screen_nuke_flash"
+        ],
+        [
+          "radar",
+          13,
+          [
+            0,
+            1
+          ]
+        ],
+        [
+          "anim",
+          "NUKEBALL",
+          [
+            255,
+            256,
+            416
+          ],
+          0,
+          1,
+          9728,
+          -15,
+          0
+        ]
+      ],
+      "ground": 416,
+      "height": -40,
+      "holders": [],
+      "holders_after": [
+        "bullet"
+      ],
+      "impact_flag": 1,
+      "location": [
+        255,
+        256,
+        376
+      ],
+      "location_after": [
+        255,
+        256,
+        416
+      ],
+      "next_anim": 1,
+      "on_bridge": false,
+      "on_map": true,
+      "types": [
+        "NUKEANIM",
+        "NUKEBALL"
+      ],
+      "waits": 1,
+      "warhead": "NUKE"
+    }
+  ],
+  "nuke_lighting_read": {
+    "authored": [
+      [
+        "0",
+        0
+      ],
+      [
+        "1",
+        1
+      ],
+      [
+        "1.5",
+        1
+      ],
+      [
+        "2.99",
+        2
+      ],
+      [
+        "3",
+        3
+      ],
+      [
+        "10",
+        10
+      ],
+      [
+        "-1",
+        -1
+      ],
+      [
+        "-2.5",
+        -2
+      ],
+      [
+        ".5",
+        0
+      ],
+      [
+        "1000000",
+        1000000
+      ],
+      [
+        "3000000000",
+        -1294967296
+      ]
+    ],
+    "default_double": 1.0,
+    "default_units": 1,
+    "stored_default": 1
+  },
   "nuke_maker": [
     {
       "altitude": 7000,
@@ -40997,6 +42546,186 @@
         15488,
         0
       ]
+    }
+  ],
+  "nuke_wait": [
+    {
+      "alive": true,
+      "anim": true,
+      "end": "returns",
+      "events": [
+        [
+          "object_ai"
+        ]
+      ],
+      "holders": [
+        "bullet"
+      ],
+      "holders_after": [
+        "bullet"
+      ],
+      "waits": true,
+      "waits_after": 1
+    },
+    {
+      "alive": true,
+      "anim": false,
+      "end": "detonated",
+      "events": [
+        [
+          "object_ai"
+        ],
+        [
+          "detonate",
+          0
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "holders": [
+        "bullet"
+      ],
+      "holders_after": [],
+      "waits": true,
+      "waits_after": 0
+    },
+    {
+      "alive": true,
+      "anim": true,
+      "end": "flies",
+      "events": [
+        [
+          "object_ai"
+        ]
+      ],
+      "holders": [],
+      "holders_after": [],
+      "waits": false,
+      "waits_after": 0
+    },
+    {
+      "alive": false,
+      "anim": true,
+      "end": "returns",
+      "events": [
+        [
+          "object_ai"
+        ]
+      ],
+      "holders": [
+        "bullet"
+      ],
+      "holders_after": [
+        "bullet"
+      ],
+      "waits": true,
+      "waits_after": 1
+    },
+    {
+      "alive": false,
+      "anim": false,
+      "end": "returns",
+      "events": [
+        [
+          "object_ai"
+        ]
+      ],
+      "holders": [
+        "bullet"
+      ],
+      "holders_after": [
+        "bullet"
+      ],
+      "waits": true,
+      "waits_after": 1
+    },
+    {
+      "alive": true,
+      "anim": false,
+      "end": "detonated",
+      "events": [
+        [
+          "object_ai"
+        ],
+        [
+          "detonate",
+          0
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "holders": [
+        "other",
+        "bullet"
+      ],
+      "holders_after": [
+        "other"
+      ],
+      "waits": true,
+      "waits_after": 0
+    },
+    {
+      "alive": true,
+      "anim": false,
+      "end": "detonated",
+      "events": [
+        [
+          "object_ai"
+        ],
+        [
+          "detonate",
+          0
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "holders": [
+        "bullet",
+        "other"
+      ],
+      "holders_after": [
+        "other"
+      ],
+      "waits": true,
+      "waits_after": 0
+    },
+    {
+      "alive": true,
+      "anim": false,
+      "end": "detonated",
+      "events": [
+        [
+          "object_ai"
+        ],
+        [
+          "detonate",
+          0
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "holders": [],
+      "holders_after": [],
+      "waits": true,
+      "waits_after": 0
+    },
+    {
+      "alive": true,
+      "anim": false,
+      "end": "flies",
+      "events": [
+        [
+          "object_ai"
+        ]
+      ],
+      "holders": [],
+      "holders_after": [],
+      "waits": false,
+      "waits_after": 0
     }
   ],
   "opening_super_anim": [
