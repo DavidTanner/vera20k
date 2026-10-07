@@ -39280,6 +39280,337 @@
           []
         ]
       ]
+    },
+    {
+      "applies": [
+        0
+      ],
+      "before": 2,
+      "curtain_timer": [
+        1000,
+        111
+      ],
+      "duration": 111,
+      "force_shield": false,
+      "force_shielded": 0,
+      "frames": 114,
+      "rng_after": "0000000002000000690000006ecdf0a7a9a5488a1ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
+      "seed": 7,
+      "start": 1000,
+      "steps": [
+        [
+          -2,
+          0,
+          -1,
+          0,
+          []
+        ],
+        [
+          0,
+          1,
+          1000,
+          6,
+          []
+        ],
+        [
+          6,
+          2,
+          1006,
+          4,
+          []
+        ],
+        [
+          10,
+          3,
+          1010,
+          24,
+          [
+            [
+              -5,
+              5
+            ]
+          ]
+        ],
+        [
+          34,
+          4,
+          1034,
+          8,
+          []
+        ],
+        [
+          42,
+          5,
+          1042,
+          16,
+          []
+        ],
+        [
+          58,
+          6,
+          1042,
+          16,
+          []
+        ],
+        [
+          81,
+          7,
+          1081,
+          6,
+          []
+        ],
+        [
+          87,
+          8,
+          1087,
+          4,
+          []
+        ],
+        [
+          91,
+          9,
+          1091,
+          20,
+          []
+        ],
+        [
+          111,
+          0,
+          1091,
+          20,
+          []
+        ]
+      ]
+    },
+    {
+      "applies": [
+        0
+      ],
+      "before": 2,
+      "curtain_timer": [
+        1000,
+        112
+      ],
+      "duration": 112,
+      "force_shield": false,
+      "force_shielded": 0,
+      "frames": 115,
+      "rng_after": "0000000002000000690000006ecdf0a7a9a5488a1ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
+      "seed": 7,
+      "start": 1000,
+      "steps": [
+        [
+          -2,
+          0,
+          -1,
+          0,
+          []
+        ],
+        [
+          0,
+          1,
+          1000,
+          6,
+          []
+        ],
+        [
+          6,
+          2,
+          1006,
+          4,
+          []
+        ],
+        [
+          10,
+          3,
+          1010,
+          24,
+          [
+            [
+              -5,
+              5
+            ]
+          ]
+        ],
+        [
+          34,
+          4,
+          1034,
+          8,
+          []
+        ],
+        [
+          42,
+          5,
+          1042,
+          16,
+          []
+        ],
+        [
+          58,
+          4,
+          1058,
+          8,
+          []
+        ],
+        [
+          66,
+          5,
+          1066,
+          16,
+          []
+        ],
+        [
+          82,
+          6,
+          1066,
+          16,
+          []
+        ],
+        [
+          83,
+          7,
+          1083,
+          6,
+          []
+        ],
+        [
+          89,
+          8,
+          1089,
+          4,
+          []
+        ],
+        [
+          93,
+          9,
+          1093,
+          20,
+          []
+        ],
+        [
+          112,
+          0,
+          1093,
+          20,
+          []
+        ]
+      ]
+    },
+    {
+      "applies": [
+        0
+      ],
+      "before": 2,
+      "curtain_timer": [
+        1000,
+        113
+      ],
+      "duration": 113,
+      "force_shield": false,
+      "force_shielded": 0,
+      "frames": 116,
+      "rng_after": "0000000002000000690000006ecdf0a7a9a5488a1ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
+      "seed": 7,
+      "start": 1000,
+      "steps": [
+        [
+          -2,
+          0,
+          -1,
+          0,
+          []
+        ],
+        [
+          0,
+          1,
+          1000,
+          6,
+          []
+        ],
+        [
+          6,
+          2,
+          1006,
+          4,
+          []
+        ],
+        [
+          10,
+          3,
+          1010,
+          24,
+          [
+            [
+              -5,
+              5
+            ]
+          ]
+        ],
+        [
+          34,
+          4,
+          1034,
+          8,
+          []
+        ],
+        [
+          42,
+          5,
+          1042,
+          16,
+          []
+        ],
+        [
+          58,
+          4,
+          1058,
+          8,
+          []
+        ],
+        [
+          66,
+          5,
+          1066,
+          16,
+          []
+        ],
+        [
+          82,
+          6,
+          1066,
+          16,
+          []
+        ],
+        [
+          83,
+          7,
+          1083,
+          6,
+          []
+        ],
+        [
+          89,
+          8,
+          1089,
+          4,
+          []
+        ],
+        [
+          93,
+          9,
+          1093,
+          20,
+          []
+        ],
+        [
+          113,
+          0,
+          1093,
+          20,
+          []
+        ]
+      ]
     }
   ],
   "mission_missile": [

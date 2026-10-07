@@ -45,17 +45,23 @@ confirmed in Ghidra; commit, publish and merge validated chains.
    ([map_observation.md](../../tools/map_observation.md#computer-iron-curtain-observation)).
    Action 56 `0x6EFE60` is not ported: only the retail campaign map SOV02SMD.MAP
    uses it (four scripts).
+8. The Iron Curtain's and Force Shield's tint stage: TechnoClass::UpdateIronTint
+   `0x70E5A0`, the first step of every curtained object's Techno AI (`0x6F9EAF`),
+   with its Scenario draw (`superweapon/invulnerability.rs`, `world/techno_ai.rs`).
+   Oracle section `iron_tint`, replayed in `invulnerability_tests.rs`; production
+   observations
+   ([map_observation.md](../../tools/map_observation.md#computer-iron-curtain-observation)).
 
 `fire::launch` now dispatches every Launch arm; none refuses a click. `ai_fire.rs` RESIDUALS lists the AI-side gaps (preferred
 target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
 
 ## Next chains (one PR each)
 
-- The Iron Curtain's and Force Shield's unit tint: TechnoClass::AI (`0x6F9EAF`) steps
-  each curtained techno's tint stage (`+0x1A4`, TechnoClass::UpdateIronTint `0x70E5A0`),
-  which draws the scenario RNG once per techno (`RandomRanged(-5, 5)` at `0x70E694`),
-  so VERA's scenario stream drifts after every Iron Curtain or Force Shield (read, not
-  executed). The draw path has no stage to feed `0x70E380` (a residual in
+- The Iron Curtain's and Force Shield's tint on screen: no draw reads the stage yet.
+  UnitClass::DrawVoxelBody scales a curtained unit's intensity by it and adds the
+  `IronCurtainColor=` `[ColorAdd]` colour (`0x0073BF9C..0x0073C07A`, through
+  `GetEffectTintIntensity 0x70E360`); TechnoClass::Draw, DrawSHP and the building anim
+  updates scale theirs (residuals in `superweapon/invulnerability.rs` and
   `render/draw_state.rs`).
 - The nuke's screen flash (`NukeFlash`) and its lighting arm (`+0x3570`/`+0x3574`,
   a residual in `sim/light_sources.rs`).
@@ -67,7 +73,9 @@ target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
   and 11 (a residual in `app/match_runtime/super_selection.rs`).
 
 The ChronoWarpTo paths (`0x4DF7F0`, `0x522FE0`) are map-trigger only; they stay a
-residual in `superweapon/chronosphere.rs`.
+residual in `superweapon/chronosphere.rs`. The map trigger action
+TActionClass::IronCurtainAtWP (`0x6E36E0`) is unported; its port applies the curtain
+through `invulnerability::apply_invulnerability`.
 
 Launch jump table `0x6CDE44`: 0 `0x6CDA67`, 1 `0x6CCE64`, 2 `0x6CCD3F`, 3 `0x6CC3B9`,
 4 `0x6CC4B2`, 5 `0x6CD2EE`, 6 `0x6CD537`, 7 `0x6CCDBD`, 8 `0x6CD66F`, 9 `0x6CD7E7`,

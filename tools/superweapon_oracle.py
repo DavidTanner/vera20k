@@ -3171,12 +3171,17 @@ def iron_tint_row(*, duration, frames, applies=(0,), force_shield=False, seed=7,
 def iron_tint():
     """The retail Iron Curtain and Force Shield durations to past their end,
     a re-application before the draw and one after it, and short durations
-    around each test of the curtain's time left (54 at stage 5, 30 at 6)."""
+    around each test of the curtain's time left (54 at stage 5, 30 at 6).
+    Seed 7 draws 4 first (stage 3 lasts 24 frames), so its stage 5 first runs
+    out at offset 58: curtains of 111, 112 and 113 frames have 53, 54 and 55
+    left there."""
     rows = [iron_tint_row(duration=750, frames=760),
             iron_tint_row(duration=500, frames=510, force_shield=True, seed=11),
             iron_tint_row(duration=750, frames=120, applies=(0, 9, 40), seed=3)]
     for duration in (1, 6, 10, 11, 30, 31, 40, 54, 55, 60, 84, 85, 100):
         rows.append(iron_tint_row(duration=duration, frames=duration + 3, seed=duration))
+    for duration in (111, 112, 113):
+        rows.append(iron_tint_row(duration=duration, frames=duration + 3, seed=7))
     return rows
 
 

@@ -1047,6 +1047,14 @@ fn techno_common_steps(
 /// curtained object's tint stage, whose stage 2 draws from the Scenario
 /// stream ([`InvulnerabilityState::update_tint`]).
 ///
+/// RESIDUAL: the next step, `TechnoClass::UpdateAirstrikeTint`
+/// (`0x0070E920`, called at `0x006F9EB6`), steps the airstrike tint of a
+/// building its own AirstrikeClass (`+0x294`) targets and makes the same
+/// Scenario `RandomRanged(-5, 5)` draw at that stage machine's stage 2 step.
+/// VERA has no AirstrikeClass (Boris' airstrike), so the draw is missing with
+/// it. Trigger: a building marked by Boris. Downstream: later Scenario draws
+/// shift.
+///
 /// [`InvulnerabilityState::update_tint`]: crate::sim::superweapon::invulnerability::InvulnerabilityState::update_tint
 fn iron_tint_step(sim: &mut Simulation, id: u64) {
     let frame = sim.session.binary_frame as i32;

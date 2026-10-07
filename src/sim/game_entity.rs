@@ -887,9 +887,12 @@ pub struct GameEntity {
     /// is also the object's IsFallingDown ([`Self::is_falling_down`]).
     #[serde(default)]
     pub parachute_state: Option<crate::sim::movement::parachute_descent::ParachuteDescentState>,
-    /// Active IronCurtain or ForceShield invulnerability timer.
-    /// `None` = entity is vulnerable to damage. `Some` = all damage is nullified
-    /// (except healing) until the timer expires. Applied by superweapon launch handlers.
+    /// The IronCurtain or ForceShield state: the curtain's timer and its tint
+    /// stage. `None` until the first curtain; `Some` after it, nullifying all
+    /// damage (except healing) while the timer runs ([`is_invulnerable`]).
+    /// Applied by superweapon launch handlers.
+    ///
+    /// [`is_invulnerable`]: crate::sim::superweapon::invulnerability::is_invulnerable
     #[serde(default)]
     pub invulnerability: Option<InvulnerabilityState>,
     /// The victim side of mind control (`TechnoClass+0x2C0` MindControlledBy,

@@ -73,8 +73,8 @@
     "TechnoClass::UpdateIronTint": "0x0070E5A0"
   },
   "source_normalized_lf_sha256": {
-    "superweapon_oracle": "c3bc01dd3202200f2a23ec73b0a7c97360e257daba5cd3a87f8f43755b0626d2",
+    "superweapon_oracle": "064899507f625a9eaed96af9d2a3390d785be093ffb9cd88f145b82565a68982",
     "ai_base_building_oracle": "0579013a4d58a3d89f9ab427fb6396da7b917c84c55ad016aa397baec780d623"
   },
-  "payload_sha256": "7023374e03e8d548b950a28883fe8d0a0f3560d59cbb287651870e97522dc7ff"
+  "payload_sha256": "096f15ba98701e53d66a86b59a41f56451dc1167fcf2e0b84bf4ab9dd854a0aa"
 }
