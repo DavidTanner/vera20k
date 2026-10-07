@@ -137,6 +137,13 @@ when cloned into their own manager. Do not use this route to fork a callback typ
   `CALL_OVERRIDE_UNCONDITIONAL` reference on the call does: the decompile then shows a
   direct call with the target's prototype and pop. Add one only where the target is
   proven to be a single function ([Virtual-call references](#virtual-call-references)).
+  The override takes effect only as the operand's primary reference. Where analysis
+  propagated the vtable, the operand already holds a primary `READ` of the vtable slot;
+  an override added beside it is ignored, and removing the `READ` afterwards does not
+  promote it. Remove every reference on the operand, then add the override alone
+  (`add_memory_reference` then reports `is_primary: true`). The overrides at the second
+  Fetch_ID call of four Load functions (`0x41B534`, `0x521A5A`, `0x71CEB6`, `0x74456A`)
+  sat beside such `READ`s and changed nothing until they were redone on 2026-10-07.
 - In a method typed with an interface view (`<Class>_ILocomotionView`, the object seen
   from its interface pointer at +4), `this[-1].<last view field>`, with or without `&`,
   is `this - 4`, the object itself. An owner typed `FootClass *` that is an AircraftClass
