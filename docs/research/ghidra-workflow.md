@@ -608,6 +608,20 @@ Checked 2026-09-30 against the headless GhidraMCP 5.14.2 server:
 - `create_label` at an address that already has a label adds a second one; the first
   stays primary. `audit_global` reports only the primary label; `list_globals` with
   `name_substring` finds the others.
+- `set_global` checks the name against `NamingConventions.java`: after `g_` it needs a
+  recognized Hungarian prefix (`p`, `n`, `dw`, `sz`, `ab`, ...), and where the server
+  maps the prefix to types, the type must fit. No prefix stands for a struct, so it
+  rejected `g_MouseCursorTimer` (a CDTimerClass) and `g_aMouseCursors` (an array of
+  structs) on 2026-10-07. Only a prefix without a type mapping, such as `ab`, gets
+  through, and it misdescribes the type. `apply_data_type` types a global and keeps
+  its label; a default `DAT_` label then shows as the type and address
+  (`CDTimerClass_00abf2a0`).
+- Labels inside a struct-typed global stop showing in decompiles. Once
+  g_DisplaySingleton (0x87F7E8) was typed MouseClass, CreditsClass__AI's write to
+  0x884B90 read `...base_SidebarClass.fCreditsChanged = true`, not the label
+  `g_SidebarNeedsRedraw` at that address (checked 2026-10-07). A name search still
+  finds such labels, so check each one against the field it lands in when typing
+  the global.
 - The `find_code_gaps` records carry the neighbouring function names; compare gap
   positions and sizes, not the text, across renames.
 - Longer names can rewrap caller C while basic p-code stays unchanged (checked in
@@ -707,6 +721,12 @@ Receiver tools, checked on staging copies:
   unresolved virtual targets or lifetimes. Keep established native receiver,
   argument and return contracts; changing them to silence a warning can conceal
   the underlying analysis problem.
+  In the screen-class passes (2026-10-07) the warning followed the depth of the
+  base chain. `TabClass__RemoveCommandBarButtons`, which only calls through the
+  vtable, warned with `this` typed TabClass, whose `pVtable` is six bases down. It
+  decompiled clean typed SidebarClass or PowerClass, and flattening a base did not
+  help. Typing the screen singleton as MouseClass gave the warning, and nothing
+  else, to 9 of its 1,082 readers.
 - `set_function_prototype` applies the parameters under the function's old convention
   and sets the new convention afterwards. Ghidra stores a stack purge only for a function
   that has none, and computes it from that first step. So a `__fastcall` prototype on a
