@@ -266,10 +266,24 @@ impl MindControlLink {
         self.controller
     }
 
+    /// `+0x2C4` alone, which All_To_Hunt's Dominator arm reads (`0x0050144B`).
+    pub(crate) fn permanent(&self) -> bool {
+        self.permanent
+    }
+
     #[cfg(test)]
     pub(crate) fn controlled_by_for_test(controller: u64) -> Self {
         Self {
             controller: Some(controller),
+            ..Self::default()
+        }
+    }
+
+    /// The Dominator's hold (`+0x2C4`) with no controller or ring.
+    #[cfg(test)]
+    pub(crate) fn permanent_for_test() -> Self {
+        Self {
+            permanent: true,
             ..Self::default()
         }
     }

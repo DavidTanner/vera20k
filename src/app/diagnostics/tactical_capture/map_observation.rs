@@ -2385,6 +2385,18 @@ mod tests {
     }
 
     #[test]
+    fn computer_psychic_dominator_example_leaves_the_launch_to_the_computer() {
+        let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.ai-psychic-dominator.example.json",
+        ))
+        .unwrap();
+        profile.validate().unwrap();
+        assert_eq!(profile.observe_super_weapons, Some(true));
+        // The computer's Strategy tick aims its charged Dominator.
+        assert!(profile.commands().is_empty());
+    }
+
+    #[test]
     fn chronosphere_example_warps_the_source_block_with_a_tactical_click() {
         let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
             "tools/map_observation.chronosphere.example.json",

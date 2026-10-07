@@ -733,6 +733,60 @@ fn retail_computer_dominator_sends_its_captives_hunting() {
     }
 }
 
+/// The computer's own Dominator on retail rules, through AI_TryFireSW's arm
+/// (`AI_Fire_PsyDom @ 0x0050A150`): the Russians (a computer) with the
+/// Americans as their enemy aim at the group, not the lone tank, and take it
+/// and send it hunting. Another try while it runs fires nothing
+/// (`PsyDom::Active`).
+#[test]
+fn retail_computer_aims_its_dominator_at_the_group() {
+    let Some(rules) = retail_rules() else {
+        return;
+    };
+    let (rules, mut sim, americans) = world_with(rules, 64, &[]);
+    let russians: InternedId = sim.interner.intern("Russians");
+    sim.houses.get_mut(&russians).unwrap().enemy_house = Some(americans);
+    let lone = spawn(&mut sim, &rules, "MTNK", "Americans", (20, 20));
+    let group = [
+        spawn(&mut sim, &rules, "E1", "Americans", (40, 40)),
+        spawn(&mut sim, &rules, "E1", "Americans", (41, 40)),
+        spawn(&mut sim, &rules, "MTNK", "Americans", (40, 41)),
+    ];
+    let sw_type = charge_super(&mut sim, russians, DOMINATOR);
+
+    super::ai_fire::try_fire(&mut sim, &rules, russians, None);
+
+    assert_eq!(sim.psychic_dominator.status_number(), 1);
+    assert_eq!(sim.psychic_dominator.owner(), Some(russians));
+    let cell = sim.psychic_dominator.cell();
+    assert!(
+        [(40, 40), (41, 40), (40, 41)].contains(&cell),
+        "aimed at {cell:?}"
+    );
+    assert!(!sim.super_weapons[&russians][&sw_type].is_ready);
+    charge_super(&mut sim, russians, DOMINATOR);
+    super::ai_fire::try_fire(&mut sim, &rules, russians, None);
+    assert!(sim.super_weapons[&russians][&sw_type].is_ready);
+    assert_eq!(sim.psychic_dominator.cell(), cell);
+
+    let mut frames = 0;
+    while sim.psychic_dominator.status_number() != 3 {
+        step(&mut sim, &rules);
+        frames += 1;
+        assert!(frames < 200, "no strike");
+    }
+    for id in group {
+        assert_eq!(owner_name(&sim, id), "Russians");
+        let mission = sim.substrate.entities.get(id).unwrap().mission;
+        assert!(
+            [mission.current().known(), mission.queued().known()]
+                .contains(&Some(MissionType::Hunt)),
+            "{id}: {mission:?}"
+        );
+    }
+    assert_eq!(owner_name(&sim, lone), "Americans");
+}
+
 /// A captive another house's Yuri holds is let go first (FreeUnit through
 /// the controller's manager, `0x0053B287`): it leaves the manager and its
 /// MINDANIM ring, then joins the launcher's house for good with the

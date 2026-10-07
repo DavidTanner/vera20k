@@ -47,6 +47,11 @@ fixture machinery):
   InfantryClass::Array and cell lists (CellClass::GetInfantry 0x47EC40 runs
   natively). Its cell-offset table 0xABD490 lies in BSS: the static
   initializer 0x561910 fills it first.
+- ai_psydom: HouseClass::AI_Fire_PsyDom 0x50A150 over a fixture
+  FootClass::Array and cell lists: its gates, each ground list read from its
+  head while the objects are Feet, the house tests, CanBePermaMindControlled
+  0x53C450 and Is_Cell_In_Playfield 0x578460 (both run natively), the sweep
+  over table entries 0..=37 and the pick.
 - chrono_process: a Chrono Warp's TeleportLocomotionClass from the first
   frame after Launch case 4 to the end of its piggyback: Process 0x7192F0,
   TimerCheck 0x719BF0, Is_Ok_To_End 0x719F30 and the constructor, Link and
@@ -1438,6 +1443,153 @@ def gen_mutator():
     return rows
 
 
+# ---------------------------------------------------------------- ai_psydom
+
+FOOT_ITEMS, FOOT_COUNT = 0x8B3DC4, 0x8B3DD0
+FOOT_POINTERS = POINTERS + 0x1000
+PSY_TYPES = AI + 0x84000
+PSY_TYPE_STRIDE = 0x1000
+STUB_PSY_TYPE = STUBS + 0x260
+STUB_CURTAINED = STUBS + 0x270
+# AbstractClass+0x14: Techno (bit 0, 0x6F322F), Object (bit 1) and Foot
+# (bit 2, FootClass's constructor at 0x4D34DD).
+ABSTRACT_FLAGS = {'unit': 7, 'infantry': 7, 'aircraft': 7, 'building': 3}
+
+
+def psydom_ai_row(objects, *, psydom=0, enemy_index=1):
+    """HouseClass::AI_Fire_PsyDom 0x50A150 for the computer house's charged
+    Dominator (Super 0). `objects`: (kind, owner, cell, extra) in spawn
+    order; each Foot is FootClass::Array's next entry and lists itself in
+    its cell like Unlimbo: a non-building at the head of its ground list
+    (the bridge list for extra bridge), a building at the tail. Owner 'none'
+    is an object of no house. extra: limbo, high (vt+0x54), immune
+    (ImmuneToPsionics, type +0xD35), balloon (BalloonHover, +0xD6A), curtain
+    (vt+0x160). CanBePermaMindControlled 0x53C450 and Is_Cell_In_Playfield
+    0x578460 run natively."""
+    emu = Emu()
+    install_houses(emu, enemy_index=enemy_index)
+    install_playfield(emu)
+    install_supers(emu, [(7, True)])
+    write8(emu, SCENARIO_ACTIVE, 1)
+    emu.write32(G_PSYDOM_STATUS, psydom)
+    record_fire(emu)
+    owners = {'self': HOUSE, 'enemy': ENEMY, 'ally': ALLY, 'none': 0}
+    cells = {}
+    facts = {}
+    feet = []
+
+    def cell_block(cell):
+        cell = tuple(cell)
+        if cell not in cells:
+            block = CELL_BLOCKS + len(cells) * CELL_STRIDE
+            emu.uc.mem_write(block + 0x24, struct.pack('<hh', *cell))
+            cells[cell] = block
+        return cells[cell]
+
+    for offset, stub in ((0x2C, STUB_WHAT), (0x3C, STUB_OWNER), (0x54, STUB_HIGH),
+                         (0x84, STUB_PSY_TYPE), (0x160, STUB_CURTAINED),
+                         (0x1BC, STUB_GET_CELL)):
+        emu.write32(OBJECT_VT + offset, stub)
+    for index, (kind, owner, cell, extra) in enumerate(objects):
+        this = OBJECTS + index * OBJECT_STRIDE
+        ty = PSY_TYPES + index * PSY_TYPE_STRIDE
+        facts[this] = dict(what=WHAT[kind], owner=owners[owner], high=extra.get('high', False),
+                           cell=tuple(cell), type=ty, curtain=extra.get('curtain', False))
+        emu.write32(this, OBJECT_VT)
+        write8(emu, this + 0x14, ABSTRACT_FLAGS[kind])
+        write8(emu, this + 0x81, extra.get('limbo', False))
+        write8(emu, ty + 0xD35, extra.get('immune', False))
+        write8(emu, ty + 0xD6A, extra.get('balloon', False))
+        block = cell_block(cell)
+        head = block + (0xE8 if extra.get('bridge', False) else 0xE4)
+        if not extra.get('limbo', False):
+            if kind == 'building':
+                tail = head - 0x30
+                while emu.read32(tail + 0x30):
+                    tail = emu.read32(tail + 0x30)
+                emu.write32(tail + 0x30, this)
+            else:
+                emu.write32(this + 0x30, emu.read32(head))
+                emu.write32(head, this)
+        if kind != 'building':
+            emu.write32(FOOT_POINTERS + 4 * len(feet), this)
+            feet.append(this)
+    emu.write32(FOOT_ITEMS, FOOT_POINTERS)
+    emu.write32(FOOT_COUNT, len(feet))
+
+    def fact(e, key):
+        return facts[e.uc.reg_read(UC_X86_REG_ECX)][key]
+
+    emu.hook(0x5657A0, lambda e: cell_block(read_cell(e, e.arg(0))), 4)
+    emu.hook(STUB_WHAT, lambda e: fact(e, 'what'), 0)
+    emu.hook(STUB_OWNER, lambda e: fact(e, 'owner'), 0)
+    emu.hook(STUB_HIGH, lambda e: int(fact(e, 'high')), 0)
+    emu.hook(STUB_PSY_TYPE, lambda e: fact(e, 'type'), 0)
+    emu.hook(STUB_CURTAINED, lambda e: int(fact(e, 'curtain')), 0)
+    emu.hook(STUB_GET_CELL, lambda e: cell_block(fact(e, 'cell')), 0)
+    emu.invoke(CELL_OFFSETS_INIT)
+    emu.invoke(0x50A150, ecx=HOUSE, args=[AI_SUPERS])
+    return dict(psydom=psydom, enemy_index=enemy_index,
+                objects=[[kind, owner, list(cell), extra]
+                         for kind, owner, cell, extra in objects],
+                events=emu.events)
+
+
+def psydom_ai():
+    def foot(kind, owner, cell, **extra):
+        return (kind, owner, cell, extra)
+
+    def inf(owner, cell, **extra):
+        return foot('infantry', owner, cell, **extra)
+
+    def tank(owner, cell, **extra):
+        return foot('unit', owner, cell, **extra)
+
+    row = psydom_ai_row
+    return [
+        row([inf('enemy', (30, 31))]),
+        # Gates: a Dominator running (any status but 0), no enemy.
+        row([inf('enemy', (30, 31))], psydom=5),
+        row([inf('enemy', (30, 31))], enemy_index=-1),
+        # Own and allied objects never count; one of no house does.
+        row([inf('self', (30, 31))]),
+        row([inf('ally', (30, 31))]),
+        row([tank('none', (30, 31))]),
+        # The house's own unit is a centre like any other.
+        row([tank('self', (30, 31)), inf('enemy', (32, 31))]),
+        # CanBePermaMindControlled's refusals and the air.
+        row([inf('enemy', (30, 31), immune=True), inf('self', (36, 36))]),
+        row([tank('enemy', (30, 31), balloon=True), inf('self', (36, 36))]),
+        row([tank('enemy', (30, 31), curtain=True), inf('self', (36, 36))]),
+        row([foot('aircraft', 'enemy', (30, 31), high=True), inf('self', (36, 36))]),
+        row([foot('aircraft', 'enemy', (30, 31)), inf('self', (36, 36))]),
+        # The densest neighbourhood; a tie keeps the later Foot.
+        row([inf('enemy', (30, 31)), inf('enemy', (30, 31)), tank('enemy', (44, 40)),
+             tank('enemy', (45, 40)), tank('enemy', (44, 41))]),
+        row([tank('enemy', (30, 31)), tank('enemy', (31, 31)), tank('enemy', (44, 40)),
+             tank('enemy', (45, 40))]),
+        # The sweep: table entries 0..=37 (the radius-3 band's 37 inclusive).
+        row([tank('enemy', (30, 30)), tank('enemy', (33, 30)), tank('enemy', (40, 40))]),
+        row([tank('enemy', (30, 30)), tank('enemy', (34, 30)), tank('enemy', (40, 40))]),
+        row([tank('enemy', (30, 30)), tank('enemy', (32, 32)), tank('enemy', (40, 40))]),
+        row([tank('enemy', (30, 30)), tank('enemy', (33, 33)), tank('enemy', (40, 40))]),
+        # The last entry, 37 at (-1,-4), counts and entry 38 at (0,-4) does not;
+        # the partner never sees the centre ((1,4) and (0,4) lie past 37).
+        row([tank('enemy', (30, 34)), tank('enemy', (29, 30))]),
+        row([tank('enemy', (30, 34)), tank('enemy', (30, 30))]),
+        # A ground list counts from its head while each object is a Foot.
+        row([tank('enemy', (30, 31)), ('building', 'enemy', (30, 31), {}),
+             tank('enemy', (30, 31)), inf('self', (36, 36))]),
+        # The bridge list is never read, though its Foot is a centre.
+        row([tank('enemy', (30, 31), bridge=True), tank('enemy', (31, 31))]),
+        row([tank('enemy', (30, 31), bridge=True), inf('self', (36, 36))]),
+        # A limbo Foot is no centre and lists nowhere.
+        row([tank('enemy', (30, 31), limbo=True), inf('self', (36, 36))]),
+        # Off the playfield nothing fires.
+        row([inf('enemy', (10, 10))]),
+        row([]),
+    ]
+
 # ---------------------------------------------------------------- chrono_process
 
 # A Chrono Warp's Teleport and its owner as Launch case 4 leaves them
@@ -2338,6 +2490,7 @@ def generate():
             'ai_try_fire': try_fire(), 'ai_best_rally_target': best_rally_target(),
             'ai_ground_rally_point': ground_rally_point(),
             'ai_genetic_mutator': gen_mutator(),
+            'ai_psydom': psydom_ai(),
             'chrono_process': chrono_process(),
             'chrono_update_position': update_position(),
             'chrono_destination': chrono_destination(),
@@ -2364,7 +2517,8 @@ if __name__ == '__main__':
                'bullet and velocity bits, and both SuperAnim blocks; the computer\'s '
                'superweapon use: AI_TryFireSW\'s gates, arms and Force Shield timing, '
                'AI_FindBestRallyTarget\'s values, draws and pick, AI_GroundRallyPoint\'s '
-               'cell and AI_Fire_GenMutator\'s count and pick; the Chrono Warp\'s Teleport '
+               'cell, and AI_Fire_GenMutator\'s and AI_Fire_PsyDom\'s counts and picks; '
+               'the Chrono Warp\'s Teleport '
                'states, owner bytes, timers and end frame, unblocked, blocked once or '
                'twice and with a stale ChronoDelay; Update_Position\'s placement, '
                'kills, blocks and blocked retarget; Launch case 4\'s destinations; the '
@@ -2404,6 +2558,12 @@ if __name__ == '__main__':
                        'GetOwningHouse vt+0x3C, IsHighFlying vt+0x54 and GetCell vt+0x1BC '
                        'answer supplied facts; MapClass::operator[] 0x5657A0 answers fixture '
                        'cells; every IsCellInPlayfield lookup misses (level and slope 0)',
+                       'ai_psydom: FootClass::Array 0x8B3DC4 holds the row\'s Feet in spawn '
+                       'order, each listed in its cell as Unlimbo lists it; object '
+                       'GetTechnoType vt+0x84 answers a fixture type holding the row\'s '
+                       'ImmuneToPsionics (+0xD35) and BalloonHover (+0xD6A), and '
+                       'IsIronCurtained vt+0x160 the row\'s fact; Fire_SW 0x4FAE50 is a '
+                       'recorded stub',
                        'chrono_process: Update_Position 0x718260 is a recorded stub that '
                        'answers blocked for the row\'s first calls (moving +0x288 one cell '
                        'east) and otherwise true, setting Marked when placing; the owner\'s '
@@ -2455,6 +2615,7 @@ if __name__ == '__main__':
                       'OnConstructionComplete_super_anim': 0x4463F0,
                       'AI_TryFireSW': 0x5098F0, 'AI_FindBestRallyTarget': 0x50CBF0,
                       'AI_GroundRallyPoint': 0x509CD0, 'AI_Fire_GenMutator': 0x509F60,
+                      'AI_Fire_PsyDom': 0x50A150,
                       'TeleportLocomotionClass::Process': 0x7192F0,
                       'TeleportLocomotionClass::Update_Position': 0x718260,
                       'SuperClass::Launch_case4_destination': 0x6CC9AF,

@@ -3,10 +3,9 @@
 //!
 //! The AI_TryFireSW call is compared (its body has its own replay,
 //! `superweapon/ai_fire_tests.rs`). Not compared, as residuals (module doc):
-//! the Check_Build_Need and Manage_Build_Queue calls, All_To_Hunt's Dominator
-//! objects (`+0x2C4`, which VERA cannot hold), its team removal and its
-//! garrison release. The money queries read the credits; every cell the
-//! search looks up is compared as the house's base origin.
+//! the Check_Build_Need and Manage_Build_Queue calls, All_To_Hunt's team
+//! removal and its garrison release. The money queries read the credits;
+//! every cell the search looks up is compared as the house's base origin.
 
 use super::*;
 use std::collections::BTreeSet;
@@ -349,42 +348,90 @@ fn the_fire_sale_matches_native() {
     }
 }
 
+/// All_To_Hunt against the native rows: who queues Hunt, and which object
+/// the Dominator holds takes its `Strength=` as `C4Warhead=` damage instead
+/// (`ReceiveDamage(&Strength, 0, C4Warhead, NULL, 1, 1, NULL)`). Each slot's
+/// type carries the row's `Strength=` and `Insignificant=`; the C4 warhead's
+/// halved verses show that the damage ignores defences.
 #[test]
 fn all_to_hunt_matches_native() {
     for row in oracle()["all_to_hunt"].as_array().unwrap() {
         let label = &row["label"];
+        let technos = row["technos"].as_array().unwrap();
+        let mut ini = String::from(
+            "[CombatDamage]\nC4Warhead=C4WH\n\
+             [C4WH]\nVerses=50%,50%,50%,50%,50%,50%,50%,50%,50%,50%,50%\n",
+        );
+        let mut registries: [(&str, Vec<String>); 4] = [
+            ("InfantryTypes", Vec::new()),
+            ("VehicleTypes", Vec::new()),
+            ("AircraftTypes", Vec::new()),
+            ("BuildingTypes", Vec::new()),
+        ];
+        for (slot, techno) in technos.iter().enumerate() {
+            let registry = if flag(&techno["foot"]) { slot % 3 } else { 3 };
+            registries[registry].1.push(format!("T{slot}"));
+            ini += &format!(
+                "[T{slot}]\nStrength={}\nInsignificant={}\n",
+                int(&techno["strength"]),
+                if flag(&techno["insignificant"]) {
+                    "yes"
+                } else {
+                    "no"
+                }
+            );
+        }
+        for (section, types) in &registries {
+            ini += &format!("[{section}]\n");
+            for (index, name) in types.iter().enumerate() {
+                ini += &format!("{index}={name}\n");
+            }
+        }
+        let rules = RuleSet::from_ini(&IniFile::from_str(&ini)).unwrap();
         let (mut sim, names) = houses(true, 2);
+        sim.resolve_type_handles(&rules);
         let (owner, other) = (names[0], names[1]);
         sim.houses.get_mut(&owner).unwrap().is_human = flag(&row["human"]);
         let mut slots = Vec::new();
-        for (slot, techno) in row["technos"].as_array().unwrap().iter().enumerate() {
-            // A Dominator-held object, and a Techno neither Foot nor
-            // Building, are beyond VERA's objects.
+        for (slot, techno) in technos.iter().enumerate() {
+            // A Techno neither Foot nor Building is beyond VERA's objects.
             let foot = flag(&techno["foot"]);
-            if flag(&techno["permanent"]) || (!foot && int(&techno["kind"]) != 6) {
+            if !foot && int(&techno["kind"]) != 6 {
                 continue;
             }
             let techno_owner = if flag(&techno["owner"]) { owner } else { other };
             // Native tests the Foot flag, not the kind: each Foot kind takes
             // its turn.
-            let (type_id, category) = match (foot, slot % 3) {
-                (false, _) => ("PLAIN", EntityCategory::Structure),
-                (true, 0) => ("FOOT", EntityCategory::Infantry),
-                (true, 1) => ("WHEELS", EntityCategory::Unit),
-                (true, _) => ("WINGS", EntityCategory::Aircraft),
+            let category = match (foot, slot % 3) {
+                (false, _) => EntityCategory::Structure,
+                (true, 0) => EntityCategory::Infantry,
+                (true, 1) => EntityCategory::Unit,
+                (true, _) => EntityCategory::Aircraft,
             };
-            let id = spawn(&mut sim, techno_owner, type_id, category, 125);
+            // One point more than the damage, so a hit leaves it standing.
+            let health = int(&techno["strength"]) + 1;
+            let id = spawn(
+                &mut sim,
+                techno_owner,
+                &format!("T{slot}"),
+                category,
+                health,
+            );
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             entity.lifecycle.cell_marked = flag(&techno["down"]);
             entity.lifecycle.in_limbo = flag(&techno["limbo"]);
-            slots.push((slot as i32, id));
+            if flag(&techno["permanent"]) {
+                entity.mind_control =
+                    crate::sim::capture_manager::MindControlLink::permanent_for_test();
+            }
+            slots.push((slot as i32, id, health));
         }
 
-        all_to_hunt(&mut sim, &rules(), owner);
+        all_to_hunt(&mut sim, &rules, owner, None);
 
         let hunting: Vec<i32> = slots
             .iter()
-            .filter(|&&(_, id)| {
+            .filter(|&&(_, id, _)| {
                 sim.substrate
                     .entities
                     .get(id)
@@ -394,9 +441,9 @@ fn all_to_hunt_matches_native() {
                     .known()
                     == Some(MissionType::Hunt)
             })
-            .map(|&(slot, _)| slot)
+            .map(|&(slot, _, _)| slot)
             .collect();
-        let expressible: Vec<i32> = slots.iter().map(|&(slot, _)| slot).collect();
+        let expressible: Vec<i32> = slots.iter().map(|&(slot, _, _)| slot).collect();
         let mut native: Vec<i32> = events(row, "mission")
             .iter()
             .map(|event| {
@@ -407,6 +454,32 @@ fn all_to_hunt_matches_native() {
             .collect();
         native.sort_unstable();
         assert_eq!(hunting, native, "{label}");
+
+        let damaged: Vec<(i32, i32)> = slots
+            .iter()
+            .filter_map(|&(slot, id, health)| {
+                let now = sim.substrate.entities.get(id).unwrap().health.current;
+                (now != health).then_some((slot, health - now))
+            })
+            .collect();
+        let mut native: Vec<(i32, i32)> = events(row, "damage")
+            .iter()
+            .map(|event| {
+                // Distance 0, no attacker, IgnoreDefenses, the passengers kept
+                // in, no attacking house; the warhead is the Rules' C4Warhead
+                // (`+0xFA8`).
+                assert_eq!(
+                    [5, 6, 7, 8].map(|index| int(&event[index])),
+                    [0, 1, 1, 0],
+                    "{label}"
+                );
+                assert_eq!(int(&event[3]), 0, "{label}");
+                assert_eq!(int(&event[4]), int(&row["c4_warhead"]), "{label}");
+                (int(&event[1]), int(&event[2]))
+            })
+            .collect();
+        native.sort_unstable();
+        assert_eq!(damaged, native, "{label}");
         assert_eq!(
             sim.houses[&owner].strategy_emergency.all_to_hunt_bias,
             flag(&row["latch"]),

@@ -581,6 +581,40 @@ chain's native comparisons are the `tools.superweapon_oracle` `psydom_*`,
 `update_lighting`, `ambient_step`, `dominator_lighting_read` and `relight` rows, and no
 whole-run timing or pixel equivalence with gamemd is claimed.
 
+## Computer Psychic Dominator observation
+
+[`map_observation.ai-psychic-dominator.example.json`](map_observation.ai-psychic-dominator.example.json)
+starts America/Battle against a Yuri computer opponent (`Computer1`, Easy) with stock
+rules and assets on an [authored map](map_observation/examples/ai_psychic_dominator.map):
+the Psychic Dominator fixture's terrain with the computer's pre-placed YAPPET at (46,42)
+and two GAPOWR, the observer's GACNST at (40,62), observer MTNK at (43,53), (44,54) and
+(45,55) and a fourth at (52,62), and no commands. `observe_super_weapons` adds the Super
+rows; MTNK is the only observed type. The loader looks a relative map name up in the
+retail root: run a profile copy whose `launch.selected_map_file` is the tracked map's
+absolute path.
+
+With release binary SHA-256
+`663c9daa0318802c1f5b59a6632b4023eeda38089f8db82232a4e4d7a6ba99ef`
+(32,000,368 bytes) and map SHA-256
+`ef6f27be8492ec94ef547460a6afe41f55ae0fd7bd0614e375fa6c9556ce9aab`, the computer's
+PsychicDominatorSpecial is granted on the first step (charge start 0, 9000 frames) and
+is ready from step 9001. Its Strategy tick fires it at frame 9067 (the charge restarts
+there). Each grouped tank counts all three in its 38 cells, and the last-to-first scan
+keeps the last of them, (45,55): at step 9105, 38 frames after the launch, the tanks at
+(44,54) and (45,55) in the 3x3 block (`DominatorCaptureRange=1`) become Computer1's and
+hunt, while the tank at (43,53), outside the block, and the one at (52,62) stay the
+observer's. A copy that ends at 9117 shows the Dominator tint, the head and the strike on
+(45,55) (state hash `1609889408460178425`, BGRA SHA-256
+`f02e8c715978d9cd6dd28c61041cc9a35bb684f1aa9579ddcd3a39da366a863d`). The 9200-step run
+ends with the two captives fighting the observer's tank at (43,53) (state hash
+`15283598945734857348`, BGRA SHA-256
+`8601e5c851079d6afe783bd0d68bcb374776bd4e885a6d403ba4e8a70dd981fd`). The same binary
+loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps
+(state hash `17265848597308621850`). These are Rust production observations: the
+chain's native comparisons are the `tools.superweapon_oracle` `ai_psydom` rows and the
+`tools.ai_strategy_oracle` `all_to_hunt` rows. The run never reaches All_To_Hunt, and no
+whole-run timing or pixel equivalence with gamemd is claimed.
+
 ## Siege Chopper deployment observation
 
 [`map_observation.siege-chopper.example.json`](map_observation.siege-chopper.example.json)

@@ -7,7 +7,7 @@
     1,
     33621247
   ],
-  "scope": "nuclear missile launch chain: ClickFire admission/refusal/recharge writes, the computer launch alert (distance, draw, stores), Mission_Missile by status with its anims, bullet and velocity bits, NukeMaker's payload bullet and velocity bits, and both SuperAnim blocks; the computer's superweapon use: AI_TryFireSW's gates, arms and Force Shield timing, AI_FindBestRallyTarget's values, draws and pick, AI_GroundRallyPoint's cell and AI_Fire_GenMutator's count and pick; the Chrono Warp's Teleport states, owner bytes, timers and end frame, unblocked, blocked once or twice and with a stale ChronoDelay; Update_Position's placement, kills, blocks and blocked retarget; Launch case 4's destinations; the Psychic Dominator's ClickFire refusal, Process statuses and firing stages, Start's writes, UpdateLighting's targets and RecalcLighting arguments, the ambient fade's intervals, clamp and step, the map's Dominator lighting defaults and conversions, and the Ground/Level a full cell relight adds in each lighting state",
+  "scope": "nuclear missile launch chain: ClickFire admission/refusal/recharge writes, the computer launch alert (distance, draw, stores), Mission_Missile by status with its anims, bullet and velocity bits, NukeMaker's payload bullet and velocity bits, and both SuperAnim blocks; the computer's superweapon use: AI_TryFireSW's gates, arms and Force Shield timing, AI_FindBestRallyTarget's values, draws and pick, AI_GroundRallyPoint's cell, and AI_Fire_GenMutator's and AI_Fire_PsyDom's counts and picks; the Chrono Warp's Teleport states, owner bytes, timers and end frame, unblocked, blocked once or twice and with a stale ChronoDelay; Update_Position's placement, kills, blocks and blocked retarget; Launch case 4's destinations; the Psychic Dominator's ClickFire refusal, Process statuses and firing stages, Start's writes, UpdateLighting's targets and RecalcLighting arguments, the ambient fade's intervals, clamp and step, the map's Dominator lighting defaults and conversions, and the Ground/Level a full cell relight adds in each lighting state",
   "assumptions": [
     "fresh emulator per case; fixture Super/House/Building/Bullet layouts from live disassembly",
     "x87 control word 0x0E7F (53-bit chop) at each entry",
@@ -23,6 +23,7 @@
     "PlayAnim 0x451890, GetCurrentMission vt+0x184 and the occupant count vt+0x408 are recorded/supplied stubs",
     "AI: Fire_SW 0x4FAE50, AI_GroundRallyPoint 0x509CD0, AI_Fire_PsyDom 0x50A150 and AI_Fire_GenMutator 0x509F60 are recorded stubs in ai_try_fire, where AI_FindBestRallyTarget 0x50CBF0 answers the row's cell; Find_Nearby_Passable_Cell 0x56DC20 answers the row's cell",
     "AI: object WhatAmI vt+0x2C, GetCoords vt+0x48, InWhichLayer vt+0x78, GetOwningHouse vt+0x3C, IsHighFlying vt+0x54 and GetCell vt+0x1BC answer supplied facts; MapClass::operator[] 0x5657A0 answers fixture cells; every IsCellInPlayfield lookup misses (level and slope 0)",
+    "ai_psydom: FootClass::Array 0x8B3DC4 holds the row's Feet in spawn order, each listed in its cell as Unlimbo lists it; object GetTechnoType vt+0x84 answers a fixture type holding the row's ImmuneToPsionics (+0xD35) and BalloonHover (+0xD6A), and IsIronCurtained vt+0x160 the row's fact; Fire_SW 0x4FAE50 is a recorded stub",
     "chrono_process: Update_Position 0x718260 is a recorded stub that answers blocked for the row's first calls (moving +0x288 one cell east) and otherwise true, setting Marked when placing; the owner's vtable calls, the anim constructor 0x421EA0, VocClass::PlayAt 0x7509E0, PostWarpValidation 0x7187A0, Set_ArchiveTarget 0x70C610 and ShortenPassiveScanTimer 0x70F770 are recorded stubs; Passive_Target_Acquire 0x709480 answers false and IsCellInPlayfield 0x578460 true; the frame driver reads +0x270/+0x271/+0x27C for the class AI gates (no Temporal attacker, the Unit reaches FootClass::AI)",
     "chrono_update_position: MapClass::operator[] by coordinate 0x565730 and by cell 0x5657A0 answer fixture cells (GetCoords: the centre raised 104 leptons per level); object IsIronCurtained vt+0x160, WhatAmI vt+0x2C, GetCoords vt+0x48, GetTechnoType vt+0x84, ReceiveDamage vt+0x16C and the owner's PUT/REMOVE vt+0xF0/vt+0xF4 are supplied or recorded stubs; the floor height 0x578080, the zone 0x56D230 (7) and Find_Nearby_Passable_Cell 0x56DC20 answer the row; the bridge height 0xB0EC2C holds 416, as its initializer 0x717F60 leaves it",
     "chrono_destination: the slices run on a fixture Launch frame (the offset entry, the clicked cell and the Super in their stack slots); object WhatAmI vt+0x2C and GetCoords vt+0x48 answer the row; the bridge height 0xB0C07C holds 416, as its initializer 0x6CAD80 leaves it",
@@ -44,6 +45,7 @@
     "AI_FindBestRallyTarget": "0x0050CBF0",
     "AI_GroundRallyPoint": "0x00509CD0",
     "AI_Fire_GenMutator": "0x00509F60",
+    "AI_Fire_PsyDom": "0x0050A150",
     "TeleportLocomotionClass::Process": "0x007192F0",
     "TeleportLocomotionClass::Update_Position": "0x00718260",
     "SuperClass::Launch_case4_destination": "0x006CC9AF",
@@ -56,8 +58,8 @@
     "CellClass::ProcessColourComponents_profile_arms": "0x0048445F"
   },
   "source_normalized_lf_sha256": {
-    "superweapon_oracle": "3f886528d01a7f128c4e0620724f8f3da21eea72ff3a3305f081b8e86fc9910b",
+    "superweapon_oracle": "63db1b86386a66e097e5693298e1d721b01f9e3cb9e75dbca4bab04e38a6a417",
     "ai_base_building_oracle": "0579013a4d58a3d89f9ab427fb6396da7b917c84c55ad016aa397baec780d623"
   },
-  "payload_sha256": "ed18f01a5c80fc3568d714f702ef11a8e64e24a0d23e69f6a38cd784a5b904c9"
+  "payload_sha256": "efabfbea520db901b306fa1215e557daae048fed6556f532ada08e48e53b715e"
 }
