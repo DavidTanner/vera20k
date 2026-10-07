@@ -10,14 +10,22 @@
 //! Super index Fire_SW takes is the type's `[SuperWeaponTypes]` index, the
 //! command's type.
 //!
+//! A `PostClick=` type (retail ChronoWarpSpecial) pairs with the Super at its
+//! `PreDependent=` index: Fire_SW copies that Super's map cell before the
+//! click (`0x004FAE6C..0x004FAE8F`) and afterwards clears its charge
+//! (`SuperClass::SetReadiness @ 0x006CB820`) and releases its anim
+//! (`SuperClass::StopPreclickAnim @ 0x006CB830`), which restarts its
+//! recharge. Every house holds one Super per `[SuperWeaponTypes]` entry from
+//! its constructor (`0x004F620E..0x004F6290`); VERA creates an entry on its
+//! first grant or click ([`super_instance`]).
+//!
 //! RESIDUALS:
-//! - Launch's cases 3, 4, 7 and 8 (Chronosphere, Chrono Warp, Psychic
-//!   Dominator, Spy Plane) are not ported: a click on one of those does
-//!   nothing and keeps its charge, where native launches and recharges.
-//! - The Chronosphere chain: Fire_SW's PostClick pairing (`0x004FAE6C..
-//!   0x004FAE8F`, `0x004FAEA6..0x004FAEC1`: the paired PreDependent Super's
-//!   map coordinates, SetReadiness and StopPreclickAnim) and ClickFire's
-//!   PreClick animation release.
+//! - Launch's cases 7 and 8 (Psychic Dominator, Spy Plane) are not ported:
+//!   a click on one of those does nothing and keeps its charge, where native
+//!   launches and recharges.
+//! - A `PostClick=` type whose `PreDependent=` is unset or past the list
+//!   (constructor -1) reads outside the Supers vector natively; VERA pairs
+//!   nothing. Dormant in retail.
 //! - The Psychic Dominator chain: ClickFire's refusal while one is active
 //!   (`PsyDom::Active @ 0x0053B400`, `0x006CB99A`).
 //! - Dormant in retail data: ClickFire's charge-drain arm
@@ -52,7 +60,22 @@ impl Simulation {
         let Some(sw) = rules.super_weapon(self.interner.resolve(sw_type_id)) else {
             return false;
         };
+        let paired = sw
+            .post_click
+            .then(|| pre_dependent(self, rules, sw))
+            .flatten();
+        if let Some((pre_type, _)) = paired {
+            let cell = super_instance(self, owner, pre_type).chrono_cell();
+            super_instance(self, owner, sw_type_id).chrono_cell = cell;
+        }
         let launched = click_fire(self, rules, owner, sw_type_id, sw, cell, overlay_registry);
+        if let Some((pre_type, pre_sw)) = paired {
+            // `0x004FAEA6..0x004FAEC1`.
+            super_instance(self, owner, pre_type).is_ready = false;
+            self.release_super_anim(owner, pre_type);
+            let frame = self.session.binary_frame;
+            super_instance(self, owner, pre_type).stop_preclick(pre_sw, frame);
+        }
         // `0x004FAEC6..0x004FAEF2`: every house, last to first.
         let houses: Vec<InternedId> = self.session.house_order.iter().rev().copied().collect();
         for house in houses {
@@ -82,13 +105,7 @@ fn click_fire(
         log::warn!("SuperWeapon kind {:?} not yet implemented", sw.kind);
         return false;
     }
-    let Some(instance) = sim
-        .super_weapons
-        .get(&owner)
-        .and_then(|weapons| weapons.get(&sw_type_id))
-    else {
-        return false;
-    };
+    let instance = super_instance(sim, owner, sw_type_id);
     if !instance.click_fire_admits() && !sw.post_click {
         return false;
     }
@@ -96,6 +113,10 @@ fn click_fire(
         return false;
     }
     let launched = launch(sim, rules, owner, sw_type_id, sw, cell, overlay_registry);
+    // `0x006CBBDE..0x006CBC34`: a type that is neither pairs no anim.
+    if !sw.manual_control && !sw.pre_click && !sw.post_click {
+        sim.release_super_anim(owner, sw_type_id);
+    }
     let frame = sim.session.binary_frame;
     if let Some(instance) = sim
         .super_weapons
@@ -157,11 +178,19 @@ fn launch(
             ParaDropKind::American,
             sw_type_id,
         ),
+        SuperWeaponKind::ChronoSphere => {
+            super::chronosphere::launch_source(sim, rules, owner, sw_type_id, (rx, ry))
+        }
+        SuperWeaponKind::ChronoWarp => super::chronosphere::launch_warp(
+            sim,
+            rules,
+            owner,
+            sw_type_id,
+            (rx, ry),
+            overlay_registry,
+        ),
         // Refused before ClickFire ([`launch_ported`]).
-        SuperWeaponKind::ChronoSphere
-        | SuperWeaponKind::ChronoWarp
-        | SuperWeaponKind::PsychicDominator
-        | SuperWeaponKind::SpyPlane => false,
+        SuperWeaponKind::PsychicDominator | SuperWeaponKind::SpyPlane => false,
     }
 }
 
@@ -170,11 +199,36 @@ fn launch(
 pub(super) const fn launch_ported(kind: SuperWeaponKind) -> bool {
     !matches!(
         kind,
-        SuperWeaponKind::ChronoSphere
-            | SuperWeaponKind::ChronoWarp
-            | SuperWeaponKind::PsychicDominator
-            | SuperWeaponKind::SpyPlane
+        SuperWeaponKind::PsychicDominator | SuperWeaponKind::SpyPlane
     )
+}
+
+/// `owner`'s Super of `sw_type`, created inactive on first use: native
+/// constructs every house's Supers with the house.
+fn super_instance(
+    sim: &mut Simulation,
+    owner: InternedId,
+    sw_type: InternedId,
+) -> &mut super::SuperWeaponInstance {
+    sim.super_weapons
+        .entry(owner)
+        .or_default()
+        .entry(sw_type)
+        .or_insert_with(|| super::SuperWeaponInstance::new(sw_type, owner))
+}
+
+/// The Super Fire_SW pairs a `PostClick=` type with: the `[SuperWeaponTypes]`
+/// entry at its `PreDependent=` index (`HouseClass+0x258` indexed by
+/// `Type+0xF0`, `0x004FAE6C..0x004FAE7E`).
+fn pre_dependent<'r>(
+    sim: &mut Simulation,
+    rules: &'r RuleSet,
+    sw: &SuperWeaponType,
+) -> Option<(InternedId, &'r SuperWeaponType)> {
+    let name = rules
+        .super_weapon_order
+        .get(usize::try_from(sw.pre_dependent).ok()?)?;
+    Some((sim.interner.intern(name), rules.super_weapon(name)?))
 }
 
 /// `HouseClass @ 0x004FAF00` for `house`, given the fired Super's type and
@@ -239,7 +293,7 @@ fn alert_super_weapon_defense(
 }
 
 /// A cell's GetCoords (vt+0x48, `0x00486840`).
-fn cell_coords(sim: &Simulation, (x, y): (u16, u16)) -> [i32; 3] {
+pub(super) fn cell_coords(sim: &Simulation, (x, y): (u16, u16)) -> [i32; 3] {
     let coord = crate::sim::projectile::cell_ground_coord(sim.resolved_terrain.as_ref(), x, y);
     [coord.x, coord.y, coord.z]
 }

@@ -68,11 +68,11 @@ use object_turn::unit_body_counter_admitted;
 mod projectile_collision;
 mod substrate;
 mod techno_ai;
-#[cfg(test)]
 pub(crate) use techno_ai::ObjectAiCtx;
 pub(crate) use techno_ai::dispatch_foot_mission;
 pub(crate) use techno_ai::foot_enter_idle_mode_selection;
 pub(crate) use techno_ai::foot_unlimbo_idle_mode;
+pub(crate) use techno_ai::passive_target_acquire;
 pub(crate) use techno_ai::queue_and_commence;
 pub(crate) use techno_ai::queue_foot_enter_idle_mode;
 pub(crate) use techno_ai::team_leader_greatest_threat;
@@ -605,6 +605,16 @@ pub enum SimSoundEvent {
         owner: InternedId,
         sw_type: InternedId,
     },
+    /// `HouseClass @ 0x0050AF10` (label `HouseClass__Update_Owned_Supers`):
+    /// a granted Super's hold changed (`SuperClass::Suspend @ 0x006CB4D0`
+    /// returned true) or it was lost (`SuperClass @ 0x006CB7B0` returned
+    /// true). For the player's house native then clears the selected Super
+    /// (`0x008809A0`) when it is this one (`0x0050B181..0x0050B190`); the app
+    /// applies that local-owner half.
+    SuperWeaponStatusChanged {
+        owner: InternedId,
+        sw_type: InternedId,
+    },
     /// `BuildingClass::OnConstructionComplete @ 0x00445F80`
     /// (`0x004468AD..0x00446995`): a building whose type carries
     /// `SuperWeapon=` finished building up. Native speaks only when the owner
@@ -648,6 +658,10 @@ pub enum SimSoundEvent {
         rx: u16,
         ry: u16,
     },
+    /// `CreateRadarEvent(13, cell)` from `SuperClass::Launch` case 4
+    /// (`0x006CC4BE` at the Chronosphere's source, `0x006CC4D2` at its
+    /// target), on every client: each admits it on its own radar.
+    SuperWeaponRadarEvent { radar: RadarEventRequest },
     /// The lightning storm actually began — the moment the sky flips to Ion,
     /// which on retail data is ~250 frames *after* the Weather Controller
     /// fired. This is where `StormSound` belongs, not on the launch.
@@ -2991,10 +3005,12 @@ impl Simulation {
         ));
     }
 
-    /// Intern every rules type id (infantry, vehicle, aircraft, building) so
-    /// `interner.get(type_id)` succeeds for any type this ruleset references.
-    /// Moved from `RuleSet::intern_all_ids` (F04): interning is sim-side work
-    /// over rules-owned canonical names.
+    /// Intern every rules type id (infantry, vehicle, aircraft, building,
+    /// `[SuperWeaponTypes]`) so `interner.get(type_id)` succeeds for any type
+    /// this ruleset references, and a command naming one carries the same id
+    /// in every world built from these rules: the Chrono Warp is clicked
+    /// without ever being granted. Moved from `RuleSet::intern_all_ids` (F04):
+    /// interning is sim-side work over rules-owned canonical names.
     pub fn intern_rule_type_ids(&mut self, rules: &RuleSet) {
         for id in rules
             .infantry_ids
@@ -3002,6 +3018,7 @@ impl Simulation {
             .chain(&rules.vehicle_ids)
             .chain(&rules.aircraft_ids)
             .chain(&rules.building_ids)
+            .chain(&rules.super_weapon_order)
         {
             self.interner.intern(id);
         }

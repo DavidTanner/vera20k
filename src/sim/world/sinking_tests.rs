@@ -65,7 +65,7 @@ fn native_sink_suffix_preserves_cadence_coordinates_and_complete_rng_states() {
         sim.mapgen_rng = SimRng::new(seed);
         sim.substrate.entities.get_mut(id).unwrap().sinking.active =
             input["sinking"].as_u64().unwrap_or(1) != 0;
-        let terminal = sim.tick_ship_sinking(id, &rules);
+        let terminal = sim.tick_ship_sinking(id, &rules, None);
         let entity = sim.substrate.entities.get(id).unwrap();
         let coord = position_world_coord(&entity.position);
         assert_eq!(
@@ -165,8 +165,8 @@ fn sinking_state_is_hashed_and_survives_snapshot() {
     for frame in 1..=60 {
         sim.session.binary_frame = frame;
         loaded.session.binary_frame = frame;
-        let terminal = sim.tick_ship_sinking(id, &rules);
-        assert_eq!(loaded.tick_ship_sinking(id, &rules), terminal);
+        let terminal = sim.tick_ship_sinking(id, &rules, None);
+        assert_eq!(loaded.tick_ship_sinking(id, &rules, None), terminal);
         assert_eq!(loaded.state_hash(), sim.state_hash(), "frame {frame}");
         assert_eq!(loaded.rng_state(), sim.rng_state(), "frame {frame}");
         if terminal {

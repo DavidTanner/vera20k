@@ -675,7 +675,7 @@ fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
                 .unwrap()
                 .position
                 .exact_z_leptons = Some(-400);
-            assert!(sim.tick_ship_sinking(ship, &rules));
+            assert!(sim.tick_ship_sinking(ship, &rules, None));
             assert_eq!(sim.houses[&owner].stats.units_lost(), 3);
             assert!(sim.substrate.pending_delete.contains(&ship));
             assert!(!sim.substrate.entities.get(ship).unwrap().in_logic_vector);

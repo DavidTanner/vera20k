@@ -537,8 +537,9 @@ pub struct GameEntity {
     /// establishes an exact mode-one result at `0x006F6CFE`, ordinary cell
     /// movement promotes false to true without normally demoting it at
     /// `0x006F511A..0x006F5139` (the Teleport warp's PerCell(2) included), the
-    /// Chronosphere warp's arrival state can clear it at `0x00719A99` (not
-    /// represented), and `MapClass::Set_Clipped_LocalSize @ 0x00567230` recomputes every
+    /// Chronosphere warp's arrival state clears it outside the playfield at
+    /// `0x00719A99` (`movement::teleport_chrono`), and
+    /// `MapClass::Set_Clipped_LocalSize @ 0x00567230` recomputes every
     /// Techno exactly after a LocalSize writer. Consumers must read this stored
     /// fact; a fresh bounds query would erase the native movement hysteresis.
     #[serde(default)]
@@ -604,6 +605,13 @@ pub struct GameEntity {
     /// leave nothing behind.
     #[serde(default)]
     pub(crate) setter_force_reassign: bool,
+    /// Techno+0x284, constructor zero (`0x006F2DDE`): the warp-in the
+    /// Chronosphere's Teleport states time (`0x00719B23`). A blocked landing
+    /// writes it (`[General] ChronoDelay=`, `0x00719983`) and it stays for
+    /// every later warp of the object; its other writer, the chrono
+    /// reinforcement (`0x0065F212`, `ChronoReinfDelay=`), is not ported.
+    #[serde(default)]
+    chrono_warp_delay: i32,
     /// Active attack target — present when entity is firing at something.
     pub attack_target: Option<AttackTarget>,
     /// A building's delayed fire: a delayed shot, or a Prism support beam.
@@ -1179,6 +1187,17 @@ mod simple_deploy;
 mod voxel_recoil;
 
 impl GameEntity {
+    /// Techno+0x284, the Chronosphere warp-in's frames.
+    pub(crate) fn chrono_warp_delay(&self) -> i32 {
+        self.chrono_warp_delay
+    }
+
+    pub(crate) fn set_chrono_warp_delay(&mut self, frames: i32) {
+        self.chrono_warp_delay = frames;
+    }
+}
+
+impl GameEntity {
     pub(crate) fn door_phase(&self) -> crate::sim::door::DoorPhase {
         self.door.phase()
     }
@@ -1639,6 +1658,7 @@ impl GameEntity {
             foot_occupation_enabled: true,
             foot_locomotor_swap_active: false,
             setter_force_reassign: false,
+            chrono_warp_delay: 0,
             attack_target: None,
             pending_building_fire: None,
             prism_support_count: 0,

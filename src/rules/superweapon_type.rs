@@ -127,8 +127,13 @@ pub struct SuperWeaponType {
     pub pre_click: bool,
     /// Two-click mode: second click selects destination (ChronoWarp).
     pub post_click: bool,
-    /// Prerequisite SW type name (e.g., ChronoWarp needs "ChronoSphere").
-    pub pre_dependent: Option<String>,
+    /// `PreDependent=` (`+0xF0`, constructor -1): the `Type=` name it reads
+    /// matched case-insensitively (`_strcmpi @ 0x007C8D20`) against the 12
+    /// Type names at `0x008425C0` (`0x006CEC98..0x006CECE9`); an empty or
+    /// unknown name keeps the field. Fire_SW indexes the house's Supers with
+    /// it, so it names the `[SuperWeaponTypes]` entry at that position
+    /// (retail ChronoWarpSpecial: `ChronoSphere`, 3).
+    pub pre_dependent: i32,
     /// Targeting range in cells.
     pub range: f32,
     /// WeaponType reference (e.g., NukeCarrier for nuke).
@@ -191,7 +196,10 @@ impl SuperWeaponType {
             pre_click: section.read_bool("PreClick", false),
             post_click: section.read_bool("PostClick", false),
             // ReadString 0x28 (`0x006CEC98`).
-            pre_dependent: section.read_name("PreDependent", 0x28).map(str::to_string),
+            pre_dependent: section
+                .read_name("PreDependent", 0x28)
+                .and_then(SuperWeaponKind::from_ini_str)
+                .map_or(-1, SuperWeaponKind::native_index),
             // ReadDouble -> `FSTP dword [EBP+0xF8]` (`0x006CEBF4`).
             range: section.read_float("Range", 0.0),
             // ReadString 0x80 at `0x006CEA6D`, `0x006CED0F`, `0x006CEB7C`,

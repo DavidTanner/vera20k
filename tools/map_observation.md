@@ -515,6 +515,37 @@ loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 step
 chain's native comparisons are the `tools.superweapon_oracle` `ai_*` rows, and no
 whole-run timing or pixel equivalence with gamemd is claimed.
 
+## Chronosphere observation
+
+[`map_observation.chronosphere.example.json`](map_observation.chronosphere.example.json)
+starts America/Battle against a Yuri computer opponent (Easy) with stock rules and
+assets on an [authored map](map_observation/examples/chronosphere.map): the
+nuclear-missile fixture's terrain with the observer's GACSPH at (46,42) and two GAPOWR,
+its MTNK at (40,62) and (42,62), CLEG at (41,63) and E1 at (40,64), and a Neutral HTNK
+at (44,54) beside a Neutral GAPOWR at (46,54). `observe_super_weapons` adds the Super
+rows: ChronoSphereSpecial is granted on the first step (interned id 32, charge start 0,
+6300 frames) and is ready from step 6301. An ordinary `LaunchSuperWeapon` at step 6310
+aims the Chronosphere at (41,63); its launch selects the Chrono Warp, and a tactical
+click at the view's centre, (316,284) with `camera_cell` (45,55), fires it at step 6320
+through ordinary input. The loader looks a relative map name up in the retail root: run
+a profile copy whose `launch.selected_map_file` is the tracked map's absolute path.
+
+With release binary SHA-256
+`99f036abd074c37628968852dc65e89b273b8d89eb76793129a27504522b0498`
+(31,961,040 bytes) and map SHA-256
+`803e3f904b9e80c1ffd934f1a0fa4435224d7dd0356ac0ef85c4b1a3f6aa2f96`, the click queues
+ChronoWarpSpecial at (45,55). The Chronosphere's charge drops at tick 6310, its expired
+timer readies it again the next tick, and the warp clears it and restarts the recharge
+(start 6320). The E1 dies at the warp (step 6321). At step 6383 the MTNK from (40,62)
+stands at (44,54), where the HTNK is gone, and the CLEG at (45,55); the MTNK from
+(42,62), whose cell (46,54) holds the GAPOWR, stands beside it at (47,53) from step
+6384. The run ends with state hash `1787085792753166979` and BGRA SHA-256
+`c6b8215386fa5806fceab04abe014ae4c9f29d33f2c4da6b0656723a578d269f`. The same binary
+loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps
+(state hash `17265848597308621850`). These are Rust production observations: the
+chain's native comparisons are the `tools.superweapon_oracle` `chrono_*` rows, and no
+whole-run timing or pixel equivalence with gamemd is claimed.
+
 ## Siege Chopper deployment observation
 
 [`map_observation.siege-chopper.example.json`](map_observation.siege-chopper.example.json)

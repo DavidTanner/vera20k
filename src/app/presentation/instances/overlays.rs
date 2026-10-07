@@ -270,7 +270,16 @@ pub(crate) fn build_anim_class_instances(
                 ) {
                     (true, Some(rules)) => !local_owner
                         .is_some_and(|viewer| sim.psi_warning_detected_by(viewer, anim, rules)),
-                    _ => anim.draw_runtime.hidden,
+                    // A Super's ChronoPlacement anim: the client's byte
+                    // (`match_runtime::super_selection`).
+                    _ => {
+                        anim.draw_runtime.hidden
+                            || state
+                                .match_state
+                                .match_presentation
+                                .hidden_super_anims
+                                .contains(&stable_id)
+                    }
                 },
                 special_hidden: anim.draw_runtime.special_hidden,
                 // The native special-hide type bit remains an explicit residual.

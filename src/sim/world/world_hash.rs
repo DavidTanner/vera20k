@@ -1212,6 +1212,14 @@ impl Simulation {
                 inst.charge_duration.hash(hasher);
                 inst.charge_drain_state.hash(hasher);
                 inst.ready_tick.hash(hasher);
+                // The Chronosphere's source cell and held anim (`+0x62`,
+                // `+0x68`); the tag keeps every Super that never took a
+                // Chronosphere click on its established stream.
+                if inst.chrono_cell() != (0, 0) || inst.placement_anim().is_some() {
+                    b"chrono-super-v1".hash(hasher);
+                    inst.chrono_cell().hash(hasher);
+                    inst.placement_anim().hash(hasher);
+                }
             }
         }
         // Hash lightning storm global state.
@@ -1510,6 +1518,12 @@ impl Simulation {
             // established stream unchanged while it is clear.
             if entity.setter_force_reassign {
                 0x1f8_u32.hash(hasher);
+            }
+            // Techno+0x284 stays zero until a blocked Chronosphere landing
+            // writes it; tagged like +0x1F8.
+            if entity.chrono_warp_delay() != 0 {
+                0x284_u32.hash(hasher);
+                entity.chrono_warp_delay().hash(hasher);
             }
 
             if let Some(ref loco) = entity.locomotor {

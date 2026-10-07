@@ -37,9 +37,8 @@ pub fn launch(
     // SuperClass::Launch case 1 (0x006CCF39..0x006CD035) selects a live
     // CellClass list, invokes +0x154, then reads that object's +0x30 AFTER the
     // call. Never snapshot recipients or infer membership from coordinates.
-    // Native also skips external chrono-warp latch +0x27C on Technos. Its
-    // ChronoWarp/action-128 producers have no current Rust implementation; do
-    // not substitute ordinary teleport_state, whose native path leaves it clear.
+    // A Foot under the Chronosphere's warp latch (+0x27C, 0x006CCFF8..
+    // 0x006CD006) is skipped.
     let mut target_count = 0;
     for (x, y) in native_cells_3x3(target_rx, target_ry) {
         let Some(((rx, ry), layer)) = selected_cell_list(sim, x, y) else {
@@ -51,7 +50,12 @@ pub fn launch(
             .get(rx, ry)
             .and_then(|cell| cell.first_on_layer(layer));
         while let Some(id) = next {
-            if let Some(entity) = sim.substrate.entities.get(id) {
+            if let Some(entity) = sim
+                .substrate
+                .entities
+                .get(id)
+                .filter(|entity| !entity.chrono_warp_latch())
+            {
                 let category = entity.category;
                 let type_ref = entity.type_ref();
                 if category == EntityCategory::Infantry {

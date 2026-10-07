@@ -9,7 +9,6 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
-use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
 
 fn spy_sat_rules() -> RuleSet {
     let ini = IniFile::from_str(
@@ -208,16 +207,9 @@ fn gsi_04_18_first_warping_candidate_blocks_later_uplink_but_selling_is_skipped(
     assert!(sim.houses[&owner].spy_sat_active);
     assert!(sim.houses[&owner].map_is_clear);
 
-    sim.substrate
-        .entities
-        .get_mut(1)
-        .unwrap()
-        .install_teleport_state_for_test(Some(TeleportState::for_test(
-            TeleportPhase::Relocate,
-            10,
-            10,
-            0,
-        )));
+    // BeingWarpedOut (`+0x270`): a Temporal chain's head.
+    sim.substrate.entities.get_mut(1).unwrap().temporal =
+        crate::sim::temporal::TemporalState::warped_by_for_test(2);
 
     sim.reconcile_active_vision_structures(&rules);
     assert!(!sim.houses[&owner].spy_sat_active);

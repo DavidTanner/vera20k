@@ -1411,6 +1411,18 @@ pub struct GeneralRules {
     // --- IronCurtain ([General]) ---
     /// Animation played on IC target (IronCurtainInvokeAnim= in [General]). Default IRONBLST.
     pub iron_curtain_invoke_anim: String,
+    /// `[General] ChronoPlacement=` (`RulesClass+0x330`, ReadString 0x80 at
+    /// `0x0066E095`, empty keeps the constructor's null type): the anim the
+    /// Chronosphere's first click loops over its source cell
+    /// (`SuperClass::CreateChronoAnim @ 0x006CB3A0`). Retail `CHRONOAR`.
+    pub chrono_placement_anim: String,
+    /// `[General] ChronoBlast=` (`+0x328`, `0x0066E112`): the Chrono Warp's
+    /// anim over the source cell (`0x006CC674`). Retail `CHRONOFD`.
+    pub chrono_blast_anim: String,
+    /// `[General] ChronoBlastDest=` (`+0x32C`, `0x0066E151`): the Chrono
+    /// Warp's anim over the destination cell (`0x006CC61A`). Retail
+    /// `CHRONOTG`.
+    pub chrono_blast_dest_anim: String,
     /// `[General] IonBlast=` (`RulesClass+0x298`), the animation the Genetic
     /// Mutator launch constructs (`SuperClass::Launch 0x006CD8A5`). Retail
     /// `RING1`. The constructor default is a null type: no key, no animation.
@@ -1962,6 +1974,9 @@ impl Default for GeneralRules {
             ambient_change_step: 20,
             iron_curtain_duration: 750,
             iron_curtain_invoke_anim: "IRONBLST".to_string(),
+            chrono_placement_anim: String::new(),
+            chrono_blast_anim: String::new(),
+            chrono_blast_dest_anim: String::new(),
             ion_blast_anim: String::new(),
             force_shield_radius: 4,
             force_shield_duration: 500,
@@ -2920,6 +2935,9 @@ impl GeneralRules {
                 "IRONBLST",
                 0x80,
             ),
+            chrono_placement_anim: general.read_string("ChronoPlacement", "", 0x80),
+            chrono_blast_anim: general.read_string("ChronoBlast", "", 0x80),
+            chrono_blast_dest_anim: general.read_string("ChronoBlastDest", "", 0x80),
             ion_blast_anim: general.read_string("IonBlast", "", 0x80),
             force_shield_radius: general.read_int("ForceShieldRadius", 4) as u32,
             force_shield_duration: general.read_int("ForceShieldDuration", 500),

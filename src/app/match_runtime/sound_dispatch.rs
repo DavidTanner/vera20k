@@ -300,7 +300,10 @@ pub(super) fn dispatch_sim_sound_events(
                 }
             }
             SimSoundEvent::SuperWeaponLaunched {
-                sw_type, rx, ry, ..
+                owner,
+                sw_type,
+                rx,
+                ry,
             } => {
                 // `SuperClass::Launch @ 0x006CC390` switches on the
                 // launched type's `Type=` index and plays that case's
@@ -320,14 +323,38 @@ pub(super) fn dispatch_sim_sound_events(
                     .eva_event
                     .filter(|_| local_owner_name.is_some())
                     .map(str::to_string);
-                if cue.sound_id.is_none() && eva_event.is_none() {
+                let activated = (cue.sound_id.is_some() || eva_event.is_some()).then(|| {
+                    GameSoundEvent::SuperWeaponActivated {
+                        sound_id: cue.sound_id.unwrap_or_default(),
+                        source: cue.positional.then(|| sound_source_at_cell(rx, ry)),
+                        eva_event,
+                    }
+                });
+                // Case 4's tail for the player (`0x006CCD17..0x006CCD2D`):
+                // after its line, the `EVA_ChronosphereReady` the
+                // Chronosphere's re-readying queued is dropped.
+                if sw.kind == crate::rules::superweapon_type::SuperWeaponKind::ChronoWarp
+                    && owner_is_local(&sim.interner, owner, local_owner_name)
+                {
+                    if let Some(activated) = activated {
+                        output.push(activated);
+                    }
+                    output.push(GameSoundEvent::EvaRemove {
+                        event: "EVA_ChronosphereReady".to_string(),
+                    });
                     continue;
                 }
-                GameSoundEvent::SuperWeaponActivated {
-                    sound_id: cue.sound_id.unwrap_or_default(),
-                    source: cue.positional.then(|| sound_source_at_cell(rx, ry)),
-                    eva_event,
-                }
+                let Some(activated) = activated else {
+                    continue;
+                };
+                activated
+            }
+            SimSoundEvent::SuperWeaponRadarEvent { radar } => {
+                // `SuperClass::Launch` case 4 (`0x006CC4BE`, `0x006CC4D2`):
+                // a type-13 event at the source cell, then the target's,
+                // with no local-player test; it plays nothing.
+                let _ = admit_radar(radar);
+                continue;
             }
             SimSoundEvent::LightningStormBegan => {
                 // The deferred half of case 2: the sky flips to Ion and
@@ -822,6 +849,9 @@ pub(super) fn dispatch_sim_sound_events(
                     type_override: None,
                 }
             }
+            // The selection clear is `super_selection`'s; the pass plays
+            // nothing.
+            SimSoundEvent::SuperWeaponStatusChanged { .. } => continue,
             SimSoundEvent::SuperWeaponDetected { owner, sw_type } => {
                 // `BuildingClass::OnConstructionComplete
                 // 0x004468AD..0x00446995`; the gates are the
@@ -1507,6 +1537,70 @@ mod tests {
             ));
             assert!(random.calls.is_empty());
         }
+    }
+
+    /// Launch case 4's tail (`0x006CCCF0..0x006CCD2D`): `PlayEVA`
+    /// (`EVA_ChronosphereActivated`) for every launcher, then for the
+    /// launching player only `RemoveFromQueues(EVA_ChronosphereReady)`; its
+    /// two radar events reach the client's radar and play nothing.
+    #[test]
+    fn chrono_warp_launch_drops_the_ready_line_for_its_player_only() {
+        use crate::sim::radar::{RadarEventRequest, RadarEventType};
+
+        let rules =
+            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+                "[General]\nFixtureOnly=1\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+                 [BuildingTypes]\n[SuperWeaponTypes]\n0=ChronoWarpSpecial\n\
+                 [ChronoWarpSpecial]\nType=ChronoWarp\n",
+            ))
+            .unwrap();
+        let mut sim = Simulation::new();
+        let local = sim.interner.intern("Local");
+        let remote = sim.interner.intern("Remote");
+        let warp = sim.interner.intern("ChronoWarpSpecial");
+        let launched = |owner| SimSoundEvent::SuperWeaponLaunched {
+            owner,
+            sw_type: warp,
+            rx: 40,
+            ry: 40,
+        };
+        let radar = |rx, ry| SimSoundEvent::SuperWeaponRadarEvent {
+            radar: RadarEventRequest::new(RadarEventType::ImpactSilent, rx, ry),
+        };
+        let mut admitted = Vec::new();
+        let mut output = SoundEventQueue::new();
+        dispatch_sim_sound_events(
+            [
+                radar(21, 21),
+                radar(40, 40),
+                launched(remote),
+                launched(local),
+            ],
+            &sim,
+            &rules,
+            Some("LOCAL"),
+            None,
+            &mut |request| {
+                admitted.push((request.rx, request.ry));
+                true
+            },
+            &mut output,
+        );
+        assert_eq!(admitted, [(21, 21), (40, 40)]);
+        let emitted = output.drain();
+        assert!(
+            matches!(
+                emitted.as_slice(),
+                [
+                    GameSoundEvent::SuperWeaponActivated { eva_event: Some(remote_line), .. },
+                    GameSoundEvent::SuperWeaponActivated { eva_event: Some(local_line), .. },
+                    GameSoundEvent::EvaRemove { event },
+                ] if remote_line == "EVA_ChronosphereActivated"
+                    && local_line == "EVA_ChronosphereActivated"
+                    && event == "EVA_ChronosphereReady"
+            ),
+            "{emitted:?}"
+        );
     }
 
     #[test]
