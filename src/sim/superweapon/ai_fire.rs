@@ -12,8 +12,8 @@
 //! later Super sees what an earlier launch changed.
 //!
 //! Evidence: `tools/superweapon_oracle.py` sections `ai_try_fire`,
-//! `ai_best_rally_target`, `ai_ground_rally_point` and `ai_genetic_mutator`
-//! execute the original code; `ai_fire_tests.rs` replays them.
+//! `ai_best_rally_target`, `ai_ground_rally_point`, `ai_genetic_mutator` and
+//! `ai_psydom` execute the original code; `ai_fire_tests.rs` replays them.
 //!
 //! RESIDUALS:
 //! - The preferred target type (`+0x54EC`, constructor 1 at `0x004F5A77`),
@@ -27,9 +27,6 @@
 //!   aims by its own pickers. `AI_FindTeamTarget @ 0x0050D170`, which another
 //!   preferred type selects (its first team's leader's Greatest_Threat), is
 //!   therefore not ported.
-//! - The Psychic Dominator arm (`AI_Fire_PsyDom @ 0x0050A150`) is not
-//!   ported: a computer house never fires its Dominator. The arm draws no
-//!   random numbers.
 //! - Launch's case 8 is not ported: a computer's charged Spy Plane takes its
 //!   arm but stops before the cell search, as Fire_SW would refuse the click,
 //!   and the Super stays charged. Trigger: every computer house with a Soviet
@@ -52,13 +49,16 @@ mod tests;
 use crate::map::entities::EntityCategory;
 use crate::map::houses::is_allied_with;
 use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::SuperWeaponKind;
+use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::{HouseDifficulty, HouseState};
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::occupancy::CellObjectMember;
 use crate::sim::rng::SimRng;
 use crate::sim::world::Simulation;
 use crate::util::lepton::lepton_to_cell_packed;
@@ -72,6 +72,11 @@ const NO_CELL: (i16, i16) = (0, 0);
 /// `(-1, -2)` (`0x00509FEB..0x0050A0BD`).
 const GENETIC_MUTATOR_SPREAD_BAND: usize = 1;
 
+/// AI_Fire_PsyDom walks the same table through the radius-3 band's count
+/// (`0x007ED3DC`, 37) inclusive: 38 cells around each Foot
+/// (`0x0050A1E1..0x0050A2B3`), whatever `DominatorCaptureRange=` says.
+const PSYCHIC_DOMINATOR_SPREAD_BAND: usize = 3;
+
 /// The arm AI_TryFireSW's jump table (`0x00509AE8`) takes for a `Type=`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AiFireArm {
@@ -82,7 +87,7 @@ pub(crate) enum AiFireArm {
     LightningStorm,
     /// `0x00509A31`: [`ground_rally_point`].
     GroundRallyPoint,
-    /// `0x00509A17`, `AI_Fire_PsyDom @ 0x0050A150` (module RESIDUALS).
+    /// `0x00509A17`: [`psychic_dominator_target`].
     PsychicDominator,
     /// `0x00509A24`: [`genetic_mutator_target`].
     GeneticMutator,
@@ -193,11 +198,12 @@ pub(crate) fn try_fire(
                 rally_target(sim, rules, owner)
             }
             AiFireArm::GroundRallyPoint => ground_rally_point(sim, owner),
+            AiFireArm::PsychicDominator => psychic_dominator_target(sim, rules, owner),
             AiFireArm::GeneticMutator => genetic_mutator_target(sim, rules, owner),
             AiFireArm::ForceShield => sim.houses.get(&owner).and_then(|house| {
                 force_shield_target(house, rules, sim.session.binary_frame as i32)
             }),
-            AiFireArm::LightningStorm | AiFireArm::PsychicDominator | AiFireArm::None => None,
+            AiFireArm::LightningStorm | AiFireArm::None => None,
         };
         if let Some(cell) = cell {
             #[cfg(test)]
@@ -454,89 +460,155 @@ fn ground_rally_cell((x, y): (u16, u16)) -> Option<(u16, u16)> {
 
 /// `HouseClass::AI_Fire_GenMutator @ 0x00509F60` with the constructor's
 /// empty preferred cell (a set one returns at once, `0x00509F78..
-/// 0x00509F93`): from the last infantry to the first (InfantryClass::Array),
-/// each one out of limbo (`+0x81`) counts the infantry in its cell and the
-/// spread cells around it ([`GENETIC_MUTATOR_SPREAD_BAND`]) that belong to
-/// no ally of the house (`+0x5788`, nor to the house) and are not high-flying
-/// (vt+0x54): per cell (`MapClass::operator[] 0x005657A0`),
-/// CellClass::GetInfantry (`0x0047EC40`: the first infantry of the list the
-/// infantry's own OnBridge `+0x8C` picks) and each following infantry until
-/// the list's first other object. The first infantry with strictly the most
-/// gives its cell; one counted at all and on the playfield fires.
+/// 0x00509F93`): [`densest_spread_cell`] around each infantry of
+/// InfantryClass::Array with [`GENETIC_MUTATOR_SPREAD_BAND`]. Per cell it
+/// reads the list the centre's own OnBridge (`+0x8C`) picks, from its first
+/// infantry (CellClass::GetInfantry, `0x0047EC40`) up to the next object that
+/// is not one, and counts each infantry that passes [`hostile_and_low`].
 fn genetic_mutator_target(
     sim: &Simulation,
     rules: &RuleSet,
     owner: InternedId,
 ) -> Option<(u16, u16)> {
     let terrain = sim.resolved_terrain.as_ref()?;
-    let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
-    let owner_name = sim.interner.resolve(owner);
     let entities = &sim.substrate.entities;
-    let counts = |occupant: u64| {
-        entities.get(occupant).is_some_and(|object| {
-            object.owner() != owner
-                && !is_allied_with(
-                    &sim.house_alliances,
-                    owner_name,
-                    sim.interner.resolve(object.owner()),
-                )
-                && !crate::sim::movement::air_movement::is_high_flying(
-                    object,
-                    Some(terrain),
-                    Some((rules, &sim.interner)),
-                )
-        })
-    };
-    let is_infantry = |member: &crate::sim::occupancy::CellObjectMember| match member {
-        crate::sim::occupancy::CellObjectMember::Entity(id) => entities
+    let is_infantry = |member: &CellObjectMember| match member {
+        CellObjectMember::Entity(id) => entities
             .get(*id)
             .is_some_and(|object| object.category == EntityCategory::Infantry),
-        crate::sim::occupancy::CellObjectMember::Terrain(_) => false,
+        CellObjectMember::Terrain(_) => false,
     };
-    let mut best = 0usize;
-    let mut best_cell = NO_CELL;
-    for index in (0..entities.infantry_registry_len()).rev() {
-        let Some(infantry) = entities
-            .infantry_registry_at(index)
-            .and_then(|id| entities.get(id))
-        else {
-            continue;
-        };
-        if infantry.lifecycle.in_limbo {
-            continue;
-        }
-        let layer = if infantry.on_bridge {
-            MovementLayer::Bridge
-        } else {
-            MovementLayer::Ground
-        };
-        let center = (infantry.position.rx as i16, infantry.position.ry as i16);
-        let mut count = 0usize;
-        for &(dx, dy) in
-            crate::sim::combat::cell_spread::inclusive_sweep(GENETIC_MUTATOR_SPREAD_BAND)
-        {
-            let looked = cells.lookup((center.0.wrapping_add(dx), center.1.wrapping_add(dy)));
-            if !matches!(looked, crate::map::cell_index::NativeCellIdentity::Real(_)) {
-                continue;
+    let centres = (0..entities.infantry_registry_len())
+        .rev()
+        .filter_map(|index| entities.infantry_registry_at(index))
+        .filter_map(|id| entities.get(id));
+    densest_spread_cell(
+        sim,
+        terrain,
+        centres,
+        GENETIC_MUTATOR_SPREAD_BAND,
+        |infantry| {
+            if infantry.on_bridge {
+                MovementLayer::Bridge
+            } else {
+                MovementLayer::Ground
             }
-            let (x, y) = cells.coord(looked);
-            count += sim
-                .cell_objects((x as u16, y as u16), layer)
+        },
+        |cell, layer| {
+            sim.cell_objects(cell, layer)
                 .skip_while(|member| !is_infantry(member))
                 .take_while(is_infantry)
-                .filter(|member| match member {
-                    crate::sim::occupancy::CellObjectMember::Entity(id) => counts(*id),
-                    crate::sim::occupancy::CellObjectMember::Terrain(_) => false,
+                .filter(|member| {
+                    counted(sim, member, |object| {
+                        hostile_and_low(sim, rules, terrain, owner, object)
+                    })
                 })
-                .count();
+                .count()
+        },
+    )
+}
+
+/// `HouseClass::AI_Fire_PsyDom @ 0x0050A150`: nothing while a Dominator runs
+/// (`PsyDom::Active`, `0x0050A157`) or without an enemy (`+0x5600`); with the
+/// constructor's empty preferred cell (a set one returns at once,
+/// `0x0050A171..0x0050A19D`, module RESIDUALS), [`densest_spread_cell`]
+/// around each Foot of FootClass::Array (`0x008B3DC4`, which the Foot
+/// constructor appends to at `0x004D34D7`: stable-id order) with
+/// [`PSYCHIC_DOMINATOR_SPREAD_BAND`]. Per cell it reads the ground list
+/// (`+0xE4`) whatever the bridge, from its head while each object is a Foot
+/// (`+0x14 & 4`, set at `0x004D34DD`; a list that starts with another object
+/// counts nothing), and counts each that passes [`hostile_and_low`] and
+/// CanBePermaMindControlled (`0x0053C450`). No random draws.
+fn psychic_dominator_target(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+) -> Option<(u16, u16)> {
+    if super::psychic_dominator::active(sim) {
+        return None;
+    }
+    sim.houses.get(&owner)?.enemy_house?;
+    let terrain = sim.resolved_terrain.as_ref()?;
+    let entities = &sim.substrate.entities;
+    let is_foot = |member: &CellObjectMember| match member {
+        CellObjectMember::Entity(id) => entities
+            .get(*id)
+            .is_some_and(|object| object.category != EntityCategory::Structure),
+        CellObjectMember::Terrain(_) => false,
+    };
+    let feet: Vec<&GameEntity> = entities
+        .values()
+        .filter(|object| object.category != EntityCategory::Structure)
+        .collect();
+    densest_spread_cell(
+        sim,
+        terrain,
+        feet.into_iter().rev(),
+        PSYCHIC_DOMINATOR_SPREAD_BAND,
+        |_| MovementLayer::Ground,
+        |cell, layer| {
+            sim.cell_objects(cell, layer)
+                .take_while(is_foot)
+                .filter(|member| {
+                    counted(sim, member, |object| {
+                        hostile_and_low(sim, rules, terrain, owner, object)
+                            && sim.can_be_perma_mind_controlled(object.stable_id(), rules)
+                    })
+                })
+                .count()
+        },
+    )
+}
+
+/// What AI_Fire_GenMutator and AI_Fire_PsyDom share. From the array's last
+/// centre to its first (`centres`, in that order), each one out of limbo
+/// (`+0x81`) sums `count` over the real cells (`MapClass::operator[] @
+/// 0x005657A0`; the shared dummy lists nothing) of `band`'s inclusive spread
+/// sweep around its own cell (vt+0x1BC), in the ground or bridge list `list`
+/// picks for it. The first centre with strictly the most gives its cell,
+/// which fires when one counted at all, it is not the empty cell and
+/// `MapClass::Is_Cell_In_Playfield(cell, 1) @ 0x00578460` passes
+/// (`0x0050A0E7..0x0050A120`, `0x0050A2DD..0x0050A316`).
+///
+/// Nothing changes during the walk, so each list is counted once and reused
+/// by every centre that sweeps it (natively each centre recounts it). Every
+/// lookup still runs: a miss stamps the shared dummy's coordinates.
+fn densest_spread_cell<'a>(
+    sim: &Simulation,
+    terrain: &ResolvedTerrainGrid,
+    centres: impl Iterator<Item = &'a GameEntity>,
+    band: usize,
+    list: impl Fn(&GameEntity) -> MovementLayer,
+    mut count: impl FnMut((u16, u16), MovementLayer) -> usize,
+) -> Option<(u16, u16)> {
+    let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+    // Per real cell, its ground and bridge counts once read.
+    let mut counts = vec![[None; 2]; terrain.cells().len()];
+    let mut best = 0usize;
+    let mut best_cell = NO_CELL;
+    for centre in centres {
+        if centre.lifecycle.in_limbo {
+            continue;
         }
-        if count > best {
-            best = count;
-            best_cell = center;
+        let layer = list(centre);
+        let at = (centre.position.rx as i16, centre.position.ry as i16);
+        let mut total = 0usize;
+        for &(dx, dy) in crate::sim::combat::cell_spread::inclusive_sweep(band) {
+            let looked = cells.lookup((at.0.wrapping_add(dx), at.1.wrapping_add(dy)));
+            let crate::map::cell_index::NativeCellIdentity::Real(index) = looked else {
+                continue;
+            };
+            let slot = &mut counts[index][usize::from(layer == MovementLayer::Bridge)];
+            total += *slot.get_or_insert_with(|| {
+                let (x, y) = cells.coord(looked);
+                count((x as u16, y as u16), layer)
+            });
+        }
+        if total > best {
+            best = total;
+            best_cell = at;
         }
     }
-    // `0x0050A0E7..0x0050A120`: the playfield test (and its cell lookup) only
-    // for a count and a cell.
     (best != 0
         && best_cell != NO_CELL
         && crate::sim::cell_rect::cell_is_in_playfield_height_aware_in_query(
@@ -546,6 +618,41 @@ fn genetic_mutator_target(
             None,
         ))
     .then_some((best_cell.0 as u16, best_cell.1 as u16))
+}
+
+/// Whether a cell-list member is an object `test` accepts.
+fn counted(
+    sim: &Simulation,
+    member: &CellObjectMember,
+    test: impl FnOnce(&GameEntity) -> bool,
+) -> bool {
+    match member {
+        CellObjectMember::Entity(id) => sim.substrate.entities.get(*id).is_some_and(test),
+        CellObjectMember::Terrain(_) => false,
+    }
+}
+
+/// The test both pickers apply to an object they count: owned by neither the
+/// house nor an ally of it (`+0x5788`; natively an object of no house also
+/// passes) and not high-flying (vt+0x54).
+fn hostile_and_low(
+    sim: &Simulation,
+    rules: &RuleSet,
+    terrain: &ResolvedTerrainGrid,
+    owner: InternedId,
+    object: &GameEntity,
+) -> bool {
+    object.owner() != owner
+        && !is_allied_with(
+            &sim.house_alliances,
+            sim.interner.resolve(owner),
+            sim.interner.resolve(object.owner()),
+        )
+        && !crate::sim::movement::air_movement::is_high_flying(
+            object,
+            Some(terrain),
+            Some((rules, &sim.interner)),
+        )
 }
 
 /// The ForceShield arm (`0x00509A3E..0x00509AAF`): with no second preferred

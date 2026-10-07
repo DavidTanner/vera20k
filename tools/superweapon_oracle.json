@@ -21973,6 +21973,815 @@
       "supers": 5
     }
   ],
+  "ai_psydom": [
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            30,
+            31
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "infantry",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [
+        [
+          "infantry",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {}
+        ]
+      ],
+      "psydom": 5
+    },
+    {
+      "enemy_index": -1,
+      "events": [],
+      "objects": [
+        [
+          "infantry",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [
+        [
+          "infantry",
+          "self",
+          [
+            30,
+            31
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [
+        [
+          "infantry",
+          "ally",
+          [
+            30,
+            31
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            30,
+            31
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "none",
+          [
+            30,
+            31
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            32,
+            31
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "self",
+          [
+            30,
+            31
+          ],
+          {}
+        ],
+        [
+          "infantry",
+          "enemy",
+          [
+            32,
+            31
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [
+        [
+          "infantry",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {
+            "immune": true
+          }
+        ],
+        [
+          "infantry",
+          "self",
+          [
+            36,
+            36
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {
+            "balloon": true
+          }
+        ],
+        [
+          "infantry",
+          "self",
+          [
+            36,
+            36
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {
+            "curtain": true
+          }
+        ],
+        [
+          "infantry",
+          "self",
+          [
+            36,
+            36
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [
+        [
+          "aircraft",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {
+            "high": true
+          }
+        ],
+        [
+          "infantry",
+          "self",
+          [
+            36,
+            36
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            30,
+            31
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "aircraft",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {}
+        ],
+        [
+          "infantry",
+          "self",
+          [
+            36,
+            36
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            44,
+            41
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "infantry",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {}
+        ],
+        [
+          "infantry",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            44,
+            40
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            45,
+            40
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            44,
+            41
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            45,
+            40
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            31,
+            31
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            44,
+            40
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            45,
+            40
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            33,
+            30
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            30
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            33,
+            30
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            40,
+            40
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            30
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            34,
+            30
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            40,
+            40
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            32,
+            32
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            30
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            32,
+            32
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            40,
+            40
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            30
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            33,
+            33
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            40,
+            40
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            30,
+            34
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            34
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            29,
+            30
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            30,
+            30
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            34
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            30
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            30,
+            31
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {}
+        ],
+        [
+          "building",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {}
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {}
+        ],
+        [
+          "infantry",
+          "self",
+          [
+            36,
+            36
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [
+        [
+          "fire",
+          0,
+          [
+            31,
+            31
+          ]
+        ]
+      ],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {
+            "bridge": true
+          }
+        ],
+        [
+          "unit",
+          "enemy",
+          [
+            31,
+            31
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {
+            "bridge": true
+          }
+        ],
+        [
+          "infantry",
+          "self",
+          [
+            36,
+            36
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [
+        [
+          "unit",
+          "enemy",
+          [
+            30,
+            31
+          ],
+          {
+            "limbo": true
+          }
+        ],
+        [
+          "infantry",
+          "self",
+          [
+            36,
+            36
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [
+        [
+          "infantry",
+          "enemy",
+          [
+            10,
+            10
+          ],
+          {}
+        ]
+      ],
+      "psydom": 0
+    },
+    {
+      "enemy_index": 1,
+      "events": [],
+      "objects": [],
+      "psydom": 0
+    }
+  ],
   "ai_try_fire": [
     {
       "control": false,

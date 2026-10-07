@@ -778,3 +778,189 @@ fn retail_computer_house_nukes_the_enemy_construction_yard() {
             if *owner == americans
     )));
 }
+
+/// AI_Fire_PsyDom against the native rows (`ai_psydom`): its gates, which
+/// objects count (the house's own and its ally's never; CanBePermaMindControlled
+/// and the air test), the 38 cells around each Foot, the ground lists' Foot
+/// walk, the bridge list it never reads and the last-to-first tie. Native's
+/// object of no house is here a fourth house's, which the computer is not
+/// allied with. A second Unit in one cell spawns apart, as VERA cannot
+/// Unlimbo it there, and is moved in with the cell's list rebuilt in arrival
+/// order (each Unlimbo links a non-building at the head, a building at the
+/// tail).
+#[test]
+fn the_psychic_dominator_target_matches_native() {
+    use crate::sim::superweapon::invulnerability::{InvulnKind, apply_invulnerability};
+    use crate::sim::superweapon::psychic_dominator::PsychicDominatorState;
+    let oracle = oracle();
+    let rows = rows(&oracle, "ai_psydom");
+    assert_eq!(rows.len(), 26);
+    let art = IniFile::from_str("[PLAIN]\nFoundation=1x1\n");
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(
+            "[InfantryTypes]\n0=GI\n1=PSIGI\n[VehicleTypes]\n0=TANK\n1=BALLOON\n\
+             [AircraftTypes]\n0=JET\n[BuildingTypes]\n0=PLAIN\n\
+             [GI]\nStrength=100\nSpeed=4\n\
+             [PSIGI]\nStrength=100\nSpeed=4\nImmuneToPsionics=yes\n\
+             [TANK]\nStrength=100\nSpeed=4\n\
+             [BALLOON]\nStrength=100\nSpeed=4\nBalloonHover=yes\n\
+             [JET]\nStrength=100\nSpeed=4\n[PLAIN]\nStrength=100\n",
+        ),
+        &art,
+    )
+    .unwrap();
+    rules.install_art_data(ArtRegistry::from_ini(&art));
+    const NO_HOUSE: &str = "Nobody";
+    for row in rows {
+        let mut sim = Simulation::with_seed(5);
+        sim.intern_rule_type_ids(&rules);
+        sim.resolve_type_handles(&rules);
+        let computer = sim.interner.intern(COMPUTER);
+        let enemy = sim.interner.intern(ENEMY);
+        for name in [COMPUTER, ENEMY, ALLY, NO_HOUSE] {
+            let id = sim.interner.intern(name);
+            sim.houses
+                .insert(id, HouseState::new(id, 0, None, false, 0, 10));
+            sim.session.house_order.push(id);
+        }
+        sim.houses.get_mut(&computer).unwrap().enemy_house =
+            (int(&row["enemy_index"]) != -1).then_some(enemy);
+        // `+0x5788` bit 2: the computer counts the third house an ally.
+        sim.house_alliances
+            .entry(COMPUTER.to_ascii_uppercase())
+            .or_default()
+            .insert(ALLY.to_ascii_uppercase());
+        sim.resolved_terrain = Some(test_grid(64, 64, test_terrain_cell));
+        sim.playfield_bounds = Some(playfield(&oracle));
+        let status = u8::try_from(int(&row["psydom"])).unwrap();
+        sim.psychic_dominator = PsychicDominatorState::for_test(
+            status,
+            (0, 0),
+            (status != 0).then_some(computer),
+            None,
+        );
+        // Each listed object and its cell, in arrival order; the cells whose
+        // list needs rebuilding.
+        let mut listed = Vec::new();
+        let mut rebuilt = Vec::new();
+        for (index, object) in row["objects"].as_array().unwrap().iter().enumerate() {
+            let owner = match object[1].as_str().unwrap() {
+                "self" => COMPUTER,
+                "enemy" => ENEMY,
+                "ally" => ALLY,
+                "none" => NO_HOUSE,
+                other => panic!("{other}"),
+            };
+            let (x, y) = wide(cell(&object[2]));
+            let extra = &object[3];
+            let fact = |key: &str| extra[key].as_bool().unwrap_or(false);
+            let kind = match (object[0].as_str().unwrap(), fact("immune"), fact("balloon")) {
+                ("infantry", false, _) => "GI",
+                ("infantry", true, _) => "PSIGI",
+                ("unit", _, false) => "TANK",
+                ("unit", _, true) => "BALLOON",
+                ("aircraft", ..) => "JET",
+                ("building", ..) => "PLAIN",
+                (other, ..) => panic!("{other}"),
+            };
+            let occupied = listed.iter().any(|&(_, at)| at == (x, y));
+            let apart = kind == "PLAIN" || (kind != "GI" && kind != "PSIGI" && occupied);
+            let at = if apart {
+                (33 + index as u16, 33 - index as u16)
+            } else {
+                (x, y)
+            };
+            let id = sim
+                .spawn_object_at_height(
+                    kind,
+                    owner,
+                    at.0,
+                    at.1,
+                    0,
+                    if fact("high") { 4 } else { 0 },
+                    &rules,
+                )
+                .unwrap_or_else(|| panic!("{object} stands"));
+            if fact("high") && kind == "JET" {
+                // Four levels up, as the spawn height lifts infantry.
+                sim.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .position
+                    .exact_z_leptons = Some(4 * crate::util::lepton::LEPTONS_PER_LEVEL as i32);
+            }
+            let entity = sim.substrate.entities.get(id).unwrap();
+            assert_eq!(
+                air_movement_high(entity, &sim, &rules),
+                fact("high"),
+                "{object} high-flying"
+            );
+            if apart {
+                let entity = sim.substrate.entities.get_mut(id).unwrap();
+                entity.position.rx = x;
+                entity.position.ry = y;
+                sim.substrate.occupancy.remove(at.0, at.1, id);
+                rebuilt.push((x, y));
+            }
+            if fact("curtain") {
+                let frame = sim.session.binary_frame;
+                apply_invulnerability(
+                    sim.substrate.entities.get_mut(id).unwrap(),
+                    frame,
+                    10_000,
+                    InvulnKind::IronCurtain,
+                );
+            }
+            if fact("bridge") {
+                assert!(sim.foot_mark_remove(id, Some(&rules), None));
+                sim.substrate.entities.get_mut(id).unwrap().on_bridge = true;
+                assert!(sim.foot_mark_put(id, Some(&rules), None));
+            }
+            if fact("limbo") {
+                sim.techno_limbo(id);
+            } else {
+                listed.push((id, (x, y)));
+            }
+        }
+        for &at in &rebuilt {
+            let members: Vec<u64> = listed
+                .iter()
+                .filter(|(_, cell)| *cell == at)
+                .map(|&(id, _)| id)
+                .collect();
+            for &id in &members {
+                sim.substrate.occupancy.remove(at.0, at.1, id);
+            }
+            for &id in &members {
+                let entity = sim.substrate.entities.get(id).unwrap();
+                let (sub_cell, insertion) = (
+                    entity.sub_cell,
+                    crate::sim::occupancy::CellListInsertion::from_category(entity.category),
+                );
+                sim.substrate.occupancy.add(
+                    at.0,
+                    at.1,
+                    id,
+                    MovementLayer::Ground,
+                    sub_cell,
+                    insertion,
+                );
+            }
+        }
+        let expected = row["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|event| event[0] == "fire")
+            .map(|fire| {
+                assert_eq!(fire[1], 0);
+                wide(cell(&fire[2]))
+            });
+        assert_eq!(
+            psychic_dominator_target(&sim, &rules, computer),
+            expected,
+            "{row}"
+        );
+    }
+}

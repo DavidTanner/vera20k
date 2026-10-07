@@ -17,6 +17,9 @@
 //! Process runs inside `LightningStorm::Process @ 0x0053A6C0` (`0x0053A742`),
 //! after its nuke-flash step and before the storm's own work, from the
 //! pre-object superweapon slot ([`super::tick_active_superweapon_effects`]).
+//! A computer house aims its own through `AI_Fire_PsyDom` (`super::ai_fire`),
+//! and its All_To_Hunt destroys the `Insignificant=` objects it holds
+//! (`sim::house_strategy`).
 //!
 //! Evidence: instruction reading at the addresses cited here. Native
 //! execution (`tools/superweapon_oracle.py`, replayed in
@@ -49,10 +52,6 @@
 //!   one.
 //! - The refusal message for the player (`PsyDom::PrintMessage @ 0x0053B410`,
 //!   `Msg:DominatorActive`) is not posted.
-//! - The All_To_Hunt arm for a permanently controlled `Insignificant=` object
-//!   (`0x0050144B..0x005014AA`, `house_strategy`) needs a computer house
-//!   owning one, which only its own Dominator gives it: the AI's launch
-//!   (`HouseClass::AI_Fire_PsyDom @ 0x0050A150`) is the next chain.
 
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
