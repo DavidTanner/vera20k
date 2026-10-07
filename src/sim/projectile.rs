@@ -1179,14 +1179,15 @@ impl Projectile {
             return None;
         }
         self.position = raise_to_ground(self.position, terrain, shared_cell_dummy, self.on_bridge);
-        if nuke.nuke_ball_type {
+        let waits = (nuke.nuke_ball_type)();
+        if waits {
             self.awaiting_anim = true;
             self.awaited_anim = None;
             self.previous_cell = ((candidate.x / 256) as i16, (candidate.y / 256) as i16);
         }
         Some(ProjectileNukeImpact {
             projectile_id: self.id,
-            waits: nuke.nuke_ball_type,
+            waits,
         })
     }
 
@@ -1264,21 +1265,21 @@ impl ProjectileNukeImpact {
 /// outside the store.
 pub(crate) struct NukeImpactContext<'a> {
     interner: &'a StringInterner,
-    nuke_ball_type: bool,
+    nuke_ball_type: &'a dyn Fn() -> bool,
     anim_live: &'a dyn Fn(AnimId) -> bool,
 }
 
 impl<'a> NukeImpactContext<'a> {
     /// `interner` resolves the warhead IDs for the `NUKE` test;
-    /// `nuke_ball_type` is whether `AnimTypeClass::FindIndex("NUKEBALL") @
-    /// 0x00427CB0` finds a type (`0x00467EB1`); `anim_live` answers whether
-    /// an anim still lives. Its UnInit clears a waiting bullet's `+0x154`
-    /// (`BulletClass::PointerExpired 0x004685BE`, reached through the holder
-    /// list `0x00B0F5B8`); VERA reuses no anim id, so a dead one's id finds
-    /// nothing.
+    /// `nuke_ball_type` answers whether `AnimTypeClass::FindIndex("NUKEBALL")
+    /// @ 0x00427CB0` finds a type (`0x00467EB1`), asked only at a `NUKE`
+    /// impact; `anim_live` answers whether an anim still lives. Its UnInit
+    /// clears a waiting bullet's `+0x154` (`BulletClass::PointerExpired
+    /// 0x004685BE`, reached through the holder list `0x00B0F5B8`); VERA
+    /// reuses no anim id, so a dead one's id finds nothing.
     pub(crate) fn new(
         interner: &'a StringInterner,
-        nuke_ball_type: bool,
+        nuke_ball_type: &'a dyn Fn() -> bool,
         anim_live: &'a dyn Fn(AnimId) -> bool,
     ) -> Self {
         Self {

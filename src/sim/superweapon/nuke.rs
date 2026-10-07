@@ -37,11 +37,18 @@
 //!   binds `NUKEBALL.SHP`.
 //! - The head's IsAlive gate (`0x004666F7`) has no counterpart: a detonated
 //!   bullet leaves VERA's store at its commit.
-//! - The chrono screen (`0x00A9FAB0`) shares the flash's lighting arms; only
-//!   `SuperWeaponEffects::ResetAll` writes it, so it stays unmodelled.
+//! - The chrono screen (`0x00A9FAB0`) shares the flash's lighting arms. Map
+//!   trigger action 127 sets it (`0x006DFABF` -> `0x0053B460`) and
+//!   `0x0053B560` steps it; VERA does not port that action, which the retail
+//!   campaign maps ALL01UMD and SOV01UMD run.
 //! - The bridge units' draw brightening by four times the active profile's
 //!   Level (`UnitClass::DrawIt 0x0073D03B`, `InfantryClass::DrawIt
 //!   0x00519319`), the nuke's included, is not ported for any profile.
+//! - `LightConvertClass`'s constructor (`0x00555DA0`) tints a new palette
+//!   with the Ion profile while a storm rages, then the nuke's while the
+//!   flash fades in (`0x00555EE8`), then the Dominator's; VERA tints every
+//!   palette with UpdateLighting's choice, which puts the nuke first. Only a
+//!   palette created while a storm rages over a fading-in flash differs.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::object_type::{ObjectCategory, ObjectType};

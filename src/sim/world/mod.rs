@@ -3611,7 +3611,8 @@ impl Simulation {
     /// `DominatorAmbientChangeRate=` while the Psychic Dominator is active
     /// (`PsyDom::Active`, `0x0055B3A4`), else with `AmbientChangeRate=`. The
     /// chrono screen's test (`0x0055B39B`), in the nuke's arm, is not
-    /// modelled: only `SuperWeaponEffects::ResetAll` writes it.
+    /// modelled: map trigger action 127 sets it (`0x0053B460`), and VERA does
+    /// not port that action.
     pub(crate) fn tick_scenario_lighting_transition(&mut self, rules: &RuleSet) {
         let interval_frames = if self.session.lighting.nuke_flash_running() {
             self.session.lighting.nuke_change_rate()

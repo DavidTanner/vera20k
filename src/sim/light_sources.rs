@@ -198,8 +198,9 @@ impl Simulation {
     /// while a storm rages (`0x00A9FAB4`), else the Dominator's while its
     /// status is neither 0 nor 5 (`0x0053C313..0x0053C31F`), else the
     /// ordinary one (`RecalcLighting(-1, -1, -1, 0)`). The chrono screen
-    /// (`0x00A9FAB0`), which shares the nuke's arm, is not modelled: only
-    /// `SuperWeaponEffects::ResetAll` writes it.
+    /// (`0x00A9FAB0`), which shares the nuke's arm, is not modelled: map
+    /// trigger action 127 sets it (`0x0053B460`), and VERA does not port
+    /// that action.
     pub(crate) fn update_lighting(&mut self) {
         let profile = if self.session.lighting.nuke_flash_fading_in() {
             ScenarioLightingProfile::Nuke

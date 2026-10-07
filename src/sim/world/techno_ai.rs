@@ -367,10 +367,12 @@ impl Simulation {
             let anims = &self.substrate.anims;
             let pending_delete = &self.substrate.pending_delete;
             let anim_live = |anim: u64| anims.contains_key(anim) && !pending_delete.contains(&anim);
-            let nuke = rules.map(|rules| {
+            let nuke_ball_type =
+                || rules.is_some_and(crate::sim::superweapon::nuke::nuke_ball_type);
+            let nuke = rules.map(|_| {
                 crate::sim::projectile::NukeImpactContext::new(
                     interner,
-                    crate::sim::superweapon::nuke::nuke_ball_type(rules),
+                    &nuke_ball_type,
                     &anim_live,
                 )
             });

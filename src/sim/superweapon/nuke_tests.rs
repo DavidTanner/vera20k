@@ -144,8 +144,8 @@ fn impact_matches_native() {
             nuke_spawn(&mut interner, row["warhead"].as_str().unwrap(), location),
         );
         store.get_mut(id).unwrap().on_bridge = row["on_bridge"].as_bool().unwrap();
-        let context =
-            NukeImpactContext::new(&interner, super::nuke::nuke_ball_type(&rules), &|_| false);
+        let nuke_ball = || super::nuke::nuke_ball_type(&rules);
+        let context = NukeImpactContext::new(&interner, &nuke_ball, &|_| false);
 
         let impact = store.get_mut(id).unwrap().nuke_impact(
             &context,
@@ -211,7 +211,8 @@ fn impact_effects_match_native() {
         // The bullet's side of the block (on its clamped Location, which
         // stands over this map's floor), then the world's.
         let never = |_: AnimId| false;
-        let context = NukeImpactContext::new(&sim.interner, waits, &never);
+        let nuke_ball = || waits;
+        let context = NukeImpactContext::new(&sim.interner, &nuke_ball, &never);
         let dummy = SharedCellDummy::fresh();
         let impact = sim
             .projectiles
@@ -337,7 +338,7 @@ fn wait_matches_native() {
             let at = ProjectileCoord::new(2660, 3122, 1000);
             let id = store.spawn(1, nuke_spawn(&mut interner, "NUKE", at));
             let anim_live = |id: AnimId| live && id == anim;
-            let context = NukeImpactContext::new(&interner, true, &anim_live);
+            let context = NukeImpactContext::new(&interner, &|| true, &anim_live);
             let dummy = SharedCellDummy::fresh();
             if waits {
                 let bullet = store.get_mut(id).unwrap();
@@ -754,12 +755,17 @@ fn retail_nuclear_missile_rises_falls_and_strikes_its_target() {
         "not yet detonated"
     );
 
-    // The warhead detonates on the first AI after NUKEBALL's end; the flash
-    // fades in for 30 frames, out for 15, and the lighting returns to the
-    // ordinary profile.
+    // The flash fades in for 30 frames, out for 15, and the lighting returns
+    // to the ordinary profile. NUKEBALL's own AI, after the warhead's in the
+    // logic order, ends it; the warhead's next AI detonates. The anim's
+    // 20-frame life comes from its owner (a Rust regression check, not a
+    // native run).
+    let ball_live = |sim: &Simulation| {
+        sim.anim(ball).is_some() && !sim.substrate.pending_delete.contains(&ball)
+    };
     let mut flash_changes = Vec::new();
     let mut last = lighting.nuke_flash_for_test().0;
-    let mut detonated_after = None;
+    let (mut ball_ended_after, mut detonated_after) = (None, None);
     for frames in 1..=600 {
         step(&mut sim, &rules);
         let status = sim.session.lighting.nuke_flash_for_test().0;
@@ -767,12 +773,11 @@ fn retail_nuclear_missile_rises_falls_and_strikes_its_target() {
             flash_changes.push((frames, status));
             last = status;
         }
+        if ball_ended_after.is_none() && !ball_live(&sim) {
+            ball_ended_after = Some(frames);
+        }
         if detonated_after.is_none() && sim.projectiles.get(warhead).is_none() {
             detonated_after = Some(frames);
-            assert!(
-                sim.anim(ball).is_none() || sim.substrate.pending_delete.contains(&ball),
-                "NUKEBALL is gone"
-            );
         }
         if detonated_after.is_some() && status == 0 {
             break;
@@ -783,7 +788,7 @@ fn retail_nuclear_missile_rises_falls_and_strikes_its_target() {
         sim.session.lighting.selected_profile,
         ScenarioLightingProfile::Normal
     );
-    assert!(detonated_after.is_some());
+    assert_eq!((ball_ended_after, detonated_after), (Some(20), Some(21)));
     assert!(
         sim.substrate
             .entities
@@ -795,4 +800,71 @@ fn retail_nuclear_missile_rises_falls_and_strikes_its_target() {
         sim.radiation.site_at(TARGET).is_some(),
         "NukePayload's RadLevel"
     );
+}
+
+/// A save in the middle of the wait and the flash restores both: the
+/// restored world hashes as the original does and then steps alike through
+/// the detonation and the flash's end.
+#[test]
+fn retail_nuke_wait_and_flash_survive_save_and_load() {
+    let Some(rules) = retail_rules_binding(&[("NUKEBALL", NUKE_BALL_FRAMES)]) else {
+        return;
+    };
+    let mut sim = Simulation::with_seed(17);
+    sim.intern_rule_type_ids(&rules);
+    sim.resolve_type_handles(&rules);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+    let at = ProjectileCoord::new(8 * 256 + 128, 8 * 256 + 128, 0);
+    let id = sim.allocate_stable_id();
+    let spawn = nuke_spawn(&mut sim.interner, "NUKE", at);
+    sim.admit_projectile(id, spawn);
+    // The impact as `BulletClass::AI` takes it, then five frames of the wait.
+    let never = |_: AnimId| false;
+    let context = NukeImpactContext::new(&sim.interner, &|| true, &never);
+    let impact = sim
+        .projectiles
+        .get_mut(id)
+        .unwrap()
+        .nuke_impact(&context, None, &SharedCellDummy::fresh(), at)
+        .unwrap();
+    super::nuke::impact(&mut sim, &rules, impact);
+    for _ in 0..5 {
+        step(&mut sim, &rules);
+    }
+    assert!(sim.projectiles.get(id).unwrap().awaiting_anim());
+    assert!(sim.session.lighting.nuke_flash_fading_in());
+
+    let bytes = crate::sim::snapshot::GameSnapshot::save_validated(&sim, 1, 2, "nuke wait", 0);
+    let mut restored = crate::sim::snapshot::GameSnapshot::load(&bytes)
+        .unwrap()
+        .sim;
+    restored.restore_after_snapshot_load().unwrap();
+    // A save carries no map: the load re-installs the scenario's cells.
+    crate::sim::arena_fixture::flat_ground(&mut restored, &rules);
+    // Align the control run to the load contract: retail's save reader
+    // reinitializes the Scenario RNG, and Bullet Load restarts each bullet's
+    // arm timer at the load frame (`0x0046AE9C..0x0046AEB0`).
+    sim.scenario_rng = crate::sim::rng::SimRng::new(0);
+    let frame = sim.session.binary_frame as i32;
+    for (_, bullet) in sim.projectiles.iter_mut() {
+        bullet.arm_timer.start(frame, 0);
+    }
+    let wait = |sim: &Simulation| {
+        let bullet = sim.projectiles.get(id).unwrap();
+        (
+            bullet.awaiting_anim(),
+            bullet.awaited_anim(),
+            bullet.position,
+        )
+    };
+    assert_eq!(wait(&restored), wait(&sim));
+    assert_eq!(restored.session.lighting, sim.session.lighting);
+    assert_eq!(restored.state_hash(), sim.state_hash());
+    for frame in 1..=60 {
+        step(&mut sim, &rules);
+        step(&mut restored, &rules);
+        assert_eq!(restored.state_hash(), sim.state_hash(), "frame {frame}");
+    }
+    assert!(sim.projectiles.get(id).is_none(), "detonated");
+    assert_eq!(sim.session.lighting.nuke_flash_for_test().0, 0);
 }

@@ -3861,6 +3861,8 @@ mod tests {
         // 292 -> 293: the native Rocket locomotor object; no rocket phase
         // machine; the kamikaze tracker's nodes.
         // 293 -> 294: the Iron Curtain's tint stage and timer.
+        // 294 -> 295: the nuke flash and NukeAmbientChangeRate= in the
+        // scenario's lighting; a bullet's wait on its NUKE anim.
         assert_eq!(super::SNAPSHOT_VERSION, 295);
     }
 
