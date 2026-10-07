@@ -71,10 +71,11 @@ target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
 
 ## Next chains (one PR each)
 
-- The Force Shield's and Iron Curtain's tint on buildings: TechnoClass::DrawSHP
-  (`0x00706334`) and the building anim updates scale their intensity by the stage, and
-  TechnoClass::Draw (`0x0070678D`) the building voxel parts' and voxel aircraft's (a
-  residual in `superweapon/invulnerability.rs`).
+- The Force Shield's and Iron Curtain's tint on buildings and Terror Drones:
+  TechnoClass::DrawSHP (`0x00706334`: building bodies and the SHP Terror Drone) and the
+  building anim updates scale their intensity by the stage, and TechnoClass::Draw
+  (`0x0070678D`) the building voxel parts' and voxel aircraft's (a residual in
+  `superweapon/invulnerability.rs`).
 - Script action 56 `0x6EFE60` for the campaign's Chronosphere teams (SOV02SMD.MAP),
   with `Find_Best_Target_Building 0x6EEBD0`, which actions 46 and 47 share.
 - The existing types' gaps: Deactivate's start = -1, the offline-provider hold

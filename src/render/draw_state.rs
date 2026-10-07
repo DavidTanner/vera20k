@@ -26,7 +26,7 @@ pub const FX_DISGUISE: u32 = 1 << 5;
 /// sprite shader ignores the palette and darkens whatever is beneath, the way
 /// the native shadow blitter (`Blitter_selector(0x2001)`) does.
 pub const FX_SHADOW: u32 = 1 << 6;
-/// Voxel body waterline clip. `effect_tint.w` carries Techno+3CA's retained
+/// Voxel body waterline clip. `sinking_row` carries Techno+3CA's retained
 /// world row; ordinary alpha remains in its own lane.
 pub(crate) const FX_SINKING_CLIP: u32 = 1 << 7;
 
@@ -88,18 +88,17 @@ pub struct DrawDecision {
 /// For voxel unit bodies carrying the composite bridge-split flag instead,
 /// `fx_params.w` carries the tactical scissor height in world pixels (zero
 /// means full viewport). This shader-specific transport does not alter effects.
-/// `effect_tint` is part of `SpriteInstance`'s vertex ABI. Its RGB lanes are
-/// unused (1.0): an effect that changes an object's light, such as the Iron
+/// `sinking_row` is the retained world row a voxel draw with FX_SINKING_CLIP
+/// clips at. An effect that changes an object's light, such as the Iron
 /// Curtain's tint, scales the intensity its `PaletteLight` carries, as the
-/// native draws scale theirs. Voxel draws with FX_SINKING_CLIP carry a
-/// retained world row in its W lane.
+/// native draws scale theirs.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct DrawState {
     pub remap_row: u32,
     pub fx_flags: u32,
     pub fx_params: [f32; 4],
-    pub effect_tint: [f32; 4],
+    pub sinking_row: f32,
 }
 
 impl Default for DrawState {
@@ -108,7 +107,7 @@ impl Default for DrawState {
             remap_row: 0,
             fx_flags: 0,
             fx_params: [1.0, 0.0, 1.0, 0.0],
-            effect_tint: [1.0, 1.0, 1.0, 1.0],
+            sinking_row: 0.0,
         }
     }
 }
@@ -121,8 +120,6 @@ impl DrawState {
     pub fn resolve(input: DrawStateInput, current_frame: u32, remap_row: u32) -> DrawDecision {
         let mut state = Self {
             remap_row,
-            fx_params: [1.0, 0.0, 1.0, 0.0],
-            effect_tint: [1.0, 1.0, 1.0, 1.0],
             ..Self::default()
         };
 
@@ -300,7 +297,6 @@ mod tests {
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::InternedId;
     use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
-    use crate::sim::superweapon::invulnerability::{InvulnKind, InvulnerabilityState};
 
     fn entity() -> GameEntity {
         GameEntity::new_at_frame_zero_for_test(
@@ -413,22 +409,6 @@ mod tests {
         let state = DrawState::for_entity(&entity, 45, 3, ObserverDrawContext::default()).state;
         assert_eq!(state.fx_flags, FX_WARP);
         assert_eq!(state.fx_params[0], 0.5);
-    }
-
-    /// The curtain's tint scales the intensity in the object's
-    /// `PaletteLight`; it sets no draw-state flag, which would move an opaque
-    /// body off the native palette conversion (`opaque_palette`).
-    #[test]
-    fn a_curtained_object_keeps_the_plain_draw_state() {
-        let mut entity = entity();
-        entity.invulnerability = Some(InvulnerabilityState::new(
-            crate::sim::timer::CdTimer::started(40, 20),
-            InvulnKind::IronCurtain,
-        ));
-        let state = DrawState::for_entity(&entity, 45, 3, ObserverDrawContext::default()).state;
-        assert_eq!(state.fx_flags, 0);
-        assert_eq!(state.fx_params, [1.0, 0.0, 1.0, 0.0]);
-        assert_eq!(state.effect_tint, [1.0; 4]);
     }
 
     #[test]

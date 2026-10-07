@@ -97,7 +97,7 @@ fn vxl_body_tint(
 /// pixel, `0x007473FA..0x0074741C`), where TechnoClass::Draw's own curtain arm
 /// lights nothing. The draw reads the frame Main_Tick renders under; its
 /// render (`0x0055DBBE`) precedes the logic (`0x0055DC9E`) and the increment
-/// (`0x0055DE81`), so that is the committed `binary_frame`. VERA's
+/// (`0x0055DE81`), so that is `sim`'s committed `binary_frame`. VERA's
 /// compatibility tint, for translucent and effect draws, is linear in the
 /// intensity and takes the same ratio. The harvest overlay keeps the unscaled
 /// light: UnitClass::Draw blits it with its own intensity (`0x0073D283`).
@@ -114,8 +114,9 @@ fn curtained_body_light(
     entity: &crate::sim::game_entity::GameEntity,
     tint: [f32; 3],
     light: crate::render::palette_light::PaletteLight,
-    frame: u32,
+    sim: &crate::sim::world::Simulation,
 ) -> ([f32; 3], crate::render::palette_light::PaletteLight) {
+    let frame = sim.session.binary_frame;
     let Some(curtain) = entity.invulnerability.as_ref().filter(|curtain| {
         crate::sim::superweapon::invulnerability::is_invulnerable(Some(curtain), frame)
     }) else {
@@ -437,7 +438,7 @@ pub(crate) fn build_unit_instances(
         // Voxel aircraft draw through TechnoClass::Draw's arm instead (a
         // residual in `sim/superweapon/invulnerability.rs`).
         let (body_tint, body_light) = if entity.category == EntityCategory::Unit {
-            curtained_body_light(entity, tint, palette_light, sim.session.binary_frame)
+            curtained_body_light(entity, tint, palette_light, sim)
         } else {
             (tint, palette_light)
         };
@@ -1758,11 +1759,13 @@ mod tests {
     /// Each `curtain_draw_arm` row (DrawVoxelBody `0x0073BF7B..0x0073C166`
     /// run natively) whose other arms are idle: no flash count, not Berzerk
     /// or Deactivated, no caller colour word and retail's IronCurtainColor=0
-    /// in the active RGB565 format. The intensity the composite takes is the
-    /// brightness [`curtained_body_light`] gives the body, and the colour word
-    /// VERA does not draw has no bit in its 16-bit pixel lane (above it the
-    /// conversion leaves stale ECX bits, `0x0073BFFD`). The other rows are
-    /// the block's residuals (on `curtained_body_light`).
+    /// in the active RGB565 format. The intensity the composite takes, at the
+    /// row's frame as the committed `binary_frame`, is the brightness
+    /// [`curtained_body_light`] gives the body, and the colour word VERA does
+    /// not draw has no bit in its 16-bit pixel lane (above it the conversion
+    /// leaves stale ECX bits, `0x0073BFFD`). VERA's compatibility tint takes
+    /// the intensity's ratio. The other rows are the block's residuals (on
+    /// `curtained_body_light`).
     #[test]
     fn the_curtain_arm_matches_native() {
         let oracle: serde_json::Value =
@@ -1771,6 +1774,8 @@ mod tests {
         let rows = oracle["curtain_draw_arm"].as_array().unwrap();
         assert_eq!(rows.len(), 55);
         let int = |value: &serde_json::Value| value.as_i64().unwrap() as i32;
+        let mut sim = Simulation::new();
+        let tint = [0.6, 0.9, 1.2];
         let mut compared = 0;
         for row in rows {
             if int(&row["flash"]) != 0
@@ -1791,12 +1796,16 @@ mod tests {
                     CdTimer::from_raw(int(&row["tint"][0]), int(&row["tint"][1])),
                 ),
             );
-            let light = crate::render::palette_light::PaletteLight::color_scheme(
-                [1000; 3],
-                int(&row["intensity"]),
-            );
-            let (_, lit) = curtained_body_light(&unit, [1.0; 3], light, int(&row["frame"]) as u32);
-            assert_eq!(lit.brightness(), int(&row["out_intensity"]), "{row}");
+            let intensity = int(&row["intensity"]);
+            let light =
+                crate::render::palette_light::PaletteLight::color_scheme([1000; 3], intensity);
+            sim.session.binary_frame = int(&row["frame"]) as u32;
+            let (lit_tint, lit) = curtained_body_light(&unit, tint, light, &sim);
+            let out = int(&row["out_intensity"]);
+            assert_eq!(lit.brightness(), out, "{row}");
+            assert_eq!(lit.rows(), light.rows(), "{row}");
+            let ratio = out as f32 / intensity as f32;
+            assert_eq!(lit_tint, tint.map(|channel| channel * ratio), "{row}");
             assert_eq!(row["out_word"].as_u64().unwrap() & 0xFFFF, 0, "{row}");
             compared += 1;
         }
@@ -1820,30 +1829,6 @@ mod tests {
         let colors = crate::rules::color_add::ColorAddTable::from_ini(&ini);
         assert_eq!(colors.slots[0].name.as_deref(), Some("None"));
         assert_eq!(colors.slots[0].rgb, [0, 0, 0]);
-    }
-
-    /// The light only changes for a unit with time left on its curtain; a
-    /// translucent draw's compatibility tint takes the intensity's ratio.
-    #[test]
-    fn only_a_curtained_unit_changes_light() {
-        use crate::sim::superweapon::invulnerability::{InvulnKind, InvulnerabilityState};
-        let light = crate::render::palette_light::PaletteLight::color_scheme([1000; 3], 1200);
-        let tint = [0.6, 0.9, 1.2];
-        let mut unit = GameEntity::test_default(1, "HTNK", "Russians", 10, 10);
-        assert_eq!(curtained_body_light(&unit, tint, light, 500), (tint, light));
-        // Stage 6 (51/256) on a curtain that ran out at 500.
-        unit.invulnerability = Some(InvulnerabilityState::with_tint(
-            CdTimer::from_raw(400, 100),
-            InvulnKind::IronCurtain,
-            6,
-            CdTimer::from_raw(480, 0),
-        ));
-        assert_eq!(curtained_body_light(&unit, tint, light, 500), (tint, light));
-        let (lit_tint, lit) = curtained_body_light(&unit, tint, light, 499);
-        assert_eq!(lit.brightness(), 239);
-        assert_eq!(lit.rows(), light.rows());
-        let ratio = 239.0 / 1200.0;
-        assert_eq!(lit_tint, tint.map(|channel| channel * ratio));
     }
 
     #[test]

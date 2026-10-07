@@ -743,8 +743,8 @@ curtain's anims (state hash `3678630503708879027`, BGRA SHA-256
 `2d549f944794aef1a46bfcd70448e4adf4e896eebc49bb211e2c53a8e73d33c2`).
 
 With release binary SHA-256
-`02ef6f70885fffca5be04a265896572e8eefdecd92b9ac683b259d0dee6904be`
-(31,949,616 bytes), copies with `camera_cell` (51,51) show the curtained HTNK
+`31784beaed31329ca8d320cd64bfea7dcc55ae9c220c30658de91bb93fe5449e`
+(31,966,848 bytes), copies with `camera_cell` (51,51) show the curtained HTNK
 drawn at their tint (UnitClass::DrawVoxelBody's curtain arm). At 7511, before
 the curtain, they draw at their cell's light (state hash `2002945357488284095`, BGRA
 `bce9edd0039a620a3d1c2594d6c8b91cee0f463e2335fc62f12d15746fa8ebbb`); at 7520 they

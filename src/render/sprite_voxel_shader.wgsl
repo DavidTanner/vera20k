@@ -47,7 +47,7 @@ struct Instance {
     @location(7) remap_row: u32,
     @location(8) fx_flags: u32,
     @location(9) fx_params: vec4f,
-    @location(10) effect_tint: vec4f,
+    @location(10) sinking_row: f32,
     @location(11) z_adjust: f32,
     @location(12) z_gradient: u32,
     // (top, height) of the composite blit rect this layer belongs to; zero
@@ -65,7 +65,7 @@ struct VertexOutput {
     @location(3) @interpolate(flat) remap_row: u32,
     @location(4) @interpolate(flat) fx_flags: u32,
     @location(5) fx_params: vec4f,
-    @location(6) effect_tint: vec4f,
+    @location(6) @interpolate(flat) sinking_row: f32,
     // World-pixel position of this fragment (unpadded quad).
     @location(7) world_pos: vec2f,
     // Blit rect top row and height in world pixels.
@@ -111,7 +111,7 @@ fn vs_main(
     out.remap_row = instance.remap_row;
     out.fx_flags = instance.fx_flags;
     out.fx_params = instance.fx_params;
-    out.effect_tint = instance.effect_tint;
+    out.sinking_row = instance.sinking_row;
     out.world_pos = instance.position + local * instance.size;
     out.rect_top_height = select(
         vec2f(instance.position.y, instance.size.y),
@@ -220,7 +220,7 @@ fn fs_main(in: VertexOutput) -> FragOutput {
     // waterline. Keep full geometry/UV/depth inputs: only fragment admission
     // changes. Discard suppresses both color and depth output (WGSL9.4.11:
     // https://www.w3.org/TR/WGSL/#discard-statement).
-    if ((in.fx_flags & 128u) != 0u && in.world_pos.y >= in.effect_tint.w) {
+    if ((in.fx_flags & 128u) != 0u && in.world_pos.y >= in.sinking_row) {
         discard;
     }
     let atlas_size: vec2f = vec2f(textureDimensions(atlas));
