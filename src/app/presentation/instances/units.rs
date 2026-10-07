@@ -243,7 +243,6 @@ const fn display_binary_frame_for_committed_session(committed_binary_frame: u32)
 fn body_sort_depth(
     state: &AppState,
     entity: &crate::sim::game_entity::GameEntity,
-    _band: EntityDrawBand,
     drawn_row_y: f32,
     z: u8,
 ) -> f32 {
@@ -506,7 +505,7 @@ pub(crate) fn build_unit_instances(
                 unit_entry_for_slope_state(state, atlas, &key, slope_state)
             {
                 let depth_y: f32 = sy + entry.offset_y + entry.pixel_size[1] + dock_depth_y_offset;
-                let depth: f32 = body_sort_depth(state, entity, band, depth_y, interp_z);
+                let depth: f32 = body_sort_depth(state, entity, depth_y, interp_z);
                 let voxel_adjust = super::foot_depth::unit_z_adjust(state, entity, true) as f32;
                 let native_shadow = matches!(texture_source, UnitTextureSource::Stable(_))
                     && prepare_unit_shadow(
@@ -857,7 +856,7 @@ fn emit_pose_sprite(
         return;
     };
     let depth_y = center_y + entry.offset_y + entry.pixel_size[1];
-    let depth = body_sort_depth(state, entity, EntityDrawBand::Top, depth_y, z);
+    let depth = body_sort_depth(state, entity, depth_y, z);
     let voxel_adjust = super::foot_depth::unit_z_adjust(state, entity, true) as f32;
     let bounds = composite_draw_bounds([(entry, [center_x, center_y])]);
     let (composite_rect, split) = bounds.depth_rect(false);
@@ -1450,7 +1449,7 @@ fn emit_turret_unit_sprites(
         Some((e, _)) => center_y + e.offset_y + e.pixel_size[1] + dock_depth_y_offset,
         None => center_y + dock_depth_y_offset,
     };
-    let entity_depth: f32 = body_sort_depth(state, entity, band, entity_depth_y, z);
+    let entity_depth: f32 = body_sort_depth(state, entity, entity_depth_y, z);
 
     // Emit body first (always). Uses frame fallback for mismatched HVA counts.
     // Natively hull, turret and barrel are composited off-screen and blitted

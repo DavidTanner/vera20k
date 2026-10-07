@@ -129,34 +129,14 @@ fn voxel_body_facing(step: u8) -> Mat4 {
     )
 }
 
-/// Rotation part of native `MatrixMultiply @ 0x005AF980`: each dot product
-/// evaluates (z + y) + x in x87 precision, then stores a float. Inputs here
-/// are rotations without translation. HVA scale/translation stays downstream.
-fn voxel_rotation_product(left: Mat4, right: Mat4) -> Mat4 {
-    use crate::util::native_x87::{NativeF32Bits, X87Chop53 as Fpu};
-    let load = |value: f32| {
-        Fpu::load_f32(NativeF32Bits::from_bits(value.to_bits())).expect("voxel basis is finite")
-    };
-    let mut result = Mat4::IDENTITY;
-    for col in 0..3 {
-        for row in 0..3 {
-            let products: [_; 3] =
-                std::array::from_fn(|i| Fpu::mul(load(left.col(i)[row]), load(right.col(col)[i])));
-            let value = Fpu::add(Fpu::add(products[2], products[1]), products[0]);
-            result.col_mut(col)[row] = f32::from_bits(
-                Fpu::store_f32(value)
-                    .expect("rotation product fits a float")
-                    .bits(),
-            );
-        }
-    }
-    result
-}
-
 fn voxel_draw_rotation(slope: Mat4, facing: Mat4) -> Mat4 {
     // DriveLocomotion 0x004B03DA first multiplies slope * facing;
     // UnitClass 0x0073B71C then multiplies camera * that result.
-    voxel_rotation_product(voxel_camera_view(), voxel_rotation_product(slope, facing))
+    native::matrix_product(
+        voxel_camera_view(),
+        native::matrix_product(slope, facing).expect("finite voxel rotation"),
+    )
+    .expect("finite voxel rotation")
 }
 
 /// `Matrix_rotate_y_axis @ 0x005AF080`: post-multiplies a 3x4 matrix in
@@ -204,13 +184,14 @@ fn voxel_pitched_draw_rotation(
         || compute_slope_rotation(if slope_type < 17 { slope_type } else { 0 }),
         compute_slope_blend_rotation,
     );
-    voxel_rotation_product(
+    native::matrix_product(
         voxel_camera_view(),
         voxel_barrel_pitch(
-            voxel_rotation_product(slope, voxel_body_facing(step)),
+            native::matrix_product(slope, voxel_body_facing(step)).expect("finite voxel rotation"),
             pitch,
         ),
     )
+    .expect("finite voxel rotation")
 }
 
 thread_local! {
@@ -235,18 +216,21 @@ thread_local! {
 /// Native reads the table sine/cosine (`Math__SinFromTable`); glam's are
 /// within a pixel of it on these small bodies.
 fn voxel_crash_rotation(step: u8, tilt: [f32; 2]) -> Mat4 {
-    voxel_rotation_product(
+    native::matrix_product(
         voxel_camera_view(),
         voxel_crash_locomotor_matrix(step, tilt),
     )
+    .expect("finite voxel rotation")
 }
 
 /// The locomotor half of [`voxel_crash_rotation`], before the camera.
 fn voxel_crash_locomotor_matrix(step: u8, tilt: [f32; 2]) -> Mat4 {
-    voxel_rotation_product(
-        voxel_rotation_product(voxel_body_facing(step), Mat4::from_rotation_x(tilt[0])),
+    native::matrix_product(
+        native::matrix_product(voxel_body_facing(step), Mat4::from_rotation_x(tilt[0]))
+            .expect("finite voxel rotation"),
         Mat4::from_rotation_y(tilt[1]),
     )
+    .expect("finite voxel rotation")
 }
 
 /// `RocketLocomotionClass::Draw_Matrix @ 0x00663470`: the facing matrix of
@@ -405,10 +389,11 @@ fn voxel_params_draw_rotation(params: &VxlRenderParams, step: u8) -> Mat4 {
             voxel_jumpjet_tilt_locomotor_matrix(step, angles, half_sizes),
         )
         .expect("finite tilt matrix"),
-        Some(BodyTilt::Rocket(pitch)) => voxel_rotation_product(
+        Some(BodyTilt::Rocket(pitch)) => native::matrix_product(
             voxel_camera_view(),
             voxel_rocket_locomotor_matrix(step, pitch),
-        ),
+        )
+        .expect("finite voxel rotation"),
         None if params.barrel_pitch != 0 => voxel_pitched_draw_rotation(
             params.slope_type,
             params.slope_blend,
@@ -555,7 +540,8 @@ pub fn barrel_pivot_screen_offset(
         || compute_slope_rotation(if slope_type < 17 { slope_type } else { 0 }),
         compute_slope_blend_rotation,
     );
-    let hull = voxel_rotation_product(slope, voxel_body_facing(voxel_facing_step(body_facing)));
+    let hull = native::matrix_product(slope, voxel_body_facing(voxel_facing_step(body_facing)))
+        .expect("finite voxel rotation");
     let t = hull.transform_vector3(Vec3::new(
         turret_offset_units(turret_offset_leptons),
         0.0,
@@ -651,8 +637,9 @@ pub struct VxlRenderParams {
     /// Optional 3-frame slope transition. When present, this replaces
     /// `slope_type` with an interpolated slope orientation.
     pub slope_blend: Option<VxlSlopeBlend>,
-    /// A tilted body's locomotor Draw_Matrix arm and its roll and pitch
-    /// (`TechnoClass+0x328`, `+0x32C`). When present the body draws through
+    /// A posed body's locomotor Draw_Matrix arm: a crash tilt's roll and
+    /// pitch (`TechnoClass+0x328`, `+0x32C`) or a rocket's CurrentPitch
+    /// (`RocketLocomotionClass+0x54`). When present the body draws through
     /// that arm instead of the slope matrices.
     pub body_tilt: Option<BodyTilt>,
     /// A barrel part's pitch step, `d32 - 8` of the barrel elevation
@@ -1066,7 +1053,8 @@ pub fn prepare_limb_data(
 
     let draw_matrix = voxel_params_draw_rotation(params, facing_step);
     let draw_rotation = Mat3::from_mat4(draw_matrix);
-    let model_rotation = voxel_rotation_product(slope_mat, body_facing);
+    let model_rotation =
+        native::matrix_product(slope_mat, body_facing).expect("finite voxel rotation");
     let mut limb_data: Vec<LimbRenderData> = Vec::new();
     let mut max_footprint: f32 = 1.0;
 
@@ -2230,16 +2218,28 @@ mod tests {
         .unwrap()
     }
 
-    /// A native row-major 3x4 matrix, bottom row `0 0 0 1`.
-    fn native_matrix(bits: &serde_json::Value) -> Mat4 {
+    /// A native row-major 3x4 matrix from its twelve binary32 words, bottom
+    /// row `0 0 0 1`.
+    fn row_major_matrix(words: impl IntoIterator<Item = u32>) -> Mat4 {
+        let words: Vec<u32> = words.into_iter().collect();
+        assert_eq!(words.len(), 12, "a 3x4 matrix");
         let mut matrix = Mat4::IDENTITY;
         for row in 0..3 {
             for col in 0..4 {
-                matrix.col_mut(col)[row] =
-                    f32::from_bits(bits[row * 4 + col].as_u64().unwrap() as u32);
+                matrix.col_mut(col)[row] = f32::from_bits(words[row * 4 + col]);
             }
         }
         matrix
+    }
+
+    /// A native row-major 3x4 matrix written as twelve integer words.
+    fn native_matrix(bits: &serde_json::Value) -> Mat4 {
+        row_major_matrix(
+            bits.as_array()
+                .unwrap()
+                .iter()
+                .map(|word| word.as_u64().unwrap() as u32),
+        )
     }
 
     #[test]
@@ -2352,19 +2352,13 @@ mod tests {
 
     /// A native row-major 3x4 matrix written as twelve hex binary32 words.
     fn native_words(words: &serde_json::Value) -> Mat4 {
-        let words: Vec<u32> = words
-            .as_str()
-            .expect("matrix words")
-            .split(' ')
-            .map(|word| u32::from_str_radix(word, 16).expect("hex word"))
-            .collect();
-        let mut matrix = Mat4::IDENTITY;
-        for row in 0..3 {
-            for col in 0..4 {
-                matrix.col_mut(col)[row] = f32::from_bits(words[row * 4 + col]);
-            }
-        }
-        matrix
+        row_major_matrix(
+            words
+                .as_str()
+                .expect("matrix words")
+                .split(' ')
+                .map(|word| u32::from_str_radix(word, 16).expect("hex word")),
+        )
     }
 
     /// Parity with `tools/rocket_oracle/draw_matrix.json`: the original
