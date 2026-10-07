@@ -71,6 +71,14 @@ pub(crate) fn has_deferment(sim: &Simulation) -> bool {
     sim.lightning_storm.is_some()
 }
 
+/// `LightningStorm::IsActive @ 0x0053A100` (`0x00A9FAB4`): a storm rages,
+/// its deferment over, through the ending turn that still counts as raging.
+pub(crate) fn raging(sim: &Simulation) -> bool {
+    sim.lightning_storm
+        .as_ref()
+        .is_some_and(|storm| storm.deferment_remaining <= 0)
+}
+
 /// Start a new lightning storm. An overlapping invocation retargets the one
 /// global storm without creating a second queued lifetime.
 pub fn start(

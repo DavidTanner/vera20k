@@ -1,10 +1,12 @@
-"""Native references for the nuclear missile's launch chain.
+"""Native references for the superweapon chains: the nuclear missile's launch
+and the computer houses' use of their superweapons.
 
 Run python -m tools.superweapon_oracle --check (or explicit --write).
 Rust consumers: src/sim/superweapon/fire_tests.rs (click_fire,
 defense_alert), src/sim/world/techno_ai/building_missile.rs (mission_missile),
 src/sim/projectile/launch.rs (both velocities), src/sim/combat/nuke_maker_tests.rs
-(nuke_maker) and src/sim/building_art_super.rs (super_anim, opening_super_anim).
+(nuke_maker), src/sim/building_art_super.rs (super_anim, opening_super_anim)
+and src/sim/superweapon/ai_fire_tests.rs (the ai_* sections).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -26,11 +28,27 @@ fixture machinery):
   0x451E40 run natively).
 - opening_super_anim: OnConstructionComplete's first-opening block
   0x4463F0..0x446580.
+- ai_try_fire: HouseClass::AI_TryFireSW 0x5098F0: the human gate, the
+  Supers loop and its Type= jump table 0x509AE8, the MultiMissile arm, the
+  Lightning Storm arm 0x509E00 (its storm gate 0x53A100) and the Force Shield
+  arm; the other pickers and Fire_SW are recorded stubs.
+- ai_best_rally_target: HouseClass::AI_FindBestRallyTarget 0x50CBF0 over a
+  fixture TechnoClass::Array: candidates, values by kind and difficulty, the
+  playfield test 0x578460, the cloak draws and the final pick, with the
+  Scenario Random run natively (seeded by 0x65C6D0).
+- ai_ground_rally_point: HouseClass::AI_GroundRallyPoint 0x509CD0: the base
+  cell, Find_Nearby_Passable_Cell's arguments (a recorded stub) and the
+  fired cell.
+- ai_genetic_mutator: HouseClass::AI_Fire_GenMutator 0x509F60 over a fixture
+  InfantryClass::Array and cell lists (CellClass::GetInfantry 0x47EC40 runs
+  natively). Its cell-offset table 0xABD490 lies in BSS: the static
+  initializer 0x561910 fills it first.
 """
 from pathlib import Path
 import math
 import struct
 
+from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import (UC_X86_REG_EBP, UC_X86_REG_EBX, UC_X86_REG_ECX,
                                UC_X86_REG_EDI, UC_X86_REG_EDX, UC_X86_REG_ESI,
                                UC_X86_REG_ESP, UC_X86_REG_FPCW)
@@ -736,11 +754,656 @@ def opening_super_anim():
     return rows
 
 
+# ---------------------------------------------------------------- AI use
+
+RANDOM_SEED = 0x65C6D0
+RANDOM_RANGED = 0x65C7E0
+RNG_BYTES = 0x3F4
+GAME_MODE = 0xA8B238
+HOUSE_ITEMS = 0xA8022C
+TECHNO_ITEMS, TECHNO_COUNT = 0xA8EC7C, 0xA8EC88
+FACTORY_ITEMS, FACTORY_COUNT = 0xA83E34, 0xA83E40
+INFANTRY_ITEMS, INFANTRY_COUNT = 0xA83DEC, 0xA83DF8
+CELL_TABLE = 0x87F924
+SCENARIO_ACTIVE = 0xA8E9A0
+STORM_ACTIVE = 0xA9FAB4
+MAP = 0x87F7E8
+SUPERS_VTABLE = 0x7EA4E4
+
+AI = BASE + 0x40000
+ENEMY = AI
+ALLY = AI + 0x6000
+POINTERS = AI + 0xC000
+TECHNO_POINTERS = POINTERS
+FACTORY_POINTERS = POINTERS + 0x400
+INFANTRY_POINTERS = POINTERS + 0x800
+HOUSE_POINTERS = POINTERS + 0xC00
+SUPER_POINTERS = POINTERS + 0xD00
+BUILD_CONST = POINTERS + 0xE00
+BUILD_TECH = POINTERS + 0xF00
+OBJECTS = AI + 0x10000
+OBJECT_STRIDE = 0x800
+AI_TYPES = AI + 0x30000
+AI_TYPE_STRIDE = 0x2000
+FACTORY_BLOCKS = AI + 0x70000
+OBJECT_VT = AI + 0x71000
+CELL_BLOCKS = AI + 0x72000
+CELL_STRIDE = 0x200
+AI_SUPERS = AI + 0x80000
+AI_SW_TYPES = AI + 0x81000
+VALUE_LISTS = AI + 0x82000
+CELL_OUT = AI + 0x83000
+CELL_POINTERS = BASE + 0x200000
+
+# The cell-offset table 0xABD490 (BSS) and its static initializer, the only
+# writer (cdecl, no arguments).
+CELL_OFFSETS_INIT = 0x561910
+
+STUB_WHAT = STUBS + 0x200
+STUB_LAYER = STUBS + 0x210
+STUB_O_COORDS = STUBS + 0x220
+STUB_OWNER = STUBS + 0x230
+STUB_HIGH = STUBS + 0x240
+STUB_GET_CELL = STUBS + 0x250
+
+WHAT = {'unit': 1, 'aircraft': 2, 'building': 6, 'infantry': 0xF}
+TYPE_OFFSET = {'unit': 0x6C4, 'infantry': 0x6C0, 'building': 0x520}
+FACTORY_KINDS = {'BuildingType': 7, 'InfantryType': 0x10, 'UnitType': 0x28,
+                 'AircraftType': 3}
+# AI_FindBestRallyTarget's per-difficulty Rules vectors (the item pointers),
+# read by RulesClass::ReadGeneral 0x670801..0x670AE6.
+VALUE_OFFSETS = {'AIIonCannonConYardValue': 0x1198, 'AIIonCannonWarFactoryValue': 0x11B4,
+                 'AIIonCannonPowerValue': 0x11D0, 'AIIonCannonTechCenterValue': 0x11EC,
+                 'AIIonCannonEngineerValue': 0x1208, 'AIIonCannonThiefValue': 0x1224,
+                 'AIIonCannonHarvesterValue': 0x1240, 'AIIonCannonMCVValue': 0x125C,
+                 'AIIonCannonAPCValue': 0x1278, 'AIIonCannonBaseDefenseValue': 0x1294,
+                 'AIIonCannonPlugValue': 0x12B0, 'AIIonCannonHelipadValue': 0x12CC,
+                 'AIIonCannonTempleValue': 0x12E8}
+# Distinct per difficulty so the row shows which entry was read.
+VALUES = {'AIIonCannonConYardValue': (100, 90, 80), 'AIIonCannonWarFactoryValue': (70, 71, 72),
+          'AIIonCannonPowerValue': (60, 61, 62), 'AIIonCannonTechCenterValue': (50, 51, 52),
+          'AIIonCannonEngineerValue': (11, 12, 13), 'AIIonCannonThiefValue': (14, 15, 16),
+          'AIIonCannonHarvesterValue': (17, 18, 19), 'AIIonCannonMCVValue': (20, 21, 22),
+          'AIIonCannonAPCValue': (23, 24, 25), 'AIIonCannonBaseDefenseValue': (35, 36, 37),
+          'AIIonCannonPlugValue': (40, 41, 42), 'AIIonCannonHelipadValue': (43, 44, 45),
+          'AIIonCannonTempleValue': (46, 47, 48)}
+RETAIL_VALUES = {'AIIonCannonConYardValue': (100, 100, 100),
+                 'AIIonCannonWarFactoryValue': (100, 100, 100),
+                 'AIIonCannonPowerValue': (60, 100, 100),
+                 'AIIonCannonTechCenterValue': (100, 100, 100),
+                 'AIIonCannonEngineerValue': (1, 1, 1), 'AIIonCannonThiefValue': (1, 1, 1),
+                 'AIIonCannonHarvesterValue': (1, 1, 1), 'AIIonCannonMCVValue': (1, 1, 1),
+                 'AIIonCannonAPCValue': (1, 1, 1), 'AIIonCannonBaseDefenseValue': (35, 35, 35),
+                 'AIIonCannonPlugValue': (40, 40, 40), 'AIIonCannonHelipadValue': (20, 20, 20),
+                 'AIIonCannonTempleValue': (40, 40, 40)}
+# Object types by their INI keys; the Rust replay parses the same keys.
+TYPE_CATALOG = [
+    ('HARV', 'unit', {'Harvester': 'yes'}),
+    ('MCV', 'unit', {'DeploysInto': 'CONYARD'}),
+    ('APC', 'unit', {'Passengers': '5'}),
+    ('TANK', 'unit', {}),
+    ('DEPLOYER', 'unit', {'DeploysInto': 'PLAIN', 'Passengers': '-1'}),
+    ('HARVMCV', 'unit', {'Harvester': 'yes', 'DeploysInto': 'CONYARD', 'Passengers': '3'}),
+    ('CONYARD', 'building', {'Factory': 'BuildingType'}),
+    ('WEAP', 'building', {'Factory': 'UnitType'}),
+    ('NAVALYARD', 'building', {'Factory': 'UnitType', 'Naval': 'yes', 'Power': '-20'}),
+    ('BARRACKS', 'building', {'Factory': 'InfantryType', 'Power': '-10'}),
+    ('POWER', 'building', {'Power': '100'}),
+    ('DRAIN', 'building', {'Power': '-50'}),
+    ('DEFENSE', 'building', {'IsBaseDefense': 'yes', 'Power': '-5'}),
+    ('POWERDEFENSE', 'building', {'IsBaseDefense': 'yes', 'Power': '10'}),
+    ('PLUG', 'building', {'IsPlug': 'yes'}),
+    ('TEMPLE', 'building', {'IsTemple': 'yes', 'IsPlug': 'yes'}),
+    ('PAD', 'building', {'HoverPad': 'yes'}),
+    ('TECH', 'building', {'Power': '-100'}),
+    ('PLAIN', 'building', {}),
+    ('ENGI', 'infantry', {'Engineer': 'yes'}),
+    ('THIEF', 'infantry', {'VehicleThief': 'yes'}),
+    ('ENGITHIEF', 'infantry', {'Engineer': 'yes', 'VehicleThief': 'yes'}),
+    ('GI', 'infantry', {}),
+    ('JET', 'aircraft', {}),
+]
+BUILD_CONST_TYPES = ['CONYARD']
+BUILD_TECH_TYPES = ['TECH', 'POWER', 'PAD']
+# MapClass +0xF4/+0xFC/+0x100/+0x104/+0x108: the playfield the native
+# IsCellInPlayfield 0x578460 tests (every cell lookup misses, so the level
+# and slope are the dummy's zeros).
+PLAYFIELD = {'base': 40, 'off_fc': 2, 'off_100': 4, 'off_104': 36, 'off_108': 36}
+LAYER_GROUND, LAYER_AIR = 2, 3
+
+
+def seed_scenario_rng(emu, seed):
+    emu.invoke(RANDOM_SEED, ecx=SCENARIO_RANDOM, args=[seed])
+
+
+def record_draws(emu):
+    """RandomRanged 0x65C7E0 runs natively; each call's stream and bounds are
+    recorded."""
+    def entered(uc, _address, _size, _data):
+        sp = uc.reg_read(UC_X86_REG_ESP)
+        emu.events.append(['draw', uc.reg_read(UC_X86_REG_ECX) - SCENARIO_RANDOM + 0x218,
+                           i32(emu.read32(sp + 4)), i32(emu.read32(sp + 8))])
+    emu.uc.hook_add(UC_HOOK_CODE, entered, begin=RANDOM_RANGED, end=RANDOM_RANGED)
+
+
+def rng_state(emu):
+    return bytes(emu.uc.mem_read(SCENARIO_RANDOM, RNG_BYTES)).hex()
+
+
+def install_playfield(emu):
+    emu.write32(CELL_TABLE, CELL_POINTERS)
+    for name, offset in (('base', 0xF4), ('off_fc', 0xFC), ('off_100', 0x100),
+                         ('off_104', 0x104), ('off_108', 0x108)):
+        emu.write32(MAP + offset, PLAYFIELD[name])
+
+
+def install_houses(emu, *, difficulty=0, enemy_index=1, allies=0b100):
+    """HouseClass::Array: the computer house, its enemy, and a house it
+    counts as an ally (`+0x5788` bit 2)."""
+    for index, house in enumerate((HOUSE, ENEMY, ALLY)):
+        emu.write32(HOUSE_POINTERS + 4 * index, house)
+        emu.write32(house + 0x30, index)
+    emu.write32(HOUSE_ITEMS, HOUSE_POINTERS)
+    emu.write32(HOUSE + 0x184, difficulty)
+    emu.write32(HOUSE + 0x5600, enemy_index)
+    emu.write32(HOUSE + 0x5788, allies)
+    # The constructor's preferred target (type 1, no cell; 0x4F5A77/0x4F5A81).
+    emu.write32(HOUSE + 0x54EC, 1)
+
+
+def install_types(emu):
+    types = {}
+    for index, (name, what, _keys) in enumerate(TYPE_CATALOG):
+        types[name] = AI_TYPES + index * AI_TYPE_STRIDE
+    for name, what, keys in TYPE_CATALOG:
+        ty = types[name]
+        for key, value in keys.items():
+            if key == 'Harvester':
+                write8(emu, ty + 0xE0E, 1)
+            elif key == 'DeploysInto':
+                emu.write32(ty + 0x404, types[value])
+            elif key == 'Passengers':
+                emu.write32(ty + 0x5E0, int(value))
+            elif key == 'Factory':
+                emu.write32(ty + 0xEB8, FACTORY_KINDS[value])
+            elif key == 'Naval':
+                write8(emu, ty + 0xCCE, 1)
+            elif key == 'Power':
+                power = int(value)
+                emu.write32(ty + 0xEE0, max(power, 0))
+                emu.write32(ty + 0xEE4, max(-power, 0))
+            elif key == 'IsBaseDefense':
+                write8(emu, ty + 0x1706, 1)
+            elif key == 'IsPlug':
+                write8(emu, ty + 0x154D, 1)
+            elif key == 'IsTemple':
+                write8(emu, ty + 0x154C, 1)
+            elif key == 'HoverPad':
+                write8(emu, ty + 0x154E, 1)
+            elif key == 'Engineer':
+                write8(emu, ty + 0xEC3, 1)
+            elif key == 'VehicleThief':
+                write8(emu, ty + 0xEC6, 1)
+            else:
+                raise OracleError(f'unknown catalog key {key}')
+    for base, names, items in ((0x8B0, BUILD_CONST_TYPES, BUILD_CONST),
+                               (0x920, BUILD_TECH_TYPES, BUILD_TECH)):
+        for slot, name in enumerate(names):
+            emu.write32(items + 4 * slot, types[name])
+        emu.write32(RULES + base, items)
+        emu.write32(RULES + base + 0xC, len(names))
+    return types
+
+
+def install_values(emu, values):
+    for slot, (key, offset) in enumerate(sorted(VALUE_OFFSETS.items())):
+        items = VALUE_LISTS + slot * 0x10
+        for index, value in enumerate(values[key]):
+            emu.write32(items + 4 * index, value)
+        emu.write32(RULES + offset, items)
+
+
+SCENARIO_RANDOM = FAKE + 0x22000 + 0x218
+
+
+def techno(owner='enemy', type='TANK', *, layer=LAYER_GROUND, alive=True, limbo=False,
+           coords=(30 * 256 + 128, 30 * 256 + 128, 0), cloak=0, stage=0, factory=None):
+    return dict(owner=owner, type=type, layer=layer, alive=alive, limbo=limbo,
+                coords=list(coords), cloak=cloak, stage=stage, factory=factory)
+
+
+def at(x, y, z=0):
+    return (x * 256 + 128, y * 256 + 128, z)
+
+
+def best_rally_row(objects, *, difficulty=1, values=VALUES, seed=31):
+    emu = Emu()
+    install_houses(emu, difficulty=difficulty)
+    install_playfield(emu)
+    install_values(emu, values)
+    types = install_types(emu)
+    whats = {name: what for name, what, _keys in TYPE_CATALOG}
+    owners = {'self': HOUSE, 'enemy': ENEMY, 'ally': ALLY}
+    facts = {}
+    factories = []
+    emu.write32(OBJECT_VT + 0x2C, STUB_WHAT)
+    emu.write32(OBJECT_VT + 0x48, STUB_O_COORDS)
+    emu.write32(OBJECT_VT + 0x78, STUB_LAYER)
+    for index, obj in enumerate(objects):
+        this = OBJECTS + index * OBJECT_STRIDE
+        what = whats[obj['type']]
+        facts[this] = (WHAT[what], obj)
+        emu.write32(TECHNO_POINTERS + 4 * index, this)
+        emu.write32(this, OBJECT_VT)
+        emu.write32(this + 0x21C, owners[obj['owner']])
+        emu.write32(this + 0x220, obj['cloak'])
+        write8(emu, this + 0x90, obj['alive'])
+        write8(emu, this + 0x81, obj['limbo'])
+        if what in TYPE_OFFSET:
+            emu.write32(this + TYPE_OFFSET[what], types[obj['type']])
+        if what == 'building':
+            write8(emu, this + 0x6ED, obj['stage'])
+        if obj['factory'] is not None:
+            factory = FACTORY_BLOCKS + len(factories) * 0x100
+            emu.write32(factory + 0x58, this)
+            emu.write32(factory + 0x38, obj['factory']['rate'])
+            write8(emu, factory + 0x70, obj['factory']['suspended'])
+            factories.append(factory)
+    # A factory building something else stands first.
+    idle = FACTORY_BLOCKS + 0xF00
+    emu.write32(idle + 0x58, OBJECTS + 0x1F * OBJECT_STRIDE)
+    emu.write32(idle + 0x38, 9)
+    factories.insert(0, idle)
+    for slot, factory in enumerate(factories):
+        emu.write32(FACTORY_POINTERS + 4 * slot, factory)
+    emu.write32(TECHNO_ITEMS, TECHNO_POINTERS)
+    emu.write32(TECHNO_COUNT, len(objects))
+    emu.write32(FACTORY_ITEMS, FACTORY_POINTERS)
+    emu.write32(FACTORY_COUNT, len(factories))
+
+    def what_am_i(e):
+        return facts[e.uc.reg_read(UC_X86_REG_ECX)][0]
+
+    def layer(e):
+        e.events.append(['layer', (e.uc.reg_read(UC_X86_REG_ECX) - OBJECTS) // OBJECT_STRIDE])
+        return facts[e.uc.reg_read(UC_X86_REG_ECX)][1]['layer']
+
+    def coords(e):
+        out = e.arg(0)
+        write_coord(e, out, facts[e.uc.reg_read(UC_X86_REG_ECX)][1]['coords'])
+        return out
+
+    emu.hook(STUB_WHAT, what_am_i, 0)
+    emu.hook(STUB_LAYER, layer, 0)
+    emu.hook(STUB_O_COORDS, coords, 4)
+    seed_scenario_rng(emu, seed)
+    record_draws(emu)
+    emu.uc.mem_write(CELL_OUT, struct.pack('<hh', -7, -7))
+    emu.invoke(0x50CBF0, ecx=HOUSE, args=[CELL_OUT])
+    return dict(difficulty=difficulty, values={key: list(v) for key, v in values.items()},
+                seed=seed, objects=objects, events=emu.events, cell=read_cell(emu, CELL_OUT),
+                rng_after=rng_state(emu))
+
+
+def best_rally_target():
+    rows = []
+    # Each kind alone, at each difficulty: its value decides nothing, the
+    # one candidate is the target (RandomRanged(0, 0)).
+    for name, what, _keys in TYPE_CATALOG:
+        for difficulty in (0, 1, 2):
+            rows.append(best_rally_row([techno(type=name, coords=at(31, 32))],
+                                       difficulty=difficulty))
+    # Two kinds: the larger value wins, in either array order.
+    pairs = [('HARV', 'MCV'), ('APC', 'TANK'), ('CONYARD', 'WEAP'), ('WEAP', 'NAVALYARD'),
+             ('NAVALYARD', 'BARRACKS'), ('POWER', 'DRAIN'), ('DEFENSE', 'POWERDEFENSE'),
+             ('PLUG', 'TEMPLE'), ('PAD', 'TECH'), ('TECH', 'PLAIN'), ('ENGI', 'THIEF'),
+             ('ENGITHIEF', 'GI'), ('JET', 'GI'), ('DEPLOYER', 'HARVMCV'), ('TANK', 'JET')]
+    for first, second in pairs:
+        for order in ((first, second), (second, first)):
+            rows.append(best_rally_row([techno(type=order[0], coords=at(31, 32)),
+                                        techno(type=order[1], coords=at(40, 25))]))
+    # Ties: the final RandomRanged(0, n - 1) picks, with retail values.
+    for seed in (31, 32, 33, 34, 7, 1234567):
+        rows.append(best_rally_row([techno(type='CONYARD', coords=at(31, 32)),
+                                    techno(type='WEAP', coords=at(40, 25)),
+                                    techno(type='TECH', coords=at(35, 35)),
+                                    techno(type='POWER', coords=at(36, 36))],
+                                   values=RETAIL_VALUES, seed=seed, difficulty=1))
+    # Who is a candidate: other houses' objects, limbo, dead, airborne.
+    rows.append(best_rally_row([techno(owner='self', type='CONYARD', coords=at(31, 32)),
+                                techno(owner='ally', type='CONYARD', coords=at(33, 32)),
+                                techno(type='GI', coords=at(40, 25))]))
+    for flags in (dict(limbo=True), dict(alive=False), dict(layer=LAYER_AIR), dict(layer=4),
+                  dict(layer=0)):
+        rows.append(best_rally_row([techno(type='CONYARD', coords=at(31, 32), **flags),
+                                    techno(type='GI', coords=at(40, 25))]))
+        rows.append(best_rally_row([techno(type='CONYARD', coords=at(31, 32), **flags)]))
+    # Off the playfield the value is zero, but the object stays a candidate.
+    rows.append(best_rally_row([techno(type='CONYARD', coords=at(10, 10))]))
+    rows.append(best_rally_row([techno(type='CONYARD', coords=at(10, 10)),
+                                techno(type='GI', coords=at(40, 25))]))
+    rows.append(best_rally_row([techno(type='GI', coords=at(70, 60)),
+                                techno(type='TANK', coords=at(10, 10))]))
+    # Coordinates to cells toward zero, at the playfield's edges.
+    for coords in ((-100, 300, 0), (-300, -300, 0), (24 * 256 + 255, 24 * 256 + 255, 0),
+                   (25 * 256, 24 * 256, 0), (61 * 256 + 128, 61 * 256 + 128, 0),
+                   (62 * 256 + 128, 61 * 256 + 128, 0), (60 * 256, 25 * 256, 0),
+                   (31 * 256 + 128, 32 * 256 + 128, 2000)):
+        rows.append(best_rally_row([techno(type='TANK', coords=coords),
+                                    techno(type='HARV', coords=at(40, 41))]))
+    # Cloaked objects of any house draw RandomRanged(0, best + 10).
+    for seed in (31, 99):
+        rows.append(best_rally_row([techno(type='GI', coords=at(40, 25)),
+                                    techno(owner='self', type='TANK', coords=at(31, 32),
+                                           cloak=2),
+                                    techno(type='TANK', coords=at(33, 32), cloak=2),
+                                    techno(type='POWER', coords=at(34, 34), cloak=1),
+                                    techno(type='POWER', coords=at(35, 34), cloak=3),
+                                    techno(type='CONYARD', coords=at(36, 32), cloak=2,
+                                           limbo=True)],
+                                   seed=seed))
+    # A building's cloak stage 15 draws as well (BuildingClass +0x6ED).
+    for stage in (14, 15):
+        rows.append(best_rally_row([techno(type='WEAP', coords=at(33, 32), stage=stage),
+                                    techno(type='GI', coords=at(40, 25))]))
+    # A Hard house also takes what an enemy factory is building.
+    for difficulty in (0, 1):
+        for factory in (dict(rate=5, suspended=False), dict(rate=0, suspended=False),
+                        dict(rate=5, suspended=True)):
+            rows.append(best_rally_row([techno(type='CONYARD', limbo=True, coords=(0, 0, 0),
+                                               factory=factory)],
+                                       difficulty=difficulty))
+            rows.append(best_rally_row([techno(type='WEAP', limbo=True,
+                                               coords=at(33, 32), factory=factory),
+                                        techno(type='GI', coords=at(40, 25))],
+                                       difficulty=difficulty))
+    rows.append(best_rally_row([techno(owner='self', type='WEAP', limbo=True,
+                                       coords=at(33, 32), factory=dict(rate=5,
+                                                                       suspended=False))],
+                               difficulty=0))
+    # No enemy object: no target.
+    rows.append(best_rally_row([]))
+    rows.append(best_rally_row([techno(owner='self', type='WEAP', coords=at(33, 32))]))
+    # A larger mix, several seeds.
+    mix = [techno(type='GI', coords=at(40, 25)), techno(type='HARV', coords=at(41, 26)),
+           techno(owner='ally', type='TANK', coords=at(45, 30), cloak=2),
+           techno(type='POWER', coords=at(30, 31)), techno(type='POWER', coords=at(31, 31)),
+           techno(type='DEFENSE', coords=at(32, 30), cloak=2),
+           techno(type='JET', coords=at(36, 36), layer=LAYER_AIR),
+           techno(type='POWER', coords=at(29, 31)), techno(type='ENGI', coords=at(28, 30))]
+    for seed in (31, 5, 77, 2024):
+        for difficulty in (0, 1, 2):
+            rows.append(best_rally_row(mix, values=RETAIL_VALUES, seed=seed,
+                                       difficulty=difficulty))
+    return rows
+
+
+def install_supers(emu, kinds):
+    """The house's Supers vector (`+0x254`, DynamicVectorClass 0x7EA4E4):
+    Super i of `kinds[i] = (Type=, charged)`."""
+    emu.write32(HOUSE + 0x254, SUPERS_VTABLE)
+    emu.write32(HOUSE + 0x258, SUPER_POINTERS)
+    emu.write32(HOUSE + 0x25C, len(kinds))
+    emu.write32(HOUSE + 0x264, len(kinds))
+    for index, (kind, charged) in enumerate(kinds):
+        this = AI_SUPERS + index * 0x100
+        ty = AI_SW_TYPES + index * 0x100
+        emu.write32(SUPER_POINTERS + 4 * index, this)
+        emu.write32(this + 0x28, ty)
+        write8(emu, this + 0x6F, charged)
+        emu.write32(ty + 0xB4, kind)
+
+
+def super_index(this):
+    return (this - AI_SUPERS) // 0x100
+
+
+def record_fire(emu):
+    """Fire_SW 0x4FAE50 (thiscall, RET 8) is a recorded stub."""
+    def fire(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != HOUSE:
+            raise OracleError('Fire_SW called on another house')
+        e.events.append(['fire', i32(e.arg(0)), read_cell(e, e.arg(1))])
+        return 1
+    emu.hook(0x4FAE50, fire, 8)
+
+
+def try_fire_row(kinds, *, game_mode=1, human=False, control=False, enemy_index=1,
+                 storm=False, rally=(30, 31), defense=(0, 0), defense_frame=-100,
+                 defense_frames=50, frame=1000):
+    emu = Emu()
+    install_houses(emu, enemy_index=enemy_index)
+    install_supers(emu, kinds)
+    emu.write32(GAME_MODE, game_mode)
+    write8(emu, HOUSE + 0x1EC, human)
+    write8(emu, HOUSE + 0x1ED, control)
+    write8(emu, STORM_ACTIVE, storm)
+    emu.uc.mem_write(HOUSE + 0x54F4, struct.pack('<hh', *defense))
+    emu.write32(HOUSE + 0x54FC, defense_frame)
+    emu.write32(RULES + 0xEE0, defense_frames)
+    emu.write32(FRAME, frame)
+    record_fire(emu)
+
+    def picker(name, pops):
+        def answer(e):
+            e.events.append([name, super_index(e.arg(0))])
+        emu.hook({'ground': 0x509CD0, 'psychic_dominator': 0x50A150,
+                  'genetic_mutator': 0x509F60}[name], answer, pops)
+
+    def best(e):
+        e.events.append(['best_rally_target'])
+        e.uc.mem_write(e.arg(0), struct.pack('<hh', *rally))
+        return e.arg(0)
+
+    picker('ground', 4)
+    picker('psychic_dominator', 4)
+    picker('genetic_mutator', 4)
+    emu.hook(0x50CBF0, best, 4)
+    emu.invoke(0x5098F0, ecx=HOUSE)
+    return dict(kinds=[[kind, charged] for kind, charged in kinds], game_mode=game_mode,
+                human=human, control=control, enemy_index=enemy_index, storm=storm,
+                rally=list(rally), defense=list(defense), defense_frame=defense_frame,
+                defense_frames=defense_frames, frame=frame, events=emu.events)
+
+
+def try_fire():
+    rows = []
+    every = [(kind, True) for kind in range(12)]
+    rows.append(try_fire_row(every))
+    rows.append(try_fire_row([(kind, False) for kind in range(12)]))
+    rows.append(try_fire_row(list(reversed(every)), defense=(20, 21), defense_frame=990))
+    for game_mode, human, control in ((1, True, False), (1, False, True), (0, False, True),
+                                      (0, True, False), (0, False, False)):
+        rows.append(try_fire_row(every, game_mode=game_mode, human=human, control=control))
+    rows.append(try_fire_row(every, enemy_index=-1))
+    rows.append(try_fire_row(every, storm=True))
+    rows.append(try_fire_row(every, rally=(0, 0)))
+    rows.append(try_fire_row(every, rally=(0, 5)))
+    rows.append(try_fire_row([(0, True), (0, True), (2, True)], rally=(5, 0)))
+    # Force Shield: the alert's cell while the alert is younger than
+    # AISuperDefenseFrames (`0x00509A7F..0x00509A99`).
+    for defense, defense_frame, defense_frames, frame in (
+            ((20, 21), 990, 50, 1000), ((20, 21), 950, 50, 1000), ((20, 21), 951, 50, 1000),
+            ((20, 21), 949, 50, 1000), ((20, 21), -100, 50, 0), ((20, 21), -100, 50, -51),
+            ((20, 21), 1000, 0, 1000), ((20, 21), 1000, -1, 999), ((0, 0), 990, 50, 1000),
+            ((0, 7), 990, 50, 1000), ((7, 0), 990, 50, 1000),
+            ((20, 21), 0x7FFFFFF0, 0x20, 0x7FFFFFF0), ((20, 21), -100, 50, -100)):
+        rows.append(try_fire_row([(10, True)], defense=defense, defense_frame=defense_frame,
+                                 defense_frames=defense_frames, frame=frame))
+    return rows
+
+
+def ground_rally_row(*, enemy_index=1, enemy_base=(30, 31), enemy_alternate=(0, 0),
+                     own_base=(10, 11), own_alternate=(0, 0), found=(32, 33), supers=3,
+                     fired=1, frame=1000):
+    emu = Emu()
+    install_houses(emu, enemy_index=enemy_index)
+    install_supers(emu, [(5, True)] * supers)
+    emu.write32(FRAME, frame)
+    for house, base, alternate in ((HOUSE, own_base, own_alternate),
+                                   (ENEMY, enemy_base, enemy_alternate)):
+        emu.uc.mem_write(house + 0x5490, struct.pack('<hh', *base))
+        emu.uc.mem_write(house + 0x5494, struct.pack('<hh', *alternate))
+    record_fire(emu)
+
+    def nearby(e):
+        args = [i32(e.arg(index)) for index in range(15)]
+        e.events.append(['find_nearby', read_cell(e, e.arg(1)), args[2:12],
+                         read_cell(e, e.arg(12)), args[13:]])
+        e.uc.mem_write(e.arg(0), struct.pack('<hh', *found))
+        return e.arg(0)
+
+    emu.hook(0x56DC20, nearby, 0x3C)
+    emu.invoke(0x509CD0, ecx=HOUSE, args=[AI_SUPERS + fired * 0x100])
+    return dict(enemy_index=enemy_index, enemy_base=list(enemy_base),
+                enemy_alternate=list(enemy_alternate), own_base=list(own_base),
+                own_alternate=list(own_alternate), found=list(found), supers=supers,
+                fired=fired, events=emu.events)
+
+
+def ground_rally_point():
+    return [ground_rally_row(), ground_rally_row(enemy_alternate=(40, 41)),
+            ground_rally_row(enemy_base=(0, 0)), ground_rally_row(enemy_base=(0, 0),
+                                                                 enemy_alternate=(0, 0)),
+            ground_rally_row(enemy_index=-1), ground_rally_row(enemy_index=-1,
+                                                               own_alternate=(12, 13)),
+            ground_rally_row(found=(0, 0)), ground_rally_row(found=(-2, -2)),
+            ground_rally_row(found=(32766, 5)), ground_rally_row(supers=1, fired=0),
+            ground_rally_row(supers=5, fired=4)]
+
+
+def gen_mutator_row(objects):
+    """`objects`: (kind, owner, cell, extra) in spawn order; each infantry is
+    InfantryClass::Array's next entry, each lists itself in its cell like
+    Unlimbo: a non-building at the head, a building at the tail."""
+    emu = Emu()
+    install_houses(emu)
+    install_playfield(emu)
+    install_supers(emu, [(9, True), (9, True)])
+    write8(emu, SCENARIO_ACTIVE, 1)
+    record_fire(emu)
+    owners = {'self': HOUSE, 'enemy': ENEMY, 'ally': ALLY}
+    cells = {}
+    facts = {}
+    infantry = []
+
+    def cell_block(cell):
+        cell = tuple(cell)
+        if cell not in cells:
+            block = CELL_BLOCKS + len(cells) * CELL_STRIDE
+            emu.uc.mem_write(block + 0x24, struct.pack('<hh', *cell))
+            cells[cell] = block
+        return cells[cell]
+
+    emu.write32(OBJECT_VT + 0x2C, STUB_WHAT)
+    emu.write32(OBJECT_VT + 0x3C, STUB_OWNER)
+    emu.write32(OBJECT_VT + 0x54, STUB_HIGH)
+    emu.write32(OBJECT_VT + 0x1BC, STUB_GET_CELL)
+    for index, (kind, owner, cell, extra) in enumerate(objects):
+        this = OBJECTS + index * OBJECT_STRIDE
+        bridge = extra.get('bridge', False)
+        facts[this] = dict(what=WHAT.get(kind, 0x24), owner=owners[owner],
+                           high=extra.get('high', False), cell=tuple(cell))
+        emu.write32(this, OBJECT_VT)
+        write8(emu, this + 0x8C, bridge)
+        write8(emu, this + 0x81, extra.get('limbo', False))
+        block = cell_block(cell)
+        head = block + (0xE8 if bridge else 0xE4)
+        if not extra.get('limbo', False):
+            if kind == 'building':
+                tail = head - 0x30
+                while emu.read32(tail + 0x30):
+                    tail = emu.read32(tail + 0x30)
+                emu.write32(tail + 0x30, this)
+            else:
+                emu.write32(this + 0x30, emu.read32(head))
+                emu.write32(head, this)
+        if kind == 'infantry':
+            emu.write32(INFANTRY_POINTERS + 4 * len(infantry), this)
+            infantry.append(this)
+    emu.write32(INFANTRY_ITEMS, INFANTRY_POINTERS)
+    emu.write32(INFANTRY_COUNT, len(infantry))
+
+    def lookup(e):
+        return cell_block(read_cell(e, e.arg(0)))
+
+    emu.hook(0x5657A0, lookup, 4)
+    emu.hook(STUB_WHAT, lambda e: facts[e.uc.reg_read(UC_X86_REG_ECX)]['what'], 0)
+    emu.hook(STUB_OWNER, lambda e: facts[e.uc.reg_read(UC_X86_REG_ECX)]['owner'], 0)
+    emu.hook(STUB_HIGH, lambda e: int(facts[e.uc.reg_read(UC_X86_REG_ECX)]['high']), 0)
+    emu.hook(STUB_GET_CELL,
+             lambda e: cell_block(facts[e.uc.reg_read(UC_X86_REG_ECX)]['cell']), 0)
+    emu.invoke(CELL_OFFSETS_INIT)
+    emu.invoke(0x509F60, ecx=HOUSE, args=[AI_SUPERS + 0x100])
+    return dict(objects=[[kind, owner, list(cell), extra]
+                         for kind, owner, cell, extra in objects],
+                events=emu.events)
+
+
+def gen_mutator():
+    def inf(owner, cell, **extra):
+        return ('infantry', owner, cell, extra)
+
+    def unit(owner, cell, **extra):
+        return ('unit', owner, cell, extra)
+
+    rows = [
+        gen_mutator_row([inf('enemy', (30, 31))]),
+        gen_mutator_row([inf('self', (30, 31))]),
+        gen_mutator_row([inf('ally', (30, 31))]),
+        gen_mutator_row([inf('self', (30, 31)), inf('enemy', (31, 31))]),
+        # The densest neighbourhood; ties keep the later infantry (the scan
+        # runs last to first and needs a strictly larger count).
+        gen_mutator_row([inf('enemy', (30, 31)), inf('enemy', (30, 31)),
+                         inf('enemy', (40, 41)), inf('enemy', (41, 41)),
+                         inf('enemy', (40, 42))]),
+        gen_mutator_row([inf('enemy', (30, 31)), inf('enemy', (31, 31)),
+                         inf('enemy', (40, 41)), inf('enemy', (41, 41))]),
+        # The spread cells (table entries 0..=9): the later infantry wins a
+        # tie, so (30, 30) wins only when it sees the other one.
+        gen_mutator_row([inf('enemy', (30, 30)), inf('enemy', (29, 28))]),
+        gen_mutator_row([inf('enemy', (30, 30)), inf('enemy', (30, 28))]),
+        gen_mutator_row([inf('enemy', (30, 30)), inf('enemy', (31, 28))]),
+        gen_mutator_row([inf('enemy', (30, 30)), inf('enemy', (31, 29))]),
+        gen_mutator_row([inf('enemy', (30, 30)), inf('enemy', (29, 31))]),
+        gen_mutator_row([inf('enemy', (30, 30)), inf('enemy', (32, 30))]),
+        # A cell's list after GetInfantry stops at its first non-infantry.
+        gen_mutator_row([inf('enemy', (30, 31)), unit('enemy', (30, 31)),
+                         inf('enemy', (30, 31)), inf('self', (36, 36))]),
+        gen_mutator_row([unit('enemy', (30, 31)), inf('enemy', (30, 31)),
+                         inf('enemy', (30, 31)), inf('self', (36, 36))]),
+        gen_mutator_row([inf('enemy', (30, 31)), ('building', 'enemy', (30, 31), {}),
+                         inf('enemy', (30, 31)), inf('self', (36, 36))]),
+        # High-flying infantry do not count; neither does an own or allied one.
+        gen_mutator_row([inf('enemy', (30, 31), high=True), inf('self', (31, 31))]),
+        gen_mutator_row([inf('enemy', (30, 31), high=True), inf('enemy', (30, 31)),
+                         inf('ally', (31, 31))]),
+        # The bridge list is read for an infantry on a bridge.
+        gen_mutator_row([inf('enemy', (30, 31), bridge=True), inf('self', (31, 31))]),
+        gen_mutator_row([inf('enemy', (30, 31), bridge=True),
+                         inf('self', (31, 31), bridge=True)]),
+        # A limbo infantry is no centre and lists nowhere.
+        gen_mutator_row([inf('enemy', (30, 31), limbo=True), inf('self', (36, 36))]),
+        # Off the playfield nothing fires.
+        gen_mutator_row([inf('enemy', (10, 10))]),
+        gen_mutator_row([inf('enemy', (10, 10)), inf('enemy', (11, 10)),
+                         inf('enemy', (40, 41))]),
+        gen_mutator_row([]),
+    ]
+    return rows
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
             'nuke_maker': nuke_maker(), 'super_anim': super_anim(),
-            'opening_super_anim': opening_super_anim()}
+            'opening_super_anim': opening_super_anim(),
+            'ai_try_fire': try_fire(), 'ai_best_rally_target': best_rally_target(),
+            'ai_ground_rally_point': ground_rally_point(),
+            'ai_genetic_mutator': gen_mutator(),
+            'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
+                           'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
+                           'playfield': PLAYFIELD}}
 
 
 if __name__ == '__main__':
@@ -752,7 +1415,10 @@ if __name__ == '__main__':
         scope=('nuclear missile launch chain: ClickFire admission/refusal/recharge writes, '
                'the computer launch alert (distance, draw, stores), Mission_Missile by '
                'status with its anims, bullet and velocity bits, NukeMaker\'s payload '
-               'bullet and velocity bits, and both SuperAnim blocks'),
+               'bullet and velocity bits, and both SuperAnim blocks; the computer\'s '
+               'superweapon use: AI_TryFireSW\'s gates, arms and Force Shield timing, '
+               'AI_FindBestRallyTarget\'s values, draws and pick, AI_GroundRallyPoint\'s '
+               'cell and AI_Fire_GenMutator\'s count and pick'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -774,8 +1440,18 @@ if __name__ == '__main__':
                        'RandomRanged 0x65C7E0 answers from the row; MissionControl 0x5B3A00 '
                        'answers a one-minute Rate row',
                        'PlayAnim 0x451890, GetCurrentMission vt+0x184 and the occupant '
-                       'count vt+0x408 are recorded/supplied stubs'],
+                       'count vt+0x408 are recorded/supplied stubs',
+                       'AI: Fire_SW 0x4FAE50, AI_GroundRallyPoint 0x509CD0, AI_Fire_PsyDom '
+                       '0x50A150 and AI_Fire_GenMutator 0x509F60 are recorded stubs in '
+                       'ai_try_fire, where AI_FindBestRallyTarget 0x50CBF0 answers the row\'s '
+                       'cell; Find_Nearby_Passable_Cell 0x56DC20 answers the row\'s cell',
+                       'AI: object WhatAmI vt+0x2C, GetCoords vt+0x48, InWhichLayer vt+0x78, '
+                       'GetOwningHouse vt+0x3C, IsHighFlying vt+0x54 and GetCell vt+0x1BC '
+                       'answer supplied facts; MapClass::operator[] 0x5657A0 answers fixture '
+                       'cells; every IsCellInPlayfield lookup misses (level and slope 0)'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
-                      'OnConstructionComplete_super_anim': 0x4463F0}))
+                      'OnConstructionComplete_super_anim': 0x4463F0,
+                      'AI_TryFireSW': 0x5098F0, 'AI_FindBestRallyTarget': 0x50CBF0,
+                      'AI_GroundRallyPoint': 0x509CD0, 'AI_Fire_GenMutator': 0x509F60}))

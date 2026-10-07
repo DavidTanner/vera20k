@@ -493,7 +493,7 @@ impl Simulation {
     ) {
         let cell = speed_type
             .and_then(|speed_type| {
-                self.team_find_passable_cell(
+                self.find_plain_passable_cell(
                     seed,
                     speed_type,
                     None,
@@ -615,7 +615,7 @@ impl Simulation {
             object.movement_zone,
             leader.on_bridge,
         )?;
-        self.team_find_passable_cell(
+        self.find_plain_passable_cell(
             seed,
             object.speed_type,
             Some(zone),
@@ -626,10 +626,11 @@ impl Simulation {
     }
 
     /// `MapClass::Find_Nearby_Passable_Cell @ 0x0056DC20` as both team
-    /// actions call it: no bridge-aware zone, overlay, height, obstacle or
-    /// occupancy test, bridges allowed, no target cell (the frame-counter
+    /// actions and `HouseClass::AI_GroundRallyPoint` (`0x00509D61..
+    /// 0x00509D9A`) call it: no bridge-aware zone, overlay, height, obstacle
+    /// or occupancy test, bridges allowed, no target cell (the frame-counter
     /// pick), no quadrant skip.
-    fn team_find_passable_cell(
+    pub(crate) fn find_plain_passable_cell(
         &self,
         seed: (i32, i32),
         speed_type: crate::rules::locomotor_type::SpeedType,

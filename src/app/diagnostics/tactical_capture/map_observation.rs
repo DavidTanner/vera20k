@@ -2373,6 +2373,18 @@ mod tests {
     }
 
     #[test]
+    fn computer_nuclear_missile_example_leaves_the_launch_to_the_computer() {
+        let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.ai-nuclear-missile.example.json",
+        ))
+        .unwrap();
+        profile.validate().unwrap();
+        assert_eq!(profile.observe_super_weapons, Some(true));
+        // The computer's Strategy tick fires its charged silo.
+        assert!(profile.commands().is_empty());
+    }
+
+    #[test]
     fn rally_profile_reuses_literal_command_serde_and_rejects_ignored_fields() {
         let mut value: Value = serde_json::from_str(crate::test_fixture::text(
             "tools/map_observation.barracks-output.example.json",

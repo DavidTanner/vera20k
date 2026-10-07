@@ -580,9 +580,10 @@ struct HouseSuperWeaponCells {
     /// `+0x54F4` PreferredDefensiveCell: the base the launch alert
     /// (`0x004FB0BD`) asks the computer to shield. `HouseClass::AI_TryFireSW
     /// @ 0x005098F0` aims its ForceShield there (`0x00509A6D..0x00509A9B`)
-    /// while the alert is younger than `[General] AISuperDefenseFrames=`;
-    /// the AI use is not ported. Constructor (0, 0) (`0x004F5A8F`); trigger
-    /// actions also write it (`0x0050DA20`, `0x0050DA50`).
+    /// while the alert is younger than `[General] AISuperDefenseFrames=`
+    /// (`superweapon::ai_fire`). Constructor (0, 0) (`0x004F5A8F`); trigger
+    /// actions also write it (`0x0050DA20`, `0x0050DA50`), which VERA does not
+    /// run.
     defense_cell: (u16, u16),
     /// `+0x54FC`: the frame of that alert (`0x004FB0C9`); constructor -100
     /// (`0x004F5AB1`).
@@ -612,7 +613,6 @@ impl HouseState {
 
     /// The last super weapon alert's defence cell and frame (`+0x54F4`,
     /// `+0x54FC`).
-    #[cfg(test)]
     pub(crate) fn super_weapon_defense(&self) -> ((u16, u16), i32) {
         (
             self.super_weapon_cells.defense_cell,

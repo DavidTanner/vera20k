@@ -1,8 +1,9 @@
 //! Replay of every row of `tools/ai_strategy_oracle.json` against the
 //! Strategy owner, then unit tests of the anger nodes.
 //!
-//! Not compared, as residuals (module doc): the AI_TryFireSW,
-//! Check_Build_Need and Manage_Build_Queue calls, All_To_Hunt's Dominator
+//! The AI_TryFireSW call is compared (its body has its own replay,
+//! `superweapon/ai_fire_tests.rs`). Not compared, as residuals (module doc):
+//! the Check_Build_Need and Manage_Build_Queue calls, All_To_Hunt's Dominator
 //! objects (`+0x2C4`, which VERA cannot hold), its team removal and its
 //! garrison release. The money queries read the credits; every cell the
 //! search looks up is compared as the house's base origin.
@@ -167,10 +168,11 @@ fn the_strategy_timer_and_its_gates_match_native() {
 
 #[test]
 fn the_strategy_matches_native() {
-    let rules = rules();
+    let mut rules = rules();
     let rows = oracle()["strategy"].as_array().unwrap().clone();
     for row in &rows {
         let label = &row["label"];
+        rules.general.iq_super_weapons = int(&row["iq_superweapons"]);
         let peers = row["peers"].as_array().unwrap();
         let (mut sim, names) = houses(int(&row["game_mode"]) != 0, peers.len() + 1);
         let owner = names[int(&row["self_index"]) as usize];
@@ -205,6 +207,7 @@ fn the_strategy_matches_native() {
         house.strategy_emergency.mode = int(&row["mode"]);
         house.strategy_emergency.last_building_attack_frame = int(&row["attack_frame"]);
         house.economy.credits = int(&row["money"]);
+        house.current_iq = int(&row["iq"]);
         // VERA's list holds no null item; a native null is skipped by both
         // walks.
         let mut sellable = Vec::new();
@@ -245,7 +248,20 @@ fn the_strategy_matches_native() {
         let mut expected = sim.scenario_rng.clone();
         expected.next_range_i32_inclusive(1, 7);
 
+        use crate::sim::superweapon::ai_fire::{AI_FIRE_LOG, AiFireEvent};
+        AI_FIRE_LOG.set(Some(Vec::new()));
         let delay = building_strategy(&mut sim, &rules, owner, None);
+        let tried = AI_FIRE_LOG
+            .take()
+            .unwrap()
+            .into_iter()
+            .filter(|event| *event == AiFireEvent::TryFire)
+            .count();
+        assert_eq!(
+            tried,
+            events(row, "try_fire_sw").len(),
+            "{label}: AI_TryFireSW"
+        );
 
         let house = &sim.houses[&owner];
         assert_eq!(delay, int(&row["delay"]), "{label}");
