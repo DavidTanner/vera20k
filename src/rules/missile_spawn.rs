@@ -117,6 +117,7 @@ impl MissileSpawnParams {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn seeded(
         pause_frames: i32,
         tilt_frames: i32,

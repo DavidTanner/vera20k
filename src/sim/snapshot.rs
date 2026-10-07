@@ -839,7 +839,10 @@ use crate::sim::world::Simulation;
 // added without a bump at 291); the Psychic Dominator's globals, the
 // Techno's permanent-control byte (+0x2C4) and the map's Dominator lighting
 // profile are added. Prior records lack them.
-const SNAPSHOT_VERSION: u32 = 292;
+// 292 -> 293: the Rocket locomotor saves its native object (destination, both
+// timers, mission state, speed, latch, elite byte, pitch and cruise start
+// distance) in its payload; the entity's rocket phase machine is removed.
+const SNAPSHOT_VERSION: u32 = 293;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3847,7 +3850,9 @@ mod tests {
         // fields.
         // 291 -> 292: the Chronosphere's Super and Teleport state, the Psychic
         // Dominator's globals, permanent control and Dominator lighting.
-        assert_eq!(super::SNAPSHOT_VERSION, 292);
+        // 292 -> 293: the native Rocket locomotor object; no rocket phase
+        // machine.
+        assert_eq!(super::SNAPSHOT_VERSION, 293);
     }
 
     #[test]
