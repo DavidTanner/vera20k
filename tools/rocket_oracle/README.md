@@ -1,4 +1,6 @@
-# Rocket locomotor oracle
+# Rocket oracles
+
+## Rocket locomotor
 
 `flight.py` runs the original `RocketLocomotionClass` (ILocomotion vtable
 `007F0B1C`) through whole missile flights: the constructor `00661EC0`, Move_To
@@ -40,3 +42,29 @@ Not covered: the seam bodies themselves (FootClass Mark/SetLocation, the
 AircraftTracker buckets, AnimClass, SelectAnim, Apply_area_damage), a bridge
 the owner stands on (`+0x8C`), save/load (`Load @ 00663410`) and the missile's
 own mission (`AircraftClass::Mission_Move`).
+
+## Kamikaze tracker
+
+`kamikaze.py` runs the original tracker at `00ABC5F8`, which takes a missile
+out of its launcher's control: its static initializer `0054E260` and Clear
+`0054E6F0` at frame 0, then each row's script of Push `0054E3B0` (with the
+callers' `{Frame, 2}` restart where the call site writes it), Update
+`0054E4D0`, Remove `0054E590` and Clear. FacingClass Current,
+GetOccupiedCell, Adjacent_Cell and GetCellAt execute over a cell array of
+cells (0..127, 0..127); the child's Crash, Assign_Target and Queue_Mission
+and the target's GetCoords are recorded or supplied seams.
+
+```sh
+python -m tools.rocket_oracle.kamikaze --check
+cargo test -p vera20k --lib sim::kamikaze::tests::
+```
+
+Seven rows: the launch cadence (2 frames, then 30) with two missiles and their
+removal, target coordinates rounding toward zero, the facing step for every
+eighth boundary and a facing mid-turn, the Crash of a child without
+`MissileSpawn=`, Remove scanning from the back (a duplicate, an absent child,
+a target pointer), Clear's 1-frame restart, and a Kill_All_Spawns push that
+waits for the running cadence.
+
+Not covered: Remove's cell arm, Save/Load (`0054E750`/`0054E7B0`) and the
+dummy cell GetCellAt answers off the cell array.

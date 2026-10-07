@@ -1242,6 +1242,10 @@ pub struct Simulation {
     /// Not saved: a load clears it and rebuilds the carriers.
     #[serde(skip)]
     pub(crate) bombs: crate::sim::bomb::BombList,
+    /// The kamikaze tracker (`0x00ABC5F8`): missiles out of their launcher's
+    /// control and the cells they fly at, owned by `kamikaze`. Its timer is
+    /// not saved; a load restarts it.
+    pub(crate) kamikaze: crate::sim::kamikaze::KamikazeTracker,
     /// The map's isometric playfield diamond ([Map] Size width + the raw
     /// LocalSize rect), set at map init. Threaded into the cell-rect occupancy
     /// validator's final playfield-corner test (the engine diamond, not a
@@ -3154,6 +3158,7 @@ impl Simulation {
             smudge_grid: None,
             radiation: crate::sim::radiation::RadiationState::default(),
             bombs: crate::sim::bomb::BombList::default(),
+            kamikaze: crate::sim::kamikaze::KamikazeTracker::default(),
             playfield_bounds: None,
             playfield_size_height: None,
             playfield_revision: 0,
@@ -6310,6 +6315,8 @@ impl Simulation {
             self.tick_ore_growth_rungs(rules, overlay_registry);
             // `BombListClass::UpdateAll` follows growth and spread (0x0055B4E1).
             self.bomb_list_update(rules);
+            // `Kamikaze__Update` follows it (0x0055B4F0).
+            self.kamikaze_update(rules);
             if self.session.game_options.super_weapons {
                 bridge_state_changed |= crate::sim::superweapon::tick_active_superweapon_effects(
                     self,

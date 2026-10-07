@@ -315,13 +315,27 @@ mod retail_tests {
     use std::collections::BTreeSet;
 
     /// Flat walkable In_Bounds ground for a launcher, and the same ten cells
-    /// east of it.
+    /// east of it, with the playfield around the whole path: between the
+    /// kamikaze tracker's targets (every 30 frames, dropped on every 16th by
+    /// `TechnoClass::AI`'s illegal-target test, the missile having no weapon)
+    /// a missile past the playfield's edge leaves the map (`aircraft::leave_map`).
     fn sites(
         scenario: &crate::headless_scenario::HeadlessScenario,
     ) -> Vec<((u16, u16), (u16, u16))> {
         let sim = scenario.sim();
         let terrain = sim.resolved_terrain.as_ref().unwrap();
         let navigation = sim.path_grid().unwrap();
+        let in_playfield = |x: u16, y: u16| {
+            (i32::from(x) - 3..=i32::from(x) + 13).all(|x| {
+                (i32::from(y) - 3..=i32::from(y) + 3).all(|y| {
+                    crate::sim::cell_rect::cell_is_in_playfield_height_aware(
+                        (x, y),
+                        sim.playfield_bounds,
+                        Some(terrain),
+                    )
+                })
+            })
+        };
         // The flight's steps need In_Bounds cells around both ends.
         let open = |x: u16, y: u16, level: u8| {
             [(-3, -3), (3, -3), (-3, 3), (3, 3)]
@@ -344,8 +358,10 @@ mod retail_tests {
             .filter_map(|cell| {
                 let (x, y) = (cell.rx, cell.ry);
                 let target = (x.checked_add(10)?, y);
-                (open(x, y, cell.level) && open(target.0, target.1, cell.level))
-                    .then_some(((x, y), target))
+                (open(x, y, cell.level)
+                    && open(target.0, target.1, cell.level)
+                    && in_playfield(x, y))
+                .then_some(((x, y), target))
             })
             .collect()
     }

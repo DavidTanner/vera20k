@@ -506,6 +506,7 @@ impl Simulation {
         self.hash_crate_authority(&mut hasher);
         self.hash_smudge_grid(&mut hasher);
         self.hash_radiation(&mut hasher);
+        self.kamikaze.fold_hash(&mut hasher);
         {
             self.hash_projectiles(&mut hasher);
             let shared_dummy_handle = self.effective_shared_cell_dummy();

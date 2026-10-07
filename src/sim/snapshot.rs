@@ -841,7 +841,8 @@ use crate::sim::world::Simulation;
 // profile are added. Prior records lack them.
 // 292 -> 293: the Rocket locomotor saves its native object (destination, both
 // timers, mission state, speed, latch, elite byte, pitch and cruise start
-// distance) in its payload; the entity's rocket phase machine is removed.
+// distance) in its payload; the entity's rocket phase machine is removed; the
+// kamikaze tracker saves its nodes.
 const SNAPSHOT_VERSION: u32 = 293;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
@@ -2219,6 +2220,8 @@ impl Simulation {
         self.rebuild_logic_membership();
         self.rebuild_building_anim_slot_indices();
         self.rebuild_bomb_carriers();
+        // The kamikaze tracker's Load (`0x0054E7B0`) follows its Clear.
+        self.kamikaze.restart_after_load(self.session.binary_frame);
         self.substrate
             .occupancy
             .restore_memberships(&self.substrate.entities)
@@ -3851,7 +3854,7 @@ mod tests {
         // 291 -> 292: the Chronosphere's Super and Teleport state, the Psychic
         // Dominator's globals, permanent control and Dominator lighting.
         // 292 -> 293: the native Rocket locomotor object; no rocket phase
-        // machine.
+        // machine; the kamikaze tracker's nodes.
         assert_eq!(super::SNAPSHOT_VERSION, 293);
     }
 
