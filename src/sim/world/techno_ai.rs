@@ -14,8 +14,10 @@
 //! Dispatch is `match category` only — no trait object / dyn / vtable
 //! (invariant #2).
 
+mod building_missile;
 mod building_missions;
 mod building_retaliation;
+pub(crate) use building_missions::queue_and_commence;
 mod mission_handlers;
 mod target_scan;
 pub(crate) use mission_handlers::dispatch_foot_mission;

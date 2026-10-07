@@ -617,10 +617,9 @@ impl GameSoundEvent {
 /// [`GameSoundEvent::SuperWeaponActivated`] and
 /// [`crate::app::match_runtime::sound_dispatch::superweapon_launch_cue`]. Two
 /// residuals remain there: the EVA suppression flag `[0x00A8B538]` has no VERA
-/// equivalent (VERA has no defeated-spectator state), and the `MultiMissile`,
-/// `ChronoSphere`, `ChronoWarp`, `PsychicDominator` and `SpyPlane` cases have
-/// no sim launch handler yet, so their rows in the table are mapped but never
-/// reached.
+/// equivalent (VERA has no defeated-spectator state), and the `ChronoSphere`,
+/// `ChronoWarp`, `PsychicDominator` and `SpyPlane` cases have no sim launch
+/// handler yet, so their rows in the table are mapped but never reached.
 #[derive(Debug, Default)]
 pub struct SoundEventQueue {
     events: Vec<GameSoundEvent>,

@@ -19,6 +19,8 @@ mod expiry_tests;
 mod power;
 #[path = "building_art_storage.rs"]
 mod storage;
+#[path = "building_art_super.rs"]
+mod super_anim;
 pub(crate) use storage::BuildingStorage;
 
 impl Simulation {
@@ -117,6 +119,9 @@ impl Simulation {
         }
         if first_opening && refinery {
             self.initialize_refinery_storage_anim(id, rules);
+        }
+        if first_opening {
+            self.open_super_weapon_anims(id, damaged, garrisoned, rules);
         }
         if first_opening && let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.mission_leaf.set_building_ready_latch(1);

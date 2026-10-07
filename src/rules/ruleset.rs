@@ -831,6 +831,20 @@ pub struct GeneralRules {
     /// (`0x006CDCA8`/`0x006CDCAE` when the silo animates the launch,
     /// `0x006CDDE3`/`0x006CDDE9` when it does not).
     pub dig_sound: Option<String>,
+    /// `[General] NukeTakeOff=` (stock `NUKETO`), the AnimType at `Rules+0x98`
+    /// (ReadString then the AnimType lookup, `0x0066D829..0x0066D850`;
+    /// constructor null at `0x00665735`). `BuildingClass::Mission_Missile`
+    /// plays it at the silo's launch point (`0x0044CC62`).
+    pub nuke_take_off: String,
+    /// `[General] AISuperDefenseProbability=` (`Rules+0xEC4`, the IntVector
+    /// reader at `0x0067038E`; constructor empty), indexed by a house's
+    /// difficulty: the percent chance a computer house takes up the defence
+    /// when an `AIDefendAgainst=` weapon targets near its base.
+    pub ai_super_defense_probability: Vec<i32>,
+    /// `[General] AISuperDefenseDistance=` (`Rules+0xEE4`, ReadRange at
+    /// `0x006703D9`, leptons; constructor 10 at `0x00666A35`): the alert's
+    /// reach from the house's base centre.
+    pub ai_super_defense_distance: i32,
     /// `[AudioVisual] PsychicDominatorActivateSound=` (stock
     /// `PsychicDominatorActivate`), stored at `Rules+0x24C`.
     ///
@@ -1755,6 +1769,9 @@ impl Default for GeneralRules {
             // definition of EAX before it is `0x00667202 MOV EAX,0x1`.
             lightning_print_text: true,
             dig_sound: None,
+            nuke_take_off: String::new(),
+            ai_super_defense_probability: Vec::new(),
+            ai_super_defense_distance: 10,
             psychic_dominator_activate_sound: None,
             genetic_mutator_activate_sound: None,
             psychic_reveal_activate_sound: None,
@@ -2554,6 +2571,11 @@ impl GeneralRules {
             // constructor's `true` (see the field doc).
             lightning_print_text: general.read_bool("LightningPrintText", true),
             dig_sound: audio_visual.read_name("DigSound", 0x80).map(str::to_owned),
+            nuke_take_off: general.read_string("NukeTakeOff", "", 0x80),
+            ai_super_defense_probability: general
+                .read_int_list("AISuperDefenseProbability")
+                .unwrap_or_default(),
+            ai_super_defense_distance: general.read_range("AISuperDefenseDistance", 10),
             psychic_dominator_activate_sound: audio_visual
                 .read_name("PsychicDominatorActivateSound", 0x80)
                 .map(str::to_owned),
@@ -3545,6 +3567,17 @@ impl RuleSet {
             .read_name("DeathWeapon", 0x80)
         {
             weapon_ids.insert(default_death_weapon.to_string());
+        }
+        // `SuperWeaponTypeClass::ReadINI` allocates its `WeaponType=` too
+        // (`WeaponTypeClass::FindOrAllocate @ 0x00772FA0` at `0x006CEA7D`):
+        // the nuclear missile's `NukeCarrier`.
+        for sw_id in parse_registry(ini, "SuperWeaponTypes") {
+            if let Some(name) = ini
+                .section(&sw_id)
+                .and_then(|section| section.read_name("WeaponType", 0x80))
+            {
+                weapon_ids.insert(name.to_string());
+            }
         }
 
         // Step 3: Parse weapon sections.
@@ -4604,6 +4637,15 @@ impl RuleSet {
         Self::lookup_ci(&self.super_weapons, id)
     }
 
+    /// A superweapon type's `SuperWeaponTypeClass` array index (its
+    /// `[SuperWeaponTypes]` position, case-insensitive), the value
+    /// `SuperWeapon=` stores (BuildingType `+0x16F0`).
+    pub fn super_weapon_index(&self, id: &str) -> Option<usize> {
+        self.super_weapon_order
+            .iter()
+            .position(|name| name.eq_ignore_ascii_case(id))
+    }
+
     /// Look up a particle type by ID. Panics if `id` is out of range.
     pub fn particle_type(&self, id: ParticleTypeId) -> &ParticleType {
         &self.particle_types[id.0 as usize]
@@ -4907,6 +4949,19 @@ impl RuleSet {
     pub(crate) fn bind_anim_frame_count_for_test(&mut self, name: &str, raw_count: i32) {
         self.art_registry
             .bind_anim_frame_count_for_test(name, raw_count);
+    }
+
+    /// A weapon's stored speed (after Process's postpass), as a native
+    /// fixture writes it.
+    #[cfg(test)]
+    pub(crate) fn set_weapon_speed_for_test(&mut self, id: &str, speed: i32) {
+        if let Some(weapon) = self
+            .weapons
+            .values_mut()
+            .find(|weapon| weapon.id.eq_ignore_ascii_case(id))
+        {
+            weapon.speed = speed;
+        }
     }
 
     #[cfg(test)]

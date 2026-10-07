@@ -56,6 +56,24 @@ pub enum SuperWeaponKind {
 }
 
 impl SuperWeaponKind {
+    /// The native `Type=` value (`SuperWeaponTypeClass+0xB4`).
+    pub const fn native_index(self) -> i32 {
+        match self {
+            Self::MultiMissile => 0,
+            Self::IronCurtain => 1,
+            Self::LightningStorm => 2,
+            Self::ChronoSphere => 3,
+            Self::ChronoWarp => 4,
+            Self::ParaDrop => 5,
+            Self::AmerParaDrop => 6,
+            Self::PsychicDominator => 7,
+            Self::SpyPlane => 8,
+            Self::GeneticConverter => 9,
+            Self::ForceShield => 10,
+            Self::PsychicReveal => 11,
+        }
+    }
+
     /// Parse from the INI `Type=` string value. Case-insensitive.
     pub fn from_ini_str(s: &str) -> Option<Self> {
         match s.to_ascii_lowercase().as_str() {
@@ -123,6 +141,10 @@ pub struct SuperWeaponType {
     pub start_sound: Option<String>,
     /// Sidebar tab flash duration in frames on activation.
     pub flash_sidebar_tab_frames: i32,
+    /// `AIDefendAgainst=` (`+0xEC`, ReadBool at `0x006CEAF7`, constructor
+    /// clear): a launch of this type alerts each computer house whose base is
+    /// near the target (`HouseClass::Fire_SW @ 0x004FAE50`'s house loop).
+    pub ai_defend_against: bool,
     /// When true, suspension doesn't auto-resume on power restore.
     pub manual_control: bool,
     /// Cursor line drawing multiplier.
@@ -179,6 +201,7 @@ impl SuperWeaponType {
             special_sound: section.read_name("SpecialSound", 0x80).map(str::to_string),
             start_sound: section.read_name("StartSound", 0x80).map(str::to_string),
             flash_sidebar_tab_frames: section.read_int("FlashSidebarTabFrames", 0),
+            ai_defend_against: section.read_bool("AIDefendAgainst", false),
             manual_control: section.read_bool("ManualControl", false),
             line_multiplier: section.read_int("LineMultiplier", 0),
         })

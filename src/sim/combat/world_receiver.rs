@@ -1789,17 +1789,22 @@ enum SpecialArmTarget {
 /// `LAB_00469AA4` after this returns. `owner` is the bullet's `+0xB0`.
 ///
 /// RESIDUAL: the ElectricAssault (`0x0046937A`), IsLocomotor (`0x004694CB`),
-/// Airstrike (`0x00469705`), DirectRocker (`0x0046978E`), MakesDisguise
-/// (`0x00469A03`) and NukeMaker (`0x00469A2C`) bodies are not ported; those
-/// arms claim the impact and do nothing else (see `SpecialDetonationAction`).
+/// Airstrike (`0x00469705`), DirectRocker (`0x0046978E`) and MakesDisguise
+/// (`0x00469A03`) bodies are not ported; those arms claim the impact and do
+/// nothing else (see `SpecialDetonationAction`).
 fn run_special_detonation_arm(
     world: &mut Simulation,
     rules: &RuleSet,
     action: SpecialDetonationAction,
-    owner: u64,
-    target: SpecialArmTarget,
+    detonation: &ProjectileDetonation,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) {
+    let owner = detonation.source_id;
+    let target = match detonation.target {
+        ProjectileTarget::Entity(id) => SpecialArmTarget::Object(id),
+        ProjectileTarget::Cell { .. } | ProjectileTarget::DummyCell => SpecialArmTarget::Cell,
+        ProjectileTarget::None => SpecialArmTarget::None,
+    };
     let object = match target {
         SpecialArmTarget::Object(id) => Some(id),
         SpecialArmTarget::Cell | SpecialArmTarget::None => None,
@@ -1849,12 +1854,12 @@ fn run_special_detonation_arm(
                 world.bomb_defuse(id);
             }
         }
+        SpecialDetonationAction::NukeMaker => nuke_maker(world, rules, detonation),
         SpecialDetonationAction::ElectricAssault
         | SpecialDetonationAction::Locomotor
         | SpecialDetonationAction::Airstrike
         | SpecialDetonationAction::DirectRocker
-        | SpecialDetonationAction::MakesDisguise
-        | SpecialDetonationAction::NukeMaker => {
+        | SpecialDetonationAction::MakesDisguise => {
             log::debug!(
                 "special detonation {action:?} from {owner} claimed with its body unported; \
                  shrapnel and area damage suppressed, the shared tail still runs"
@@ -1862,6 +1867,79 @@ fn run_special_detonation_arm(
         }
     }
 }
+
+/// `BulletClass::NukeMaker @ 0x0046B310` (Ghidra `SpawnDownwardNuke`), the
+/// arm of a `NukeMaker=` warhead (`0x00469A2C`): the nuclear missile's
+/// falling warhead. A bullet of the `NukePayload` weapon (the literal at
+/// `0x0081AFA0`, `0x0046B371`) is built with that weapon's BulletType,
+/// damage, warhead and speed (`BulletClass::Construct @ 0x004664C0`), the
+/// detonating bullet's target and owner, bright, and given the weapon
+/// (`+0x130`). It falls from the GetCoords of the cell under the target's
+/// GetCoords (`0x0046B32E..0x0046B36C`), raised by the detonating weapon's
+/// BulletType's `DetonationAltitude=` (`+0x2BC`, `0x0046B459`), straight
+/// down ([`missile_launch_velocity`] at -1.0).
+///
+/// Native dereferences a missing target, NukePayload weapon or warhead; VERA
+/// drops nothing then.
+///
+/// [`missile_launch_velocity`]: crate::sim::projectile::launch::missile_launch_velocity
+fn nuke_maker(world: &mut Simulation, rules: &RuleSet, detonation: &ProjectileDetonation) {
+    /// `[0x007E4900]` = -1.0.
+    const FALL_SCALE: NativeF64Bits = NativeF64Bits::from_bits(0xbff0_0000_0000_0000);
+    let terrain = world.resolved_terrain.as_ref();
+    let target_coords = match detonation.target {
+        ProjectileTarget::Entity(id) => object_get_coords(world, id),
+        ProjectileTarget::Cell { rx, ry } => {
+            Some(crate::sim::projectile::cell_ground_coord(terrain, rx, ry))
+        }
+        ProjectileTarget::DummyCell => Some(crate::sim::projectile::dummy_cell_ground_coord(
+            &world.effective_shared_cell_dummy(),
+        )),
+        ProjectileTarget::None => None,
+    };
+    let altitude = rules
+        .weapon(world.interner.resolve(detonation.payload.weapon))
+        .and_then(|weapon| weapon.projectile.as_deref())
+        .and_then(|projectile| rules.projectile(projectile))
+        .map_or(0, |projectile| projectile.detonation_altitude);
+    let weapon = rules.weapon(NUKE_PAYLOAD_WEAPON);
+    let warhead = weapon
+        .and_then(|weapon| weapon.warhead.as_deref())
+        .and_then(|name| rules.warhead(name));
+    let (Some(target_coords), Some(weapon), Some(warhead)) = (target_coords, weapon, warhead)
+    else {
+        return;
+    };
+    let (rx, ry) = (
+        (target_coords.x / 256) as u16,
+        (target_coords.y / 256) as u16,
+    );
+    let ground = crate::sim::projectile::cell_ground_coord(terrain, rx, ry);
+    let origin = ProjectileCoord::new(ground.x, ground.y, ground.z.wrapping_add(altitude));
+    let bullet_id = world.allocate_stable_id();
+    let native_unique_id = world.next_native_runtime_id();
+    let velocity = crate::sim::projectile::launch::missile_launch_velocity(FALL_SCALE);
+    let payload = ProjectilePayload::new(
+        weapon.damage,
+        world.interner.intern(&warhead.id),
+        world.interner.intern(&weapon.id),
+    );
+    if let Some(bullet) = super::FiredBullet::launched(
+        world,
+        native_unique_id,
+        detonation.source_id,
+        detonation.target,
+        payload,
+        weapon.speed,
+        origin,
+        velocity,
+    ) {
+        super::admit_fired_bullet(world, rules, weapon, bullet_id, bullet);
+    }
+}
+
+/// The weapon NukeMaker drops, named by the literal `0x0081AFA0`.
+const NUKE_PAYLOAD_WEAPON: &str = "NukePayload";
 
 /// Snapshot the native primary-cell wall branch before its receiver collection
 /// mutates the overlay. Its return skips the bridge tail even if the wall dies.
@@ -2053,21 +2131,7 @@ fn emit_detonation_receivers(
             Some(routed_wall)
         }
         claimed => {
-            let target = match detonation.target {
-                ProjectileTarget::Entity(id) => SpecialArmTarget::Object(id),
-                ProjectileTarget::Cell { .. } | ProjectileTarget::DummyCell => {
-                    SpecialArmTarget::Cell
-                }
-                ProjectileTarget::None => SpecialArmTarget::None,
-            };
-            run_special_detonation_arm(
-                world,
-                rules,
-                claimed,
-                detonation.source_id,
-                target,
-                overlay_registry,
-            );
+            run_special_detonation_arm(world, rules, claimed, detonation, overlay_registry);
             None
         }
     }
@@ -3537,15 +3601,12 @@ pub(super) fn emit_admitted_fire(
     let warhead = selected.warhead;
     let base_damage = fireat_damage(world, rules, snap, obj, weapon, is_garrison);
     let ProjectileDelivery {
-        arm_frames,
-        tracks_target,
         collision,
         ballistic,
         vertical,
-        acceleration,
         launch_scatter_is_flak,
-        mut guidance,
-        inviso,
+        guidance,
+        ..
     } = classify_projectile_delivery(weapon, rules);
     // `CreateBullet @ 0x0046B050` (called at `0x006FE55D`) takes the bullet's
     // unique id (`0x00410230`) before the launch math, so a launch that then
@@ -3737,9 +3798,6 @@ pub(super) fn emit_admitted_fire(
                     .wrapping_mul(200)
                     .wrapping_sub(pivot_z)
             });
-        if let Some(guidance) = guidance.as_mut() {
-            guidance.fuse_reference = frozen_target_position;
-        }
         let launch = fireat_launch(FireAtLaunch {
             delta,
             speed: launch_geometry.speed,
@@ -3769,18 +3827,6 @@ pub(super) fn emit_admitted_fire(
             speed: launch_speed,
         }) = launch
         {
-            let visual = projectile_type
-                .map(|projectile| {
-                    ProjectileVisualState::new(
-                        projectile.anim_low as u8,
-                        projectile.anim_high as u8,
-                        projectile.anim_rate as u8,
-                    )
-                })
-                .unwrap_or_else(|| ProjectileVisualState::new(0, 0, 0));
-            // `BulletClass::Fire` (`0x006FF014`) Unlimbos the bullet at the
-            // launch source, which appends it to the Logic vector
-            // (`0x005F5040`): it takes its first AI later in this frame's pass.
             // ProcessDelayedFire writes its support bonus on the bullet this
             // FireAt returns (`0x00450496..0x004504CD`). The rest of FireAt
             // reads neither the bullet's multiplier nor the count, save the
@@ -3797,62 +3843,24 @@ pub(super) fn emit_admitted_fire(
                 world.interner.intern(selected.weapon_id),
             )
             .with_damage_multiplier(damage_multiplier);
-            let arm_frames = projectile_arm_delay(arm_frames, target, &world.substrate.entities);
-            let spawn = ProjectileSpawn {
-                native_unique_id,
-                line_trail: projectile_type.and_then(|kind| {
-                    crate::sim::projectile::ProjectileLineTrail::from_type(
-                        kind,
-                        rules.general.line_trail_color_override,
-                    )
-                }),
-                flat: projectile_type.is_some_and(|projectile| projectile.flat),
-                source_id: snap.stable_id,
-                origin,
-                target,
-                initial_target_position: frozen_target_position,
-                payload,
-                speed_leptons_per_frame: launch_speed.clamp(0, i32::from(u16::MAX)) as u16,
-                velocity,
-                trajectory: match vertical {
-                    Some(detonation_altitude) => ProjectileTrajectory::Vertical {
-                        detonation_altitude,
-                        acceleration,
-                        max_speed: weapon.speed,
-                    },
-                    None if ballistic || guidance.is_none() => ProjectileTrajectory::Ballistic,
-                    None => ProjectileTrajectory::Straight,
+            // `BulletClass::Fire` (`0x006FF014`) at the launch source.
+            super::admit_fired_bullet(
+                world,
+                rules,
+                weapon,
+                bullet_id,
+                super::FiredBullet {
+                    native_unique_id,
+                    source_id: snap.stable_id,
+                    target,
+                    target_position: frozen_target_position,
+                    payload,
+                    max_speed: weapon.speed,
+                    origin,
+                    velocity,
+                    speed: launch_speed.clamp(0, i32::from(u16::MAX)) as u16,
                 },
-                guidance,
-                visual,
-                arm_frames,
-                fuse_frames: None,
-                // AI 467C0C calls Check for ROT>0 or Ranged even when
-                // Dropping later suppresses detector-only admission.
-                ranged_fuse: tracks_target
-                    || projectile_type.is_some_and(|projectile| projectile.ranged),
-                tracks_target,
-                target_expiry: TargetExpiryPolicy::DetonateAtLastKnown,
-                collision,
-            };
-            world.admit_projectile(bullet_id, spawn);
-            #[cfg(test)]
-            if let Some(fixture) = world.receiver_fixture.as_mut() {
-                fixture.admitted_spawns.push((bullet_id, inviso, spawn));
-            }
-            if inviso {
-                let on_bridge = match snap.target {
-                    TargetKind::Entity(id) => world
-                        .substrate
-                        .entities
-                        .get(id)
-                        .is_some_and(|target| target.on_bridge),
-                    TargetKind::Cell(..) => false,
-                };
-                world
-                    .projectiles
-                    .fire_inviso(bullet_id, frozen_target_position, on_bridge);
-            }
+            );
         }
         launched
     };
@@ -5218,3 +5226,7 @@ mod reveal_on_fire_tests {
 #[cfg(test)]
 #[path = "ifv_area_receipt_tests.rs"]
 mod ifv_area_receipt_tests;
+
+#[cfg(test)]
+#[path = "nuke_maker_tests.rs"]
+mod nuke_maker_tests;

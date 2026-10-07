@@ -100,9 +100,10 @@
 //!   - `HouseClass::CanBuild`'s upgrade-prerequisite scan
 //!     (`0x004F7DE6..0x004F7E4E`: an upgrade prerequisite counts only on an
 //!     online, unsold host; plain prerequisites use the house counters), the
-//!     AI's AI_ManageProduction (`0x0050B020`), CheckDockArrayOccupancy
-//!     (`0x0044E855`) and PowerCheck_Upgrade (`0x00450605`). Effect: an
-//!     option enabled by a warped upgrade host stays available.
+//!     owned-Super pass (`HouseClass__Update_Owned_Supers`, `0x0050B020`),
+//!     CheckDockArrayOccupancy (`0x0044E855`) and PowerCheck_Upgrade
+//!     (`0x00450605`). Effect: an option enabled by a warped upgrade host
+//!     stays available.
 //!   - The player-only BuildingClass virtual `+0x4E0` (`0x004456D0`,
 //!     unidentified) and the sensor-range circle (`0x00456750`,
 //!     presentation). `0x0044017E` lies past BuildingClass::Update's frozen

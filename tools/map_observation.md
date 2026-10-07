@@ -45,6 +45,13 @@ The [procedural drawing comparisons](procedural_drawing_oracle/README.md)
 bind these observations to separately executed native readers/getters and retain
 an observer-off replay proving unchanged frame bytes and gameplay boundaries.
 
+Optional v2 `observe_super_weapons: true` adds a `super_weapons` list to each
+observed House row: every Super the House holds, ordered by the interned type id
+an ordinary `LaunchSuperWeapon` command names, with its grant, readiness, hold,
+charge start, duration and remaining frames. The rows count toward the sample
+budget. `false` or an absent field adds nothing; version 1 rejects the option,
+and present null/nonboolean values are invalid.
+
 `render.frame_wall_mean_ms`, when present, reads the existing frame timer's last
 up-to-60 intervals. It includes simulation, diagnostic observation, rendering and
 presentation pacing. It is cadence metadata, not GPU duration or ordinary play
@@ -445,6 +452,38 @@ parity. Native cache-pool lifetime, custom barrel overrides, upgrade-provided
 turrets and EMP cannon missions remain separate mechanisms. The retained
 three-pixel drawing anchor and measured subpixel float rounding remain visual
 residuals.
+
+## Nuclear missile observation
+
+[`map_observation.nuclear-missile.example.json`](map_observation.nuclear-missile.example.json)
+starts Russia/Battle with stock rules and assets on an
+[authored clear-ground map](map_observation/examples/nuclear_missile.map), the
+Grand Cannon fixture's terrain with a pre-placed NAMISL, two NAPOWR and three
+Neutral MTNK at (40,62), (42,62) and (40,64), and no type overrides.
+`IgnoreGlobalAITriggers=yes` keeps the Yuri opponent from forming attack teams.
+`observe_super_weapons` adds the Super rows: NukeSpecial is granted on the
+first step (interned id 28, charge start 0, 9000 frames) and is ready from step
+9001. An ordinary `LaunchSuperWeapon` at step 9010 targets (41,63). Run it
+from the repository root; for an external profile copy, set
+`launch.selected_map_file` to the absolute path of the tracked map.
+
+With release binary SHA-256
+`4b355bff0a1b26c441d0637bd3deac718ca3c29b5008cdf48b4a69ee84527459`
+(31,936,464 bytes) and map SHA-256
+`0a3861e8bf90a61cc122ed0233e46cc8764e0074eb9ab852aa76dc48b1883499`, tick 9010
+restarts the charge (start 9010) and the silo runs Missile (mission 22) until it
+returns to Guard at 9019. The three tanks are gone at 9413 and the silo keeps
+its 1000 health. The 9700-step run ends with state hash `10887219944228002058`
+and BGRA SHA-256
+`85bb143954f0443a7629487e3146129a0cfccb664ce231382f2676bf6e8ebd22`. Shorter
+copies end at 9040 (the missile leaving the open silo, `camera_cell` (47,44))
+and 9428 (the explosion over the tanks). The same binary loaded the unchanged
+retail `XMP03T4.MAP` (`multimd.mix`, SHA-256
+`7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e`) and
+completed 300 steps (state hash `17740950413039122668`). These are Rust
+production observations: the chain's native comparisons are the
+`tools.superweapon_oracle` rows, and no whole-run timing or pixel equivalence
+with gamemd is claimed.
 
 ## Siege Chopper deployment observation
 

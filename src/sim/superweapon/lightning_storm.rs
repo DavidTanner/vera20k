@@ -64,6 +64,13 @@ fn begin(sim: &mut Simulation) {
     sim.sound_events.push(SimSoundEvent::LightningStormBegan);
 }
 
+/// `LightningStorm::HasDeferment @ 0x0053A0E0`: a storm rages (`0x00A9FAB4`)
+/// or counts down (`0x00A9FAB8 > 0`). VERA keeps both, and the ending turn
+/// that still counts as raging, in `Simulation::lightning_storm`.
+pub(crate) fn has_deferment(sim: &Simulation) -> bool {
+    sim.lightning_storm.is_some()
+}
+
 /// Start a new lightning storm. An overlapping invocation retargets the one
 /// global storm without creating a second queued lifetime.
 pub fn start(

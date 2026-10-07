@@ -73,6 +73,7 @@ pub(crate) use techno_ai::ObjectAiCtx;
 pub(crate) use techno_ai::dispatch_foot_mission;
 pub(crate) use techno_ai::foot_enter_idle_mode_selection;
 pub(crate) use techno_ai::foot_unlimbo_idle_mode;
+pub(crate) use techno_ai::queue_and_commence;
 pub(crate) use techno_ai::queue_foot_enter_idle_mode;
 pub(crate) use techno_ai::team_leader_greatest_threat;
 mod command_schedule;
@@ -1964,6 +1965,7 @@ impl Simulation {
         for projectile in projectile_spawns {
             let stable_id = self.allocate_stable_id();
             self.admit_projectile(stable_id, projectile);
+            self.construct_bullet_scheme(stable_id, rules);
         }
         let receipt = damage_consequences::DamageConsequences::live_fire(
             effects,
@@ -2004,6 +2006,7 @@ impl Simulation {
         for projectile in commit.projectile_spawns {
             let stable_id = self.allocate_stable_id();
             self.admit_projectile(stable_id, projectile);
+            self.construct_bullet_scheme(stable_id, rules);
         }
         #[cfg(test)]
         if let Some(fixture) = self.receiver_fixture.as_mut() {
@@ -4045,6 +4048,26 @@ impl Simulation {
                 .push(LifecycleOutput::LineTrailConstructed { stable_id, style });
         }
         stable_id
+    }
+
+    /// `BulletClass::Construct @ 0x004664C0`, `0x00466519..0x0046653B`: a
+    /// `FirersPalette=` BulletType (`+0x2A9`) whose Owner (`+0xB0`) exists
+    /// keeps the Owner's House colour scheme at `+0x114`; every other bullet
+    /// keeps -1. Runs after each admission and re-Construct.
+    pub(crate) fn construct_bullet_scheme(&mut self, bullet: u64, rules: &RuleSet) {
+        let Some(projectile) = self.projectiles.get(bullet) else {
+            return;
+        };
+        let firers_palette = rules
+            .weapon(self.interner.resolve(projectile.payload.weapon))
+            .and_then(|weapon| weapon.projectile.as_deref())
+            .and_then(|id| rules.projectile(id))
+            .is_some_and(|kind| kind.firers_palette);
+        let house = firers_palette
+            .then(|| self.substrate.entities.get(projectile.source_id))
+            .flatten()
+            .map(|owner| owner.owner());
+        self.projectiles.set_firer_house(bullet, house);
     }
 
     pub(crate) fn admit_wave(&mut self, stable_id: u64, wave: crate::sim::wave::Wave) -> u64 {
