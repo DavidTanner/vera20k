@@ -51,6 +51,14 @@ confirmed in Ghidra; commit, publish and merge validated chains.
    Oracle section `iron_tint`, replayed in `invulnerability_tests.rs`; production
    observations
    ([map_observation.md](../../tools/map_observation.md#computer-iron-curtain-observation)).
+9. The nuclear warhead's impact: BulletClass::AI's NUKE block `0x467E53` and the
+   wait at its head `0x4666F2` (`projectile.rs`, `superweapon/nuke.rs`), and the
+   screen flash, ScreenNukeFlash `0x53AB70` and its step at the head of
+   LightningStorm::Process `0x53A6C0`, with its lighting arms and
+   `NukeAmbientChangeRate=` (`scenario_session.rs`, `light_sources.rs`). Oracle
+   sections `nuke_impact`, `nuke_wait`, `nuke_flash`, `nuke_lighting_read`, replayed
+   in `superweapon/nuke_tests.rs`; production observations
+   ([map_observation.md](../../tools/map_observation.md#nuclear-missile-observation)).
 
 `fire::launch` now dispatches every Launch arm; none refuses a click. `ai_fire.rs` RESIDUALS lists the AI-side gaps (preferred
 target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
@@ -63,8 +71,6 @@ target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
   `GetEffectTintIntensity 0x70E360`); TechnoClass::Draw, DrawSHP and the building anim
   updates scale theirs (residuals in `superweapon/invulnerability.rs` and
   `render/draw_state.rs`).
-- The nuke's screen flash (`NukeFlash`) and its lighting arm (`+0x3570`/`+0x3574`,
-  a residual in `sim/light_sources.rs`).
 - Script action 56 `0x6EFE60` for the campaign's Chronosphere teams (SOV02SMD.MAP),
   with `Find_Best_Target_Building 0x6EEBD0`, which actions 46 and 47 share.
 - The existing types' gaps: Deactivate's start = -1, the offline-provider hold

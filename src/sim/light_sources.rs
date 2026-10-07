@@ -177,29 +177,34 @@ impl Simulation {
     /// rages (`LightningStorm::IsActive @ 0x0053A100`), else the Dominator's
     /// while one is active (`PsyDom::Active @ 0x0053B400`, its fade back
     /// included; a full relight's top scalar then reads NukeLevel,
-    /// [`ScenarioLightingState::relight_top_level`]), else the ordinary one.
-    /// NukeFlash's fading-in arm (`+0x3570`/`+0x3574`) is not modelled: VERA
-    /// has no nuke flash.
+    /// [`ScenarioLightingState::relight_top_level`]), else the nuke's while
+    /// its flash fades in (`NukeFlash::IsFadingIn @ 0x0053A110`, `0x0048450F`),
+    /// else the ordinary one.
     pub(crate) fn lighting_cell_profile(&self) -> ScenarioLightingProfile {
         if crate::sim::superweapon::lightning_storm::raging(self) {
             ScenarioLightingProfile::Ion
         } else if crate::sim::superweapon::psychic_dominator::active(self) {
             ScenarioLightingProfile::Dominator
+        } else if self.session.lighting.nuke_flash_fading_in() {
+            ScenarioLightingProfile::Nuke
         } else {
             ScenarioLightingProfile::Normal
         }
     }
 
     /// `ScenarioClass::UpdateLighting @ 0x0053C280`: the ambient target
-    /// (`+0x3530`) and RecalcLighting's tint come from the Ion profile while
-    /// a storm rages (`0x00A9FAB4`), else the Dominator's while its status is
-    /// neither 0 nor 5 (`0x0053C313..0x0053C31F`), else the ordinary one
-    /// (`RecalcLighting(-1, -1, -1, 0)`). Its first arm, NukeFlash
-    /// (`0x00A9FABC == 1`) or the chrono screen (`0x00A9FAB0`), is not
-    /// modelled: VERA has no nuke flash, and only `SuperWeaponEffects::
-    /// ResetAll` writes the chrono screen.
+    /// (`+0x3530`) and RecalcLighting's tint come from the nuke's profile
+    /// while its flash fades in (`0x00A9FABC == 1`), else the Ion profile
+    /// while a storm rages (`0x00A9FAB4`), else the Dominator's while its
+    /// status is neither 0 nor 5 (`0x0053C313..0x0053C31F`), else the
+    /// ordinary one (`RecalcLighting(-1, -1, -1, 0)`). The chrono screen
+    /// (`0x00A9FAB0`), which shares the nuke's arm, is not modelled: map
+    /// trigger action 127 sets it (`0x0053B460`), and VERA does not port
+    /// that action.
     pub(crate) fn update_lighting(&mut self) {
-        let profile = if crate::sim::superweapon::lightning_storm::raging(self) {
+        let profile = if self.session.lighting.nuke_flash_fading_in() {
+            ScenarioLightingProfile::Nuke
+        } else if crate::sim::superweapon::lightning_storm::raging(self) {
             ScenarioLightingProfile::Ion
         } else if crate::sim::superweapon::psychic_dominator::tints_scenario(self) {
             ScenarioLightingProfile::Dominator

@@ -717,6 +717,10 @@ impl Simulation {
                 b"bullet-firer-scheme-v1".hash(hasher);
                 house.index().hash(hasher);
             }
+            if projectile.awaiting_anim() {
+                b"bullet-awaited-anim-v1".hash(hasher);
+                projectile.awaited_anim().hash(hasher);
+            }
         }
     }
 

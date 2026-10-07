@@ -351,8 +351,9 @@ pub(super) fn dispatch_sim_sound_events(
             }
             SimSoundEvent::SuperWeaponRadarEvent { radar } => {
                 // `SuperClass::Launch` case 4 (`0x006CC4BE`, `0x006CC4D2`):
-                // a type-13 event at the source cell, then the target's,
-                // with no local-player test; it plays nothing.
+                // a type-13 event at the source cell, then the target's, and
+                // a `NUKE` warhead's impact (`0x00467EA7`), with no
+                // local-player test; it plays nothing.
                 let _ = admit_radar(radar);
                 continue;
             }

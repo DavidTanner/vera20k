@@ -908,9 +908,9 @@ mod map_wall_owner_candidate_tests {
     /// against the native rows (`tools/superweapon_oracle.json` `relight`,
     /// `CellClass::ProcessColourComponents @ 0x00484180`), through the match's
     /// lighting: the lamp turning off relights the cells around it. In the
-    /// Dominator arm the top scalar reads NukeLevel. The NukeFlash rows are a
-    /// residual (VERA has no nuke flash). Then the Dominator's end refreshes
-    /// no cell, and the next relight reads the ordinary arm.
+    /// Dominator arm the top scalar reads NukeLevel; a fading-in nuke flash
+    /// reads NukeGround and NukeLevel. Then the Dominator's end refreshes no
+    /// cell, and the next relight reads the ordinary arm.
     #[test]
     fn match_lighting_relight_profiles_match_native() {
         use crate::app::presentation::lighting::MatchLighting;
@@ -961,7 +961,11 @@ mod map_wall_owner_candidate_tests {
                     ..ScenarioLightProfileUnits::dominator_default()
                 },
                 1,
+                1,
             );
+            sim.session
+                .lighting
+                .set_nuke_flash_for_test(int(&row["nuke"]), 0, 30);
             sim.session.lighting.current_ambient = int(&row["ambient"]) / 10;
             sim.lightning_storm = row["storm"]
                 .as_bool()
@@ -989,7 +993,7 @@ mod map_wall_owner_candidate_tests {
         };
         let rows = native["relight"].as_array().unwrap();
         let mut replayed = 0;
-        for row in rows.iter().filter(|row| int(&row["nuke"]) == 0) {
+        for row in rows {
             let (mut sim, mut lights) = world(row);
             sim.set_building_light_active(41, false);
             apply_lighting_events(&mut lights, &terrain, &mut sim);
@@ -1000,7 +1004,7 @@ mod map_wall_owner_candidate_tests {
             );
             replayed += 1;
         }
-        assert_eq!(replayed, 20);
+        assert_eq!(replayed, 22);
 
         let row_for = |psydom: i32| {
             rows.iter()

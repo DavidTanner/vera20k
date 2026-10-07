@@ -66,6 +66,21 @@ impl ScenarioLightProfileUnits {
         }
     }
 
+    /// The nuke flash's profile (`ScenarioClass+0x3560..+0x3574`): only
+    /// `Set_Defaults` writes it (Ambient 200, RGB 175/150/125 at
+    /// `0x0068396D..0x00683987`, Ground and Level 100 at `0x0068391A`/
+    /// `0x00683920`), and no INI key reads it.
+    pub const fn nuke() -> Self {
+        Self {
+            ambient_percent: 200,
+            red_percent: 175,
+            green_percent: 150,
+            blue_percent: 125,
+            ground_units: 100,
+            level_units: NUKE_LEVEL_UNITS,
+        }
+    }
+
     /// The RGB `ScenarioClass::UpdateLighting @ 0x0053C280` hands
     /// RecalcLighting for an alternate profile: each percentage times 10.
     pub fn alternate_rgb(&self) -> [i32; 3] {
@@ -92,12 +107,50 @@ impl Default for ScenarioLightProfileUnits {
     }
 }
 
-/// Which map-authored RGB/Ground/Level tuple supplies the current global view.
+/// Which RGB/Ground/Level tuple supplies the current global view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ScenarioLightingProfile {
     Normal,
     Ion,
     Dominator,
+    /// [`ScenarioLightProfileUnits::nuke`], while the nuke flash fades in.
+    Nuke,
+}
+
+/// The nuke's screen flash: its status (`0x00A9FABC`) and timer (start
+/// `0x00827FC8`, duration `0x00827FCC`). `SuperWeaponEffects::ResetAll @
+/// 0x00539760` leaves it off with a stopped (-1) timer. Native keeps it among
+/// the superweapon effects' globals; VERA keeps it with the lighting, its only
+/// consumer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+struct NukeFlash {
+    status: NukeFlashStatus,
+    start: i32,
+    duration: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+enum NukeFlashStatus {
+    Off,
+    /// 1: `NukeFlash::IsFadingIn @ 0x0053A110`.
+    FadingIn,
+    /// 2: `NukeFlash::IsFadingOut @ 0x0053A120`.
+    FadingOut,
+}
+
+impl NukeFlash {
+    const OFF: Self = Self {
+        status: NukeFlashStatus::Off,
+        start: -1,
+        duration: -1,
+    };
+
+    /// The timer test of `LightningStorm::Process`'s head (`0x0053A6D1..
+    /// 0x0053A6EA`): a running timer whose start plus duration (wrapping) is
+    /// less than the frame (signed).
+    fn ran_out(&self, frame: i32) -> bool {
+        self.duration != -1 && self.start.wrapping_add(self.duration) < frame
+    }
 }
 
 /// Persistent ScenarioClass-style authority for global lighting transitions.
@@ -119,6 +172,10 @@ pub struct ScenarioLightingState {
     /// target and its RGB the alternate tint.
     pub selected_profile: ScenarioLightingProfile,
     pub transition_timer: CdTimer,
+    /// `NukeAmbientChangeRate=` (`+0x3578`): the fade interval while the
+    /// nuke flash runs.
+    nuke_change_rate: i32,
+    nuke_flash: NukeFlash,
 }
 
 impl ScenarioLightingState {
@@ -128,6 +185,7 @@ impl ScenarioLightingState {
         ion: ScenarioLightProfileUnits,
         dominator: ScenarioLightProfileUnits,
         dominator_change_rate: i32,
+        nuke_change_rate: i32,
     ) -> Self {
         Self {
             current_ambient: normal.ambient_percent,
@@ -140,6 +198,8 @@ impl ScenarioLightingState {
             // Scenario construction starts this zero-duration timer at frame 0;
             // it is immediately due without using CdTimer's paused sentinel.
             transition_timer: CdTimer::started(0, 0),
+            nuke_change_rate,
+            nuke_flash: NukeFlash::OFF,
         }
     }
 
@@ -150,6 +210,7 @@ impl ScenarioLightingState {
             profiles.ion.into(),
             profiles.dominator.into(),
             profiles.dominator_change_rate,
+            profiles.nuke_change_rate,
         )
     }
 
@@ -158,7 +219,93 @@ impl ScenarioLightingState {
             ScenarioLightingProfile::Normal => self.normal,
             ScenarioLightingProfile::Ion => self.ion,
             ScenarioLightingProfile::Dominator => self.dominator,
+            ScenarioLightingProfile::Nuke => ScenarioLightProfileUnits::nuke(),
         }
+    }
+
+    pub fn nuke_change_rate(&self) -> i32 {
+        self.nuke_change_rate
+    }
+
+    /// `ScreenNukeFlash @ 0x0053AB70`, from a `NUKE` warhead's impact: the
+    /// flash fades in for 30 frames (`0x0053AB81..0x0053AB95`), the ambient
+    /// fade timer restarts with duration 1 (`0x0053AB9A..0x0053ABAD`), and the
+    /// target and tint become the nuke's (`+0x3530 = +0x3560`, RecalcLighting
+    /// with its RGB times 10 and 1): [`Self::select`] of
+    /// [`ScenarioLightingProfile::Nuke`]. The caller publishes the relight.
+    pub(crate) fn start_nuke_flash(&mut self, frame: i32) {
+        self.nuke_flash = NukeFlash {
+            status: NukeFlashStatus::FadingIn,
+            start: frame,
+            duration: 30,
+        };
+        self.transition_timer.start(frame, 1);
+        self.select(ScenarioLightingProfile::Nuke);
+    }
+
+    /// The flash's step at the head of `LightningStorm::Process @
+    /// 0x0053A6C0` (`..0x0053A742`): once its timer runs out a fading-in
+    /// flash fades out for 15 frames, and the caller runs UpdateLighting
+    /// (`0x0053A705`, true here); a fading-out one goes off without a relight
+    /// (`0x0053A738`).
+    pub(crate) fn step_nuke_flash(&mut self, frame: i32) -> bool {
+        if !self.nuke_flash.ran_out(frame) {
+            return false;
+        }
+        match self.nuke_flash.status {
+            NukeFlashStatus::FadingIn => {
+                self.nuke_flash = NukeFlash {
+                    status: NukeFlashStatus::FadingOut,
+                    start: frame,
+                    duration: 15,
+                };
+                true
+            }
+            NukeFlashStatus::FadingOut => {
+                self.nuke_flash.status = NukeFlashStatus::Off;
+                false
+            }
+            NukeFlashStatus::Off => false,
+        }
+    }
+
+    /// `NukeFlash::IsFadingIn @ 0x0053A110`: UpdateLighting's and a cell
+    /// relight's nuke arm.
+    pub fn nuke_flash_fading_in(&self) -> bool {
+        self.nuke_flash.status == NukeFlashStatus::FadingIn
+    }
+
+    /// Fading in or out (`0x0053A110`, `0x0053A120`): the ambient fade's
+    /// `NukeAmbientChangeRate=` arm.
+    pub fn nuke_flash_running(&self) -> bool {
+        self.nuke_flash.status != NukeFlashStatus::Off
+    }
+
+    /// The flash as a test row sets it: status 0, 1 or 2 with its timer.
+    #[cfg(test)]
+    pub(crate) fn set_nuke_flash_for_test(&mut self, status: i32, start: i32, duration: i32) {
+        let status = match status {
+            0 => NukeFlashStatus::Off,
+            1 => NukeFlashStatus::FadingIn,
+            2 => NukeFlashStatus::FadingOut,
+            other => panic!("nuke flash status {other}"),
+        };
+        self.nuke_flash = NukeFlash {
+            status,
+            start,
+            duration,
+        };
+    }
+
+    /// The flash's status (0, 1 or 2) and timer, as native stores them.
+    #[cfg(test)]
+    pub(crate) fn nuke_flash_for_test(&self) -> (i32, i32, i32) {
+        let status = match self.nuke_flash.status {
+            NukeFlashStatus::Off => 0,
+            NukeFlashStatus::FadingIn => 1,
+            NukeFlashStatus::FadingOut => 2,
+        };
+        (status, self.nuke_flash.start, self.nuke_flash.duration)
     }
 
     /// The Level a full cell relight's top scalar multiplies by the cell's
@@ -238,6 +385,7 @@ impl Default for ScenarioLightingState {
             ScenarioLightProfileUnits::ion_default(),
             ScenarioLightProfileUnits::dominator_default(),
             1,
+            crate::map::lighting::NUKE_CHANGE_RATE_DEFAULT,
         )
     }
 }
@@ -474,6 +622,7 @@ impl ScenarioSession {
             ScenarioLightingProfile::Normal => 0u8,
             ScenarioLightingProfile::Ion => 1u8,
             ScenarioLightingProfile::Dominator => 2u8,
+            ScenarioLightingProfile::Nuke => 3u8,
         };
         profile_tag(lighting.selected_profile).hash(hasher);
         lighting.transition_timer.start_frame().hash(hasher);
@@ -487,6 +636,14 @@ impl ScenarioSession {
             0x357cu16.hash(hasher);
             lighting.dominator.hash(hasher);
             lighting.dominator_change_rate.hash(hasher);
+        }
+        // Likewise for `NukeAmbientChangeRate=` and a flash that has run.
+        if lighting.nuke_change_rate != crate::map::lighting::NUKE_CHANGE_RATE_DEFAULT
+            || lighting.nuke_flash != NukeFlash::OFF
+        {
+            0x3578u16.hash(hasher);
+            lighting.nuke_change_rate.hash(hasher);
+            lighting.nuke_flash.hash(hasher);
         }
     }
 

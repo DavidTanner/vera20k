@@ -4,6 +4,20 @@
 //! the falling warhead (`NukeMaker=`, `0x0046B310`) belong to the building
 //! missions and the projectile detonation.
 //!
+//! The warhead's impact is here too: `BulletClass::AI`'s `NUKE` block
+//! ([`impact`]), whose bullet waits on the `NUKEBALL` anim before it
+//! detonates (`sim::projectile`), and the screen flash it starts, which the
+//! scenario's lighting runs. Evidence: `tools/superweapon_oracle.py`
+//! sections `nuke_impact`, `nuke_wait`, `nuke_flash` and
+//! `nuke_lighting_read`, and the NukeFlash rows of `update_lighting`,
+//! `ambient_step` and `relight`.
+//!
+//! Scenario draws: none in the block; NUKEBALL's own (its crater) and the
+//! delayed detonation's draw through their owners. Timer writes: the flash's
+//! timer (30 frames, then 15) and the ambient fade timer
+//! (`ScenarioClass+0x1248`, `[frame, 1]`). Detach calls: none; the anim's
+//! UnInit releases the bullet (`BulletClass::PointerExpired 0x004685BE`).
+//!
 //! RESIDUALS:
 //! - The one-time arm (`0x006CDA88..0x006CDCB3`: a NukePayload bullet
 //!   dropped straight on the cell): VERA grants no one-time Super.
@@ -15,6 +29,26 @@
 //!   (the silo still stands); VERA refreshes grants at building events.
 //! - The launch-mute global `0x00A8B538` that skips the EVA line
 //!   (`0x006CDDEE`) is not modeled: the line always plays.
+//! - The impact's wait reads the anim's liveness (`NukeImpactContext`)
+//!   instead of the holder list `0x00B0F5B8` whose PointerExpired clears
+//!   `+0x154`; VERA reuses no anim id, so the two answer alike.
+//! - A `NUKEBALL` VERA cannot construct (a type without its SHP, as in lib
+//!   tests) holds no anim, and the bullet detonates at its next AI; retail
+//!   binds `NUKEBALL.SHP`.
+//! - The head's IsAlive gate (`0x004666F7`) has no counterpart: a detonated
+//!   bullet leaves VERA's store at its commit.
+//! - The chrono screen (`0x00A9FAB0`) shares the flash's lighting arms. Map
+//!   trigger action 127 sets it (`0x006DFABF` -> `0x0053B460`) and
+//!   `0x0053B560` steps it; VERA does not port that action, which the retail
+//!   campaign maps ALL01UMD and SOV01UMD run.
+//! - The bridge units' draw brightening by four times the active profile's
+//!   Level (`UnitClass::DrawIt 0x0073D03B`, `InfantryClass::DrawIt
+//!   0x00519319`), the nuke's included, is not ported for any profile.
+//! - `LightConvertClass`'s constructor (`0x00555DA0`) tints a new palette
+//!   with the Ion profile while a storm rages, then the nuke's while the
+//!   flash fades in (`0x00555EE8`), then the Dominator's; VERA tints every
+//!   palette with UpdateLighting's choice, which puts the nuke first. Only a
+//!   palette created while a storm rages over a fading-in flash differs.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::object_type::{ObjectCategory, ObjectType};
@@ -22,7 +56,68 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::SuperWeaponType;
 use crate::sim::intern::InternedId;
 use crate::sim::mission::MissionType;
+use crate::sim::projectile::ProjectileNukeImpact;
+use crate::sim::radar::{RadarEventRequest, RadarEventType};
 use crate::sim::world::{SimSoundEvent, Simulation};
+
+/// The rest of a `NUKE` warhead's impact in `BulletClass::AI`
+/// (`0x00467E87..0x00467F36`), the bullet on its clamped Location:
+/// - `ScreenNukeFlash @ 0x0053AB70` (`ScenarioLightingState::
+///   start_nuke_flash`, then the relight);
+/// - a type-13 radar event at the bullet's cell (`CreateRadarEvent @
+///   0x0065FA70`, `0x00467EA7`; `ObjectClass::GetMapCoords @ 0x0041BEA0`
+///   truncates toward zero);
+/// - when the bullet waits, the `NUKEBALL` anim at its Location, which it
+///   then holds: `AnimClass::AnimClass @ 0x00421EA0` (`0x00467F2D`) with a
+///   combat explosion's arguments (delay 0, one loop, draw flags `0x2600`,
+///   z-adjust `0x0048ACE0`'s -15, not reversed).
+pub(crate) fn impact(sim: &mut Simulation, rules: &RuleSet, impact: ProjectileNukeImpact) {
+    let Some(location) = sim
+        .projectiles
+        .get(impact.projectile_id())
+        .map(|bullet| bullet.position)
+    else {
+        return;
+    };
+    sim.session
+        .lighting
+        .start_nuke_flash(sim.session.binary_frame as i32);
+    sim.publish_global_lighting();
+    let cell = |leptons: i32| (leptons / 256) as i16 as u16;
+    sim.sound_events.push(SimSoundEvent::SuperWeaponRadarEvent {
+        radar: RadarEventRequest::new(
+            RadarEventType::ImpactSilent,
+            cell(location.x),
+            cell(location.y),
+        ),
+    });
+    if !impact.waits() {
+        return;
+    }
+    let nuke_ball = sim
+        .interner
+        .intern(crate::rules::effect_asset_catalog::NUKE_BALL_ANIM);
+    let fx = crate::sim::combat::detonation_anim::placed_effect(nuke_ball, location);
+    let anim = sim.spawn_combat_explosion_anim(
+        rules,
+        fx.shp_name,
+        fx.rx,
+        fx.ry,
+        fx.sub_x,
+        fx.sub_y,
+        fx.z,
+        fx.world_z,
+    );
+    sim.projectiles.await_anim(impact.projectile_id(), anim);
+}
+
+/// `AnimTypeClass::FindIndex("NUKEBALL") @ 0x00427CB0` (`0x00467EB1`)
+/// finds a type: a `NUKE` bullet then waits on its anim.
+pub(crate) fn nuke_ball_type(rules: &RuleSet) -> bool {
+    rules
+        .anim_type_names
+        .contains(crate::rules::effect_asset_catalog::NUKE_BALL_ANIM)
+}
 
 /// Launch case 0 for `owner`'s Super of type `sw` at `cell`: the first
 /// BuildingType in BuildingTypeClass::Array order with `NukeSilo=`
