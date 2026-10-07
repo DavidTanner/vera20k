@@ -126,7 +126,7 @@ impl StrikeHost for Replay<'_> {
     }
     fn epilogue(&mut self) -> i32 {
         self.events.push("draw");
-        mission_epilogue(self.rules, self.mission, &mut self.rng)
+        crate::sim::mission::authority::rate_epilogue(self.rules, self.mission, &mut self.rng)
     }
 }
 

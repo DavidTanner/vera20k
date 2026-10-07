@@ -8,7 +8,9 @@ use crate::sim::movement::{DestinationTiming, air_movement, ground_pose};
 use crate::util::fixed_math::SimFixed;
 
 impl Simulation {
-    /// Aircraft41AA80 -> Foot4D94B0, as reached by an Attack with a live Target.
+    /// `AircraftClass::Assign_Destination @ 0x0041AA80` (vt+0x480) ->
+    /// Foot4D94B0: a Move order's, a spawn manager's, Mission_Attack's and
+    /// Mission_Move's destination for an aircraft.
     /// NULL uses the shared Foot gate (`0x004D9672`,
     /// [`Simulation::foot_null_destination`]), retaining the Fly request
     /// while the aircraft's current or queued dispatch is Attack with a TarCom.
@@ -16,7 +18,7 @@ impl Simulation {
     /// replace the general destination setter: queued Enter preprocessing,
     /// linked-lift detach (+2AC/+2B0), retained fire-particle cleanup (+304), and
     /// the Unit-produced +6AC latch still need their native owner migrations.
-    pub(crate) fn assign_aircraft_attack_destination(
+    pub(crate) fn assign_aircraft_destination(
         &mut self,
         id: u64,
         requested: Option<NavTargetRef>,
@@ -98,29 +100,40 @@ impl Simulation {
                 Some((rules, &self.interner)),
             )
             .expect("live aircraft NavCom coordinate");
-            let entity = self.substrate.entities.get(id).unwrap();
-            // Foot4D94B0's ILocomotion::Move_To: a spawned missile's Rocket
-            // (`0x006632E0`), every other aircraft's Fly (`0x004CCC80`).
-            if entity
-                .locomotor
-                .as_ref()
-                .is_some_and(|locomotor| locomotor.rocket_runtime().is_some())
-            {
-                self.rocket_move_to(id, coord, rules);
-            } else {
-                let speed = crate::sim::movement::order_speed(
-                    entity,
-                    self.object_type(entity.type_ref(), rules),
-                    Some(rules),
-                    &self.houses,
-                );
-                self.move_air_coordinate(id, coord, speed, None, Some(rules));
-            }
+            self.aircraft_locomotor_move_to(id, coord, rules);
         }
         // Accepted Foot setter resets both timers even when Fly MoveTo refuses
         // (e.g. powered off). Retry count is preserved.
         DestinationTiming::from_rules(self.session.binary_frame, Some(rules))
             .accept(self.substrate.entities.get_mut(id).unwrap());
+    }
+
+    /// An aircraft's `ILocomotion::Move_To` (`+0x44`), as Foot4D94B0 and
+    /// Mission_Move state 1 call it: a spawned missile's Rocket
+    /// (`0x006632E0`), every other aircraft's Fly (`0x004CCC80`) at its order
+    /// speed.
+    pub(crate) fn aircraft_locomotor_move_to(
+        &mut self,
+        id: u64,
+        coord: DriveCoord,
+        rules: &RuleSet,
+    ) {
+        let entity = self.substrate.entities.get(id).unwrap();
+        if entity
+            .locomotor
+            .as_ref()
+            .is_some_and(|locomotor| locomotor.rocket_runtime().is_some())
+        {
+            self.rocket_move_to(id, coord, rules);
+        } else {
+            let speed = crate::sim::movement::order_speed(
+                entity,
+                self.object_type(entity.type_ref(), rules),
+                Some(rules),
+                &self.houses,
+            );
+            self.move_air_coordinate(id, coord, speed, None, Some(rules));
+        }
     }
 
     /// Non-null coordinate entry. The bool describes the remaining movement

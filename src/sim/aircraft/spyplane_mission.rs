@@ -71,11 +71,11 @@ pub(super) fn approach(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
     let range = weapon(sim, id, rules).map(|(range, _)| range);
     match target {
         None => {
-            sim.assign_aircraft_attack_destination(id, None, rules);
+            sim.assign_aircraft_destination(id, None, rules);
             queue(sim, id, MissionType::Retreat);
         }
         Some(target) if nav_com_absent(sim, id) => {
-            sim.assign_aircraft_attack_destination(id, Some(target.into()), rules);
+            sim.assign_aircraft_destination(id, Some(target.into()), rules);
         }
         Some(_) => {
             if range.is_some_and(|range| distance <= range) {
@@ -170,7 +170,7 @@ fn head_for_opposite_edge(sim: &mut Simulation, id: u64, rules: &RuleSet) {
         &mut sim.scenario_rng,
     );
     if let Some((rx, ry)) = cell.filter(|&cell| cell != (0, 0)) {
-        sim.assign_aircraft_attack_destination(id, Some(NavTargetRef::cell(rx, ry)), rules);
+        sim.assign_aircraft_destination(id, Some(NavTargetRef::cell(rx, ry)), rules);
     }
 }
 

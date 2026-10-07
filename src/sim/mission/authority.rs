@@ -489,32 +489,44 @@ pub(crate) fn commence_entity_mission(
             entity.mission_leaf.clear_aircraft_action_for_commence();
         }
     }
-    verb::commence_base(&mut entity.mission, now)
+    let commenced = verb::commence_base(&mut entity.mission, now);
+    if commenced {
+        crate::sim::aircraft::commence_handler_state(entity);
+    }
+    commenced
 }
 
 /// The `RandomRanged(0, 2)` ceiling of the Rate epilogue.
 pub(crate) const RATE_EPILOGUE_JITTER_MAX_FRAMES: u32 = 2;
 
+/// The handler return every `ftol(Rate × 900) + RandomRanged(0, 2)` exit
+/// shares — Mission_Harvest (`0x0073EF77`), Mission_Enter (`0x004D946C`),
+/// Mission_Unload (`0x0073E289`), the aircraft's Mission_Attack (`0x00418D1D`)
+/// and Mission_Move (`0x00416713`) and the Foot handlers: the base is the
+/// MissionControl slot of `mission` (`0x005B3A00` indexes the object's
+/// CURRENT mission, so a handler that commenced another mission passes
+/// that one), computed first with no RNG, then one draw on the Scenario
+/// stream `rng` (`0x0065C7E0` on `*(0x00A8B230)+0x218`). Native evidence:
+/// tools/spatial_oracle/refinery_dock.json (`delay` of the Enter, Harvest
+/// and Unload rows, one `[0, 2]` draw each), aircraft_states.json and
+/// aircraft_move.json.
+pub(crate) fn rate_epilogue(
+    rules: &RuleSet,
+    mission: super::MissionType,
+    rng: &mut crate::sim::rng::SimRng,
+) -> i32 {
+    let base = rules.mission_control.rate_frames(mission);
+    base.wrapping_add(rng.next_range_u32_inclusive(0, RATE_EPILOGUE_JITTER_MAX_FRAMES) as i32)
+}
+
 impl Simulation {
-    /// The handler return every `ftol(Rate × 900) + RandomRanged(0, 2)` exit
-    /// shares — Mission_Harvest (`0x0073EF77`), Mission_Enter (`0x004D946C`),
-    /// Mission_Unload (`0x0073E289`) and the Foot handlers: the base is the
-    /// MissionControl slot of `mission` (`0x005B3A00` indexes the object's
-    /// CURRENT mission, so a handler that commenced another mission passes
-    /// that one), computed first with no RNG, then one draw on the Scenario
-    /// stream (`0x0065C7E0` on `*(0x00A8B230)+0x218`). Native evidence:
-    /// tools/spatial_oracle/refinery_dock.json (`delay` of the Enter, Harvest
-    /// and Unload rows, one `[0, 2]` draw each).
+    /// [`rate_epilogue`] on the Scenario stream.
     pub(crate) fn mission_rate_epilogue(
         &mut self,
         rules: &RuleSet,
         mission: super::MissionType,
     ) -> i32 {
-        let base = rules.mission_control.rate_frames(mission);
-        base.wrapping_add(
-            self.scenario_rng
-                .next_range_u32_inclusive(0, RATE_EPILOGUE_JITTER_MAX_FRAMES) as i32,
-        )
+        rate_epilogue(rules, mission, &mut self.scenario_rng)
     }
 
     /// [`Self::mission_rate_epilogue`] on `receiver`'s current mission as the

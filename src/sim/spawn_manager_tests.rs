@@ -1969,8 +1969,11 @@ fn a_hornet_mid_pass_keeps_its_run_through_the_managers_re_issue() {
 /// through `advance_tick`, and the wing.
 struct StrafingSortie {
     sim: Simulation,
+    carrier: u64,
     wing: Vec<u64>,
     bombs: BTreeMap<u64, Vec<u32>>,
+    /// Each Hornet's NavCom whenever it changed, with the frame.
+    navs: BTreeMap<u64, Vec<(u32, Option<crate::sim::components::NavTargetRef>)>>,
 }
 
 /// The sortie with strafing Hornets: `HornetBomb` fires a `NormalBomb` (ROT 1,
@@ -2034,6 +2037,7 @@ CurleyShuffle=yes
     assert_eq!(wing.len(), 3);
     let hornet_bomb = sim.interner.intern("HornetBomb");
     let mut bombs: BTreeMap<u64, Vec<u32>> = BTreeMap::new();
+    let mut navs: BTreeMap<u64, Vec<_>> = BTreeMap::new();
     for _ in 0..600 {
         if let Some(manager) = sim
             .substrate
@@ -2053,8 +2057,25 @@ CurleyShuffle=yes
         {
             bombs.entry(event.attacker_id).or_default().push(frame);
         }
+        for &hornet in &wing {
+            let nav = sim
+                .substrate
+                .entities
+                .get(hornet)
+                .and_then(|h| h.navigation.nav_com);
+            let seen = navs.entry(hornet).or_default();
+            if seen.last().is_none_or(|&(_, last)| last != nav) {
+                seen.push((frame, nav));
+            }
+        }
     }
-    StrafingSortie { sim, wing, bombs }
+    StrafingSortie {
+        sim,
+        carrier,
+        wing,
+        bombs,
+        navs,
+    }
 }
 
 /// Every Hornet of a Carrier wing flies a whole strafe pass: five bombs a
@@ -2099,6 +2120,33 @@ fn every_hornet_of_a_carrier_wing_flies_a_whole_strafe_pass() {
                 "{shape} Hornet {hornet}: the pass paid its one ammo"
             );
         }
+    }
+}
+
+/// After its pass a Hornet is recalled with the Carrier itself as its NavCom
+/// (`Assign_Destination(owner, 1)`, `0x006B766D`), and Mission_Move flies it
+/// home. Landing on the deck is Fly's Process landing trigger, unported (see
+/// [`every_hornet_of_a_carrier_wing_flies_a_whole_strafe_pass`]).
+#[test]
+fn a_recalled_hornet_flies_home_to_the_carrier_itself() {
+    use crate::sim::aircraft::AircraftMission;
+    use crate::sim::mission::{MissionId, MissionType};
+    let sortie = strafing_carrier_sortie("Landable=yes\nROT=3\n");
+    let carrier = Some(crate::sim::components::NavTargetRef::Entity { id: sortie.carrier });
+    for hornet in &sortie.wing {
+        let navs = &sortie.navs[hornet];
+        assert_eq!(
+            navs.last().map(|&(_, nav)| nav),
+            Some(carrier),
+            "Hornet {hornet} is sent home to the Carrier: {navs:?}"
+        );
+        let h = sortie.sim.substrate.entities.get(*hornet).unwrap();
+        assert!(
+            matches!(h.aircraft_mission, Some(AircraftMission::Move { .. }))
+                && h.mission.current() == MissionId::from_known(MissionType::Move),
+            "Hornet {hornet} flies home on Mission_Move: {:?}",
+            h.aircraft_mission
+        );
     }
 }
 

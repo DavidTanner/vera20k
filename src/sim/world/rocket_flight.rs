@@ -302,12 +302,13 @@ impl Simulation {
 }
 
 #[cfg(test)]
-mod retail_tests {
+pub(super) mod retail_tests {
     //! Production composition witness: a stock V3 Launcher on retail Hills
     //! force-attacks a tank through an ordinary command and bound runtime
     //! frames. The flight's native comparison is
-    //! `movement::rocket_movement::tests`; this run claims no native
-    //! whole-flight or whole-match comparison.
+    //! `movement::rocket_movement::tests`, the missile's Mission_Move and
+    //! Find_Attack_Cell `world::aircraft_move::tests`; this run claims no
+    //! native whole-flight or whole-match comparison.
 
     use crate::headless_scenario::SIM_TICK_MS;
     use crate::sim::command::{Command, CommandEnvelope};
@@ -319,7 +320,7 @@ mod retail_tests {
     /// kamikaze tracker's targets (every 30 frames, dropped on every 16th by
     /// `TechnoClass::AI`'s illegal-target test, the missile having no weapon)
     /// a missile past the playfield's edge leaves the map (`aircraft::leave_map`).
-    fn sites(
+    pub(in crate::sim::world) fn sites(
         scenario: &crate::headless_scenario::HeadlessScenario,
     ) -> Vec<((u16, u16), (u16, u16))> {
         let sim = scenario.sim();
@@ -415,6 +416,7 @@ mod retail_tests {
         let mut impact = None;
         let mut detonated = None;
         let mut last_location = None;
+        let mut moves = Vec::new();
         for frame in 0..1500 {
             let commands = if frame == 0 {
                 vec![CommandEnvelope::new(
@@ -452,6 +454,19 @@ mod retail_tests {
                 continue;
             }
             launched.get_or_insert(frame);
+            let mission = match entity.aircraft_mission {
+                Some(crate::sim::aircraft::AircraftMission::Move { sub_state }) => {
+                    ("Move", sub_state)
+                }
+                Some(crate::sim::aircraft::AircraftMission::Attack { sub_state }) => {
+                    ("Attack", sub_state)
+                }
+                _ => ("other", 0),
+            };
+            let visit = (mission, entity.navigation.nav_com);
+            if moves.last().is_none_or(|&(_, last)| last != visit) {
+                moves.push((frame, visit));
+            }
             let location = position_world_coord(&entity.position);
             highest = highest.max(location.z);
             last_location = Some(location);
@@ -476,8 +491,30 @@ mod retail_tests {
             .map_or(0, |e| e.health.current);
         println!(
             "V3 at {launcher_cell:?}, MTNK at {target_cell:?}: launch frame {launched}, \
-             states {transitions:?}, highest Z {highest}, detonation frame {detonated} \
-             near {impact:?}, target health {strength} -> {health}, anims {anim_names:?}"
+             states {transitions:?}, missions {moves:?}, highest Z {highest}, \
+             detonation frame {detonated} near {impact:?}, target health {strength} -> \
+             {health}, anims {anim_names:?}"
+        );
+        // Launched at the tank on Move; the first Mission_Move visit's
+        // Find_Attack_Cell moves the NavCom to a free cell beside the tank
+        // (Spawned, the missile may share only a spawner's cell), which the
+        // flying Rocket's Move_To ignores. The tracker's Attack commences
+        // the same frame, restarting the mission state at Mission_Attack's 0.
+        use crate::sim::components::NavTargetRef;
+        assert_eq!(
+            moves[0].1,
+            (("Move", 0), Some(NavTargetRef::Entity { id: target }))
+        );
+        let (_, (mission, nav)) = moves[1];
+        assert_eq!(mission, ("Attack", 0), "{moves:?}");
+        let Some(NavTargetRef::Cell { rx, ry }) = nav else {
+            panic!("Find_Attack_Cell picks a cell: {moves:?}");
+        };
+        assert!(
+            (rx, ry) != target_cell
+                && rx.abs_diff(target_cell.0) <= 2
+                && ry.abs_diff(target_cell.1) <= 2,
+            "a free cell beside the tank: {moves:?}"
         );
         // Move_To starts the tilt; the climb follows TiltFrames later.
         assert_eq!(transitions[0].1, 2);

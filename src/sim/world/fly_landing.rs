@@ -297,20 +297,41 @@ impl Simulation {
         }
     }
 
-    /// Foot4DDC60: height-aware playfield, nearest ground-list Techno, then
-    /// Track/Normal passability and other live aircraft's Cell NavComs.
-    pub(super) fn fly_landing_cell_admitted(&self, id: u64, rules: Option<&RuleSet>) -> bool {
+    /// `FootClass::IsLandZoneClear @ 0x004DDC60` (vt+0x550) for `destination`:
+    /// the cell under its physical center (vt+0x48), then height-aware
+    /// playfield, nearest ground-list Techno, Track/Normal passability and
+    /// other live aircraft whose NavCom is `destination` itself (`0x004DDDBF`
+    /// compares pointers: the same cell, or the same object). Fly's landing
+    /// callback asks for the cell under the aircraft (`0x004CD3B6`);
+    /// Find_Attack_Cell for its parameter and each candidate cell.
+    pub(super) fn foot_land_zone_clear(
+        &self,
+        id: u64,
+        destination: NavTargetRef,
+        rules: Option<&RuleSet>,
+    ) -> bool {
         use crate::rules::locomotor_type::{MovementZone, SpeedType};
         use crate::sim::cell_rect::{
             IsClearToMoveResult, LiveCellPassabilityQuery, cell_is_in_playfield_height_aware,
             evaluate_live_cell_passability,
         };
         let e = self.substrate.entities.get(id).unwrap();
-        let coord = ground_pose::position_world_coord(&e.position);
-        let requested = ((coord.x / 256) as i16, (coord.y / 256) as i16);
-        // The caller passes the Cell returned by MapAtCoord; Foot4DDC84
-        // reads that receiver's coordinates. Fixed512 aliases must use the
-        // resolved cell for playfield, occupant and passability queries.
+        let (requested, object) = match destination {
+            NavTargetRef::Cell { rx, ry } => ((rx as i16, ry as i16), None),
+            NavTargetRef::Entity { id: object }
+            | NavTargetRef::Object { id: object }
+            | NavTargetRef::Building { id: object } => {
+                let Some(center) = self.fire_location_center(destination) else {
+                    return false;
+                };
+                (
+                    ((center.x / 256) as i16, (center.y / 256) as i16),
+                    Some(object),
+                )
+            }
+        };
+        // Foot4DDC84 reads the receiver's coordinates. Fixed512 aliases must
+        // use the resolved cell for playfield, occupant and passability queries.
         let identity = self
             .resolved_terrain
             .as_ref()
@@ -379,8 +400,8 @@ impl Simulation {
                 && other.category == EntityCategory::Aircraft
                 && other.lifecycle.object_alive
                 && !other.lifecycle.in_limbo
-                && match other.navigation.nav_com {
-                    Some(NavTargetRef::Cell { rx, ry }) => {
+                && match (object, other.navigation.nav_com) {
+                    (None, Some(NavTargetRef::Cell { rx, ry })) => {
                         self.resolved_terrain.as_ref().map_or(
                             (rx, ry) == (cell.0 as u16, cell.1 as u16),
                             |t| {
@@ -394,6 +415,14 @@ impl Simulation {
                             },
                         )
                     }
+                    (
+                        Some(object),
+                        Some(
+                            NavTargetRef::Entity { id: nav }
+                            | NavTargetRef::Object { id: nav }
+                            | NavTargetRef::Building { id: nav },
+                        ),
+                    ) => nav == object,
                     _ => false,
                 }
         })
@@ -947,7 +976,14 @@ mod tests {
             );
             let rng = sim.scenario_rng.logical_state();
             assert_eq!(
-                sim.fly_landing_cell_admitted(1, Some(&rules)),
+                sim.foot_land_zone_clear(
+                    1,
+                    NavTargetRef::cell(
+                        query[0].as_u64().unwrap() as u16,
+                        query[1].as_u64().unwrap() as u16
+                    ),
+                    Some(&rules)
+                ),
                 row["result"].as_bool().unwrap(),
                 "{input}"
             );

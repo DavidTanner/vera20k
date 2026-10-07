@@ -1111,13 +1111,10 @@ const ADJACENT_DIR_ON_LAUNCH: u8 = 0;
 /// Adjacent-cell direction native case 2 re-issues while the wing forms up.
 const ADJACENT_DIR_WHILE_HELD: u8 = 4;
 
-/// Park an aircraft child on a cell next to its parent with no attack order.
-///
-/// Native assigns the adjacent CellClass as the child's *target* and mission 2;
-/// for an aircraft that reads as "fly there", not "shoot the ground". VERA's
-/// aircraft would force-fire a cell target, so the hold is expressed as an air
-/// move with the attack order cleared. **VERA-internal; the native
-/// cell-as-target encoding is not reproduced, only its observable effect.**
+/// Park an aircraft child on a cell next to its parent: `Assign_Destination(
+/// owner cell's Adjacent(direction), 1)` (vt+0x480, `0x006B75FA`/`0x006B76CA`)
+/// and `Queue_Mission(Move, 0)` (`0x006B7608`/`0x006B76D8`); Mission_Move
+/// flies it there. The child's Target is left as it is.
 fn hold_child_over_owner(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -1134,16 +1131,12 @@ fn hold_child_over_owner(
         return;
     };
     let (rx, ry) = adjacent_cell(owner_rx, owner_ry, direction);
-    let speed = child_air_speed(sim, rules, child_id);
-    if let Some(child) = sim.substrate.entities.get_mut(child_id) {
-        child.attack_target = None;
-        if let Some(mission) = child.aircraft_mission.as_mut() {
-            *mission = crate::sim::aircraft::AircraftMission::Move { sub_state: 0 };
-        }
-    }
-    // `Queue_Mission(Move, 0)` (`0x006B7608`, `0x006B76D8`).
-    queue_child_mission(sim, child_id, crate::sim::mission::MissionType::Move);
-    sim.issue_air_cell_destination(child_id, (rx, ry), speed, Some(rules));
+    sim.assign_aircraft_destination(
+        child_id,
+        Some(crate::sim::components::NavTargetRef::cell(rx, ry)),
+        rules,
+    );
+    queue_child_move(sim, child_id);
 }
 
 /// The eight-direction cell step native uses for the owner-relative hold cell.
@@ -1155,48 +1148,30 @@ fn adjacent_cell(rx: u16, ry: u16, direction: u8) -> (u16, u16) {
     )
 }
 
-/// No FASTER stage: spawned children fly, and neither `FlyLocomotionClass` nor
-/// the rocket controller calls the `FootClass::GetCurrentSpeed` vtable slot
-/// (`veterancy::locomotor_consults_current_speed`).
-fn child_air_speed(
-    sim: &Simulation,
-    rules: &RuleSet,
-    child_id: u64,
-) -> crate::util::fixed_math::SimFixed {
-    sim.substrate
-        .entities
-        .get(child_id)
-        .map(|c| {
-            crate::sim::movement::order_speed(
-                c,
-                sim.object_type(c.type_ref(), rules),
-                Some(rules),
-                &sim.houses,
-            )
-        })
-        .unwrap_or(crate::util::fixed_math::SimFixed::from_num(8))
+/// Point an aircraft child back at its parent: `Assign_Destination(owner,
+/// 1)`, `Assign_Target(NULL)` and `Queue_Mission(Move, 0)`
+/// (`0x006B7663..0x006B7687`, `0x006B7838..0x006B785C`). The NavCom is the
+/// owner itself, so the child heads for the owner's `vt+0x4C`: a moving
+/// carrier's destination, a standing one's center.
+fn recall_child_to_owner(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, child_id: u64) {
+    if !sim.substrate.entities.contains(owner_id) {
+        return;
+    }
+    sim.assign_aircraft_destination(
+        child_id,
+        Some(crate::sim::combat::TargetKind::Entity(owner_id).into()),
+        rules,
+    );
+    let _ = sim.assign_target_represented(child_id, None, Some(rules));
+    queue_child_move(sim, child_id);
 }
 
-/// Point an aircraft child back at its parent and clear its attack order.
-fn recall_child_to_owner(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, child_id: u64) {
-    let Some((rx, ry)) = sim
-        .substrate
-        .entities
-        .get(owner_id)
-        .map(|o| (o.position.rx, o.position.ry))
-    else {
-        return;
-    };
-    let speed = child_air_speed(sim, rules, child_id);
-    if let Some(child) = sim.substrate.entities.get_mut(child_id) {
-        child.attack_target = None;
-        if let Some(mission) = child.aircraft_mission.as_mut() {
-            *mission = crate::sim::aircraft::AircraftMission::Move { sub_state: 0 };
-        }
-    }
-    // `Queue_Mission(Move, 0)` (`0x006B7687`, `0x006B785C`).
+/// `vt+0x1E8 Queue_Mission(Move, 0)` on a child (`aircraft::queue_move_state`).
+fn queue_child_move(sim: &mut Simulation, child_id: u64) {
     queue_child_mission(sim, child_id, crate::sim::mission::MissionType::Move);
-    sim.issue_air_cell_destination(child_id, (rx, ry), speed, Some(rules));
+    if let Some(child) = sim.substrate.entities.get_mut(child_id) {
+        crate::sim::aircraft::queue_move_state(child);
+    }
 }
 
 /// Case 0's missile tail after the child's Unlimbo (`0x006B750B..0x006B75CA`).
@@ -1212,21 +1187,32 @@ fn recall_child_to_owner(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, c
 ///   coordinate to Rocket Move_To (`rocket_movement::move_to`), and
 ///   `Queue_Mission(Move, 0)` (vt+0x1E8).
 ///
-/// The manager's next Launching pass hands the missile to the kamikaze
-/// tracker (`sim::kamikaze`), which gives it the target's cell and the
-/// Attack mission.
+/// The missile then runs `Mission_Move @ 0x004166E0` (`aircraft::
+/// move_mission`): its first visit's Find_Attack_Cell re-assigns the
+/// destination, which Rocket Move_To ignores in flight. The manager's next
+/// Launching pass hands the missile to the kamikaze tracker
+/// (`sim::kamikaze`), which gives it the target's cell and the Attack mission.
 ///
-/// RESIDUAL (next chain): the missile's own mission never runs, because the
-/// aircraft mission runner skips non-Fly locomotors. Natively each
-/// `Mission_Move @ 0x004166E0` visit from substate 0 (and each
-/// `Mission_Attack @ 0x00417FE0` epilogue) draws Scenario `RandomRanged(0,2)`,
-/// and Mission_Attack's substate 1 sends the missile at the tracker's cell
-/// (`Assign_Destination(FindFireLocation)`). Trigger: every launch. Effect:
-/// no flight change while Rocket Move_To holds its destination, but the
-/// Scenario RNG stream falls behind native from the first launch; a missile
-/// whose launch dropped a high-flying target (no destination) stays on its
-/// launcher instead of being re-sent at the target's cell. Risk: RNG parity
-/// and that stranded missile.
+/// RESIDUAL (next chain): the missile's Mission_Attack (`0x00417FE0`) and
+/// idle missions never run, because the aircraft mission runner dispatches a
+/// Rocket only on Move. Natively each Mission_Attack epilogue draws Scenario
+/// `RandomRanged(0,2)`, and its substate 1 sends the missile at the tracker's
+/// cell (`Assign_Destination(FindFireLocation)`). Trigger: every launch.
+/// Effect: no flight change while Rocket Move_To holds its destination, but
+/// the Scenario RNG stream falls behind native once the tracker commences
+/// Attack; a missile whose launch dropped a high-flying target (no
+/// destination) stays on its launcher instead of being re-sent at the
+/// target's cell. Risk: RNG parity and that stranded missile.
+///
+/// RESIDUAL (spawn manager placement): VERA runs every manager in one pass
+/// after combat ([`tick_spawn_managers`]); the original runs each inside its
+/// owner's AI (`TechnoClass::AI`, `0x006FA94C`). A missile launched in frame
+/// L commences Move in L+1 and first visits Mission_Move in L+2 here; the
+/// native frame also depends on where its Unlimbo puts it in the logic
+/// vector, which was not measured. Trigger: every launch and hold. Effect:
+/// the first Find_Attack_Cell and epilogue draws can fall a frame from
+/// native, and a Dreadnought's first missile can make a different number of
+/// Move visits before the second launch hands it to the tracker.
 fn launch_missile_child(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, child_id: u64) {
     let boomer_pool = manager_field(sim, owner_id, |m| m.spawn_type).is_some_and(|spawn_type| {
         sim.interner
@@ -1250,12 +1236,12 @@ fn launch_missile_child(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, ch
     }
     with_manager(sim, owner_id, |m| m.promote_queued_target());
     let target = manager_field(sim, owner_id, |m| m.current_target).flatten();
-    sim.assign_aircraft_attack_destination(
+    sim.assign_aircraft_destination(
         child_id,
         target.map(crate::sim::components::NavTargetRef::from),
         rules,
     );
-    queue_child_mission(sim, child_id, crate::sim::mission::MissionType::Move);
+    queue_child_move(sim, child_id);
 }
 
 /// `SpawnManagerClass::PointerExpired` (`decompile_function 0x006B7C60`) for
