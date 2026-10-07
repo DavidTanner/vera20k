@@ -783,6 +783,16 @@ impl From<crate::sim::components::NavTargetRef> for TargetKind {
     }
 }
 
+impl From<TargetKind> for crate::sim::components::NavTargetRef {
+    /// A target as a NavCom: its cell, or the object it names.
+    fn from(target: TargetKind) -> Self {
+        match target {
+            TargetKind::Entity(id) => Self::Entity { id },
+            TargetKind::Cell(rx, ry) => Self::cell(rx, ry),
+        }
+    }
+}
+
 impl TargetKind {
     /// Recover an already-retained native Cell allocation without a map lookup.
     /// A Cell TarCom is a pointer: later queries may have changed Dummy.coord,

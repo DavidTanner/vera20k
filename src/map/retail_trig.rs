@@ -87,6 +87,10 @@ const ATAN_STEP_BITS: u32 = 0x3CC7_FE84;
 const ATAN_HALF_PI_F32_BITS: u32 = 0x3FC9_0FDB;
 /// `0x007E44D0`: binary64 pi.
 const ATAN_PI_F64_BITS: u64 = 0x4009_21FB_5444_2D18;
+/// `0x007E2820`: binary64 pi/2.
+const HALF_PI_F64_BITS: u64 = 0x3FF9_21FB_5444_2D18;
+/// `0x007E2818`: binary64 -65534/2pi, radians to DirStruct units.
+const NEG_FACING_UNITS_PER_RADIAN_F64_BITS: u64 = 0xC0C4_5F07_AF68_ECEF;
 
 /// Something went wrong reading the table out of the executable.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -514,6 +518,55 @@ impl AtanTable {
             value = X87Chop53::neg(value);
         }
         value
+    }
+
+    /// `Math::AtanFromTable @ 0x004CADE0`: the arctangent of one double.
+    ///
+    /// gamemd-derived (disassembly read 2026-10-07): the argument is stored as
+    /// binary32 (`FST float`), but the index divides the full double, still on
+    /// the stack, by the binary32 step (`FDIV float [0x008650B8]`). The index
+    /// is `|ftol(...)|`; 0x1001 or more reads binary32 pi/2 (`0x007E897C`).
+    /// The entry is negated when the binary32 copy is below zero
+    /// (`FCOMP float [0x007E1748]`).
+    pub fn atan_from_table(&self, value: X87Value) -> X87Value {
+        let zero = X87Chop53::load_i32(0);
+        let constant32 =
+            |bits: u32| X87Chop53::load_f32(NativeF32Bits::from_bits(bits)).unwrap_or(zero);
+        let value32 = X87Chop53::store_f32(value)
+            .and_then(X87Chop53::load_f32)
+            .unwrap_or(zero);
+        let index = X87Chop53::div(value, constant32(ATAN_STEP_BITS)).map_or(0, |ratio| {
+            X87Chop53::ftol_i32_low_masked(ratio).unsigned_abs() as usize
+        });
+        let entry = if index < ATAN_TABLE_LEN {
+            constant32(self.entries[index].to_bits())
+        } else {
+            constant32(ATAN_HALF_PI_F32_BITS)
+        };
+        if X87Chop53::compare(value32, zero) == X87Ordering::Less {
+            X87Chop53::neg(entry)
+        } else {
+            entry
+        }
+    }
+
+    /// The DirStruct facing from `from` toward `to`: [`Self::atan2`] of
+    /// (`from.y - to.y`, `to.x - from.x`), less binary64 pi/2, times
+    /// `-65534/2pi`, truncated to its low word. The same instructions run in
+    /// Jumpjet's states 1..3 (`0x0054C081..0x0054C0CD`) and Rocket's cruise
+    /// (`0x00662C3A..0x00662C8B`).
+    pub fn facing_toward(&self, from: [i32; 2], to: [i32; 2]) -> u16 {
+        let double = |bits: u64| {
+            X87Chop53::load_f64(NativeF64Bits::from_bits(bits)).expect("finite constant")
+        };
+        let angle = self.atan2(
+            X87Chop53::sub(X87Chop53::load_i32(from[1]), X87Chop53::load_i32(to[1])),
+            X87Chop53::sub(X87Chop53::load_i32(to[0]), X87Chop53::load_i32(from[0])),
+        );
+        X87Chop53::ftol_i32_low_masked(X87Chop53::mul(
+            X87Chop53::sub(angle, double(HALF_PI_F64_BITS)),
+            double(NEG_FACING_UNITS_PER_RADIAN_F64_BITS),
+        )) as u16
     }
 
     /// A shape-compatible table for unit tests without a retail install.

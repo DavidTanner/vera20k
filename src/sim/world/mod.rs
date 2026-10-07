@@ -58,6 +58,7 @@ mod move_cell_input;
 mod native_cell_input_test_fixture;
 mod rally_cell_input;
 mod navigation;
+mod rocket_flight;
 mod object_turn;
 pub use frame_error::FrameAdvanceError;
 pub(crate) use world_orders::EngineerBuildingAction;
@@ -1088,16 +1089,6 @@ pub struct Simulation {
     /// immediately after the movement call returns.
     #[serde(skip)]
     pub(crate) pending_lifecycle_requests: Vec<LifecycleRequest>,
-    /// Missiles whose rocket flight reached its target during this tick's
-    /// movement pass. Drained at the end of that pass, in live-object order.
-    #[serde(skip)]
-    pub(crate) pending_rocket_detonations: Vec<u64>,
-    /// Missile impacts awaiting the combat phase, which expands each into
-    /// ordinary damage events so the shared damage → death → despawn pipeline
-    /// resolves them. Filled during the movement pass, drained after combat in
-    /// the same tick.
-    #[serde(skip)]
-    pub(crate) pending_missile_detonations: Vec<crate::sim::spawn_manager::MissileDetonation>,
     /// The shots the objects' own missions asked the combat phase for this
     /// frame (aircraft strike visits, building FireAt arms). Filled by the
     /// live pass, drained by combat in the same frame.
@@ -3122,8 +3113,6 @@ impl Simulation {
             frame_overlay_removals: Vec::new(),
             terminal_score_snapshot: None,
             pending_lifecycle_requests: Vec::new(),
-            pending_rocket_detonations: Vec::new(),
-            pending_missile_detonations: Vec::new(),
             fire_requests: Default::default(),
             pending_projectile_detonations: Vec::new(),
             pending_wave_damage_requests: Vec::new(),
@@ -6357,23 +6346,6 @@ impl Simulation {
         destroyed_structure |= object_pass.destroyed_structure;
         bridge_state_changed |= object_pass.bridge_state_changed;
         let tube_turn_owned_ids = object_pass.tube_turn_owned_ids;
-        // Spawn-manager missiles that reached their target during the movement
-        // pass are consumed here — the missile leaves the world at the moment
-        // `RocketLocomotion::Process` would have called Detonate. The impact
-        // itself is queued for the combat phase below, which runs it through
-        // the same damage → death → despawn pipeline as any other detonation.
-        if rules.is_some() {
-            if !self.pending_rocket_detonations.is_empty() {
-                let detonated = std::mem::take(&mut self.pending_rocket_detonations);
-                crate::sim::spawn_manager::detonate_missiles(self, &detonated);
-            }
-        } else {
-            // No RuleSet means no spawner could have launched anything; drop
-            // both queues rather than letting them accumulate across ticks that
-            // never reach the combat phase.
-            self.pending_rocket_detonations.clear();
-            self.pending_missile_detonations.clear();
-        }
         //Gate Open runs in Building Mission AI; factory clearance runs in
         //the arriving Unit's Per_Cell_Process before Ready/Commence.
         // Movement-side wall crush (part of the ground-movement stage): a Crusher

@@ -138,16 +138,19 @@ impl Simulation {
     }
 
     /// Reconcile represented air-vector membership after a physical step.
-    /// Fly and Jumpjet enter/leave through their native callbacks; marking a
-    /// grounded instance cannot create a new tracker registration. Other
-    /// represented air categories retain their existing admission predicate.
+    /// Fly, Jumpjet and Rocket enter/leave through their native callbacks;
+    /// marking a grounded instance cannot create a new tracker registration.
+    /// Other represented air categories retain their existing admission
+    /// predicate.
     pub(crate) fn sync_air_spatial_membership(&mut self, id: u64) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
         let tracked = entity.foot_air.air_spatial_bucket.is_some();
         let explicit_membership = entity.locomotor.as_ref().is_some_and(|locomotor| {
-            locomotor.fly_runtime().is_some() || locomotor.jumpjet_runtime().is_some()
+            locomotor.fly_runtime().is_some()
+                || locomotor.jumpjet_runtime().is_some()
+                || locomotor.rocket_runtime().is_some()
         });
         let desired = entity.lifecycle.object_alive
             && !entity.lifecycle.in_limbo

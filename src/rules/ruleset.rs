@@ -3338,6 +3338,7 @@ impl RuleSet {
         let mut rules = Self::from_projected_ini(processed.ini())?;
         rules.crate_rules = processed.crate_rules().clone();
         rules.powerups = processed.powerups().clone();
+        rules.missile_spawn = processed.missile_spawn().clone();
         rules.general.metallic_debris = processed.metallic_debris().to_vec();
         rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
         rules.general.gravity = processed.gravity();
@@ -3913,11 +3914,9 @@ impl RuleSet {
 
         let mind_control = crate::rules::mind_control_rules::MindControlRules::from_ini(ini);
 
-        // [General] rocket type/frame slots + [CombatDamage] missile warheads.
-        let missile_spawn = crate::rules::missile_spawn::MissileSpawnRules::from_ini_sections(
-            ini.section_or_empty("General"),
-            ini.section_or_empty("CombatDamage"),
-        );
+        // [General] rocket blocks + [CombatDamage] missile warheads; the
+        // per-pass result replaces this in `from_processed_rules`.
+        let missile_spawn = crate::rules::missile_spawn::MissileSpawnRules::from_ini(ini);
 
         // [CombatDamage] C4Delay = minutes (double). Default 0.03 = 27 ticks @ 15 fps.
         // Stored as integer ticks for lockstep-safe per-tick comparison.

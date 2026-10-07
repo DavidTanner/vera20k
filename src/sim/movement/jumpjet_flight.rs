@@ -68,12 +68,8 @@ const ARRIVAL_RADIUS: i32 = 20;
 /// Extra reference height for a non-building techno in a cell (`ADD EBP,0x55`
 /// at `0x004850EF`).
 const CELL_OBJECT_LIFT: i32 = 0x55;
-/// `0x007E2810`: -2pi/65536.
+/// `0x007E2810`: -2pi/65534.
 const NEG_RADIANS_PER_FACING_UNIT: u64 = 0xBF19_222D_989F_5E57;
-/// `0x007E2818`: -65536/2pi.
-const NEG_FACING_UNITS_PER_RADIAN: u64 = 0xC0C4_5F07_AF68_ECEF;
-/// `0x007E2820`: pi/2.
-const HALF_PI: u64 = 0x3FF9_21FB_5444_2D18;
 /// `0x007E3CC0`: 2pi.
 const TWO_PI: u64 = 0x4019_21FB_5444_2D18;
 /// `0x007ECE60`: 15.0.
@@ -818,17 +814,10 @@ fn crash_latch(state: i32, flight: &mut JumpjetFlight, host: &mut impl JumpjetFl
 }
 
 /// The desired facing toward `destination` (`0x0054C081..C0CD`, and the same
-/// sequence in State 1 and State 2): the retail arctangent, less a quarter
-/// turn, scaled by `-65536/2pi` and truncated.
+/// sequence in State 1 and State 2).
 fn desired_facing(destination: [i32; 3], location: [i32; 3], host: &impl JumpjetFlightHost) -> u16 {
-    let angle = host.atan().atan2(
-        X87Chop53::sub(int(location[1]), int(destination[1])),
-        X87Chop53::sub(int(destination[0]), int(location[0])),
-    );
-    X87Chop53::ftol_i32_low_masked(X87Chop53::mul(
-        X87Chop53::sub(angle, double(HALF_PI)),
-        double(NEG_FACING_UNITS_PER_RADIAN),
-    )) as u16
+    host.atan()
+        .facing_toward([location[0], location[1]], [destination[0], destination[1]])
 }
 
 /// `MapCoord_StepByDir_GetCell @ 0x00481810` adds the signed-word entries

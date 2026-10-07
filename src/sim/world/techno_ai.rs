@@ -4955,10 +4955,7 @@ mod tests {
         if gates.lifecycle_countdown_exit {
             return Err(HostTraceError::LifecyclePath);
         }
-        if entity.teleport_state().is_some()
-            || entity.rocket_state.is_some()
-            || entity.parachute_state.is_some()
-        {
+        if entity.teleport_state().is_some() || entity.parachute_state.is_some() {
             return Err(HostTraceError::SpecialLocomotorPath);
         }
 

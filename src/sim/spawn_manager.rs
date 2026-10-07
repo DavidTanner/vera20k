@@ -489,8 +489,7 @@ fn step_ready_docked(
     else {
         return;
     };
-    let Some(target) = target else { return };
-    if !reload_due || mode == SpawnManagerMode::Returning {
+    if target.is_none() || !reload_due || mode == SpawnManagerMode::Returning {
         return;
     }
     let Some(child_id) = child_id else { return };
@@ -528,7 +527,6 @@ fn step_ready_docked(
     // The Unlimbo direction: the owner's PrimaryFacing `Current()` rounded to
     // a DirType (`0x006B74E9..0x006B74FC`).
     let launch_dir = owner.body_facing_dir(frame);
-    let owner_veterancy = owner.veterancy();
     let parent_missile_spawn = rules
         .object(&owner_type)
         .map(|o| o.missile_spawn)
@@ -538,29 +536,6 @@ fn step_ready_docked(
         LAUNCH_DELAY_FRAMES_MISSILE_PARENT
     } else {
         LAUNCH_DELAY_FRAMES
-    };
-
-    let missile_family = manager_field(sim, owner_id, |m| m.missile_family).flatten();
-
-    // Promote before the launch so the child receives the freshest target, and
-    // resolve the impact cell BEFORE anything is placed in the world. If the
-    // target cannot resolve there is nothing to launch at, and committing the
-    // slot anyway would leave a revealed child with no flight state that no
-    // later pass can reach — a permanent prop on the launcher's cell.
-    // **VERA-internal:** native cannot reach this state, because a target that
-    // dies is dropped from the manager by `PointerExpired` in the same tick
-    // rather than up to one manager period later.
-    let launch_target = if is_missile_slot {
-        with_manager(sim, owner_id, |m| m.promote_queued_target());
-        let promoted = manager_field(sim, owner_id, |m| m.current_target)
-            .flatten()
-            .unwrap_or(target);
-        match resolve_target_cell(sim, promoted) {
-            Some(cell) => Some((promoted, cell)),
-            None => return,
-        }
-    } else {
-        None
     };
 
     let Some(launch) = launch_coordinate(sim, rules, owner_id, slot_index, is_missile_slot) else {
@@ -583,16 +558,8 @@ fn step_ready_docked(
         return;
     }
 
-    if let Some((_, target_cell)) = launch_target {
-        launch_missile_child(
-            sim,
-            rules,
-            owner_id,
-            child_id,
-            target_cell,
-            missile_family,
-            owner_veterancy,
-        );
+    if is_missile_slot {
+        launch_missile_child(sim, rules, owner_id, child_id);
     } else {
         // Native case 0's aircraft arm does NOT send the child at the wing
         // target. It assigns a cell adjacent to the owner (direction 0) and
@@ -1072,19 +1039,6 @@ fn with_slot(
     }
 }
 
-/// Cell a manager target currently occupies, or `None` when an entity target
-/// no longer resolves.
-fn resolve_target_cell(sim: &Simulation, target: TargetKind) -> Option<(u16, u16)> {
-    match target {
-        TargetKind::Cell(rx, ry) => Some((rx, ry)),
-        TargetKind::Entity(id) => sim
-            .substrate
-            .entities
-            .get(id)
-            .map(|t| (t.position.rx, t.position.ry)),
-    }
-}
-
 fn child_ammo(sim: &Simulation, child_id: u64) -> i32 {
     sim.substrate
         .entities
@@ -1245,210 +1199,42 @@ fn recall_child_to_owner(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, c
     sim.issue_air_cell_destination(child_id, (rx, ry), speed, Some(rules));
 }
 
-/// Hand a launched missile child to the rocket locomotor with the impact
-/// payload attached.
+/// Case 0's missile tail after the child's Unlimbo (`0x006B750B..0x006B75CA`).
 ///
-/// **DRIFT (largely closed 2026-08-03) — missile flight arc.** The original
-/// record here predicted "the arc can be replaced in place by porting
-/// `RocketLocomotionClass` behind the same `RocketState` handoff" — that is
-/// exactly what happened: the foundations merge landed the six-phase machine
-/// (`ILoco::Process 0x006622C0` — ignition → tilt → ascent → cruise →
-/// terminal → secondary) in `rocket_movement`, and this launch path now rides
-/// it via `RocketFlightParameters::legacy`. What REMAINS open, recorded here:
-/// `legacy()` uses default acceleration/altitude/tilt constants rather than
-/// the per-family `*Acceleration`/`*Altitude`/`*LazyCurve`/`*TurnRate` table
-/// values (still unparsed — floats whose fixed-point form belongs to whoever
-/// wires the table), and the DMisl vertical raise is not selected. Silhouette
-/// nuance only; impact cell, damage and warhead are exact, and flight duration
-/// feeds nothing (the regen clock is Rules `PauseFrames + TiltFrames`).
-///
-/// The missile leaves from its Unlimbo coordinate ([`launch_coordinate`]),
-/// which it keeps as its Location: the flight's Z moves from there.
-///
-/// RESIDUAL: a `CMislType=` launch also constructs a `V3TAKOFF` AnimClass at
-/// the missile's Location (`0x006B750B..0x006B7575`: LoopDelay 2, LoopCount
-/// 1, ZAdjust -10); VERA makes none. The constructor (`0x00421EA0`) draws
-/// only for `RandomRate=` (`0x004221C5..0x004221F5`), `IsMeteor=` or
-/// `Bouncer=` (`0x004222C9..0x004222F9`), which retail `[V3TAKOFF]`
-/// (`Translucent`, `Translucency`, `Rate`) leaves unset, so it makes no draw;
-/// its nonzero LoopDelay skips Start (`0x004226F6`). Trigger: every Boomer
-/// missile launch. Effect: no launch smoke, and the anim's object is missing.
-/// Frequency: every Boomer volley. Risk: the anim's ID allocation, its
-/// Unlimbo (`0x005F4EC0`, not traced) and its later AI are absent, so later
-/// IDs can differ from native.
-fn launch_missile_child(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner_id: u64,
-    child_id: u64,
-    target_cell: (u16, u16),
-    family: Option<MissileFamily>,
-    owner_veterancy: u16,
-) {
-    let Some(family) = family else { return };
-    let params = rules.missile_spawn.params(family);
-    let (target_rx, target_ry) = target_cell;
-    let (origin_rx, origin_ry) = match sim.substrate.entities.get(child_id) {
-        Some(c) => (c.position.rx, c.position.ry),
-        None => return,
-    };
-    let child_type = sim
-        .substrate
-        .entities
-        .get(child_id)
-        .map(|c| sim.interner.resolve(c.type_ref()).to_string());
-    // The six-phase rocket machine runs in LEPTONS per second (its ascent
-    // altitude, acceleration and terminal constants are lepton-domain, and its
-    // own attach test uses a 300-scale speed), so the raw INI `Speed=` goes
-    // through the leptons/s conversion. Two prior unit bugs on this exact line:
-    // the raw value (one cell per frame), then cells/s into the lepton-domain
-    // machine (~256x too slow — the missile never finished its ascent).
-    let speed = child_type
-        .as_deref()
-        .and_then(|name| rules.object(name))
-        .map(|o| crate::util::fixed_math::ra2_speed_to_leptons_per_second(o.speed.max(1)))
-        .unwrap_or_else(|| crate::util::fixed_math::ra2_speed_to_leptons_per_second(15));
-    let warhead_id = sim.interner.intern(params.warhead_for(owner_veterancy));
-    let payload = crate::sim::movement::rocket_movement::RocketPayload {
-        warhead: warhead_id,
-        damage: params.damage_for(owner_veterancy),
-        firer_id: owner_id,
-    };
-    crate::sim::movement::rocket_movement::attach_rocket_state_with_payload(
-        &mut sim.substrate.entities,
+/// - A `CMislType=` pool puffs `V3TAKOFF` at the child (`[0x00840098]` names
+///   it too): `AnimClass(type, &Location, 2, 1, 0x600, -10, 0)`. The
+///   constructor draws only for `RandomRate=`, `IsMeteor=` or `Bouncer=`,
+///   which retail `[V3TAKOFF]` leaves unset.
+/// - The owner's burst index reset precedes it in [`launch_coordinate`].
+/// - The queued target is promoted (`0x006B759B..0x006B75A5`), then the child
+///   is sent at `CurrentTarget`: `Assign_Destination(target, 1)` (vt+0x480,
+///   `AircraftClass` `0x0041AA80`), whose Foot setter hands the target's
+///   coordinate to Rocket Move_To (`rocket_movement::move_to`), and
+///   `Queue_Mission(Move, 0)` (vt+0x1E8).
+fn launch_missile_child(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, child_id: u64) {
+    let boomer_pool = manager_field(sim, owner_id, |m| m.spawn_type).is_some_and(|spawn_type| {
+        sim.interner
+            .resolve(spawn_type)
+            .eq_ignore_ascii_case(&rules.missile_spawn.cmisl.type_name)
+    });
+    if boomer_pool && let Some(child) = sim.substrate.entities.get(child_id) {
+        let location = crate::sim::movement::ground_pose::position_world_coord(&child.position);
+        sim.spawn_rocket_anim(
+            rules,
+            crate::rules::effect_asset_catalog::ROCKET_TAKEOFF_ANIM,
+            [location.x, location.y, location.z],
+            2,
+            -10,
+        );
+    }
+    with_manager(sim, owner_id, |m| m.promote_queued_target());
+    let target = manager_field(sim, owner_id, |m| m.current_target).flatten();
+    sim.assign_aircraft_attack_destination(
         child_id,
-        (origin_rx, origin_ry),
-        (target_rx, target_ry),
-        speed,
-        Some(payload),
-        sim.session.binary_frame,
+        target.map(crate::sim::components::NavTargetRef::from),
+        rules,
     );
-}
-
-/// One missile impact, queued for the combat phase to resolve.
-///
-/// `RocketLocomotion::Detonate` (`0x00663030`) selects the warhead by missile
-/// family and elite flag and then calls the engine's shared area-damage
-/// routine — the same one the ordinary warhead, bomb, nuke and lightning paths
-/// call. It does NOT have a private damage applicator. VERA's equivalent shared
-/// path is combat's damage → death → despawn pipeline, so the detonation
-/// records itself here and combat expands it; reimplementing the damage
-/// application in this module produced targets that could be damaged but never
-/// killed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MissileDetonation {
-    pub rx: u16,
-    pub ry: u16,
-    /// Interned warhead section name (family + elite selected at launch).
-    pub warhead: InternedId,
-    pub damage: i32,
-    /// Launcher stable id — kill credit and retaliation.
-    pub firer_id: u64,
-    /// House the missile carried, for the area-damage owner argument.
-    pub owner: InternedId,
-    /// The exact impact coordinate (world leptons) of a missile that
-    /// exploded in flight ([`detonate_dead_missile`]); `None` detonates on
-    /// the ground of the target cell `(rx, ry)`.
-    pub impact: Option<crate::sim::projectile::ProjectileCoord>,
-}
-
-/// Consume every missile that reached its target during this tick's movement
-/// pass: queue its impact for the combat phase and remove the missile.
-///
-/// The queue is drained inside `tick_combat_*` in the same tick, before the
-/// damage phase, so the impact runs the identical damage → `dead_entities` →
-/// `handle_entity_deaths` → despawn sequence as any ordinary bullet. Death
-/// weapons, crew ejection, explosion anims, smudges and kill credit all come
-/// from that shared path rather than from this module.
-///
-/// **DRIFT — within-tick timing.** Native applies the damage inline in the
-/// locomotor pass, so a unit killed by an impact never gets a combat pass that
-/// tick; here the damage lands a phase later, so a unit that will die to the
-/// impact still fires once. Trigger: every missile impact that kills.
-/// Player effect: one extra shot from a doomed unit, sub-tick. Frequency:
-/// every killing impact. Downstream risk: none beyond the extra shot — it is
-/// the same phase-batching VERA already applies to all combat damage, and the
-/// alternative (a private applicator in this module) is what let targets sit
-/// at zero health.
-pub fn detonate_missiles(sim: &mut Simulation, detonated: &[u64]) {
-    for &missile_id in detonated {
-        let Some((rx, ry, payload, owner)) = sim.substrate.entities.get(missile_id).and_then(|e| {
-            e.rocket_state
-                .as_ref()
-                .map(|r| (r.target_rx, r.target_ry, r.payload, e.owner()))
-        }) else {
-            continue;
-        };
-        if let Some(payload) = payload {
-            sim.pending_missile_detonations.push(MissileDetonation {
-                rx,
-                ry,
-                warhead: payload.warhead,
-                damage: payload.damage,
-                firer_id: payload.firer_id,
-                owner,
-                impact: None,
-            });
-        }
-        sim.uninit(missile_id);
-    }
-}
-
-/// `RocketLocomotion::Detonate` (`0x00663030`) for a missile that lost its
-/// Health in flight. `ILoco::Process` checks its owner after the flight step
-/// (`0x00662FD5..0x00662FE1`), so a missile shot down by AA — latched
-/// crashing by `FootClass::Crash`, which only a Fly locomotor then drops —
-/// explodes where it is on its next turn instead of flying on to its target.
-/// The payload is the one its launch selected, and the impact joins the
-/// arrival queue ([`detonate_missiles`], with the same within-tick drift).
-///
-/// RESIDUAL: native explodes `BodyLength=` ahead of the missile along its nose
-/// (`0x006630F7..0x006631C7`: X and Y by the facing, Z by the pitch `+0x54`);
-/// VERA's rocket flight keeps no native pitch, so the blast is at the
-/// missile's own coordinate. Trigger: AA kills a V3, Dreadnought or Boomer
-/// missile. Effect: the blast centre sits up to BodyLength behind native
-/// (stock 256 leptons for V3, 128 for the others). Frequency: every such
-/// shot-down. Downstream: the area damage's reach shifts by that distance.
-///
-/// RESIDUAL: the area damage's source is the launcher (the queued impact's
-/// owner, for kill credit), where native passes the missile itself
-/// (`0x006632B8`); `Apply_area_damage` leaves its source out of the ground
-/// list. Trigger: a missile shot down within its warhead's CellSpread of its
-/// launcher. Effect: the launcher is spared the blast. Frequency: rare (AA
-/// covering the launcher). Downstream: that launcher's health.
-pub(crate) fn detonate_dead_missile(sim: &mut Simulation, missile_id: u64) {
-    let Some((impact, rx, ry, payload, owner)) =
-        sim.substrate.entities.get(missile_id).and_then(|entity| {
-            let coord = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
-            entity.rocket_state.as_ref().map(|rocket| {
-                (
-                    crate::sim::projectile::ProjectileCoord {
-                        x: coord.x,
-                        y: coord.y,
-                        z: coord.z,
-                    },
-                    entity.position.rx,
-                    entity.position.ry,
-                    rocket.payload,
-                    entity.owner(),
-                )
-            })
-        })
-    else {
-        return;
-    };
-    if let Some(payload) = payload {
-        sim.pending_missile_detonations.push(MissileDetonation {
-            rx,
-            ry,
-            warhead: payload.warhead,
-            damage: payload.damage,
-            firer_id: payload.firer_id,
-            owner,
-            impact: Some(impact),
-        });
-    }
-    sim.uninit(missile_id);
+    queue_child_mission(sim, child_id, crate::sim::mission::MissionType::Move);
 }
 
 /// `SpawnManagerClass::PointerExpired` (`decompile_function 0x006B7C60`) for
