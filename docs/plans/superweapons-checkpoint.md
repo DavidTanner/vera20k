@@ -25,26 +25,34 @@ confirmed in Ghidra; commit, publish and merge validated chains.
    the Dominator lighting. Oracle sections `psydom_*`, `update_lighting`,
    `ambient_step`, `dominator_lighting_read`, `relight`; production observation
    ([map_observation.md](../../tools/map_observation.md#psychic-dominator-observation)).
-5. Psychic Dominator, computer path: AI_Fire_PsyDom `0x50A150`
-   (`superweapon/ai_fire.rs`) and All_To_Hunt's Dominator arm (`house_strategy.rs`).
-   Oracle section `ai_psydom` and the `tools/ai_strategy_oracle.py` `all_to_hunt` rows;
-   production observation
+5. Psychic Dominator, computer path: merged (YuriPlanet/vera20k#1091). AI_Fire_PsyDom
+   `0x50A150` (`superweapon/ai_fire.rs`) and All_To_Hunt's Dominator arm
+   (`house_strategy.rs`). Oracle section `ai_psydom` and the
+   `tools/ai_strategy_oracle.py` `all_to_hunt` rows; production observation
    ([map_observation.md](../../tools/map_observation.md#computer-psychic-dominator-observation)).
+6. Spy Plane, player and computer paths: Launch case 8 and SendSpyPlanes `0x65EAB0`
+   (`superweapon/spy_plane.rs`), Mission_SpyplaneApproach/Overfly `0x4155F0`/`0x4157C0`
+   (`aircraft/spyplane_mission.rs`), AircraftClass::AI's off-map removal `0x414F47` and
+   its predicate `0x41B890` (`aircraft/leave_map.rs`). Oracle sections
+   `spy_plane_launch`, `send_spy_planes`, `spyplane_missions`, `aircraft_leave_map`;
+   production observations
+   ([map_observation.md](../../tools/map_observation.md#spy-plane-observation)).
 
-The unported Launch arm (8) refuses the click and keeps the charge
-(`fire::launch_ported`); `ai_fire.rs` RESIDUALS lists the AI-side gaps (preferred
-target writers, AI_FindTeamTarget `0x50D170`, the Spy Plane, building cloak stage).
+`fire::launch` now dispatches every Launch arm; none refuses a click. `ai_fire.rs` RESIDUALS lists the AI-side gaps (preferred
+target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
 
 ## Next chains (one PR each)
 
 - The AI's Chronosphere: team script `0x6EFE60` and the ChronoWarpTo paths
   (`0x4DF7F0`, `0x522FE0`).
-- Spy Plane: Launch case 8 `0x6CD66F`, SendSpyPlanes `0x65EAB0`, spy-plane missions.
 - The nuke's screen flash (`NukeFlash`) and its lighting arm (`+0x3570`/`+0x3574`,
   a residual in `sim/light_sources.rs`).
 - The other superweapon team-script actions (`0x6EFC70`, `0x6F0130`; identities
-  unverified, Iron Curtain likely) and the existing seven's gaps (Deactivate's
-  start = -1, the offline-provider hold `+0x660`).
+  unverified, Iron Curtain likely) and the existing types' gaps (Deactivate's
+  start = -1, the offline-provider hold `+0x660`, the paradrop plane's Retreat exit
+  `0x415A50`, a residual in `aircraft/paradrop_mission.rs`, and the player tails of
+  Launch cases 0, 1, 2, 9, 10 and 11, a residual in
+  `app/match_runtime/super_selection.rs`).
 
 Launch jump table `0x6CDE44`: 0 `0x6CDA67`, 1 `0x6CCE64`, 2 `0x6CCD3F`, 3 `0x6CC3B9`,
 4 `0x6CC4B2`, 5 `0x6CD2EE`, 6 `0x6CD537`, 7 `0x6CCDBD`, 8 `0x6CD66F`, 9 `0x6CD7E7`,

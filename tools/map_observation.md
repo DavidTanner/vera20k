@@ -507,8 +507,8 @@ from step 9001. Its Strategy tick fires it at frame 9034 (the charge restarts th
 AI_TryFireSW aims at the observer's construction yard, the enemy object it values
 most, which drops from 1000 to 358 health at step 9437 while the computer's own yard
 keeps 1000. The radar the computer builds grants SpyPlaneSpecial at 4013; it is ready
-from 7613 and stays charged, as Launch case 8 is not ported (`superweapon::ai_fire`
-RESIDUALS). The run ends with state hash `9684770977057573241` and BGRA SHA-256
+from 7613 and stays charged, as Launch case 8 was not yet ported (the
+[Computer Spy Plane observation](#computer-spy-plane-observation) fires it). The run ends with state hash `9684770977057573241` and BGRA SHA-256
 `d33afe5c56fc30aae551da0ae37c8bac965b71b570b2b0d541aabcbb7e5f3a14`. The same binary
 loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps
 (state hash `16055468414702849029`). These are Rust production observations: the
@@ -614,6 +614,63 @@ loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 step
 chain's native comparisons are the `tools.superweapon_oracle` `ai_psydom` rows and the
 `tools.ai_strategy_oracle` `all_to_hunt` rows. The run never reaches All_To_Hunt, and no
 whole-run timing or pixel equivalence with gamemd is claimed.
+
+## Spy Plane observation
+
+[`map_observation.spy-plane.example.json`](map_observation.spy-plane.example.json)
+starts Russia/Battle against a Yuri computer opponent (Easy) with stock rules and
+assets and the shroud on, on an [authored map](map_observation/examples/spy_plane.map):
+the nuclear-missile fixture's terrain with the observer's NARADR at (46,42) and two
+NAPOWR, and no other objects. `observe_super_weapons` adds the Super rows:
+SpyPlaneSpecial is granted on the first step (interned id 27, charge start 0, 3600
+frames) and is ready from step 3601. An ordinary `LaunchSuperWeapon` at step 3610
+aims it at (61,61), where the computer's YACNST stands from step 14 under the
+observer's shroud. The loader looks a relative map name up in the retail root: run a
+profile copy whose `launch.selected_map_file` is the tracked map's absolute path.
+
+With release binary SHA-256
+`c9a45150d4fd1f749f5c468151048854494e4ccf241f0dc5bac727512f05d9e3`
+(31,962,592 bytes) and map SHA-256
+`b647901c17d20a14ffa642e1c6330d94cba06406c75f8e1f3881a57871b09c57`, the charge
+restarts at tick 3610 and one SPYP appears at step 3611 at (80,36), on the observer's
+East edge, in Spyplane Approach (mission 30). It turns to Spyplane Overfly (31) at step
+3852 at (62,60), crosses the target, flies on straight to (45,92) and is gone at step
+4099, past the map's `Size=`. A copy that ends at 3858 shows the plane over the yard
+and the first snapshots revealed above it (state hash `8840531564177474398`, BGRA
+SHA-256 `62870ae8d39282529b8219a50dffc53b48eae99d346f2c852a58700d3fe2c5d7`). The
+4300-step run ends with the computer's base revealed in a band along the flight
+(SpyCameraWeapon `Range=20`, `Damage=6`) and the rest of its side still shrouded
+(state hash `11954129574118268278`, BGRA SHA-256
+`27459b63f5e34ad3bfed8498ff38f3f5ec1b41792397af0ff9575cb946c96041`). The same binary
+loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps
+(state hash `17265848597308621850`). These are Rust production observations: the
+chain's native comparisons are the `tools.superweapon_oracle` `spy_plane_launch`,
+`send_spy_planes`, `spyplane_missions` and `aircraft_leave_map` rows, and no whole-run
+timing or pixel equivalence with gamemd is claimed.
+
+## Computer Spy Plane observation
+
+[`map_observation.ai-spy-plane.example.json`](map_observation.ai-spy-plane.example.json)
+starts Russia/Battle against a Russia computer opponent (`Computer1`, Easy) with stock
+rules and assets on an [authored map](map_observation/examples/ai_spy_plane.map): the
+computer nuclear-missile fixture with the computer's NARADR in place of its NAMISL,
+beside its two NAPOWR, the observer's NACNST at (40,62), and no commands.
+`observe_super_weapons` adds the Super rows; SPYP and NACNST are the observed types.
+The loader looks a relative map name up in the retail root: run a profile copy whose
+`launch.selected_map_file` is the tracked map's absolute path.
+
+With the same binary and map SHA-256
+`908edb41ffd794c8d40c6a0c821adba675def5713dd3508e9aacac8224a1cbfa`, the computer's
+SpyPlaneSpecial is granted on the first step (charge start 0, 3600 frames) and is ready
+from step 3601. Its Strategy tick fires it at frame 3703 (the charge restarts there),
+and one SPYP appears at step 3704 at (51,84), on the computer's South edge. It flies
+toward the observer's start at (59,33), the base AI_GroundRallyPoint seeds its search
+with, turns to Overfly at step 4025 at (61,38), flies on straight and is gone at step
+4162. The run ends with state hash `11400018388069219856` and BGRA SHA-256
+`a5d57cf3d7fcba530ea7475d607252976121a2e10e11fdaa66d8029e3d67844f`. These are Rust
+production observations: the chain's native comparisons are the
+`tools.superweapon_oracle` rows named above and the `ai_*` rows, and no whole-run
+timing or pixel equivalence with gamemd is claimed.
 
 ## Siege Chopper deployment observation
 

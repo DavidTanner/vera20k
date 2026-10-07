@@ -24393,6 +24393,1471 @@
       "storm": false
     }
   ],
+  "aircraft_leave_map": [
+    {
+      "cell": [
+        30,
+        30
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        30,
+        30
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": true,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        30,
+        30
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": true,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": true,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": true,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        60,
+        30
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        60,
+        30
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": true,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        60,
+        30
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": true,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": true,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": true,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        90,
+        45
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        90,
+        45
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": true,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        90,
+        45
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": true,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        61,
+        20
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        61,
+        20
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": true,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        61,
+        20
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": true,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        20,
+        61
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        20,
+        61
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": true,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        20,
+        61
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_bounds"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": true,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": true,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 30,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": true,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": false,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 26,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 27,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": -1,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": 26,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": -1,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": 27,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": -1,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 4,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": false,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "team"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": false
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "team"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": true
+    },
+    {
+      "cell": [
+        22,
+        22
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "team"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": false,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": false
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": true,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 30,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": true,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": false,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 26,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 27,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": -1,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": 26,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": -1,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": 27,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": -1,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 4,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "in_bounds"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": false,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": null
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "team"
+        ],
+        [
+          "in_bounds"
+        ],
+        [
+          "team"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": false
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "team"
+        ],
+        [
+          "uninit"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": true,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": true,
+      "size_height": 46,
+      "target": false,
+      "team": true
+    },
+    {
+      "cell": [
+        19,
+        19
+      ],
+      "current": 31,
+      "events": [
+        [
+          "in_playfield"
+        ],
+        [
+          "team"
+        ],
+        [
+          "in_bounds"
+        ],
+        [
+          "team"
+        ]
+      ],
+      "fly_back": false,
+      "fly_by": false,
+      "in_playfield": true,
+      "mission_only": false,
+      "playfield": {
+        "base": 40,
+        "off_100": 4,
+        "off_104": 36,
+        "off_108": 36,
+        "off_fc": 2
+      },
+      "queued": -1,
+      "removed": false,
+      "size_height": 46,
+      "target": false,
+      "team": false
+    }
+  ],
   "ambient_step": [
     {
       "cell_redraw": 1,
@@ -46592,7 +48057,5026 @@
       "top": 1897
     }
   ],
+  "send_spy_planes": [
+    {
+      "count": 1,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          [
+            1
+          ]
+        ],
+        [
+          "queue",
+          0,
+          30,
+          0
+        ],
+        [
+          "target",
+          0,
+          "target"
+        ],
+        [
+          "unlimbo",
+          0,
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "commence",
+          0
+        ]
+      ],
+      "mission_only": [
+        1
+      ],
+      "picks": [
+        [
+          30,
+          1
+        ]
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "waypoint_edge": 0
+    },
+    {
+      "count": 1,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          1,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          [
+            1
+          ]
+        ],
+        [
+          "queue",
+          0,
+          30,
+          0
+        ],
+        [
+          "target",
+          0,
+          "target"
+        ],
+        [
+          "unlimbo",
+          0,
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "commence",
+          0
+        ]
+      ],
+      "mission_only": [
+        1
+      ],
+      "picks": [
+        [
+          30,
+          1
+        ]
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "waypoint_edge": 1
+    },
+    {
+      "count": 1,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          [
+            1
+          ]
+        ],
+        [
+          "queue",
+          0,
+          30,
+          0
+        ],
+        [
+          "target",
+          0,
+          "target"
+        ],
+        [
+          "unlimbo",
+          0,
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "commence",
+          0
+        ]
+      ],
+      "mission_only": [
+        1
+      ],
+      "picks": [
+        [
+          30,
+          1
+        ]
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "waypoint_edge": 2
+    },
+    {
+      "count": 1,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          3,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          [
+            1
+          ]
+        ],
+        [
+          "queue",
+          0,
+          30,
+          0
+        ],
+        [
+          "target",
+          0,
+          "target"
+        ],
+        [
+          "unlimbo",
+          0,
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "commence",
+          0
+        ]
+      ],
+      "mission_only": [
+        1
+      ],
+      "picks": [
+        [
+          30,
+          1
+        ]
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "waypoint_edge": 3
+    },
+    {
+      "count": 1,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          [
+            1
+          ]
+        ],
+        [
+          "queue",
+          0,
+          30,
+          0
+        ],
+        [
+          "target",
+          0,
+          "target"
+        ],
+        [
+          "unlimbo",
+          0,
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "commence",
+          0
+        ]
+      ],
+      "mission_only": [
+        1
+      ],
+      "picks": [
+        [
+          30,
+          1
+        ]
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "waypoint_edge": -1
+    },
+    {
+      "count": 1,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          [
+            1
+          ]
+        ],
+        [
+          "queue",
+          0,
+          30,
+          0
+        ],
+        [
+          "target",
+          0,
+          "target"
+        ],
+        [
+          "unlimbo",
+          0,
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "commence",
+          0
+        ]
+      ],
+      "mission_only": [
+        1
+      ],
+      "picks": [
+        [
+          30,
+          1
+        ]
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "waypoint_edge": 4
+    },
+    {
+      "count": 1,
+      "edge": 2,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          [
+            1
+          ]
+        ],
+        [
+          "queue",
+          0,
+          30,
+          0
+        ],
+        [
+          "target",
+          0,
+          "target"
+        ],
+        [
+          "unlimbo",
+          0,
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "commence",
+          0
+        ]
+      ],
+      "mission_only": [
+        1
+      ],
+      "picks": [
+        [
+          30,
+          1
+        ]
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "waypoint_edge": 0
+    },
+    {
+      "count": 1,
+      "edge": 4,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          3,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          [
+            1
+          ]
+        ],
+        [
+          "queue",
+          0,
+          30,
+          0
+        ],
+        [
+          "target",
+          0,
+          "target"
+        ],
+        [
+          "unlimbo",
+          0,
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "commence",
+          0
+        ]
+      ],
+      "mission_only": [
+        1
+      ],
+      "picks": [
+        [
+          30,
+          1
+        ]
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "waypoint_edge": 3
+    },
+    {
+      "count": 1,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          false
+        ]
+      ],
+      "mission_only": [],
+      "picks": [
+        [
+          30,
+          1
+        ]
+      ],
+      "returned": 0,
+      "scenario_init": 0,
+      "waypoint_edge": 0
+    },
+    {
+      "count": 1,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          [
+            1
+          ]
+        ],
+        [
+          "queue",
+          0,
+          30,
+          0
+        ],
+        [
+          "target",
+          0,
+          "target"
+        ],
+        [
+          "unlimbo",
+          0,
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "delete",
+          0,
+          1
+        ]
+      ],
+      "mission_only": [
+        1
+      ],
+      "picks": [
+        [
+          30,
+          1
+        ]
+      ],
+      "returned": -1,
+      "scenario_init": 0,
+      "waypoint_edge": 0
+    },
+    {
+      "count": 1,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          [
+            1
+          ]
+        ],
+        [
+          "queue",
+          0,
+          30,
+          0
+        ],
+        [
+          "target",
+          0,
+          "target"
+        ],
+        [
+          "unlimbo",
+          0,
+          [
+            18048,
+            11648,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "commence",
+          0
+        ]
+      ],
+      "mission_only": [
+        1
+      ],
+      "picks": [
+        [
+          70,
+          45
+        ]
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "waypoint_edge": 0
+    }
+  ],
   "source": "unicorn/gamemd.exe",
+  "spy_plane_launch": [
+    {
+      "cell": "real",
+      "charged": false,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [],
+      "player": true,
+      "selected_super": 9,
+      "type_index": 5
+    },
+    {
+      "cell": "null",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": -1
+    },
+    {
+      "cell": "null",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_SpyPlaneReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "player": true,
+      "selected_super": -1,
+      "type_index": -1
+    },
+    {
+      "cell": "null",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": 5
+    },
+    {
+      "cell": "null",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_SpyPlaneReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "player": true,
+      "selected_super": -1,
+      "type_index": 5
+    },
+    {
+      "cell": "dummy",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": -1
+    },
+    {
+      "cell": "dummy",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_SpyPlaneReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "player": true,
+      "selected_super": -1,
+      "type_index": -1
+    },
+    {
+      "cell": "dummy",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": 5
+    },
+    {
+      "cell": "dummy",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_SpyPlaneReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "player": true,
+      "selected_super": -1,
+      "type_index": 5
+    },
+    {
+      "cell": "real",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": -1
+    },
+    {
+      "cell": "real",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_SpyPlaneReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "player": true,
+      "selected_super": -1,
+      "type_index": -1
+    },
+    {
+      "cell": "real",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send_spy_planes",
+          5,
+          1,
+          30,
+          "target",
+          "null"
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": 5
+    },
+    {
+      "cell": "real",
+      "charged": true,
+      "counts": [
+        1,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send_spy_planes",
+          5,
+          1,
+          30,
+          "target",
+          "null"
+        ],
+        [
+          "vox_find",
+          "EVA_SpyPlaneReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "player": true,
+      "selected_super": -1,
+      "type_index": 5
+    },
+    {
+      "cell": "real",
+      "charged": true,
+      "counts": [
+        0,
+        0
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": 5
+    },
+    {
+      "cell": "real",
+      "charged": true,
+      "counts": [
+        1,
+        2
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": 5
+    },
+    {
+      "cell": "real",
+      "charged": true,
+      "counts": [
+        2,
+        1
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": 5
+    },
+    {
+      "cell": "real",
+      "charged": true,
+      "counts": [
+        2,
+        2
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send_spy_planes",
+          5,
+          1,
+          30,
+          "target",
+          "null"
+        ],
+        [
+          "send_spy_planes",
+          5,
+          1,
+          30,
+          "target",
+          "null"
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": 5
+    },
+    {
+      "cell": "real",
+      "charged": true,
+      "counts": [
+        3,
+        3
+      ],
+      "events": [
+        [
+          "find_aircraft_type",
+          "SPYP"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send_spy_planes",
+          5,
+          1,
+          30,
+          "target",
+          "null"
+        ],
+        [
+          "send_spy_planes",
+          5,
+          1,
+          30,
+          "target",
+          "null"
+        ],
+        [
+          "send_spy_planes",
+          5,
+          1,
+          30,
+          "target",
+          "null"
+        ]
+      ],
+      "player": false,
+      "selected_super": 9,
+      "type_index": 5
+    }
+  ],
+  "spyplane_missions": [
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 0,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 1,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 767,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 768,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 769,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 5119,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 5120,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 5121,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 9000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "destination",
+          "target",
+          1
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 4000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "destination",
+          "target",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 9000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "destination",
+          "target",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 0,
+      "events": [
+        [
+          "distance_to",
+          "null"
+        ],
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": false,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 0,
+      "events": [
+        [
+          "distance_to",
+          "null"
+        ],
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": false,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "destination",
+          "target",
+          1
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          3,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 1,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "destination",
+          "target",
+          1
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 2,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "destination",
+          "target",
+          1
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          1,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 3,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "destination",
+          "target",
+          1
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": -1,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "destination",
+          "target",
+          1
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 4,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "destination",
+          "target",
+          1
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        0,
+        0
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "destination",
+          "target",
+          1
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            0,
+            7
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        0,
+        7
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          7,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": true,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          7,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": false,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            7808,
+            10368,
+            1500
+          ],
+          4,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": true,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": -1,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "play_at",
+          -1,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 0,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          7,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 11,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          11,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          14,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 11,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 12,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 0
+    },
+    {
+      "action_latch": 1,
+      "camera": 17,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "play_at",
+          17,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "queue",
+          31,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 0,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "approach",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 0,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 0,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 1,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 767,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 768,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 769,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 5119,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 5120,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 5121,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 9000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 4000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 9000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 0,
+      "events": [
+        [
+          "distance_to",
+          "null"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": false,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 0,
+      "events": [
+        [
+          "distance_to",
+          "null"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": false,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          3,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 1,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 2,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          1,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 3,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": -1,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            30,
+            1
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 4,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        0,
+        0
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 512,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0x889e68",
+          "0x889e68",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            0,
+            7
+          ]
+        ],
+        [
+          "destination",
+          "edge_cell",
+          1
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": false,
+      "passive": false,
+      "pick": [
+        0,
+        7
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          7,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": true,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          7,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": false,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            7808,
+            10368,
+            1500
+          ],
+          4,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": true,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": -1,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 0,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          7,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 11,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          11,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          14,
+          0
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 11,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "frames": 12,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        7808,
+        10368,
+        1500
+      ],
+      "reveal_latch": 0,
+      "reveal_radius": 4,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 0
+    },
+    {
+      "action_latch": 0,
+      "camera": 17,
+      "damage": 6,
+      "distance": 100,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "reveal",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          6,
+          "owner",
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "fog_border",
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0,
+          9,
+          0
+        ]
+      ],
+      "frames": 0,
+      "in_playfield": true,
+      "latched": false,
+      "mission": "overfly",
+      "nav_com": true,
+      "passive": false,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 3,
+      "reveal_coord": [
+        10368,
+        10368,
+        1500
+      ],
+      "reveal_latch": 1,
+      "reveal_radius": 6,
+      "target": true,
+      "waypoint_edge": 0,
+      "weapon_range": 5120
+    }
+  ],
   "super_anim": [
     {
       "cat_bits": 1065353216,

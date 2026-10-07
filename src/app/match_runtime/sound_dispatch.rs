@@ -330,9 +330,9 @@ pub(super) fn dispatch_sim_sound_events(
                         eva_event,
                     }
                 });
-                // The player's tail of cases 4 (`0x006CCD17..0x006CCD2D`)
-                // and 7 (`0x006CCE3C..0x006CCE52`): after the case's line,
-                // the queued Ready line is dropped.
+                // The player's tail of cases 4 (`0x006CCD17..0x006CCD2D`),
+                // 5, 6 and 8 (`0x006CD51E`) and 7 (`0x006CCE3C..0x006CCE52`):
+                // after the case's line, the queued Ready line is dropped.
                 if let Some(ready) = launch_drops_ready_line(sw.kind)
                     && owner_is_local(&sim.interner, owner, local_owner_name)
                 {
@@ -987,7 +987,12 @@ fn base_under_attack_siren(
 /// The Ready line `VoxClass::RemoveFromQueues @ 0x00752A40` drops after the
 /// local player's launch: the Chrono Warp's case 4 drops the Chronosphere's
 /// (`0x006CCD2D`, `EVA_ChronosphereReady`), the Psychic Dominator's case 7
-/// its own (`0x006CCE52`, `EVA_PsychicDominatorReady`).
+/// its own (`0x006CCE52`, `EVA_PsychicDominatorReady`), and cases 5, 6 and 8
+/// theirs through the shared tail `0x006CD51E`: the paradrops
+/// `EVA_ReinforcementsReady` (`0x006CD519`), the Spy Plane
+/// `EVA_SpyPlaneReady` (`0x006CD702`). Each tail also clears the local
+/// selection (`super_selection::follow_selection_writes`, whose RESIDUAL
+/// lists the cases whose tails neither owner ports yet).
 fn launch_drops_ready_line(
     kind: crate::rules::superweapon_type::SuperWeaponKind,
 ) -> Option<&'static str> {
@@ -995,6 +1000,8 @@ fn launch_drops_ready_line(
     match kind {
         K::ChronoWarp => Some("EVA_ChronosphereReady"),
         K::PsychicDominator => Some("EVA_PsychicDominatorReady"),
+        K::ParaDrop | K::AmerParaDrop => Some("EVA_ReinforcementsReady"),
+        K::SpyPlane => Some("EVA_SpyPlaneReady"),
         _ => None,
     }
 }
@@ -1634,6 +1641,55 @@ mod tests {
             ),
             "{emitted:?}"
         );
+    }
+
+    /// Cases 5, 6 and 8 play nothing, but their player's launch still drops
+    /// the queued Ready line through the shared tail `0x006CD51E`.
+    #[test]
+    fn silent_launches_drop_their_ready_line_for_their_player_only() {
+        let rules =
+            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+                "[General]\nFixtureOnly=1\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+                 [BuildingTypes]\n[SuperWeaponTypes]\n0=ParaDropSpecial\n\
+                 1=AmericanParaDropSpecial\n2=SpyPlaneSpecial\n[ParaDropSpecial]\n\
+                 Type=ParaDrop\n[AmericanParaDropSpecial]\nType=AmerParaDrop\n\
+                 [SpyPlaneSpecial]\nType=SpyPlane\n",
+            ))
+            .unwrap();
+        for (name, ready) in [
+            ("ParaDropSpecial", "EVA_ReinforcementsReady"),
+            ("AmericanParaDropSpecial", "EVA_ReinforcementsReady"),
+            ("SpyPlaneSpecial", "EVA_SpyPlaneReady"),
+        ] {
+            let mut sim = Simulation::new();
+            let local = sim.interner.intern("Local");
+            let remote = sim.interner.intern("Remote");
+            let sw_type = sim.interner.intern(name);
+            let launched = |owner| SimSoundEvent::SuperWeaponLaunched {
+                owner,
+                sw_type,
+                rx: 40,
+                ry: 40,
+            };
+            let mut output = SoundEventQueue::new();
+            dispatch_sim_sound_events(
+                [launched(remote), launched(local)],
+                &sim,
+                &rules,
+                Some("LOCAL"),
+                None,
+                &mut |_| true,
+                &mut output,
+            );
+            let emitted = output.drain();
+            assert!(
+                matches!(
+                    emitted.as_slice(),
+                    [GameSoundEvent::EvaRemove { event }] if event == ready
+                ),
+                "{name}: {emitted:?}"
+            );
+        }
     }
 
     #[test]
