@@ -75,7 +75,11 @@ fn click_fire(
     cell: (u16, u16),
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> bool {
-    if sw.use_charge_drain || !launch_ported(sw.kind) {
+    if sw.use_charge_drain {
+        return false;
+    }
+    if !launch_ported(sw.kind) {
+        log::warn!("SuperWeapon kind {:?} not yet implemented", sw.kind);
         return false;
     }
     let Some(instance) = sim
@@ -163,18 +167,14 @@ fn launch(
 
 /// Whether [`launch`] ports the type's Launch case; ClickFire is not run for
 /// the others, so their charge survives the click.
-fn launch_ported(kind: SuperWeaponKind) -> bool {
-    let ported = !matches!(
+pub(super) const fn launch_ported(kind: SuperWeaponKind) -> bool {
+    !matches!(
         kind,
         SuperWeaponKind::ChronoSphere
             | SuperWeaponKind::ChronoWarp
             | SuperWeaponKind::PsychicDominator
             | SuperWeaponKind::SpyPlane
-    );
-    if !ported {
-        log::warn!("SuperWeapon kind {kind:?} not yet implemented");
-    }
-    ported
+    )
 }
 
 /// `HouseClass @ 0x004FAF00` for `house`, given the fired Super's type and

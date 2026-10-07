@@ -24,8 +24,9 @@
 //!    writer after the constructor.
 //! 2. A defeated enemy's anger is cancelled and the enemy forgotten
 //!    (`0x004FD723..0x004FD772`).
-//! 3. AI_TryFireSW (`0x005098F0`) in a nonzero game mode or from `[IQ]
-//!    SuperWeapons=`: see RESIDUALS.
+//! 3. AI_TryFireSW (`0x005098F0`, `superweapon::ai_fire`) in a nonzero game
+//!    mode or from `[IQ] SuperWeapons=` (`0x004FD77C..0x004FD79B`): the
+//!    house fires its charged superweapons.
 //! 4. The emergency block ([`advance_emergency_state`]); state four sells
 //!    everything and sends everyone hunting.
 //! 5. In a nonzero game mode, a house outside state three with no live
@@ -37,11 +38,6 @@
 //! `house_strategy_tests.rs` replays every row.
 //!
 //! RESIDUALS:
-//! - AI_TryFireSW (`0x005098F0`) is not ported: a computer house never fires
-//!   a charged superweapon. Trigger: every Strategy tick of a skirmish
-//!   computer house (of a campaign one from `[IQ] SuperWeapons=`) that owns
-//!   a charged superweapon; its targeting draws are missing from the
-//!   Scenario stream from the first such tick.
 //! - Check_Build_Need (`0x004FD9A0`) and Manage_Build_Queue (`0x004FDD10`),
 //!   the economic recovery, are not ported. Trigger: a skirmish computer
 //!   house whose refinery or harvesters are gone (`0x004F6540`); natively it
@@ -122,7 +118,15 @@ fn building_strategy(
 ) -> i32 {
     pick_enemy(sim, owner);
     forget_defeated_enemy(sim, owner);
-    // `0x004FD77C..0x004FD79B`: AI_TryFireSW is a residual.
+    // `0x004FD77C..0x004FD79B`: a signed IQ (`+0x24C`) compare.
+    if sim.session.game_mode_nonzero
+        || sim
+            .houses
+            .get(&owner)
+            .is_some_and(|house| house.current_iq >= rules.general.iq_super_weapons)
+    {
+        crate::sim::superweapon::ai_fire::try_fire(sim, rules, owner, registry);
+    }
 
     // Available_Money (IHouse vt+0x18) is a pure read; the block's second
     // query sees the same value.

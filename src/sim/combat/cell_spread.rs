@@ -100,6 +100,16 @@ pub fn splash_cells(cell_spread: SimFixed) -> &'static [(i16, i16)] {
     &OFFSET_TABLE[..COUNT_TABLE[idx] as usize]
 }
 
+/// The sweep through the entry at band `band`'s count, inclusive:
+/// `offset_table[..=count_table[band]]`, for the walks that read the count
+/// table as their last index rather than their length
+/// (`HouseClass::AI_Fire_GenMutator @ 0x00509F60` with band 1, `0x00509FEB`
+/// and `0x0050A0AD..0x0050A0BD`: ten cells, the last `(-1, -2)`).
+pub fn inclusive_sweep(band: usize) -> &'static [(i16, i16)] {
+    let last = (COUNT_TABLE[band.min(MAX_COUNT_INDEX)] as usize).min(OFFSET_TABLE.len() - 1);
+    &OFFSET_TABLE[..=last]
+}
+
 /// gamemd splash fine-filter radius in leptons = `ftol(CellSpread * 256)` (multiply by 256, then
 /// truncate toward zero). An object is damaged only if its 3D lepton distance `<=` this. The cell
 /// sweep is a coarse pre-filter; this is the true radius gate. `CS <= 0` → 0.

@@ -3,12 +3,14 @@
 //! Each player has a set of `SuperWeaponInstance`s, one per superweapon type
 //! granted by their buildings. The system ticks after power (for suspend/resume)
 //! and before combat. `fire::launch_ported` lists the `SuperClass::Launch`
-//! arms not yet ported; a click on one of those keeps its charge.
+//! arms not yet ported; a click on one of those keeps its charge. A computer
+//! house fires its charged ones from its Strategy tick (`ai_fire`).
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/power_system, sim/components.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
+pub(crate) mod ai_fire;
 pub mod cell_grid;
 #[cfg(test)]
 mod cell_receiver_tests;

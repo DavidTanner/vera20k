@@ -282,7 +282,9 @@ responsibility. No zero-return or unmapped-memory fallback silently invents an a
 
 The loader preserves the legacy broad RWX image mapping and zero-filled BSS. It is
 **not a Windows loader**: imports, constructors, TLS, OS services, and runtime global
-state are not initialized. A mapped read is not evidence that its value is realistic.
+state are not initialized. A mapped read is not evidence that its value is realistic:
+the cell-offset table `0xABD490`, for one, reads all zero until its static initializer
+`0x561910` runs (`tools/superweapon_oracle.py` runs it first).
 Declare supplied state and hooks; substituted function results validate only the
 remaining computation. Whole-game, scheduling, device, and GPU behavior require
 additional evidence.

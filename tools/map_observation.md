@@ -485,6 +485,36 @@ production observations: the chain's native comparisons are the
 `tools.superweapon_oracle` rows, and no whole-run timing or pixel equivalence
 with gamemd is claimed.
 
+## Computer nuclear missile observation
+
+[`map_observation.ai-nuclear-missile.example.json`](map_observation.ai-nuclear-missile.example.json)
+starts Russia/Battle against a Russia computer opponent (`Computer1`, Easy) with stock
+rules and assets on an [authored map](map_observation/examples/ai_nuclear_missile.map):
+the nuclear-missile fixture's terrain with the computer's pre-placed NAMISL and two
+NAPOWR, the observer's NACNST at (40,62), and no commands. `observe_super_weapons`
+adds the Super rows; NACNST is the only observed type, which keeps the 9600 steps
+under the 100,000-sample budget (the computer's own yard, deployed from its MCV at
+(61,61), is observed too). The loader looks a relative map name up in the retail
+root: run a profile copy whose `launch.selected_map_file` is the tracked map's
+absolute path.
+
+With release binary SHA-256
+`af46874fdacdaa102cf3a0b75f31c1a6713c67f291968560e16fdb7a47998bc1`
+(31,944,480 bytes) and map SHA-256
+`3cc2686b370b82a91766b5c848bc34f2cd35ba60f772d5587f583778004f9ae7`, the computer's
+NukeSpecial is granted on the first step (charge start 0, 9000 frames) and is ready
+from step 9001. Its Strategy tick fires it at frame 9034 (the charge restarts there):
+AI_TryFireSW aims at the observer's construction yard, the enemy object it values
+most, which drops from 1000 to 358 health at step 9437 while the computer's own yard
+keeps 1000. The radar the computer builds grants SpyPlaneSpecial at 4013; it is ready
+from 7613 and stays charged, as Launch case 8 is not ported (`superweapon::ai_fire`
+RESIDUALS). The run ends with state hash `9684770977057573241` and BGRA SHA-256
+`d33afe5c56fc30aae551da0ae37c8bac965b71b570b2b0d541aabcbb7e5f3a14`. The same binary
+loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps
+(state hash `16055468414702849029`). These are Rust production observations: the
+chain's native comparisons are the `tools.superweapon_oracle` `ai_*` rows, and no
+whole-run timing or pixel equivalence with gamemd is claimed.
+
 ## Siege Chopper deployment observation
 
 [`map_observation.siege-chopper.example.json`](map_observation.siege-chopper.example.json)

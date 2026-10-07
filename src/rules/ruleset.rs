@@ -284,6 +284,51 @@ pub(crate) fn native_minutes_to_frames(minutes: f64) -> i32 {
     ))
 }
 
+/// `[General] AIIonCannon*Value=`: `RulesClass::ReadGeneral` reads each
+/// through the IntVector reader `0x00475D70` with the field as its default
+/// (`0x00670801..0x00670AE6`, lists at `Rules+0x1194` step `0x1C`, in field
+/// order); the constructor leaves them empty. `HouseClass::
+/// AI_FindBestRallyTarget @ 0x0050CBF0` values an enemy object by its kind's
+/// list, indexed by the firing house's difficulty (`sim::superweapon::ai_fire`).
+/// Retail comments out the Plug, Helipad and Temple keys.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AiIonCannonValues {
+    pub con_yard: Vec<i32>,
+    pub war_factory: Vec<i32>,
+    pub power: Vec<i32>,
+    pub tech_center: Vec<i32>,
+    pub engineer: Vec<i32>,
+    pub thief: Vec<i32>,
+    pub harvester: Vec<i32>,
+    pub mcv: Vec<i32>,
+    pub apc: Vec<i32>,
+    pub base_defense: Vec<i32>,
+    pub plug: Vec<i32>,
+    pub helipad: Vec<i32>,
+    pub temple: Vec<i32>,
+}
+
+impl AiIonCannonValues {
+    fn read(general: &IniSection) -> Self {
+        let list = |key: &str| general.read_int_list(key).unwrap_or_default();
+        Self {
+            con_yard: list("AIIonCannonConYardValue"),
+            war_factory: list("AIIonCannonWarFactoryValue"),
+            power: list("AIIonCannonPowerValue"),
+            tech_center: list("AIIonCannonTechCenterValue"),
+            engineer: list("AIIonCannonEngineerValue"),
+            thief: list("AIIonCannonThiefValue"),
+            harvester: list("AIIonCannonHarvesterValue"),
+            mcv: list("AIIonCannonMCVValue"),
+            apc: list("AIIonCannonAPCValue"),
+            base_defense: list("AIIonCannonBaseDefenseValue"),
+            plug: list("AIIonCannonPlugValue"),
+            helipad: list("AIIonCannonHelipadValue"),
+            temple: list("AIIonCannonTempleValue"),
+        }
+    }
+}
+
 /// Global gameplay constants from `[General]` that affect vision, gap generators, etc.
 #[derive(Debug, Clone)]
 pub struct GeneralRules {
@@ -845,6 +890,15 @@ pub struct GeneralRules {
     /// `0x006703D9`, leptons; constructor 10 at `0x00666A35`): the alert's
     /// reach from the house's base centre.
     pub ai_super_defense_distance: i32,
+    /// `[General] AISuperDefenseFrames=` (`Rules+0xEE0`, ReadInt at
+    /// `0x006703A4..0x006703BE` with the field as its default; constructor
+    /// 25 at `0x00666A24`): how long the launch alert lasts. A computer house
+    /// aims its Force Shield at the alerted cell while the alert is younger
+    /// (`HouseClass::AI_TryFireSW`, `0x00509A7F..0x00509A99`).
+    pub ai_super_defense_frames: i32,
+    /// `[General] AIIonCannon*Value=`: what a computer house values an enemy
+    /// object by when it aims a superweapon.
+    pub ai_ion_cannon_values: AiIonCannonValues,
     /// `[AudioVisual] PsychicDominatorActivateSound=` (stock
     /// `PsychicDominatorActivate`), stored at `Rules+0x24C`.
     ///
@@ -1302,6 +1356,11 @@ pub struct GeneralRules {
     /// 3 at `0x006671F8`; retail 2): the house IQ from which a computer house
     /// replaces its harvesters (`sim::ai_unit_choice`).
     pub iq_harvester: i32,
+    /// `[IQ] SuperWeapons=` (`Rules+0x1438`, ReadInt at `0x00674282..
+    /// 0x006742A2` with the field as its default; constructor 4 at
+    /// `0x006671BB`): in game mode 0 the house IQ from which a computer house
+    /// fires its superweapons (`AI_Building_Strategy 0x004FD77C..0x004FD797`).
+    pub iq_super_weapons: i32,
     /// `[IQ] RepairSell` outer gate for BuildingClass repair/sell AI.
     pub iq_repair_sell: i32,
     /// `[IQ] SellBack` gate for the red-health low-credit sell decision.
@@ -1772,6 +1831,8 @@ impl Default for GeneralRules {
             nuke_take_off: String::new(),
             ai_super_defense_probability: Vec::new(),
             ai_super_defense_distance: 10,
+            ai_super_defense_frames: 25,
+            ai_ion_cannon_values: AiIonCannonValues::default(),
             psychic_dominator_activate_sound: None,
             genetic_mutator_activate_sound: None,
             psychic_reveal_activate_sound: None,
@@ -1881,6 +1942,7 @@ impl Default for GeneralRules {
             max_iq_levels: 5,
             iq_production: 5,
             iq_harvester: 3,
+            iq_super_weapons: 4,
             iq_repair_sell: 3,
             iq_sell_back: 2,
             credit_reserve: 1000,
@@ -2190,6 +2252,8 @@ impl GeneralRules {
         let iq_production = iq.read_int("Production", defaults.iq_production);
         // `0x00674379..0x00674399`, the same section gate and reader.
         let iq_harvester = iq.read_int("Harvester", defaults.iq_harvester);
+        // `0x00674282..0x006742A2`, the same section gate and reader.
+        let iq_super_weapons = iq.read_int("SuperWeapons", defaults.iq_super_weapons);
         // RulesProcess668F56 reaches ReadAudioVisual6691E0 independently of
         // ReadGeneral.66B34B/66B372 pass AudioVisual to5283D0 and store raw
         // doubles in Rules+1708/+1700; a missing General section cannot skip them.
@@ -2219,6 +2283,7 @@ impl GeneralRules {
                 deploy_dir,
                 iq_production,
                 iq_harvester,
+                iq_super_weapons,
                 display_cruise_height,
                 condition_yellow: condition_yellow_native,
                 condition_red: condition_red_native,
@@ -2576,6 +2641,9 @@ impl GeneralRules {
                 .read_int_list("AISuperDefenseProbability")
                 .unwrap_or_default(),
             ai_super_defense_distance: general.read_range("AISuperDefenseDistance", 10),
+            ai_super_defense_frames: general
+                .read_int("AISuperDefenseFrames", defaults.ai_super_defense_frames),
+            ai_ion_cannon_values: AiIonCannonValues::read(general),
             psychic_dominator_activate_sound: audio_visual
                 .read_name("PsychicDominatorActivateSound", 0x80)
                 .map(str::to_owned),
@@ -2828,6 +2896,7 @@ impl GeneralRules {
             max_iq_levels: iq.read_int("MaxIQLevels", defaults.max_iq_levels),
             iq_production,
             iq_harvester,
+            iq_super_weapons,
             iq_repair_sell: iq.read_int("RepairSell", defaults.iq_repair_sell),
             iq_sell_back: iq.read_int("SellBack", defaults.iq_sell_back),
             credit_reserve: ai.read_int("CreditReserve", defaults.credit_reserve),

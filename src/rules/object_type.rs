@@ -1032,6 +1032,16 @@ pub struct ObjectType {
     /// `0x0045E225` defaults it false; reader block
     /// `0x00460FFC..0x00461010` binds it.
     pub is_base_defense: bool,
+    /// BuildingType `HoverPad=`, `IsTemple=` and `IsPlug=` (`+0x154E`,
+    /// `+0x154C`, `+0x154D`): ReadBool with the field as default
+    /// (`0x00460573..0x004605D2`); the constructor clears them
+    /// (`0x0045DFC3`, `0x0045DFE0`, `0x0045DFEC`). Other types never read
+    /// them. A computer house values an enemy building by them when it aims
+    /// a superweapon (`sim::superweapon::ai_fire`); no retail building sets
+    /// one.
+    pub hover_pad: bool,
+    pub is_temple: bool,
+    pub is_plug: bool,
     /// BuildingType `AntiAirValue=`, `AntiArmorValue=` and
     /// `AntiInfantryValue=` (`+0x1524`, `+0x1528`, `+0x152C`): signed ReadInt
     /// with the field as default (`0x0045FED2`, `0x0045FEB8`, `0x0045FE9E`);
@@ -2495,6 +2505,9 @@ impl ObjectType {
             // BuildingTypeClass__ReadINI 0x00460FFC..0x00461010 writes
             // `IsBaseDefense=` to BuildingType+0x1706; constructor default false.
             is_base_defense: section.read_bool("IsBaseDefense", false),
+            hover_pad: building_bool(section, category, "HoverPad"),
+            is_temple: building_bool(section, category, "IsTemple"),
+            is_plug: building_bool(section, category, "IsPlug"),
             anti_air_value: building_int(section, category, "AntiAirValue"),
             anti_armor_value: building_int(section, category, "AntiArmorValue"),
             anti_infantry_value: building_int(section, category, "AntiInfantryValue"),
@@ -2904,6 +2917,11 @@ fn building_int(section: &IniSection, category: ObjectCategory, key: &str) -> i3
     } else {
         0
     }
+}
+
+/// A flag only `BuildingTypeClass::ReadINI` reads (constructor false).
+fn building_bool(section: &IniSection, category: ObjectCategory, key: &str) -> bool {
+    category == ObjectCategory::Building && section.read_bool(key, false)
 }
 
 #[cfg(test)]

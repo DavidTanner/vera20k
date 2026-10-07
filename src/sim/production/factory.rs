@@ -730,6 +730,23 @@ impl FactoryRegistry {
         self.factories.get(&holder)
     }
 
+    /// Whether a running factory is building `entity`: its object
+    /// (`FactoryClass::GetObject @ 0x004CA160`, `+0x58`) is that Techno, its
+    /// rate (`+0x38`) is set and `+0x70` (completion or the user's hold) is
+    /// clear. `HouseClass::AI_FindBestRallyTarget`'s test for a Hard house
+    /// (`0x0050CCA2..0x0050CCDC`, every factory).
+    pub(crate) fn is_building(&self, entity: u64) -> bool {
+        self.factories.values().any(|factory| {
+            factory
+                .object
+                .as_ref()
+                .is_some_and(|object| object.entity_id == Some(entity))
+                && factory.step_rate_frames != 0
+                && !factory.suspended
+                && !factory.manual
+        })
+    }
+
     /// The factory `BuildingClass+0x524` holds for building `building`.
     pub(crate) fn building_factory(&self, building: u64) -> Option<&Factory> {
         self.factories.get(&FactoryHolder::Building(building))
