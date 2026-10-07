@@ -797,13 +797,13 @@ fn c4_on_invulnerable_cabhut_still_dispatches_bridge_and_clears_pending() {
         .entities
         .get_mut(cabhut)
         .unwrap()
-        .invulnerability = Some(InvulnerabilityState {
-        timer: crate::sim::timer::CdTimer::started(
+        .invulnerability = Some(InvulnerabilityState::new(
+        crate::sim::timer::CdTimer::started(
             sim.session.tick as i32,
             rules.c4_delay_ticks as i32 + 20,
         ),
-        kind: InvulnKind::IronCurtain,
-    });
+        InvulnKind::IronCurtain,
+    ));
 
     let mut bridge_state_changed_seen = false;
     for _ in 0..(rules.c4_delay_ticks as u64 + 1) {

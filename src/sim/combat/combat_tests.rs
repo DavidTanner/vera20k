@@ -1457,10 +1457,10 @@ fn ic_target_takes_zero_damage() {
     install_entity_attack_target_for_test(&mut store, 1, 2);
     // Apply IronCurtain invulnerability to the target.
     if let Some(target) = store.get_mut(2) {
-        target.invulnerability = Some(InvulnerabilityState {
-            timer: crate::sim::timer::CdTimer::started(0, 1000),
-            kind: InvulnKind::IronCurtain,
-        });
+        target.invulnerability = Some(InvulnerabilityState::new(
+            crate::sim::timer::CdTimer::started(0, 1000),
+            InvulnKind::IronCurtain,
+        ));
     }
     let initial_hp = store.get(2).expect("target alive").health.current;
     let mut main_rng = SimRng::new(1);
@@ -2753,10 +2753,10 @@ fn gsi_04_07_damage_invulnerability_impact_precedes_warping_and_postlude() {
             .spawn_object("VICTIM", "VictimHouse", rx, 5, 0, &rules)
             .expect("protected victim spawns");
         let victim = sim.substrate.entities.get_mut(id).unwrap();
-        victim.invulnerability = Some(InvulnerabilityState {
-            timer: crate::sim::timer::CdTimer::started(0, 100),
+        victim.invulnerability = Some(InvulnerabilityState::new(
+            crate::sim::timer::CdTimer::started(0, 100),
             kind,
-        });
+        ));
         if warping {
             victim.install_teleport_state_for_test(Some(TeleportState::for_test(
                 TeleportPhase::Relocate,
@@ -2774,10 +2774,11 @@ fn gsi_04_07_damage_invulnerability_impact_precedes_warping_and_postlude() {
         .spawn_object("VICTIM", "VictimHouse", 12, 5, 0, &rules)
         .expect("ignore-defenses control spawns");
     for id in [healing_id, ignored_id] {
-        sim.substrate.entities.get_mut(id).unwrap().invulnerability = Some(InvulnerabilityState {
-            timer: crate::sim::timer::CdTimer::started(0, 100),
-            kind: InvulnKind::IronCurtain,
-        });
+        sim.substrate.entities.get_mut(id).unwrap().invulnerability =
+            Some(InvulnerabilityState::new(
+                crate::sim::timer::CdTimer::started(0, 100),
+                InvulnKind::IronCurtain,
+            ));
     }
     sim.substrate
         .entities
@@ -8902,10 +8903,10 @@ fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
             .entities
             .get_mut(victim_id)
             .unwrap()
-            .invulnerability = Some(InvulnerabilityState {
-            timer: crate::sim::timer::CdTimer::started(0, 100),
+            .invulnerability = Some(InvulnerabilityState::new(
+            crate::sim::timer::CdTimer::started(0, 100),
             kind,
-        });
+        ));
 
         let terrain_id = 700;
         let terrain_ref = sim.interner.intern("TREE01");

@@ -1819,10 +1819,10 @@ mod tests {
             protected.position.sub_y = CELL_CENTER_LEPTON;
             protected.lifecycle.in_limbo = false;
             protected.lifecycle.cell_marked = true;
-            protected.invulnerability = Some(InvulnerabilityState {
-                timer: crate::sim::timer::CdTimer::started(0, 100),
+            protected.invulnerability = Some(InvulnerabilityState::new(
+                crate::sim::timer::CdTimer::started(0, 100),
                 kind,
-            });
+            ));
             entities.insert(protected);
 
             let mut occupancy = OccupancyGrid::new();

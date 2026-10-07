@@ -269,6 +269,39 @@ Translucent=yes
         ));
     }
 
+    /// The curtained tank's tint stage steps in its own Techno AI
+    /// (`0x006F9EAF`) and draws from the Scenario stream once, at its stage
+    /// 2 step: the AI visit ten frames after its first under the curtain.
+    /// The same idle tank uncurtained draws in the same other visits.
+    #[test]
+    fn a_curtained_tank_draws_its_tint_number_in_its_own_ai() {
+        let rules = test_rules();
+        let drawing_visits = |curtain: bool| {
+            let mut sim = Simulation::new();
+            let owner = sim.interner.intern("Americans");
+            spawn(&mut sim, 1, "MTNK", 10, 10, EntityCategory::Unit);
+            let sw_test = sim.interner.intern("SWTEST");
+            if curtain {
+                assert!(launch(&mut sim, &rules, owner, 10, 10, sw_test, None));
+            }
+            let mut drawn = Vec::new();
+            for visit in 1..=40 {
+                let ((), draws) = crate::sim::rng::trace_draws(|| {
+                    sim.advance_tick(&[], Some(&rules), None, None, 67);
+                });
+                if draws.iter().any(|draw| draw["logic_object"] == 1) {
+                    drawn.push(visit);
+                }
+            }
+            drawn
+        };
+        let mut expected = drawing_visits(false);
+        assert!(!expected.contains(&11));
+        expected.push(11);
+        expected.sort();
+        assert_eq!(drawing_visits(true), expected);
+    }
+
     #[test]
     fn ic_kills_infantry_in_grid() {
         let rules = test_rules();
