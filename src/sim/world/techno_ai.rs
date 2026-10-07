@@ -775,8 +775,8 @@ fn techno_ai_shell(
             }
             drop_unsensed_cloaked_target_step(sim, id);
             mission_counter_step(sim, id);
-            // The aircraft mission handlers absorbed so far: Unload and the
-            // Spy Plane's two, behind MissionClass::AI's timer gate.
+            // The aircraft mission handlers absorbed so far: Retreat, Unload
+            // and the Spy Plane's two, behind MissionClass::AI's timer gate.
             if let Some(rules) = rules
                 && mission_handlers_run(sim, id)
             {

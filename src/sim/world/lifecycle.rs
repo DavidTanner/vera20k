@@ -3345,7 +3345,7 @@ impl Simulation {
             }
 
             let restored = self
-                .mission_restore_on_target_detach(listener_id, rules, registry)
+                .mission_restore_represented(listener_id, rules, registry)
                 .expect("detach sweep listener was resolved immediately before the Restore");
 
             let target_cleared = self.listener_targets(listener_id, target);
@@ -3571,7 +3571,7 @@ impl Simulation {
             self.assign_target_represented(listener_id, None, rules)
                 .expect("expiry listener remains present");
             if mission_is_suspended {
-                self.mission_restore_after_target_expiry(listener_id, rules, registry)
+                self.mission_restore_represented(listener_id, rules, registry)
                     .expect("represented expiry restore remains available");
             }
         }

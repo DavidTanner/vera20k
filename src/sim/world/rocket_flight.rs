@@ -307,8 +307,10 @@ pub(super) mod retail_tests {
     //! force-attacks a tank through an ordinary command and bound runtime
     //! frames. The flight's native comparison is
     //! `movement::rocket_movement::tests`, the missile's Mission_Move and
-    //! Find_Attack_Cell `world::aircraft_move::tests`; this run claims no
-    //! native whole-flight or whole-match comparison.
+    //! Find_Attack_Cell `world::aircraft_move::tests`, its idle mode and
+    //! Mission_Retreat `aircraft::idle_entry::tests` and
+    //! `aircraft::retreat_mission::tests`; this run claims no native
+    //! whole-flight or whole-match comparison.
 
     use crate::headless_scenario::SIM_TICK_MS;
     use crate::sim::command::{Command, CommandEnvelope};
@@ -454,15 +456,16 @@ pub(super) mod retail_tests {
                 continue;
             }
             launched.get_or_insert(frame);
-            let mission = match entity.aircraft_mission {
-                Some(crate::sim::aircraft::AircraftMission::Move { sub_state }) => {
-                    ("Move", sub_state)
-                }
-                Some(crate::sim::aircraft::AircraftMission::Attack { sub_state }) => {
-                    ("Attack", sub_state)
-                }
-                _ => ("other", 0),
+            // The current mission and Mission_Move's or Mission_Attack's
+            // state.
+            let state = match entity.aircraft_mission {
+                Some(
+                    crate::sim::aircraft::AircraftMission::Move { sub_state }
+                    | crate::sim::aircraft::AircraftMission::Attack { sub_state },
+                ) => Some(sub_state),
+                _ => None,
             };
+            let mission = (entity.mission.current().known(), state);
             let visit = (mission, entity.navigation.nav_com);
             if moves.last().is_none_or(|&(_, last)| last != visit) {
                 moves.push((frame, visit));
@@ -495,18 +498,19 @@ pub(super) mod retail_tests {
              detonation frame {detonated} near {impact:?}, target health {strength} -> \
              {health}, anims {anim_names:?}"
         );
-        // Launched at the tank on Move; the first Mission_Move visit's
-        // Find_Attack_Cell moves the NavCom to a free cell beside the tank
-        // (Spawned, the missile may share only a spawner's cell), which the
-        // flying Rocket's Move_To ignores. The tracker's Attack commences
-        // the same frame, restarting the mission state at Mission_Attack's 0.
+        // Launched at the tank with Move queued, commenced the next frame;
+        // the first Mission_Move visit's Find_Attack_Cell moves the NavCom
+        // to a free cell beside the tank (Spawned, the missile may share
+        // only a spawner's cell), which the flying Rocket's Move_To ignores.
+        // The tracker's Attack commences the same frame, restarting the
+        // mission state at Mission_Attack's 0.
         use crate::sim::components::NavTargetRef;
-        assert_eq!(
-            moves[0].1,
-            (("Move", 0), Some(NavTargetRef::Entity { id: target }))
-        );
-        let (_, (mission, nav)) = moves[1];
-        assert_eq!(mission, ("Attack", 0), "{moves:?}");
+        use crate::sim::mission::MissionType::{Attack, Move, Retreat};
+        let tank = Some(NavTargetRef::Entity { id: target });
+        assert_eq!(moves[0].1, ((None, Some(0)), tank), "{moves:?}");
+        assert_eq!(moves[1].1, ((Some(Move), Some(0)), tank), "{moves:?}");
+        let (_, (mission, nav)) = moves[2];
+        assert_eq!(mission, (Some(Attack), Some(0)), "{moves:?}");
         let Some(NavTargetRef::Cell { rx, ry }) = nav else {
             panic!("Find_Attack_Cell picks a cell: {moves:?}");
         };
@@ -515,6 +519,38 @@ pub(super) mod retail_tests {
                 && rx.abs_diff(target_cell.0) <= 2
                 && ry.abs_diff(target_cell.1) <= 2,
             "a free cell beside the tank: {moves:?}"
+        );
+        // Once TechnoClass::AI drops the target the weaponless missile cannot
+        // fire at, state 10 enters idle mode, which drops the destination
+        // and commences Retreat for good; Mission_Retreat's first visit
+        // heads for a cell past the playfield's edge.
+        let retreat = moves
+            .iter()
+            .position(|&(_, ((mission, _), _))| mission == Some(Retreat))
+            .expect("the missile retreats");
+        assert_eq!(
+            moves[retreat - 1].1.0,
+            (Some(Attack), Some(10)),
+            "{moves:?}"
+        );
+        assert_eq!(moves[retreat].1, ((Some(Retreat), None), None), "{moves:?}");
+        assert!(
+            moves[retreat..]
+                .iter()
+                .all(|&(_, (mission, _))| mission == (Some(Retreat), None)),
+            "Retreat holds: {moves:?}"
+        );
+        let Some((_, (_, Some(NavTargetRef::Cell { rx, ry })))) = moves.get(retreat + 1) else {
+            panic!("Mission_Retreat picks an edge cell: {moves:?}");
+        };
+        let sim = &runtime.simulation;
+        assert!(
+            !crate::sim::cell_rect::cell_is_in_playfield_height_aware(
+                (i32::from(*rx), i32::from(*ry)),
+                sim.playfield_bounds,
+                sim.resolved_terrain.as_ref(),
+            ),
+            "the edge cell lies past the playfield: {moves:?}"
         );
         // Move_To starts the tilt; the climb follows TiltFrames later.
         assert_eq!(transitions[0].1, 2);

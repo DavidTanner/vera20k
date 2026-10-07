@@ -1,0 +1,10085 @@
+{
+  "enter_idle": [
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h0.r0.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h0.r0.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h0.r0.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h0.r0.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h0.r1.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h0.r1.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h0.r1.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h0.r1.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h1.r0.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h1.r0.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h1.r0.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h1.r0.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h1.r1.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h1.r1.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h1.r1.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t0.h1.r1.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h0.r0.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h0.r0.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h0.r0.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h0.r0.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h0.r1.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h0.r1.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h0.r1.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h0.r1.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h1.r0.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h1.r0.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h1.r0.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h1.r0.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h1.r1.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h1.r1.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h1.r1.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p0.t1.h1.r1.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          16,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h0.r0.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          16,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h0.r0.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          16,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h0.r0.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          16,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h0.r0.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h0.r1.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h0.r1.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h0.r1.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h0.r1.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          16,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h1.r0.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          16,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h1.r0.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          16,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h1.r0.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          16,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h1.r0.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h1.r1.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h1.r1.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h1.r1.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t0.h1.r1.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h0.r0.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h0.r0.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h0.r0.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h0.r0.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h0.r1.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h0.r1.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h0.r1.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h0.r1.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h1.r0.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h1.r0.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h1.r0.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h1.r0.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h1.r1.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h1.r1.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h1.r1.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "arm.m1.p1.t1.h1.r1.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h0.r0.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h0.r0.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h0.r0.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h0.r0.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h0.r1.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h0.r1.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h0.r1.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h0.r1.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h1.r0.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h1.r0.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h1.r0.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h1.r0.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h1.r1.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h1.r1.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h1.r1.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t0.h1.r1.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h0.r0.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h0.r0.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h0.r0.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h0.r0.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h0.r1.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h0.r1.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h0.r1.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h0.r1.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h1.r0.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h1.r0.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h1.r0.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h1.r0.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h1.r1.ready1.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h1.r1.ready1.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h1.r1.ready0.f0",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p0.t1.h1.r1.ready0.f1",
+        "passengers": false,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h0.r0.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h0.r0.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h0.r0.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h0.r0.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h0.r1.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h0.r1.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h0.r1.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h0.r1.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h1.r0.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h1.r0.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h1.r0.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h1.r0.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h1.r1.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h1.r1.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h1.r1.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t0.h1.r1.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h0.r0.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h0.r0.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h0.r0.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h0.r0.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h0.r1.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h0.r1.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h0.r1.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h0.r1.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h1.r0.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h1.r0.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h1.r0.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h1.r0.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": false,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h1.r1.ready1.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h1.r1.ready1.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h1.r1.ready0.f0",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          7,
+          0
+        ],
+        [
+          "ready"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": true,
+        "height": 768,
+        "human": true,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "arm.m0.p1.t1.h1.r1.ready0.f1",
+        "passengers": true,
+        "queued": -1,
+        "radio": true,
+        "ready": false,
+        "state": 7,
+        "suspended": -1,
+        "team": true
+      },
+      "latch": 1,
+      "ret": 1,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "restore"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.suspended1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": 1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "restore"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.suspended25",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": 25,
+        "team": false
+      },
+      "latch": 0,
+      "ret": 0,
+      "state": 0
+    },
+    {
+      "calls": [
+        [
+          "restore"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.suspended5",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": 5,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 4,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current4.as0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": true,
+        "ammo": 1,
+        "current": 4,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current4.as1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 26,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current26.as0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": true,
+        "ammo": 1,
+        "current": 26,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current26.as1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 27,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current27.as0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": true,
+        "ammo": 1,
+        "current": 27,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current27.as1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 30,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current30.as0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": true,
+        "ammo": 1,
+        "current": 30,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current30.as1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 31,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current31.as0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": true,
+        "ammo": 1,
+        "current": 31,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current31.as1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 0,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current0.as0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": true,
+        "ammo": 1,
+        "current": 0,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current0.as1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 1,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current1.as0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": true,
+        "ammo": 1,
+        "current": 1,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current1.as1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 5,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current5.as0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": true,
+        "ammo": 1,
+        "current": 5,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current5.as1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 25,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current25.as0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": true,
+        "ammo": 1,
+        "current": 25,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.current25.as1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.queued26",
+        "passengers": false,
+        "queued": 26,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.queued30",
+        "passengers": false,
+        "queued": 30,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.queued27",
+        "passengers": false,
+        "queued": 27,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.queued31",
+        "passengers": false,
+        "queued": 31,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.queued1",
+        "passengers": false,
+        "queued": 1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.queued2",
+        "passengers": false,
+        "queued": 2,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.queued4",
+        "passengers": false,
+        "queued": 4,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.queued5",
+        "passengers": false,
+        "queued": 5,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "restore"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 4,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.suspended_over_protected",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": 1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 4,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "head.protected_over_queued",
+        "passengers": false,
+        "queued": 26,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 0,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "ammo0.m1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 0,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "ammo0.m0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": -1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "ammo-1.m1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": -1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "ammo-1.m0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 2,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "ammo2.m1",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "queue_mission",
+          5,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 2,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": false,
+        "name": "ammo2.m0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 2,
+        "mission_only": true,
+        "name": "layer2.z768.landing0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 0,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "layer3.z0.landing0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 100,
+        "human": false,
+        "landing": 100,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "layer3.z100.landing100",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": 768,
+        "human": false,
+        "landing": 100,
+        "latch": 1,
+        "layer": 3,
+        "mission_only": true,
+        "name": "layer3.z768.landing100",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    },
+    {
+      "calls": [
+        [
+          "foot_enter_idle",
+          0,
+          1
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "queue_mission",
+          4,
+          0
+        ],
+        [
+          "ready"
+        ],
+        [
+          "commence"
+        ]
+      ],
+      "input": {
+        "airstrike": false,
+        "ammo": 1,
+        "current": 2,
+        "foot": false,
+        "height": -5,
+        "human": false,
+        "landing": 0,
+        "latch": 1,
+        "layer": 1,
+        "mission_only": true,
+        "name": "layer1.z-5.landing0",
+        "passengers": false,
+        "queued": -1,
+        "radio": false,
+        "ready": true,
+        "state": 7,
+        "suspended": -1,
+        "team": false
+      },
+      "latch": 1,
+      "ret": 0,
+      "state": 7
+    }
+  ],
+  "mission_retreat": [
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.h-1.w0",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 0
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          1,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.h-1.w1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.h-1.w2",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          3,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.h-1.w3",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.h-1.w-1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": -1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.h-1.w4",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 4
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 0,
+        "name": "null.h0.w0",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 0
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 0,
+        "name": "null.h0.w1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 0,
+        "name": "null.h0.w2",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 0,
+        "name": "null.h0.w3",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 0,
+        "name": "null.h0.w-1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": -1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 0,
+        "name": "null.h0.w4",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 4
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          1,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 1,
+        "name": "null.h1.w0",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 0
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          1,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 1,
+        "name": "null.h1.w1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          1,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 1,
+        "name": "null.h1.w2",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          1,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 1,
+        "name": "null.h1.w3",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          1,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 1,
+        "name": "null.h1.w-1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": -1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          1,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 1,
+        "name": "null.h1.w4",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 4
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 2,
+        "name": "null.h2.w0",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 0
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 2,
+        "name": "null.h2.w1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 2,
+        "name": "null.h2.w2",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 2,
+        "name": "null.h2.w3",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 2,
+        "name": "null.h2.w-1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": -1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 2,
+        "name": "null.h2.w4",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 4
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          3,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 3,
+        "name": "null.h3.w0",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 0
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          3,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 3,
+        "name": "null.h3.w1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          3,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 3,
+        "name": "null.h3.w2",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          3,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 3,
+        "name": "null.h3.w3",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          3,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 3,
+        "name": "null.h3.w-1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": -1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          3,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 3,
+        "name": "null.h3.w4",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 4
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 4,
+        "name": "null.h4.w0",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 0
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          1,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 4,
+        "name": "null.h4.w1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 4,
+        "name": "null.h4.w2",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          3,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 4,
+        "name": "null.h4.w3",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 4,
+        "name": "null.h4.w-1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": -1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 4,
+        "name": "null.h4.w4",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 4
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -5,
+        "name": "null.h-5.w0",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 0
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          1,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -5,
+        "name": "null.h-5.w1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -5,
+        "name": "null.h-5.w2",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          3,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -5,
+        "name": "null.h-5.w3",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -5,
+        "name": "null.h-5.w-1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": -1
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          0,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            5,
+            6
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            5,
+            6
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -5,
+        "name": "null.h-5.w4",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 4
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.pick0_0",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          0,
+          0
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            0,
+            7
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            0,
+            7
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.pick0_7",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          0,
+          7
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            7,
+            0
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            7,
+            0
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.pick7_0",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          7,
+          0
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            -1,
+            0
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            -1,
+            0
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.pick-1_0",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          -1,
+          0
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "pick_cell_on_edge",
+          2,
+          "empty_cell",
+          "empty_cell",
+          4,
+          1,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            0,
+            -1
+          ]
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            0,
+            -1
+          ],
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": -1,
+        "name": "null.pick0_-1",
+        "nav": null,
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          0,
+          -1
+        ],
+        "waypoint_edge": 2
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "get_cell"
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ]
+      ],
+      "input": {
+        "house_edge": 1,
+        "name": "nav.own",
+        "nav": "own",
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "get_cell"
+        ]
+      ],
+      "input": {
+        "house_edge": 1,
+        "name": "nav.cell61_64",
+        "nav": [
+          61,
+          64
+        ],
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "get_cell"
+        ]
+      ],
+      "input": {
+        "house_edge": 1,
+        "name": "nav.cell60_65",
+        "nav": [
+          60,
+          65
+        ],
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    },
+    {
+      "calls": [
+        [
+          "get_cell"
+        ]
+      ],
+      "input": {
+        "house_edge": 1,
+        "name": "nav.object",
+        "nav": "object",
+        "own": [
+          60,
+          64
+        ],
+        "pick": [
+          5,
+          6
+        ],
+        "waypoint_edge": 3
+      },
+      "ret": 3
+    }
+  ]
+}

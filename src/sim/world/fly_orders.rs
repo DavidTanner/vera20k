@@ -136,6 +136,33 @@ impl Simulation {
         }
     }
 
+    /// `MapClass::PickCellOnEdge @ 0x004AA440` as the aircraft missions call
+    /// it, with the empty cell `0x00889E68` as both references and criterion
+    /// 4 ([`edge_cell::find_paradrop_edge_cell`](super::edge_cell::find_paradrop_edge_cell)):
+    /// Mission_Attack's state 10, Mission_Retreat and the Spy Plane missions.
+    /// `None` with no playfield (headless fixtures), where there is no edge
+    /// to pick and no draw.
+    pub(crate) fn aircraft_edge_cell(
+        &mut self,
+        edge: super::edge_cell::Edge,
+    ) -> Option<(u16, u16)> {
+        super::edge_cell::find_paradrop_edge_cell(
+            self.playfield_bounds,
+            self.resolved_terrain.as_ref(),
+            edge,
+            &mut self.scenario_rng,
+        )
+    }
+
+    /// The waypoint edge (`HouseClass+0x577C`) of aircraft `id`'s house.
+    pub(crate) fn aircraft_house_waypoint_edge(&self, id: u64) -> u8 {
+        self.substrate
+            .entities
+            .get(id)
+            .and_then(|entity| self.houses.get(&entity.owner()))
+            .map_or(0, |house| house.waypoint_edge)
+    }
+
     /// Non-null coordinate entry. The bool describes the remaining movement
     /// adapter, not the native void MoveTo or Foot AssignDestination result.
     pub(crate) fn move_air_coordinate(

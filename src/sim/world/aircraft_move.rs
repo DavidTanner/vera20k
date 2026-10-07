@@ -4,8 +4,9 @@
 //! live objects and NavCom reservations; the search and the Rate epilogue
 //! draw Scenario RNG. Executable witnesses: tools/spatial_oracle/aircraft_move.*.
 use super::Simulation;
+use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::aircraft::{AircraftMission, move_mission};
+use crate::sim::aircraft::{AircraftMission, IdleEntry, move_mission};
 use crate::sim::components::NavTargetRef;
 use crate::sim::mission::MissionType;
 use crate::sim::movement::{ground_pose, motion_query, nav_target_coordinate};
@@ -22,34 +23,20 @@ const ATTACK_CELL_SEARCH_LEPTONS: i32 = 0x2000;
 impl Simulation {
     /// One Mission_Move visit of aircraft `id` from `state`. Writes the
     /// visit's mission delay and returns the mission holding its state, and
-    /// whether the visit asked for `Enter_Idle_Mode(0, 1)` (`vt+0x484`),
-    /// which the dispatch applies in the same visit.
-    ///
-    /// RESIDUAL: idle mode is VERA's aircraft tree (`aircraft::
-    /// enter_idle_mode`), not `AircraftClass::Enter_Idle_Mode @ 0x004176F0`,
-    /// which queues the mission it picks (Guard, Area Guard, Enter, Move to
-    /// an airfield, ...) and commences it when ready. The tree only changes
-    /// `AircraftMission`, so the current mission stays Move. Trigger: an
-    /// aircraft reaching state 0 without a NavCom, or state 3 stopped (a
-    /// landed helicopter, a Hornet over its hold cell, a missile launched
-    /// without a target). Effects: the Rate epilogue after state 0's idle
-    /// entry reads Move's Rate where the original reads the commenced
-    /// mission's (the draw is the same); the picked mission's own handler
-    /// does not run; and a later Move order's queue changes nothing, so
-    /// Mission_Move restarts at state 0 when the timer left by its last visit
-    /// expires (`aircraft::queue_move_state`) instead of the frame after a
-    /// Commence.
+    /// the `Enter_Idle_Mode(0, 1)` (`vt+0x484`) it made.
     pub(crate) fn aircraft_move(
         &mut self,
         id: u64,
         state: u8,
         rules: &RuleSet,
-    ) -> (AircraftMission, bool) {
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> (AircraftMission, IdleEntry) {
         let mut host = WorldMove {
             sim: self,
             id,
             rules,
-            idle: false,
+            registry,
+            idle: IdleEntry::NotCalled,
         };
         let (state, delay) = move_mission::move_visit(state, &mut host);
         let idle = host.idle;
@@ -186,7 +173,8 @@ struct WorldMove<'a> {
     sim: &'a mut Simulation,
     id: u64,
     rules: &'a RuleSet,
-    idle: bool,
+    registry: Option<&'a OverlayTypeRegistry>,
+    idle: IdleEntry,
 }
 
 impl WorldMove<'_> {
@@ -207,7 +195,7 @@ impl move_mission::MoveHost for WorldMove<'_> {
     }
 
     fn enter_idle_mode(&mut self) {
-        self.idle = true;
+        self.idle = IdleEntry::call(self.sim, self.id, self.rules, self.registry);
     }
 
     fn assign_attack_cell(&mut self) {

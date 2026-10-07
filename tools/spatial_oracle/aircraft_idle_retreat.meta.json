@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "AircraftClass::Enter_Idle_Mode 0x004176F0 as vt+0x484(0, 1) on an unarmed MissileSpawn aircraft: every combination of +0x3D4, passengers (+0x118), team (+0x5D4), IsControlledByHuman, In_Radio_Contact, Ready_To_Commence and the Foot base's return, from Move with nothing queued; a suspended selector; each protected current with and without an Airstrike (+0x294); queued missions; Ammo, layer and height values. AircraftClass::Mission_Retreat 0x00415A50 with a NULL NavCom over House+0x1E0 {-1, 0..4, -5} x +0x577C {0..3, -1, 4}, picked cells equal to and differing from the empty cell in either word, and a NavCom that is the owner's cell, another cell or an object. Returned value, ordered call log with arguments, and for Enter_Idle_Mode Mission+0xBC and +0x6D2 afterwards. Not the airborne arm, an armed aircraft's dock hunt, the restore's target and destination setters, or PickCellOnEdge's own search and draws.",
+  "assumptions": [
+    "One emulator; per row the scratch region (0x10000 bytes) and the stack frame are rewritten. The owner holds a clone of the Aircraft vtable 0x007E22A4 with only the stubbed slots replaced, House +0x21C, IFlyControl +0x6C0 on a scratch copy of 0x007E2250 with +0xC replaced, and type +0x6C4 with MissileSpawn (+0xD68) set.",
+    "Enter_Idle_Mode rows preset Mission+0xBC = 7 and +0x6D2 = 1 to show which arm writes them; the arguments are (0, 1), as both Mission_Move and Mission_Attack state 10 push them.",
+    "The empty cell 0x00889E68 is set by its original static initializer 0x00413C60 (both words 0).",
+    "Per row: RET to the caller with the native cleanup (RET 8 / RET) and EBX/EBP/ESI/EDI preserved; no write outside the stack and the owner; every read of scratch bytes falls on bytes the row supplied."
+  ],
+  "substitutions": [
+    "Enter_Idle_Mode: Restore vt+0x1F8 moves +0xB0 to +0xAC and empties +0xB0; Commence vt+0x1EC, Queue_Mission vt+0x1E8, Assign_Target vt+0x3C8 and Assign_Destination vt+0x480 record their arguments; Ready vt+0x200 answers the row's value; Is_Armed vt+0x2AC answers false; the layer vt+0x78, height vt+0x1C8 and landing altitude IFlyControl+0xC answer the row's values; FootClass::Enter_Idle_Mode 0x004D82B0, IsControlledByHuman 0x0050B730 and In_Radio_Contact 0x0065AE30 are entry hooks answering the row's values.",
+    "Mission_Retreat: GetCell vt+0x1BC answers the owner's cell; Assign_Destination vt+0x480 records; PickCellOnEdge 0x004AA440 records its arguments and writes the row's cell; operator[] 0x005657A0 answers one opaque pointer per cell."
+  ],
+  "entry_points": {
+    "enter_idle_mode": "0x004176F0",
+    "mission_retreat": "0x00415A50",
+    "is_suspended": "0x005B3A10",
+    "house_edge": "0x0050DA80",
+    "empty_cell_initializer": "0x00413C60"
+  },
+  "payload_sha256": "27666be1787e07157c1ccf6dd1db1b3aba33ba8b35d759ec054c437a8cc87ca8"
+}

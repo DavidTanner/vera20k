@@ -743,29 +743,19 @@ impl Simulation {
         Ok(())
     }
 
-    pub(crate) fn mission_restore_after_target_expiry(
-        &mut self,
-        receiver: u64,
-        rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) -> Result<bool, MissionAuthorityError> {
-        let mut effects = RepresentedConcreteMissionEffects::new(rules, overlay_registry);
-        self.mission_restore_exact_with_effects(receiver, &mut effects)
-    }
-
-    /// The Restore half of the detach sweep that releases every object shooting
-    /// at an object which is leaving play *while still alive*.
+    /// `Restore_Mission` (vt+0x1F8) through the represented class setters.
     ///
-    /// Same represented setters as the pointer-expiry Restore, and a separate
-    /// name because the two native sites are not the same shape: the expiry
-    /// site asks whether a mission is suspended and clears the target *before*
-    /// restoring, while the detach sweep restores first, unconditionally, and
-    /// clears the target afterwards only if the Restore did not install a
-    /// different archived one. Restore is a total field-wise no-op on an object
+    /// Its callers wrap it differently: the pointer-expiry site asks whether a
+    /// mission is suspended and clears the target *before* restoring; the
+    /// detach sweep that releases every object shooting at an object leaving
+    /// play *while still alive* restores first, unconditionally, and clears
+    /// the target afterwards only if the Restore did not install a different
+    /// archived one; Aircraft Enter_Idle_Mode (`0x00417706`) restores only a
+    /// suspended selector. Restore is a total field-wise no-op on an object
     /// with no suspended selector, so "unconditional" and "guarded" agree on
     /// the write set; the difference that matters is the ordering the caller
     /// wraps around it.
-    pub(crate) fn mission_restore_on_target_detach(
+    pub(crate) fn mission_restore_represented(
         &mut self,
         receiver: u64,
         rules: Option<&RuleSet>,
