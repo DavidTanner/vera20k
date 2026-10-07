@@ -453,6 +453,37 @@ turrets and EMP cannon missions remain separate mechanisms. The retained
 three-pixel drawing anchor and measured subpixel float rounding remain visual
 residuals.
 
+## V3 rocket pitch observation
+
+[`map_observation.v3-rocket-pitch.example.json`](map_observation.v3-rocket-pitch.example.json)
+starts Russia/Battle with stock rules and assets on an
+[authored clear-ground map](map_observation/examples/v3_rocket_pitch.map): the
+Siege Chopper fixture's terrain with a pre-placed V3 (actor 1) at (42,48)
+facing east, and no type overrides. An ordinary `ForceAttackCell` at step 10
+targets (54,48). Set `launch.selected_map_file` to the tracked map's absolute
+path in an external profile copy; the loader resolves a relative path against
+the retail root.
+
+The observation rows show the V3ROCKET (actor 2) launched at step 31, tilting
+on the rail through 95, climbing, at its apex (Z 1393) near 204, diving, and
+gone after 253. Copies ending at 60, 150, 204 and 235 (`camera_cell` (48,47))
+were captured with release binaries built from `e8502be0e` (SHA-256
+`91dc808361fe4255136bd5c993660e4eb05d15b2577c0a4130d69edb90937a65`) and with
+the Rocket draw arm (SHA-256
+`08ae22351e32a102878c6dc82dbcc9ecb8f5a4526a8706726d45df559db3657d`), map
+SHA-256 `8a1a33d9a2705b2f99252b2a94f1b16cffd804b1bafab6b58fa7e966229aa3c5`.
+Each pair ends with the same simulation hash. The changed pixels, 823, 854, 292
+and 1035, all lie in one box around the missile at most 51 by 66 pixels; the
+old binary draws it level, the new one along its pitch. A rerun of the 235-step
+copy from the tracked map gives the same BGRA bytes
+(`760c19390bf64dcda8d82e9392c06c76cb9e445faa30c04a3834b211eb407ecf`) and the
+same actor rows at every step; its state hash differs from frame 0 on, because
+the hash covers the map path.
+
+[`rocket_oracle/draw_matrix.py`](rocket_oracle/draw_matrix.py) executes the
+original Draw_Matrix and camera product; rasterization is the existing native
+port. These captures are production observations, not native pixel parity.
+
 ## Nuclear missile observation
 
 [`map_observation.nuclear-missile.example.json`](map_observation.nuclear-missile.example.json)

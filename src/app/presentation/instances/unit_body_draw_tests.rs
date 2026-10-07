@@ -53,7 +53,7 @@ fn body_draw_against_seed(
             },
             false,
         ),
-        BodyDraw::CrashPose(_) => return Err(format!("{base_type} takes the crash pose")),
+        BodyDraw::Pose(_) => return Err(format!("{base_type} takes a locomotor pose")),
     };
     if !seeded.iter().any(|&(layer, _)| layer == asked) {
         return Err(format!(

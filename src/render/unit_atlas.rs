@@ -62,14 +62,18 @@ const TURRET_FACING_BUCKETS: u16 = crate::render::vxl_raster::VOXEL_FACING_STEPS
 // VxlLayer lives in sim::components — re-exported here for convenience.
 pub use crate::sim::components::VxlLayer;
 
-/// The locomotor Draw_Matrix arm a tilted body's pose comes from, with its roll
-/// and pitch in radians (`TechnoClass+0x328`, `+0x32C`).
+/// The locomotor Draw_Matrix arm a posed body is drawn through.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CrashTilt {
-    /// `FlyLocomotionClass`'s crashing arm (`0x004CF610`).
+pub enum PoseTilt {
+    /// `FlyLocomotionClass`'s crashing arm (`0x004CF610`): roll and pitch in
+    /// radians (`TechnoClass+0x328`, `+0x32C`).
     Fly([f32; 2]),
-    /// `JumpjetLocomotionClass`'s `TiltCrashJumpjet=` arm (`0x0054DCC0`).
+    /// `JumpjetLocomotionClass`'s `TiltCrashJumpjet=` arm (`0x0054DCC0`), with
+    /// the same roll and pitch.
     Jumpjet([f32; 2]),
+    /// `RocketLocomotionClass::Draw_Matrix` (`0x00663470`): CurrentPitch in
+    /// radians above the horizon, never zero here.
+    Rocket(f32),
 }
 
 /// Cache key: unique combination of object type, facing, layer, frame, and slope.
@@ -1275,26 +1279,27 @@ impl UnitModel {
         Some((sprite, native_draw_bounds))
     }
 
-    /// One tilted body's composite at its locomotor arm's pose, rendered afresh
-    /// because both arms key their draw -1 and native never caches it. The
-    /// Jumpjet arm's half sizes come from this model's main voxel; one that
-    /// never loaded leaves them at the constructor's zero (`0x00710C4E`).
-    pub(crate) fn render_crash_pose(
+    /// One posed body's composite, rendered afresh. The Fly and Jumpjet arms
+    /// key their draw -1, so native never caches it. The Rocket arm keys a
+    /// pitched draw -1 unless the pitch is the block's stored PitchFinal
+    /// product (`0x00663547`), and its image depends only on the facing step
+    /// and the pitch, so a fresh render is the cached one. The Jumpjet arm's
+    /// half sizes come from this model's main voxel; one that never loaded
+    /// leaves them at the constructor's zero (`0x00710C4E`).
+    pub(crate) fn render_pose(
         &self,
         key: &UnitSpriteKey,
         vpl: Option<&VplFile>,
-        tilt: CrashTilt,
+        tilt: PoseTilt,
     ) -> (VxlSprite, Option<[i32; 4]>) {
-        let body = self
-            .body
-            .as_ref()
-            .expect("a crashing unit has a voxel body");
+        let body = self.body.as_ref().expect("a posed body has a voxel body");
         let body_tilt = match tilt {
-            CrashTilt::Fly(angles) => vxl_raster::BodyTilt::Fly(angles),
-            CrashTilt::Jumpjet(angles) => vxl_raster::BodyTilt::Jumpjet {
+            PoseTilt::Fly(angles) => vxl_raster::BodyTilt::Fly(angles),
+            PoseTilt::Jumpjet(angles) => vxl_raster::BodyTilt::Jumpjet {
                 angles,
                 half_sizes: vxl_raster::jumpjet_tilt_half_sizes(&body.vxl).unwrap_or([0.0; 2]),
             },
+            PoseTilt::Rocket(pitch) => vxl_raster::BodyTilt::Rocket(pitch),
         };
         let params = VxlRenderParams {
             frame: key.frame,
