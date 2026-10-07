@@ -2385,6 +2385,42 @@ mod tests {
     }
 
     #[test]
+    fn chronosphere_example_warps_the_source_block_with_a_tactical_click() {
+        let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.chronosphere.example.json",
+        ))
+        .unwrap();
+        profile.validate().unwrap();
+        assert_eq!(profile.observe_super_weapons, Some(true));
+        // The Chronosphere charges for 6300 frames from the first step; its
+        // launch selects the Chrono Warp, and the click at the view's centre
+        // (`camera_cell`) fires it.
+        let [command] = profile.commands() else {
+            panic!("one launch");
+        };
+        assert_eq!(command.issue_after_step, 6310);
+        assert!(matches!(
+            command.payload,
+            Command::LaunchSuperWeapon {
+                target_rx: 41,
+                target_ry: 63,
+                ..
+            }
+        ));
+        let [gesture] = profile.gestures() else {
+            panic!("one click");
+        };
+        assert_eq!(gesture.issue_after_step, 6320);
+        assert!(matches!(
+            gesture.gesture,
+            MapGesture::Click {
+                position: [316, 284]
+            }
+        ));
+        assert_eq!(profile.camera_cell, Some([45, 55]));
+    }
+
+    #[test]
     fn rally_profile_reuses_literal_command_serde_and_rejects_ignored_fields() {
         let mut value: Value = serde_json::from_str(crate::test_fixture::text(
             "tools/map_observation.barracks-output.example.json",

@@ -3553,14 +3553,15 @@ mod tests {
                 if case["bunker"] == true {
                     victim.bunker_link = crate::sim::game_entity::BunkerLink::Installed(1);
                 }
-                if case["warp_in"] == true || case["warp_out"] == true {
+                // BeingWarpedOut (`+0x270`) through a Temporal chain's
+                // head, WarpingIn (`+0x271`) through the teleport's warp-in.
+                if case["warp_out"] == true {
+                    victim.temporal = crate::sim::temporal::TemporalState::warped_by_for_test(99);
+                }
+                if case["warp_in"] == true {
                     use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
                     victim.install_teleport_state_for_test(Some(TeleportState::for_test(
-                        if case["warp_out"] == true {
-                            TeleportPhase::Relocate
-                        } else {
-                            TeleportPhase::ChronoDelay
-                        },
+                        TeleportPhase::ChronoDelay,
                         8,
                         8,
                         3,

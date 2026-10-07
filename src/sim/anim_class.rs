@@ -907,6 +907,7 @@ impl Simulation {
 
     /// Construct the `AnimClass` a producer described by cell, sub-cell and
     /// height level.
+    #[cfg(test)]
     pub(crate) fn spawn_anim_object(
         &mut self,
         rules: &RuleSet,

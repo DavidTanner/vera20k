@@ -877,7 +877,15 @@ fn a_warped_object_is_frozen_and_immune() {
     sim.temporal_initiate_warp(cleg, Some(tank), &rules, None);
 
     sim.session.binary_frame = 48;
-    assert!(sim.temporal_ai_prologue(tank, &rules, None), "frozen");
+    assert!(
+        sim.temporal_ai_prologue(
+            tank,
+            &rules,
+            crate::sim::world::ObjectAiCtx::default(),
+            &mut false,
+        ),
+        "frozen"
+    );
     assert_eq!(link(&sim, cleg).warp_remaining, 3992, "one step");
     assert!(entity(&sim, tank).attack_target.is_none(), "TarCom dropped");
     let sparkles: Vec<AnimWorldCoord> = sim
@@ -894,7 +902,12 @@ fn a_warped_object_is_frozen_and_immune() {
         (location.x + 0x78, location.y + 0x78, location.z)
     );
     sim.session.binary_frame = 49;
-    assert!(sim.temporal_ai_prologue(tank, &rules, None));
+    assert!(sim.temporal_ai_prologue(
+        tank,
+        &rules,
+        crate::sim::world::ObjectAiCtx::default(),
+        &mut false,
+    ));
     assert_eq!(
         sim.substrate
             .anims

@@ -6,7 +6,8 @@ Rust consumers: src/sim/superweapon/fire_tests.rs (click_fire,
 defense_alert), src/sim/world/techno_ai/building_missile.rs (mission_missile),
 src/sim/projectile/launch.rs (both velocities), src/sim/combat/nuke_maker_tests.rs
 (nuke_maker), src/sim/building_art_super.rs (super_anim, opening_super_anim)
-and src/sim/superweapon/ai_fire_tests.rs (the ai_* sections).
+src/sim/superweapon/ai_fire_tests.rs (the ai_* sections) and
+src/sim/superweapon/chronosphere_tests.rs (the chrono_* sections).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -43,6 +44,19 @@ fixture machinery):
   InfantryClass::Array and cell lists (CellClass::GetInfantry 0x47EC40 runs
   natively). Its cell-offset table 0xABD490 lies in BSS: the static
   initializer 0x561910 fills it first.
+- chrono_process: a Chrono Warp's TeleportLocomotionClass from the first
+  frame after Launch case 4 to the end of its piggyback: Process 0x7192F0,
+  TimerCheck 0x719BF0, Is_Ok_To_End 0x719F30 and the constructor, Link and
+  Begin_Piggyback run natively; the driver follows UnitClass::AI's prologue
+  (0x7362A7..0x73635A) and FootClass::AI (0x4DA877, 0x4DAE5F..0x4DAEC3).
+- chrono_update_position: TeleportLocomotionClass::Update_Position 0x718260
+  over fixture cells and objects: the placement (Marked, floor height,
+  bridge height and OnBridge), the destination cell's kills and blocks, and
+  the blocked retarget (its zone and nearby-cell arguments and the new
+  +0x288).
+- chrono_destination: Launch case 4's +0x288 for one object of the source
+  block, the Unit's and the others' arithmetic run as slices of Launch
+  (0x6CC9AF..0x6CCA4C, 0x6CCB6A..0x6CCC2D).
 """
 from pathlib import Path
 import math
@@ -1393,6 +1407,523 @@ def gen_mutator():
     return rows
 
 
+# ---------------------------------------------------------------- chrono_process
+
+# A Chrono Warp's Teleport and its owner as Launch case 4 leaves them
+# (0x6CC9F2..0x6CCB43): a fresh TeleportLocomotionClass (constructor
+# 0x718000, Link_To_Object 0x55A710, Begin_Piggyback 0x719E90, all native)
+# over the owner's locomotor; the owner latched (+0x27C) with its
+# destination (+0x288).
+CHRONO = BASE + 0x300000
+TELEPORT = CHRONO
+OWNER = CHRONO + 0x1000
+OWNER_VT = CHRONO + 0x2000
+OWNER_TYPE = CHRONO + 0x3000
+STASH = CHRONO + 0x4000
+STASH_VT = CHRONO + 0x5000
+WARP_ANIM_TYPE = CHRONO + 0x6000
+CHRONO_OUT_SOUND, CHRONO_IN_SOUND = 12, 13
+SOURCE_COORD = (21 * 256 + 128, 21 * 256 + 128, 0)
+DEST_COORD = (40 * 256 + 128, 40 * 256 + 128, 0)
+
+STUB_TECHNO_TYPE = STUBS + 0x300
+STUB_MARK = STUBS + 0x310
+STUB_SET_LOCATION = STUBS + 0x320
+STUB_SET_HEIGHT = STUBS + 0x330
+STUB_MAP_COORDS = STUBS + 0x340
+STUB_VT_18C = STUBS + 0x350
+STUB_SET_DESTINATION = STUBS + 0x360
+STUB_IDLE = STUBS + 0x370
+STUB_ADDREF = STUBS + 0x380
+
+
+def chrono_process_row(*, blocks=0, chrono_delay=60, stale_delay=0, start=1000,
+                       frames=200):
+    """Frames of a Chrono Warp from the first frame after Launch case 4.
+
+    Each frame follows UnitClass::AI and FootClass::AI's control flow: the
+    prologue's extra Process while WarpingIn (+0x271, vt+0x1D8 0x70C5C0) or
+    BeingWarpedOut (+0x270, vt+0x1D4 0x70C5B0) with the latch
+    (0x7362A7..0x7362F5); the frozen return while BeingWarpedOut
+    (0x7362FB..0x73635A, no Temporal attacker); FootClass::AI's Process
+    (0x4DA877) and its end of the piggyback when Is_Ok_To_End answers true
+    (0x4DAE5F..0x4DAEC3). Process 0x7192F0, its TimerCheck 0x719BF0 and
+    Is_Ok_To_End 0x719F30 run natively. Rows keep the frames whose state,
+    owner bytes, timer or events changed."""
+    emu = Emu()
+    emu.write32(FRAME, start - 1)
+    emu.write32(STASH, STASH_VT)
+    emu.write32(STASH_VT + 4, STUB_ADDREF)
+    emu.hook(STUB_ADDREF, lambda _e: 1, 4)
+    emu.invoke(0x718000, ecx=TELEPORT)
+    emu.invoke(0x55A710, args=[TELEPORT + 4, OWNER])
+    emu.invoke(0x719E90, args=[TELEPORT + 0x18, STASH])
+    emu.write32(OWNER, OWNER_VT)
+    write8(emu, OWNER + 0x8C, 0)
+    write8(emu, OWNER + 0x90, 1)
+    write_coord(emu, OWNER + 0x9C, SOURCE_COORD)
+    write8(emu, OWNER + 0x270, 0)
+    write8(emu, OWNER + 0x271, 0)
+    write8(emu, OWNER + 0x27C, 1)
+    emu.write32(OWNER + 0x280, 0)
+    emu.write32(OWNER + 0x284, stale_delay)
+    write_coord(emu, OWNER + 0x288, DEST_COORD)
+    emu.write32(OWNER + 0x2B4, 0)
+    write8(emu, OWNER + 0x3D5, 1)
+    emu.write32(OWNER + 0x428, 1)
+    emu.write32(OWNER + 0x42C, HOUSE)
+    write8(emu, OWNER + 0x6AD, 0)
+    emu.write32(OWNER_TYPE + 0x574, -1)
+    emu.write32(OWNER_TYPE + 0x578, -1)
+    emu.write32(RULES + 0x218, CHRONO_IN_SOUND)
+    emu.write32(RULES + 0x21C, CHRONO_OUT_SOUND)
+    emu.write32(RULES + 0x33C, WARP_ANIM_TYPE)
+    emu.write32(RULES + 0xBEC, chrono_delay)
+    pending_blocks = [blocks]
+
+    def owner_call(slot, stub, pops, answer):
+        emu.write32(OWNER_VT + slot, stub)
+        emu.hook(stub, answer, pops)
+
+    def event(*fields):
+        emu.events.append(list(fields))
+
+    def set_location(e):
+        coord = read_coord(e, e.arg(0))
+        write_coord(e, OWNER + 0x9C, coord)
+        event('set_location', coord)
+
+    def map_coords(e):
+        out = e.arg(0)
+        x, y, _ = read_coord(e, OWNER + 0x9C)
+        e.uc.mem_write(out, struct.pack('<hh', x // 256, y // 256))
+        return out
+
+    owner_call(0x84, STUB_TECHNO_TYPE, 0, lambda _e: OWNER_TYPE)
+    owner_call(0x124, STUB_MARK, 4, lambda e: event('mark', e.arg(0)))
+    owner_call(0x1B4, STUB_SET_LOCATION, 4, set_location)
+    owner_call(0x1CC, STUB_SET_HEIGHT, 4, lambda e: event('set_height', i32(e.arg(0))))
+    owner_call(0x1B8, STUB_MAP_COORDS, 4, map_coords)
+    owner_call(0x18C, STUB_VT_18C, 4, lambda e: event('vt_18c', e.arg(0)))
+    owner_call(0x480, STUB_SET_DESTINATION, 8,
+               lambda e: event('set_destination', e.arg(0), e.arg(1) & 0xFF))
+    owner_call(0x484, STUB_IDLE, 8, lambda e: event('idle', e.arg(0) & 0xFF, e.arg(1) & 0xFF))
+
+    def anim(e):
+        kind = 'warp' if e.arg(0) == WARP_ANIM_TYPE else hex(e.arg(0))
+        event('anim', kind, read_coord(e, e.arg(1)), e.arg(2), e.arg(3), e.arg(4))
+        return e.uc.reg_read(UC_X86_REG_ECX)
+
+    def sound(e):
+        event('sound', e.uc.reg_read(UC_X86_REG_ECX),
+              read_coord(e, e.uc.reg_read(UC_X86_REG_EDX)))
+        return 0
+
+    def update_position(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != TELEPORT:
+            raise OracleError('Update_Position on an unexpected object')
+        coord = [i32(e.arg(0)), i32(e.arg(1)), i32(e.arg(2))]
+        place = e.arg(3) & 0xFF
+        event('update_position', coord, place)
+        if place:
+            write_coord(e, TELEPORT + 0x28, coord)
+            return 1
+        if pending_blocks[0]:
+            pending_blocks[0] -= 1
+            write_coord(e, OWNER + 0x288, [coord[0] + 256, coord[1], coord[2]])
+            return 0
+        return 1
+
+    def validation(e):
+        event('post_warp_validation', [i32(e.arg(0)), i32(e.arg(1)), i32(e.arg(2))])
+
+    emu.hook(0x421EA0, anim, 0x1C)
+    emu.hook(0x7509E0, sound, 4)
+    emu.hook(0x718260, update_position, 0x10)
+    emu.hook(0x578460, lambda _e: 1, 8)
+    emu.hook(0x7187A0, validation, 0xC)
+    emu.hook(0x70C610, lambda e: event('archive_target', e.arg(0)), 4)
+    emu.hook(0x70F770, lambda _e: event('shorten_scan'), 0)
+
+    def acquire(_e):
+        event('passive_acquire')
+        return 0
+
+    emu.hook(0x709480, acquire, 0)
+
+    def snapshot():
+        return [emu.read_i32(TELEPORT + 0x38), read8(emu, OWNER + 0x270),
+                read8(emu, OWNER + 0x271), read8(emu, OWNER + 0x27C),
+                emu.read_i32(TELEPORT + 0x3C), emu.read_i32(TELEPORT + 0x44),
+                emu.read_i32(OWNER + 0x284)]
+
+    def process(caller):
+        before = emu.read_i32(TELEPORT + 0x38)
+        emu.events = []
+        emu.invoke(0x7192F0, args=[TELEPORT + 4])
+        return [caller, before, emu.read_i32(TELEPORT + 0x38), emu.events]
+
+    rows = []
+    last = None
+    ended = None
+    for frame in range(start, start + frames):
+        emu.write32(FRAME, frame)
+        calls = []
+        if read8(emu, OWNER + 0x271) or (read8(emu, OWNER + 0x270)
+                                        and read8(emu, OWNER + 0x27C)):
+            calls.append(process('prologue'))
+        if not read8(emu, OWNER + 0x270):
+            calls.append(process('foot'))
+            if emu.invoke(0x719F30, args=[TELEPORT + 0x18]) & 0xFF:
+                ended = frame - start
+        state = snapshot()
+        timer_start = state[4] - start if state[4] != -1 else -1
+        state = state[:4] + [timer_start] + state[5:]
+        calls = [call for call in calls if call[1] != call[2] or call[3]]
+        if calls or state != last or ended is not None:
+            rows.append(dict(frame=frame - start, calls=calls, state=state[0],
+                             warped_out=state[1], warping_in=state[2], latched=state[3],
+                             timer=[state[4], state[5]], delay=state[6]))
+        last = state
+        if ended is not None:
+            break
+    if ended is None:
+        raise OracleError('the warp did not end')
+    return dict(blocks=blocks, chrono_delay=chrono_delay, stale_delay=stale_delay,
+                ended=ended, frames=rows)
+
+
+def chrono_process():
+    return [chrono_process_row(),
+            chrono_process_row(blocks=1),
+            chrono_process_row(blocks=2),
+            chrono_process_row(stale_delay=60),
+            chrono_process_row(blocks=1, chrono_delay=0)]
+
+
+# ---------------------------------------------------------------- chrono_update_position
+
+CHRONO_CELLS = CHRONO + 0x10000
+CHRONO_CELL_VT = CHRONO + 0x8000
+CHRONO_OBJECTS = CHRONO + 0x20000
+CHRONO_OBJECT_VT = CHRONO + 0x9000
+CHRONO_OBJECT_TYPES = CHRONO + 0x30000
+C4_WARHEAD = CHRONO + 0xA000
+STUB_CELL_COORDS = STUBS + 0x390
+STUB_OBJ_CURTAIN = STUBS + 0x3A0
+STUB_OBJ_WHAT = STUBS + 0x3B0
+STUB_OBJ_COORDS = STUBS + 0x3C0
+STUB_OBJ_TYPE = STUBS + 0x3D0
+STUB_OBJ_DAMAGE = STUBS + 0x3E0
+STUB_PUT = STUBS + 0x3F0
+STUB_REMOVE = STUBS + 0x400
+BRIDGE_HEIGHT = 416  # 0xB0EC2C as its initializer 0x717F60 leaves it: four 104-lepton levels
+
+
+def cell_of(coord):
+    return (coord[0] // 256, coord[1] // 256)
+
+
+
+class ChronoMap:
+    """MapClass::operator[] by coordinate 0x565730 and by cell 0x5657A0,
+    answering one fixture CellClass per cell: MapCoords (+0x24), no tube
+    (+0x44 = -1), the row's flags (+0x140), the ground and bridge object
+    lists (+0xE4, +0xE8) and GetCoords vt+0x48 (the centre raised 104 leptons
+    per level)."""
+
+    def __init__(self, emu, cells, heads=None):
+        self.emu = emu
+        self.cells = cells
+        self.heads = heads or {}
+        self.addresses = {}
+        emu.write32(CHRONO_CELL_VT + 0x48, STUB_CELL_COORDS)
+        emu.hook(0x565730, lambda e: self.address(cell_of(read_coord(e, e.arg(0)))), 4)
+        emu.hook(0x5657A0, lambda e: self.address(read_cell(e, e.arg(0))), 4)
+        emu.hook(STUB_CELL_COORDS, self.coords, 4)
+
+    def address(self, cell):
+        cell = tuple(cell)
+        if cell not in self.addresses:
+            emu = self.emu
+            this = CHRONO_CELLS + 0x200 * len(self.addresses)
+            facts = self.cells.get(cell, {})
+            emu.write32(this, CHRONO_CELL_VT)
+            emu.uc.mem_write(this + 0x24, struct.pack('<hh', *cell))
+            emu.write32(this + 0x44, -1)
+            emu.write32(this + 0x140, facts.get('flags', 0))
+            emu.write32(this + 0xE4, self.heads.get((cell, 'ground', 'first'), 0))
+            emu.write32(this + 0xE8, self.heads.get((cell, 'bridge', 'first'), 0))
+            self.addresses[cell] = this
+        return self.addresses[cell]
+
+    def coords(self, emu):
+        this = emu.uc.reg_read(UC_X86_REG_ECX)
+        cell = next(cell for cell, address in self.addresses.items() if address == this)
+        level = self.cells.get(cell, {}).get('level', 0)
+        out = emu.arg(0)
+        write_coord(emu, out, [cell[0] * 256 + 128, cell[1] * 256 + 128,
+                               level * LEVEL_LEPTONS])
+        return out
+
+
+def chrono_cells(cells):
+    return [[x, y, facts.get('level', 0), facts.get('flags', 0)]
+            for (x, y), facts in sorted(cells.items())]
+
+
+def update_position_row(*, place, coord, owner='unit', owner_coord=SOURCE_COORD,
+                        marked=None, on_bridge=False, mz=0, cells=None, objects=(),
+                        found=(41, 39), floor=0):
+    """Update_Position 0x718260 on a fixture map. `cells` maps a cell to its
+    level and flags; `objects` lists (name, cell, list, what, foot, curtained,
+    coords, strength) in each cell list's order; `floor` answers the cell
+    floor height 0x578080."""
+    cells = dict(cells or {})
+    emu = Emu()
+    emu.write32(FRAME, 4000)
+    emu.write32(0xB0EC2C, BRIDGE_HEIGHT)
+    emu.invoke(0x718000, ecx=TELEPORT)
+    emu.invoke(0x55A710, args=[TELEPORT + 4, OWNER])
+    if marked is not None:
+        write_coord(emu, TELEPORT + 0x28, marked)
+    emu.write32(OWNER, OWNER_VT)
+    write8(emu, OWNER + 0x8C, on_bridge)
+    write_coord(emu, OWNER + 0x9C, owner_coord)
+    write_coord(emu, OWNER + 0x288, coord)
+    emu.write32(OWNER_TYPE + 0x5B4, mz)
+    emu.write32(OWNER_TYPE + 0xA0, 300)
+    emu.write32(RULES + 0xFA8, C4_WARHEAD)
+    names = {OWNER: 'owner'}
+    facts = {OWNER: dict(what=0xF if owner == 'infantry' else 1, coords=list(owner_coord),
+                         curtained=False, type=OWNER_TYPE)}
+    heads = {}
+    for index, (name, cell, layer, what, foot, curtained, at, strength) in enumerate(objects):
+        this = CHRONO_OBJECTS + 0x400 * index
+        kind = CHRONO_OBJECT_TYPES + 0x100 * index
+        emu.write32(this, CHRONO_OBJECT_VT)
+        write8(emu, this + 0x14, 0x4 if foot else 0)
+        emu.write32(this + 0x30, 0)
+        emu.write32(kind + 0xA0, strength)
+        names[this] = name
+        facts[this] = dict(what=what, coords=list(at), curtained=curtained, type=kind)
+        key = (tuple(cell), layer)
+        if key in heads:
+            emu.write32(heads[key] + 0x30, this)
+        else:
+            heads[(tuple(cell), layer, 'first')] = this
+        heads[key] = this
+    ChronoMap(emu, cells, heads)
+
+    def fact(e, key):
+        return facts[e.uc.reg_read(UC_X86_REG_ECX)][key]
+
+    def obj_coords(e):
+        out = e.arg(0)
+        write_coord(e, out, fact(e, 'coords'))
+        return out
+
+    def damage(e):
+        damage_value = e.read_i32(e.arg(0))
+        e.events.append(['damage', names[e.uc.reg_read(UC_X86_REG_ECX)], damage_value,
+                         i32(e.arg(1)), 'C4' if e.arg(2) == C4_WARHEAD else hex(e.arg(2)),
+                         e.arg(3), e.arg(4) & 0xFF, e.arg(5) & 0xFF, e.arg(6)])
+        return 0
+
+    for vtable in (OWNER_VT, CHRONO_OBJECT_VT):
+        emu.write32(vtable + 0x160, STUB_OBJ_CURTAIN)
+        emu.write32(vtable + 0x2C, STUB_OBJ_WHAT)
+        emu.write32(vtable + 0x48, STUB_OBJ_COORDS)
+        emu.write32(vtable + 0x84, STUB_OBJ_TYPE)
+        emu.write32(vtable + 0x16C, STUB_OBJ_DAMAGE)
+    emu.write32(OWNER_VT + 0xF0, STUB_PUT)
+    emu.write32(OWNER_VT + 0xF4, STUB_REMOVE)
+    emu.hook(STUB_OBJ_CURTAIN, lambda e: int(fact(e, 'curtained')), 0)
+    emu.hook(STUB_OBJ_WHAT, lambda e: fact(e, 'what'), 0)
+    emu.hook(STUB_OBJ_COORDS, obj_coords, 4)
+    emu.hook(STUB_OBJ_TYPE, lambda e: fact(e, 'type'), 0)
+    emu.hook(STUB_OBJ_DAMAGE, damage, 0x1C)
+    emu.hook(STUB_PUT, lambda e: e.events.append(['put', read_coord(e, e.arg(0))]), 4)
+    emu.hook(STUB_REMOVE, lambda e: e.events.append(['remove', read_coord(e, e.arg(0))]), 4)
+
+    def floor_height(e):
+        e.events.append(['floor', read_coord(e, e.arg(0))])
+        return floor
+
+    def zone(e):
+        e.events.append(['zone', read_cell(e, e.arg(0)), e.arg(1), e.arg(2) & 0xFF])
+        return 7
+
+    def nearby(e):
+        args = [e.arg(index) for index in range(15)]
+        e.events.append(['nearby', read_cell(e, args[1]), args[2], args[3], args[4],
+                         args[5] & 0xFF, args[6], args[7], args[8] & 0xFF, args[9] & 0xFF,
+                         args[10] & 0xFF, args[11] & 0xFF, read_cell(e, args[12]),
+                         args[13] & 0xFF, args[14] & 0xFF])
+        e.uc.mem_write(args[0], struct.pack('<hh', *found))
+        return args[0]
+
+    emu.hook(0x578080, floor_height, 4)
+    emu.hook(0x56D230, zone, 0xC)
+    emu.hook(0x56DC20, nearby, 0x3C)
+    result = emu.invoke(0x718260, ecx=TELEPORT, args=[*map(u32_value, coord), int(place)]) & 0xFF
+    return dict(place=place, coord=list(coord), owner=owner, owner_coord=list(owner_coord),
+                marked=None if marked is None else list(marked), on_bridge=on_bridge, mz=mz,
+                cells=chrono_cells(cells),
+                objects=[[name, list(cell), layer, what, foot, curtained, list(at), strength]
+                         for name, cell, layer, what, foot, curtained, at, strength in objects],
+                found=list(found), floor=floor, result=result, events=emu.events,
+                marked_after=read_coord(emu, TELEPORT + 0x28),
+                destination_after=read_coord(emu, OWNER + 0x288),
+                on_bridge_after=read8(emu, OWNER + 0x8C))
+
+
+def u32_value(value):
+    return value & 0xFFFFFFFF
+
+
+def update_position():
+    """Rows over a flat map around DEST_COORD's cell (40, 40). Each blocked
+    row's `found` is the cell VERA's Find_Nearby_Passable_Cell port picks in
+    the same world (chronosphere_tests rebuilds it); the native search
+    itself is a stub here. `spot` is where VERA's spawn puts an
+    infantryman in the cell."""
+    dest = list(DEST_COORD)
+    sub = [dest[0] + 30, dest[1] - 20, 215]
+    spot = [dest[0] + 64, dest[1] - 64, 0]
+    south = [40 * 256 + 128, 42 * 256 + 128, 0]
+
+    def unit(name, cell=(40, 40), at=None, curtained=False, layer='ground'):
+        return (name, cell, layer, 1, True, curtained, at or dest, 400)
+
+    def infantry(name, at, cell=(40, 40)):
+        return (name, cell, 'ground', 0xF, True, False, at, 125)
+
+    def building(cell, at):
+        return ('GAPOWR', cell, 'ground', 6, False, False, at, 750)
+
+    rows = [
+        # Placing: Marked empty, then set; the bridge height enters only
+        # when the owner was not already on the bridge.
+        update_position_row(place=True, coord=sub, floor=208, cells={(40, 40): {'level': 2}}),
+        update_position_row(place=True, coord=sub, marked=[100, 200, 0], floor=208,
+                            cells={(40, 40): {'level': 2, 'flags': 0x100}}),
+        update_position_row(place=True, coord=sub, marked=[100, 200, 0], floor=208,
+                            on_bridge=True, cells={(40, 40): {'level': 2, 'flags': 0x100}}),
+        update_position_row(place=True, coord=sub, floor=0, on_bridge=True),
+        # Testing: an empty cell; Foot victims; the Iron Curtain; a building.
+        update_position_row(place=False, coord=dest),
+        update_position_row(place=False, coord=dest, marked=[100, 200, 0]),
+        update_position_row(place=False, coord=dest, objects=[unit('HTNK')]),
+        update_position_row(place=False, coord=dest, objects=[unit('HTNK', curtained=True)]),
+        update_position_row(place=False, coord=dest,
+                            objects=[unit('HTNK', curtained=True), unit('MTNK')]),
+        update_position_row(place=False, coord=dest, objects=[building((40, 40), dest)],
+                            found=(40, 39)),
+        # Blocked away from the cell centre, onto a raised cell: the found
+        # cell keeps the offset from the blocked cell's coordinate.
+        update_position_row(place=False, coord=[south[0] + 30, south[1] - 20, 0],
+                            objects=[building((40, 42), south)], found=(40, 41),
+                            cells={(40, 41): {'level': 1}}),
+        update_position_row(place=False, coord=[south[0] + 30, south[1] - 20, 215],
+                            objects=[building((40, 42), south)], found=(41, 41),
+                            cells={(40, 42): {'level': 2}, (41, 39): {'level': 1}}),
+        # Infantry: killed only at the warping infantryman's exact coordinate.
+        update_position_row(place=False, coord=spot, owner='infantry',
+                            objects=[infantry('E1', spot)]),
+        update_position_row(place=False, coord=dest, owner='infantry',
+                            objects=[infantry('E1', spot)]),
+        update_position_row(place=False, coord=dest, owner='infantry',
+                            objects=[infantry('E1', spot), unit('HTNK')]),
+        update_position_row(place=False, coord=dest, objects=[infantry('E1', spot)]),
+        # Bridges: no deck flag blocks; the bridge list is walked instead.
+        update_position_row(place=False, coord=dest, cells={(40, 40): {'flags': 0x100}}),
+        update_position_row(place=False, coord=dest, cells={(40, 40): {'flags': 0x300}},
+                            objects=[unit('HTNK', layer='bridge'), unit('MTNK')]),
+    ]
+    # The MovementZone handed to the nearby-cell search.
+    for mz in range(1, 13):
+        rows.append(update_position_row(place=False, coord=dest, mz=mz,
+                                        objects=[building((40, 40), dest)]))
+    return rows
+
+
+# ---------------------------------------------------------------- chrono_destination
+
+CASE4_OFFSET = CHRONO + 0xB000
+CASE4_PCELL = CHRONO + 0xB010
+CASE4_SUPER = CHRONO + 0xB100
+CASE4_OBJECT = CHRONO + 0xC000
+CASE4_OBJECT_VT = CHRONO + 0xD000
+STUB_CASE4_WHAT = STUBS + 0x410
+STUB_CASE4_COORDS = STUBS + 0x420
+
+
+def chrono_destination_row(*, what, offset, coords, src=(21, 21), target=(40, 40),
+                           cells=None):
+    """Launch case 4's `+0x288` for one object of the source block: the
+    Unit's (0x6CC9AF..0x6CCA4C) and then the others' (0x6CCB6A..0x6CCC2D),
+    run as slices on Launch's frame (the offset entry at [esp+0x2C], the
+    clicked cell at [esp+0x1E8], the Super at [esp+0x44]). The bridge height
+    0xB0C07C holds 416, as its initializer 0x6CAD80 leaves it."""
+    cells = dict(cells or {})
+    emu = Emu()
+    emu.write32(0xB0C07C, BRIDGE_HEIGHT)
+    ChronoMap(emu, cells)
+    emu.uc.mem_write(CASE4_OFFSET, struct.pack('<hh', *offset))
+    emu.uc.mem_write(CASE4_PCELL, struct.pack('<hh', *target))
+    emu.uc.mem_write(CASE4_SUPER + 0x62, struct.pack('<hh', *src))
+    emu.write32(CASE4_OBJECT, CASE4_OBJECT_VT)
+    emu.write32(CASE4_OBJECT_VT + 0x2C, STUB_CASE4_WHAT)
+    emu.write32(CASE4_OBJECT_VT + 0x48, STUB_CASE4_COORDS)
+    emu.hook(STUB_CASE4_WHAT, lambda _e: what, 0)
+    emu.hook(STUB_CASE4_COORDS, coords_stub(coords), 4)
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    emu.write32(sp + 0x2C, CASE4_OFFSET)
+    emu.write32(sp + 0x44, CASE4_SUPER)
+    emu.write32(sp + 0x1E8, CASE4_PCELL)
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_ESI, CASE4_OBJECT)
+    uc.reg_write(UC_X86_REG_EBP, 0)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x6CC9AF, 0x6CCA4C, count=10_000)
+    run_checked(uc, 0x6CCB6A, 0x6CCC2D, count=10_000)
+    return dict(what=what, offset=list(offset), coords=list(coords), src=list(src),
+                target=list(target), cells=chrono_cells(cells),
+                destination=read_coord(emu, sp + 0x10))
+
+
+def chrono_destination():
+    """Objects of a source block at (21, 21) warped to (40, 40); `spot` is
+    where VERA's spawn puts an infantryman in a cell."""
+    def centre(cell, z=0):
+        return [cell[0] * 256 + 128, cell[1] * 256 + 128, z]
+
+    def spot(cell, z=0):
+        x, y, _ = centre(cell)
+        return [x + 64, y - 64, z]
+
+    unit, infantry = 1, 0xF
+    return [
+        chrono_destination_row(what=unit, offset=(0, 0), coords=centre((21, 21))),
+        chrono_destination_row(what=unit, offset=(-1, -1), coords=centre((20, 20)),
+                               cells={(39, 39): {'level': 1}}),
+        chrono_destination_row(what=unit, offset=(1, 0), coords=centre((22, 21)),
+                               cells={(41, 40): {'flags': 0x100}}),
+        chrono_destination_row(what=unit, offset=(0, 1), coords=centre((21, 22), 104),
+                               cells={(21, 22): {'level': 1}, (40, 41): {'level': 2}}),
+        chrono_destination_row(what=infantry, offset=(0, 0), coords=spot((21, 21)),
+                               cells={(40, 40): {'level': 2}}),
+        chrono_destination_row(what=infantry, offset=(-1, 0), coords=spot((20, 21), 104),
+                               cells={(20, 21): {'level': 1}}),
+        chrono_destination_row(what=infantry, offset=(-1, 0), coords=spot((20, 21)),
+                               cells={(21, 21): {'level': 3}, (40, 40): {'level': 4}}),
+        chrono_destination_row(what=infantry, offset=(1, 1), coords=spot((22, 22)),
+                               cells={(41, 41): {'flags': 0x100}}),
+    ]
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -1401,6 +1932,9 @@ def generate():
             'ai_try_fire': try_fire(), 'ai_best_rally_target': best_rally_target(),
             'ai_ground_rally_point': ground_rally_point(),
             'ai_genetic_mutator': gen_mutator(),
+            'chrono_process': chrono_process(),
+            'chrono_update_position': update_position(),
+            'chrono_destination': chrono_destination(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -1418,7 +1952,10 @@ if __name__ == '__main__':
                'bullet and velocity bits, and both SuperAnim blocks; the computer\'s '
                'superweapon use: AI_TryFireSW\'s gates, arms and Force Shield timing, '
                'AI_FindBestRallyTarget\'s values, draws and pick, AI_GroundRallyPoint\'s '
-               'cell and AI_Fire_GenMutator\'s count and pick'),
+               'cell and AI_Fire_GenMutator\'s count and pick; the Chrono Warp\'s Teleport '
+               'states, owner bytes, timers and end frame, unblocked, blocked once or '
+               'twice and with a stale ChronoDelay; Update_Position\'s placement, '
+               'kills, blocks and blocked retarget; Launch case 4\'s destinations'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -1448,10 +1985,35 @@ if __name__ == '__main__':
                        'AI: object WhatAmI vt+0x2C, GetCoords vt+0x48, InWhichLayer vt+0x78, '
                        'GetOwningHouse vt+0x3C, IsHighFlying vt+0x54 and GetCell vt+0x1BC '
                        'answer supplied facts; MapClass::operator[] 0x5657A0 answers fixture '
-                       'cells; every IsCellInPlayfield lookup misses (level and slope 0)'],
+                       'cells; every IsCellInPlayfield lookup misses (level and slope 0)',
+                       'chrono_process: Update_Position 0x718260 is a recorded stub that '
+                       'answers blocked for the row\'s first calls (moving +0x288 one cell '
+                       'east) and otherwise true, setting Marked when placing; the owner\'s '
+                       'vtable calls, the anim constructor 0x421EA0, VocClass::PlayAt '
+                       '0x7509E0, PostWarpValidation 0x7187A0, Set_ArchiveTarget 0x70C610 and '
+                       'ShortenPassiveScanTimer 0x70F770 are recorded stubs; '
+                       'Passive_Target_Acquire 0x709480 answers false and IsCellInPlayfield '
+                       '0x578460 true; the frame driver reads +0x270/+0x271/+0x27C for the '
+                       'class AI gates (no Temporal attacker, the Unit reaches FootClass::AI)',
+                       'chrono_update_position: MapClass::operator[] by coordinate 0x565730 '
+                       'and by cell 0x5657A0 answer fixture cells (GetCoords: the centre raised '
+                       '104 leptons per level); object IsIronCurtained vt+0x160, WhatAmI '
+                       'vt+0x2C, GetCoords vt+0x48, GetTechnoType vt+0x84, ReceiveDamage '
+                       'vt+0x16C and the owner\'s PUT/REMOVE vt+0xF0/vt+0xF4 are supplied or '
+                       'recorded stubs; the floor height 0x578080, the zone 0x56D230 (7) and '
+                       'Find_Nearby_Passable_Cell 0x56DC20 answer the row; the bridge height '
+                       '0xB0EC2C holds 416, as its initializer 0x717F60 leaves it',
+                       'chrono_destination: the slices run on a fixture Launch frame (the '
+                       'offset entry, the clicked cell and the Super in their stack slots); '
+                       'object WhatAmI vt+0x2C and GetCoords vt+0x48 answer the row; the '
+                       'bridge height 0xB0C07C holds 416, as its initializer 0x6CAD80 '
+                       'leaves it'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
                       'OnConstructionComplete_super_anim': 0x4463F0,
                       'AI_TryFireSW': 0x5098F0, 'AI_FindBestRallyTarget': 0x50CBF0,
-                      'AI_GroundRallyPoint': 0x509CD0, 'AI_Fire_GenMutator': 0x509F60}))
+                      'AI_GroundRallyPoint': 0x509CD0, 'AI_Fire_GenMutator': 0x509F60,
+                      'TeleportLocomotionClass::Process': 0x7192F0,
+                      'TeleportLocomotionClass::Update_Position': 0x718260,
+                      'SuperClass::Launch_case4_destination': 0x6CC9AF}))

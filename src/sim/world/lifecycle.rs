@@ -2616,7 +2616,8 @@ impl Simulation {
         {
             log::debug!("infantry {stable_id} Limbo Stop_Driver: {cause}");
         }
-        self.release_track_occupation_before_foot_limbo(stable_id);
+        // 0x004DB324: the active locomotor's +9C(0) on the first Limbo.
+        self.locomotor_mark_all_occupation_bits_up(stable_id);
         // The Drive instance retains head-to and handoff projections of that
         // +9C(0) release; they leave with it on the first Limbo.
         if let Some(entity) = self.substrate.entities.get_mut(stable_id)
@@ -2629,7 +2630,6 @@ impl Simulation {
                 stable_id,
             );
         }
-        self.release_walk_occupation_before_foot_limbo(stable_id);
         // FootClass::Limbo (0x004DB260) then Locks the locomotor (+0xB0) on
         // the first Limbo, so a boarded or stored man keeps no Walk
         // destination or head to resume.
@@ -2639,8 +2639,6 @@ impl Simulation {
         {
             locomotor.walk_lock();
         }
-        self.release_teleport_occupation_before_foot_limbo(stable_id);
-        self.release_jumpjet_occupation_before_foot_limbo(stable_id);
         self.release_foot_air_tracker_before_limbo(stable_id);
         if self
             .substrate

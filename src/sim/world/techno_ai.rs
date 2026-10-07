@@ -24,6 +24,7 @@ pub(crate) use mission_handlers::dispatch_foot_mission;
 pub(crate) use mission_handlers::foot_enter_idle_mode_selection;
 pub(crate) use mission_handlers::foot_unlimbo_idle_mode;
 pub(crate) use mission_handlers::queue_foot_enter_idle_mode;
+pub(crate) use target_scan::passive_target_acquire;
 pub(crate) use target_scan::team_leader_greatest_threat;
 
 use mission_handlers::*;
@@ -571,7 +572,7 @@ fn techno_ai_shell(
         if category == EntityCategory::Structure {
             sim.update_building_damage_fire(id, rules);
         }
-        if sim.temporal_ai_prologue(id, rules, ctx.overlay_registry) {
+        if sim.temporal_ai_prologue(id, rules, ctx, &mut outcome.bridge_state_changed) {
             return;
         }
     }

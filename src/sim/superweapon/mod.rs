@@ -12,8 +12,12 @@
 
 pub(crate) mod ai_fire;
 pub mod cell_grid;
+mod chronosphere;
+pub(crate) use chronosphere::CHRONO_WARP_SELECTION_INDEX;
 #[cfg(test)]
 mod cell_receiver_tests;
+#[cfg(test)]
+pub(crate) mod chronosphere_tests;
 mod fire;
 pub mod force_shield;
 pub mod genetic_converter;
@@ -147,6 +151,17 @@ pub struct SuperWeaponInstance {
     pub charge_drain_state: i32,
     /// Native frame when the SW became ready. -1 = not ready yet.
     pub ready_tick: i32,
+    /// `SuperClass+0x62` (ChronoMapCoords): the cell a Chronosphere click
+    /// stores (`0x006CC3D3`) and a PostClick Fire_SW copies from its
+    /// PreDependent Super (`0x004FAE8F`). Construction copies the static
+    /// `0x00B0C000`, zeroed by its initializer `0x006CADB0`.
+    #[serde(default)]
+    chrono_cell: (u16, u16),
+    /// `SuperClass+0x68`: the ChronoPlacement anim the Chronosphere loops
+    /// over that cell (`SuperClass::CreateChronoAnim @ 0x006CB3A0`) until a
+    /// release winds it down ([`Simulation::release_super_anim`]).
+    #[serde(default)]
+    placement_anim: Option<crate::sim::anim_class::AnimId>,
 }
 
 impl SuperWeaponInstance {
@@ -178,7 +193,19 @@ impl SuperWeaponInstance {
             charge_duration: 0,
             charge_drain_state: -1,
             ready_tick: -1,
+            chrono_cell: (0, 0),
+            placement_anim: None,
         }
+    }
+
+    /// `SuperClass+0x62`, the Chronosphere's source cell.
+    pub(crate) fn chrono_cell(&self) -> (u16, u16) {
+        self.chrono_cell
+    }
+
+    /// `SuperClass+0x68`, the ChronoPlacement anim the Super holds.
+    pub(crate) fn placement_anim(&self) -> Option<crate::sim::anim_class::AnimId> {
+        self.placement_anim
     }
 
     /// Activate (grant) this SW and start charging.
@@ -239,8 +266,6 @@ impl SuperWeaponInstance {
     /// held. The recharge is `RechargeTime=`: the Super's custom charge
     /// time stays -1 (no VERA trigger sets it). `CameoChargeState`, -1 on
     /// both restarts, is the sidebar's.
-    /// RESIDUAL (the Chronosphere chain): the PreClick animation release
-    /// (`0x006CBAAE..0x006CBAF1`) of a type that is neither.
     fn finish_click_fire(&mut self, sw: &SuperWeaponType, current_frame: u32) {
         let frame = current_frame as i32;
         if !sw.post_click {
@@ -256,6 +281,26 @@ impl SuperWeaponInstance {
         {
             self.store_charge_timer(CdTimer::started(frame, sw.recharge_time_frames));
         }
+    }
+
+    /// `SuperClass::StopPreclickAnim @ 0x006CB830` after its anim release
+    /// ([`Simulation::release_super_anim`]): a granted Super without a
+    /// charge restarts its recharge, unless it holds a type that is not
+    /// `PreClick=` (`0x006CB89F..0x006CB8FF`). `CameoChargeState` (`+0x78`,
+    /// -1 here) is the sidebar's; a `UseChargeDrain=` type's drain state
+    /// (`+0x7C`) returns to 0. Returns whether it restarted.
+    pub(super) fn stop_preclick(&mut self, sw: &SuperWeaponType, current_frame: u32) -> bool {
+        if !self.is_active || self.is_ready || (self.is_suspended && !sw.pre_click) {
+            return false;
+        }
+        self.store_charge_timer(CdTimer::started(
+            current_frame as i32,
+            sw.recharge_time_frames,
+        ));
+        if sw.use_charge_drain {
+            self.charge_drain_state = 0;
+        }
+        true
     }
 
     /// Compute charge progress as 0.0–1.0 for sidebar display.
@@ -378,6 +423,7 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
     // Collect owners to avoid borrow conflict on sim.super_weapons.
     let owners: Vec<InternedId> = sim.super_weapons.keys().copied().collect();
     let mut became_ready: Vec<(InternedId, InternedId)> = Vec::new();
+    let mut hold_changed: Vec<(InternedId, InternedId)> = Vec::new();
     for owner_id in owners {
         let is_low_power = sim
             .power_states
@@ -396,10 +442,16 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
             // holds while the house is short of power, and every type is
             // released otherwise, charged or not. RESIDUAL: native also
             // holds one whose providing building is offline (`+0x660`).
-            if !is_low_power {
-                inst.suspend(false, sw.is_some_and(|sw| sw.manual_control), current_frame);
+            let manual_control = sw.is_some_and(|sw| sw.manual_control);
+            let changed = if !is_low_power {
+                inst.suspend(false, manual_control, current_frame)
             } else if sw.is_none_or(|sw| sw.is_powered) {
-                inst.suspend(true, sw.is_some_and(|sw| sw.manual_control), current_frame);
+                inst.suspend(true, manual_control, current_frame)
+            } else {
+                false
+            };
+            if changed {
+                hold_changed.push((owner_id, inst.type_id));
             }
             if inst.is_ready {
                 continue;
@@ -414,6 +466,10 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
                 }
             }
         }
+    }
+    for (owner, sw_type) in hold_changed {
+        sim.sound_events
+            .push(SimSoundEvent::SuperWeaponStatusChanged { owner, sw_type });
     }
     // `SuperClass::AI_Ready @ 0x006CBCA0`: `+0x6F` set at `0x006CBDB6`, then
     // `0x006CBE63 PlayEVA(<Type=-indexed *Ready line>, -1)` when the announce
@@ -449,7 +505,9 @@ pub fn tick_active_superweapon_effects(
 /// `SuperClass @ 0x006CB7B0` (label `SuperClass__Deactivate`), which clears
 /// `+0x6D` and the charged flag `+0x6F`. Grant returns early only while
 /// `+0x6D` is set, and otherwise restarts the recharge timer at the full
-/// recharge time.
+/// recharge time. Each loss is reported as
+/// [`SimSoundEvent::SuperWeaponStatusChanged`], as is each hold change of
+/// [`tick_superweapon_instances`].
 pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
     use std::collections::BTreeSet;
 
@@ -514,12 +572,16 @@ pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, ow
         .filter(|(sw_iid, inst)| inst.is_active && !granted.contains(sw_iid))
         .map(|(sw_iid, _)| *sw_iid)
         .collect();
-    for sw_iid in revoke_ids {
+    for &sw_iid in &revoke_ids {
         let sw_str = sim.interner.resolve(sw_iid).to_string();
         log::info!("SuperWeapon '{}' revoked from '{}'", sw_str, owner_str);
         if let Some(inst) = weapons.get_mut(&sw_iid) {
             inst.deactivate();
         }
+    }
+    for sw_type in revoke_ids {
+        sim.sound_events
+            .push(SimSoundEvent::SuperWeaponStatusChanged { owner, sw_type });
     }
 }
 
@@ -658,5 +720,60 @@ mod frame_tests {
             .expect("second silo spawns");
         refresh_super_weapons_for_owner(&mut sim, &rules, owner);
         assert_eq!(weapon(&sim), (true, false, 300, 900));
+    }
+
+    /// `HouseClass @ 0x0050AF10` acts on a Super's hold changing
+    /// (`SuperClass::Suspend @ 0x006CB4D0` returned true) or its loss
+    /// (`0x006CB7B0` returned true): each is reported once, the grant is not.
+    #[test]
+    fn hold_changes_and_losses_report_the_super() {
+        use crate::rules::ini_parser::IniFile;
+        let ini = IniFile::from_str(
+            "[SuperWeaponTypes]\n1=NukeSpecial\n[NukeSpecial]\nType=MultiMissile\n\
+             RechargeTime=1\nIsPowered=yes\n\
+             [InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+             [BuildingTypes]\n1=NAMISL\n\
+             [NAMISL]\nStrength=1000\nCost=100\nTechLevel=1\nOwner=Americans\n\
+             SuperWeapon=NukeSpecial\n",
+        );
+        let mut rules = RuleSet::from_ini(&ini).expect("superweapon status rules should parse");
+        rules.set_buildup_control_for_test("NAMISL", [0, 25, 2]);
+        let mut sim = Simulation::new();
+        let owner = sim.interner.intern("Americans");
+        let nuke = sim.interner.intern("NukeSpecial");
+        let reports = |sim: &Simulation| {
+            sim.sound_events
+                .iter()
+                .filter(|event| {
+                    matches!(
+                        event,
+                        SimSoundEvent::SuperWeaponStatusChanged { owner: o, sw_type }
+                            if *o == owner && *sw_type == nuke
+                    )
+                })
+                .count()
+        };
+
+        let silo = sim
+            .spawn_object("NAMISL", "Americans", 10, 10, 0, &rules)
+            .expect("silo spawns");
+        refresh_super_weapons_for_owner(&mut sim, &rules, owner);
+        sim.super_weapons_initialized = true;
+        tick_superweapon_instances(&mut sim, &rules);
+        assert_eq!(reports(&sim), 0, "the grant");
+
+        sim.power_states.entry(owner).or_default().is_low_power = true;
+        tick_superweapon_instances(&mut sim, &rules);
+        tick_superweapon_instances(&mut sim, &rules);
+        assert_eq!(reports(&sim), 1, "the hold");
+
+        sim.power_states.entry(owner).or_default().is_low_power = false;
+        tick_superweapon_instances(&mut sim, &rules);
+        assert_eq!(reports(&sim), 2, "the release");
+
+        assert!(crate::sim::production::sell_building_now_for_test(
+            &mut sim, &rules, silo
+        ));
+        assert_eq!(reports(&sim), 3, "the loss");
     }
 }

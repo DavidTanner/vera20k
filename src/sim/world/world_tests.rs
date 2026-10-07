@@ -6041,8 +6041,6 @@ fn test_select_command_rejects_limbo_object() {
 
 #[test]
 fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
-    use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
-
     let mut sim = Simulation::new();
     let rules = selection_gate_test_rules();
     let tank = sim
@@ -6052,16 +6050,9 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
         .spawn_object("MTNK", "Americans", 21, 22, 0, &rules)
         .expect("spawn second MTNK");
     assert!(sim.try_select_object(tank, Some(&rules)));
-    sim.substrate
-        .entities
-        .get_mut(tank)
-        .unwrap()
-        .install_teleport_state_for_test(Some(TeleportState::for_test(
-            TeleportPhase::Relocate,
-            30,
-            30,
-            0,
-        )));
+    // BeingWarpedOut (`+0x270`): a Temporal chain's head.
+    sim.substrate.entities.get_mut(tank).unwrap().temporal =
+        crate::sim::temporal::TemporalState::warped_by_for_test(wingman);
 
     assert!(
         sim.substrate.entities.get(tank).unwrap().selected,
